@@ -60,8 +60,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   // Verify token and fetch current user
   useEffect(() => {
-    const verifyToken = async () => {
+    const verifyTokenAsync = async () => {
       if (!token) return;
+      
+      console.log('Verifying token...', { token: token.substring(0, 20) + '...' });
       
       try {
         const response = await fetch('/api/auth/me', {
@@ -70,8 +72,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
           }
         });
         
+        console.log('Token verification response:', { status: response.status, ok: response.ok });
+        
         if (response.ok) {
           const data = await response.json();
+          console.log('Token verification successful:', data);
           setUser(data.user);
           // Update localStorage with fresh user data
           localStorage.setItem('user', JSON.stringify(data.user));
@@ -81,6 +86,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
           logout();
         } else {
           // Other error, but still clear auth to be safe
+          console.log('Other error during token verification:', response.status);
+          const errorData = await response.json();
+          console.log('Error data:', errorData);
           logout();
         }
       } catch (error) {
@@ -90,7 +98,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     };
     
     if (token) {
-      verifyToken();
+      verifyTokenAsync();
     }
   }, [token]);
 
@@ -100,6 +108,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setError(null);
     
     try {
+      console.log('Attempting login for:', email);
+      
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
@@ -109,19 +119,23 @@ export function AuthProvider({ children }: AuthProviderProps) {
       });
       
       const data = await response.json();
+      console.log('Login response:', { status: response.status, ok: response.ok, data });
       
       if (!response.ok) {
         throw new Error(data.error || 'Login failed');
       }
       
       // Save token and user to state and localStorage
+      console.log('Setting token and user...', { token: data.token.substring(0, 20) + '...', user: data.user });
       setToken(data.token);
       setUser(data.user);
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
+      
+      console.log('Login successful!');
     } catch (error: any) {
-      setError(error.message || 'An error occurred during login');
       console.error('Login error:', error);
+      setError(error.message || 'An error occurred during login');
     } finally {
       setLoading(false);
     }
@@ -162,6 +176,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   // Logout function
   const logout = () => {
+    console.log('Logout called!');
     setToken(null);
     setUser(null);
     localStorage.removeItem('token');
