@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { db } from '@/lib/db';
+import { db, executeQuery } from '@/lib/db';
 import { verifyToken } from '@/lib/auth';
 
 interface RouteParams {
@@ -11,19 +11,36 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const { id } = await params;
     console.log('Product API called with ID:', id);
 
-    // Get product details using Supabase helpers
-    const product = await db.marketplaceItems.getById(parseInt(id));
-    console.log('Product fetched from database:', product);
+    // Get comprehensive product details with seller information using SQL
+    const productQuery = `
+      SELECT 
+        mi.*,
+        u.name as seller_name,
+        u.email as seller_email,
+        u.user_type as seller_type
+      FROM marketplace_items mi
+      LEFT JOIN users u ON mi.seller_id = u.id
+      WHERE mi.id = ? AND mi.status = 'active'
+    `;
 
-    if (!product || product.status !== 'active') {
-      console.log('Product not found or not active:', { product, status: product?.status });
+    const productResult = await executeQuery({
+      query: productQuery,
+      values: [parseInt(id)]
+    }) as any[];
+
+    console.log('Product query result:', productResult);
+
+    if (!productResult || productResult.length === 0) {
+      console.log('Product not found');
       return Response.json({ 
         success: false,
         error: 'Product not found' 
       }, { status: 404 });
     }
 
-    // For now, return simplified product data (reviews and questions can be added later)
+    const product = productResult[0];
+
+    // For now, return empty reviews and questions arrays (can be enhanced later)
     const reviews: any[] = [];
     const questions: any[] = [];
 
@@ -38,7 +55,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       }
     };
 
-    // Format the response
+    // Format the response with complete product data
     const formattedProduct = {
       ...product,
       tags: safeJsonParse(product.tags, []),
@@ -48,15 +65,17 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       variants: safeJsonParse(product.variants, {}),
       specifications: safeJsonParse(product.specifications, {}),
       features: safeJsonParse(product.features, []),
-      price: parseFloat(product.price),
+      price: parseFloat(product.price) || 0,
       compare_price: product.compare_price ? parseFloat(product.compare_price) : null,
-      avg_rating: product.avg_rating ? parseFloat(product.avg_rating) : 0,
-      review_count: parseInt(product.review_count) || 0,
+      // Add seller information
+      seller_name: product.seller_name || 'Unknown Seller',
+      seller_email: product.seller_email,
+      seller_type: product.seller_type,
+      // Add review/rating data (from the product itself for now)
+      avg_rating: parseFloat(product.rating_average) || 0,
+      review_count: parseInt(product.rating_count) || 0,
       total_sold: parseInt(product.total_sold) || 0,
-      reviews: reviews.map(review => ({
-        ...review,
-        images: safeJsonParse(review.images, [])
-      })),
+      reviews: reviews,
       questions: questions
     };
 
