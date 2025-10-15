@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { executeQuery } from '@/lib/db';
+import { db, executeQuery } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 
@@ -87,20 +87,26 @@ export async function GET(request: NextRequest) {
 
     query += ' ORDER BY mi.created_at DESC';
 
-    const marketplaceItems = await executeQuery({
-      query,
-      values
-    }) as any[];
+    // Use Supabase database helpers instead
+    const filters: any = {};
+    if (category && category !== 'All Categories') {
+      filters.category = category;
+    }
+    if (view === 'my-listings' && authenticatedUserId) {
+      filters.seller_id = authenticatedUserId;
+    }
+
+    const marketplaceItems = await db.marketplaceItems.getAll(filters);
 
     return NextResponse.json({
       success: true,
-      data: marketplaceItems
+      data: marketplaceItems || []
     });
 
   } catch (error) {
     console.error('Error fetching marketplace items:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch marketplace items' },
+      { success: false, error: 'Failed to fetch marketplace items' },
       { status: 500 }
     );
   }
