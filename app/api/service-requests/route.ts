@@ -178,33 +178,26 @@ export async function POST(request: NextRequest) {
         timeline: timeline || 'Not specified'
       };
 
-      // Insert new service request with proper schema columns
-      const result = await executeQuery({
-        query: `
-          INSERT INTO service_requests (
-            ngo_id, title, description, category, location,
-            urgency_level, volunteers_needed, tags, requirements, status
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
-        `,
-        values: [
-          userId,
-          title,
-          description,
-          category,
-          location,
-          mappedUrgency,
-          1, // default volunteers_needed
-          JSON.stringify([]), // empty tags array
-          JSON.stringify(requirementsData),
-        ]
-      }) as any;
+      // Insert new service request using Supabase helpers
+      const requestData = {
+        ngo_id: userId,
+        title: title,
+        description: description,
+        category: category,
+        location: location,
+        urgency_level: mappedUrgency,
+        volunteers_needed: 1, // default volunteers_needed
+        tags: JSON.stringify([]), // empty tags array
+        requirements: JSON.stringify(requirementsData),
+        status: 'active'
+      };
 
-      return NextResponse.json({
-        success: true,
-        data: { id: result.insertId, message: 'Service request created successfully' }
-      });
+      const result = await db.serviceRequests.create(requestData);
 
-    } else if (action === 'volunteer') {
+        return NextResponse.json({
+          success: true,
+          data: { id: result.id, message: 'Service request created successfully' }
+        });    } else if (action === 'volunteer') {
       // Only individuals and companies can volunteer
       if (userType === 'ngo') {
         return NextResponse.json({ error: 'NGOs cannot volunteer for their own requests' }, { status: 403 });
@@ -216,7 +209,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Service request ID is required' }, { status: 400 });
       }
 
-      // Check if already volunteering
+      // Check if already volunteering using raw SQL (helper not implemented)
       const existing = await executeQuery({
         query: 'SELECT id FROM service_volunteers WHERE service_request_id = ? AND volunteer_id = ?',
         values: [serviceRequestId, userId]
@@ -226,7 +219,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Already volunteering for this request' }, { status: 400 });
       }
 
-      // Add volunteer
+      // Add volunteer using raw SQL (helper not implemented)
       await executeQuery({
         query: `
           INSERT INTO service_volunteers (

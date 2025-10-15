@@ -161,33 +161,27 @@ export async function POST(request: NextRequest) {
         images
       });
 
-      // Insert new marketplace item
-      const result = await executeQuery({
-        query: `
-          INSERT INTO marketplace_items (
-            seller_id, seller_type, title, description, category,
-            tags, price, quantity, condition_type, location, 
-            images, status, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NOW(), NOW())
-        `,
-        values: [
-          userId,
-          userType,
-          title || '',
-          description || '',
-          category || '',
-          JSON.stringify(tags || []),
-          price || 0,
-          quantity || 1,
-          condition_type || 'new',
-          location || null,
-          JSON.stringify(images || [])
-        ]
-      }) as any;
+      // Insert new marketplace item using Supabase helpers
+      const itemData = {
+        seller_id: userId,
+        seller_type: userType,
+        title: title || '',
+        description: description || '',
+        category: category || '',
+        tags: JSON.stringify(tags || []),
+        price: price || 0,
+        quantity: quantity || 1,
+        condition_type: condition_type || 'new',
+        location: location || null,
+        images: JSON.stringify(images || []),
+        status: 'active'
+      };
+
+      const result = await db.marketplaceItems.create(itemData);
 
       return NextResponse.json({
         success: true,
-        data: { id: result.insertId, message: 'Marketplace item created successfully' }
+        data: { id: result.id, message: 'Marketplace item created successfully' }
       });
 
     } else if (action === 'purchase') {
@@ -197,17 +191,12 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Item ID is required' }, { status: 400 });
       }
 
-      // Get item details
-      const items = await executeQuery({
-        query: 'SELECT * FROM marketplace_items WHERE id = ? AND status = "active"',
-        values: [itemId]
-      }) as any[];
+      // Get item details using Supabase helpers
+      const item = await db.marketplaceItems.getById(itemId);
 
-      if (items.length === 0) {
+      if (!item || item.status !== 'active') {
         return NextResponse.json({ error: 'Item not found or not available' }, { status: 404 });
       }
-
-      const item = items[0];
 
       // Check if seller is not the buyer
       if (item.seller_id === userId) {
@@ -221,7 +210,7 @@ export async function POST(request: NextRequest) {
 
       const totalAmount = item.price * quantity;
 
-      // Create purchase record
+      // Create purchase record using raw SQL (helper not implemented yet)
       const purchaseResult = await executeQuery({
         query: `
           INSERT INTO marketplace_purchases (
@@ -243,17 +232,15 @@ export async function POST(request: NextRequest) {
         ]
       }) as any;
 
-      // Update item quantity
-      await executeQuery({
-        query: 'UPDATE marketplace_items SET quantity = quantity - ? WHERE id = ?',
-        values: [quantity, itemId]
+      // Update item quantity using Supabase helpers
+      await db.marketplaceItems.update(itemId, {
+        quantity: item.quantity - quantity
       });
 
       // If quantity reaches 0, mark as sold
       if (item.quantity - quantity === 0) {
-        await executeQuery({
-          query: 'UPDATE marketplace_items SET status = "sold" WHERE id = ?',
-          values: [itemId]
+        await db.marketplaceItems.update(itemId, {
+          status: 'sold'
         });
       }
 

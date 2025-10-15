@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { executeQuery, initializeDatabase } from '@/lib/db';
+import { db } from '@/lib/db';
 import { comparePassword, generateToken } from '@/lib/auth';
 
 // Validation schema for login
@@ -11,9 +11,6 @@ const loginSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
-    // Ensure database is initialized
-    await initializeDatabase();
-    
     // Parse and validate request body
     const body = await req.json();
     const validationResult = loginSchema.safeParse(body);
@@ -24,19 +21,14 @@ export async function POST(req: NextRequest) {
     
     const { email, password } = validationResult.data;
     
-    // Fetch user from database
-    const users = await executeQuery({
-      query: 'SELECT * FROM users WHERE email = ?',
-      values: [email]
-    }) as any[];
+    // Fetch user from database using Supabase
+    const user = await db.users.findByEmail(email);
     
-    if (users.length === 0) {
+    if (!user) {
       // No user found with this email
       console.log(`Login attempt failed: No user found with email ${email}`);
       return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
     }
-    
-    const user = users[0];
     
     // Verify password
     const isPasswordValid = await comparePassword(password, user.password);

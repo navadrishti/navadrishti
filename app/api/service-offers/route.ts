@@ -142,37 +142,29 @@ export async function POST(request: NextRequest) {
     }
 
     // Prepare database values
-    const dbValues = [
-      userId,
-      title,
-      description,
-      category,
-      location || null,
-      pricing > 0 ? 'fixed' : 'negotiable',
-      pricing || 0,
-      `${availability || ''} | Delivery: ${deliveryTime || ''} | Contact: ${contactInfo || ''}`,
-      JSON.stringify([]) // Empty skills array
-    ];
+    // Insert new service offer using Supabase helpers
+    const offerData = {
+      ngo_id: userId,
+      title: title,
+      description: description,
+      category: category,
+      location: location || null,
+      price_type: pricing > 0 ? 'fixed' : 'negotiable',
+      price_amount: pricing || 0,
+      price_description: `${availability || ''} | Delivery: ${deliveryTime || ''} | Contact: ${contactInfo || ''}`,
+      tags: JSON.stringify([]), // Empty skills array
+      status: 'active'
+    };
 
-    console.log('Database values prepared:', dbValues);
+    console.log('Database data prepared:', offerData);
 
-    // Insert new service offer
-    const result = await executeQuery({
-      query: `
-        INSERT INTO service_offers (
-          ngo_id, title, description, category, location,
-          price_type, price_amount, price_description, 
-          tags, status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
-      `,
-      values: dbValues
-    }) as any;
+    const result = await db.serviceOffers.create(offerData);
 
     console.log('Database insert result:', result);
 
     return NextResponse.json({
       success: true,
-      data: { id: result.insertId, message: 'Service offer created successfully' }
+      data: { id: result.id, message: 'Service offer created successfully' }
     });
 
   } catch (error) {
