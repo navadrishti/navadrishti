@@ -21,41 +21,6 @@ export async function GET(request: NextRequest) {
     const userId = searchParams.get('userId');
     const view = searchParams.get('view'); // 'all', 'my-requests', 'volunteering'
 
-    // Build query based on filters
-    let query = `
-      SELECT 
-        sr.*,
-        u.name as ngo_name,
-        u.email as ngo_email,
-        COUNT(sv.id) as volunteer_count
-      FROM service_requests sr
-      JOIN users u ON sr.ngo_id = u.id
-      LEFT JOIN service_volunteers sv ON sr.id = sv.service_request_id
-      WHERE sr.status IN ('open', 'active')
-    `;
-    const values: any[] = [];
-
-    // Add filters
-    if (category && category !== 'All Categories') {
-      query += ' AND sr.category = ?';
-      values.push(category);
-    }
-
-    if (search) {
-      query += ' AND (sr.title LIKE ? OR sr.description LIKE ? OR sr.tags LIKE ?)';
-      const searchPattern = `%${search}%`;
-      values.push(searchPattern, searchPattern, searchPattern);
-    }
-
-    // Handle different views (only if userId is provided)
-    if (view === 'my-requests' && userId) {
-      query += ' AND sr.ngo_id = ?';
-      values.push(parseInt(userId));
-    } else if (view === 'volunteering' && userId) {
-      query += ' AND sr.id IN (SELECT service_request_id FROM service_volunteers WHERE volunteer_id = ?)';
-      values.push(parseInt(userId));
-    }
-
     // Use Supabase database helpers
     const filters: any = {};
     if (category && category !== 'All Categories') {
@@ -65,7 +30,9 @@ export async function GET(request: NextRequest) {
       filters.ngo_id = parseInt(userId);
     }
 
+    console.log('Service requests filters:', filters);
     const serviceRequests = await db.serviceRequests.getAll(filters);
+    console.log('Service requests fetched:', serviceRequests?.length || 0, 'items');
 
     // Process the data to handle old and new formats
     const processedRequests = serviceRequests.map((request) => {

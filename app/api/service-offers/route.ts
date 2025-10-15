@@ -21,41 +21,6 @@ export async function GET(request: NextRequest) {
     const userId = searchParams.get('userId');
     const view = searchParams.get('view'); // 'all', 'my-offers', 'hired-services'
 
-    // Build query based on filters
-    let query = `
-      SELECT 
-        so.*,
-        u.name as ngo_name,
-        u.email as ngo_email,
-        COUNT(sh.id) as hire_count
-      FROM service_offers so
-      JOIN users u ON so.ngo_id = u.id
-      LEFT JOIN service_hires sh ON so.id = sh.service_offer_id
-      WHERE so.status = 'active'
-    `;
-    const values: any[] = [];
-
-    // Add filters
-    if (category && category !== 'All Categories') {
-      query += ' AND so.category = ?';
-      values.push(category);
-    }
-
-    if (search) {
-      query += ' AND (so.title LIKE ? OR so.description LIKE ? OR so.tags LIKE ?)';
-      const searchPattern = `%${search}%`;
-      values.push(searchPattern, searchPattern, searchPattern);
-    }
-
-    // Handle different views (only if userId is provided)
-    if (view === 'my-offers' && userId) {
-      query += ' AND so.ngo_id = ?';
-      values.push(parseInt(userId));
-    } else if (view === 'hired-services' && userId) {
-      query += ' AND so.id IN (SELECT service_offer_id FROM service_hires WHERE client_id = ?)';
-      values.push(parseInt(userId));
-    }
-
     // Use Supabase database helpers
     const filters: any = {};
     if (category && category !== 'All Categories') {
@@ -65,7 +30,9 @@ export async function GET(request: NextRequest) {
       filters.ngo_id = parseInt(userId);
     }
 
+    console.log('Service offers filters:', filters);
     const serviceOffers = await db.serviceOffers.getAll(filters);
+    console.log('Service offers fetched:', serviceOffers?.length || 0, 'items');
 
     return NextResponse.json({
       success: true,
