@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { db, executeQuery } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 
@@ -43,52 +43,32 @@ export async function PUT(
       status
     } = body;
 
-    // Verify the item belongs to the current user
-    const ownerCheck = await executeQuery({
-      query: 'SELECT seller_id FROM marketplace_items WHERE id = ?',
-      values: [itemId]
-    }) as any[];
+    // Verify the item belongs to the current user using Supabase helpers
+    const item = await db.marketplaceItems.getById(itemId);
 
-    if (ownerCheck.length === 0) {
+    if (!item) {
       return NextResponse.json({ error: 'Item not found' }, { status: 404 });
     }
 
-    if (ownerCheck[0].seller_id !== userId) {
+    if (item.seller_id !== userId) {
       return NextResponse.json({ error: 'You can only edit your own listings' }, { status: 403 });
     }
 
-    // Update the marketplace item
-    const updateResult = await executeQuery({
-      query: `
-        UPDATE marketplace_items SET
-          title = ?,
-          description = ?,
-          category = ?,
-          price = ?,
-          quantity = ?,
-          condition_type = ?,
-          location = ?,
-          tags = ?,
-          images = ?,
-          status = ?,
-          updated_at = NOW()
-        WHERE id = ? AND seller_id = ?
-      `,
-      values: [
-        title || '',
-        description || '',
-        category || '',
-        price || 0,
-        quantity || 1,
-        condition_type || 'new',
-        location || '',
-        JSON.stringify(tags || []),
-        JSON.stringify(images || []),
-        status || 'active',
-        itemId,
-        userId
-      ]
-    });
+    // Update the marketplace item using Supabase helpers
+    const updateData = {
+      title: title || '',
+      description: description || '',
+      category: category || '',
+      price: price || 0,
+      quantity: quantity || 1,
+      condition_type: condition_type || 'new',
+      location: location || '',
+      tags: JSON.stringify(tags || []),
+      images: JSON.stringify(images || []),
+      status: status || 'active'
+    };
+
+    await db.marketplaceItems.update(itemId, updateData);
 
     return NextResponse.json({
       success: true,
@@ -125,21 +105,18 @@ export async function DELETE(
     const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
     const { id: userId } = decoded;
 
-    // Verify the item belongs to the current user
-    const ownerCheck = await executeQuery({
-      query: 'SELECT seller_id FROM marketplace_items WHERE id = ?',
-      values: [itemId]
-    }) as any[];
+    // Verify the item belongs to the current user using Supabase helpers
+    const item = await db.marketplaceItems.getById(itemId);
 
-    if (ownerCheck.length === 0) {
+    if (!item) {
       return NextResponse.json({ error: 'Item not found' }, { status: 404 });
     }
 
-    if (ownerCheck[0].seller_id !== userId) {
+    if (item.seller_id !== userId) {
       return NextResponse.json({ error: 'You can only delete your own listings' }, { status: 403 });
     }
 
-    // Delete the marketplace item
+    // Delete the marketplace item using raw SQL (delete helper not implemented)
     await executeQuery({
       query: 'DELETE FROM marketplace_items WHERE id = ? AND seller_id = ?',
       values: [itemId, userId]

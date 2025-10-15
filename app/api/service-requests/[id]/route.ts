@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { executeQuery } from '@/lib/db';
+import { db, executeQuery } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 
@@ -20,25 +20,15 @@ export async function GET(
     const { id } = await params;
     const requestId = parseInt(id);
 
-    // Fetch the service request (publicly accessible)
-    const serviceRequest = await executeQuery({
-      query: `
-        SELECT sr.*, u.name as ngo_name, u.email as ngo_email
-        FROM service_requests sr
-        JOIN users u ON sr.ngo_id = u.id
-        WHERE sr.id = ?
-      `,
-      values: [requestId]
-    }) as any[];
+    // Fetch the service request using Supabase helpers (simplified for now)
+    const serviceRequest = await db.serviceRequests.getById(requestId);
 
-    if (serviceRequest.length === 0) {
+    if (!serviceRequest) {
       return NextResponse.json({ error: 'Service request not found' }, { status: 404 });
     }
 
-    const request_data = serviceRequest[0];
-
     // Return the service request data (publicly accessible)
-    return NextResponse.json(request_data);
+    return NextResponse.json(serviceRequest);
 
   } catch (error) {
     console.error('Error fetching service request:', error);
