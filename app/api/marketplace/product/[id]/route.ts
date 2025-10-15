@@ -9,11 +9,14 @@ interface RouteParams {
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
+    console.log('Product API called with ID:', id);
 
     // Get product details using Supabase helpers
     const product = await db.marketplaceItems.getById(parseInt(id));
+    console.log('Product fetched from database:', product);
 
     if (!product || product.status !== 'active') {
+      console.log('Product not found or not active:', { product, status: product?.status });
       return Response.json({ 
         success: false,
         error: 'Product not found' 
@@ -57,6 +60,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       questions: questions
     };
 
+    console.log('Formatted product response:', formattedProduct);
+
     return Response.json({
       success: true,
       product: formattedProduct
@@ -64,6 +69,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
   } catch (error: any) {
     console.error('Product fetch error:', error);
+    console.error('Error stack:', error.stack);
     return Response.json({ 
       success: false,
       error: 'Failed to fetch product',
