@@ -1,5 +1,5 @@
 import jwt from 'jsonwebtoken';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import { NextRequest, NextResponse } from 'next/server';
 import dotenv from 'dotenv';
 
@@ -41,6 +41,12 @@ export function verifyToken(token: string): UserData | null {
     return jwt.verify(token, JWT_SECRET) as UserData;
   } catch (error) {
     console.error('Token verification failed:', error);
+    // Clear invalid token from browser if this is called from client side
+    if (typeof window !== 'undefined') {
+      document.cookie = 'token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+      localStorage.removeItem('user');
+      sessionStorage.removeItem('user');
+    }
     return null;
   }
 }

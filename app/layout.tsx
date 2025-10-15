@@ -5,6 +5,7 @@ import { AuthProvider } from '@/lib/auth-context'
 import { CartProvider } from '@/lib/cart-context'
 import { ThemeProvider } from '@/components/theme-provider'
 import { PageTransition } from '@/components/page-transition'
+import { AuthDebugPanel } from '@/components/auth-debug-panel'
 import Script from 'next/script'
 
 export const metadata: Metadata = {
@@ -121,6 +122,7 @@ export default function RootLayout({
               <PageTransition>
                 {children}
               </PageTransition>
+              <AuthDebugPanel />
             </CartProvider>
           </AuthProvider>
         </ThemeProvider>

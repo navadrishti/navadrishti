@@ -75,8 +75,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
           setUser(data.user);
           // Update localStorage with fresh user data
           localStorage.setItem('user', JSON.stringify(data.user));
+        } else if (response.status === 401) {
+          // Token is invalid, expired, or has signature issues
+          console.log('Invalid token detected, clearing authentication...');
+          logout();
         } else {
-          // Token is invalid or expired
+          // Other error, but still clear auth to be safe
           logout();
         }
       } catch (error) {
