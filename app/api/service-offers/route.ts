@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { executeQuery } from '@/lib/db';
+import { db, executeQuery } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 
@@ -56,16 +56,20 @@ export async function GET(request: NextRequest) {
       values.push(parseInt(userId));
     }
 
-    query += ' GROUP BY so.id ORDER BY so.created_at DESC';
+    // Use Supabase database helpers
+    const filters: any = {};
+    if (category && category !== 'All Categories') {
+      filters.category = category;
+    }
+    if (view === 'my-offers' && userId) {
+      filters.ngo_id = parseInt(userId);
+    }
 
-    const serviceOffers = await executeQuery({
-      query,
-      values
-    }) as any[];
+    const serviceOffers = await db.serviceOffers.getAll(filters);
 
     return NextResponse.json({
       success: true,
-      data: serviceOffers
+      data: serviceOffers || []
     });
 
   } catch (error) {
