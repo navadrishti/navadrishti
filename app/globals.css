@@ -1,0 +1,266 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* Add smooth transition styles */
+@layer utilities {
+  .transition-smooth {
+    @apply transition-all duration-300 ease-in-out;
+  }
+  
+  .hover-lift {
+    @apply hover:-translate-y-1 hover:shadow-xl transition-all duration-300 ease-out;
+  }
+  
+  .hover-scale {
+    @apply hover:scale-[1.02] transition-all duration-300 ease-out;
+  }
+  
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-udaan-navy to-udaan-blue;
+  }
+}
+
+/* Animation keyframes */
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+/* Apply animations to elements */
+.animate-fadeIn {
+  animation: fadeIn 0.6s ease-out forwards;
+}
+
+.animate-slideIn {
+  animation: slideInRight 0.4s ease-out forwards;
+}
+
+.animate-pulse-subtle {
+  animation: pulse 3s infinite;
+}
+
+/* Page transition styles */
+.page-transition {
+  will-change: opacity, transform;
+  transition: opacity 200ms ease, transform 200ms ease;
+}
+
+.page-hidden {
+  opacity: 0;
+  transform: translateY(5px);
+}
+
+.page-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Add base transition to all interactive elements */
+@layer base {
+  button, a, input, select, textarea {
+    @apply transition-smooth;
+  }
+}
+
+@layer base {
+  :root {
+    /* Udaan theme colors as HSL variables */
+    --udaan-navy: 209 100% 17%;      /* #002855 */
+    --udaan-blue: 207 100% 36%;       /* #0067b9 */
+    --udaan-orange: 28 90% 54%;       /* #F47B20 */
+    --udaan-cream: 37 100% 96%;       /* #FFF8ED */
+    --udaan-white: 0 0% 100%;         /* #FFFFFF */
+    
+    /* Map Udaan colors to theme variables */
+    --background: var(--udaan-white);
+    --foreground: var(--udaan-navy);
+    
+    --card: var(--udaan-white);
+    --card-foreground: var(--udaan-navy);
+    
+    --popover: var(--udaan-white);
+    --popover-foreground: var(--udaan-navy);
+    
+    --primary: var(--udaan-orange);
+    --primary-foreground: 0 0% 100%;
+    
+    --secondary: var(--udaan-blue);
+    --secondary-foreground: 0 0% 100%;
+    
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 45%;
+    
+    --accent: var(--udaan-cream);
+    --accent-foreground: var(--udaan-navy);
+    
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
+    --ring: var(--udaan-orange);
+    
+    --chart-1: var(--udaan-orange);
+    --chart-2: var(--udaan-blue);
+    --chart-3: var(--udaan-navy);
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+    
+    --radius: 0.5rem;
+    
+    /* Sidebar theme */
+    --sidebar-background: var(--udaan-navy);
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: var(--udaan-orange);
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 210 100% 20%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 210 100% 20%;
+    --sidebar-ring: var(--udaan-orange);
+  }
+  
+  .dark {
+    --background: var(--udaan-navy);
+    --foreground: var(--udaan-white);
+    
+    --card: 210 100% 12%;
+    --card-foreground: var(--udaan-white);
+    
+    --popover: 210 100% 12%;
+    --popover-foreground: var(--udaan-white);
+    
+    --primary: var(--udaan-orange);
+    --primary-foreground: var(--udaan-white);
+    
+    --secondary: var(--udaan-blue);
+    --secondary-foreground: var(--udaan-white);
+    
+    --muted: 210 100% 15%;
+    --muted-foreground: 0 0% 70%;
+    
+    --accent: 210 100% 25%;
+    --accent-foreground: var(--udaan-white);
+    
+    --destructive: 0 63% 31%;
+    --destructive-foreground: var(--udaan-white);
+    
+    --border: 210 100% 20%;
+    --input: 210 100% 20%;
+    --ring: var(--udaan-orange);
+    
+    /* Keep chart colors consistent with theme */
+    --chart-1: var(--udaan-orange);
+    --chart-2: var(--udaan-blue);
+    --chart-3: 210 70% 40%;
+    --chart-4: 37 100% 70%;
+    --chart-5: 340 75% 55%;
+    
+    /* Dark sidebar theme */
+    --sidebar-background: 210 100% 10%;
+    --sidebar-foreground: var(--udaan-white);
+    --sidebar-primary: var(--udaan-orange);
+    --sidebar-primary-foreground: var(--udaan-white);
+    --sidebar-accent: 210 100% 20%;
+    --sidebar-accent-foreground: var(--udaan-white);
+    --sidebar-border: 210 100% 20%;
+    --sidebar-ring: var(--udaan-orange);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Udaan-specific component classes */
+@layer components {
+  .udaan-container {
+    @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
+  
+  .udaan-header {
+    @apply bg-udaan-navy text-white py-4;
+  }
+  
+  .udaan-hero {
+    @apply bg-udaan-blue text-white py-16 md:py-24;
+  }
+  
+  .udaan-about {
+    @apply bg-udaan-cream py-16;
+  }
+  
+  .udaan-button {
+    @apply bg-udaan-orange text-white px-6 py-3 rounded-md hover:bg-opacity-90 transition-all;
+  }
+  
+  .udaan-heading {
+    @apply text-4xl md:text-5xl lg:text-6xl font-bold;
+  }
+  
+  .udaan-subheading {
+    @apply text-xl md:text-2xl max-w-2xl;
+  }
+  
+  .udaan-card {
+    @apply bg-white rounded-lg shadow-lg p-6 hover:shadow-xl transition-all;
+  }
+  
+  .udaan-nav-link {
+    @apply hover:text-udaan-orange transition-colors;
+  }
+  
+  .udaan-circle-element {
+    @apply bg-udaan-white rounded-full;
+  }
+}
