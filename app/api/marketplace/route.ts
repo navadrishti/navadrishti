@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, executeQuery } from '@/lib/db';
+import { db } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 
@@ -210,27 +210,23 @@ export async function POST(request: NextRequest) {
 
       const totalAmount = item.price * quantity;
 
-      // Create purchase record using raw SQL (helper not implemented yet)
-      const purchaseResult = await executeQuery({
-        query: `
-          INSERT INTO marketplace_purchases (
-            marketplace_item_id, buyer_id, buyer_type, seller_id, 
-            quantity, unit_price, total_amount, shipping_address, 
-            payment_method, status
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
-        `,
-        values: [
-          itemId,
-          userId,
-          userType,
-          item.seller_id,
-          quantity,
-          item.price,
-          totalAmount,
-          JSON.stringify(shippingAddress || {}),
-          paymentMethod || 'cash'
-        ]
-      }) as any;
+      // Create purchase record using Supabase helpers
+      const purchaseData = {
+        marketplace_item_id: itemId,
+        buyer_id: userId,
+        buyer_type: userType,
+        seller_id: item.seller_id,
+        quantity: quantity,
+        unit_price: item.price,
+        total_amount: totalAmount,
+        shipping_address: JSON.stringify(shippingAddress || {}),
+        payment_method: paymentMethod || 'cash',
+        status: 'pending',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      const purchaseResult = await db.purchases.create(purchaseData);
 
       // Update item quantity using Supabase helpers
       await db.marketplaceItems.update(itemId, {
@@ -247,7 +243,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         data: { 
-          purchaseId: purchaseResult.insertId, 
+          purchaseId: purchaseResult.id, 
           totalAmount,
           message: 'Purchase completed successfully' 
         }

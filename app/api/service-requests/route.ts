@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, executeQuery } from '@/lib/db';
+import { db } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 
@@ -176,25 +176,25 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Service request ID is required' }, { status: 400 });
       }
 
-      // Check if already volunteering using raw SQL (helper not implemented)
-      const existing = await executeQuery({
-        query: 'SELECT id FROM service_volunteers WHERE service_request_id = ? AND volunteer_id = ?',
-        values: [serviceRequestId, userId]
-      }) as any[];
+      // Check if already volunteering using Supabase helper
+      const existing = await db.serviceVolunteers.findExisting(serviceRequestId, userId);
 
-      if (existing.length > 0) {
+      if (existing) {
         return NextResponse.json({ error: 'Already volunteering for this request' }, { status: 400 });
       }
 
-      // Add volunteer using raw SQL (helper not implemented)
-      await executeQuery({
-        query: `
-          INSERT INTO service_volunteers (
-            service_request_id, volunteer_id, volunteer_type, message, status
-          ) VALUES (?, ?, ?, ?, 'pending')
-        `,
-        values: [serviceRequestId, userId, userType, message || '']
-      });
+      // Add volunteer using Supabase helper
+      const volunteerData = {
+        service_request_id: serviceRequestId,
+        volunteer_id: userId,
+        volunteer_type: userType,
+        message: message || '',
+        status: 'pending',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      await db.serviceVolunteers.create(volunteerData);
 
       return NextResponse.json({
         success: true,

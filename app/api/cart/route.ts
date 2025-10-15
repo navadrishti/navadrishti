@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { executeQuery } from '@/lib/db';
+import { db } from '@/lib/db';
 import { verifyToken } from '@/lib/auth';
 
 // GET - Get user's cart
@@ -32,48 +32,23 @@ export async function GET(request: NextRequest) {
 
     const userId = payload.id;
 
-    // Get cart items with marketplace data using minimal, safe columns
-    const cartQuery = `
-      SELECT 
-        c.id as cart_id,
-        c.marketplace_item_id,
-        c.quantity,
-        c.variant_selection,
-        c.created_at,
-        mi.title,
-        mi.price,
-        mi.quantity as max_quantity,
-        mi.status,
-        mi.images,
-        mi.category,
-        u.name as seller_name,
-        (mi.price * c.quantity) as item_total
-      FROM cart c
-      JOIN marketplace_items mi ON c.marketplace_item_id = mi.id
-      LEFT JOIN users u ON mi.seller_id = u.id
-      WHERE c.user_id = ? AND mi.status = 'active'
-      ORDER BY c.created_at DESC
-    `;
-
-    const cartItems = await executeQuery({
-      query: cartQuery,
-      values: [userId]
-    }) as any[];
+    // Get cart items with marketplace data using Supabase helpers
+    const cartItems = await db.cart.getByUserId(userId);
 
     // Format cart items with safe parsing
     const formattedCart = cartItems.map(item => ({
-      id: item.cart_id,
+      id: item.id,
       marketplace_item_id: item.marketplace_item_id,
       quantity: item.quantity,
-      title: item.title || 'Unknown Product',
-      price: parseFloat(item.price) || 0,
-      max_quantity: item.max_quantity || 1,
-      item_total: parseFloat(item.item_total) || 0,
-      seller_name: item.seller_name || 'Unknown Seller',
-      category: item.category || 'General',
+      title: item.marketplace_item?.title || 'Unknown Product',
+      price: parseFloat(item.marketplace_item?.price || '0'),
+      max_quantity: 1, // Will be fetched from marketplace_item if needed
+      item_total: parseFloat(item.marketplace_item?.price || '0') * item.quantity,
+      seller_name: 'Unknown Seller', // Can be enhanced later
+      category: 'General', // Can be enhanced later
       images: (() => {
         try {
-          return item.images ? JSON.parse(item.images) : ['/placeholder-image.jpg'];
+          return item.marketplace_item?.images ? JSON.parse(item.marketplace_item.images) : ['/placeholder-image.jpg'];
         } catch {
           return ['/placeholder-image.jpg'];
         }
@@ -88,22 +63,23 @@ export async function GET(request: NextRequest) {
       created_at: item.created_at
     }));
 
-    // Calculate totals
+    // Calculate summary
+    const totalQuantity = formattedCart.reduce((sum, item) => sum + item.quantity, 0);
     const subtotal = formattedCart.reduce((sum, item) => sum + item.item_total, 0);
-    const estimatedShipping = subtotal > 500 ? 0 : 50; // Free shipping over ₹500
+    const shipping = subtotal > 500 ? 0 : 50; // Free shipping above ₹500
     const tax = subtotal * 0.18; // 18% GST
-    const total = subtotal + estimatedShipping + tax;
+    const total = subtotal + shipping + tax;
 
     return Response.json({
       success: true,
       cart: formattedCart,
       summary: {
         item_count: formattedCart.length,
-        total_quantity: formattedCart.reduce((sum, item) => sum + item.quantity, 0),
-        subtotal: Math.round(subtotal * 100) / 100,
-        shipping: estimatedShipping,
-        tax: Math.round(tax * 100) / 100,
-        total: Math.round(total * 100) / 100
+        total_quantity: totalQuantity,
+        subtotal: subtotal,
+        shipping: shipping,
+        tax: tax,
+        total: total
       }
     });
 
@@ -117,11 +93,10 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST - Add to cart
+// POST - Add item to cart
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { marketplace_item_id, quantity = 1, variant_selection = {} } = body;
+    const { marketplace_item_id, quantity = 1, variant_selection = {} } = await request.json();
 
     // Get authenticated user
     const authHeader = request.headers.get('authorization');
@@ -144,16 +119,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if item exists and is available
-    const itemCheck = await executeQuery({
-      query: 'SELECT id, title, price, quantity, status FROM marketplace_items WHERE id = ? AND status = "active"',
-      values: [marketplace_item_id]
-    }) as any[];
+    const item = await db.marketplaceItems.getById(marketplace_item_id);
 
-    if (itemCheck.length === 0) {
+    if (!item || item.status !== 'active') {
       return Response.json({ error: 'Product not found or unavailable' }, { status: 404 });
     }
 
-    const item = itemCheck[0];
     if (quantity > item.quantity) {
       return Response.json({ 
         error: 'Insufficient stock', 
@@ -161,160 +132,39 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Check if item already exists in cart
-    const existingCartItem = await executeQuery({
-      query: 'SELECT id, quantity FROM cart WHERE user_id = ? AND marketplace_item_id = ?',
-      values: [userId, marketplace_item_id]
-    }) as any[];
+    // Add to cart (upsert will handle existing items)
+    const cartData = {
+      user_id: userId,
+      marketplace_item_id: marketplace_item_id,
+      quantity: quantity,
+      variant_selection: JSON.stringify(variant_selection),
+      updated_at: new Date().toISOString()
+    };
 
-    let cartItemId;
-    let finalQuantity = quantity;
+    const cartItem = await db.cart.add(cartData);
 
-    if (existingCartItem.length > 0) {
-      // Update existing cart item
-      finalQuantity = existingCartItem[0].quantity + quantity;
-      
-      if (finalQuantity > item.quantity) {
-        return Response.json({ 
-          error: 'Total quantity exceeds available stock', 
-          available_quantity: item.quantity,
-          current_in_cart: existingCartItem[0].quantity
-        }, { status: 400 });
-      }
-
-      await executeQuery({
-        query: 'UPDATE cart SET quantity = ?, variant_selection = ?, updated_at = NOW() WHERE id = ?',
-        values: [finalQuantity, JSON.stringify(variant_selection), existingCartItem[0].id]
-      });
-      
-      cartItemId = existingCartItem[0].id;
-    } else {
-      // Add new cart item
-      const insertResult = await executeQuery({
-        query: `INSERT INTO cart (user_id, marketplace_item_id, quantity, variant_selection, created_at, updated_at) 
-                VALUES (?, ?, ?, ?, NOW(), NOW())`,
-        values: [userId, marketplace_item_id, quantity, JSON.stringify(variant_selection)]
-      }) as any;
-      
-      cartItemId = insertResult.insertId;
-    }
-
-    // Get updated cart count
-    const cartCount = await executeQuery({
-      query: 'SELECT COUNT(*) as count FROM cart WHERE user_id = ?',
-      values: [userId]
-    }) as any[];
+    // Get updated cart items for count
+    const cartItems = await db.cart.getByUserId(userId);
 
     return Response.json({
       success: true,
       message: 'Item added to cart successfully',
       cart_item: {
-        id: cartItemId,
+        id: cartItem.id,
         marketplace_item_id,
-        quantity: finalQuantity,
+        quantity: cartItem.quantity,
         variant_selection,
         item_title: item.title,
         item_price: item.price
       },
-      cart_count: cartCount[0].count
+      cart_count: cartItems.length
     });
 
   } catch (error: any) {
     console.error('Add to cart error:', error);
     return Response.json({ 
       success: false,
-      error: 'Failed to add to cart',
-      details: error.message 
-    }, { status: 500 });
-  }
-}
-
-// PUT - Update cart item quantity
-export async function PUT(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const { cart_id, quantity } = body;
-
-    // Get authenticated user
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return Response.json({ error: 'Authentication required' }, { status: 401 });
-    }
-
-    // Extract and verify JWT token
-    const token = authHeader.substring(7);
-    const payload = verifyToken(token);
-    if (!payload) {
-      return Response.json({ error: 'Invalid token' }, { status: 401 });
-    }
-
-    const userId = payload.id;
-
-    // Validate inputs
-    if (!cart_id || quantity < 0) {
-      return Response.json({ error: 'Invalid cart_id or quantity' }, { status: 400 });
-    }
-
-    // If quantity is 0, delete the item
-    if (quantity === 0) {
-      await executeQuery({
-        query: 'DELETE FROM cart WHERE id = ? AND user_id = ?',
-        values: [cart_id, userId]
-      });
-
-      return Response.json({
-        success: true,
-        message: 'Item removed from cart successfully'
-      });
-    }
-
-    // Check if cart item belongs to user and get marketplace item info
-    const cartItemCheck = await executeQuery({
-      query: `
-        SELECT c.id, c.marketplace_item_id, mi.title, mi.quantity as max_quantity, mi.status
-        FROM cart c
-        JOIN marketplace_items mi ON c.marketplace_item_id = mi.id
-        WHERE c.id = ? AND c.user_id = ?
-      `,
-      values: [cart_id, userId]
-    }) as any[];
-
-    if (cartItemCheck.length === 0) {
-      return Response.json({ error: 'Cart item not found' }, { status: 404 });
-    }
-
-    const cartItem = cartItemCheck[0];
-    
-    // Check stock availability
-    if (quantity > cartItem.max_quantity) {
-      return Response.json({ 
-        error: 'Insufficient stock', 
-        available_quantity: cartItem.max_quantity 
-      }, { status: 400 });
-    }
-
-    // Update cart item quantity
-    await executeQuery({
-      query: 'UPDATE cart SET quantity = ?, updated_at = NOW() WHERE id = ? AND user_id = ?',
-      values: [quantity, cart_id, userId]
-    });
-
-    return Response.json({
-      success: true,
-      message: 'Cart updated successfully',
-      cart_item: {
-        id: cart_id,
-        marketplace_item_id: cartItem.marketplace_item_id,
-        quantity: quantity,
-        item_title: cartItem.title
-      }
-    });
-
-  } catch (error: any) {
-    console.error('Update cart error:', error);
-    return Response.json({ 
-      success: false,
-      error: 'Failed to update cart',
+      error: 'Failed to add item to cart',
       details: error.message 
     }, { status: 500 });
   }
@@ -323,12 +173,7 @@ export async function PUT(request: NextRequest) {
 // DELETE - Remove item from cart
 export async function DELETE(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const cart_id = searchParams.get('cart_id');
-
-    if (!cart_id) {
-      return Response.json({ error: 'cart_id is required' }, { status: 400 });
-    }
+    const { marketplace_item_id } = await request.json();
 
     // Get authenticated user
     const authHeader = request.headers.get('authorization');
@@ -345,39 +190,28 @@ export async function DELETE(request: NextRequest) {
 
     const userId = payload.id;
 
-    // Check if cart item exists and belongs to user
-    const cartItemCheck = await executeQuery({
-      query: 'SELECT id, marketplace_item_id FROM cart WHERE id = ? AND user_id = ?',
-      values: [cart_id, userId]
-    }) as any[];
-
-    if (cartItemCheck.length === 0) {
-      return Response.json({ error: 'Cart item not found' }, { status: 404 });
+    // Validate input
+    if (!marketplace_item_id) {
+      return Response.json({ error: 'Invalid marketplace_item_id' }, { status: 400 });
     }
 
     // Remove item from cart
-    await executeQuery({
-      query: 'DELETE FROM cart WHERE id = ? AND user_id = ?',
-      values: [cart_id, userId]
-    });
+    await db.cart.remove(userId, marketplace_item_id);
 
-    // Get updated cart count
-    const cartCount = await executeQuery({
-      query: 'SELECT COUNT(*) as count FROM cart WHERE user_id = ?',
-      values: [userId]
-    }) as any[];
+    // Get updated cart items for count
+    const cartItems = await db.cart.getByUserId(userId);
 
     return Response.json({
       success: true,
       message: 'Item removed from cart successfully',
-      cart_count: cartCount[0].count
+      cart_count: cartItems.length
     });
 
   } catch (error: any) {
     console.error('Remove from cart error:', error);
     return Response.json({ 
       success: false,
-      error: 'Failed to remove from cart',
+      error: 'Failed to remove item from cart',
       details: error.message 
     }, { status: 500 });
   }

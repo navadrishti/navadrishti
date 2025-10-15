@@ -103,9 +103,9 @@ export const db = {
       return data;
     },
 
-    async getById(id: number) {
+    async getById(id: string | number) {
       const { data, error } = await supabase
-        .from('marketplace_items')
+        .from('service_requests')
         .select('*')
         .eq('id', id)
         .single();
@@ -135,6 +135,22 @@ export const db = {
       
       if (error) throw error;
       return data;
+    },
+
+    async delete(id: number, sellerId?: number) {
+      let query = supabase
+        .from('marketplace_items')
+        .delete()
+        .eq('id', id);
+      
+      if (sellerId) {
+        query = query.eq('seller_id', sellerId);
+      }
+      
+      const { error } = await query;
+      
+      if (error) throw error;
+      return true;
     }
   },
 
@@ -184,7 +200,7 @@ export const db = {
       return data;
     },
 
-    async update(id: number, requestData: any) {
+    async update(id: string | number, requestData: any) {
       const { data, error } = await supabase
         .from('service_requests')
         .update(requestData)
@@ -194,6 +210,29 @@ export const db = {
       
       if (error) throw error;
       return data;
+    },
+
+    async delete(id: string | number, ngoId?: number) {
+      // First delete related volunteers
+      await supabase
+        .from('service_volunteers')
+        .delete()
+        .eq('service_request_id', id);
+
+      // Then delete the service request
+      let query = supabase
+        .from('service_requests')
+        .delete()
+        .eq('id', id);
+      
+      if (ngoId) {
+        query = query.eq('ngo_id', ngoId);
+      }
+      
+      const { error } = await query;
+      
+      if (error) throw error;
+      return true;
     }
   },
 
@@ -236,60 +275,6 @@ export const db = {
       const { data, error } = await supabase
         .from('service_offers')
         .insert(offerData)
-        .select()
-        .single();
-      
-      if (error) throw error;
-      return data;
-    }
-  },
-
-  // Service Applications
-  serviceVolunteers: {
-    async create(applicationData: any) {
-      const { data, error } = await supabase
-        .from('service_volunteers')
-        .insert(applicationData)
-        .select()
-        .single();
-      
-      if (error) throw error;
-      return data;
-    },
-
-    async getByRequestId(serviceRequestId: number) {
-      const { data, error } = await supabase
-        .from('service_volunteers')
-        .select(`
-          *,
-          volunteer:users!volunteer_id(name, email, user_type)
-        `)
-        .eq('service_request_id', serviceRequestId)
-        .order('applied_at', { ascending: false });
-      
-      if (error) throw error;
-      return data;
-    },
-
-    async getByVolunteerId(volunteerId: number) {
-      const { data, error } = await supabase
-        .from('service_volunteers')
-        .select(`
-          *,
-          service_request:service_requests(title, category, status)
-        `)
-        .eq('volunteer_id', volunteerId)
-        .order('applied_at', { ascending: false });
-      
-      if (error) throw error;
-      return data;
-    },
-
-    async updateStatus(id: number, status: string) {
-      const { data, error } = await supabase
-        .from('service_volunteers')
-        .update({ status, updated_at: new Date().toISOString() })
-        .eq('id', id)
         .select()
         .single();
       
@@ -361,6 +346,187 @@ export const db = {
       
       if (error) throw error;
       return true;
+    }
+  },
+
+  // Purchases
+  purchases: {
+    async create(purchaseData: any) {
+      const { data, error } = await supabase
+        .from('marketplace_purchases')
+        .insert(purchaseData)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+
+    async getByUserId(userId: number) {
+      const { data, error } = await supabase
+        .from('marketplace_purchases')
+        .select(`
+          *,
+          marketplace_item:marketplace_items(title, images),
+          seller:users!seller_id(name, email)
+        `)
+        .eq('buyer_id', userId)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data;
+    },
+
+    async getById(id: number) {
+      const { data, error } = await supabase
+        .from('marketplace_purchases')
+        .select(`
+          *,
+          marketplace_item:marketplace_items(title, images, price),
+          seller:users!seller_id(name, email),
+          buyer:users!buyer_id(name, email)
+        `)
+        .eq('id', id)
+        .single();
+      
+      if (error && error.code !== 'PGRST116') throw error;
+      return data;
+    },
+
+    async updateStatus(id: number, status: string) {
+      const { data, error } = await supabase
+        .from('marketplace_purchases')
+        .update({ status, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    }
+  },
+
+  // Service Volunteers (updated with combined methods)
+  serviceVolunteers: {
+    async create(applicationData: any) {
+      const { data, error } = await supabase
+        .from('service_volunteers')
+        .insert(applicationData)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+
+    async getByRequestId(serviceRequestId: number) {
+      const { data, error } = await supabase
+        .from('service_volunteers')
+        .select(`
+          *,
+          volunteer:users!volunteer_id(name, email, user_type)
+        `)
+        .eq('service_request_id', serviceRequestId)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data;
+    },
+
+    async getByVolunteerId(volunteerId: number) {
+      const { data, error } = await supabase
+        .from('service_volunteers')
+        .select(`
+          *,
+          service_request:service_requests(title, category, status)
+        `)
+        .eq('volunteer_id', volunteerId)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data;
+    },
+
+    async findExisting(requestId: number, volunteerId: number) {
+      const { data, error } = await supabase
+        .from('service_volunteers')
+        .select('id')
+        .eq('service_request_id', requestId)
+        .eq('volunteer_id', volunteerId)
+        .single();
+      
+      if (error && error.code !== 'PGRST116') throw error;
+      return data;
+    },
+
+    async updateStatus(id: number, status: string) {
+      const { data, error } = await supabase
+        .from('service_volunteers')
+        .update({ status, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    }
+  },
+
+  // Wishlist
+  wishlist: {
+    async getByUserId(userId: number) {
+      const { data, error } = await supabase
+        .from('wishlist')
+        .select(`
+          *,
+          marketplace_item:marketplace_items(
+            id, title, price, compare_price, images, status, rating_average, rating_count,
+            seller:users!seller_id(name)
+          )
+        `)
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data;
+    },
+
+    async add(userId: number, itemId: number) {
+      const { data, error } = await supabase
+        .from('wishlist')
+        .upsert({ 
+          user_id: userId, 
+          marketplace_item_id: itemId,
+          created_at: new Date().toISOString() 
+        }, { onConflict: 'user_id,marketplace_item_id' })
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+
+    async remove(userId: number, itemId: number) {
+      const { error } = await supabase
+        .from('wishlist')
+        .delete()
+        .eq('user_id', userId)
+        .eq('marketplace_item_id', itemId);
+      
+      if (error) throw error;
+      return true;
+    },
+
+    async findExisting(userId: number, itemId: number) {
+      const { data, error } = await supabase
+        .from('wishlist')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('marketplace_item_id', itemId)
+        .single();
+      
+      if (error && error.code !== 'PGRST116') throw error;
+      return data;
     }
   }
 };

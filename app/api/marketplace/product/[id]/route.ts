@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { db, executeQuery } from '@/lib/db';
+import { db, supabase } from '@/lib/db';
 import { verifyToken } from '@/lib/auth';
 
 interface RouteParams {
@@ -11,34 +11,34 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const { id } = await params;
     console.log('Product API called with ID:', id);
 
-    // Get comprehensive product details with seller information using SQL
-    const productQuery = `
-      SELECT 
-        mi.*,
-        u.name as seller_name,
-        u.email as seller_email,
-        u.user_type as seller_type
-      FROM marketplace_items mi
-      LEFT JOIN users u ON mi.seller_id = u.id
-      WHERE mi.id = ? AND mi.status = 'active'
-    `;
-
-    const productResult = await executeQuery({
-      query: productQuery,
-      values: [parseInt(id)]
-    }) as any[];
+    // Get comprehensive product details with seller information using Supabase
+    const { data: productResult, error } = await supabase
+      .from('marketplace_items')
+      .select(`
+        *,
+        users!seller_id(name, email, user_type)
+      `)
+      .eq('id', parseInt(id))
+      .eq('status', 'active')
+      .single();
 
     console.log('Product query result:', productResult);
+    console.log('Product query error:', error);
 
-    if (!productResult || productResult.length === 0) {
-      console.log('Product not found');
+    if (error || !productResult) {
+      console.log('Product not found, error:', error);
       return Response.json({ 
         success: false,
         error: 'Product not found' 
       }, { status: 404 });
     }
 
-    const product = productResult[0];
+    const product = {
+      ...productResult,
+      seller_name: productResult.users?.name || 'Unknown Seller',
+      seller_email: productResult.users?.email,
+      seller_type: productResult.users?.user_type
+    };
 
     // For now, return empty reviews and questions arrays (can be enhanced later)
     const reviews: any[] = [];

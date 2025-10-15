@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, executeQuery } from '@/lib/db';
+import { db } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 
@@ -82,16 +82,13 @@ export async function PUT(
     }
 
     // First, verify that this request belongs to the authenticated NGO
-    const existingRequest = await executeQuery({
-      query: `SELECT ngo_id FROM service_requests WHERE id = ?`,
-      values: [requestId]
-    }) as any[];
+    const existingRequest = await db.serviceRequests.getById(requestId);
 
-    if (existingRequest.length === 0) {
+    if (!existingRequest) {
       return NextResponse.json({ error: 'Service request not found' }, { status: 404 });
     }
 
-    if (existingRequest[0].ngo_id !== userId) {
+    if (existingRequest.ngo_id !== userId) {
       return NextResponse.json({ error: 'You can only update your own requests' }, { status: 403 });
     }
 
@@ -111,25 +108,18 @@ export async function PUT(
       timeline: timeline || 'Not specified'
     };
 
-    // Update the service request
-    await executeQuery({
-      query: `
-        UPDATE service_requests 
-        SET title = ?, description = ?, category = ?, location = ?,
-            urgency_level = ?, requirements = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ? AND ngo_id = ?
-      `,
-      values: [
-        title,
-        description,
-        category,
-        location,
-        mappedUrgency,
-        JSON.stringify(requirementsData),
-        requestId,
-        userId
-      ]
-    });
+    // Update the service request using Supabase helper
+    const updateData = {
+      title,
+      description,
+      category,
+      location,
+      urgency_level: mappedUrgency,
+      requirements: JSON.stringify(requirementsData),
+      updated_at: new Date().toISOString()
+    };
+
+    await db.serviceRequests.update(requestId, updateData);
 
     return NextResponse.json({
       success: true,
@@ -171,31 +161,19 @@ export async function DELETE(
 
     const requestId = id;
 
-    // First, verify that this request belongs to the authenticated NGO
-    const existingRequest = await executeQuery({
-      query: 'SELECT ngo_id FROM service_requests WHERE id = ?',
-      values: [requestId]
-    }) as any[];
+    // First, verify that this request belongs to the authenticated NGO and delete it
+    const existingRequest = await db.serviceRequests.getById(requestId);
 
-    if (existingRequest.length === 0) {
+    if (!existingRequest) {
       return NextResponse.json({ error: 'Service request not found' }, { status: 404 });
     }
 
-    if (existingRequest[0].ngo_id !== userId) {
+    if (existingRequest.ngo_id !== userId) {
       return NextResponse.json({ error: 'You can only delete your own service requests' }, { status: 403 });
     }
 
-    // Delete related records first (volunteers)
-    await executeQuery({
-      query: 'DELETE FROM service_volunteers WHERE service_request_id = ?',
-      values: [requestId]
-    });
-
-    // Delete the service request
-    await executeQuery({
-      query: 'DELETE FROM service_requests WHERE id = ?',
-      values: [requestId]
-    });
+    // Delete the service request (which will also delete related volunteers)
+    await db.serviceRequests.delete(requestId, userId);
 
     return NextResponse.json({
       success: true,

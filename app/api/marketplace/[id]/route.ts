@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, executeQuery } from '@/lib/db';
+import { db } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 
@@ -116,11 +116,8 @@ export async function DELETE(
       return NextResponse.json({ error: 'You can only delete your own listings' }, { status: 403 });
     }
 
-    // Delete the marketplace item using raw SQL (delete helper not implemented)
-    await executeQuery({
-      query: 'DELETE FROM marketplace_items WHERE id = ? AND seller_id = ?',
-      values: [itemId, userId]
-    });
+    // Delete the marketplace item using Supabase helper
+    await db.marketplaceItems.delete(itemId, userId);
 
     return NextResponse.json({
       success: true,
