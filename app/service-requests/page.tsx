@@ -628,11 +628,17 @@ function ServiceRequestsContent() {
                             </Badge>
                             {/* Show application status */}
                             <Badge 
-                              variant={request.volunteer_application?.status === 'accepted' ? 'default' : 
-                                      request.volunteer_application?.status === 'rejected' ? 'destructive' : 'secondary'} 
+                              variant={
+                                request.volunteer_application?.status === 'accepted' ? 'default' : 
+                                request.volunteer_application?.status === 'active' ? 'default' :
+                                request.volunteer_application?.status === 'completed' ? 'default' :
+                                request.volunteer_application?.status === 'rejected' ? 'destructive' : 'secondary'
+                              } 
                               className="font-medium text-xs"
                             >
                               {request.volunteer_application?.status === 'accepted' ? '✅ Accepted' :
+                               request.volunteer_application?.status === 'active' ? '🔄 Active' :
+                               request.volunteer_application?.status === 'completed' ? '🎉 Completed' :
                                request.volunteer_application?.status === 'rejected' ? '❌ Rejected' : '⏳ Pending'}
                             </Badge>
                           </div>
