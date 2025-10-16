@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { db, supabase } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 
@@ -23,10 +23,10 @@ export async function GET(request: NextRequest) {
 
     // For my-requests view, authenticate user
     let authenticatedUserId = null;
-    if (view === 'my-requests') {
+    if (view === 'my-requests' || view === 'volunteering') {
       const authHeader = request.headers.get('authorization');
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return NextResponse.json({ error: 'Authentication required for my-requests' }, { status: 401 });
+        return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
       }
 
       const token = authHeader.substring(7);
@@ -34,14 +34,24 @@ export async function GET(request: NextRequest) {
         const payload = jwt.verify(token, JWT_SECRET) as JWTPayload;
         authenticatedUserId = payload.id;
         
-        // Only NGOs can have requests
-        if (payload.user_type !== 'ngo') {
-          return NextResponse.json({ 
-            success: true, 
-            data: [] // Return empty array for non-NGOs
-          });
+        if (view === 'my-requests') {
+          // Only NGOs can have requests
+          if (payload.user_type !== 'ngo') {
+            return NextResponse.json({ 
+              success: true, 
+              data: [] // Return empty array for non-NGOs
+            });
+          }
+        } else if (view === 'volunteering') {
+          // Only individuals and companies can volunteer
+          if (payload.user_type === 'ngo') {
+            return NextResponse.json({ 
+              success: true, 
+              data: [] // Return empty array for NGOs
+            });
+          }
         }
-      } catch {
+      } catch (error) {
         return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
       }
     }
@@ -52,15 +62,65 @@ export async function GET(request: NextRequest) {
       filters.category = category;
     }
     if (view === 'my-requests' && authenticatedUserId) {
-      filters.ngo_id = authenticatedUserId;
+      filters.requester_id = authenticatedUserId;
     }
 
     console.log('Service requests filters:', filters);
-    const serviceRequests = await db.serviceRequests.getAll(filters);
+    
+    let serviceRequests;
+    if (view === 'volunteering' && authenticatedUserId) {
+      // For volunteering view, get service requests where user has applied
+      const volunteerApplications = await db.serviceVolunteers.getByVolunteerId(authenticatedUserId);
+      const requestIds = volunteerApplications.map(app => app.service_request_id);
+      
+      if (requestIds.length === 0) {
+        serviceRequests = [];
+      } else {
+        // Get the service requests for these IDs
+        const { data, error } = await supabase
+          .from('service_requests')
+          .select('*')
+          .in('id', requestIds);
+        
+        if (error) throw error;
+        serviceRequests = data || [];
+        
+        // Fetch requester data separately and merge
+        if (serviceRequests.length > 0) {
+          const requesterIds = [...new Set(serviceRequests.map((item: any) => item.ngo_id))];
+          const { data: users } = await supabase
+            .from('users')
+            .select('id, name, email, user_type')
+            .in('id', requesterIds);
+          
+          // Merge requester data and volunteer application data
+          serviceRequests = serviceRequests.map((request: any) => {
+            const requester = users?.find((user: any) => user.id === request.ngo_id);
+            const volunteerApp = volunteerApplications.find(app => app.service_request_id === request.id);
+            
+            return {
+              ...request,
+              requester,
+              volunteer_application: volunteerApp,
+              // Add requester_id for backward compatibility
+              requester_id: request.ngo_id
+            };
+          });
+        }
+      }
+    } else {
+      serviceRequests = await db.serviceRequests.getAll(filters);
+    }
+    
     console.log('Service requests fetched:', serviceRequests?.length || 0, 'items');
 
     // Process the data to handle old and new formats
-    const processedRequests = serviceRequests.map((request) => {
+    const processedRequests = serviceRequests.map((request: any) => {
+      // Add ngo_name for backward compatibility with frontend
+      if (request.requester) {
+        request.ngo_name = request.requester.name;
+      }
+      
       // Handle old concatenated description format
       if (request.description && (request.description.includes('Budget:') || request.description.includes('Requirements:'))) {
         // Split by newlines and extract parts

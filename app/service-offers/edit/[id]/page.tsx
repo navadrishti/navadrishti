@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { Header } from '@/components/header'
 import { Button } from '@/components/ui/button'
@@ -61,7 +61,8 @@ interface ServiceOffer {
   status: string;
 }
 
-export default function EditServiceOfferPage({ params }: { params: { id: string } }) {
+export default function EditServiceOfferPage({ params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = use(params);
   const router = useRouter();
   const { user } = useAuth();
   const { toast } = useToast();
@@ -100,12 +101,12 @@ export default function EditServiceOfferPage({ params }: { params: { id: string 
 
   // Fetch offer data
   useEffect(() => {
-    if (!user || !params.id) return;
+    if (!user || !resolvedParams.id) return;
 
     const fetchOffer = async () => {
       try {
         const token = localStorage.getItem('token');
-        const response = await fetch(`/api/service-offers/${params.id}`, {
+        const response = await fetch(`/api/service-offers/${resolvedParams.id}`, {
           headers: {
             'Authorization': `Bearer ${token}`,
           },
@@ -117,12 +118,19 @@ export default function EditServiceOfferPage({ params }: { params: { id: string 
           const offerData = data.data;
           setOffer(offerData);
           
-          // Parse requirements if it exists
+          // Parse requirements if it exists and is a string, otherwise use as object
           let requirements: any = {};
           try {
-            requirements = offerData.requirements ? JSON.parse(offerData.requirements) : {};
+            if (offerData.requirements) {
+              if (typeof offerData.requirements === 'string') {
+                requirements = JSON.parse(offerData.requirements);
+              } else {
+                requirements = offerData.requirements;
+              }
+            }
           } catch (e) {
             console.error('Error parsing requirements:', e);
+            requirements = {};
           }
 
           setFormData({
@@ -158,7 +166,7 @@ export default function EditServiceOfferPage({ params }: { params: { id: string 
     };
 
     fetchOffer();
-  }, [user, params.id, router, toast]);
+  }, [user, resolvedParams.id, router, toast]);
 
   const handleInputChange = (field: string, value: string | number) => {
     setFormData(prev => ({
@@ -183,7 +191,7 @@ export default function EditServiceOfferPage({ params }: { params: { id: string 
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`/api/service-offers/${params.id}`, {
+      const response = await fetch(`/api/service-offers/${resolvedParams.id}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,

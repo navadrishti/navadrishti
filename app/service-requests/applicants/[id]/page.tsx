@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { Header } from '@/components/header'
 import { Button } from '@/components/ui/button'
@@ -31,13 +31,14 @@ interface Volunteer {
   volunteer_type: 'individual' | 'company';
   message: string;
   status: 'pending' | 'accepted' | 'rejected' | 'active' | 'completed' | 'cancelled';
-  created_at: string;
+  applied_at: string;
   start_date?: string;
   end_date?: string;
   hours_contributed: number;
 }
 
-export default function ServiceRequestApplicantsPage({ params }: { params: { id: string } }) {
+export default function ServiceRequestApplicantsPage({ params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = use(params);
   const router = useRouter();
   const { user } = useAuth();
   const { toast } = useToast();
@@ -65,14 +66,14 @@ export default function ServiceRequestApplicantsPage({ params }: { params: { id:
 
   // Fetch request and volunteers data
   useEffect(() => {
-    if (!user || !params.id) return;
+    if (!user || !resolvedParams.id) return;
 
     const fetchData = async () => {
       try {
         const token = localStorage.getItem('token');
         
         // Fetch request details
-        const requestResponse = await fetch(`/api/service-requests/${params.id}`, {
+        const requestResponse = await fetch(`/api/service-requests/${resolvedParams.id}`, {
           headers: {
             'Authorization': `Bearer ${token}`,
           },
@@ -92,7 +93,7 @@ export default function ServiceRequestApplicantsPage({ params }: { params: { id:
         }
 
         // Fetch volunteers
-        const volunteersResponse = await fetch(`/api/service-requests/${params.id}/volunteers`, {
+        const volunteersResponse = await fetch(`/api/service-requests/${resolvedParams.id}/volunteers`, {
           headers: {
             'Authorization': `Bearer ${token}`,
           },
@@ -119,13 +120,13 @@ export default function ServiceRequestApplicantsPage({ params }: { params: { id:
     };
 
     fetchData();
-  }, [user, params.id, router, toast]);
+  }, [user, resolvedParams.id, router, toast]);
 
   const handleVolunteerStatusUpdate = async (volunteerId: number, newStatus: string) => {
     setUpdating(volunteerId);
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`/api/service-requests/${params.id}/volunteers/${volunteerId}`, {
+      const response = await fetch(`/api/service-requests/${resolvedParams.id}/volunteers/${volunteerId}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -326,7 +327,7 @@ export default function ServiceRequestApplicantsPage({ params }: { params: { id:
                             </span>
                             <span className="flex items-center gap-1">
                               <Calendar size={14} />
-                              Applied {new Date(volunteer.created_at).toLocaleDateString()}
+                              Applied {new Date(volunteer.applied_at).toLocaleDateString()}
                             </span>
                           </div>
                           {volunteer.message && (
@@ -408,7 +409,7 @@ export default function ServiceRequestApplicantsPage({ params }: { params: { id:
                             </span>
                             <span className="flex items-center gap-1">
                               <Calendar size={14} />
-                              Accepted {new Date(volunteer.created_at).toLocaleDateString()}
+                              Accepted {new Date(volunteer.applied_at).toLocaleDateString()}
                             </span>
                           </div>
                           {volunteer.message && (

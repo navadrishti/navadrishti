@@ -25,8 +25,8 @@ export async function GET(
     const userId = url.searchParams.get('userId');
     
     if (userId) {
-      // Public request to check if user has applied - use Supabase helper
-      const userApplication = await db.serviceVolunteers.findExisting(requestId, parseInt(userId));
+      // Public request to check if user has applied - get full application details
+      const userApplication = await db.serviceVolunteers.getUserApplication(requestId, parseInt(userId));
       return NextResponse.json(userApplication ? [userApplication] : []);
     }
     
@@ -52,7 +52,7 @@ export async function GET(
       return NextResponse.json({ error: 'Service request not found' }, { status: 404 });
     }
 
-    if (request_data.ngo_id !== ngoUserId) {
+    if (request_data.requester_id !== ngoUserId) {
       return NextResponse.json({ error: 'You can only view applicants for your own requests' }, { status: 403 });
     }
 
@@ -81,12 +81,12 @@ export async function POST(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { volunteer_id, volunteer_type, message, start_date, end_date } = body;
+    const { volunteer_id, message } = body;
 
     // Validate required fields
-    if (!volunteer_id || !volunteer_type || !message) {
+    if (!volunteer_id || !message) {
       return NextResponse.json(
-        { error: 'Volunteer ID, volunteer type, and message are required' },
+        { error: 'Volunteer ID and message are required' },
         { status: 400 }
       );
     }
@@ -107,10 +107,7 @@ export async function POST(
     const volunteerData = {
       service_request_id: requestId,
       volunteer_id: volunteer_id,
-      volunteer_type: volunteer_type,
-      message: message,
-      start_date: start_date || null,
-      end_date: end_date || null,
+      application_message: message,
       status: 'pending'
     };
 

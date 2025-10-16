@@ -39,9 +39,9 @@ interface VolunteerApplication {
   id: number
   volunteer_id: number
   volunteer_type: 'individual' | 'company'
-  message: string
+  application_message: string
   status: 'pending' | 'accepted' | 'rejected' | 'active' | 'completed' | 'cancelled'
-  created_at: string
+  applied_at: string
 }
 
 export default function ServiceRequestDetailPage() {
@@ -55,8 +55,6 @@ export default function ServiceRequestDetailPage() {
   const [loading, setLoading] = useState(true)
   const [applying, setApplying] = useState(false)
   const [applicationMessage, setApplicationMessage] = useState('')
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
 
   const requestId = params.id as string
   const isAuthenticated = !!(user && token)
@@ -75,6 +73,7 @@ export default function ServiceRequestDetailPage() {
       const response = await fetch(`/api/service-requests/${requestId}`)
       if (response.ok) {
         const data = await response.json()
+        console.log('Service request data:', data); // Debug log
         setRequest(data)
       } else {
         toast({
@@ -148,23 +147,31 @@ export default function ServiceRequestDetailPage() {
         },
         body: JSON.stringify({
           volunteer_id: user.id,
-          volunteer_type: user.user_type,
-          message: applicationMessage,
-          start_date: startDate || null,
-          end_date: endDate || null
+          message: applicationMessage
         })
       })
 
       if (response.ok) {
-        const newApplication = await response.json()
-        setUserApplication(newApplication)
-        setApplicationMessage('')
-        setStartDate('')
-        setEndDate('')
-        toast({
-          title: "Application Submitted",
-          description: "Your application has been submitted successfully",
-        })
+        const result = await response.json()
+        if (result.success) {
+          setUserApplication(result.data)
+          setApplicationMessage('')
+          toast({
+            title: "Application Submitted",
+            description: "Your application has been submitted successfully. You can view your applications in the 'My Volunteering' tab.",
+          })
+          
+          // Redirect to service requests page with volunteering tab after a short delay
+          setTimeout(() => {
+            router.push('/service-requests?tab=volunteering')
+          }, 2000)
+        } else {
+          toast({
+            title: "Application Failed",
+            description: result.error || "Failed to submit application",
+            variant: "destructive"
+          })
+        }
       } else {
         const error = await response.json()
         toast({
@@ -186,7 +193,8 @@ export default function ServiceRequestDetailPage() {
   }
 
   const getUrgencyColor = (urgency: string) => {
-    switch (urgency) {
+    if (!urgency) return 'bg-gray-100 text-gray-800 border-gray-200';
+    switch (urgency.toLowerCase()) {
       case 'high': return 'bg-red-100 text-red-800 border-red-200'
       case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-200'
       case 'low': return 'bg-green-100 text-green-800 border-green-200'
@@ -195,7 +203,8 @@ export default function ServiceRequestDetailPage() {
   }
 
   const getStatusColor = (status: string) => {
-    switch (status) {
+    if (!status) return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+    switch (status.toLowerCase()) {
       case 'accepted': return 'bg-green-100 text-green-800 border-green-200'
       case 'rejected': return 'bg-red-100 text-red-800 border-red-200'
       case 'active': return 'bg-blue-100 text-blue-800 border-blue-200'
@@ -257,7 +266,10 @@ export default function ServiceRequestDetailPage() {
                     </CardDescription>
                   </div>
                   <Badge className={getUrgencyColor(request.urgency_level)}>
-                    {request.urgency_level.charAt(0).toUpperCase() + request.urgency_level.slice(1)} Priority
+                    {request.urgency_level ? 
+                      request.urgency_level.charAt(0).toUpperCase() + request.urgency_level.slice(1) : 
+                      'Medium'
+                    } Priority
                   </Badge>
                 </div>
               </CardHeader>
@@ -367,19 +379,22 @@ export default function ServiceRequestDetailPage() {
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium">Status:</span>
                         <Badge className={getStatusColor(userApplication.status)}>
-                          {userApplication.status.charAt(0).toUpperCase() + userApplication.status.slice(1)}
+                          {userApplication.status ? 
+                            userApplication.status.charAt(0).toUpperCase() + userApplication.status.slice(1) :
+                            'Pending'
+                          }
                         </Badge>
                       </div>
                       
                       <div>
                         <span className="text-sm font-medium">Your Message:</span>
                         <p className="text-sm text-muted-foreground mt-1 p-2 bg-muted rounded">
-                          {userApplication.message}
+                          {userApplication.application_message}
                         </p>
                       </div>
                       
                       <p className="text-xs text-muted-foreground">
-                        Applied on {new Date(userApplication.created_at).toLocaleDateString()}
+                        Applied on {new Date(userApplication.applied_at).toLocaleDateString()}
                       </p>
                     </div>
                   </div>
@@ -405,28 +420,6 @@ export default function ServiceRequestDetailPage() {
                         onChange={(e) => setApplicationMessage(e.target.value)}
                         rows={4}
                       />
-                    </div>
-                    
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="space-y-2">
-                        <Label htmlFor="startDate">Available From</Label>
-                        <Input
-                          id="startDate"
-                          type="date"
-                          value={startDate}
-                          onChange={(e) => setStartDate(e.target.value)}
-                        />
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <Label htmlFor="endDate">Available Until</Label>
-                        <Input
-                          id="endDate"
-                          type="date"
-                          value={endDate}
-                          onChange={(e) => setEndDate(e.target.value)}
-                        />
-                      </div>
                     </div>
                     
                     <Button 

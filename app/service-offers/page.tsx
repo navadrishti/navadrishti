@@ -120,13 +120,24 @@ export default function ServiceOffersPage() {
       }
       params.append('view', currentView);
       
-      const response = await fetch(`/api/service-offers?${params.toString()}`);
+      // Include Authorization header for authenticated views
+      const headers: HeadersInit = {};
+      if (currentView === 'my-offers' || currentView === 'hired') {
+        const token = localStorage.getItem('token');
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+      }
+      
+      const response = await fetch(`/api/service-offers?${params.toString()}`, {
+        headers
+      });
       const data = await response.json();
       
       if (data.success) {
         setServiceOffers(data.data);
       } else {
-        setError('Failed to fetch service offers');
+        setError(data.error || 'Failed to fetch service offers');
       }
     } catch (err) {
       setError('Error fetching service offers');

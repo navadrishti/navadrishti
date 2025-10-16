@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { Header } from '@/components/header'
 import { Button } from '@/components/ui/button'
@@ -38,7 +38,8 @@ interface Hire {
   amount_paid: number;
 }
 
-export default function ServiceOfferHiresPage({ params }: { params: { id: string } }) {
+export default function ServiceOfferHiresPage({ params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = use(params);
   const router = useRouter();
   const { user } = useAuth();
   const { toast } = useToast();
@@ -66,14 +67,14 @@ export default function ServiceOfferHiresPage({ params }: { params: { id: string
 
   // Fetch offer and hires data
   useEffect(() => {
-    if (!user || !params.id) return;
+    if (!user || !resolvedParams.id) return;
 
     const fetchData = async () => {
       try {
         const token = localStorage.getItem('token');
         
         // Fetch offer details
-        const offerResponse = await fetch(`/api/service-offers/${params.id}`, {
+        const offerResponse = await fetch(`/api/service-offers/${resolvedParams.id}`, {
           headers: {
             'Authorization': `Bearer ${token}`,
           },
@@ -93,7 +94,7 @@ export default function ServiceOfferHiresPage({ params }: { params: { id: string
         }
 
         // Fetch hires
-        const hiresResponse = await fetch(`/api/service-offers/${params.id}/hires`, {
+        const hiresResponse = await fetch(`/api/service-offers/${resolvedParams.id}/hires`, {
           headers: {
             'Authorization': `Bearer ${token}`,
           },
@@ -120,13 +121,13 @@ export default function ServiceOfferHiresPage({ params }: { params: { id: string
     };
 
     fetchData();
-  }, [user, params.id, router, toast]);
+  }, [user, resolvedParams.id, router, toast]);
 
   const handleHireStatusUpdate = async (hireId: number, newStatus: string) => {
     setUpdating(hireId);
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`/api/service-offers/${params.id}/hires/${hireId}`, {
+      const response = await fetch(`/api/service-offers/${resolvedParams.id}/hires/${hireId}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,

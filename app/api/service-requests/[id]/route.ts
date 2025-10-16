@@ -24,16 +24,31 @@ export async function GET(
     const serviceRequest = await db.serviceRequests.getById(requestId);
 
     if (!serviceRequest) {
-      return NextResponse.json({ error: 'Service request not found' }, { status: 404 });
+      console.log('Service request not found in database');
+      return NextResponse.json({ 
+        success: false, 
+        error: 'Service request not found' 
+      }, { status: 404 });
+    }
+
+    // Add ngo_name for backward compatibility with frontend
+    if (serviceRequest.requester) {
+      serviceRequest.ngo_name = serviceRequest.requester.name;
     }
 
     // Return the service request data (publicly accessible)
-    return NextResponse.json(serviceRequest);
+    return NextResponse.json({
+      success: true,
+      data: serviceRequest
+    });
 
   } catch (error) {
     console.error('Error fetching service request:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch service request' },
+      { 
+        success: false, 
+        error: 'Failed to fetch service request' 
+      },
       { status: 500 }
     );
   }
@@ -88,7 +103,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Service request not found' }, { status: 404 });
     }
 
-    if (existingRequest.ngo_id !== userId) {
+    if (existingRequest.requester_id !== userId) {
       return NextResponse.json({ error: 'You can only update your own requests' }, { status: 403 });
     }
 
@@ -168,7 +183,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Service request not found' }, { status: 404 });
     }
 
-    if (existingRequest.ngo_id !== userId) {
+    if (existingRequest.requester_id !== userId) {
       return NextResponse.json({ error: 'You can only delete your own service requests' }, { status: 403 });
     }
 

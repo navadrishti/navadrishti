@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { Header } from '@/components/header'
 import { Button } from '@/components/ui/button'
@@ -62,7 +62,8 @@ interface ServiceRequest {
   status: string;
 }
 
-export default function EditServiceRequestPage({ params }: { params: { id: string } }) {
+export default function EditServiceRequestPage({ params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = use(params);
   const router = useRouter();
   const { user } = useAuth();
   const { toast } = useToast();
@@ -100,12 +101,12 @@ export default function EditServiceRequestPage({ params }: { params: { id: strin
 
   // Fetch request data
   useEffect(() => {
-    if (!user || !params.id) return;
+    if (!user || !resolvedParams.id) return;
 
     const fetchRequest = async () => {
       try {
         const token = localStorage.getItem('token');
-        const response = await fetch(`/api/service-requests/${params.id}`, {
+        const response = await fetch(`/api/service-requests/${resolvedParams.id}`, {
           headers: {
             'Authorization': `Bearer ${token}`,
           },
@@ -117,12 +118,19 @@ export default function EditServiceRequestPage({ params }: { params: { id: strin
           const req = data.data;
           setRequest(req);
           
-          // Parse requirements if it exists
+          // Parse requirements if it exists and is a string, otherwise use as object
           let requirements: any = {};
           try {
-            requirements = req.requirements ? JSON.parse(req.requirements) : {};
+            if (req.requirements) {
+              if (typeof req.requirements === 'string') {
+                requirements = JSON.parse(req.requirements);
+              } else {
+                requirements = req.requirements;
+              }
+            }
           } catch (e) {
             console.error('Error parsing requirements:', e);
+            requirements = {};
           }
 
           setFormData({
@@ -157,7 +165,7 @@ export default function EditServiceRequestPage({ params }: { params: { id: strin
     };
 
     fetchRequest();
-  }, [user, params.id, router, toast]);
+  }, [user, resolvedParams.id, router, toast]);
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({
@@ -182,7 +190,7 @@ export default function EditServiceRequestPage({ params }: { params: { id: strin
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`/api/service-requests/${params.id}`, {
+      const response = await fetch(`/api/service-requests/${resolvedParams.id}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,

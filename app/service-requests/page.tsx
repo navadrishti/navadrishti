@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Header } from '@/components/header'
 import { Button } from '@/components/ui/button'
@@ -9,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { ProductCard } from '@/components/product-card'
-import { Search, MapPin, Users, Target, Clock, ArrowRight, Plus, HeartHandshake, UserRound, Building, Trash2, MoreVertical, Edit, Eye } from 'lucide-react'
+import { Search, MapPin, Users, Target, Clock, ArrowRight, Plus, HeartHandshake, UserRound, Building, Trash2, MoreVertical, Edit, Eye, Calendar } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -39,6 +40,7 @@ const categories = [
 export default function ServiceRequestsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const searchParams = useSearchParams();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All Categories');
   const [currentView, setCurrentView] = useState('all');
@@ -51,6 +53,14 @@ export default function ServiceRequestsPage() {
   const isIndividual = user?.user_type === 'individual';
   const isCompany = user?.user_type === 'company';
   const canVolunteer = isIndividual || isCompany; // Both individuals and companies can volunteer
+
+  // Handle tab parameter from URL
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam && (tabParam === 'volunteering' || tabParam === 'my-requests')) {
+      setCurrentView(tabParam);
+    }
+  }, [searchParams]);
 
   // Delete service request function
   const handleDeleteRequest = async (requestId: number) => {
@@ -117,13 +127,24 @@ export default function ServiceRequestsPage() {
       }
       params.append('view', currentView);
       
-      const response = await fetch(`/api/service-requests?${params.toString()}`);
+      // Add Authorization header for authenticated views
+      const headers: any = {};
+      if (currentView === 'my-requests' || currentView === 'volunteering') {
+        const token = localStorage.getItem('token');
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+      }
+      
+      const response = await fetch(`/api/service-requests?${params.toString()}`, {
+        headers
+      });
       const data = await response.json();
       
       if (data.success) {
         setServiceRequests(data.data);
       } else {
-        setError('Failed to fetch service requests');
+        setError(data.error || 'Failed to fetch service requests');
       }
     } catch (err) {
       setError('Error fetching service requests');
@@ -140,7 +161,11 @@ export default function ServiceRequestsPage() {
   
   const handleTabChange = useCallback((value: string) => {
     setCurrentView(value);
-  }, []);
+    // Force immediate re-fetch when tab changes
+    setTimeout(() => {
+      fetchServiceRequests();
+    }, 10);
+  }, [fetchServiceRequests]);
 
   // No need for client-side filtering since API handles it
   const filteredRequests = serviceRequests;
@@ -396,7 +421,7 @@ export default function ServiceRequestsPage() {
             <div className="min-h-[400px]">
               {isNGO && (
                 <>
-                  {filteredRequests.filter(request => request.ngo_name === user?.name).length === 0 ? (
+                  {filteredRequests.length === 0 ? (
                   <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center">
                     <div className="mb-4 rounded-full bg-muted p-3">
                       <Target size={24} className="text-muted-foreground" />
@@ -414,9 +439,7 @@ export default function ServiceRequestsPage() {
                   </div>
                 ) : (
                   <div className="grid gap-8 md:grid-cols-2 xl:grid-cols-3">
-                    {filteredRequests
-                      .filter(request => request.ngo_name === user?.name)
-                      .map((request) => (
+                    {filteredRequests.map((request) => (
                         <Card key={request.id} className="overflow-hidden hover:shadow-lg transition-shadow duration-200 border-0 shadow-md">
                           <CardHeader className="pb-3">
                             <div className="flex justify-between items-start mb-4">
@@ -504,12 +527,18 @@ export default function ServiceRequestsPage() {
                           
                           <CardFooter className="border-t bg-gray-50/50 p-4">
                             <div className="flex w-full gap-3">
-                              <Button variant="outline" className="flex-1 border-gray-200 hover:bg-gray-50">
-                                Edit
-                              </Button>
-                              <Button className="flex-1 bg-primary hover:bg-primary/90">
-                                View Applicants
-                              </Button>
+                              <Link href={`/service-requests/edit/${request.id}`} className="flex-1">
+                                <Button variant="outline" className="w-full border-gray-200 hover:bg-gray-50">
+                                  <Edit size={16} className="mr-2" />
+                                  Edit
+                                </Button>
+                              </Link>
+                              <Link href={`/service-requests/applicants/${request.id}`} className="flex-1">
+                                <Button className="w-full bg-primary hover:bg-primary/90">
+                                  <Eye size={16} className="mr-2" />
+                                  View Applicants
+                                </Button>
+                              </Link>
                               <Button 
                                 variant="outline" 
                                 size="icon"
@@ -534,7 +563,7 @@ export default function ServiceRequestsPage() {
             </div>
           </TabsContent>
           
-          <TabsContent value="accepted" className="mt-0">
+          <TabsContent value="volunteering" className="mt-0">
             <div className="min-h-[400px]">
               {canVolunteer && (
                 <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center">
@@ -552,6 +581,115 @@ export default function ServiceRequestsPage() {
                 </Link>
                 </div>
               )}
+            </div>
+          </TabsContent>
+          
+          <TabsContent value="volunteering" className="mt-0">
+            <div className="min-h-[400px]">
+              {canVolunteer && filteredRequests.length === 0 ? (
+                <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center">
+                  <div className="mb-4 rounded-full bg-muted p-3">
+                    <HeartHandshake size={24} className="text-muted-foreground" />
+                  </div>
+                  <h3 className="mb-1 text-lg font-semibold">No volunteering activities yet</h3>
+                  <p className="mb-4 text-muted-foreground">
+                    You haven't volunteered for any service requests yet.
+                  </p>
+                  <Link href="/service-requests">
+                    <Button variant="outline">
+                      Browse Requests
+                    </Button>
+                  </Link>
+                </div>
+              ) : canVolunteer && filteredRequests.length > 0 ? (
+                <div className="grid gap-8 md:grid-cols-2 xl:grid-cols-3">
+                  {filteredRequests.map((request) => (
+                    <Card key={request.id} className="overflow-hidden hover:shadow-lg transition-shadow duration-200 border-0 shadow-md">
+                      <CardHeader className="pb-3">
+                        <div className="flex justify-between items-start mb-4">
+                          <CardTitle className="text-xl font-bold leading-tight">{request.title}</CardTitle>
+                          <div className="flex flex-col gap-2">
+                            <Badge 
+                              variant={request.priority === 'urgent' ? 'destructive' : request.priority === 'high' ? 'default' : 'secondary'} 
+                              className="font-medium"
+                            >
+                              {request.priority}
+                            </Badge>
+                            {/* Show application status */}
+                            <Badge 
+                              variant={request.volunteer_application?.status === 'accepted' ? 'default' : 
+                                      request.volunteer_application?.status === 'rejected' ? 'destructive' : 'secondary'} 
+                              className="font-medium text-xs"
+                            >
+                              {request.volunteer_application?.status === 'accepted' ? '✅ Accepted' :
+                               request.volunteer_application?.status === 'rejected' ? '❌ Rejected' : '⏳ Pending'}
+                            </Badge>
+                          </div>
+                        </div>
+                        
+                        <div className="flex justify-between items-center">
+                          {/* NGO Info */}
+                          <div className="flex items-center gap-2 text-gray-600">
+                            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-100">
+                              <HeartHandshake size={12} className="text-blue-600" />
+                            </div>
+                            <span className="text-sm font-medium">{request.ngo_name}</span>
+                          </div>
+                          
+                          {/* Category Badge */}
+                          <Badge variant="outline" className="text-gray-700">
+                            {request.category}
+                          </Badge>
+                        </div>
+                      </CardHeader>
+                      
+                      <CardContent className="p-5">
+                        {/* Description */}
+                        <div className="mb-4">
+                          <p className="text-gray-600 leading-relaxed line-clamp-2">{request.description}</p>
+                        </div>
+                        
+                        {/* Application Date */}
+                        {request.volunteer_application?.applied_at && (
+                          <div className="mb-4">
+                            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                              <Calendar size={12} className="mr-1" />
+                              Applied: {new Date(request.volunteer_application.applied_at).toLocaleDateString()}
+                            </Badge>
+                          </div>
+                        )}
+                        
+                        {/* Location */}
+                        {request.location && (
+                          <div className="mb-4 flex items-center gap-2 text-sm text-gray-500">
+                            <MapPin size={14} className="text-gray-400" />
+                            <span>{request.location}</span>
+                          </div>
+                        )}
+                        
+                        {/* Tags */}
+                        <div className="mb-4">
+                          <div className="flex flex-wrap gap-1">
+                            {(typeof request.tags === 'string' ? JSON.parse(request.tags) : request.tags || []).map((tag: string) => (
+                              <Badge key={tag} variant="secondary" className="text-xs bg-gray-100 text-gray-600 hover:bg-gray-200">
+                                {tag}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      </CardContent>
+                      
+                      <CardFooter className="border-t bg-gray-50/50 p-4 min-h-[72px]">
+                        <Link href={`/service-requests/${request.id}`} className="w-full">
+                          <Button variant="outline" className="w-full h-10 border-primary text-primary hover:bg-primary hover:text-white">
+                            View Details
+                          </Button>
+                        </Link>
+                      </CardFooter>
+                    </Card>
+                  ))}
+                </div>
+              ) : null}
             </div>
           </TabsContent>
         </Tabs>

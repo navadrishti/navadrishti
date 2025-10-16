@@ -185,10 +185,7 @@ export const db = {
   // Service Requests
   serviceRequests: {
     async getAll(filters: any = {}) {
-      let query = supabase.from('service_requests').select(`
-        *,
-        ngo:users!ngo_id(name, email, user_type)
-      `);
+      let query = supabase.from('service_requests').select('*');
       
       if (filters.category) {
         query = query.eq('category', filters.category);
@@ -196,27 +193,59 @@ export const db = {
       if (filters.status) {
         query = query.eq('status', filters.status);
       }
-      if (filters.ngo_id) {
-        query = query.eq('ngo_id', filters.ngo_id);
+      if (filters.requester_id) {
+        query = query.eq('ngo_id', filters.requester_id);
       }
       
       const { data, error } = await query.order('created_at', { ascending: false });
       
       if (error) throw error;
+      
+      // Fetch requester data separately and merge
+      if (data && data.length > 0) {
+        const requesterIds = [...new Set(data.map((item: any) => item.ngo_id))];
+        const { data: users } = await supabase
+          .from('users')
+          .select('id, name, email, user_type')
+          .in('id', requesterIds);
+        
+        // Merge requester data
+        return data.map((request: any) => ({
+          ...request,
+          requester: users?.find((user: any) => user.id === request.ngo_id),
+          // Add requester_id for backward compatibility
+          requester_id: request.ngo_id
+        }));
+      }
+      
       return data;
     },
 
     async getById(id: number) {
       const { data, error } = await supabase
         .from('service_requests')
-        .select(`
-          *,
-          ngo:users!ngo_id(name, email, user_type, location)
-        `)
+        .select('*')
         .eq('id', id)
         .single();
       
       if (error && error.code !== 'PGRST116') throw error;
+      
+      // Fetch requester data separately
+      if (data && data.ngo_id) {
+        const { data: requester } = await supabase
+          .from('users')
+          .select('id, name, email, user_type, location')
+          .eq('id', data.ngo_id)
+          .single();
+        
+        return {
+          ...data,
+          requester,
+          // Add requester_id for backward compatibility
+          requester_id: data.ngo_id
+        };
+      }
+      
       return data;
     },
 
@@ -243,7 +272,7 @@ export const db = {
       return data;
     },
 
-    async delete(id: string | number, ngoId?: number) {
+    async delete(id: string | number, requesterId?: number) {
       // First delete related volunteers
       await supabase
         .from('service_volunteers')
@@ -256,8 +285,8 @@ export const db = {
         .delete()
         .eq('id', id);
       
-      if (ngoId) {
-        query = query.eq('ngo_id', ngoId);
+      if (requesterId) {
+        query = query.eq('ngo_id', requesterId);
       }
       
       const { error } = await query;
@@ -484,28 +513,64 @@ export const db = {
     async getByRequestId(serviceRequestId: number) {
       const { data, error } = await supabase
         .from('service_volunteers')
-        .select(`
-          *,
-          volunteer:users!volunteer_id(name, email, user_type)
-        `)
+        .select('*')
         .eq('service_request_id', serviceRequestId)
-        .order('created_at', { ascending: false });
+        .order('applied_at', { ascending: false });
       
       if (error) throw error;
+      
+      // Fetch volunteer data separately and merge
+      if (data && data.length > 0) {
+        const volunteerIds = [...new Set(data.map(item => item.volunteer_id))];
+        const { data: volunteers } = await supabase
+          .from('users')
+          .select('id, name, email, user_type')
+          .in('id', volunteerIds);
+        
+        // Merge volunteer data with flat structure for frontend compatibility
+        return data.map(application => {
+          const volunteer = volunteers?.find(volunteer => volunteer.id === application.volunteer_id);
+          return {
+            ...application,
+            // Flat fields expected by frontend
+            volunteer_name: volunteer?.name || 'Unknown',
+            volunteer_email: volunteer?.email || 'No email',
+            volunteer_type: volunteer?.user_type || 'individual',
+            // Also keep the nested structure for future use
+            volunteer: volunteer,
+            // Map application_message to message for frontend compatibility
+            message: application.application_message
+          };
+        });
+      }
+      
       return data;
     },
 
     async getByVolunteerId(volunteerId: number) {
       const { data, error } = await supabase
         .from('service_volunteers')
-        .select(`
-          *,
-          service_request:service_requests(title, category, status)
-        `)
+        .select('*')
         .eq('volunteer_id', volunteerId)
-        .order('created_at', { ascending: false });
+        .order('applied_at', { ascending: false });
       
       if (error) throw error;
+      
+      // Fetch service request data separately and merge
+      if (data && data.length > 0) {
+        const requestIds = [...new Set(data.map(item => item.service_request_id))];
+        const { data: requests } = await supabase
+          .from('service_requests')
+          .select('id, title, category, status')
+          .in('id', requestIds);
+        
+        // Merge service request data
+        return data.map(application => ({
+          ...application,
+          service_request: requests?.find(request => request.id === application.service_request_id)
+        }));
+      }
+      
       return data;
     },
 
@@ -513,6 +578,18 @@ export const db = {
       const { data, error } = await supabase
         .from('service_volunteers')
         .select('id')
+        .eq('service_request_id', requestId)
+        .eq('volunteer_id', volunteerId)
+        .single();
+      
+      if (error && error.code !== 'PGRST116') throw error;
+      return data;
+    },
+
+    async getUserApplication(requestId: number, volunteerId: number) {
+      const { data, error } = await supabase
+        .from('service_volunteers')
+        .select('*')
         .eq('service_request_id', requestId)
         .eq('volunteer_id', volunteerId)
         .single();
