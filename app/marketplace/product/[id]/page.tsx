@@ -371,12 +371,23 @@ export default function ProductDetailsPage({ params }: { params: Promise<{ id: s
         <div className="grid lg:grid-cols-2 gap-8 mb-8">
           {/* Product Images */}
           <div className="space-y-4">
-            <div className="aspect-square bg-white rounded-lg overflow-hidden shadow-sm border">
-              <img
-                src={product.images[selectedImage] || product.images[0] || "https://images.unsplash.com/photo-1441986300917-64674bd600d8"}
-                alt={product.title}
-                className="w-full h-full object-cover"
-              />
+            <div className="aspect-square bg-gray-100 rounded-lg overflow-hidden shadow-sm border flex items-center justify-center">
+              {product.images.length > 0 && product.images[selectedImage] ? (
+                <img
+                  src={product.images[selectedImage]}
+                  alt={product.title}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="text-center text-gray-400">
+                  <div className="mb-2">
+                    <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <p className="text-sm">No image available</p>
+                </div>
+              )}
             </div>
             
             {product.images.length > 1 && (
