@@ -73,7 +73,6 @@ export default function ServiceRequestDetailPage() {
       const response = await fetch(`/api/service-requests/${requestId}`)
       if (response.ok) {
         const data = await response.json()
-        console.log('Service request data:', data); // Debug log
         
         // Handle the new API response format
         if (data.success) {
