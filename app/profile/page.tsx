@@ -8,7 +8,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
-import { FileUpload } from '@/components/ui/file-upload'
 import { useAuth } from '@/lib/auth-context'
 import { UserCheck, Shield, Settings, User } from 'lucide-react'
 import Link from 'next/link'
@@ -21,7 +20,10 @@ export default function ProfilePage() {
   const [verificationData, setVerificationData] = useState<any>(null);
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [profileImageFile, setProfileImageFile] = useState<File | null>(null);
+  const [profileImageUrl, setProfileImageUrl] = useState<string>('');
   const [projectPhotos, setProjectPhotos] = useState<File[]>([]);
+  const [projectPhotoUrls, setProjectPhotoUrls] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
   const [portfolioDescription, setPortfolioDescription] = useState('');
   const [certifications, setCertifications] = useState('');
 
@@ -73,10 +75,38 @@ export default function ProfilePage() {
     }
   };
 
+  const uploadToCloudinary = async (file: File): Promise<string> => {
+    const token = localStorage.getItem('token')
+    if (!token) {
+      throw new Error('Authentication required')
+    }
+
+    const formData = new FormData()
+    formData.append('file', file)
+    
+    const response = await fetch('/api/upload', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      body: formData
+    })
+    
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error || `Failed to upload ${file.name}`)
+    }
+    
+    const result = await response.json()
+    // The API returns { success: true, data: { url: ... } }
+    return result.data?.url || result.url
+  }
+
   const handleProfileImageUpload = async (files: File[]) => {
     if (files.length === 0) {
       setProfileImageFile(null);
       setProfileImage(null);
+      setProfileImageUrl('');
       return;
     }
 
@@ -87,15 +117,36 @@ export default function ProfilePage() {
     const imageUrl = URL.createObjectURL(file);
     setProfileImage(imageUrl);
     
-    // Here you would typically upload to your server
-    // For now, we'll just show a success message
-    toast.success('Profile picture updated! Remember to save your changes.');
+    // Upload to Cloudinary
+    setUploading(true);
+    try {
+      const cloudinaryUrl = await uploadToCloudinary(file);
+      setProfileImageUrl(cloudinaryUrl);
+      toast.success('Profile picture uploaded successfully!');
+    } catch (error) {
+      console.error('Error uploading profile image:', error);
+      toast.error('Failed to upload profile picture');
+    } finally {
+      setUploading(false);
+    }
   };
 
-  const handleProjectPhotosUpload = (files: File[]) => {
+  const handleProjectPhotosUpload = async (files: File[]) => {
     setProjectPhotos(files);
+    
     if (files.length > 0) {
-      toast.success(`${files.length} project photo${files.length > 1 ? 's' : ''} selected!`);
+      setUploading(true);
+      try {
+        const uploadPromises = Array.from(files).map(file => uploadToCloudinary(file));
+        const urls = await Promise.all(uploadPromises);
+        setProjectPhotoUrls(urls);
+        toast.success(`${files.length} project photo${files.length > 1 ? 's' : ''} uploaded successfully!`);
+      } catch (error) {
+        console.error('Error uploading project photos:', error);
+        toast.error('Failed to upload project photos');
+      } finally {
+        setUploading(false);
+      }
     }
   };
 
@@ -143,16 +194,14 @@ export default function ProfilePage() {
       setLoading(true);
       
       // Here you would typically save the profile data to your server
-      // including uploading the profile image
+      // including the Cloudinary image URLs
       
-      if (profileImageFile) {
-        // In a real app, you'd upload the image to cloud storage
-        console.log('Profile image to upload:', profileImageFile);
+      if (profileImageUrl) {
+        console.log('Profile image URL to save:', profileImageUrl);
       }
       
-      if (projectPhotos.length > 0) {
-        // In a real app, you'd upload the project photos to cloud storage
-        console.log('Project photos to upload:', projectPhotos.map(file => file.name));
+      if (projectPhotoUrls.length > 0) {
+        console.log('Project photo URLs to save:', projectPhotoUrls);
       }
       
       toast.success('Profile saved successfully!');
@@ -206,16 +255,50 @@ export default function ProfilePage() {
                   {/* Profile Picture */}
                   <div>
                     <Label>Profile Picture</Label>
-                    <FileUpload
-                      title="Upload your profile picture"
-                      description="A clear photo that represents you professionally"
-                      variant="profile"
-                      maxSize={2}
-                      recommendedSize="500KB recommended"
-                      files={profileImageFile ? [profileImageFile] : []}
-                      onFilesChange={handleProfileImageUpload}
-                      allowedTypes={['image/jpeg', 'image/jpg', 'image/png', 'image/webp']}
-                    />
+                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-6">
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/jpg,image/png,image/webp"
+                        onChange={(e) => {
+                          const files = Array.from(e.target.files || [])
+                          handleProfileImageUpload(files)
+                        }}
+                        className="hidden"
+                        id="profile-image-upload"
+                      />
+                      <div className="text-center">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => document.getElementById('profile-image-upload')?.click()}
+                          disabled={uploading}
+                          className="mb-4"
+                        >
+                          {uploading ? 'Uploading...' : 'Upload Profile Picture'}
+                        </Button>
+                        <p className="text-sm text-gray-500">
+                          Max 2MB. Supports JPEG, PNG, WebP
+                        </p>
+                      </div>
+                      
+                      {/* Profile Image Preview */}
+                      {profileImage && (
+                        <div className="mt-4 flex justify-center">
+                          <div className="relative">
+                            <img
+                              src={profileImage}
+                              alt="Profile preview"
+                              className="w-32 h-32 object-cover rounded-full"
+                            />
+                            {profileImageUrl && (
+                              <div className="absolute bottom-2 right-2 bg-green-500 text-white rounded-full w-6 h-6 flex items-center justify-center">
+                                ✓
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -349,18 +432,53 @@ export default function ProfilePage() {
                       
                       <div>
                         <Label>Project Photos</Label>
-                        <FileUpload
-                          title="Upload your project photos"
-                          description="Showcase your best work with high-quality images of completed projects"
-                          multiple={true}
-                          maxFiles={10}
-                          maxSize={5}
-                          recommendedSize="2MB per image recommended"
-                          files={projectPhotos}
-                          onFilesChange={handleProjectPhotosUpload}
-                          allowedTypes={['image/jpeg', 'image/jpg', 'image/png', 'image/webp']}
-                          dragText="Click to browse or drag and drop your project images"
-                        />
+                        <div className="border-2 border-dashed border-gray-300 rounded-lg p-6">
+                          <input
+                            type="file"
+                            multiple
+                            accept="image/jpeg,image/jpg,image/png,image/webp"
+                            onChange={(e) => {
+                              const files = Array.from(e.target.files || [])
+                              handleProjectPhotosUpload(files)
+                            }}
+                            className="hidden"
+                            id="project-photos-upload"
+                          />
+                          <div className="text-center">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => document.getElementById('project-photos-upload')?.click()}
+                              disabled={uploading}
+                              className="mb-4"
+                            >
+                              {uploading ? 'Uploading...' : 'Upload Project Photos'}
+                            </Button>
+                            <p className="text-sm text-gray-500">
+                              Upload up to 10 images (max 5MB each). Supports JPEG, PNG, WebP
+                            </p>
+                          </div>
+                          
+                          {/* Project Photos Preview */}
+                          {projectPhotos.length > 0 && (
+                            <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-4">
+                              {projectPhotos.map((file, index) => (
+                                <div key={index} className="relative">
+                                  <img
+                                    src={URL.createObjectURL(file)}
+                                    alt={`Project ${index + 1}`}
+                                    className="w-full h-32 object-cover rounded-lg"
+                                  />
+                                  {projectPhotoUrls[index] && (
+                                    <div className="absolute bottom-2 right-2 bg-green-500 text-white rounded-full w-6 h-6 flex items-center justify-center">
+                                      ✓
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
 
                       <div>

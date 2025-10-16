@@ -151,23 +151,36 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
       const formData = new FormData()
       formData.append('file', file)
       
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
-        body: formData
-      })
-      
-      if (!response.ok) {
-        throw new Error(`Failed to upload ${file.name}`)
+      try {
+        const response = await fetch('/api/upload', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          },
+          body: formData
+        })
+        
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || `Failed to upload ${file.name}`)
+        }
+        
+        const result = await response.json()
+        // The API returns { success: true, data: { url: ... } }
+        return result.data?.url || result.url
+      } catch (error) {
+        console.error(`Error uploading ${file.name}:`, error)
+        throw error
       }
-      
-      const result = await response.json()
-      return result.url
     })
 
-    return Promise.all(uploadPromises)
+    try {
+      return await Promise.all(uploadPromises)
+    } catch (error) {
+      // If any upload fails, we still want to continue with the others
+      console.error('Some uploads failed:', error)
+      throw error
+    }
   }
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -196,15 +209,16 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
       toast.success(`${files.length} image(s) uploaded successfully`)
     } catch (error) {
       console.error('Error uploading images:', error)
-      toast.error('Failed to upload images')
+      toast.error(`Failed to upload images: ${error instanceof Error ? error.message : 'Unknown error'}`)
       
-      // Remove the previews on error
-      const newPreviews = imagePreviews.slice(0, -(files.length))
-      setImagePreviews(newPreviews)
-      const newImages = images.slice(0, -(files.length))
-      setImages(newImages)
+      // Remove the failed previews
+      const failedIndexes = Array.from(files).map((_, index) => imagePreviews.length + index)
+      setImagePreviews(prev => prev.filter((_, index) => !failedIndexes.includes(index)))
+      setImages(prev => prev.filter((_, index) => !failedIndexes.includes(index - (images.length - files.length))))
     } finally {
       setUploading(false)
+      // Reset file input
+      e.target.value = ''
     }
   }
 
