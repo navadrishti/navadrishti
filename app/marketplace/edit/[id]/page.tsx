@@ -140,53 +140,69 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
     })
   }
 
-  // Handle image upload to Cloudinary
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || [])
-    if (files.length === 0) return
+  const uploadImages = async (files: FileList) => {
+    const token = localStorage.getItem('token')
+    if (!token) {
+      toast.error('Authentication required')
+      return []
+    }
 
-    // Limit total images to 5 (existing + uploaded + new)
-    const totalImagesCount = existingImages.length + uploadedImageUrls.length + files.length
+    const uploadPromises = Array.from(files).map(async (file) => {
+      const formData = new FormData()
+      formData.append('file', file)
+      
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData
+      })
+      
+      if (!response.ok) {
+        throw new Error(`Failed to upload ${file.name}`)
+      }
+      
+      const result = await response.json()
+      return result.url
+    })
+
+    return Promise.all(uploadPromises)
+  }
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+
+    // Check total image limit (existing + new)
+    const totalImagesCount = existingImages.length + imagePreviews.length + files.length
     if (totalImagesCount > 5) {
       toast.error('Maximum 5 images allowed')
       return
     }
 
     setUploading(true)
-    setError('')
-
+    
     try {
-      const uploadPromises = files.map(async (file) => {
-        const formData = new FormData()
-        formData.append('file', file)
-
-        const response = await fetch('/api/upload', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          },
-          body: formData
-        })
-
-        if (!response.ok) {
-          throw new Error('Upload failed')
-        }
-
-        const data = await response.json()
-        return data.url
-      })
-
-      const newUploadedUrls = await Promise.all(uploadPromises)
-      setUploadedImageUrls([...uploadedImageUrls, ...newUploadedUrls])
-      
-      // Create previews and track files
-      const newPreviews = files.map(file => URL.createObjectURL(file))
+      // Create previews immediately
+      const newPreviews = Array.from(files).map(file => URL.createObjectURL(file))
       setImagePreviews([...imagePreviews, ...newPreviews])
-      setImages([...images, ...files])
+      setImages([...images, ...Array.from(files)])
 
+      // Upload to Cloudinary
+      const uploadedUrls = await uploadImages(files)
+      setUploadedImageUrls([...uploadedImageUrls, ...uploadedUrls])
+      
+      toast.success(`${files.length} image(s) uploaded successfully`)
     } catch (error) {
-      console.error('Upload error:', error)
-      setError('Failed to upload images. Please try again.')
+      console.error('Error uploading images:', error)
+      toast.error('Failed to upload images')
+      
+      // Remove the previews on error
+      const newPreviews = imagePreviews.slice(0, -(files.length))
+      setImagePreviews(newPreviews)
+      const newImages = images.slice(0, -(files.length))
+      setImages(newImages)
     } finally {
       setUploading(false)
     }
@@ -203,7 +219,9 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
     const newUploadedUrls = uploadedImageUrls.filter((_, i) => i !== index)
     
     // Clean up removed preview
-    URL.revokeObjectURL(imagePreviews[index])
+    if (imagePreviews[index]) {
+      URL.revokeObjectURL(imagePreviews[index])
+    }
     
     setImages(newImages)
     setImagePreviews(newPreviews)
@@ -224,7 +242,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
     try {
       const token = localStorage.getItem('token')
       
-      // Combine existing images and newly uploaded images
+      // Combine existing and uploaded images
       const allImages = [...existingImages, ...uploadedImageUrls]
       
       const response = await fetch(`/api/marketplace/${listing.id}`, {
@@ -388,19 +406,19 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
                       {/* New Image Upload */}
                       <div className="border-2 border-dashed border-gray-300 rounded-lg p-6">
                         <input
-                          id="images"
                           type="file"
                           multiple
                           accept="image/jpeg,image/jpg,image/png,image/webp"
                           onChange={handleImageUpload}
                           className="hidden"
+                          id="image-upload"
                         />
                         <div className="text-center">
                           <Button
                             type="button"
                             variant="outline"
-                            onClick={() => document.getElementById('images')?.click()}
-                            disabled={uploading || (existingImages.length + uploadedImageUrls.length) >= 5}
+                            onClick={() => document.getElementById('image-upload')?.click()}
+                            disabled={uploading || (existingImages.length + imagePreviews.length) >= 5}
                             className="mb-4"
                           >
                             {uploading ? 'Uploading...' : 'Add More Images'}
@@ -417,7 +435,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
                               <div key={index} className="relative">
                                 <img
                                   src={preview}
-                                  alt={`Preview ${index + 1}`}
+                                  alt={`New image ${index + 1}`}
                                   className="w-full h-32 object-cover rounded-lg"
                                 />
                                 <button
