@@ -214,34 +214,52 @@ export function ProductCard({
       {/* Image Section with Gallery - Clickable to product details */}
       <CardHeader className="p-0 relative cursor-pointer" onClick={handleCardClick}>
         <div className="relative h-56 overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100 rounded-t-xl">
-          <img 
-            src={item?.images?.[selectedImage] || image || "https://images.unsplash.com/photo-1542744094-3a31f272c490?q=80&w=400&auto=format&fit=crop"} 
-            alt={title} 
-            className="w-full h-full object-cover transition-all duration-500 group-hover:scale-110" 
-          />
-          
-          {/* Image indicators */}
-          {item?.images && item.images.length > 1 && (
-            <div className="absolute bottom-2 left-2 flex gap-1">
-              {item.images.slice(0, 4).map((_: any, index: number) => (
-                <button
-                  key={index}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSelectedImage(index);
-                  }}
-                  className={`w-2 h-2 rounded-full transition-colors ${
-                    selectedImage === index ? 'bg-white' : 'bg-white/50'
-                  }`}
+          {(() => {
+            // Safely parse images - handle both string and array formats
+            let imagesArray = [];
+            try {
+              if (typeof item?.images === 'string') {
+                imagesArray = JSON.parse(item.images);
+              } else if (Array.isArray(item?.images)) {
+                imagesArray = item.images;
+              }
+            } catch (e) {
+              imagesArray = [];
+            }
+
+            return (
+              <>
+                <img 
+                  src={imagesArray?.[selectedImage] || image || "https://images.unsplash.com/photo-1542744094-3a31f272c490?q=80&w=400&auto=format&fit=crop"} 
+                  alt={title} 
+                  className="w-full h-full object-cover transition-all duration-500 group-hover:scale-110" 
                 />
-              ))}
-              {item.images.length > 4 && (
-                <div className="w-2 h-2 rounded-full bg-white/50 flex items-center justify-center">
-                  <span className="text-xs text-black">+</span>
-                </div>
-              )}
-            </div>
-          )}
+                
+                {/* Image indicators */}
+                {imagesArray && imagesArray.length > 1 && (
+                  <div className="absolute bottom-2 left-2 flex gap-1">
+                    {imagesArray.slice(0, 4).map((_: any, index: number) => (
+                      <button
+                        key={index}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedImage(index);
+                        }}
+                        className={`w-2 h-2 rounded-full transition-colors ${
+                          selectedImage === index ? 'bg-white' : 'bg-white/50'
+                        }`}
+                      />
+                    ))}
+                    {imagesArray.length > 4 && (
+                      <div className="w-2 h-2 rounded-full bg-white/50 flex items-center justify-center">
+                        <span className="text-xs text-black">+</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            );
+          })()}
 
           {/* Badges - Only show real badges passed as props */}
           <div className="absolute top-2 left-2 flex flex-col gap-1">

@@ -36,7 +36,7 @@ const nextConfig = {
   },
   // Disable source maps in production
   productionBrowserSourceMaps: false,
-  // Required to disable webpack performance hints
+  // Fix process and other Node.js polyfills
   webpack: (config, { dev, isServer }) => {
     // Disable performance hints
     config.performance = {
@@ -48,13 +48,18 @@ const nextConfig = {
       config.devtool = false;
     }
     
+    // Fix process is not defined error
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        net: false,
+        tls: false,
+        process: false,
+      };
+    }
+    
     return config;
-  },
-  // Disabling experimental features that may cause build issues
-  experimental: {
-    // webpackBuildWorker: true,
-    // parallelServerBuildTraces: true,
-    // parallelServerCompiles: true,
   },
 }
 
