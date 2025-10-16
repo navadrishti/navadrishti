@@ -96,6 +96,31 @@ export const db = {
       if (filters.status) {
         query = query.eq('status', filters.status);
       }
+      if (filters.seller_id) {
+        query = query.eq('seller_id', filters.seller_id);
+      }
+      
+      const { data, error } = await query.order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data;
+    },
+
+    async getAllWithSeller(filters: any = {}) {
+      let query = supabase
+        .from('marketplace_items')
+        .select(`
+          *,
+          seller:users!seller_id(id, name, email, user_type, location)
+        `)
+        .eq('status', 'active');
+      
+      if (filters.category) {
+        query = query.eq('category', filters.category);
+      }
+      if (filters.seller_id) {
+        query = query.eq('seller_id', filters.seller_id);
+      }
       
       const { data, error } = await query.order('created_at', { ascending: false });
       
@@ -105,8 +130,11 @@ export const db = {
 
     async getById(id: string | number) {
       const { data, error } = await supabase
-        .from('service_requests')
-        .select('*')
+        .from('marketplace_items')
+        .select(`
+          *,
+          seller:users!seller_id(id, name, email, user_type, location)
+        `)
         .eq('id', id)
         .single();
       

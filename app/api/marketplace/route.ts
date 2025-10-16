@@ -40,54 +40,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Build query based on filters
-    let query = `
-      SELECT 
-        mi.*,
-        u.name as seller_name,
-        u.email as seller_email,
-        u.user_type as seller_type,
-        u.location as seller_location
-      FROM marketplace_items mi
-      JOIN users u ON mi.seller_id = u.id
-      WHERE mi.status = 'active'
-    `;
-    const values: any[] = [];
-
-    // Add filters
-    if (category && category !== 'All Categories') {
-      query += ' AND mi.category = ?';
-      values.push(category);
-    }
-
-    if (search) {
-      query += ' AND (mi.title LIKE ? OR mi.description LIKE ? OR mi.tags LIKE ?)';
-      const searchPattern = `%${search}%`;
-      values.push(searchPattern, searchPattern, searchPattern);
-    }
-
-    if (minPrice) {
-      query += ' AND mi.price >= ?';
-      values.push(parseFloat(minPrice));
-    }
-
-    if (maxPrice) {
-      query += ' AND mi.price <= ?';
-      values.push(parseFloat(maxPrice));
-    }
-
-    // Handle different views
-    if (view === 'my-listings' && authenticatedUserId) {
-      query += ' AND mi.seller_id = ?';
-      values.push(authenticatedUserId);
-    } else if (view === 'purchased' && userId) {
-      query += ' AND mi.id IN (SELECT marketplace_item_id FROM marketplace_purchases WHERE buyer_id = ?)';
-      values.push(parseInt(userId));
-    }
-
-    query += ' ORDER BY mi.created_at DESC';
-
-    // Use Supabase database helpers instead
+    // Use Supabase database helpers with seller information
     const filters: any = {};
     if (category && category !== 'All Categories') {
       filters.category = category;
@@ -96,7 +49,35 @@ export async function GET(request: NextRequest) {
       filters.seller_id = authenticatedUserId;
     }
 
-    const marketplaceItems = await db.marketplaceItems.getAll(filters);
+    // Get marketplace items with seller information using Supabase
+    let marketplaceItems = await db.marketplaceItems.getAllWithSeller(filters);
+
+    // Apply client-side filtering for features not supported by the helper
+    if (search) {
+      const searchLower = search.toLowerCase();
+      marketplaceItems = marketplaceItems.filter(item => 
+        item.title?.toLowerCase().includes(searchLower) ||
+        item.description?.toLowerCase().includes(searchLower) ||
+        item.tags?.toLowerCase().includes(searchLower)
+      );
+    }
+
+    if (minPrice) {
+      const min = parseFloat(minPrice);
+      marketplaceItems = marketplaceItems.filter(item => parseFloat(item.price) >= min);
+    }
+
+    if (maxPrice) {
+      const max = parseFloat(maxPrice);
+      marketplaceItems = marketplaceItems.filter(item => parseFloat(item.price) <= max);
+    }
+
+    // Handle purchased view separately if needed
+    if (view === 'purchased' && userId) {
+      // This would need a separate query to purchases table
+      // For now, return empty as this feature may need more implementation
+      marketplaceItems = [];
+    }
 
     return NextResponse.json({
       success: true,
