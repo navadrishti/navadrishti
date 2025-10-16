@@ -165,9 +165,43 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
           throw new Error(errorData.error || `Failed to upload ${file.name}`)
         }
         
+        if (!response.ok) {
+          // Handle different HTTP status codes
+          if (response.status === 413) {
+            throw new Error('File too large - please choose a smaller image (max 10MB)')
+          }
+          if (response.status === 401) {
+            throw new Error('Authentication failed - please log in again')
+          }
+          if (response.status === 500) {
+            throw new Error('Server error - please try again later')
+          }
+          
+          // Try to get error message from response
+          let errorMessage = `Upload failed (Status: ${response.status})`
+          try {
+            const errorData = await response.json()
+            errorMessage = errorData.error || errorMessage
+          } catch {
+            // Response is not JSON, use default message
+          }
+          throw new Error(errorMessage)
+        }
+        
         const result = await response.json()
+        
+        // Validate response structure
+        if (!result.success) {
+          throw new Error(result.error || 'Upload failed - invalid response')
+        }
+        
         // The API returns { success: true, data: { url: ... } }
-        return result.data?.url || result.url
+        const imageUrl = result.data?.url || result.url
+        if (!imageUrl) {
+          throw new Error('Upload completed but no URL received')
+        }
+        
+        return imageUrl
       } catch (error) {
         console.error(`Error uploading ${file.name}:`, error)
         throw error
