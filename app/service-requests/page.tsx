@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Header } from '@/components/header'
@@ -37,7 +37,7 @@ const categories = [
   'Other'
 ];
 
-export default function ServiceRequestsPage() {
+function ServiceRequestsContent() {
   const { user } = useAuth();
   const { toast } = useToast();
   const searchParams = useSearchParams();
@@ -695,5 +695,13 @@ export default function ServiceRequestsPage() {
         </Tabs>
       </main>
     </div>
+  )
+}
+
+export default function ServiceRequestsPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-50"><Header /><div className="container mx-auto px-4 py-8"><div className="text-center">Loading...</div></div></div>}>
+      <ServiceRequestsContent />
+    </Suspense>
   )
 }
