@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { executeQuery } from '@/lib/db';
+import { supabase } from '@/lib/db';
 import { verifyToken } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
@@ -30,121 +30,101 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '10') || 10));
     const offset = (page - 1) * limit;
 
-    let whereConditions = [];
-    let queryParams = [];
+    // Build Supabase query based on filter type
+    let ordersQuery = supabase
+      .from('orders')
+      .select(`
+        *,
+        buyer:users!orders_buyer_id_fkey(name, email),
+        seller:users!orders_seller_id_fkey(name, email)
+      `)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
 
-    // Filter by user role
+    // Apply filters
     if (type === 'buyer') {
-      whereConditions.push('o.buyer_id = ?');
-      queryParams.push(Number(userId));
+      ordersQuery = ordersQuery.eq('buyer_id', userId);
     } else if (type === 'seller') {
-      whereConditions.push('o.seller_id = ?');
-      queryParams.push(Number(userId));
+      ordersQuery = ordersQuery.eq('seller_id', userId);
     } else {
-      whereConditions.push('(o.buyer_id = ? OR o.seller_id = ?)');
-      queryParams.push(Number(userId), Number(userId));
+      ordersQuery = ordersQuery.or(`buyer_id.eq.${userId},seller_id.eq.${userId}`);
     }
 
-    // Filter by status
     if (status) {
-      whereConditions.push('o.status = ?');
-      queryParams.push(status);
+      ordersQuery = ordersQuery.eq('status', status);
     }
 
-    const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
+    const { data: orders, error: ordersError } = await ordersQuery;
 
-    // Get orders with basic details first
-    const ordersQuery = `
-      SELECT 
-        o.*,
-        buyer.name as buyer_name,
-        buyer.email as buyer_email,
-        seller.name as seller_name,
-        seller.email as seller_email
-      FROM orders o
-      LEFT JOIN users buyer ON o.buyer_id = buyer.id
-      LEFT JOIN users seller ON o.seller_id = seller.id
-      ${whereClause}
-      ORDER BY o.created_at DESC
-      LIMIT ? OFFSET ?
-    `;
-
-    queryParams.push(Number(limit), Number(offset));
-
-    const orders = await executeQuery({
-      query: ordersQuery,
-      values: queryParams
-    }) as any[];
+    if (ordersError) {
+      console.error('Orders fetch error:', ordersError);
+      throw ordersError;
+    }
 
     // Get additional details for each order
-    const enrichedOrders = await Promise.all(orders.map(async (order) => {
+    const enrichedOrders = await Promise.all((orders || []).map(async (order) => {
       // Get payment details
-      const paymentQuery = `
-        SELECT status as payment_status, razorpay_payment_id, captured_at
-        FROM payments 
-        WHERE order_id = ? 
-        ORDER BY created_at DESC 
-        LIMIT 1
-      `;
-      const payments = await executeQuery({
-        query: paymentQuery,
-        values: [order.id]
-      }) as any[];
-
+      const { data: payments } = await supabase
+        .from('payments')
+        .select('status, razorpay_payment_id, captured_at')
+        .eq('order_id', order.id)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      
       // Get shipping details
-      const shippingQuery = `
-        SELECT tracking_status, delhivery_waybill, expected_delivery, actual_delivery
-        FROM shipping_details 
-        WHERE order_id = ? 
-        LIMIT 1
-      `;
-      const shipping = await executeQuery({
-        query: shippingQuery,
-        values: [order.id]
-      }) as any[];
+      const { data: shipping } = await supabase
+        .from('shipping_details')
+        .select('tracking_status, delhivery_waybill, expected_delivery, actual_delivery')
+        .eq('order_id', order.id)
+        .limit(1);
 
       // Get order items
-      const itemsQuery = `
-        SELECT id, marketplace_item_id, quantity, unit_price, total_price, item_snapshot
-        FROM order_items 
-        WHERE order_id = ?
-      `;
-      const orderItems = await executeQuery({
-        query: itemsQuery,
-        values: [order.id]
-      }) as any[];
+      const { data: orderItems } = await supabase
+        .from('order_items')
+        .select('id, marketplace_item_id, quantity, unit_price, total_price, item_snapshot')
+        .eq('order_id', order.id);
 
       return {
         ...order,
+        buyer_name: order.buyer?.name || null,
+        buyer_email: order.buyer?.email || null,
+        seller_name: order.seller?.name || null,
+        seller_email: order.seller?.email || null,
         shipping_address: JSON.parse(order.shipping_address || '{}'),
         billing_address: JSON.parse(order.billing_address || '{}'),
-        payment_status: payments[0]?.payment_status || null,
-        razorpay_payment_id: payments[0]?.razorpay_payment_id || null,
-        captured_at: payments[0]?.captured_at || null,
-        tracking_status: shipping[0]?.tracking_status || null,
-        delhivery_waybill: shipping[0]?.delhivery_waybill || null,
-        expected_delivery: shipping[0]?.expected_delivery || null,
-        actual_delivery: shipping[0]?.actual_delivery || null,
-        order_items: orderItems.map(item => ({
+        payment_status: payments?.[0]?.status || null,
+        razorpay_payment_id: payments?.[0]?.razorpay_payment_id || null,
+        captured_at: payments?.[0]?.captured_at || null,
+        tracking_status: shipping?.[0]?.tracking_status || null,
+        delhivery_waybill: shipping?.[0]?.delhivery_waybill || null,
+        expected_delivery: shipping?.[0]?.expected_delivery || null,
+        actual_delivery: shipping?.[0]?.actual_delivery || null,
+        order_items: (orderItems || []).map(item => ({
           ...item,
           item_snapshot: JSON.parse(item.item_snapshot || '{}')
         }))
       };
     }));
 
-    // Get total count
-    const countQuery = `
-      SELECT COUNT(DISTINCT o.id) as total
-      FROM orders o
-      ${whereClause}
-    `;
+    // Get total count using a separate query
+    let countQuery = supabase
+      .from('orders')
+      .select('id', { count: 'exact', head: true });
 
-    const countResult = await executeQuery({
-      query: countQuery,
-      values: queryParams.slice(0, -2) // Remove limit and offset
-    }) as any[];
+    // Apply the same filters for count
+    if (type === 'buyer') {
+      countQuery = countQuery.eq('buyer_id', userId);
+    } else if (type === 'seller') {
+      countQuery = countQuery.eq('seller_id', userId);
+    } else {
+      countQuery = countQuery.or(`buyer_id.eq.${userId},seller_id.eq.${userId}`);
+    }
 
-    const total = countResult[0]?.total || 0;
+    if (status) {
+      countQuery = countQuery.eq('status', status);
+    }
+
+    const { count: total } = await countQuery;
 
     return Response.json({
       success: true,
@@ -152,8 +132,8 @@ export async function GET(request: NextRequest) {
       pagination: {
         page,
         limit,
-        total,
-        totalPages: Math.ceil(total / limit)
+        total: total || 0,
+        totalPages: Math.ceil((total || 0) / limit)
       }
     });
 

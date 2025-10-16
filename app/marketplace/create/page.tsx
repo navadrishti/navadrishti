@@ -12,7 +12,6 @@ import { Badge } from '@/components/ui/badge'
 import { ArrowLeft, Upload, Plus } from 'lucide-react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth-context'
-import { FileUpload } from '@/components/ui/file-upload'
 import ProtectedRoute from '@/components/protected-route'
 
 const categories = [
@@ -46,6 +45,8 @@ export default function CreateListingPage() {
   });
   const [images, setImages] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+  const [uploadedImageUrls, setUploadedImageUrls] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -72,9 +73,8 @@ export default function CreateListingPage() {
     try {
       const token = localStorage.getItem('token');
       
-      // Temporarily skip image upload to avoid 413 errors
-      // TODO: Implement proper image upload with cloud storage
-      let imageUrls: string[] = [];
+      // Use the uploaded image URLs
+      const imageUrls = uploadedImageUrls;
       
       const response = await fetch('/api/marketplace', {
         method: 'POST',
@@ -88,7 +88,7 @@ export default function CreateListingPage() {
           price: parseFloat(formData.price),
           quantity: parseInt(formData.quantity.toString()),
           tags: formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag),
-          images: imageUrls // Empty for now
+          images: imageUrls
         })
       });
 
@@ -131,7 +131,7 @@ export default function CreateListingPage() {
     });
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
@@ -144,17 +144,58 @@ export default function CreateListingPage() {
     // Clean up old previews
     imagePreviews.forEach(preview => URL.revokeObjectURL(preview));
     setImagePreviews(previews);
+
+    // Upload images immediately
+    await uploadImages(files);
+  };
+
+  const uploadImages = async (filesToUpload: File[]) => {
+    setUploading(true);
+    const token = localStorage.getItem('token');
+    
+    try {
+      const uploadPromises = filesToUpload.map(async (file) => {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const response = await fetch('/api/upload', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          },
+          body: formData
+        });
+
+        const result = await response.json();
+        if (result.success) {
+          return result.data.url;
+        } else {
+          throw new Error(result.error || 'Upload failed');
+        }
+      });
+
+      const urls = await Promise.all(uploadPromises);
+      setUploadedImageUrls(prev => [...prev, ...urls]);
+      
+    } catch (error) {
+      console.error('Upload error:', error);
+      setError('Failed to upload images. Please try again.');
+    } finally {
+      setUploading(false);
+    }
   };
 
   const removeImage = (index: number) => {
     const newImages = images.filter((_, i) => i !== index);
     const newPreviews = imagePreviews.filter((_, i) => i !== index);
+    const newUploadedUrls = uploadedImageUrls.filter((_, i) => i !== index);
     
     // Clean up removed preview
     URL.revokeObjectURL(imagePreviews[index]);
     
     setImages(newImages);
     setImagePreviews(newPreviews);
+    setUploadedImageUrls(newUploadedUrls);
   };
 
   return (
@@ -220,17 +261,57 @@ export default function CreateListingPage() {
                   {/* Image Upload Section */}
                   <div>
                     <Label htmlFor="images">Product Images</Label>
-                    <FileUpload
-                      title="Upload product images"
-                      description="High-quality photos that showcase your product from different angles"
-                      multiple={true}
-                      maxFiles={5}
-                      maxSize={5}
-                      recommendedSize="2MB per image"
-                      files={images}
-                      onFilesChange={setImages}
-                      allowedTypes={['image/jpeg', 'image/jpg', 'image/png', 'image/webp']}
-                    />
+                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-6">
+                      <input
+                        id="images"
+                        type="file"
+                        multiple
+                        accept="image/jpeg,image/jpg,image/png,image/webp"
+                        onChange={handleImageUpload}
+                        className="hidden"
+                      />
+                      <div className="text-center">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => document.getElementById('images')?.click()}
+                          disabled={uploading}
+                          className="mb-4"
+                        >
+                          {uploading ? 'Uploading...' : 'Choose Images'}
+                        </Button>
+                        <p className="text-sm text-gray-500">
+                          Upload up to 5 images (max 5MB each). Supports JPEG, PNG, WebP
+                        </p>
+                      </div>
+                      
+                      {/* Image Previews */}
+                      {imagePreviews.length > 0 && (
+                        <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-4">
+                          {imagePreviews.map((preview, index) => (
+                            <div key={index} className="relative">
+                              <img
+                                src={preview}
+                                alt={`Preview ${index + 1}`}
+                                className="w-full h-32 object-cover rounded-lg"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => removeImage(index)}
+                                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm hover:bg-red-600"
+                              >
+                                ×
+                              </button>
+                              {uploadedImageUrls[index] && (
+                                <div className="absolute bottom-2 right-2 bg-green-500 text-white rounded-full w-6 h-6 flex items-center justify-center">
+                                  ✓
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <div className="grid gap-4 md:grid-cols-2">

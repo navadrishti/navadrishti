@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { executeQuery } from '@/lib/db';
+import { supabase } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 
@@ -36,69 +36,60 @@ export async function GET(request: NextRequest) {
         marketplaceItems
       ] = await Promise.all([
         // Service offers created by this NGO
-        executeQuery({
-          query: `
-            SELECT 
-              COUNT(*) as total,
-              SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as pending,
-              SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed
-            FROM service_offers WHERE ngo_id = ?
-          `,
-          values: [userId]
-        }),
+        supabase
+          .from('service_offers')
+          .select('id, status')
+          .eq('ngo_id', userId),
+        
         // Service requests created by this NGO
-        executeQuery({
-          query: `
-            SELECT 
-              COUNT(*) as total,
-              SUM(CASE WHEN status IN ('open', 'active') THEN 1 ELSE 0 END) as pending,
-              SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as accepted
-            FROM service_requests WHERE ngo_id = ?
-          `,
-          values: [userId]
-        }),
+        supabase
+          .from('service_requests')
+          .select('id, status')
+          .eq('ngo_id', userId),
+        
         // Service hires (clients who hired this NGO's services)
-        executeQuery({
-          query: `
-            SELECT COUNT(*) as total
-            FROM service_hires sh
-            JOIN service_offers so ON sh.service_offer_id = so.id
-            WHERE so.ngo_id = ? AND sh.status IN ('accepted', 'active', 'completed')
-          `,
-          values: [userId]
-        }),
+        supabase
+          .from('service_hires')
+          .select(`
+            id, status,
+            service_offers(ngo_id)
+          `)
+          .eq('service_offers.ngo_id', userId)
+          .in('status', ['accepted', 'active', 'completed']),
+        
         // Volunteers who joined this NGO's service requests
-        executeQuery({
-          query: `
-            SELECT COUNT(*) as total
-            FROM service_volunteers sv
-            JOIN service_requests sr ON sv.service_request_id = sr.id
-            WHERE sr.ngo_id = ? AND sv.status IN ('accepted', 'active', 'completed')
-          `,
-          values: [userId]
-        }),
+        supabase
+          .from('service_volunteers')
+          .select(`
+            id, status,
+            service_requests(ngo_id)
+          `)
+          .eq('service_requests.ngo_id', userId)
+          .in('status', ['accepted', 'active', 'completed']),
+        
         // Marketplace items listed by this NGO
-        executeQuery({
-          query: `
-            SELECT 
-              COUNT(*) as total,
-              SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as listed,
-              SUM(CASE WHEN status = 'sold' THEN 1 ELSE 0 END) as sold
-            FROM marketplace_items WHERE seller_id = ?
-          `,
-          values: [userId]
-        })
+        supabase
+          .from('marketplace_items')
+          .select('id, status')
+          .eq('seller_id', userId)
       ]);
 
+      // Process the results
+      const serviceOffersData = serviceOffers.data || [];
+      const serviceRequestsData = serviceRequests.data || [];
+      const serviceHiresData = serviceHires.data || [];
+      const serviceVolunteersData = serviceVolunteers.data || [];
+      const marketplaceItemsData = marketplaceItems.data || [];
+
       stats = {
-        serviceOffersPending: (serviceOffers as any[])[0]?.pending || 0,
-        serviceOffersCompleted: (serviceOffers as any[])[0]?.completed || 0,
-        serviceRequestsPending: (serviceRequests as any[])[0]?.pending || 0,
-        serviceRequestsAccepted: (serviceRequests as any[])[0]?.accepted || 0,
-        marketplaceItemsListed: (marketplaceItems as any[])[0]?.listed || 0,
-        marketplaceItemsSold: (marketplaceItems as any[])[0]?.sold || 0,
-        totalServiceHires: (serviceHires as any[])[0]?.total || 0,
-        totalVolunteers: (serviceVolunteers as any[])[0]?.total || 0
+        serviceOffersPending: serviceOffersData.filter(s => s.status === 'active').length,
+        serviceOffersCompleted: serviceOffersData.filter(s => s.status === 'completed').length,
+        serviceRequestsPending: serviceRequestsData.filter(s => ['open', 'active'].includes(s.status)).length,
+        serviceRequestsAccepted: serviceRequestsData.filter(s => s.status === 'completed').length,
+        marketplaceItemsListed: marketplaceItemsData.filter(m => m.status === 'active').length,
+        marketplaceItemsSold: marketplaceItemsData.filter(m => m.status === 'sold').length,
+        totalServiceHires: serviceHiresData.length,
+        totalVolunteers: serviceVolunteersData.length
       };
 
     } else if (userType === 'company') {
@@ -110,56 +101,46 @@ export async function GET(request: NextRequest) {
         marketplaceOrders
       ] = await Promise.all([
         // Services hired by company from NGOs
-        executeQuery({
-          query: `
-            SELECT 
-              COUNT(*) as total,
-              SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
-              SUM(CASE WHEN status IN ('accepted', 'active') THEN 1 ELSE 0 END) as active
-            FROM service_hires WHERE client_id = ? AND client_type = 'company'
-          `,
-          values: [userId]
-        }),
+        supabase
+          .from('service_hires')
+          .select('id, status')
+          .eq('client_id', userId)
+          .eq('client_type', 'company'),
+        
         // Volunteer applications by company
-        executeQuery({
-          query: `
-            SELECT 
-              COUNT(*) as total,
-              SUM(CASE WHEN status = 'accepted' THEN 1 ELSE 0 END) as accepted
-            FROM service_volunteers WHERE volunteer_id = ? AND volunteer_type = 'company'
-          `,
-          values: [userId]
-        }),
+        supabase
+          .from('service_volunteers')
+          .select('id, status')
+          .eq('volunteer_id', userId)
+          .eq('volunteer_type', 'company'),
+        
         // Marketplace listings by company
-        executeQuery({
-          query: `
-            SELECT 
-              COUNT(*) as total,
-              SUM(CASE WHEN status = 'sold' THEN 1 ELSE 0 END) as sold
-            FROM marketplace_items WHERE seller_id = ?
-          `,
-          values: [userId]
-        }),
+        supabase
+          .from('marketplace_items')
+          .select('id, status')
+          .eq('seller_id', userId),
+        
         // Orders made by company (as buyer)
-        executeQuery({
-          query: `
-            SELECT 
-              COUNT(*) as count,
-              SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END) as delivered
-            FROM orders WHERE buyer_id = ?
-          `,
-          values: [userId]
-        })
+        supabase
+          .from('orders')
+          .select('id, status')
+          .eq('buyer_id', userId)
       ]);
 
+      // Process the results
+      const serviceHiresData = serviceHires.data || [];
+      const volunteerApplicationsData = volunteerApplications.data || [];
+      const marketplaceListingsData = marketplaceListings.data || [];
+      const marketplaceOrdersData = marketplaceOrders.data || [];
+
       stats = {
-        totalServiceRequests: (serviceHires as any[])[0]?.total || 0, // Services hired
-        completedServiceRequests: (serviceHires as any[])[0]?.completed || 0,
-        acceptedServiceRequests: (serviceHires as any[])[0]?.active || 0,
-        acceptedServiceOffers: (volunteerApplications as any[])[0]?.accepted || 0, // Volunteer applications accepted
-        marketplaceItemsPurchased: (marketplaceOrders as any[])[0]?.count || 0,
-        marketplaceItemsListed: (marketplaceListings as any[])[0]?.total || 0,
-        marketplaceItemsSold: (marketplaceListings as any[])[0]?.sold || 0
+        totalServiceRequests: serviceHiresData.length, // Services hired
+        completedServiceRequests: serviceHiresData.filter(s => s.status === 'completed').length,
+        acceptedServiceRequests: serviceHiresData.filter(s => ['accepted', 'active'].includes(s.status)).length,
+        acceptedServiceOffers: volunteerApplicationsData.filter(v => v.status === 'accepted').length, // Volunteer applications accepted
+        marketplaceItemsPurchased: marketplaceOrdersData.length,
+        marketplaceItemsListed: marketplaceListingsData.length,
+        marketplaceItemsSold: marketplaceListingsData.filter(m => m.status === 'sold').length
       };
 
     } else if (userType === 'individual') {
@@ -171,59 +152,50 @@ export async function GET(request: NextRequest) {
         marketplaceOrders
       ] = await Promise.all([
         // Volunteer applications by individual
-        executeQuery({
-          query: `
-            SELECT 
-              COUNT(*) as total,
-              SUM(CASE WHEN status = 'accepted' THEN 1 ELSE 0 END) as accepted
-            FROM service_volunteers WHERE volunteer_id = ? AND volunteer_type = 'individual'
-          `,
-          values: [userId]
-        }),
+        supabase
+          .from('service_volunteers')
+          .select('id, status')
+          .eq('volunteer_id', userId)
+          .eq('volunteer_type', 'individual'),
+        
         // Services hired by individual from NGOs
-        executeQuery({
-          query: `
-            SELECT 
-              COUNT(*) as total,
-              SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed
-            FROM service_hires WHERE client_id = ? AND client_type = 'individual'
-          `,
-          values: [userId]
-        }),
+        supabase
+          .from('service_hires')
+          .select('id, status')
+          .eq('client_id', userId)
+          .eq('client_type', 'individual'),
+        
         // Marketplace listings by individual
-        executeQuery({
-          query: `
-            SELECT 
-              COUNT(*) as total,
-              SUM(CASE WHEN status = 'sold' THEN 1 ELSE 0 END) as sold
-            FROM marketplace_items WHERE seller_id = ?
-          `,
-          values: [userId]
-        }),
+        supabase
+          .from('marketplace_items')
+          .select('id, status')
+          .eq('seller_id', userId),
+        
         // Orders made by individual (as buyer)
-        executeQuery({
-          query: `
-            SELECT 
-              COUNT(*) as count,
-              SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END) as delivered
-            FROM orders WHERE buyer_id = ?
-          `,
-          values: [userId]
-        })
+        supabase
+          .from('orders')
+          .select('id, status')
+          .eq('buyer_id', userId)
       ]);
 
+      // Process the results
+      const volunteerApplicationsData = volunteerApplications.data || [];
+      const serviceHiresData = serviceHires.data || [];
+      const marketplaceListingsData = marketplaceListings.data || [];
+      const marketplaceOrdersData = marketplaceOrders.data || [];
+
       stats = {
-        totalVolunteerApplications: (volunteerApplications as any[])[0]?.total || 0,
-        acceptedVolunteerApplications: (volunteerApplications as any[])[0]?.accepted || 0,
-        totalServiceRequests: (serviceHires as any[])[0]?.total || 0, // Services hired
-        completedServiceRequests: (serviceHires as any[])[0]?.completed || 0,
+        totalVolunteerApplications: volunteerApplicationsData.length,
+        acceptedVolunteerApplications: volunteerApplicationsData.filter(v => v.status === 'accepted').length,
+        totalServiceRequests: serviceHiresData.length, // Services hired
+        completedServiceRequests: serviceHiresData.filter(s => s.status === 'completed').length,
         totalServiceOffers: 0, // Individuals don't create service offers (only NGOs)
         availableServiceOffers: 0, // Individuals don't create service offers (only NGOs)
-        acceptedServiceRequests: (serviceHires as any[])[0]?.total || 0, // Services hired
-        acceptedServiceOffers: (volunteerApplications as any[])[0]?.accepted || 0, // Volunteer applications accepted
-        marketplaceItemsPurchased: (marketplaceOrders as any[])[0]?.count || 0,
-        marketplaceItemsListed: (marketplaceListings as any[])[0]?.total || 0,
-        marketplaceItemsSold: (marketplaceListings as any[])[0]?.sold || 0
+        acceptedServiceRequests: serviceHiresData.length, // Services hired
+        acceptedServiceOffers: volunteerApplicationsData.filter(v => v.status === 'accepted').length, // Volunteer applications accepted
+        marketplaceItemsPurchased: marketplaceOrdersData.length,
+        marketplaceItemsListed: marketplaceListingsData.length,
+        marketplaceItemsSold: marketplaceListingsData.filter(m => m.status === 'sold').length
       };
     }
 

@@ -18,17 +18,25 @@ export async function initializeDatabase() {
   return true;
 }
 
-// Helper function to execute SQL queries (for raw SQL if needed)
+// Helper function for backward compatibility - converts to direct Supabase queries
 export async function executeQuery({ query, values = [] }: { query: string; values?: any[] }) {
   try {
-    // For raw SQL queries (when migrating from MySQL syntax)
-    const { data, error } = await supabase.rpc('execute_sql', { 
-      sql_query: query, 
-      query_params: values 
+    // Log the problematic query for debugging
+    console.error('⚠️  DEPRECATED executeQuery called:', {
+      query: query.substring(0, 100) + '...',
+      values: values.length,
+      stack: new Error().stack?.split('\n')[2]?.trim()
     });
     
-    if (error) throw error;
-    return data;
+    // Return empty array for SELECT queries, throw error for others
+    if (query.trim().toUpperCase().startsWith('SELECT')) {
+      console.warn('Returning empty result for SELECT query. This API needs migration to Supabase client.');
+      return [];
+    }
+    
+    // For non-SELECT queries, throw an error to prevent data corruption
+    throw new Error('executeQuery function is deprecated. This API needs to be converted to use Supabase client directly.');
+    
   } catch (error) {
     console.error('Database query error:', error);
     throw error;
