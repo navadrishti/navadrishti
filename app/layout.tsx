@@ -68,7 +68,12 @@ export default function RootLayout({
                   
                   // Disable context menu (right-click inspection)
                   document.addEventListener('contextmenu', function(e) {
-                    if (process.env.NODE_ENV === 'production') {
+                    // Check if we're not in development
+                    const isDev = window.location.hostname === 'localhost' || 
+                                  window.location.hostname === '127.0.0.1' ||
+                                  window.location.port === '3000';
+                    
+                    if (!isDev) {
                       e.preventDefault();
                       return false;
                     }
@@ -106,8 +111,13 @@ export default function RootLayout({
                 }
               }
               
-              // Only run in production
-              if (process.env.NODE_ENV === 'production') {
+              // Only run in production - check if we're in development mode
+              const isDev = typeof window !== 'undefined' && 
+                            (window.location.hostname === 'localhost' || 
+                             window.location.hostname === '127.0.0.1' ||
+                             window.location.port === '3000');
+              
+              if (!isDev) {
                 disableDevTools();
               }
             })();
