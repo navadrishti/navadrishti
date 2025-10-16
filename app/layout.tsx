@@ -111,12 +111,13 @@ export default function RootLayout({
                 }
               }
               
-              // Only run in production - check if we're in development mode
+              // Only disable dev tools in production (not localhost)
               const isDev = typeof window !== 'undefined' && 
                             (window.location.hostname === 'localhost' || 
                              window.location.hostname === '127.0.0.1' ||
                              window.location.port === '3000');
               
+              // Only disable in production, not during development
               if (!isDev) {
                 disableDevTools();
               }

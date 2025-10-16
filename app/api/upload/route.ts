@@ -25,10 +25,20 @@ interface JWTPayload {
 export async function POST(request: NextRequest) {
   try {
     // Validate Cloudinary configuration
+    console.log('Cloudinary Config Check:', {
+      cloud_name: !!process.env.CLOUDINARY_CLOUD_NAME,
+      api_key: !!process.env.CLOUDINARY_API_KEY,
+      api_secret: !!process.env.CLOUDINARY_API_SECRET
+    });
+    
     if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
-      console.error('Missing Cloudinary environment variables');
+      console.error('Missing Cloudinary environment variables', {
+        cloud_name: process.env.CLOUDINARY_CLOUD_NAME ? 'present' : 'missing',
+        api_key: process.env.CLOUDINARY_API_KEY ? 'present' : 'missing',
+        api_secret: process.env.CLOUDINARY_API_SECRET ? 'present' : 'missing'
+      });
       return NextResponse.json(
-        { error: 'Server configuration error' },
+        { error: 'Server configuration error - missing Cloudinary credentials' },
         { status: 500 }
       );
     }
