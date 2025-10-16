@@ -74,7 +74,13 @@ export default function ServiceRequestDetailPage() {
       if (response.ok) {
         const data = await response.json()
         console.log('Service request data:', data); // Debug log
-        setRequest(data)
+        
+        // Handle the new API response format
+        if (data.success) {
+          setRequest(data.data)
+        } else {
+          setRequest(data) // Fallback for old format
+        }
       } else {
         toast({
           title: "Error",
@@ -100,7 +106,9 @@ export default function ServiceRequestDetailPage() {
       const response = await fetch(`/api/service-requests/${requestId}/volunteers?userId=${user?.id}`)
       if (response.ok) {
         const data = await response.json()
-        const existingApplication = data.find((app: VolunteerApplication) => app.volunteer_id === user?.id)
+        // Handle both old and new API response formats
+        const applications = data.success ? data.data : data
+        const existingApplication = applications.find((app: VolunteerApplication) => app.volunteer_id === user?.id)
         setUserApplication(existingApplication || null)
       }
     } catch (error) {
