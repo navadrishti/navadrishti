@@ -565,27 +565,6 @@ function ServiceRequestsContent() {
           
           <TabsContent value="volunteering" className="mt-0">
             <div className="min-h-[400px]">
-              {canVolunteer && (
-                <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center">
-                <div className="mb-4 rounded-full bg-muted p-3">
-                  <Target size={24} className="text-muted-foreground" />
-                </div>
-                <h3 className="mb-1 text-lg font-semibold">No volunteering activities yet</h3>
-                <p className="mb-4 text-muted-foreground">
-                  You haven't volunteered for any service requests yet.
-                </p>
-                <Link href="/service-requests">
-                  <Button variant="outline">
-                    Browse Requests
-                  </Button>
-                </Link>
-                </div>
-              )}
-            </div>
-          </TabsContent>
-          
-          <TabsContent value="volunteering" className="mt-0">
-            <div className="min-h-[400px]">
               {canVolunteer && filteredRequests.length === 0 ? (
                 <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center">
                   <div className="mb-4 rounded-full bg-muted p-3">
