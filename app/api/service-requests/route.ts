@@ -114,8 +114,10 @@ export async function GET(request: NextRequest) {
     
     console.log('Service requests fetched:', serviceRequests?.length || 0, 'items');
 
-    // Process the data to handle old and new formats
-    const processedRequests = serviceRequests.map((request: any) => {
+  // Ensure we have an array to process and handle old/new formats
+  const requestsToProcess = Array.isArray(serviceRequests) ? serviceRequests : [];
+  // Process the data to handle old and new formats
+  const processedRequests = requestsToProcess.map((request: any) => {
       // Add ngo_name for backward compatibility with frontend
       if (request.requester) {
         request.ngo_name = request.requester.name;
@@ -165,25 +167,37 @@ export async function GET(request: NextRequest) {
     let finalRequests = processedRequests;
     if (view === 'all') {
       // For each request, check if it has reached its volunteer limit
+      const safeProcessed = Array.isArray(processedRequests) ? processedRequests : [];
+
       const requestsWithVolunteerCount = await Promise.all(
-        processedRequests.map(async (request: any) => {
+        safeProcessed.map(async (request: any) => {
+          // Defensive defaults in case request is unexpectedly null/undefined
+          if (!request || typeof request !== 'object') {
+            console.warn('Skipping invalid request during volunteer count:', request);
+            return { accepted_volunteers_count: 0, is_full: false };
+          }
+
           try {
-            const { data: acceptedVolunteers } = await supabase
+            const { data: acceptedVolunteers, error: countError } = await supabase
               .from('service_volunteers')
               .select('id')
               .eq('service_request_id', request.id)
               .in('status', ['accepted', 'active', 'completed']);
-            
-            const acceptedCount = acceptedVolunteers?.length || 0;
+
+            if (countError) {
+              console.error('Supabase error counting volunteers for request', request.id, countError);
+            }
+
+            const acceptedCount = Array.isArray(acceptedVolunteers) ? acceptedVolunteers.length : 0;
             const volunteerLimit = request.volunteer_limit || request.volunteers_needed || 1;
-            
+
             return {
               ...request,
               accepted_volunteers_count: acceptedCount,
               is_full: acceptedCount >= volunteerLimit
             };
           } catch (error) {
-            console.error('Error counting volunteers for request', request.id, error);
+            console.error('Error counting volunteers for request', request?.id, error);
             return {
               ...request,
               accepted_volunteers_count: 0,
@@ -192,7 +206,7 @@ export async function GET(request: NextRequest) {
           }
         })
       );
-      
+
       // Filter out requests that are full (unless user is viewing their own requests)
       finalRequests = requestsWithVolunteerCount.filter((request: any) => !request.is_full);
     }
