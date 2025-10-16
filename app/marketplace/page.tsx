@@ -170,7 +170,7 @@ export default function MarketplacePage() {
             </p>
           </div>
           {user && user.user_type !== 'ngo' && (
-            <Link href="/marketplace/add">
+            <Link href="/marketplace/create">
               <Button>
                 <PackagePlus size={16} className="mr-2" />
                 List Item
