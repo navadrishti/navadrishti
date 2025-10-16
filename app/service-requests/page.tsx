@@ -44,10 +44,20 @@ function ServiceRequestsContent() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All Categories');
   const [currentView, setCurrentView] = useState('all');
-  const [serviceRequests, setServiceRequests] = useState<any[]>([]);
+  
+  // Separate state for each view to prevent data contamination
+  const [allRequests, setAllRequests] = useState<any[]>([]);
+  const [myRequests, setMyRequests] = useState<any[]>([]);
+  const [volunteeringRequests, setVolunteeringRequests] = useState<any[]>([]);
+  
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [deleting, setDeleting] = useState<number | null>(null);
+  
+  // Get current data based on view
+  const serviceRequests = currentView === 'all' ? allRequests : 
+                          currentView === 'my-requests' ? myRequests : 
+                          volunteeringRequests;
   
   const isNGO = user?.user_type === 'ngo';
   const isIndividual = user?.user_type === 'individual';
@@ -146,7 +156,20 @@ function ServiceRequestsContent() {
       console.log('Received data for view:', currentView, 'count:', data.data?.length || 0);
       
       if (data.success) {
-        setServiceRequests(data.data);
+        // Set data to the correct state based on current view to prevent contamination
+        switch (currentView) {
+          case 'all':
+            setAllRequests(data.data);
+            break;
+          case 'my-requests':
+            setMyRequests(data.data);
+            break;
+          case 'volunteering':
+            setVolunteeringRequests(data.data);
+            break;
+          default:
+            setAllRequests(data.data);
+        }
       } else {
         setError(data.error || 'Failed to fetch service requests');
       }
@@ -176,15 +199,22 @@ function ServiceRequestsContent() {
   
   const handleTabChange = useCallback((value: string) => {
     setCurrentView(value);
-    // Clear current data and show loading to avoid showing stale data
-    setServiceRequests([]);
-    setLoading(true);
+    
+    // Check if we already have data for this view
+    const hasDataForView = (value === 'all' && allRequests.length > 0) ||
+                          (value === 'my-requests' && myRequests.length > 0) ||
+                          (value === 'volunteering' && volunteeringRequests.length > 0);
+    
+    if (!hasDataForView) {
+      setLoading(true);
+    }
     setError('');
+    
     // Force immediate re-fetch when tab changes
     setTimeout(() => {
       fetchServiceRequests();
     }, 10);
-  }, [fetchServiceRequests]);
+  }, [fetchServiceRequests, allRequests.length, myRequests.length, volunteeringRequests.length]);
 
   // No need for client-side filtering since API handles it
   const filteredRequests = serviceRequests;
