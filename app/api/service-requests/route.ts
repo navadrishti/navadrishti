@@ -166,6 +166,7 @@ export async function GET(request: NextRequest) {
     // Filter out completed requests from "All Requests" view
     let finalRequests = processedRequests;
     if (view === 'all') {
+      console.log('Processing "all" view - checking volunteer limits for', processedRequests.length, 'requests');
       // For each request, check if it has reached its volunteer limit
       const safeProcessed = Array.isArray(processedRequests) ? processedRequests : [];
 
@@ -190,11 +191,14 @@ export async function GET(request: NextRequest) {
 
             const acceptedCount = Array.isArray(acceptedVolunteers) ? acceptedVolunteers.length : 0;
             const volunteerLimit = request.volunteer_limit || request.volunteers_needed || 1;
+            const isFull = acceptedCount >= volunteerLimit;
+
+            console.log(`Request ${request.id}: ${acceptedCount}/${volunteerLimit} volunteers, is_full: ${isFull}`);
 
             return {
               ...request,
               accepted_volunteers_count: acceptedCount,
-              is_full: acceptedCount >= volunteerLimit
+              is_full: isFull
             };
           } catch (error) {
             console.error('Error counting volunteers for request', request?.id, error);
@@ -208,7 +212,11 @@ export async function GET(request: NextRequest) {
       );
 
       // Filter out requests that are full (unless user is viewing their own requests)
-      finalRequests = requestsWithVolunteerCount.filter((request: any) => !request.is_full);
+      const filteredRequests = requestsWithVolunteerCount.filter((request: any) => !request.is_full);
+      console.log('Filtered out', requestsWithVolunteerCount.length - filteredRequests.length, 'full requests from "all" view');
+      finalRequests = filteredRequests;
+    } else {
+      console.log('Processing view:', view, 'with', processedRequests.length, 'requests (no filtering applied)');
     }
 
     return NextResponse.json({

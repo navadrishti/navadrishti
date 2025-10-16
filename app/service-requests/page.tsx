@@ -127,6 +127,8 @@ function ServiceRequestsContent() {
       }
       params.append('view', currentView);
       
+      console.log('Fetching service requests with view:', currentView, 'params:', params.toString());
+      
       // Add Authorization header for authenticated views
       const headers: any = {};
       if (currentView === 'my-requests' || currentView === 'volunteering') {
@@ -140,6 +142,8 @@ function ServiceRequestsContent() {
         headers
       });
       const data = await response.json();
+      
+      console.log('Received data for view:', currentView, 'count:', data.data?.length || 0);
       
       if (data.success) {
         setServiceRequests(data.data);
@@ -172,6 +176,10 @@ function ServiceRequestsContent() {
   
   const handleTabChange = useCallback((value: string) => {
     setCurrentView(value);
+    // Clear current data and show loading to avoid showing stale data
+    setServiceRequests([]);
+    setLoading(true);
+    setError('');
     // Force immediate re-fetch when tab changes
     setTimeout(() => {
       fetchServiceRequests();
