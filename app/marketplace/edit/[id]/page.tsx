@@ -12,7 +12,6 @@ import { Textarea } from '@/components/ui/textarea'
 import { ArrowLeft, Upload, Save, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth-context'
-import { FileUpload } from '@/components/ui/file-upload'
 import ProtectedRoute from '@/components/protected-route'
 import { toast } from 'sonner'
 
@@ -77,6 +76,8 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
   const [images, setImages] = useState<File[]>([])
   const [existingImages, setExistingImages] = useState<string[]>([])
   const [imagePreviews, setImagePreviews] = useState<string[]>([])
+  const [uploadedImageUrls, setUploadedImageUrls] = useState<string[]>([])
+  const [uploading, setUploading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -139,23 +140,56 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
     })
   }
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle image upload to Cloudinary
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
     if (files.length === 0) return
 
-    // Limit total images to 5 (existing + new)
-    const totalImagesCount = existingImages.length + images.length + files.length
+    // Limit total images to 5 (existing + uploaded + new)
+    const totalImagesCount = existingImages.length + uploadedImageUrls.length + files.length
     if (totalImagesCount > 5) {
       toast.error('Maximum 5 images allowed')
       return
     }
 
-    const newImages = [...images, ...files]
-    setImages(newImages)
+    setUploading(true)
+    setError('')
 
-    // Create previews for new images
-    const newPreviews = files.map(file => URL.createObjectURL(file))
-    setImagePreviews([...imagePreviews, ...newPreviews])
+    try {
+      const uploadPromises = files.map(async (file) => {
+        const formData = new FormData()
+        formData.append('file', file)
+
+        const response = await fetch('/api/upload', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          },
+          body: formData
+        })
+
+        if (!response.ok) {
+          throw new Error('Upload failed')
+        }
+
+        const data = await response.json()
+        return data.url
+      })
+
+      const newUploadedUrls = await Promise.all(uploadPromises)
+      setUploadedImageUrls([...uploadedImageUrls, ...newUploadedUrls])
+      
+      // Create previews and track files
+      const newPreviews = files.map(file => URL.createObjectURL(file))
+      setImagePreviews([...imagePreviews, ...newPreviews])
+      setImages([...images, ...files])
+
+    } catch (error) {
+      console.error('Upload error:', error)
+      setError('Failed to upload images. Please try again.')
+    } finally {
+      setUploading(false)
+    }
   }
 
   const removeExistingImage = (index: number) => {
@@ -166,21 +200,14 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
   const removeNewImage = (index: number) => {
     const newImages = images.filter((_, i) => i !== index)
     const newPreviews = imagePreviews.filter((_, i) => i !== index)
+    const newUploadedUrls = uploadedImageUrls.filter((_, i) => i !== index)
     
     // Clean up removed preview
     URL.revokeObjectURL(imagePreviews[index])
     
     setImages(newImages)
     setImagePreviews(newPreviews)
-  }
-
-  const convertImageToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(reader.result as string)
-      reader.onerror = reject
-      reader.readAsDataURL(file)
-    })
+    setUploadedImageUrls(newUploadedUrls)
   }
 
   const handleSave = async (e: React.FormEvent) => {
@@ -197,24 +224,8 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
     try {
       const token = localStorage.getItem('token')
       
-      // Convert new images to base64
-      let newImageUrls: string[] = []
-      if (images.length > 0) {
-        try {
-          const base64Images = await Promise.all(
-            images.map(image => convertImageToBase64(image))
-          )
-          newImageUrls = base64Images
-        } catch (imageError) {
-          console.error('Error converting images:', imageError)
-          setError('Error processing images. Please try again.')
-          setSaving(false)
-          return
-        }
-      }
-
-      // Combine existing and new images
-      const allImages = [...existingImages, ...newImageUrls]
+      // Combine existing images and newly uploaded images
+      const allImages = [...existingImages, ...uploadedImageUrls]
       
       const response = await fetch(`/api/marketplace/${listing.id}`, {
         method: 'PUT',
@@ -375,19 +386,57 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
                       )}
 
                       {/* New Image Upload */}
-                      <FileUpload
-                        title="Add more product images"
-                        description="Upload additional high-quality photos of your product"
-                        multiple={true}
-                        maxFiles={5 - (listing?.images?.length || 0)}
-                        maxSize={5}
-                        recommendedSize="2MB per image"
-                        files={images}
-                        existingImages={listing?.images || []}
-                        onFilesChange={setImages}
-                        onRemoveExisting={removeExistingImage}
-                        allowedTypes={['image/jpeg', 'image/jpg', 'image/png', 'image/webp']}
-                      />
+                      <div className="border-2 border-dashed border-gray-300 rounded-lg p-6">
+                        <input
+                          id="images"
+                          type="file"
+                          multiple
+                          accept="image/jpeg,image/jpg,image/png,image/webp"
+                          onChange={handleImageUpload}
+                          className="hidden"
+                        />
+                        <div className="text-center">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => document.getElementById('images')?.click()}
+                            disabled={uploading || (existingImages.length + uploadedImageUrls.length) >= 5}
+                            className="mb-4"
+                          >
+                            {uploading ? 'Uploading...' : 'Add More Images'}
+                          </Button>
+                          <p className="text-sm text-gray-500">
+                            Upload up to {5 - existingImages.length} more images (max 5MB each). Supports JPEG, PNG, WebP
+                          </p>
+                        </div>
+                        
+                        {/* New Image Previews */}
+                        {imagePreviews.length > 0 && (
+                          <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-4">
+                            {imagePreviews.map((preview, index) => (
+                              <div key={index} className="relative">
+                                <img
+                                  src={preview}
+                                  alt={`Preview ${index + 1}`}
+                                  className="w-full h-32 object-cover rounded-lg"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => removeNewImage(index)}
+                                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm hover:bg-red-600"
+                                >
+                                  ×
+                                </button>
+                                {uploadedImageUrls[index] && (
+                                  <div className="absolute bottom-2 right-2 bg-green-500 text-white rounded-full w-6 h-6 flex items-center justify-center">
+                                    ✓
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     <div className="grid gap-4 md:grid-cols-2">
