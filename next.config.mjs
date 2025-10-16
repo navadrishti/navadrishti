@@ -20,9 +20,9 @@ const nextConfig = {
   },
   // Enable React strict mode for better compatibility
   reactStrictMode: true,
-  // Optimize for production
+  // Optimize for production - disable experimental features that cause build issues
   experimental: {
-    optimizeCss: true,
+    // optimizeCss: true, // Disabled due to critters module error
   },
   // Remove console logs only in production
   compiler: {
