@@ -158,6 +158,17 @@ function ServiceRequestsContent() {
   useEffect(() => {
     fetchServiceRequests();
   }, [fetchServiceRequests]);
+
+  // Auto-refresh for volunteering tab to check for status updates
+  useEffect(() => {
+    if (currentView === 'volunteering' && canVolunteer) {
+      const interval = setInterval(() => {
+        fetchServiceRequests();
+      }, 30000); // Refresh every 30 seconds
+
+      return () => clearInterval(interval);
+    }
+  }, [currentView, canVolunteer, fetchServiceRequests]);
   
   const handleTabChange = useCallback((value: string) => {
     setCurrentView(value);
@@ -565,6 +576,27 @@ function ServiceRequestsContent() {
           
           <TabsContent value="volunteering" className="mt-0">
             <div className="min-h-[400px]">
+              {/* Refresh button for volunteering tab */}
+              {canVolunteer && (
+                <div className="mb-4 flex justify-between items-center">
+                  <p className="text-sm text-muted-foreground">
+                    Your volunteer applications and their current status
+                  </p>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => fetchServiceRequests()}
+                    disabled={loading}
+                    className="gap-1"
+                  >
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Refresh
+                  </Button>
+                </div>
+              )}
+              
               {canVolunteer && filteredRequests.length === 0 ? (
                 <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center">
                   <div className="mb-4 rounded-full bg-muted p-3">
