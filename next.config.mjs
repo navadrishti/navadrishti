@@ -36,12 +36,6 @@ const nextConfig = {
     CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME,
     CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY,
   },
-  // Add API configuration for file uploads
-  api: {
-    bodyParser: {
-      sizeLimit: '10mb', // Increase file upload limit
-    },
-  },
   // Disable source maps in production
   productionBrowserSourceMaps: false,
   // Fix process and other Node.js polyfills

@@ -30,14 +30,10 @@ export async function GET(request: NextRequest) {
     const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '10') || 10));
     const offset = (page - 1) * limit;
 
-    // Build Supabase query based on filter type
+    // Build Supabase query based on filter type (simplified to avoid FK issues)
     let ordersQuery = supabase
       .from('orders')
-      .select(`
-        *,
-        buyer:users!orders_buyer_id_fkey(name, email),
-        seller:users!orders_seller_id_fkey(name, email)
-      `)
+      .select('*')
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
