@@ -19,6 +19,15 @@ interface JWTPayload {
 
 export async function POST(request: NextRequest) {
   try {
+    // Validate Cloudinary configuration
+    if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+      console.error('Missing Cloudinary environment variables');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
+    }
+
     // Check authentication
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -26,7 +35,13 @@ export async function POST(request: NextRequest) {
     }
 
     const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
+    let decoded: JWTPayload;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
+    } catch (jwtError) {
+      console.error('JWT verification failed:', jwtError);
+      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+    }
     const { id: userId } = decoded;
 
     // Get the uploaded file
@@ -37,9 +52,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
-    // Check file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      return NextResponse.json({ error: 'File too large. Maximum size is 5MB.' }, { status: 400 });
+    // Check file size (max 10MB - increased from 5MB)
+    if (file.size > 10 * 1024 * 1024) {
+      return NextResponse.json({ error: 'File too large. Maximum size is 10MB.' }, { status: 413 });
     }
 
     // Check file type
@@ -85,9 +100,31 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Upload error:', error);
+    
+    // Provide more detailed error messages
+    let errorMessage = 'Failed to upload image';
+    let statusCode = 500;
+    
+    if (error instanceof Error) {
+      if (error.message.includes('Invalid token')) {
+        errorMessage = 'Authentication failed';
+        statusCode = 401;
+      } else if (error.message.includes('File too large')) {
+        errorMessage = 'File size exceeds limit';
+        statusCode = 413;
+      } else if (error.message.includes('Cloudinary')) {
+        errorMessage = 'Image processing failed';
+        statusCode = 502;
+      }
+    }
+    
     return NextResponse.json(
-      { error: 'Failed to upload image' },
-      { status: 500 }
+      { 
+        success: false,
+        error: errorMessage,
+        details: process.env.NODE_ENV === 'development' ? error instanceof Error ? error.message : 'Unknown error' : undefined
+      },
+      { status: statusCode }
     );
   }
 }

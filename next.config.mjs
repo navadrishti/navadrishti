@@ -33,6 +33,14 @@ const nextConfig = {
   // Ensure environment variables are available
   env: {
     JWT_SECRET: process.env.JWT_SECRET,
+    CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME,
+    CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY,
+  },
+  // Add API configuration for file uploads
+  api: {
+    bodyParser: {
+      sizeLimit: '10mb', // Increase file upload limit
+    },
   },
   // Disable source maps in production
   productionBrowserSourceMaps: false,
