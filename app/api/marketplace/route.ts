@@ -139,13 +139,12 @@ export async function POST(request: NextRequest) {
         quantity,
         condition_type,
         location,
-        images
+        images: images?.length || 0
       });
 
       // Insert new marketplace item using Supabase helpers
       const itemData = {
         seller_id: userId,
-        seller_type: userType,
         title: title || '',
         description: description || '',
         category: category || '',
@@ -153,12 +152,22 @@ export async function POST(request: NextRequest) {
         price: price || 0,
         quantity: quantity || 1,
         condition_type: condition_type || 'new',
+        item_type: 'single', // Default to single item
         location: location || null,
         images: JSON.stringify(images || []),
-        status: 'active'
+        status: 'active',
+        is_negotiable: true,
+        weight_kg: 1.00,
+        dimensions_cm: JSON.stringify({}),
+        rating_average: 0.0,
+        rating_count: 0
       };
 
+      console.log('Final itemData to insert:', itemData);
+
       const result = await db.marketplaceItems.create(itemData);
+
+      console.log('Insert result:', result);
 
       return NextResponse.json({
         success: true,
@@ -235,8 +244,16 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Error processing marketplace request:', error);
+    
+    // Return more specific error information
+    const errorMessage = error instanceof Error ? error.message : 'Failed to process marketplace request';
+    
     return NextResponse.json(
-      { error: 'Failed to process marketplace request' },
+      { 
+        success: false, 
+        error: errorMessage,
+        details: error instanceof Error ? error.stack : undefined
+      },
       { status: 500 }
     );
   }

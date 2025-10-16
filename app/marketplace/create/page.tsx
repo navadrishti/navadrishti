@@ -111,7 +111,9 @@ export default function CreateListingPage() {
         imagePreviews.forEach(preview => URL.revokeObjectURL(preview));
         router.push('/marketplace');
       } else {
-        setError(data.message || 'Failed to create listing');
+        const errorMsg = data.error || data.message || 'Failed to create listing';
+        console.error('API Error:', data);
+        setError(errorMsg);
       }
     } catch (err) {
       setError('Error creating listing');
