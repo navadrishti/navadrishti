@@ -9,7 +9,6 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { FileUpload } from '@/components/ui/file-upload';
 import { HeartHandshake } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -99,7 +98,7 @@ export default function IndividualRegister() {
           skills: formData.skills.split(',').map((skill: string) => skill.trim()),
           experience: formData.experience,
           education: formData.education,
-          portfolio_files: portfolioFiles.map(file => file.name) // In production, you'd upload these files
+          portfolio_files: portfolioFiles.map(file => file.name) // Files stored temporarily, upload after registration
         }
       };    // Call signup function from auth context
     await signup(userData);
@@ -223,18 +222,36 @@ export default function IndividualRegister() {
             
             <div className="space-y-2">
               <Label>Portfolio (Optional)</Label>
-              <FileUpload
-                title="Upload your work samples"
-                description="Share examples of your work to strengthen your profile (optional)"
-                multiple={true}
-                maxFiles={5}
-                maxSize={3}
-                recommendedSize="2MB per file recommended"
-                files={portfolioFiles}
-                onFilesChange={handlePortfolioUpload}
-                allowedTypes={['image/jpeg', 'image/jpg', 'image/png', 'image/webp']}
-                dragText="Add work samples, project photos, or certificates"
-              />
+              <div className="flex flex-col space-y-2">
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                  onChange={(e) => {
+                    if (e.target.files) {
+                      handlePortfolioUpload(Array.from(e.target.files));
+                    }
+                  }}
+                  disabled={loading}
+                />
+                <p className="text-sm text-gray-600">Share examples of your work to strengthen your profile (optional)</p>
+                {portfolioFiles.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-sm text-green-600 mb-2">✓ {portfolioFiles.length} file{portfolioFiles.length > 1 ? 's' : ''} selected</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      {portfolioFiles.map((file, index) => (
+                        <img
+                          key={index}
+                          src={URL.createObjectURL(file)}
+                          alt={`Portfolio ${index + 1}`}
+                          className="h-20 w-20 object-cover rounded-lg"
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </CardContent>
           

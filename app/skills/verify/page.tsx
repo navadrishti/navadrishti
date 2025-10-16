@@ -11,7 +11,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Camera, Upload, CheckCircle, Clock, AlertCircle, FileText, User, Phone, CreditCard, Users, Briefcase, Award, Save, Send, UserCheck, FileCheck } from "lucide-react"
 import { Header } from "@/components/header"
-import { FileUpload } from "@/components/ui/file-upload"
 import { useAuth } from '@/lib/auth-context'
 import { toast } from 'sonner'
 import ProtectedRoute from '@/components/protected-route'
@@ -32,7 +31,10 @@ function VerifyPeopleContent() {
   });
   
   const [profilePicture, setProfilePicture] = useState<File | null>(null);
+  const [profilePictureUrl, setProfilePictureUrl] = useState<string>('');
   const [workPhotos, setWorkPhotos] = useState<File[]>([]);
+  const [workPhotoUrls, setWorkPhotoUrls] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
 
@@ -96,6 +98,70 @@ function VerifyPeopleContent() {
     }
   };
 
+  const uploadToCloudinary = async (file: File): Promise<string> => {
+    const formData = new FormData()
+    formData.append('file', file)
+    
+    const response = await fetch('/api/upload', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      body: formData
+    })
+    
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error || `Failed to upload ${file.name}`)
+    }
+    
+    const result = await response.json()
+    // The API returns { success: true, data: { url: ... } }
+    return result.data?.url || result.url
+  }
+
+  const handleProfilePictureUpload = async (files: File[]) => {
+    if (files.length === 0) {
+      setProfilePicture(null);
+      setProfilePictureUrl('');
+      return;
+    }
+
+    const file = files[0];
+    setProfilePicture(file);
+    
+    setUploading(true);
+    try {
+      const cloudinaryUrl = await uploadToCloudinary(file);
+      setProfilePictureUrl(cloudinaryUrl);
+      toast.success('Profile picture uploaded successfully!');
+    } catch (error) {
+      console.error('Error uploading profile picture:', error);
+      toast.error('Failed to upload profile picture');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleWorkPhotosUpload = async (files: File[]) => {
+    setWorkPhotos(files);
+    
+    if (files.length > 0) {
+      setUploading(true);
+      try {
+        const uploadPromises = Array.from(files).map(file => uploadToCloudinary(file));
+        const urls = await Promise.all(uploadPromises);
+        setWorkPhotoUrls(urls);
+        toast.success(`${files.length} work photo${files.length > 1 ? 's' : ''} uploaded successfully!`);
+      } catch (error) {
+        console.error('Error uploading work photos:', error);
+        toast.error('Failed to upload work photos');
+      } finally {
+        setUploading(false);
+      }
+    }
+  };
+
   // Handle form input changes
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -133,8 +199,8 @@ function VerifyPeopleContent() {
         },
         body: JSON.stringify({
           ...formData,
-          profilePicture: profilePicture?.name || null,
-          workPhotos: workPhotos.map(file => file.name),
+          profilePicture: profilePictureUrl || null,
+          workPhotos: workPhotoUrls,
           isDraft: true
         })
       });
@@ -184,8 +250,8 @@ function VerifyPeopleContent() {
         },
         body: JSON.stringify({
           ...formData,
-          profilePicture: profilePicture?.name || null,
-          workPhotos: workPhotos.map(file => file.name),
+          profilePicture: profilePictureUrl || null,
+          workPhotos: workPhotoUrls,
           isDraft: false
         })
       });
@@ -218,6 +284,8 @@ function VerifyPeopleContent() {
     });
     setProfilePicture(null);
     setWorkPhotos([]);
+    setProfilePictureUrl('');
+    setWorkPhotoUrls([]);
   };
 
   // Check if user is NGO
@@ -335,16 +403,30 @@ function VerifyPeopleContent() {
 
                 <div>
                   <Label htmlFor="profilePicture">Profile Picture *</Label>
-                  <FileUpload
-                    title="Upload profile picture"
-                    description="A clear photo of the person for verification"
-                    variant="profile"
-                    maxSize={2}
-                    recommendedSize="500KB recommended"
-                    files={profilePicture ? [profilePicture] : []}
-                    onFilesChange={(files) => setProfilePicture(files[0] || null)}
-                    allowedTypes={['image/jpeg', 'image/jpg', 'image/png', 'image/webp']}
-                  />
+                  <div className="flex flex-col space-y-2">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                      onChange={(e) => {
+                        if (e.target.files) {
+                          handleProfilePictureUpload(Array.from(e.target.files));
+                        }
+                      }}
+                      disabled={uploading}
+                    />
+                    {uploading && <p className="text-sm text-blue-600">Uploading...</p>}
+                    {profilePicture && (
+                      <div className="mt-2">
+                        <p className="text-sm text-green-600 mb-2">✓ {profilePicture.name}</p>
+                        <img
+                          src={URL.createObjectURL(profilePicture)}
+                          alt="Profile preview"
+                          className="h-20 w-20 object-cover rounded-lg"
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div>
@@ -384,17 +466,36 @@ function VerifyPeopleContent() {
 
                 <div>
                   <Label htmlFor="workPhotos">Work Portfolio/Project Photos (Optional)</Label>
-                  <FileUpload
-                    title="Upload work samples"
-                    description="Photos showcasing previous work or skills demonstration"
-                    multiple={true}
-                    maxFiles={5}
-                    maxSize={3}
-                    recommendedSize="1MB per image"
-                    files={workPhotos}
-                    onFilesChange={setWorkPhotos}
-                    allowedTypes={['image/jpeg', 'image/jpg', 'image/png', 'image/webp']}
-                  />
+                  <div className="flex flex-col space-y-2">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                      onChange={(e) => {
+                        if (e.target.files) {
+                          handleWorkPhotosUpload(Array.from(e.target.files));
+                        }
+                      }}
+                      disabled={uploading}
+                    />
+                    {uploading && <p className="text-sm text-blue-600">Uploading...</p>}
+                    {workPhotos.length > 0 && (
+                      <div className="mt-2">
+                        <p className="text-sm text-green-600 mb-2">✓ {workPhotos.length} file{workPhotos.length > 1 ? 's' : ''} selected</p>
+                        <div className="grid grid-cols-3 gap-2">
+                          {workPhotos.map((file, index) => (
+                            <img
+                              key={index}
+                              src={URL.createObjectURL(file)}
+                              alt={`Work photo ${index + 1}`}
+                              className="h-20 w-20 object-cover rounded-lg"
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="flex gap-4 pt-4">
