@@ -72,21 +72,9 @@ export default function CreateListingPage() {
     try {
       const token = localStorage.getItem('token');
       
-      // Convert images to base64 for now (in production, you'd upload to cloud storage)
+      // Temporarily skip image upload to avoid 413 errors
+      // TODO: Implement proper image upload with cloud storage
       let imageUrls: string[] = [];
-      if (images.length > 0) {
-        try {
-          const base64Images = await Promise.all(
-            images.map(image => convertImageToBase64(image))
-          );
-          imageUrls = base64Images;
-        } catch (imageError) {
-          console.error('Error converting images:', imageError);
-          setError('Error processing images. Please try again.');
-          setLoading(false);
-          return;
-        }
-      }
       
       const response = await fetch('/api/marketplace', {
         method: 'POST',
@@ -100,11 +88,24 @@ export default function CreateListingPage() {
           price: parseFloat(formData.price),
           quantity: parseInt(formData.quantity.toString()),
           tags: formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag),
-          images: imageUrls
+          images: imageUrls // Empty for now
         })
       });
 
-      const data = await response.json();
+      console.log('Response status:', response.status);
+      console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+
+      let data;
+      try {
+        const responseText = await response.text();
+        console.log('Raw response:', responseText);
+        data = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('JSON parse error:', parseError);
+        setError(`Server returned invalid response. Status: ${response.status}`);
+        setLoading(false);
+        return;
+      }
 
       if (data.success) {
         // Clean up image previews
