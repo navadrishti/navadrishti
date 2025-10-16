@@ -280,6 +280,34 @@ export const db = {
       
       if (error) throw error;
       return data;
+    },
+
+    async update(id: string | number, offerData: any) {
+      const { data, error } = await supabase
+        .from('service_offers')
+        .update(offerData)
+        .eq('id', id)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+
+    async delete(id: string | number, ngoId?: number) {
+      let query = supabase
+        .from('service_offers')
+        .delete()
+        .eq('id', id);
+      
+      if (ngoId) {
+        query = query.eq('ngo_id', ngoId);
+      }
+      
+      const { error } = await query;
+      
+      if (error) throw error;
+      return true;
     }
   },
 

@@ -159,7 +159,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Only NGOs can delete service requests' }, { status: 403 });
     }
 
-    const requestId = id;
+    const requestId = parseInt(id);
 
     // First, verify that this request belongs to the authenticated NGO and delete it
     const existingRequest = await db.serviceRequests.getById(requestId);

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { executeQuery } from '@/lib/db';
+import { db } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 
@@ -20,25 +20,15 @@ export async function GET(
     const { id } = await params;
     const offerId = parseInt(id);
 
-    // Fetch the service offer (publicly accessible)
-    const serviceOffer = await executeQuery({
-      query: `
-        SELECT so.*, u.name as ngo_name, u.email as ngo_email
-        FROM service_offers so
-        JOIN users u ON so.ngo_id = u.id
-        WHERE so.id = ?
-      `,
-      values: [offerId]
-    }) as any[];
+    // Fetch the service offer using Supabase helper
+    const serviceOffer = await db.serviceOffers.getById(offerId);
 
-    if (serviceOffer.length === 0) {
+    if (!serviceOffer) {
       return NextResponse.json({ error: 'Service offer not found' }, { status: 404 });
     }
 
-    const offer_data = serviceOffer[0];
-
     // Return the service offer data (publicly accessible)
-    return NextResponse.json(offer_data);
+    return NextResponse.json(serviceOffer);
 
   } catch (error) {
     console.error('Error fetching service offer:', error);
@@ -93,16 +83,13 @@ export async function PUT(
     }
 
     // First, verify that this offer belongs to the authenticated NGO
-    const existingOffer = await executeQuery({
-      query: `SELECT ngo_id FROM service_offers WHERE id = ?`,
-      values: [offerId]
-    }) as any[];
+    const existingOffer = await db.serviceOffers.getById(offerId);
 
-    if (existingOffer.length === 0) {
+    if (!existingOffer) {
       return NextResponse.json({ error: 'Service offer not found' }, { status: 404 });
     }
 
-    if (existingOffer[0].ngo_id !== userId) {
+    if (existingOffer.ngo_id !== userId) {
       return NextResponse.json({ error: 'You can only update your own offers' }, { status: 403 });
     }
 
@@ -113,26 +100,19 @@ export async function PUT(
       contactInfo: contactInfo || 'email'
     };
 
-    // Update the service offer
-    await executeQuery({
-      query: `
-        UPDATE service_offers 
-        SET title = ?, description = ?, category = ?, location = ?,
-            price_type = ?, price_amount = ?, requirements = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ? AND ngo_id = ?
-      `,
-      values: [
-        title,
-        description,
-        category,
-        location,
-        priceType || 'free',
-        pricing || 0,
-        JSON.stringify(requirementsData),
-        offerId,
-        userId
-      ]
-    });
+    // Update the service offer using Supabase helper
+    const updateData = {
+      title,
+      description,
+      category,
+      location,
+      price_type: priceType || 'free',
+      price_amount: pricing || 0,
+      requirements: JSON.stringify(requirementsData),
+      updated_at: new Date().toISOString()
+    };
+
+    await db.serviceOffers.update(offerId, updateData);
 
     return NextResponse.json({
       success: true,
@@ -172,27 +152,21 @@ export async function DELETE(
       return NextResponse.json({ error: 'Only NGOs can delete service offers' }, { status: 403 });
     }
 
-    const offerId = id;
+    const offerId = parseInt(id);
 
     // First, verify that this offer belongs to the authenticated NGO
-    const existingOffer = await executeQuery({
-      query: `SELECT ngo_id FROM service_offers WHERE id = ?`,
-      values: [offerId]
-    }) as any[];
+    const existingOffer = await db.serviceOffers.getById(offerId);
 
-    if (existingOffer.length === 0) {
+    if (!existingOffer) {
       return NextResponse.json({ error: 'Service offer not found' }, { status: 404 });
     }
 
-    if (existingOffer[0].ngo_id !== userId) {
+    if (existingOffer.ngo_id !== userId) {
       return NextResponse.json({ error: 'You can only delete your own service offers' }, { status: 403 });
     }
 
-    // Delete the service offer
-    await executeQuery({
-      query: 'DELETE FROM service_offers WHERE id = ?',
-      values: [offerId]
-    });
+    // Delete the service offer using Supabase helper
+    await db.serviceOffers.delete(offerId, userId);
 
     return NextResponse.json({
       success: true,
