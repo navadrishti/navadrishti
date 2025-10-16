@@ -143,7 +143,10 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
         );
         toast({
           title: "Success",
-          description: `Volunteer ${newStatus === 'accepted' ? 'accepted' : 'rejected'} successfully`,
+          description: `Volunteer ${newStatus === 'accepted' ? 'accepted' : 
+                                  newStatus === 'rejected' ? 'rejected' : 
+                                  newStatus === 'completed' ? 'marked as completed' :
+                                  newStatus === 'active' ? 'activated' : 'updated'} successfully`,
         });
       } else {
         toast({

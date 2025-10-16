@@ -161,9 +161,45 @@ export async function GET(request: NextRequest) {
       return request;
     });
 
+    // Filter out completed requests from "All Requests" view
+    let finalRequests = processedRequests;
+    if (view === 'all') {
+      // For each request, check if it has reached its volunteer limit
+      const requestsWithVolunteerCount = await Promise.all(
+        processedRequests.map(async (request: any) => {
+          try {
+            const { data: acceptedVolunteers } = await supabase
+              .from('service_volunteers')
+              .select('id')
+              .eq('service_request_id', request.id)
+              .in('status', ['accepted', 'active', 'completed']);
+            
+            const acceptedCount = acceptedVolunteers?.length || 0;
+            const volunteerLimit = request.volunteer_limit || request.volunteers_needed || 1;
+            
+            return {
+              ...request,
+              accepted_volunteers_count: acceptedCount,
+              is_full: acceptedCount >= volunteerLimit
+            };
+          } catch (error) {
+            console.error('Error counting volunteers for request', request.id, error);
+            return {
+              ...request,
+              accepted_volunteers_count: 0,
+              is_full: false
+            };
+          }
+        })
+      );
+      
+      // Filter out requests that are full (unless user is viewing their own requests)
+      finalRequests = requestsWithVolunteerCount.filter((request: any) => !request.is_full);
+    }
+
     return NextResponse.json({
       success: true,
-      data: processedRequests
+      data: finalRequests
     });
 
   } catch (error) {
