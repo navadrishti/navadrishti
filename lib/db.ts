@@ -196,6 +196,9 @@ export const db = {
       if (filters.status) {
         query = query.eq('status', filters.status);
       }
+      if (filters.ngo_id) {
+        query = query.eq('ngo_id', filters.ngo_id);
+      }
       
       const { data, error } = await query.order('created_at', { ascending: false });
       
@@ -277,6 +280,9 @@ export const db = {
       }
       if (filters.status) {
         query = query.eq('status', filters.status);
+      }
+      if (filters.ngo_id) {
+        query = query.eq('ngo_id', filters.ngo_id);
       }
       
       const { data, error } = await query.order('created_at', { ascending: false });

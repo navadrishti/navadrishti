@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, executeQuery } from '@/lib/db';
+import { db } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 
@@ -25,16 +25,9 @@ export async function GET(
     const userId = url.searchParams.get('userId');
     
     if (userId) {
-      // Public request to check if user has applied
-      const userApplication = await executeQuery({
-        query: `SELECT sv.*, u.name as volunteer_name, u.email as volunteer_email
-                 FROM service_volunteers sv
-                 JOIN users u ON sv.volunteer_id = u.id
-                 WHERE sv.service_request_id = ? AND sv.volunteer_id = ?`,
-        values: [requestId, parseInt(userId)]
-      }) as any[];
-
-      return NextResponse.json(userApplication);
+      // Public request to check if user has applied - use Supabase helper
+      const userApplication = await db.serviceVolunteers.findExisting(requestId, parseInt(userId));
+      return NextResponse.json(userApplication ? [userApplication] : []);
     }
     
     // Get JWT token from Authorization header for NGO requests
@@ -53,33 +46,18 @@ export async function GET(
     }
 
     // First, verify that this request belongs to the authenticated NGO
-    const requestCheck = await executeQuery({
-      query: `SELECT ngo_id FROM service_requests WHERE id = ?`,
-      values: [requestId]
-    }) as any[];
+    const request_data = await db.serviceRequests.getById(requestId);
 
-    if (requestCheck.length === 0) {
+    if (!request_data) {
       return NextResponse.json({ error: 'Service request not found' }, { status: 404 });
     }
 
-    if (requestCheck[0].ngo_id !== ngoUserId) {
+    if (request_data.ngo_id !== ngoUserId) {
       return NextResponse.json({ error: 'You can only view applicants for your own requests' }, { status: 403 });
     }
 
-    // Fetch volunteers for this request
-    const volunteers = await executeQuery({
-      query: `
-        SELECT 
-          sv.*,
-          u.name as volunteer_name,
-          u.email as volunteer_email
-        FROM service_volunteers sv
-        JOIN users u ON sv.volunteer_id = u.id
-        WHERE sv.service_request_id = ?
-        ORDER BY sv.created_at DESC
-      `,
-      values: [requestId]
-    }) as any[];
+    // Fetch volunteers for this request using Supabase helper
+    const volunteers = await db.serviceVolunteers.getByRequestId(requestId);
 
     return NextResponse.json({
       success: true,
@@ -115,54 +93,33 @@ export async function POST(
 
     const requestId = parseInt(id);
 
-    // Check if the volunteer has already applied
-    const existingApplication = await executeQuery({
-      query: `SELECT id FROM service_volunteers 
-               WHERE service_request_id = ? AND volunteer_id = ?`,
-      values: [requestId, volunteer_id]
-    }) as any[];
+    // Check if the volunteer has already applied using Supabase helper
+    const existingApplication = await db.serviceVolunteers.findExisting(requestId, volunteer_id);
 
-    if (existingApplication.length > 0) {
+    if (existingApplication) {
       return NextResponse.json(
         { error: 'You have already applied for this service request' },
         { status: 400 }
       );
     }
 
-    // Insert the volunteer application
-    const result = await executeQuery({
-      query: `INSERT INTO service_volunteers 
-               (service_request_id, volunteer_id, volunteer_type, message, start_date, end_date, status) 
-               VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
-      values: [
-        requestId,
-        volunteer_id,
-        volunteer_type,
-        message,
-        start_date || null,
-        end_date || null
-      ]
-    }) as any;
+    // Insert the volunteer application using Supabase helper
+    const volunteerData = {
+      service_request_id: requestId,
+      volunteer_id: volunteer_id,
+      volunteer_type: volunteer_type,
+      message: message,
+      start_date: start_date || null,
+      end_date: end_date || null,
+      status: 'pending'
+    };
 
-    if (result && result.insertId) {
-      // Return the created application
-      const newApplication = await executeQuery({
-        query: `SELECT sv.*, u.name as volunteer_name, u.email as volunteer_email
-                 FROM service_volunteers sv
-                 JOIN users u ON sv.volunteer_id = u.id
-                 WHERE sv.id = ?`,
-        values: [result.insertId]
-      }) as any[];
+    const newApplication = await db.serviceVolunteers.create(volunteerData);
 
-      if (newApplication.length > 0) {
-        return NextResponse.json(newApplication[0], { status: 201 });
-      }
-    }
-
-    return NextResponse.json(
-      { error: 'Failed to create application' },
-      { status: 500 }
-    );
+    return NextResponse.json({
+      success: true,
+      data: newApplication
+    });
 
   } catch (error) {
     console.error('Error creating volunteer application:', error);

@@ -21,13 +21,38 @@ export async function GET(request: NextRequest) {
     const userId = searchParams.get('userId');
     const view = searchParams.get('view'); // 'all', 'my-requests', 'volunteering'
 
+    // For my-requests view, authenticate user
+    let authenticatedUserId = null;
+    if (view === 'my-requests') {
+      const authHeader = request.headers.get('authorization');
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return NextResponse.json({ error: 'Authentication required for my-requests' }, { status: 401 });
+      }
+
+      const token = authHeader.substring(7);
+      try {
+        const payload = jwt.verify(token, JWT_SECRET) as JWTPayload;
+        authenticatedUserId = payload.id;
+        
+        // Only NGOs can have requests
+        if (payload.user_type !== 'ngo') {
+          return NextResponse.json({ 
+            success: true, 
+            data: [] // Return empty array for non-NGOs
+          });
+        }
+      } catch {
+        return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+      }
+    }
+
     // Use Supabase database helpers
     const filters: any = {};
     if (category && category !== 'All Categories') {
       filters.category = category;
     }
-    if (view === 'my-requests' && userId) {
-      filters.ngo_id = parseInt(userId);
+    if (view === 'my-requests' && authenticatedUserId) {
+      filters.ngo_id = authenticatedUserId;
     }
 
     console.log('Service requests filters:', filters);
