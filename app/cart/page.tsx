@@ -298,33 +298,39 @@ export default function CartPage() {
             <div className="lg:col-span-2 space-y-4">
               {cart.map((item) => (
                 <Card key={item.id} className="overflow-hidden">
-                  <CardContent className="p-6">
-                    <div className="flex gap-4">
+                  <CardContent className="p-4 sm:p-6">
+                    <div className="flex flex-col sm:flex-row gap-4">
                       {/* Product Image - Clickable */}
-                      <div className="flex-shrink-0">
+                      <div className="flex-shrink-0 self-center sm:self-start">
                         <img
-                          src={item.images?.[0] || '/placeholder-image.jpg'}
+                          src={item.images?.[0] || '/placeholder-image.svg'}
                           alt={item.title}
-                          className="w-24 h-24 object-cover rounded-lg border cursor-pointer hover:opacity-75 transition-opacity"
+                          className="w-20 h-20 sm:w-24 sm:h-24 object-cover rounded-lg border cursor-pointer hover:opacity-75 transition-opacity"
                           onClick={() => router.push(`/marketplace/product/${item.marketplace_item_id}`)}
                         />
                       </div>
 
                       {/* Product Details */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex justify-between items-start mb-2">
-                          <div>
+                      <div className="flex-1 min-w-0 space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
+                          <div className="space-y-1">
                             <h3 
-                              className="font-semibold text-lg text-gray-900 truncate cursor-pointer hover:text-blue-600 transition-colors"
+                              className="font-semibold text-lg text-gray-900 cursor-pointer hover:text-blue-600 transition-colors line-clamp-2"
                               onClick={() => router.push(`/marketplace/product/${item.marketplace_item_id}`)}
                             >
                               {item.title}
                             </h3>
-                            <p className="text-sm text-gray-600">
-                              Sold by {item.seller_name}
-                            </p>
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
+                              <span className="text-gray-600">Sold by</span>
+                              <button
+                                className="text-blue-600 hover:text-blue-700 font-medium text-left"
+                                onClick={() => item.seller_id && router.push(`/profile/${item.seller_id}`)}
+                              >
+                                {item.seller_name}
+                              </button>
+                            </div>
                             {item.category && (
-                              <Badge variant="secondary" className="mt-1">
+                              <Badge variant="secondary" className="w-fit">
                                 {item.category}
                               </Badge>
                             )}
@@ -333,34 +339,39 @@ export default function CartPage() {
                             variant="ghost"
                             size="sm"
                             onClick={() => handleRemoveItem(item.id)}
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50 self-start"
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
 
                         {/* Quantity & Price */}
-                        <div className="flex items-center justify-between">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                           <div className="flex items-center gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleQuantityChange(item.id, item.quantity, -1)}
-                              disabled={item.quantity <= 1}
-                            >
-                              <Minus className="h-3 w-3" />
-                            </Button>
-                            <span className="w-12 text-center font-medium">
-                              {item.quantity}
-                            </span>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleQuantityChange(item.id, item.quantity, 1)}
-                              disabled={item.quantity >= item.max_quantity}
-                            >
-                              <Plus className="h-3 w-3" />
-                            </Button>
+                            <span className="text-sm font-medium">Qty:</span>
+                            <div className="flex items-center">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleQuantityChange(item.id, item.quantity, -1)}
+                                disabled={item.quantity <= 1}
+                                className="h-8 w-8 p-0"
+                              >
+                                <Minus className="h-3 w-3" />
+                              </Button>
+                              <span className="w-12 text-center font-medium text-sm">
+                                {item.quantity}
+                              </span>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleQuantityChange(item.id, item.quantity, 1)}
+                                disabled={item.quantity >= item.max_quantity}
+                                className="h-8 w-8 p-0"
+                              >
+                                <Plus className="h-3 w-3" />
+                              </Button>
+                            </div>
                           </div>
                           <div className="text-right">
                             <p className="text-lg font-semibold text-gray-900">

@@ -14,6 +14,7 @@ interface CartItem {
   category: string
   brand?: string
   seller_name: string
+  seller_id: number | null
   item_total: number
   variant_selection?: Record<string, any>
   max_quantity: number

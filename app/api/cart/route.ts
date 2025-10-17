@@ -44,13 +44,14 @@ export async function GET(request: NextRequest) {
       price: parseFloat(item.marketplace_item?.price || '0'),
       max_quantity: 1, // Will be fetched from marketplace_item if needed
       item_total: parseFloat(item.marketplace_item?.price || '0') * item.quantity,
-      seller_name: 'Unknown Seller', // Can be enhanced later
-      category: 'General', // Can be enhanced later
+      seller_name: item.marketplace_item?.seller?.name || 'Unknown Seller',
+      seller_id: item.marketplace_item?.seller_id || null,
+      category: item.marketplace_item?.category || 'General',
       images: (() => {
         try {
-          return item.marketplace_item?.images ? JSON.parse(item.marketplace_item.images) : ['/placeholder-image.jpg'];
+          return item.marketplace_item?.images ? JSON.parse(item.marketplace_item.images) : ['/placeholder-image.svg'];
         } catch {
-          return ['/placeholder-image.jpg'];
+          return ['/placeholder-image.svg'];
         }
       })(),
       variant_selection: (() => {
@@ -173,7 +174,9 @@ export async function POST(request: NextRequest) {
 // DELETE - Remove item from cart
 export async function DELETE(request: NextRequest) {
   try {
-    const { marketplace_item_id } = await request.json();
+    // Get cart_id from query parameters
+    const url = new URL(request.url);
+    const cartId = url.searchParams.get('cart_id');
 
     // Get authenticated user
     const authHeader = request.headers.get('authorization');
@@ -191,12 +194,12 @@ export async function DELETE(request: NextRequest) {
     const userId = payload.id;
 
     // Validate input
-    if (!marketplace_item_id) {
-      return Response.json({ error: 'Invalid marketplace_item_id' }, { status: 400 });
+    if (!cartId) {
+      return Response.json({ error: 'cart_id parameter is required' }, { status: 400 });
     }
 
-    // Remove item from cart
-    await db.cart.remove(userId, marketplace_item_id);
+    // Remove item from cart by cart ID
+    await db.cart.removeById(parseInt(cartId), userId);
 
     // Get updated cart items for count
     const cartItems = await db.cart.getByUserId(userId);

@@ -68,6 +68,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       price: parseFloat(product.price) || 0,
       compare_price: product.compare_price ? parseFloat(product.compare_price) : null,
       // Add seller information
+      seller_id: product.seller_id,
       seller_name: product.seller_name || 'Unknown Seller',
       seller_email: product.seller_email,
       seller_type: product.seller_type,

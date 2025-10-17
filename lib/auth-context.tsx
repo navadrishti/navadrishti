@@ -9,6 +9,7 @@ export interface User {
   email: string;
   name: string;
   user_type: 'individual' | 'ngo' | 'company';
+  profile_image?: string;
   profile?: Record<string, any>;
 }
 
@@ -21,6 +22,7 @@ interface AuthContextType {
   signup: (userData: SignupData) => Promise<void>;
   logout: () => void;
   clearError: () => void;
+  updateUser: (userData: Partial<User>) => void;
 }
 
 interface SignupData {
@@ -188,6 +190,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setError(null);
   };
 
+  // Update user data
+  const updateUser = (userData: Partial<User>) => {
+    if (user) {
+      const updatedUser = { ...user, ...userData };
+      setUser(updatedUser);
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -198,7 +209,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
         login,
         signup,
         logout,
-        clearError
+        clearError,
+        updateUser
       }}
     >
       {children}

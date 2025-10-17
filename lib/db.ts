@@ -417,7 +417,15 @@ export const db = {
         .from('cart')
         .select(`
           *,
-          marketplace_item:marketplace_items(title, price, images, status)
+          marketplace_item:marketplace_items(
+            title, 
+            price, 
+            images, 
+            status, 
+            category,
+            seller_id,
+            seller:users!seller_id(id, name, email, user_type)
+          )
         `)
         .eq('user_id', userId);
       
@@ -442,6 +450,17 @@ export const db = {
         .delete()
         .eq('user_id', userId)
         .eq('marketplace_item_id', itemId);
+      
+      if (error) throw error;
+      return true;
+    },
+
+    async removeById(cartId: number, userId: number) {
+      const { error } = await supabase
+        .from('cart')
+        .delete()
+        .eq('id', cartId)
+        .eq('user_id', userId); // Security check to ensure user owns this cart item
       
       if (error) throw error;
       return true;

@@ -41,7 +41,13 @@ export default function CreateListingPage() {
     quantity: 1,
     location: '',
     tags: '',
-    condition_type: 'new'
+    condition_type: 'new',
+    brand: '',
+    weight_kg: '',
+    dimensions_length: '',
+    dimensions_width: '',
+    dimensions_height: '',
+    specifications: {} as Record<string, string>
   });
   const [images, setImages] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
@@ -49,6 +55,21 @@ export default function CreateListingPage() {
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [customSpecs, setCustomSpecs] = useState<Array<{key: string, value: string}>>([]);
+
+  const addCustomSpec = () => {
+    setCustomSpecs([...customSpecs, { key: '', value: '' }]);
+  };
+
+  const updateCustomSpec = (index: number, field: 'key' | 'value', value: string) => {
+    const updated = [...customSpecs];
+    updated[index][field] = value;
+    setCustomSpecs(updated);
+  };
+
+  const removeCustomSpec = (index: number) => {
+    setCustomSpecs(customSpecs.filter((_, i) => i !== index));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,6 +88,21 @@ export default function CreateListingPage() {
       // Use the uploaded image URLs
       const imageUrls = uploadedImageUrls;
       
+      // Build specifications object
+      const specifications = customSpecs.reduce((acc, spec) => {
+        if (spec.key.trim() && spec.value.trim()) {
+          acc[spec.key.trim()] = spec.value.trim();
+        }
+        return acc;
+      }, {} as Record<string, string>);
+
+      // Build dimensions object
+      const dimensions = {
+        length: formData.dimensions_length ? parseFloat(formData.dimensions_length) : null,
+        width: formData.dimensions_width ? parseFloat(formData.dimensions_width) : null,
+        height: formData.dimensions_height ? parseFloat(formData.dimensions_height) : null
+      };
+      
       const response = await fetch('/api/marketplace', {
         method: 'POST',
         headers: {
@@ -78,6 +114,9 @@ export default function CreateListingPage() {
           ...formData,
           price: parseFloat(formData.price),
           quantity: parseInt(formData.quantity.toString()),
+          weight_kg: formData.weight_kg ? parseFloat(formData.weight_kg) : null,
+          dimensions_cm: Object.values(dimensions).some(v => v !== null) ? dimensions : null,
+          specifications: Object.keys(specifications).length > 0 ? specifications : null,
           tags: formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag),
           images: imageUrls
         })
@@ -405,6 +444,127 @@ export default function CreateListingPage() {
                     <p className="text-sm text-muted-foreground mt-1">
                       Separate tags with commas
                     </p>
+                  </div>
+
+                  {/* Product Specifications Section */}
+                  <div className="border-t pt-6">
+                    <h3 className="text-lg font-semibold mb-4">Product Specifications (Optional)</h3>
+                    
+                    <div className="grid gap-4">
+                      {/* Brand and Weight */}
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div>
+                          <Label htmlFor="brand">Brand</Label>
+                          <Input
+                            id="brand"
+                            name="brand"
+                            value={formData.brand}
+                            onChange={handleChange}
+                            placeholder="e.g., Samsung, Apple, Nike"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="weight_kg">Weight (kg)</Label>
+                          <Input
+                            id="weight_kg"
+                            name="weight_kg"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={formData.weight_kg}
+                            onChange={handleChange}
+                            placeholder="e.g., 1.5"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Dimensions */}
+                      <div>
+                        <Label>Dimensions (cm)</Label>
+                        <div className="grid gap-4 md:grid-cols-3 mt-2">
+                          <div>
+                            <Input
+                              name="dimensions_length"
+                              type="number"
+                              step="0.1"
+                              min="0"
+                              value={formData.dimensions_length}
+                              onChange={handleChange}
+                              placeholder="Length"
+                            />
+                          </div>
+                          <div>
+                            <Input
+                              name="dimensions_width"
+                              type="number"
+                              step="0.1"
+                              min="0"
+                              value={formData.dimensions_width}
+                              onChange={handleChange}
+                              placeholder="Width"
+                            />
+                          </div>
+                          <div>
+                            <Input
+                              name="dimensions_height"
+                              type="number"
+                              step="0.1"
+                              min="0"
+                              value={formData.dimensions_height}
+                              onChange={handleChange}
+                              placeholder="Height"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Custom Specifications */}
+                      <div>
+                        <div className="flex items-center justify-between mb-3">
+                          <Label>Additional Specifications</Label>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={addCustomSpec}
+                            className="text-sm"
+                          >
+                            <Plus size={14} className="mr-1" />
+                            Add Specification
+                          </Button>
+                        </div>
+                        
+                        {customSpecs.map((spec, index) => (
+                          <div key={index} className="grid gap-2 md:grid-cols-[1fr,1fr,auto] mb-2">
+                            <Input
+                              placeholder="Specification name (e.g., Color, Size, Material)"
+                              value={spec.key}
+                              onChange={(e) => updateCustomSpec(index, 'key', e.target.value)}
+                            />
+                            <Input
+                              placeholder="Specification value (e.g., Red, Large, Cotton)"
+                              value={spec.value}
+                              onChange={(e) => updateCustomSpec(index, 'value', e.target.value)}
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => removeCustomSpec(index)}
+                              className="text-red-600 hover:text-red-700"
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        ))}
+                        
+                        {customSpecs.length === 0 && (
+                          <p className="text-sm text-muted-foreground">
+                            Add custom specifications like color, size, material, etc.
+                          </p>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
 

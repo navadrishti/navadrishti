@@ -290,23 +290,12 @@ export function ProductCard({
       
       <CardContent className="p-5 flex-1 flex flex-col">
         <div className="space-y-3 flex-1">
-          {/* Category and Seller */}
+          {/* Category */}
           <div className="flex items-center justify-between">
             {category && (
               <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
                 {category}
               </Badge>
-            )}
-            {provider && item?.seller_id && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  router.push(`/profile/${item.seller_id}`);
-                }}
-                className="text-xs text-blue-600 hover:text-blue-800 font-medium hover:underline transition-colors"
-              >
-                by {provider} {verified && <span className="text-green-500">✓</span>}
-              </button>
             )}
           </div>
           
@@ -477,7 +466,7 @@ export function ProductCard({
               {/* Product Info */}
               <div className="flex gap-3">
                 <img 
-                  src={item.images?.[0] || '/placeholder-image.jpg'} 
+                  src={item.images?.[0] || '/placeholder-image.svg'} 
                   alt={item.title}
                   className="w-16 h-16 object-cover rounded-md border"
                 />
