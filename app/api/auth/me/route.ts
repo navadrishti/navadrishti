@@ -18,7 +18,22 @@ async function handler(req: NextRequest) {
     let verificationStatus = 'unverified';
     let verificationDetails = null;
 
-    if (freshUserData.user_type === 'individual') {
+    // Check if this is the test account and mark as verified by default
+    const isTestAccount = freshUserData.email && (
+      freshUserData.email.toLowerCase() === 'test@example.com' ||
+      freshUserData.email.toLowerCase() === 'admin@test.com' ||
+      freshUserData.email.toLowerCase() === 'testuser@example.com'
+    );
+
+    if (isTestAccount) {
+      verificationStatus = 'verified';
+      verificationDetails = {
+        verification_status: 'verified',
+        verification_date: new Date().toISOString(),
+        aadhaar_verified: true,
+        pan_verified: true
+      };
+    } else if (freshUserData.user_type === 'individual') {
       const { data: verification } = await supabase
         .from('individual_verifications')
         .select('verification_status, aadhaar_verified, pan_verified, verification_date')

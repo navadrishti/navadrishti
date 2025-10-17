@@ -44,7 +44,20 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     let verificationStatus = 'unverified';
     let verificationDetails = null;
 
-    if (userResult.user_type === 'individual') {
+    // Check if this is the test account and mark as verified by default
+    const isTestAccount = userResult.email && (
+      userResult.email.toLowerCase() === '@example.com'
+    );
+
+    if (isTestAccount) {
+      verificationStatus = 'verified';
+      verificationDetails = {
+        verification_status: 'verified',
+        verification_date: new Date().toISOString(),
+        aadhaar_verified: true,
+        pan_verified: true
+      };
+    } else if (userResult.user_type === 'individual') {
       const { data: verification } = await supabase
         .from('individual_verifications')
         .select('verification_status, aadhaar_verified, pan_verified, verification_date')
