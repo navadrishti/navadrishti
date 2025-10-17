@@ -14,7 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import { VerificationBadge, VerificationDetails } from '@/components/verification-badge';
 
 export default function IndividualDashboard() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const { toast } = useToast();
   const [stats, setStats] = useState({
     acceptedServiceRequests: 0,
@@ -207,7 +207,7 @@ export default function IndividualDashboard() {
       fetchOrders();
       fetchMyListings();
     }
-  }, [user]);
+  }, [user?.id]);
 
   return (
     <ProtectedRoute userTypes={['individual']}>

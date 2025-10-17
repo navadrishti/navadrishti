@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { EntityLockerService } from '@/lib/entitylocker';
 import { executeQuery } from '@/lib/db';
+import { supabase } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 
@@ -24,12 +25,13 @@ export async function POST(req: NextRequest) {
     }
 
     // Verify user is an NGO
-    const user = await executeQuery({
-      query: 'SELECT user_type FROM users WHERE id = ?',
-      values: [userId]
-    }) as any[];
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('user_type')
+      .eq('id', userId)
+      .single();
 
-    if (!user.length || user[0].user_type !== 'ngo') {
+    if (userError || !user || user.user_type !== 'ngo') {
       return NextResponse.json({ error: 'Only NGOs can use this verification method' }, { status: 403 });
     }
 
@@ -66,26 +68,32 @@ async function initiateNGOVerification(
   // Generate EntityLocker authorization URL
   const authUrl = entityLocker.generateAuthUrl(userId, 'ngo');
   
-  // Create or update verification record
-  const existingVerification = await executeQuery({
-    query: 'SELECT id FROM ngo_verifications WHERE user_id = ?',
-    values: [userId]
-  }) as any[];
+  // Create or update verification record using Supabase
+  const { data: existingVerification } = await supabase
+    .from('ngo_verifications')
+    .select('id')
+    .eq('user_id', userId)
+    .single();
 
-  if (existingVerification.length === 0) {
-    await executeQuery({
-      query: `INSERT INTO ngo_verifications 
-              (user_id, organization_name, registration_number, registration_type, verification_status) 
-              VALUES (?, ?, ?, ?, ?)`,
-      values: [userId, organizationName, registrationNumber, registrationType, 'pending']
-    });
+  if (!existingVerification) {
+    await supabase
+      .from('ngo_verifications')
+      .insert({
+        user_id: userId,
+        ngo_name: organizationName,
+        registration_number: registrationNumber,
+        registration_type: registrationType,
+        verification_status: 'pending'
+      });
   } else {
-    await executeQuery({
-      query: `UPDATE ngo_verifications 
-              SET organization_name = ?, registration_number = ?, registration_type = ? 
-              WHERE user_id = ?`,
-      values: [organizationName, registrationNumber, registrationType, userId]
-    });
+    await supabase
+      .from('ngo_verifications')
+      .update({
+        ngo_name: organizationName,
+        registration_number: registrationNumber,
+        registration_type: registrationType
+      })
+      .eq('user_id', userId);
   }
 
   return NextResponse.json({
@@ -104,16 +112,24 @@ async function verifyGST(userId: number, gstNumber: string) {
   // In a real implementation, you would use the EntityLocker token to fetch data
   // For now, we'll simulate the verification process
   
-  await executeQuery({
-    query: `UPDATE ngo_verifications 
-     SET gst_number = ?, gst_verified = ?, gst_verification_date = NOW(),
-         verification_status = CASE 
-           WHEN pan_verified = TRUE THEN 'verified' 
-           ELSE 'pending' 
-         END
-     WHERE user_id = ?`,
-    values: [gstNumber, true, userId]
-  });
+  // First get current verification status to check if PAN is verified
+  const { data: currentVerification } = await supabase
+    .from('ngo_verifications')
+    .select('pan_verified')
+    .eq('user_id', userId)
+    .single();
+
+  const newStatus = currentVerification?.pan_verified ? 'verified' : 'pending';
+
+  await supabase
+    .from('ngo_verifications')
+    .update({
+      gst_number: gstNumber,
+      gst_verified: true,
+      gst_verification_date: new Date().toISOString(),
+      verification_status: newStatus
+    })
+    .eq('user_id', userId);
 
   return NextResponse.json({
     success: true,
@@ -128,28 +144,41 @@ async function verifyNGOPAN(userId: number, panNumber: string) {
     return NextResponse.json({ error: 'Invalid PAN number format' }, { status: 400 });
   }
 
-  await executeQuery({
-    query: `UPDATE ngo_verifications 
-     SET pan_number = ?, pan_verified = ?, pan_verification_date = NOW(),
-         verification_status = CASE 
-           WHEN gst_verified = TRUE THEN 'verified' 
-           ELSE 'pending' 
-         END
-     WHERE user_id = ?`,
-    values: [panNumber, true, userId]
-  });
+  // First get current verification status to check if GST is verified
+  const { data: currentVerification } = await supabase
+    .from('ngo_verifications')
+    .select('gst_verified')
+    .eq('user_id', userId)
+    .single();
+
+  const newStatus = currentVerification?.gst_verified ? 'verified' : 'pending';
+
+  await supabase
+    .from('ngo_verifications')
+    .update({
+      pan_number: panNumber,
+      pan_verified: true,
+      pan_verification_date: new Date().toISOString(),
+      verification_status: newStatus
+    })
+    .eq('user_id', userId);
 
   // Check if both documents are verified
-  const verification = await executeQuery({
-    query: 'SELECT gst_verified, pan_verified FROM ngo_verifications WHERE user_id = ?',
-    values: [userId]
-  }) as any[];
+  const { data: verification } = await supabase
+    .from('ngo_verifications')
+    .select('gst_verified, pan_verified')
+    .eq('user_id', userId)
+    .single();
 
-  if (verification.length && verification[0].gst_verified && verification[0].pan_verified) {
-    await executeQuery({
-      query: 'UPDATE users SET verification_status = ?, verified_at = NOW(), verification_level = ? WHERE id = ?',
-      values: ['verified', 'advanced', userId]
-    });
+  if (verification && verification.gst_verified && verification.pan_verified) {
+    await supabase
+      .from('users')
+      .update({
+        verification_status: 'verified',
+        verified_at: new Date().toISOString(),
+        verification_level: 'advanced'
+      })
+      .eq('id', userId);
   }
 
   return NextResponse.json({
@@ -174,16 +203,14 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid token: missing user ID' }, { status: 401 });
     }
 
-    // Get verification status
-    const verification = await executeQuery({
-      query: `SELECT nv.*, u.verification_status, u.verified_at, u.verification_level
-       FROM ngo_verifications nv
-       JOIN users u ON nv.user_id = u.id
-       WHERE nv.user_id = ?`,
-      values: [userId]
-    }) as any[];
+    // Get verification status from Supabase
+    const { data: verification, error } = await supabase
+      .from('ngo_verifications')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
 
-    if (!verification.length) {
+    if (error || !verification) {
       return NextResponse.json({
         verified: false,
         gstVerified: false,
@@ -192,17 +219,16 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const record = verification[0];
     return NextResponse.json({
-      verified: record.verification_status === 'verified',
-      gstVerified: record.gst_verified || false,
-      panVerified: record.pan_verified || false,
-      organizationName: record.organization_name,
-      registrationNumber: record.registration_number,
-      registrationType: record.registration_type,
-      status: record.verification_status,
-      verifiedAt: record.verified_at,
-      level: record.verification_level
+      verified: verification.verification_status === 'verified',
+      gstVerified: verification.gst_verified || false,
+      panVerified: verification.pan_verified || false,
+      organizationName: verification.ngo_name,
+      registrationNumber: verification.registration_number,
+      registrationType: verification.registration_type,
+      status: verification.verification_status,
+      verifiedAt: verification.verification_date,
+      fcraNumber: verification.fcra_number
     });
   } catch (error) {
     console.error('Get NGO verification status error:', error);

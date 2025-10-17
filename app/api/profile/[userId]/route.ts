@@ -40,27 +40,14 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       }, { status: 404 });
     }
 
-    // Get verification status based on user type
+    // Get verification status based on user type - check database only
     let verificationStatus = 'unverified';
     let verificationDetails = null;
 
-    // Check if this is the test account and mark as verified by default
-    const isTestAccount = userResult.email && (
-      userResult.email.toLowerCase() === '@example.com'
-    );
-
-    if (isTestAccount) {
-      verificationStatus = 'verified';
-      verificationDetails = {
-        verification_status: 'verified',
-        verification_date: new Date().toISOString(),
-        aadhaar_verified: true,
-        pan_verified: true
-      };
-    } else if (userResult.user_type === 'individual') {
+    if (userResult.user_type === 'individual') {
       const { data: verification } = await supabase
         .from('individual_verifications')
-        .select('verification_status, aadhaar_verified, pan_verified, verification_date')
+        .select('verification_status, aadhaar_verified, pan_verified, verification_date, aadhaar_number, pan_number, aadhaar_verification_date, pan_verification_date')
         .eq('user_id', parseInt(userId))
         .single();
       
@@ -71,7 +58,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     } else if (userResult.user_type === 'company') {
       const { data: verification } = await supabase
         .from('company_verifications')
-        .select('verification_status, company_name, verification_date')
+        .select('verification_status, company_name, verification_date, registration_number, gst_number')
         .eq('user_id', parseInt(userId))
         .single();
       
@@ -82,7 +69,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     } else if (userResult.user_type === 'ngo') {
       const { data: verification } = await supabase
         .from('ngo_verifications')
-        .select('verification_status, ngo_name, verification_date')
+        .select('verification_status, ngo_name, verification_date, registration_number, registration_type, fcra_number')
         .eq('user_id', parseInt(userId))
         .single();
       

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import jwt from 'jsonwebtoken'
-import { executeQuery } from '@/lib/db'
+import { supabase } from '@/lib/db'
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key'
 
@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
     }
 
-    const userId = decoded.userId
+    const userId = decoded.id // Changed from decoded.userId to decoded.id
 
     const body = await request.json()
     const { description, certifications, projectPhotos } = body
@@ -32,40 +32,49 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if portfolio record exists for this user
-    const existingPortfolio = await executeQuery({
-      query: 'SELECT id FROM user_portfolios WHERE user_id = ?',
-      values: [userId]
-    }) as any[]
+    const { data: existingPortfolio, error: checkError } = await supabase
+      .from('user_portfolios')
+      .select('id')
+      .eq('user_id', userId)
 
-    if (existingPortfolio.length > 0) {
+    if (checkError) {
+      console.error('Error checking existing portfolio:', checkError)
+      return NextResponse.json({ error: 'Database error' }, { status: 500 })
+    }
+
+    if (existingPortfolio && existingPortfolio.length > 0) {
       // Update existing portfolio
-      await executeQuery({
-        query: `
-          UPDATE user_portfolios 
-          SET description = ?, certifications = ?, project_photos = ?, updated_at = CURRENT_TIMESTAMP
-          WHERE user_id = ?
-        `,
-        values: [
-          description || null,
-          certifications || null,
-          JSON.stringify(projectPhotos || []),
-          userId
-        ]
-      })
+      const { error: updateError } = await supabase
+        .from('user_portfolios')
+        .update({
+          description: description || null,
+          certifications: certifications || null,
+          project_photos: JSON.stringify(projectPhotos || []),
+          updated_at: new Date().toISOString()
+        })
+        .eq('user_id', userId)
+
+      if (updateError) {
+        console.error('Error updating portfolio:', updateError)
+        return NextResponse.json({ error: 'Failed to update portfolio' }, { status: 500 })
+      }
     } else {
       // Create new portfolio record
-      await executeQuery({
-        query: `
-          INSERT INTO user_portfolios (user_id, description, certifications, project_photos, created_at, updated_at)
-          VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-        `,
-        values: [
-          userId,
-          description || null,
-          certifications || null,
-          JSON.stringify(projectPhotos || [])
-        ]
-      })
+      const { error: insertError } = await supabase
+        .from('user_portfolios')
+        .insert({
+          user_id: userId,
+          description: description || null,
+          certifications: certifications || null,
+          project_photos: JSON.stringify(projectPhotos || []),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+
+      if (insertError) {
+        console.error('Error creating portfolio:', insertError)
+        return NextResponse.json({ error: 'Failed to create portfolio' }, { status: 500 })
+      }
     }
 
     return NextResponse.json({ 
@@ -99,15 +108,20 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
     }
 
-    const userId = decoded.userId
+    const userId = decoded.id // Changed from decoded.userId to decoded.id
 
     // Get portfolio data
-    const portfolio = await executeQuery({
-      query: 'SELECT * FROM user_portfolios WHERE user_id = ?',
-      values: [userId]
-    }) as any[]
+    const { data: portfolio, error: fetchError } = await supabase
+      .from('user_portfolios')
+      .select('*')
+      .eq('user_id', userId)
 
-    if (portfolio.length === 0) {
+    if (fetchError) {
+      console.error('Error fetching portfolio:', fetchError)
+      return NextResponse.json({ error: 'Failed to fetch portfolio' }, { status: 500 })
+    }
+
+    if (!portfolio || portfolio.length === 0) {
       return NextResponse.json({ 
         portfolio: null,
         message: 'No portfolio found' 

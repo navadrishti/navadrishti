@@ -15,7 +15,7 @@ import { toast } from 'sonner'
 import { VerificationBadge, VerificationDetails } from '@/components/verification-badge'
 
 export default function ProfilePage() {
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, refreshUser } = useAuth();
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [verificationData, setVerificationData] = useState<any>(null);
@@ -35,6 +35,22 @@ export default function ProfilePage() {
   const [country, setCountry] = useState('India');
   const [phone, setPhone] = useState('');
   const [bio, setBio] = useState('');
+  
+  // Skills & Interests for individuals
+  const [skills, setSkills] = useState('');
+  const [interests, setInterests] = useState('');
+  const [categories, setCategories] = useState('');
+  
+  // Organization details for NGOs
+  const [registrationNumber, setRegistrationNumber] = useState('');
+  const [foundedYear, setFoundedYear] = useState('');
+  const [focusAreas, setFocusAreas] = useState('');
+  const [organizationWebsite, setOrganizationWebsite] = useState('');
+  
+  // Company details for companies
+  const [industry, setIndustry] = useState('');
+  const [companySize, setCompanySize] = useState('');
+  const [companyWebsite, setCompanyWebsite] = useState('');
 
   useEffect(() => {
     if (user) {
@@ -65,6 +81,19 @@ export default function ProfilePage() {
       setCountry(user?.country || 'India');
       setPhone(user?.phone || '');
       setBio(user?.bio || '');
+      
+      // Load additional profile fields
+      const userProfile = user?.profile || {};
+      setSkills(userProfile.skills || '');
+      setInterests(userProfile.interests || '');
+      setCategories(userProfile.categories || '');
+      setRegistrationNumber(userProfile.registration_number || '');
+      setFoundedYear(userProfile.founded_year || '');
+      setFocusAreas(userProfile.focus_areas || '');
+      setOrganizationWebsite(userProfile.organization_website || '');
+      setIndustry(userProfile.industry || '');
+      setCompanySize(userProfile.company_size || '');
+      setCompanyWebsite(userProfile.company_website || '');
       
       // Load profile image if available
       if (user?.profile_image) {
@@ -193,8 +222,20 @@ export default function ProfilePage() {
         console.log('Portfolio photos to upload:', projectPhotos.map(file => file.name));
       }
       
-      // In a real app, you'd make an API call to save portfolio data
-      // await fetch('/api/profile/portfolio', { method: 'POST', body: portfolioData });
+      // Save portfolio data to the API
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/profile/portfolio', { 
+        method: 'POST', 
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(portfolioData)
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save portfolio');
+      }
       
       const itemCount = [
         portfolioDescription.trim() ? 'description' : null,
@@ -246,16 +287,8 @@ export default function ProfilePage() {
         throw new Error('Failed to update profile');
       }
 
-      // Update the user context with all the new data
-      updateUser({ 
-        profile_image: profileImageUrl,
-        city,
-        state_province: stateProvince,
-        pincode,
-        country,
-        phone,
-        bio
-      });
+      // Refresh user data from server to get the latest profile image and other data
+      await refreshUser();
       
       console.log('Profile saved successfully:', profileData);
       
@@ -267,6 +300,115 @@ export default function ProfilePage() {
     } catch (error) {
       console.error('Error saving profile:', error);
       toast.error('Failed to save profile. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveSkillsInterests = async () => {
+    if (!user?.id) return;
+    
+    try {
+      setLoading(true);
+      
+      const skillsData = {
+        userId: user.id,
+        skills,
+        interests,
+        categories
+      };
+      
+      const response = await fetch('/api/profile/skills', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify(skillsData)
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save skills and interests');
+      }
+
+      await refreshUser();
+      toast.success('Skills and interests saved successfully!');
+    } catch (error) {
+      console.error('Error saving skills and interests:', error);
+      toast.error('Failed to save skills and interests. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveOrganizationDetails = async () => {
+    if (!user?.id) return;
+    
+    try {
+      setLoading(true);
+      
+      const organizationData = {
+        userId: user.id,
+        registration_number: registrationNumber,
+        founded_year: foundedYear,
+        focus_areas: focusAreas,
+        organization_website: organizationWebsite
+      };
+      
+      const response = await fetch('/api/profile/organization', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify(organizationData)
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save organization details');
+      }
+
+      await refreshUser();
+      toast.success('Organization details saved successfully!');
+    } catch (error) {
+      console.error('Error saving organization details:', error);
+      toast.error('Failed to save organization details. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveCompanyDetails = async () => {
+    if (!user?.id) return;
+    
+    try {
+      setLoading(true);
+      
+      const companyData = {
+        userId: user.id,
+        industry,
+        company_size: companySize,
+        company_website: companyWebsite
+      };
+      
+      const response = await fetch('/api/profile/company', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify(companyData)
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save company details');
+      }
+
+      await refreshUser();
+      toast.success('Company details saved successfully!');
+    } catch (error) {
+      console.error('Error saving company details:', error);
+      toast.error('Failed to save company details. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -456,20 +598,46 @@ export default function ProfilePage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <Label>Registration Number</Label>
-                        <Input placeholder="NGO registration number" />
+                        <Input 
+                          value={registrationNumber}
+                          onChange={(e) => setRegistrationNumber(e.target.value)}
+                          placeholder="NGO registration number" 
+                        />
                       </div>
                       <div>
                         <Label>Founded Year</Label>
-                        <Input type="number" placeholder="YYYY" />
+                        <Input 
+                          type="number" 
+                          value={foundedYear}
+                          onChange={(e) => setFoundedYear(e.target.value)}
+                          placeholder="YYYY" 
+                        />
                       </div>
                     </div>
                     <div>
                       <Label>Focus Areas</Label>
-                      <Input placeholder="Education, Healthcare, Environment, etc." />
+                      <Input 
+                        value={focusAreas}
+                        onChange={(e) => setFocusAreas(e.target.value)}
+                        placeholder="Education, Healthcare, Environment, etc." 
+                      />
                     </div>
                     <div>
                       <Label>Website</Label>
-                      <Input placeholder="https://your-organization.org" />
+                      <Input 
+                        value={organizationWebsite}
+                        onChange={(e) => setOrganizationWebsite(e.target.value)}
+                        placeholder="https://your-organization.org" 
+                      />
+                    </div>
+                    <div className="flex justify-end pt-4 border-t">
+                      <Button 
+                        onClick={handleSaveOrganizationDetails} 
+                        disabled={loading}
+                        className="flex items-center gap-2"
+                      >
+                        {loading ? 'Saving...' : 'Save Organization Details'}
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
@@ -484,16 +652,37 @@ export default function ProfilePage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <Label>Industry</Label>
-                        <Input placeholder="Community Service, Social Work, Environmental, etc." />
+                        <Input 
+                          value={industry}
+                          onChange={(e) => setIndustry(e.target.value)}
+                          placeholder="Technology, Healthcare, Education, etc." 
+                        />
                       </div>
                       <div>
                         <Label>Company Size</Label>
-                        <Input placeholder="1-10, 11-50, 51-200, etc." />
+                        <Input 
+                          value={companySize}
+                          onChange={(e) => setCompanySize(e.target.value)}
+                          placeholder="1-10, 11-50, 51-200, etc." 
+                        />
                       </div>
                     </div>
                     <div>
                       <Label>Website</Label>
-                      <Input placeholder="https://your-company.com" />
+                      <Input 
+                        value={companyWebsite}
+                        onChange={(e) => setCompanyWebsite(e.target.value)}
+                        placeholder="https://your-company.com" 
+                      />
+                    </div>
+                    <div className="flex justify-end pt-4 border-t">
+                      <Button 
+                        onClick={handleSaveCompanyDetails} 
+                        disabled={loading}
+                        className="flex items-center gap-2"
+                      >
+                        {loading ? 'Saving...' : 'Save Company Details'}
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
@@ -508,15 +697,36 @@ export default function ProfilePage() {
                     <CardContent className="space-y-4">
                       <div>
                         <Label>Skills</Label>
-                        <Input placeholder="Teaching, Project Management, Communication, etc." />
+                        <Input 
+                          value={skills}
+                          onChange={(e) => setSkills(e.target.value)}
+                          placeholder="Teaching, Project Management, Communication, etc." 
+                        />
                       </div>
                       <div>
                         <Label>Interests</Label>
-                        <Input placeholder="Volunteering areas you're interested in" />
+                        <Input 
+                          value={interests}
+                          onChange={(e) => setInterests(e.target.value)}
+                          placeholder="Volunteering areas you're interested in" 
+                        />
                       </div>
                       <div>
                         <Label>Categories</Label>
-                        <Input placeholder="Community Service, Social Work, Environmental, etc." />
+                        <Input 
+                          value={categories}
+                          onChange={(e) => setCategories(e.target.value)}
+                          placeholder="Community Service, Social Work, Environmental, etc." 
+                        />
+                      </div>
+                      <div className="flex justify-end pt-4 border-t">
+                        <Button 
+                          onClick={handleSaveSkillsInterests} 
+                          disabled={loading}
+                          className="flex items-center gap-2"
+                        >
+                          {loading ? 'Saving...' : 'Save Skills & Interests'}
+                        </Button>
                       </div>
                     </CardContent>
                   </Card>

@@ -3,7 +3,7 @@ import { executeQuery } from '@/lib/db';
 
 // Indian state mapping based on pincode ranges
 const stateMapping: { [key: string]: string } = {
-  '110': 'Delhi', '121': 'Haryana', '122': 'Haryana', '110': 'Delhi',
+  '110': 'Delhi', '121': 'Haryana', '122': 'Haryana',
   '400': 'Maharashtra', '411': 'Maharashtra', '560': 'Karnataka',
   '600': 'Tamil Nadu', '700': 'West Bengal', '500': 'Telangana',
   '302': 'Rajasthan', '380': 'Gujarat', '201': 'Uttar Pradesh'

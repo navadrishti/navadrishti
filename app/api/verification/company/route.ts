@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { EntityLockerService } from '@/lib/entitylocker';
 import { executeQuery } from '@/lib/db';
+import { supabase } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 
@@ -201,15 +202,20 @@ export async function GET(req: NextRequest) {
     }
 
     // Get verification status
-    const verification = await executeQuery({
-      query: `SELECT cv.*, u.verification_status, u.verified_at, u.verification_level
-       FROM company_verifications cv
-       JOIN users u ON cv.user_id = u.id
-       WHERE cv.user_id = ?`,
-      values: [userId]
-    }) as any[];
+    const { data: verification, error: verificationError } = await supabase
+      .from('company_verifications')    
+      .select(`
+        *,
+        users!inner(verification_status, verified_at, verification_level)
+      `)
+      .eq('user_id', userId);
 
-    if (!verification.length) {
+    if (verificationError) {
+      console.error('Error fetching company verification:', verificationError);
+      return NextResponse.json({ error: 'Failed to fetch verification status' }, { status: 500 });
+    }
+
+    if (!verification || verification.length === 0) {
       return NextResponse.json({
         verified: false,
         gstVerified: false,

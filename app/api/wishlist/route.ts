@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
     const { data: existing } = await supabase
       .from('wishlist')
       .select('id')
-      .eq('user_id', payload.userId)
+      .eq('user_id', payload.id)
       .eq('marketplace_item_id', marketplace_item_id)
       .single()
 
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     const { error } = await supabase
       .from('wishlist')
       .insert({
-        user_id: payload.userId,
+        user_id: payload.id,
         marketplace_item_id: marketplace_item_id
       })
 
@@ -82,7 +82,7 @@ export async function DELETE(request: NextRequest) {
     const { error } = await supabase
       .from('wishlist')
       .delete()
-      .eq('user_id', payload.userId)
+      .eq('user_id', payload.id)
       .eq('marketplace_item_id', marketplace_item_id)
 
     if (error) {
@@ -132,7 +132,7 @@ export async function GET(request: NextRequest) {
           status
         )
       `)
-      .eq('user_id', payload.userId)
+      .eq('user_id', payload.id)
       .order('created_at', { ascending: false })
 
     if (error) {
