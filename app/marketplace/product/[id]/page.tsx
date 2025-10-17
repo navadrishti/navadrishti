@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { 
   ArrowLeft, 
   Star, 
@@ -20,13 +20,24 @@ import {
   CheckCircle,
   User,
   Building,
-  Users
+  Users,
+  MapPin,
+  Package,
+  Truck,
+  Award,
+  Info,
+  Heart,
+  Share2,
+  Scale,
+  Ruler,
+  Calendar
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { useCart } from '@/lib/cart-context'
 import { toast } from 'sonner'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
+import { VerificationBadge } from '@/components/verification-badge'
 
 interface ProductData {
   id: number
@@ -40,6 +51,11 @@ interface ProductData {
   quantity: number
   condition_type: string
   location?: string
+  // Enhanced location fields
+  city?: string
+  state_province?: string
+  pincode?: string
+  country?: string
   images: string[]
   tags: string[]
   contact_info: any
@@ -54,6 +70,11 @@ interface ProductData {
   seller_name: string
   seller_email: string
   seller_type: string
+  seller_profile_image?: string
+  seller_city?: string
+  seller_state_province?: string  
+  seller_pincode?: string
+  seller_verification_status?: string
   avg_rating: number
   review_count: number
   total_sold: number
@@ -72,8 +93,10 @@ export default function ProductDetailsPage({ params }: { params: Promise<{ id: s
   const [error, setError] = useState<string | null>(null)
   const [selectedImage, setSelectedImage] = useState(0)
   const [quantity, setQuantity] = useState(1)
-  const [activeTab, setActiveTab] = useState('details')
+  const [activeTab, setActiveTab] = useState('specifications')
   const [addingToCart, setAddingToCart] = useState(false)
+  const [isWishlisted, setIsWishlisted] = useState(false)
+  const [addingToWishlist, setAddingToWishlist] = useState(false)
 
   useEffect(() => {
     fetchProduct()
@@ -106,6 +129,11 @@ export default function ProductDetailsPage({ params }: { params: Promise<{ id: s
 
       if (data.success) {
         setProduct(data.product)
+        
+        // Check if product is in wishlist (only if user is logged in)
+        if (user) {
+          checkWishlistStatus(data.product.id)
+        }
       } else {
         setError(data.error || 'Product not found')
       }
@@ -114,6 +142,29 @@ export default function ProductDetailsPage({ params }: { params: Promise<{ id: s
       console.error('Error fetching product:', err)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const checkWishlistStatus = async (productId: number) => {
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) return
+
+      const response = await fetch('/api/wishlist', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        }
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        const isInWishlist = data.wishlist?.some((item: any) => 
+          item.marketplace_item_id === productId
+        )
+        setIsWishlisted(isInWishlist || false)
+      }
+    } catch (error) {
+      console.error('Error checking wishlist status:', error)
     }
   }
 
@@ -143,6 +194,44 @@ export default function ProductDetailsPage({ params }: { params: Promise<{ id: s
       router.push('/cart?checkout=true')
     }
     setAddingToCart(false)
+  }
+
+  const handleWishlist = async () => {
+    if (!user) {
+      toast.error('Please login to add items to wishlist')
+      router.push('/login')
+      return
+    }
+
+    if (!product) return
+
+    setAddingToWishlist(true)
+    try {
+      const token = localStorage.getItem('token')
+      const response = await fetch('/api/wishlist', {
+        method: isWishlisted ? 'DELETE' : 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          marketplace_item_id: product.id
+        })
+      })
+
+      const result = await response.json()
+
+      if (response.ok) {
+        setIsWishlisted(!isWishlisted)
+        toast.success(isWishlisted ? 'Removed from wishlist' : 'Added to wishlist')
+      } else {
+        toast.error(result.error || 'Failed to update wishlist')
+      }
+    } catch (error) {
+      toast.error('Failed to update wishlist')
+    } finally {
+      setAddingToWishlist(false)
+    }
   }
 
   const formatPrice = (price: number) => {
@@ -459,7 +548,120 @@ export default function ProductDetailsPage({ params }: { params: Promise<{ id: s
                 )}
               </div>
               <p className="text-sm text-gray-600">Inclusive of all taxes</p>
+              {product.quantity > 0 && (
+                <div className="flex items-center gap-2">
+                  <CheckCircle size={16} className="text-green-500" />
+                  <span className="text-sm text-green-600 font-medium">In Stock</span>
+                  <span className="text-sm text-gray-500">({product.quantity} available)</span>
+                </div>
+              )}
             </div>
+
+            {/* Quick Product Info */}
+            <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
+              <div className="space-y-2">
+                {product.brand && (
+                  <div className="flex items-center gap-2">
+                    <Award size={16} className="text-gray-500" />
+                    <span className="text-sm">
+                      <span className="text-gray-600">Brand:</span> <span className="font-medium">{product.brand}</span>
+                    </span>
+                  </div>
+                )}
+                {product.condition_type && (
+                  <div className="flex items-center gap-2">
+                    <Package size={16} className="text-gray-500" />
+                    <span className="text-sm">
+                      <span className="text-gray-600">Condition:</span> 
+                      <span className="font-medium capitalize ml-1">{product.condition_type.replace('_', ' ')}</span>
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div className="space-y-2">
+                {(product.weight_kg && product.weight_kg > 0) && (
+                  <div className="flex items-center gap-2">
+                    <Scale size={16} className="text-gray-500" />
+                    <span className="text-sm">
+                      <span className="text-gray-600">Weight:</span> <span className="font-medium">{product.weight_kg} kg</span>
+                    </span>
+                  </div>
+                )}
+                {product.dimensions_cm && (
+                  <div className="flex items-center gap-2">
+                    <Ruler size={16} className="text-gray-500" />
+                    <span className="text-sm">
+                      <span className="text-gray-600">Size:</span> 
+                      <span className="font-medium ml-1">
+                        {[product.dimensions_cm.length, product.dimensions_cm.width, product.dimensions_cm.height]
+                          .filter(d => d && d > 0)
+                          .join(' × ')} cm
+                      </span>
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Location Information */}
+            {(product.city || product.state_province || product.pincode || product.location) && (
+              <div className="border rounded-lg p-4 bg-blue-50">
+                <div className="flex items-start gap-3">
+                  <MapPin size={20} className="text-blue-600 mt-0.5" />
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-gray-900 mb-3">Complete Item Address</h3>
+                    <div className="space-y-2">
+                      {/* Complete Address Display */}
+                      <div className="bg-white rounded-lg p-3 border">
+                        <div className="space-y-1 text-sm">
+                          {product.city && (
+                            <div className="flex">
+                              <span className="text-gray-600 w-16">City:</span>
+                              <span className="font-medium text-gray-900">{product.city}</span>
+                            </div>
+                          )}
+                          {product.state_province && (
+                            <div className="flex">
+                              <span className="text-gray-600 w-16">State:</span>
+                              <span className="font-medium text-gray-900">{product.state_province}</span>
+                            </div>
+                          )}
+                          {product.pincode && (
+                            <div className="flex">
+                              <span className="text-gray-600 w-16">PIN:</span>
+                              <span className="font-medium text-gray-900">{product.pincode}</span>
+                            </div>
+                          )}
+                          {product.country && (
+                            <div className="flex">
+                              <span className="text-gray-600 w-16">Country:</span>
+                              <span className="font-medium text-gray-900">{product.country}</span>
+                            </div>
+                          )}
+                          {/* Fallback to old location field if structured fields not available */}
+                          {!product.city && !product.state_province && product.location && (
+                            <div className="flex">
+                              <span className="text-gray-600 w-16">Location:</span>
+                              <span className="font-medium text-gray-900">{product.location}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      {/* Delivery Options */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Truck size={16} className="text-blue-500" />
+                          <span className="text-sm text-blue-600 font-medium">Delivery available in this area</span>
+                        </div>
+                        <Button variant="outline" size="sm" className="text-xs">
+                          Check Pincode
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Condition & Category */}
             <div className="flex flex-wrap gap-2">
@@ -468,37 +670,69 @@ export default function ProductDetailsPage({ params }: { params: Promise<{ id: s
               </Badge>
               <Badge variant="outline">{product.category}</Badge>
               {product.subcategory && <Badge variant="outline">{product.subcategory}</Badge>}
+              {product.tags && [...new Set(product.tags)].slice(0, 3).map((tag, index) => (
+                <Badge key={index} variant="secondary" className="text-xs">
+                  {tag}
+                </Badge>
+              ))}
             </div>
 
             {/* Seller Info */}
             <Card>
               <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div 
-                    className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 rounded-lg p-2 -m-2 transition-colors"
-                    onClick={() => router.push(`/profile/${product.seller_id}`)}
-                  >
-                    <Avatar>
-                      <AvatarFallback>
+                <div className="flex items-start gap-3">
+                  <Avatar className="w-12 h-12">
+                    {product.seller_profile_image ? (
+                      <AvatarImage 
+                        src={product.seller_profile_image} 
+                        alt={product.seller_name}
+                        className="object-cover"
+                      />
+                    ) : (
+                      <AvatarFallback className="bg-blue-500 text-white font-semibold">
                         {getSellerIcon(product.seller_type)}
                       </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="font-semibold text-blue-600 hover:text-blue-700">
-                        {product.seller_name}
-                      </p>
-                      <p className="text-sm text-gray-600 capitalize">{product.seller_type}</p>
+                    )}
+                  </Avatar>
+                  <div className="flex-1">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h3 className="font-semibold text-gray-900 mb-1">
+                          Sold by {product.seller_name}
+                        </h3>
+                        <div className="flex items-center gap-2 mb-2">
+                          <Badge variant="outline" className="text-xs">
+                            {product.seller_type.replace('_', ' ').toUpperCase()}
+                          </Badge>
+                          <VerificationBadge 
+                            status={product.seller_verification_status || 'unverified'} 
+                            size="sm"
+                            showText={false}
+                          />
+                        </div>
+                        {(product.seller_city || product.seller_state_province) && (
+                          <div className="flex items-center gap-1 mt-2">
+                            <MapPin size={14} className="text-gray-400" />
+                            <span className="text-sm text-gray-600">
+                              {[product.seller_city, product.seller_state_province]
+                                .filter(Boolean)
+                                .join(', ')}
+                              {product.seller_pincode && ` - ${product.seller_pincode}`}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => router.push(`/profile/${product.seller_id}`)}
+                        className="flex items-center gap-2 ml-4"
+                      >
+                        <User size={14} />
+                        View Profile
+                      </Button>
                     </div>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => router.push(`/profile/${product.seller_id}`)}
-                    className="flex items-center gap-2"
-                  >
-                    <User size={14} />
-                    View Profile
-                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -560,6 +794,49 @@ export default function ProductDetailsPage({ params }: { params: Promise<{ id: s
                   {product.quantity === 0 ? 'Out of Stock' : 'Buy Now'}
                 </Button>
               </div>
+
+              {/* Secondary Action Buttons */}
+              <div className="flex gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="flex-1"
+                  onClick={handleWishlist}
+                  disabled={addingToWishlist}
+                >
+                  {addingToWishlist ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600 mr-2"></div>
+                      {isWishlisted ? 'Removing...' : 'Adding...'}
+                    </>
+                  ) : (
+                    <>
+                      <Heart className={`mr-2 h-4 w-4 ${isWishlisted ? 'fill-red-500 text-red-500' : ''}`} />
+                      {isWishlisted ? 'Remove from Wishlist' : 'Add to Wishlist'}
+                    </>
+                  )}
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="flex-1"
+                  onClick={() => {
+                    if (navigator.share) {
+                      navigator.share({
+                        title: product.title,
+                        text: product.description,
+                        url: window.location.href,
+                      })
+                    } else {
+                      navigator.clipboard.writeText(window.location.href)
+                      toast.success('Link copied to clipboard!')
+                    }
+                  }}
+                >
+                  <Share2 className="mr-2 h-4 w-4" />
+                  Share
+                </Button>
+              </div>
             </div>
 
             {/* Key Features */}
@@ -599,96 +876,175 @@ export default function ProductDetailsPage({ params }: { params: Promise<{ id: s
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <Card>
             <CardHeader>
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="details">Details</TabsTrigger>
-                <TabsTrigger value="specifications">Specifications</TabsTrigger>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="specifications">Specifications & Details</TabsTrigger>
                 <TabsTrigger value="reviews">Reviews ({product.review_count})</TabsTrigger>
               </TabsList>
             </CardHeader>
             
             <CardContent>
-              <TabsContent value="details" className="space-y-4">
-                <div>
-                  <h3 className="font-semibold mb-2">Description</h3>
-                  <p className="text-gray-700 leading-relaxed">{product.description}</p>
-                </div>
-                
-                {product.tags && product.tags.length > 0 && (
-                  <div>
-                    <h3 className="font-semibold mb-2">Tags</h3>
-                    <div className="flex flex-wrap gap-2">
-                      {product.tags.map((tag, index) => (
-                        <Badge key={index} variant="secondary" className="text-xs">
-                          {tag}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </TabsContent>
-              
-              <TabsContent value="specifications" className="space-y-4">
-                <div className="grid md:grid-cols-2 gap-6">
-                  <div>
-                    <h3 className="font-semibold mb-3">Product Details</h3>
-                    <div className="space-y-2 text-sm">
-                      {product.brand && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Brand:</span>
-                          <span>{product.brand}</span>
-                        </div>
-                      )}
-                      {product.weight_kg && product.weight_kg > 0 && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Weight:</span>
-                          <span>{product.weight_kg} kg</span>
-                        </div>
-                      )}
-                      {product.dimensions_cm && Object.values(product.dimensions_cm).some(v => v && v > 0) && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Dimensions:</span>
-                          <span>
-                            {product.dimensions_cm.length && product.dimensions_cm.length > 0 ? `${product.dimensions_cm.length}` : ''}
-                            {product.dimensions_cm.width && product.dimensions_cm.width > 0 ? ` × ${product.dimensions_cm.width}` : ''}
-                            {product.dimensions_cm.height && product.dimensions_cm.height > 0 ? ` × ${product.dimensions_cm.height}` : ''}
-                            {(product.dimensions_cm.length > 0 || product.dimensions_cm.width > 0 || product.dimensions_cm.height > 0) ? ' cm' : ''}
-                          </span>
-                        </div>
-                      )}
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Condition:</span>
-                        <span className="capitalize">{product.condition_type.replace('_', ' ')}</span>
-                      </div>
-                    </div>
+              <TabsContent value="specifications" className="space-y-6">
+                {/* Description Section */}
+                <div className="border-b pb-6">
+                  <h3 className="font-semibold text-lg flex items-center gap-2 mb-4">
+                    <Info size={18} className="text-blue-500" />
+                    Product Description
+                  </h3>
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <p className="text-gray-700 leading-relaxed">{product.description}</p>
                   </div>
                   
-                  {product.specifications && Object.keys(product.specifications).length > 0 && (
-                    <div>
-                      <h3 className="font-semibold mb-3">Additional Specifications</h3>
-                      <div className="space-y-2 text-sm">
-                        {Object.entries(product.specifications).map(([key, value]) => (
-                          <div key={key} className="flex justify-between">
-                            <span className="text-gray-600 capitalize">{key.replace('_', ' ')}:</span>
-                            <span>{String(value)}</span>
-                          </div>
+                  {product.tags && [...new Set(product.tags)].length > 0 && (
+                    <div className="mt-4">
+                      <h4 className="font-medium mb-2 text-gray-900">Product Tags</h4>
+                      <div className="flex flex-wrap gap-2">
+                        {[...new Set(product.tags)].map((tag, index) => (
+                          <Badge key={index} variant="secondary" className="text-xs">
+                            {tag}
+                          </Badge>
                         ))}
                       </div>
                     </div>
                   )}
-                  
-                  {/* Show message if no specifications are available */}
-                  {!product.brand && 
-                   (!product.weight_kg || product.weight_kg <= 0) && 
-                   (!product.dimensions_cm || !Object.values(product.dimensions_cm).some(v => v && v > 0)) &&
-                   (!product.specifications || Object.keys(product.specifications).length === 0) && (
-                    <div className="col-span-2">
-                      <div className="text-center py-8 text-gray-500">
-                        <p>No additional specifications provided for this product.</p>
-                        <p className="text-sm mt-1">Specifications help buyers make informed decisions.</p>
+                </div>
+                <div className="grid md:grid-cols-2 gap-6">
+                  {/* Product Details */}
+                  <div className="space-y-4">
+                    <h3 className="font-semibold text-lg flex items-center gap-2">
+                      <Info size={18} className="text-blue-500" />
+                      Product Details
+                    </h3>
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <div className="space-y-3 text-sm">
+                        {product.brand && (
+                          <div className="flex justify-between border-b border-gray-200 pb-2">
+                            <span className="text-gray-600 font-medium">Brand:</span>
+                            <span className="font-semibold">{product.brand}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between border-b border-gray-200 pb-2">
+                          <span className="text-gray-600 font-medium">Category:</span>
+                          <span>{product.category}{product.subcategory && ` > ${product.subcategory}`}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-gray-200 pb-2">
+                          <span className="text-gray-600 font-medium">Condition:</span>
+                          <span className="capitalize font-medium">{product.condition_type.replace('_', ' ')}</span>
+                        </div>
+                        {product.weight_kg && product.weight_kg > 0 && (
+                          <div className="flex justify-between border-b border-gray-200 pb-2">
+                            <span className="text-gray-600 font-medium">Weight:</span>
+                            <span>{product.weight_kg} kg</span>
+                          </div>
+                        )}
+                        {product.dimensions_cm && Object.values(product.dimensions_cm).some(v => v && v > 0) && (
+                          <div className="flex justify-between border-b border-gray-200 pb-2">
+                            <span className="text-gray-600 font-medium">Dimensions (L×W×H):</span>
+                            <span>
+                              {[product.dimensions_cm.length, product.dimensions_cm.width, product.dimensions_cm.height]
+                                .filter(d => d && d > 0)
+                                .join(' × ')} cm
+                            </span>
+                          </div>
+                        )}
+                        <div className="flex justify-between border-b border-gray-200 pb-2">
+                          <span className="text-gray-600 font-medium">Availability:</span>
+                          <span className={`font-medium ${product.quantity > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {product.quantity > 0 ? `${product.quantity} in stock` : 'Out of stock'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Custom Specifications or Features */}
+                  {((product.specifications && Object.keys(product.specifications).length > 0) || 
+                    (product.features && product.features.length > 0)) && (
+                    <div className="space-y-4">
+                      <h3 className="font-semibold text-lg flex items-center gap-2">
+                        <Package size={18} className="text-green-500" />
+                        Product Specifications
+                      </h3>
+                      <div className="bg-gray-50 rounded-lg p-4">
+                        <div className="space-y-3 text-sm">
+                          {product.specifications && Object.entries(product.specifications).map(([key, value], index) => (
+                            <div key={key} className="flex justify-between border-b border-gray-200 pb-2">
+                              <span className="text-gray-600 font-medium capitalize">{key.replace('_', ' ')}:</span>
+                              <span className="font-medium">{String(value)}</span>
+                            </div>
+                          ))}
+                          {product.features && product.features.length > 0 && (
+                            <div className="border-b border-gray-200 pb-2">
+                              <span className="text-gray-600 font-medium">Key Features:</span>
+                              <ul className="mt-1 space-y-1">
+                                {product.features.map((feature, index) => (
+                                  <li key={index} className="flex items-start gap-2">
+                                    <CheckCircle size={14} className="text-green-500 mt-0.5 flex-shrink-0" />
+                                    <span>{feature}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   )}
                 </div>
+
+                {/* Additional Information Section */}
+                <div className="border-t pt-6">
+                  <h3 className="font-semibold text-lg mb-4 flex items-center gap-2">
+                    <Award size={18} className="text-purple-500" />
+                    Additional Information
+                  </h3>
+                  <div className="grid md:grid-cols-3 gap-4">
+                    {product.warranty_months > 0 && (
+                      <div className="bg-blue-50 rounded-lg p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Shield size={16} className="text-blue-600" />
+                          <span className="font-medium text-blue-900">Warranty</span>
+                        </div>
+                        <p className="text-sm text-blue-700">{product.warranty_months} months</p>
+                      </div>
+                    )}
+                    {product.return_policy_days > 0 && (
+                      <div className="bg-green-50 rounded-lg p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Clock size={16} className="text-green-600" />
+                          <span className="font-medium text-green-900">Return Policy</span>
+                        </div>
+                        <p className="text-sm text-green-700">{product.return_policy_days} days return</p>
+                      </div>
+                    )}
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Calendar size={16} className="text-gray-600" />
+                        <span className="font-medium text-gray-900">Listed Date</span>
+                      </div>
+                      <p className="text-sm text-gray-700">
+                        {new Date(product.created_at).toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric'
+                        })}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Show message if no specifications are available */}
+                {!product.brand && 
+                 (!product.weight_kg || product.weight_kg <= 0) && 
+                 (!product.dimensions_cm || !Object.values(product.dimensions_cm).some(v => v && v > 0)) &&
+                 (!product.specifications || Object.keys(product.specifications).length === 0) &&
+                 (!product.features || product.features.length === 0) && (
+                  <div className="text-center py-12 text-gray-500">
+                    <Package size={48} className="mx-auto text-gray-300 mb-4" />
+                    <h4 className="font-medium mb-2">No specifications provided</h4>
+                    <p className="text-sm">The seller hasn't added detailed specifications for this product yet.</p>
+                    <p className="text-sm mt-1">Contact the seller for more information about this item.</p>
+                  </div>
+                )}
               </TabsContent>
               
               <TabsContent value="reviews" className="space-y-6">

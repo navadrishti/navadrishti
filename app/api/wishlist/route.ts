@@ -1,128 +1,152 @@
-import { NextRequest } from 'next/server';
-import { db } from '@/lib/db';
+import { NextRequest } from 'next/server'
+import { supabase } from '@/lib/db'
+import { verifyToken } from '@/lib/auth'
 
-// GET - Get user's wishlist
-export async function GET(request: NextRequest) {
-  try {
-    // Get authenticated user
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader) {
-      return Response.json({ error: 'Authentication required' }, { status: 401 });
-    }
-
-    const userId = 1; // Replace with actual auth logic
-
-    // Get wishlist items with marketplace data using Supabase helpers
-    const wishlistItems = await db.wishlist.getByUserId(userId);
-
-    const formattedWishlist = wishlistItems.map(item => ({
-      id: item.id,
-      marketplace_item_id: item.marketplace_item_id,
-      title: item.marketplace_item?.title || 'Unknown Product',
-      price: parseFloat(item.marketplace_item?.price || '0'),
-      compare_price: item.marketplace_item?.compare_price ? parseFloat(item.marketplace_item.compare_price) : null,
-      images: (() => {
-        try {
-          return item.marketplace_item?.images ? JSON.parse(item.marketplace_item.images) : [];
-        } catch {
-          return [];
-        }
-      })(),
-      rating_average: item.marketplace_item?.rating_average ? parseFloat(item.marketplace_item.rating_average) : 0,
-      rating_count: parseInt(item.marketplace_item?.rating_count || '0'),
-      seller_name: item.marketplace_item?.seller?.name || 'Unknown Seller',
-      created_at: item.created_at
-    }));
-
-    return Response.json({
-      success: true,
-      wishlist: formattedWishlist
-    });
-
-  } catch (error: any) {
-    console.error('Wishlist fetch error:', error);
-    return Response.json({ 
-      success: false,
-      error: 'Failed to fetch wishlist',
-      details: error.message 
-    }, { status: 500 });
-  }
-}
-
-// POST - Add to wishlist
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { marketplace_item_id } = body;
-
-    // Get authenticated user
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader) {
-      return Response.json({ error: 'Authentication required' }, { status: 401 });
+    // Verify authentication
+    const authHeader = request.headers.get('authorization')
+    if (!authHeader?.startsWith('Bearer ')) {
+      return Response.json({ error: 'Authentication required' }, { status: 401 })
     }
 
-    const userId = 1; // Replace with actual auth logic
+    const token = authHeader.split(' ')[1]
+    const payload = verifyToken(token)
+    if (!payload) {
+      return Response.json({ error: 'Invalid token' }, { status: 401 })
+    }
 
-    // Check if already in wishlist and add it
-    const existing = await db.wishlist.findExisting(userId, parseInt(marketplace_item_id));
+    const { marketplace_item_id } = await request.json()
+
+    if (!marketplace_item_id) {
+      return Response.json({ error: 'Marketplace item ID is required' }, { status: 400 })
+    }
+
+    // Check if item already in wishlist
+    const { data: existing } = await supabase
+      .from('wishlist')
+      .select('id')
+      .eq('user_id', payload.userId)
+      .eq('marketplace_item_id', marketplace_item_id)
+      .single()
 
     if (existing) {
-      return Response.json({
-        success: false,
-        error: 'Item already in wishlist'
-      }, { status: 400 });
+      return Response.json({ error: 'Item already in wishlist' }, { status: 400 })
     }
 
     // Add to wishlist
-    await db.wishlist.add(userId, parseInt(marketplace_item_id));
+    const { error } = await supabase
+      .from('wishlist')
+      .insert({
+        user_id: payload.userId,
+        marketplace_item_id: marketplace_item_id
+      })
 
-    return Response.json({
-      success: true,
-      message: 'Item added to wishlist'
-    });
+    if (error) {
+      console.error('Wishlist insert error:', error)
+      return Response.json({ error: 'Failed to add to wishlist' }, { status: 500 })
+    }
 
-  } catch (error: any) {
-    console.error('Add to wishlist error:', error);
     return Response.json({ 
-      success: false,
-      error: 'Failed to add to wishlist',
-      details: error.message 
-    }, { status: 500 });
+      success: true, 
+      message: 'Added to wishlist successfully' 
+    })
+
+  } catch (error) {
+    console.error('Wishlist API error:', error)
+    return Response.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
-// DELETE - Remove from wishlist
 export async function DELETE(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const marketplace_item_id = searchParams.get('marketplace_item_id');
+    // Verify authentication
+    const authHeader = request.headers.get('authorization')
+    if (!authHeader?.startsWith('Bearer ')) {
+      return Response.json({ error: 'Authentication required' }, { status: 401 })
+    }
+
+    const token = authHeader.split(' ')[1]
+    const payload = verifyToken(token)
+    if (!payload) {
+      return Response.json({ error: 'Invalid token' }, { status: 401 })
+    }
+
+    const { marketplace_item_id } = await request.json()
 
     if (!marketplace_item_id) {
-      return Response.json({ error: 'marketplace_item_id is required' }, { status: 400 });
+      return Response.json({ error: 'Marketplace item ID is required' }, { status: 400 })
     }
-
-    // Get authenticated user
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader) {
-      return Response.json({ error: 'Authentication required' }, { status: 401 });
-    }
-
-    const userId = 1; // Replace with actual auth logic
 
     // Remove from wishlist
-    await db.wishlist.remove(userId, parseInt(marketplace_item_id));
+    const { error } = await supabase
+      .from('wishlist')
+      .delete()
+      .eq('user_id', payload.userId)
+      .eq('marketplace_item_id', marketplace_item_id)
 
-    return Response.json({
-      success: true,
-      message: 'Item removed from wishlist'
-    });
+    if (error) {
+      console.error('Wishlist delete error:', error)
+      return Response.json({ error: 'Failed to remove from wishlist' }, { status: 500 })
+    }
 
-  } catch (error: any) {
-    console.error('Remove from wishlist error:', error);
     return Response.json({ 
-      success: false,
-      error: 'Failed to remove from wishlist',
-      details: error.message 
-    }, { status: 500 });
+      success: true, 
+      message: 'Removed from wishlist successfully' 
+    })
+
+  } catch (error) {
+    console.error('Wishlist API error:', error)
+    return Response.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    // Verify authentication
+    const authHeader = request.headers.get('authorization')
+    if (!authHeader?.startsWith('Bearer ')) {
+      return Response.json({ error: 'Authentication required' }, { status: 401 })
+    }
+
+    const token = authHeader.split(' ')[1]
+    const payload = verifyToken(token)
+    if (!payload) {
+      return Response.json({ error: 'Invalid token' }, { status: 401 })
+    }
+
+    // Get user's wishlist
+    const { data: wishlistItems, error } = await supabase
+      .from('wishlist')
+      .select(`
+        id,
+        marketplace_item_id,
+        created_at,
+        marketplace_items (
+          id,
+          title,
+          price,
+          images,
+          condition_type,
+          quantity,
+          status
+        )
+      `)
+      .eq('user_id', payload.userId)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error('Wishlist fetch error:', error)
+      return Response.json({ error: 'Failed to fetch wishlist' }, { status: 500 })
+    }
+
+    return Response.json({ 
+      success: true, 
+      wishlist: wishlistItems || [] 
+    })
+
+  } catch (error) {
+    console.error('Wishlist API error:', error)
+    return Response.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

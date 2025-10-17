@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { ProductCard } from '@/components/product-card'
-import { Search, PackagePlus, Trash2 } from 'lucide-react'
+import { Search, PackagePlus, Trash2, Plus, ArrowRight, ShoppingBag } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
 
@@ -104,7 +104,22 @@ export default function MarketplacePage() {
       }
       params.append('view', currentView);
       
-      const response = await fetch(`/api/marketplace?${params.toString()}`);
+      // Prepare headers for authentication (needed for nearby view)
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      
+      // Add authorization header if user is logged in and we need location-based filtering
+      if (user && (currentView === 'nearby' || currentView === 'my-listings')) {
+        const token = localStorage.getItem('token');
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+      }
+      
+      const response = await fetch(`/api/marketplace?${params.toString()}`, {
+        headers
+      });
       const data = await response.json();
       
       if (data.success) {
@@ -162,6 +177,31 @@ export default function MarketplacePage() {
       <Header />
       
       <main className="flex-1 px-6 py-8 md:px-10">
+        {/* Enhanced Call-to-Action Section for Listing Items */}
+        {user && user.user_type !== 'ngo' && (
+          <div className="mb-8 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+              <div className="text-center md:text-left">
+                <h2 className="text-xl font-semibold text-blue-900 mb-2">
+                  Got items to sell or donate?
+                </h2>
+                <p className="text-blue-700 text-sm">
+                  Help your community by listing items others might need. It's quick and easy!
+                </p>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <Link href="/marketplace/create">
+                  <Button size="lg" className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 text-base font-medium shadow-lg hover:shadow-xl transition-all duration-200">
+                    <Plus size={20} className="mr-2" />
+                    List Your Item
+                    <ArrowRight size={16} className="ml-2" />
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Marketplace</h1>
@@ -169,14 +209,6 @@ export default function MarketplacePage() {
               Buy and sell items to support community initiatives
             </p>
           </div>
-          {user && user.user_type !== 'ngo' && (
-            <Link href="/marketplace/create">
-              <Button>
-                <PackagePlus size={16} className="mr-2" />
-                List Item
-              </Button>
-            </Link>
-          )}
         </div>
 
         <Tabs value={currentView} onValueChange={handleTabChange} className="space-y-6">
@@ -234,8 +266,27 @@ export default function MarketplacePage() {
                 />
               ))}
               {filteredItems.length === 0 && (
-                <div className="col-span-full text-center py-8">
-                  <p className="text-muted-foreground">No items found matching your criteria.</p>
+                <div className="col-span-full text-center py-12">
+                  <div className="max-w-md mx-auto">
+                    <div className="mb-4">
+                      <ShoppingBag size={48} className="mx-auto text-gray-400 mb-4" />
+                    </div>
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">No items found</h3>
+                    <p className="text-gray-500 mb-6">
+                      {currentView === 'all' ? 
+                        "No items match your search criteria." :
+                        `No ${currentView} items available right now.`
+                      }
+                    </p>
+                    {user && user.user_type !== 'ngo' && (
+                      <Link href="/marketplace/create">
+                        <Button size="lg" className="bg-blue-600 hover:bg-blue-700 text-white">
+                          <Plus size={18} className="mr-2" />
+                          Be the first to list an item
+                        </Button>
+                      </Link>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -263,16 +314,41 @@ export default function MarketplacePage() {
                 />
               ))}
               {filteredItems.filter((item: any) => item.featured).length === 0 && (
-                <div className="col-span-full text-center py-8">
-                  <p className="text-muted-foreground">No featured items found.</p>
+                <div className="col-span-full text-center py-12">
+                  <div className="max-w-md mx-auto">
+                    <div className="mb-4">
+                      <ShoppingBag size={48} className="mx-auto text-gray-400 mb-4" />
+                    </div>
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">No featured items</h3>
+                    <p className="text-gray-500 mb-6">
+                      No featured items available right now.
+                    </p>
+                    {user && user.user_type !== 'ngo' && (
+                      <Link href="/marketplace/create">
+                        <Button size="lg" className="bg-blue-600 hover:bg-blue-700 text-white">
+                          <Plus size={18} className="mr-2" />
+                          List your item
+                        </Button>
+                      </Link>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
           </TabsContent>
 
           <TabsContent value="nearby" className="space-y-6">
+            {!user && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                <div className="flex items-center gap-2 text-blue-800">
+                  <span className="text-sm">
+                    📍 Sign in to see items from your area based on your profile location
+                  </span>
+                </div>
+              </div>
+            )}
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {filteredItems.filter((item: any) => item.seller_location).map((item: any) => (
+              {filteredItems.map((item: any) => (
                 <ProductCard
                   key={item.id}
                   title={item.title}
@@ -291,14 +367,51 @@ export default function MarketplacePage() {
                   isDeleting={deleting === item.id}
                 />
               ))}
-              {filteredItems.filter((item: any) => item.seller_location).length === 0 && (
-                <div className="col-span-full text-center py-8">
-                  <p className="text-muted-foreground">No nearby items available.</p>
+              {filteredItems.length === 0 && (
+                <div className="col-span-full text-center py-12">
+                  <div className="max-w-md mx-auto">
+                    <div className="mb-4">
+                      <ShoppingBag size={48} className="mx-auto text-gray-400 mb-4" />
+                    </div>
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">No nearby items</h3>
+                    <p className="text-gray-500 mb-6">
+                      {user ? 
+                        "No items found in your area. Update your profile location to see nearby items." :
+                        "Sign in and add your location to see nearby items."
+                      }
+                    </p>
+                    {user && user.user_type !== 'ngo' && (
+                      <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                        <Link href="/marketplace/create">
+                          <Button size="lg" className="bg-blue-600 hover:bg-blue-700 text-white">
+                            <Plus size={18} className="mr-2" />
+                            List your item
+                          </Button>
+                        </Link>
+                        <Link href="/profile">
+                          <Button variant="outline" size="lg">
+                            Update Location
+                          </Button>
+                        </Link>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
           </TabsContent>
         </Tabs>
+
+        {/* Floating Action Button for Mobile */}
+        {user && user.user_type !== 'ngo' && (
+          <div className="fixed bottom-6 right-6 md:hidden z-50">
+            <Link href="/marketplace/create">
+              <Button size="lg" className="h-14 w-14 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-200">
+                <Plus size={24} />
+              </Button>
+            </Link>
+          </div>
+        )}
       </main>
     </div>
   );

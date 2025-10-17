@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Award, Bell, Menu, Search, ShoppingBag, ShoppingCart, X, HeartHandshake, GraduationCap, Briefcase, Building, UserCheck, LogIn } from "lucide-react"
 import { useCart } from "@/lib/cart-context"
+import { VerificationBadge } from "@/components/verification-badge"
 
 export function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -121,11 +122,17 @@ export function Header() {
                     </Avatar>
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
+                <DropdownMenuContent align="end" className="w-64">
                   <DropdownMenuLabel>{user.name}</DropdownMenuLabel>
                   <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
                     {user.email} • {user.user_type.charAt(0).toUpperCase() + user.user_type.slice(1)}
                   </DropdownMenuLabel>
+                  <div className="px-2 py-1">
+                    <VerificationBadge 
+                      status={user.verification_status || 'unverified'} 
+                      size="sm" 
+                    />
+                  </div>
                   <DropdownMenuSeparator />
                   <Link href="/profile">
                     <DropdownMenuItem>Profile</DropdownMenuItem>

@@ -11,6 +11,17 @@ export interface User {
   user_type: 'individual' | 'ngo' | 'company';
   profile_image?: string;
   profile?: Record<string, any>;
+  // Location fields for nearby functionality
+  city?: string;
+  state_province?: string;
+  pincode?: string;
+  country?: string;
+  // Additional profile fields
+  phone?: string;
+  bio?: string;
+  // Verification status
+  verification_status?: 'verified' | 'unverified' | 'pending';
+  verification_details?: any;
 }
 
 interface AuthContextType {

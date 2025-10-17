@@ -10,7 +10,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const { userId } = await params;
     console.log('Profile API called with userId:', userId);
 
-    // Get user profile data - only query columns that exist
+    // Get user profile data with location and profile image
     const { data: userResult, error: userError } = await supabase
       .from('users')
       .select(`
@@ -19,6 +19,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         email,
         user_type,
         location,
+        profile_image,
+        city,
+        state_province,
+        pincode,
+        country,
         created_at
       `)
       .eq('id', parseInt(userId))
@@ -33,6 +38,45 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         success: false,
         error: 'Profile not found' 
       }, { status: 404 });
+    }
+
+    // Get verification status based on user type
+    let verificationStatus = 'unverified';
+    let verificationDetails = null;
+
+    if (userResult.user_type === 'individual') {
+      const { data: verification } = await supabase
+        .from('individual_verifications')
+        .select('verification_status, aadhaar_verified, pan_verified, verification_date')
+        .eq('user_id', parseInt(userId))
+        .single();
+      
+      if (verification) {
+        verificationStatus = verification.verification_status;
+        verificationDetails = verification;
+      }
+    } else if (userResult.user_type === 'company') {
+      const { data: verification } = await supabase
+        .from('company_verifications')
+        .select('verification_status, company_name, verification_date')
+        .eq('user_id', parseInt(userId))
+        .single();
+      
+      if (verification) {
+        verificationStatus = verification.verification_status;
+        verificationDetails = verification;
+      }
+    } else if (userResult.user_type === 'ngo') {
+      const { data: verification } = await supabase
+        .from('ngo_verifications')
+        .select('verification_status, ngo_name, verification_date')
+        .eq('user_id', parseInt(userId))
+        .single();
+      
+      if (verification) {
+        verificationStatus = verification.verification_status;
+        verificationDetails = verification;
+      }
     }
 
     // Get user's marketplace statistics - only count real/meaningful listings
@@ -105,8 +149,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       website: null,
       portfolio: [],
       experience: null,
-      profile_image: null,
-      verification_status: null,
+      verification_status: verificationStatus,
+      verification_details: verificationDetails,
       total_listings: totalListings,
       total_sold: totalSold,
       rating_average: ratingAverage,

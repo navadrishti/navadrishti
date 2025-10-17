@@ -12,6 +12,7 @@ import { useAuth } from '@/lib/auth-context'
 import { UserCheck, Shield, Settings, User } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
+import { VerificationBadge, VerificationDetails } from '@/components/verification-badge'
 
 export default function ProfilePage() {
   const { user, updateUser } = useAuth();
@@ -26,6 +27,14 @@ export default function ProfilePage() {
   const [uploading, setUploading] = useState(false);
   const [portfolioDescription, setPortfolioDescription] = useState('');
   const [certifications, setCertifications] = useState('');
+  
+  // Location fields for nearby functionality
+  const [city, setCity] = useState('');
+  const [stateProvince, setStateProvince] = useState('');
+  const [pincode, setPincode] = useState('');
+  const [country, setCountry] = useState('India');
+  const [phone, setPhone] = useState('');
+  const [bio, setBio] = useState('');
 
   useEffect(() => {
     if (user) {
@@ -36,11 +45,11 @@ export default function ProfilePage() {
 
   const fetchProfile = async () => {
     try {
-      // For now, set default profile data
+      // For now, set default profile data and load from user object
       setProfile({
         ...user,
-        bio: '',
-        phone: '',
+        bio: user?.bio || '',
+        phone: user?.phone || '',
         address: '',
         skills: [],
         interests: [],
@@ -48,6 +57,19 @@ export default function ProfilePage() {
         experience: '',
         website: ''
       });
+      
+      // Load location fields from user data
+      setCity(user?.city || '');
+      setStateProvince(user?.state_province || '');
+      setPincode(user?.pincode || '');
+      setCountry(user?.country || 'India');
+      setPhone(user?.phone || '');
+      setBio(user?.bio || '');
+      
+      // Load profile image if available
+      if (user?.profile_image) {
+        setProfileImageUrl(user.profile_image);
+      }
     } catch (error) {
       console.error('Error fetching profile:', error);
     } finally {
@@ -193,27 +215,49 @@ export default function ProfilePage() {
     try {
       setLoading(true);
       
-      // Save profile image to database if uploaded
+      // Prepare profile data to save
+      const profileData: any = {
+        userId: user?.id,
+      };
+      
+      // Add profile image if uploaded
       if (profileImageUrl) {
-        const response = await fetch('/api/profile/update', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            userId: user.id,
-            profileImageUrl: profileImageUrl,
-          }),
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to update profile image');
-        }
-
-        // Update the user context with the new profile image
-        updateUser({ profile_image: profileImageUrl });
-        console.log('Profile image saved:', profileImageUrl);
+        profileData.profileImageUrl = profileImageUrl;
       }
+      
+      // Add location fields
+      if (city) profileData.city = city;
+      if (stateProvince) profileData.state_province = stateProvince;
+      if (pincode) profileData.pincode = pincode;
+      if (country) profileData.country = country;
+      if (phone) profileData.phone = phone;
+      if (bio) profileData.bio = bio;
+      
+      // Save all profile data
+      const response = await fetch('/api/profile/update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(profileData),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update profile');
+      }
+
+      // Update the user context with all the new data
+      updateUser({ 
+        profile_image: profileImageUrl,
+        city,
+        state_province: stateProvince,
+        pincode,
+        country,
+        phone,
+        bio
+      });
+      
+      console.log('Profile saved successfully:', profileData);
       
       if (projectPhotoUrls.length > 0) {
         console.log('Project photo URLs to save:', projectPhotoUrls);
@@ -333,18 +377,68 @@ export default function ProfilePage() {
                     </div>
                     <div>
                       <Label>Phone</Label>
-                      <Input placeholder="Add your phone number" />
+                      <Input 
+                        placeholder="Add your phone number" 
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                      />
                     </div>
                   </div>
-                  <div>
-                    <Label>Location</Label>
-                    <Input placeholder="City, State/Province, Country" />
+                  
+                  {/* Location Fields for Nearby Functionality */}
+                  <div className="space-y-4">
+                    <div className="border-t pt-4">
+                      <h3 className="text-lg font-medium mb-4">📍 Location Information</h3>
+                      <p className="text-sm text-gray-600 mb-4">
+                        This information helps others find your items in the nearby section
+                      </p>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Label>City</Label>
+                        <Input 
+                          placeholder="e.g., Mumbai, Delhi, Bangalore" 
+                          value={city}
+                          onChange={(e) => setCity(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <Label>State/Province</Label>
+                        <Input 
+                          placeholder="e.g., Maharashtra, Delhi, Karnataka" 
+                          value={stateProvince}
+                          onChange={(e) => setStateProvince(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Label>Pin Code</Label>
+                        <Input 
+                          placeholder="e.g., 400001, 110001" 
+                          value={pincode}
+                          onChange={(e) => setPincode(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <Label>Country</Label>
+                        <Input 
+                          value={country}
+                          onChange={(e) => setCountry(e.target.value)}
+                        />
+                      </div>
+                    </div>
                   </div>
+                  
                   <div>
                     <Label>Bio</Label>
                     <Textarea 
                       placeholder={`Tell others about yourself as ${user.user_type === 'ngo' ? 'an organization' : user.user_type === 'company' ? 'a company' : 'an individual'}...`}
                       rows={4}
+                      value={bio}
+                      onChange={(e) => setBio(e.target.value)}
                     />
                   </div>
                   <Button onClick={handleSaveProfile} disabled={loading}>
@@ -530,49 +624,28 @@ export default function ProfilePage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  <div className="space-y-6">
-                    <div className="flex items-center justify-between py-2">
-                      <span className="text-sm font-medium">Email Verification</span>
-                      <Badge variant={verificationData?.emailVerified || (user as any)?.verified_at ? "default" : "secondary"}>
-                        {verificationData?.emailVerified || (user as any)?.verified_at ? "Verified" : "Pending"}
-                      </Badge>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">Overall Status</span>
+                      <VerificationBadge 
+                        status={user?.verification_status || 'unverified'} 
+                        size="md"
+                      />
                     </div>
                     
-                    <div className="flex items-center justify-between py-2">
-                      <span className="text-sm font-medium">Phone Verification</span>
-                      <Badge variant={verificationData?.phoneVerified ? "default" : "secondary"}>
-                        {verificationData?.phoneVerified ? "Verified" : "Pending"}
-                      </Badge>
-                    </div>
-                    
-                    <div className="flex items-center justify-between py-2">
-                      <span className="text-sm font-medium">Identity Verification</span>
-                      <Badge variant={
-                        user.user_type === 'individual' 
-                          ? (verificationData?.aadhaarVerified && verificationData?.panVerified ? "default" : "secondary")
-                          : (verificationData?.verified ? "default" : "secondary")
-                      }>
-                        {user.user_type === 'individual' 
-                          ? (verificationData?.aadhaarVerified && verificationData?.panVerified ? "Verified" : "Pending")
-                          : (verificationData?.verified ? "Verified" : "Pending")
-                        }
-                      </Badge>
-                    </div>
-                    
-                    {user.user_type === 'ngo' && (
-                      <div className="flex items-center justify-between py-2">
-                        <span className="text-sm font-medium">Organization Verification</span>
-                        <Badge variant={verificationData?.organizationVerified ? "default" : "secondary"}>
-                          {verificationData?.organizationVerified ? "Verified" : "Pending"}
-                        </Badge>
-                      </div>
+                    {user?.verification_details && (
+                      <VerificationDetails 
+                        userType={user.user_type as 'individual' | 'company' | 'ngo'}
+                        verificationDetails={user.verification_details}
+                        className="bg-gray-50 p-4 rounded-lg"
+                      />
                     )}
                     
                     <div className="pt-4 border-t">
                       <Link href="/verification">
                         <Button variant="outline" size="sm" className="w-full">
                           <UserCheck className="h-4 w-4 mr-2" />
-                          {verificationData?.verified ? "Manage Verification" : "Start Verification"}
+                          {user?.verification_status === 'verified' ? "Manage Verification" : "Complete Verification"}
                         </Button>
                       </Link>
                     </div>
