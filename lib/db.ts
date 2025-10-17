@@ -675,6 +675,252 @@ export const db = {
       if (error && error.code !== 'PGRST116') throw error;
       return data;
     }
+  },
+
+  // Orders (E-commerce functionality)
+  orders: {
+    async getAll(filters: any = {}) {
+      let query = supabase
+        .from('ecommerce_orders')
+        .select(`
+          *,
+          buyer:users!buyer_id(id, name, email, user_type),
+          seller:users!seller_id(id, name, email, user_type)
+        `);
+      
+      if (filters.buyer_id) {
+        query = query.eq('buyer_id', filters.buyer_id);
+      }
+      if (filters.seller_id) {
+        query = query.eq('seller_id', filters.seller_id);
+      }
+      if (filters.status) {
+        query = query.eq('status', filters.status);
+      }
+      
+      const { data, error } = await query.order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data;
+    },
+
+    async getById(id: string) {
+      const { data, error } = await supabase
+        .from('ecommerce_orders')
+        .select(`
+          *,
+          buyer:users!buyer_id(id, name, email, user_type),
+          seller:users!seller_id(id, name, email, user_type)
+        `)
+        .eq('order_number', id)
+        .single();
+      
+      if (error && error.code !== 'PGRST116') throw error;
+      return data;
+    },
+
+    async create(orderData: any) {
+      const { data, error } = await supabase
+        .from('ecommerce_orders')
+        .insert(orderData)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+
+    async update(id: number, orderData: any) {
+      const { data, error } = await supabase
+        .from('ecommerce_orders')
+        .update(orderData)
+        .eq('id', id)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    }
+  },
+
+  // Order Items
+  orderItems: {
+    async getByOrderId(orderId: number) {
+      const { data, error } = await supabase
+        .from('ecommerce_order_items')
+        .select(`
+          *,
+          marketplace_item:marketplace_items!marketplace_item_id(*)
+        `)
+        .eq('order_id', orderId);
+      
+      if (error) throw error;
+      return data;
+    },
+
+    async create(itemData: any) {
+      const { data, error } = await supabase
+        .from('ecommerce_order_items')
+        .insert(itemData)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    }
+  },
+
+  // Payments
+  payments: {
+    async getByOrderId(orderId: number) {
+      const { data, error } = await supabase
+        .from('ecommerce_payments')
+        .select('*')
+        .eq('order_id', orderId)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data;
+    },
+
+    async create(paymentData: any) {
+      const { data, error } = await supabase
+        .from('ecommerce_payments')
+        .insert(paymentData)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+
+    async update(id: number, paymentData: any) {
+      const { data, error } = await supabase
+        .from('ecommerce_payments')
+        .update(paymentData)
+        .eq('id', id)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    }
+  },
+
+  // Shipping Details
+  shippingDetails: {
+    async getByOrderId(orderId: number) {
+      const { data, error } = await supabase
+        .from('ecommerce_shipping_details')
+        .select('*')
+        .eq('order_id', orderId)
+        .single();
+      
+      if (error && error.code !== 'PGRST116') throw error;
+      return data;
+    },
+
+    async create(shippingData: any) {
+      const { data, error } = await supabase
+        .from('ecommerce_shipping_details')
+        .insert(shippingData)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+
+    async update(orderId: number, shippingData: any) {
+      const { data, error } = await supabase
+        .from('ecommerce_shipping_details')
+        .update(shippingData)
+        .eq('order_id', orderId)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    }
+  },
+
+  // User Addresses
+  userAddresses: {
+    async getByUserId(userId: number) {
+      const { data, error } = await supabase
+        .from('user_addresses')
+        .select('*')
+        .eq('user_id', userId)
+        .order('is_default', { ascending: false })
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data;
+    },
+
+    async getById(id: number) {
+      const { data, error } = await supabase
+        .from('user_addresses')
+        .select('*')
+        .eq('id', id)
+        .single();
+      
+      if (error && error.code !== 'PGRST116') throw error;
+      return data;
+    },
+
+    async create(addressData: any) {
+      // If this is being set as default, unset others first
+      if (addressData.is_default) {
+        await supabase
+          .from('user_addresses')
+          .update({ is_default: false })
+          .eq('user_id', addressData.user_id);
+      }
+
+      const { data, error } = await supabase
+        .from('user_addresses')
+        .insert(addressData)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+
+    async update(id: number, addressData: any) {
+      // If this is being set as default, unset others first
+      if (addressData.is_default) {
+        const address = await this.getById(id);
+        if (address) {
+          await supabase
+            .from('user_addresses')
+            .update({ is_default: false })
+            .eq('user_id', address.user_id)
+            .neq('id', id);
+        }
+      }
+
+      const { data, error } = await supabase
+        .from('user_addresses')
+        .update(addressData)
+        .eq('id', id)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+
+    async delete(id: number) {
+      const { error } = await supabase
+        .from('user_addresses')
+        .delete()
+        .eq('id', id);
+      
+      if (error) throw error;
+      return true;
+    }
   }
 };
 

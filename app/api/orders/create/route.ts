@@ -1,147 +1,86 @@
 import { NextRequest } from 'next/server';
-import { executeQuery } from '@/lib/db';
-import Razorpay from 'razorpay';
-
-// Initialize Razorpay conditionally
-let razorpay: Razorpay | null = null;
-
-function getRazorpayInstance() {
-  if (!razorpay && process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
-    razorpay = new Razorpay({
-      key_id: process.env.RAZORPAY_KEY_ID,
-      key_secret: process.env.RAZORPAY_KEY_SECRET,
-    });
-  }
-  return razorpay;
-}
+import db from '@/lib/db';
 
 export async function POST(request: NextRequest) {
   try {
-    const { itemId, quantity = 1, shippingAddress, notes } = await request.json();
+    const { userId, itemId, quantity, shippingAddress } = await request.json();
 
-    // Get authenticated user from session/token (implement based on your auth system)
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader) {
-      return Response.json({ error: 'Authentication required' }, { status: 401 });
+    // Validate required fields
+    if (!userId || !itemId || !quantity || !shippingAddress) {
+      return Response.json({ 
+        error: 'Missing required fields: userId, itemId, quantity, shippingAddress' 
+      }, { status: 400 });
     }
 
-    // Mock user extraction - replace with your actual auth logic
-    const userId = 1; // Replace with actual user ID from auth token
+    // Get item details using Supabase
+    const item = await db.marketplaceItems.getById(itemId);
 
-    // Get marketplace item details
-    const itemResult = await executeQuery({
-      query: `SELECT * FROM marketplace_items WHERE id = ? AND status = 'active'`,
-      values: [itemId]
-    }) as any[];
-
-    if (!itemResult.length) {
+    if (!item) {
       return Response.json({ error: 'Item not found or not available' }, { status: 404 });
     }
 
-    const item = itemResult[0];
-
-    // Check if buyer is not the seller
-    if (item.seller_id === userId) {
-      return Response.json({ error: 'Cannot buy your own item' }, { status: 400 });
+    // Check if enough quantity is available
+    if (item.quantity < quantity) {
+      return Response.json({ 
+        error: `Only ${item.quantity} items available` 
+      }, { status: 400 });
     }
 
-    // Check quantity availability
-    if (item.quantity < quantity) {
-      return Response.json({ error: 'Insufficient quantity available' }, { status: 400 });
+    // Prevent self-purchase
+    if (item.seller_id === userId) {
+      return Response.json({ error: 'Cannot purchase your own item' }, { status: 400 });
     }
 
     // Calculate amounts
-    const itemTotal = parseFloat(item.price) * quantity;
-    const shippingAmount = 50; // Base shipping cost - can be dynamic based on location/weight
+    const itemTotal = item.price * quantity;
+    const shippingAmount = 50; // Fixed shipping
     const taxAmount = itemTotal * 0.18; // 18% GST
     const finalAmount = itemTotal + shippingAmount + taxAmount;
 
-    // Generate unique order number
-    const orderNumber = `ORD${Date.now()}${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+    // Generate order number
+    const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-    // Create order in database
-    const orderResult = await executeQuery({
-      query: `INSERT INTO orders (
-        order_number, buyer_id, seller_id, total_amount, shipping_amount, 
-        tax_amount, final_amount, shipping_address, notes, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'payment_pending')`,
-      values: [
-        orderNumber,
-        userId,
-        item.seller_id,
-        itemTotal,
-        shippingAmount,
-        taxAmount,
-        finalAmount,
-        JSON.stringify(shippingAddress),
-        notes || null
-      ]
-    }) as any;
+    // Create order
+    const orderData = {
+      order_number: orderNumber,
+      buyer_id: userId,
+      seller_id: item.seller_id,
+      total_amount: finalAmount,
+      shipping_address: shippingAddress,
+      status: 'pending'
+    };
 
-    const orderId = orderResult.insertId;
+    const order = await db.orders.create(orderData);
 
     // Create order item
-    await executeQuery({
-      query: `INSERT INTO order_items (
-        order_id, marketplace_item_id, quantity, unit_price, total_price, item_snapshot
-      ) VALUES (?, ?, ?, ?, ?, ?)`,
-      values: [
-        orderId,
-        itemId,
-        quantity,
-        item.price,
-        itemTotal,
-        JSON.stringify({
-          title: item.title,
-          description: item.description,
-          category: item.category,
-          images: item.images,
-          condition_type: item.condition_type
-        })
-      ]
-    });
-
-    // Create Razorpay order
-    const razorpayInstance = getRazorpayInstance();
-    if (!razorpayInstance) {
-      return Response.json({ error: 'Payment gateway not configured' }, { status: 500 });
-    }
-    
-    const razorpayOrder = await razorpayInstance.orders.create({
-      amount: Math.round(finalAmount * 100), // Convert to paise
-      currency: 'INR',
-      receipt: orderNumber,
-      notes: {
-        order_id: orderId.toString(),
-        item_id: itemId.toString(),
-        buyer_id: userId.toString()
+    const orderItemData = {
+      order_id: order.id,
+      marketplace_item_id: itemId,
+      quantity: quantity,
+      unit_price: item.price,
+      total_price: itemTotal,
+      item_snapshot: {
+        id: item.id,
+        title: item.title,
+        price: item.price,
+        seller_id: item.seller_id
       }
-    });
+    };
 
-    // Create payment record
-    await executeQuery({
-      query: `INSERT INTO payments (
-        order_id, payment_id, razorpay_order_id, amount, status
-      ) VALUES (?, ?, ?, ?, 'created')`,
-      values: [orderId, razorpayOrder.id, razorpayOrder.id, finalAmount]
-    });
-
-    // Log order status change
-    await executeQuery({
-      query: `INSERT INTO order_status_history (
-        order_id, new_status, changed_by, reason
-      ) VALUES (?, 'payment_pending', ?, 'Order created and payment initiated')`,
-      values: [orderId, userId]
-    });
+    await db.orderItems.create(orderItemData);
 
     return Response.json({
       success: true,
       order: {
-        id: orderId,
-        orderNumber,
-        finalAmount,
-        razorpayOrderId: razorpayOrder.id,
-        razorpayKeyId: process.env.RAZORPAY_KEY_ID
+        id: order.id,
+        order_number: orderNumber,
+        total_amount: finalAmount,
+        amounts: {
+          item_total: itemTotal,
+          shipping_amount: shippingAmount,
+          tax_amount: taxAmount,
+          final_amount: finalAmount
+        }
       }
     });
 

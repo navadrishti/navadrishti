@@ -88,7 +88,11 @@ export async function POST(request: NextRequest) {
 
     // Clear user's cart after successful payment
     try {
-      await db.cart.clearByUserId(userId);
+      // Remove all cart items for this user
+      const cartItems = await db.cart.getByUserId(userId);
+      for (const cartItem of cartItems) {
+        await db.cart.remove(userId, cartItem.marketplace_item_id);
+      }
     } catch (error) {
       console.error('Error clearing cart:', error);
       // Don't fail the entire operation if cart clearing fails

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Header } from '@/components/header'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -16,6 +16,19 @@ export default function SettingsPage() {
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [pushNotifications, setPushNotifications] = useState(false);
   const [profileVisibility, setProfileVisibility] = useState(true);
+  
+  // Form state for editable fields
+  const [fullName, setFullName] = useState(user?.name || '');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+
+  // Update fullName when user data changes
+  useEffect(() => {
+    if (user?.name) {
+      setFullName(user.name);
+    }
+  }, [user?.name]);
 
   if (!user) {
     return (
@@ -60,15 +73,30 @@ export default function SettingsPage() {
               <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label>Current Password</Label>
-                  <Input type="password" placeholder="Enter current password" />
+                  <Input 
+                    type="password" 
+                    placeholder="Enter current password" 
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>New Password</Label>
-                  <Input type="password" placeholder="Enter new password" />
+                  <Input 
+                    type="password" 
+                    placeholder="Enter new password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Confirm New Password</Label>
-                  <Input type="password" placeholder="Confirm new password" />
+                  <Input 
+                    type="password" 
+                    placeholder="Confirm new password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                  />
                 </div>
                 <Button>Update Password</Button>
               </CardContent>
@@ -158,7 +186,11 @@ export default function SettingsPage() {
                 </div>
                 <div>
                   <Label>Full Name</Label>
-                  <Input value={user.name} />
+                  <Input 
+                    value={fullName} 
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="Enter your full name"
+                  />
                 </div>
                 <Button>Save Changes</Button>
               </CardContent>
