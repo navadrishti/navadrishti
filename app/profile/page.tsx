@@ -14,7 +14,7 @@ import Link from 'next/link'
 import { toast } from 'sonner'
 
 export default function ProfilePage() {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [verificationData, setVerificationData] = useState<any>(null);
@@ -193,11 +193,26 @@ export default function ProfilePage() {
     try {
       setLoading(true);
       
-      // Here you would typically save the profile data to your server
-      // including the Cloudinary image URLs
-      
+      // Save profile image to database if uploaded
       if (profileImageUrl) {
-        console.log('Profile image URL to save:', profileImageUrl);
+        const response = await fetch('/api/profile/update', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userId: user.id,
+            profileImageUrl: profileImageUrl,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to update profile image');
+        }
+
+        // Update the user context with the new profile image
+        updateUser({ profile_image: profileImageUrl });
+        console.log('Profile image saved:', profileImageUrl);
       }
       
       if (projectPhotoUrls.length > 0) {

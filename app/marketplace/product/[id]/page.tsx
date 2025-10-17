@@ -12,7 +12,6 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { 
   ArrowLeft, 
   Star, 
-  MapPin, 
   Shield, 
   Plus,
   Minus,
@@ -51,6 +50,7 @@ interface ProductData {
   features: string[]
   warranty_months: number
   return_policy_days: number
+  seller_id: number
   seller_name: string
   seller_email: string
   seller_type: string
@@ -473,23 +473,33 @@ export default function ProductDetailsPage({ params }: { params: Promise<{ id: s
             {/* Seller Info */}
             <Card>
               <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <Avatar>
-                    <AvatarFallback>
-                      {getSellerIcon(product.seller_type)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <p className="font-semibold">{product.seller_name}</p>
-                    <p className="text-sm text-gray-600 capitalize">{product.seller_type}</p>
+                <div className="flex items-center justify-between">
+                  <div 
+                    className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 rounded-lg p-2 -m-2 transition-colors"
+                    onClick={() => router.push(`/profile/${product.seller_id}`)}
+                  >
+                    <Avatar>
+                      <AvatarFallback>
+                        {getSellerIcon(product.seller_type)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="font-semibold text-blue-600 hover:text-blue-700">
+                        {product.seller_name}
+                      </p>
+                      <p className="text-sm text-gray-600 capitalize">{product.seller_type}</p>
+                    </div>
                   </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => router.push(`/profile/${product.seller_id}`)}
+                    className="flex items-center gap-2"
+                  >
+                    <User size={14} />
+                    View Profile
+                  </Button>
                 </div>
-                {product.location && (
-                  <div className="flex items-center gap-1 mt-2 text-sm text-gray-600">
-                    <MapPin size={14} />
-                    <span>{product.location}</span>
-                  </div>
-                )}
               </CardContent>
             </Card>
 
@@ -622,14 +632,29 @@ export default function ProductDetailsPage({ params }: { params: Promise<{ id: s
                   <div>
                     <h3 className="font-semibold mb-3">Product Details</h3>
                     <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Brand:</span>
-                        <span>{product.brand || 'Not specified'}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Weight:</span>
-                        <span>{product.weight_kg} kg</span>
-                      </div>
+                      {product.brand && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Brand:</span>
+                          <span>{product.brand}</span>
+                        </div>
+                      )}
+                      {product.weight_kg && product.weight_kg > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Weight:</span>
+                          <span>{product.weight_kg} kg</span>
+                        </div>
+                      )}
+                      {product.dimensions_cm && Object.values(product.dimensions_cm).some(v => v && v > 0) && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Dimensions:</span>
+                          <span>
+                            {product.dimensions_cm.length && product.dimensions_cm.length > 0 ? `${product.dimensions_cm.length}` : ''}
+                            {product.dimensions_cm.width && product.dimensions_cm.width > 0 ? ` × ${product.dimensions_cm.width}` : ''}
+                            {product.dimensions_cm.height && product.dimensions_cm.height > 0 ? ` × ${product.dimensions_cm.height}` : ''}
+                            {(product.dimensions_cm.length > 0 || product.dimensions_cm.width > 0 || product.dimensions_cm.height > 0) ? ' cm' : ''}
+                          </span>
+                        </div>
+                      )}
                       <div className="flex justify-between">
                         <span className="text-gray-600">Condition:</span>
                         <span className="capitalize">{product.condition_type.replace('_', ' ')}</span>
@@ -639,7 +664,7 @@ export default function ProductDetailsPage({ params }: { params: Promise<{ id: s
                   
                   {product.specifications && Object.keys(product.specifications).length > 0 && (
                     <div>
-                      <h3 className="font-semibold mb-3">Specifications</h3>
+                      <h3 className="font-semibold mb-3">Additional Specifications</h3>
                       <div className="space-y-2 text-sm">
                         {Object.entries(product.specifications).map(([key, value]) => (
                           <div key={key} className="flex justify-between">
@@ -647,6 +672,19 @@ export default function ProductDetailsPage({ params }: { params: Promise<{ id: s
                             <span>{String(value)}</span>
                           </div>
                         ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Show message if no specifications are available */}
+                  {!product.brand && 
+                   (!product.weight_kg || product.weight_kg <= 0) && 
+                   (!product.dimensions_cm || !Object.values(product.dimensions_cm).some(v => v && v > 0)) &&
+                   (!product.specifications || Object.keys(product.specifications).length === 0) && (
+                    <div className="col-span-2">
+                      <div className="text-center py-8 text-gray-500">
+                        <p>No additional specifications provided for this product.</p>
+                        <p className="text-sm mt-1">Specifications help buyers make informed decisions.</p>
                       </div>
                     </div>
                   )}

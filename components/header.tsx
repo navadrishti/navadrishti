@@ -114,8 +114,9 @@ export function Header() {
               
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="rounded-full border-2 border-udaan-orange">
+                  <Button variant="ghost" size="icon" className="rounded-full">
                     <Avatar className="h-8 w-8">
+                      {user.profile_image && <AvatarImage src={user.profile_image} alt={user.name} />}
                       <AvatarFallback className="bg-udaan-orange text-white">{getInitials(user.name)}</AvatarFallback>
                     </Avatar>
                   </Button>
@@ -157,7 +158,22 @@ export function Header() {
             </div>
           )}
         </div>
-        <div className="flex md:hidden flex-1 items-center justify-end">
+        <div className="flex md:hidden flex-1 items-center justify-end gap-2">
+          {user && (
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="relative text-white hover:bg-white/10"
+              onClick={() => router.push('/cart')}
+            >
+              <ShoppingCart className="h-5 w-5" />
+              {cartItemCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-udaan-orange text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-medium">
+                  {cartItemCount > 99 ? '99+' : cartItemCount}
+                </span>
+              )}
+            </Button>
+          )}
           <Button 
             variant="ghost" 
             size="icon" 
@@ -240,6 +256,19 @@ export function Header() {
                       <ShoppingBag className="h-6 w-6" />
                       Marketplace
                     </Link>
+                    <Link 
+                      href="/cart" 
+                      className="flex items-center gap-3 text-lg font-medium text-white hover:text-udaan-orange transition-colors py-3 px-2 rounded-lg hover:bg-white/5"
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      <ShoppingCart className="h-6 w-6" />
+                      <span>Cart</span>
+                      {cartItemCount > 0 && (
+                        <span className="bg-udaan-orange text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-medium ml-auto">
+                          {cartItemCount > 99 ? '99+' : cartItemCount}
+                        </span>
+                      )}
+                    </Link>
                   </nav>
                   
                   {/* Separator */}
@@ -248,7 +277,8 @@ export function Header() {
                   {user ? (
                     <>
                       <div className="flex items-center gap-4 mb-6">
-                  <Avatar className="h-12 w-12 border-2 border-udaan-orange">
+                  <Avatar className="h-12 w-12">
+                    {user.profile_image && <AvatarImage src={user.profile_image} alt={user.name} />}
                     <AvatarFallback className="bg-udaan-orange text-white font-semibold text-lg">{getInitials(user.name)}</AvatarFallback>
                   </Avatar>
                   <div className="grid gap-1">
@@ -257,6 +287,17 @@ export function Header() {
                   </div>
                 </div>
                 <div className="space-y-4">
+                  <Link href="/cart" onClick={() => setIsMenuOpen(false)}>
+                    <Button variant="outline" className="w-full h-12 text-udaan-navy border-udaan-navy bg-white hover:bg-udaan-orange hover:border-udaan-orange hover:text-white transition-colors relative">
+                      <ShoppingCart className="h-4 w-4 mr-2" />
+                      Cart
+                      {cartItemCount > 0 && (
+                        <span className="absolute -top-1 -right-1 bg-udaan-orange text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-medium">
+                          {cartItemCount > 99 ? '99+' : cartItemCount}
+                        </span>
+                      )}
+                    </Button>
+                  </Link>
                   <Link href="/profile" onClick={() => setIsMenuOpen(false)}>
                     <Button variant="outline" className="w-full h-12 text-udaan-navy border-udaan-navy bg-white hover:bg-udaan-orange hover:border-udaan-orange hover:text-white transition-colors">Profile</Button>
                   </Link>

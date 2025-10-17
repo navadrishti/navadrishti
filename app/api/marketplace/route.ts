@@ -134,7 +134,11 @@ export async function POST(request: NextRequest) {
         condition_type, 
         location, 
         contact_info,
-        images 
+        images,
+        brand,
+        weight_kg,
+        dimensions_cm,
+        specifications
       } = body;
 
       // Validate required fields
@@ -171,8 +175,10 @@ export async function POST(request: NextRequest) {
         images: JSON.stringify(images || []),
         status: 'active',
         is_negotiable: true,
-        weight_kg: 1.00,
-        dimensions_cm: JSON.stringify({}),
+        brand: brand || null,
+        weight_kg: weight_kg || null,
+        dimensions_cm: dimensions_cm ? JSON.stringify(dimensions_cm) : null,
+        specifications: specifications ? JSON.stringify(specifications) : null,
         rating_average: 0.0,
         rating_count: 0
       };

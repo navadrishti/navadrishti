@@ -7,13 +7,21 @@ async function handler(req: NextRequest) {
     // The user is attached by the withAuth middleware
     const user = (req as any).user as UserData;
     
-    // For now, return user without profile data since userProfiles helper not implemented
-    // TODO: Add user profile data when userProfiles helper is implemented
+    // Fetch fresh user data from database including profile_image
+    const freshUserData = await db.users.findById(user.id);
+    
+    if (!freshUserData) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
     
     return NextResponse.json({
       user: {
-        ...user,
-        profile: null // Will be implemented when userProfiles helper is added
+        id: freshUserData.id,
+        email: freshUserData.email,
+        name: freshUserData.name,
+        user_type: freshUserData.user_type,
+        verification_status: freshUserData.verification_status,
+        profile_image: freshUserData.profile_image || null
       }
     });
     
