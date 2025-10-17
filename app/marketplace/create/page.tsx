@@ -144,7 +144,18 @@ export default function CreateListingPage() {
       } else {
         const errorMsg = data.error || data.message || 'Failed to create listing';
         console.error('API Error:', data);
-        setError(errorMsg);
+        
+        // Handle verification requirement specifically
+        if (data.requiresVerification || response.status === 403) {
+          const verificationMessage = data.message || 'Please complete account verification before posting items.';
+          setError(`${errorMsg}: ${verificationMessage}`);
+          // Optionally redirect to verification page after a delay
+          setTimeout(() => {
+            router.push('/verification');
+          }, 3000);
+        } else {
+          setError(errorMsg);
+        }
       }
     } catch (err) {
       setError('Error creating listing');
@@ -258,6 +269,23 @@ export default function CreateListingPage() {
               {error && (
                 <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-md">
                   <p className="text-red-700 text-sm">{error}</p>
+                </div>
+              )}
+
+              {user && user.verification_status !== 'verified' && (
+                <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-md">
+                  <div className="flex items-start gap-3">
+                    <div className="text-amber-600">⚠️</div>
+                    <div>
+                      <p className="text-amber-800 font-medium text-sm">Verification Required</p>
+                      <p className="text-amber-700 text-sm mt-1">
+                        You need to complete account verification before you can post items. 
+                        <Link href="/verification" className="underline font-medium ml-1 hover:text-amber-900">
+                          Complete verification now
+                        </Link>
+                      </p>
+                    </div>
+                  </div>
                 </div>
               )}
               
@@ -569,8 +597,14 @@ export default function CreateListingPage() {
                 </div>
 
                 <div className="flex gap-4 pt-6">
-                  <Button type="submit" disabled={loading} className="flex-1">
-                    {loading ? 'Creating...' : 'Create Listing'}
+                  <Button 
+                    type="submit" 
+                    disabled={loading || (user && user.verification_status !== 'verified')} 
+                    className="flex-1"
+                  >
+                    {loading ? 'Creating...' : 
+                     user && user.verification_status !== 'verified' ? 'Verification Required' : 
+                     'Create Listing'}
                   </Button>
                   <Button type="button" variant="outline" asChild>
                     <Link href="/marketplace">Cancel</Link>

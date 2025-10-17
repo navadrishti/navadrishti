@@ -1,7 +1,7 @@
 // API endpoint for individual verification using DigiLocker
 import { NextRequest, NextResponse } from 'next/server';
 import { DigiLockerService } from '@/lib/digilocker';
-import { executeQuery } from '@/lib/db';
+import { db } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 
@@ -24,12 +24,14 @@ export async function POST(req: NextRequest) {
     }
 
     // Verify user is an individual
-    const user = await executeQuery({
-      query: 'SELECT user_type FROM users WHERE id = ?',
-      values: [userId]
-    }) as any[];
+    const user = await db.users.findById(userId);
+    
+    if (!user) {
+      console.error('User not found:', userId);
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
 
-    if (!user.length || user[0].user_type !== 'individual') {
+    if (user.user_type !== 'individual') {
       return NextResponse.json({ error: 'Only individuals can use this verification method' }, { status: 403 });
     }
 
@@ -62,15 +64,12 @@ async function initiateVerification(userId: number, documentType: 'aadhaar' | 'p
   const authUrl = digiLocker.generateAuthUrl(userId, documentType);
   
   // Create or update verification record
-  const existingVerification = await executeQuery({
-    query: 'SELECT id FROM individual_verifications WHERE user_id = ?',
-    values: [userId]
-  }) as any[];
+  const existingVerification = await db.individualVerifications.findByUserId(userId);
 
-  if (existingVerification.length === 0) {
-    await executeQuery({
-      query: 'INSERT INTO individual_verifications (user_id, verification_status) VALUES (?, ?)',
-      values: [userId, 'pending']
+  if (!existingVerification) {
+    await db.individualVerifications.create({
+      user_id: userId,
+      verification_status: 'pending'
     });
   }
 
@@ -90,21 +89,18 @@ async function verifyAadhaar(userId: number, aadhaarNumber: string) {
   // In a real implementation, you would use the DigiLocker token to fetch data
   // For now, we'll simulate the verification process
   
-  await executeQuery({
-    query: `UPDATE individual_verifications 
-     SET aadhaar_number = ?, aadhaar_verified = ?, aadhaar_verification_date = NOW(),
-         verification_status = CASE 
-           WHEN pan_verified = TRUE THEN 'verified' 
-           ELSE 'pending' 
-         END
-     WHERE user_id = ?`,
-    values: [aadhaarNumber, true, userId]
+  const verification = await db.individualVerifications.findByUserId(userId);
+  
+  await db.individualVerifications.update(userId, {
+    aadhaar_number: aadhaarNumber,
+    aadhaar_verified: true,
+    aadhaar_verification_date: new Date().toISOString(),
+    verification_status: verification?.pan_verified ? 'verified' : 'pending'
   });
 
   // Update user verification status
-  await executeQuery({
-    query: 'UPDATE users SET verification_status = ? WHERE id = ?',
-    values: ['pending', userId]
+  await db.users.update(userId, {
+    verification_status: 'pending'
   });
 
   return NextResponse.json({
@@ -119,27 +115,23 @@ async function verifyPAN(userId: number, panNumber: string) {
     return NextResponse.json({ error: 'Invalid PAN number format' }, { status: 400 });
   }
 
-  await executeQuery({
-    query: `UPDATE individual_verifications 
-     SET pan_number = ?, pan_verified = ?, pan_verification_date = NOW(),
-         verification_status = CASE 
-           WHEN aadhaar_verified = TRUE THEN 'verified' 
-           ELSE 'pending' 
-         END
-     WHERE user_id = ?`,
-    values: [panNumber, true, userId]
+  const verification = await db.individualVerifications.findByUserId(userId);
+  
+  await db.individualVerifications.update(userId, {
+    pan_number: panNumber,
+    pan_verified: true,
+    pan_verification_date: new Date().toISOString(),
+    verification_status: verification?.aadhaar_verified ? 'verified' : 'pending'
   });
 
   // Check if both documents are verified
-  const verification = await executeQuery({
-    query: 'SELECT aadhaar_verified, pan_verified FROM individual_verifications WHERE user_id = ?',
-    values: [userId]
-  }) as any[];
+  const updatedVerification = await db.individualVerifications.findByUserId(userId);
 
-  if (verification.length && verification[0].aadhaar_verified && verification[0].pan_verified) {
-    await executeQuery({
-      query: 'UPDATE users SET verification_status = ?, verified_at = NOW(), verification_level = ? WHERE id = ?',
-      values: ['verified', 'advanced', userId]
+  if (updatedVerification?.aadhaar_verified && updatedVerification?.pan_verified) {
+    await db.users.update(userId, {
+      verification_status: 'verified',
+      verified_at: new Date().toISOString(),
+      verification_level: 'advanced'
     });
   }
 
@@ -169,17 +161,12 @@ export async function GET(req: NextRequest) {
     }
 
     // First check if user exists
-    const userCheck = await executeQuery({
-      query: 'SELECT id, user_type, verification_status FROM users WHERE id = ?',
-      values: [userId]
-    }) as any[];
+    const user = await db.users.findById(userId);
 
-    if (!userCheck.length) {
+    if (!user) {
       console.error('User not found:', userId);
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
-
-    const user = userCheck[0];
 
     if (user.user_type !== 'individual') {
       console.error('User is not an individual:', user.user_type);
@@ -187,18 +174,15 @@ export async function GET(req: NextRequest) {
     }
 
     // Check if individual_verifications record exists, if not create one
-    let verification = await executeQuery({
-      query: 'SELECT * FROM individual_verifications WHERE user_id = ?',
-      values: [userId]
-    }) as any[];
+    let verification = await db.individualVerifications.findByUserId(userId);
 
-    if (!verification.length) {
+    if (!verification) {
       // Create initial verification record
-      await executeQuery({
-        query: `INSERT INTO individual_verifications (
-          user_id, aadhaar_verified, pan_verified, verification_status, created_at
-        ) VALUES (?, FALSE, FALSE, 'unverified', NOW())`,
-        values: [userId]
+      verification = await db.individualVerifications.create({
+        user_id: userId,
+        aadhaar_verified: false,
+        pan_verified: false,
+        verification_status: 'unverified'
       });
 
       // Return default unverified status
@@ -210,15 +194,13 @@ export async function GET(req: NextRequest) {
         level: 'basic'
       });
     }
-
-    const record = verification[0];
     
     return NextResponse.json({
-      verified: record.verification_status === 'verified',
-      aadhaarVerified: record.aadhaar_verified || false,
-      panVerified: record.pan_verified || false,
-      status: record.verification_status || 'unverified',
-      verifiedAt: record.verification_date,
+      verified: verification.verification_status === 'verified',
+      aadhaarVerified: verification.aadhaar_verified || false,
+      panVerified: verification.pan_verified || false,
+      status: verification.verification_status || 'unverified',
+      verifiedAt: verification.verification_date,
       level: user.verification_level || 'basic'
     });
   } catch (error) {

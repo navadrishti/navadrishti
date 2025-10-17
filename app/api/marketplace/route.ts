@@ -124,6 +124,42 @@ export async function POST(request: NextRequest) {
     const { action } = body;
 
     if (action === 'create') {
+      // Check user verification status before allowing item creation
+      const user = await db.users.findById(userId);
+      if (!user) {
+        return NextResponse.json({ error: 'User not found' }, { status: 404 });
+      }
+
+      // Verification requirements based on user type
+      if (user.user_type === 'individual') {
+        // For individuals, require at least basic verification (email + identity)
+        if (user.verification_status !== 'verified') {
+          return NextResponse.json({ 
+            error: 'Account verification required', 
+            message: 'Please complete your identity verification (Aadhaar & PAN) before posting items.',
+            requiresVerification: true
+          }, { status: 403 });
+        }
+      } else if (user.user_type === 'company') {
+        // For companies, require organization verification
+        if (user.verification_status !== 'verified') {
+          return NextResponse.json({ 
+            error: 'Organization verification required', 
+            message: 'Please complete your organization verification before posting items.',
+            requiresVerification: true
+          }, { status: 403 });
+        }
+      } else if (user.user_type === 'ngo') {
+        // For NGOs, require organization verification
+        if (user.verification_status !== 'verified') {
+          return NextResponse.json({ 
+            error: 'NGO verification required', 
+            message: 'Please complete your NGO verification before posting items.',
+            requiresVerification: true
+          }, { status: 403 });
+        }
+      }
+
       const { 
         title, 
         description, 

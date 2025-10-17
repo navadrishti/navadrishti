@@ -529,22 +529,24 @@ export default function ProfilePage() {
                     Verification Status
                   </CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm">Email Verification</span>
+                <CardContent className="space-y-6">
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between py-2">
+                      <span className="text-sm font-medium">Email Verification</span>
                       <Badge variant={verificationData?.emailVerified || (user as any)?.verified_at ? "default" : "secondary"}>
                         {verificationData?.emailVerified || (user as any)?.verified_at ? "Verified" : "Pending"}
                       </Badge>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm">Phone Verification</span>
+                    
+                    <div className="flex items-center justify-between py-2">
+                      <span className="text-sm font-medium">Phone Verification</span>
                       <Badge variant={verificationData?.phoneVerified ? "default" : "secondary"}>
                         {verificationData?.phoneVerified ? "Verified" : "Pending"}
                       </Badge>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm">Identity Verification</span>
+                    
+                    <div className="flex items-center justify-between py-2">
+                      <span className="text-sm font-medium">Identity Verification</span>
                       <Badge variant={
                         user.user_type === 'individual' 
                           ? (verificationData?.aadhaarVerified && verificationData?.panVerified ? "default" : "secondary")
@@ -556,20 +558,24 @@ export default function ProfilePage() {
                         }
                       </Badge>
                     </div>
+                    
                     {user.user_type === 'ngo' && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm">Organization Verification</span>
+                      <div className="flex items-center justify-between py-2">
+                        <span className="text-sm font-medium">Organization Verification</span>
                         <Badge variant={verificationData?.organizationVerified ? "default" : "secondary"}>
                           {verificationData?.organizationVerified ? "Verified" : "Pending"}
                         </Badge>
                       </div>
                     )}
-                    <Link href="/verification">
-                      <Button variant="outline" size="sm" className="w-full">
-                        <UserCheck className="h-4 w-4 mr-2" />
-                        {verificationData?.verified ? "Manage Verification" : "Start Verification"}
-                      </Button>
-                    </Link>
+                    
+                    <div className="pt-4 border-t">
+                      <Link href="/verification">
+                        <Button variant="outline" size="sm" className="w-full">
+                          <UserCheck className="h-4 w-4 mr-2" />
+                          {verificationData?.verified ? "Manage Verification" : "Start Verification"}
+                        </Button>
+                      </Link>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
