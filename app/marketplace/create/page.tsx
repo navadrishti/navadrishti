@@ -39,7 +39,12 @@ export default function CreateListingPage() {
     category: '',
     price: '',
     quantity: 1,
-    location: '',
+    location: '', // Keep for backward compatibility
+    // Structured location fields
+    city: '',
+    state_province: '',
+    pincode: '',
+    country: 'India',
     tags: '',
     condition_type: 'new',
     brand: '',
@@ -446,17 +451,56 @@ export default function CreateListingPage() {
                     </div>
                   </div>
 
-                  <div className="grid gap-4 md:grid-cols-2">
-
-                    <div>
-                      <Label htmlFor="location">Location</Label>
-                      <Input
-                        id="location"
-                        name="location"
-                        value={formData.location}
-                        onChange={handleChange}
-                        placeholder="City, State"
-                      />
+                  {/* Location Information Section */}
+                  <div className="border-t pt-6">
+                    <h3 className="text-lg font-semibold mb-4">📍 Location Information</h3>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      This helps buyers find items near them
+                    </p>
+                    
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <div>
+                        <Label htmlFor="city">City</Label>
+                        <Input
+                          id="city"
+                          name="city"
+                          value={formData.city}
+                          onChange={handleChange}
+                          placeholder="e.g., Mumbai, Delhi, Bangalore"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="state_province">State/Province</Label>
+                        <Input
+                          id="state_province"
+                          name="state_province"
+                          value={formData.state_province}
+                          onChange={handleChange}
+                          placeholder="e.g., Maharashtra, Delhi, Karnataka"
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="grid gap-4 md:grid-cols-2 mt-4">
+                      <div>
+                        <Label htmlFor="pincode">Pin Code</Label>
+                        <Input
+                          id="pincode"
+                          name="pincode"
+                          value={formData.pincode}
+                          onChange={handleChange}
+                          placeholder="e.g., 400001, 110001"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="country">Country</Label>
+                        <Input
+                          id="country"
+                          name="country"
+                          value={formData.country}
+                          onChange={handleChange}
+                        />
+                      </div>
                     </div>
                   </div>
 

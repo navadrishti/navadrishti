@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { db, supabase } from '@/lib/db';
 import { withAuth, UserData } from '@/lib/auth';
 
 async function handler(req: NextRequest) {
@@ -13,6 +13,42 @@ async function handler(req: NextRequest) {
     if (!freshUserData) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
+
+    // Get verification status based on user type
+    let verificationStatus = 'unverified';
+    let verificationDetails = null;
+
+    if (freshUserData.user_type === 'individual') {
+      const { data: verification } = await supabase
+        .from('individual_verifications')
+        .select('verification_status, aadhaar_verified, pan_verified, verification_date')
+        .eq('user_id', user.id)
+        .single();
+      if (verification) {
+        verificationStatus = verification.verification_status;
+        verificationDetails = verification;
+      }
+    } else if (freshUserData.user_type === 'company') {
+      const { data: verification } = await supabase
+        .from('company_verifications')
+        .select('verification_status, company_name, verification_date')
+        .eq('user_id', user.id)
+        .single();
+      if (verification) {
+        verificationStatus = verification.verification_status;
+        verificationDetails = verification;
+      }
+    } else if (freshUserData.user_type === 'ngo') {
+      const { data: verification } = await supabase
+        .from('ngo_verifications')
+        .select('verification_status, ngo_name, verification_date')
+        .eq('user_id', user.id)
+        .single();
+      if (verification) {
+        verificationStatus = verification.verification_status;
+        verificationDetails = verification;
+      }
+    }
     
     return NextResponse.json({
       user: {
@@ -20,8 +56,13 @@ async function handler(req: NextRequest) {
         email: freshUserData.email,
         name: freshUserData.name,
         user_type: freshUserData.user_type,
-        verification_status: freshUserData.verification_status,
-        profile_image: freshUserData.profile_image || null
+        verification_status: verificationStatus,
+        verification_details: verificationDetails,
+        profile_image: freshUserData.profile_image || null,
+        city: freshUserData.city,
+        state_province: freshUserData.state_province,
+        pincode: freshUserData.pincode,
+        country: freshUserData.country
       }
     });
     

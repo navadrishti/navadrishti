@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { UserRound, Clock, CheckCircle, AlertTriangle, ShoppingBag, HeartHandshake, TicketCheck, Package, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
+import { VerificationBadge, VerificationDetails } from '@/components/verification-badge';
 
 export default function IndividualDashboard() {
   const { user } = useAuth();
@@ -330,39 +331,33 @@ export default function IndividualDashboard() {
                         </div>
                       </div>
                     </div>
-                    <div className="space-y-2">
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <h4 className="font-medium">Verification Status</h4>
+                          <VerificationBadge 
+                            status={user?.verification_status || 'unverified'} 
+                            size="md"
+                          />
+                        </div>
+                        {user?.verification_details && (
+                          <VerificationDetails 
+                            userType="individual"
+                            verificationDetails={user.verification_details}
+                            className="bg-gray-50 p-3 rounded-lg"
+                          />
+                        )}
+                        {user?.verification_status !== 'verified' && (
+                          <div className="flex gap-2">
+                            <Button size="sm" variant="outline" asChild>
+                              <Link href="/verification">Complete Verification</Link>
+                            </Button>
+                          </div>
+                        )}
+                      </div>
                       <div className="flex gap-4 items-center">
                         <span className="text-sm font-medium text-gray-500">Email:</span>
-                        {user?.emailVerified ? (
-                          <Badge className="bg-green-500 text-white">Verified</Badge>
-                        ) : (
-                          <Badge variant="destructive">Unverified</Badge>
-                        )}
-                        {!user?.emailVerified && (
-                          <Button size="sm" variant="outline" href="/verification">Verify Now</Button>
-                        )}
-                      </div>
-                      <div className="flex gap-4 items-center">
-                        <span className="text-sm font-medium text-gray-500">Identity:</span>
-                        {user?.identityVerified ? (
-                          <Badge className="bg-green-500 text-white">Verified</Badge>
-                        ) : (
-                          <Badge variant="destructive">Unverified</Badge>
-                        )}
-                        {!user?.identityVerified && (
-                          <Button size="sm" variant="outline" href="/verification">Verify Now</Button>
-                        )}
-                      </div>
-                      <div className="flex gap-4 items-center">
-                        <span className="text-sm font-medium text-gray-500">Phone:</span>
-                        {user?.phoneVerified ? (
-                          <Badge className="bg-green-500 text-white">Verified</Badge>
-                        ) : (
-                          <Badge variant="destructive">Unverified</Badge>
-                        )}
-                        {!user?.phoneVerified && (
-                          <Button size="sm" variant="outline" href="/verification">Verify Now</Button>
-                        )}
+                        <Badge variant="default" className="bg-green-100 text-green-800">Verified</Badge>
                       </div>
                     </div>
                     <Button variant="outline">Edit Profile</Button>

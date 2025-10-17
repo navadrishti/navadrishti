@@ -119,7 +119,7 @@ export const db = {
         .from('marketplace_items')
         .select(`
           *,
-          seller:users!seller_id(id, name, email, user_type, location)
+          seller:users!seller_id(id, name, email, user_type, location, city, state_province, pincode)
         `)
         .eq('status', 'active');
       
@@ -136,12 +136,78 @@ export const db = {
       return data;
     },
 
+    async getNearbyItems(userLocation: { city?: string; state_province?: string; pincode?: string }, filters: any = {}) {
+      let query = supabase
+        .from('marketplace_items')
+        .select(`
+          *,
+          seller:users!seller_id(id, name, email, user_type, location, city, state_province, pincode)
+        `)
+        .eq('status', 'active');
+      
+      // Apply category filter if provided
+      if (filters.category) {
+        query = query.eq('category', filters.category);
+      }
+      
+      const { data: allItems, error } = await query.order('created_at', { ascending: false });
+      if (error) throw error;
+      
+      if (!allItems) return [];
+      
+      // Filter nearby items based on location hierarchy (check both item location and seller location)
+      const nearbyItems = allItems.filter(item => {
+        if (!item.seller) return false;
+        
+        const seller = item.seller;
+        
+        // Check item's direct location fields first (Priority 1)
+        if (item.pincode && userLocation.pincode && 
+            item.pincode.toLowerCase() === userLocation.pincode.toLowerCase()) {
+          return true;
+        }
+        
+        if (item.city && item.state_province && userLocation.city && userLocation.state_province) {
+          const sameCity = item.city.toLowerCase() === userLocation.city.toLowerCase();
+          const sameState = item.state_province.toLowerCase() === userLocation.state_province.toLowerCase();
+          if (sameCity && sameState) return true;
+        }
+        
+        if (item.state_province && userLocation.state_province &&
+            item.state_province.toLowerCase() === userLocation.state_province.toLowerCase()) {
+          return true;
+        }
+        
+        // Fallback to seller's location (Priority 2)
+        if (userLocation.pincode && seller.pincode && 
+            userLocation.pincode.toLowerCase() === seller.pincode.toLowerCase()) {
+          return true;
+        }
+        
+        if (userLocation.city && userLocation.state_province && 
+            seller.city && seller.state_province) {
+          const sameCity = userLocation.city.toLowerCase() === seller.city.toLowerCase();
+          const sameState = userLocation.state_province.toLowerCase() === seller.state_province.toLowerCase();
+          if (sameCity && sameState) return true;
+        }
+        
+        if (userLocation.state_province && seller.state_province &&
+            userLocation.state_province.toLowerCase() === seller.state_province.toLowerCase()) {
+          return true;
+        }
+        
+        return false;
+      });
+      
+      return nearbyItems;
+    },
+
     async getById(id: string | number) {
       const { data, error } = await supabase
         .from('marketplace_items')
         .select(`
           *,
-          seller:users!seller_id(id, name, email, user_type, location)
+          seller:users!seller_id(id, name, email, user_type, location, city, state_province, pincode)
         `)
         .eq('id', id)
         .single();

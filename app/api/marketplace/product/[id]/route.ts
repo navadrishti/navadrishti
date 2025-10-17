@@ -16,7 +16,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       .from('marketplace_items')
       .select(`
         *,
-        users!seller_id(name, email, user_type)
+        users!seller_id(name, email, user_type, profile_image, city, state_province, pincode)
       `)
       .eq('id', parseInt(id))
       .eq('status', 'active')
@@ -33,11 +33,55 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       }, { status: 404 });
     }
 
+    // Get seller verification status
+    let sellerVerificationStatus = 'unverified';
+    if (productResult.users?.user_type && productResult.seller_id) {
+      try {
+        const userType = productResult.users.user_type;
+        let verificationQuery;
+        
+        if (userType === 'individual') {
+          verificationQuery = supabase
+            .from('individual_verifications')
+            .select('verification_status')
+            .eq('user_id', productResult.seller_id)
+            .single();
+        } else if (userType === 'company') {
+          verificationQuery = supabase
+            .from('company_verifications')
+            .select('verification_status')
+            .eq('user_id', productResult.seller_id)
+            .single();
+        } else if (userType === 'ngo') {
+          verificationQuery = supabase
+            .from('ngo_verifications')
+            .select('verification_status')
+            .eq('user_id', productResult.seller_id)
+            .single();
+        }
+        
+        if (verificationQuery) {
+          const { data: verificationData } = await verificationQuery;
+          if (verificationData?.verification_status) {
+            sellerVerificationStatus = verificationData.verification_status;
+          }
+        }
+      } catch (verificationError) {
+        console.log('Error fetching verification status:', verificationError);
+        // Keep default 'unverified' status
+      }
+    }
+
     const product = {
       ...productResult,
       seller_name: productResult.users?.name || 'Unknown Seller',
       seller_email: productResult.users?.email,
-      seller_type: productResult.users?.user_type
+      seller_type: productResult.users?.user_type,
+      seller_profile_image: productResult.users?.profile_image,
+      seller_city: productResult.users?.city,
+      seller_state_province: productResult.users?.state_province,
+      seller_pincode: productResult.users?.pincode,
+      seller_verification_status: sellerVerificationStatus
     };
 
     // For now, return empty reviews and questions arrays (can be enhanced later)

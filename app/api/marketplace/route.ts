@@ -20,24 +20,37 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search');
     const userId = searchParams.get('userId');
     const sellerId = searchParams.get('seller_id');
-    const view = searchParams.get('view'); // 'all', 'my-listings', 'purchased'
+    const view = searchParams.get('view'); // 'all', 'my-listings', 'purchased', 'nearby'
     const minPrice = searchParams.get('minPrice');
     const maxPrice = searchParams.get('maxPrice');
 
     // For my-listings view, authenticate user
     let authenticatedUserId = null;
-    if (view === 'my-listings') {
+    let currentUser = null;
+    
+    if (view === 'my-listings' || view === 'nearby') {
       const authHeader = request.headers.get('authorization');
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return NextResponse.json({ error: 'Authentication required for my-listings' }, { status: 401 });
-      }
-
-      const token = authHeader.substring(7);
-      try {
-        const payload = jwt.verify(token, JWT_SECRET) as JWTPayload;
-        authenticatedUserId = payload.id;
-      } catch {
-        return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+        if (view === 'my-listings') {
+          return NextResponse.json({ error: 'Authentication required for my-listings' }, { status: 401 });
+        }
+        // For nearby view without auth, proceed with all items
+      } else {
+        const token = authHeader.substring(7);
+        try {
+          const payload = jwt.verify(token, JWT_SECRET) as JWTPayload;
+          authenticatedUserId = payload.id;
+          
+          // Get user location data for nearby functionality
+          if (view === 'nearby') {
+            currentUser = await db.users.findById(authenticatedUserId);
+          }
+        } catch {
+          if (view === 'my-listings') {
+            return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+          }
+          // For nearby view with invalid token, proceed with all items
+        }
       }
     }
 
@@ -53,8 +66,21 @@ export async function GET(request: NextRequest) {
       filters.seller_id = sellerId;
     }
 
-    // Get marketplace items with seller information using Supabase
-    let marketplaceItems = await db.marketplaceItems.getAllWithSeller(filters);
+    // Get marketplace items based on view type
+    let marketplaceItems;
+    
+    if (view === 'nearby' && currentUser) {
+      // Get nearby items based on user location
+      const userLocation = {
+        city: currentUser.city,
+        state_province: currentUser.state_province,
+        pincode: currentUser.pincode
+      };
+      marketplaceItems = await db.marketplaceItems.getNearbyItems(userLocation, filters);
+    } else {
+      // Get all items with seller information
+      marketplaceItems = await db.marketplaceItems.getAllWithSeller(filters);
+    }
 
     // Apply client-side filtering for features not supported by the helper
     if (search) {
@@ -174,7 +200,12 @@ export async function POST(request: NextRequest) {
         brand,
         weight_kg,
         dimensions_cm,
-        specifications
+        specifications,
+        // Structured location fields
+        city,
+        state_province,
+        pincode,
+        country
       } = body;
 
       // Validate required fields
@@ -207,7 +238,12 @@ export async function POST(request: NextRequest) {
         quantity: quantity || 1,
         condition_type: condition_type || 'new',
         item_type: 'single', // Default to single item
-        location: location || null,
+        location: location || null, // Keep for backward compatibility
+        // Structured location fields for nearby functionality
+        city: city || null,
+        state_province: state_province || null,
+        pincode: pincode || null,
+        country: country || 'India',
         images: JSON.stringify(images || []),
         status: 'active',
         is_negotiable: true,

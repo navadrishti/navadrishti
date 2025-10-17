@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Building, Users, ShoppingBag, BarChart4, Clock, Plus, HeartHandshake, TicketCheck, CheckCircle, DollarSign, AlertTriangle, Package, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
+import { VerificationBadge, VerificationDetails } from '@/components/verification-badge';
 
 export default function NGODashboard() {
   const { user } = useAuth();
@@ -323,7 +324,30 @@ export default function NGODashboard() {
                       <h3 className="text-lg font-semibold">{user?.name || 'Your NGO Name'}</h3>
                       <p className="text-sm text-gray-500">{user?.email || 'ngo@example.org'}</p>
                     </div>
-                    <div className="space-y-2">
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <h4 className="font-medium">Verification Status</h4>
+                          <VerificationBadge 
+                            status={user?.verification_status || 'unverified'} 
+                            size="md"
+                          />
+                        </div>
+                        {user?.verification_details && (
+                          <VerificationDetails 
+                            userType="ngo"
+                            verificationDetails={user.verification_details}
+                            className="bg-gray-50 p-3 rounded-lg"
+                          />
+                        )}
+                        {user?.verification_status !== 'verified' && (
+                          <div className="flex gap-2">
+                            <Button size="sm" variant="outline" asChild>
+                              <Link href="/verification">Complete Verification</Link>
+                            </Button>
+                          </div>
+                        )}
+                      </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                           <p className="text-sm font-medium text-gray-500">Location</p>
