@@ -140,7 +140,7 @@ export default function CartPage() {
 
       // For multiple items checkout, we'll create orders for each unique seller
       const ordersBySellerPromises = cart.map(async (item) => {
-        const response = await fetch('/api/orders/create', {
+        const response = await fetch('/api/orders/create-new', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`,
@@ -149,7 +149,8 @@ export default function CartPage() {
           body: JSON.stringify({
             marketplace_item_id: item.marketplace_item_id,
             quantity: item.quantity,
-            shipping_address: shippingAddress
+            shipping_address: shippingAddress,
+            notes: `Cart checkout for ${cart.length} item(s)`
           }),
         })
 
@@ -176,10 +177,13 @@ export default function CartPage() {
         return
       }
 
+      // Calculate total amount from all orders
+      const totalAmount = orderResults.reduce((sum, result) => sum + result.order.amounts.final_amount, 0)
+
       // Initialize Razorpay payment
       const options = {
         key: firstOrder.order.razorpayKeyId,
-        amount: Math.round(summary.total * 100), // Total amount for all items
+        amount: Math.round(totalAmount * 100), // Total amount for all items in paise
         currency: 'INR',
         name: 'Navdrishti Marketplace',
         description: `Order for ${cart.length} item(s)`,
@@ -187,7 +191,7 @@ export default function CartPage() {
         handler: async function (response: any) {
           try {
             // Verify payment
-            const verifyResponse = await fetch('/api/orders/verify-payment', {
+            const verifyResponse = await fetch('/api/orders/verify-payment-new', {
               method: 'POST',
               headers: {
                 'Authorization': `Bearer ${localStorage.getItem('token')}`,

@@ -150,14 +150,13 @@ export default function OrderDetailsPage({ params }: PageProps) {
     }
 
     try {
-      const response = await fetch(`/api/orders/${order.id}`, {
-        method: 'PATCH',
+      const response = await fetch(`/api/orders/${order.order_number}/cancel`, {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
         body: JSON.stringify({
-          status: 'cancelled',
           reason: 'Cancelled by customer'
         })
       });
@@ -166,11 +165,47 @@ export default function OrderDetailsPage({ params }: PageProps) {
 
       if (data.success) {
         fetchOrderDetails(); // Refresh order details
+        alert('Order cancelled successfully');
       } else {
-        setError('Failed to cancel order');
+        setError(data.error || 'Failed to cancel order');
       }
     } catch (err) {
       setError('Error cancelling order');
+      console.error('Error:', err);
+    }
+  };
+
+  const handleRefundOrder = async () => {
+    if (!order || !['confirmed', 'processing', 'shipped'].includes(order.status)) {
+      return;
+    }
+
+    const reason = prompt('Please provide a reason for the refund:');
+    if (!reason) return;
+
+    try {
+      const response = await fetch(`/api/orders/${order.order_number}/refund`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          reason: reason,
+          refund_amount: order.total_amount
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        fetchOrderDetails(); // Refresh order details
+        alert(`Order refunded successfully. Refund amount: ₹${data.refund_amount}`);
+      } else {
+        setError(data.error || 'Failed to refund order');
+      }
+    } catch (err) {
+      setError('Error processing refund');
       console.error('Error:', err);
     }
   };
@@ -436,7 +471,8 @@ export default function OrderDetailsPage({ params }: PageProps) {
                 <CardTitle>Actions</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                {['pending', 'payment_pending', 'confirmed'].includes(order.status) && (
+                {/* Cancel Order - For Buyers */}
+                {user && order.buyer_id === user.id && ['pending', 'confirmed'].includes(order.status) && (
                   <Button 
                     variant="destructive" 
                     className="w-full"
@@ -444,6 +480,57 @@ export default function OrderDetailsPage({ params }: PageProps) {
                   >
                     Cancel Order
                   </Button>
+                )}
+                
+                {/* Refund Order - For Sellers */}
+                {user && order.seller_id === user.id && ['confirmed', 'processing', 'shipped'].includes(order.status) && (
+                  <Button 
+                    variant="outline" 
+                    className="w-full border-orange-200 text-orange-700 hover:bg-orange-50"
+                    onClick={handleRefundOrder}
+                  >
+                    Issue Refund
+                  </Button>
+                )}
+                
+                {/* Update Order Status - For Sellers */}
+                {user && order.seller_id === user.id && order.status === 'confirmed' && (
+                  <div className="space-y-2">
+                    <Button 
+                      variant="outline" 
+                      className="w-full"
+                      onClick={() => {
+                        // Update to processing
+                        fetch(`/api/orders/${order.order_number}`, {
+                          method: 'PATCH',
+                          headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${localStorage.getItem('token')}`
+                          },
+                          body: JSON.stringify({ status: 'processing' })
+                        }).then(() => fetchOrderDetails());
+                      }}
+                    >
+                      Mark as Processing
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      className="w-full"
+                      onClick={() => {
+                        // Update to shipped
+                        fetch(`/api/orders/${order.order_number}`, {
+                          method: 'PATCH',
+                          headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${localStorage.getItem('token')}`
+                          },
+                          body: JSON.stringify({ status: 'shipped' })
+                        }).then(() => fetchOrderDetails());
+                      }}
+                    >
+                      Mark as Shipped
+                    </Button>
+                  </div>
                 )}
                 
                 {order.status === 'delivered' && (
