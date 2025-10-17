@@ -467,6 +467,54 @@ export const db = {
     }
   },
 
+  // Individual Verifications
+  individualVerifications: {
+    async findByUserId(userId: number) {
+      const { data, error } = await supabase
+        .from('individual_verifications')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
+      
+      if (error && error.code !== 'PGRST116') throw error;
+      return data;
+    },
+
+    async create(verificationData: any) {
+      const { data, error } = await supabase
+        .from('individual_verifications')
+        .insert(verificationData)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+
+    async update(userId: number, updateData: any) {
+      const { data, error } = await supabase
+        .from('individual_verifications')
+        .update(updateData)
+        .eq('user_id', userId)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+
+    async upsert(verificationData: any) {
+      const { data, error } = await supabase
+        .from('individual_verifications')
+        .upsert(verificationData, { onConflict: 'user_id' })
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    }
+  },
+
   // Purchases
   purchases: {
     async create(purchaseData: any) {
