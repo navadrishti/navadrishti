@@ -14,29 +14,14 @@ async function handler(req: NextRequest) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Get verification status based on user type
+    // Get verification status based on user type - check database only
     let verificationStatus = 'unverified';
     let verificationDetails = null;
 
-    // Check if this is the test account and mark as verified by default
-    const isTestAccount = freshUserData.email && (
-      freshUserData.email.toLowerCase() === 'test@example.com' ||
-      freshUserData.email.toLowerCase() === 'admin@test.com' ||
-      freshUserData.email.toLowerCase() === 'testuser@example.com'
-    );
-
-    if (isTestAccount) {
-      verificationStatus = 'verified';
-      verificationDetails = {
-        verification_status: 'verified',
-        verification_date: new Date().toISOString(),
-        aadhaar_verified: true,
-        pan_verified: true
-      };
-    } else if (freshUserData.user_type === 'individual') {
+    if (freshUserData.user_type === 'individual') {
       const { data: verification } = await supabase
         .from('individual_verifications')
-        .select('verification_status, aadhaar_verified, pan_verified, verification_date')
+        .select('verification_status, aadhaar_verified, pan_verified, verification_date, aadhaar_number, pan_number, aadhaar_verification_date, pan_verification_date')
         .eq('user_id', user.id)
         .single();
       if (verification) {
@@ -46,7 +31,7 @@ async function handler(req: NextRequest) {
     } else if (freshUserData.user_type === 'company') {
       const { data: verification } = await supabase
         .from('company_verifications')
-        .select('verification_status, company_name, verification_date')
+        .select('verification_status, company_name, verification_date, registration_number, gst_number')
         .eq('user_id', user.id)
         .single();
       if (verification) {
@@ -56,7 +41,7 @@ async function handler(req: NextRequest) {
     } else if (freshUserData.user_type === 'ngo') {
       const { data: verification } = await supabase
         .from('ngo_verifications')
-        .select('verification_status, ngo_name, verification_date')
+        .select('verification_status, ngo_name, verification_date, registration_number, registration_type, fcra_number')
         .eq('user_id', user.id)
         .single();
       if (verification) {

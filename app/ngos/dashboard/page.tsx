@@ -14,7 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import { VerificationBadge, VerificationDetails } from '@/components/verification-badge';
 
 export default function NGODashboard() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const { toast } = useToast();
   const [stats, setStats] = useState({
     serviceOffersPending: 0,
@@ -125,7 +125,7 @@ export default function NGODashboard() {
     if (user) {
       fetchStats();
     }
-  }, [user]);
+  }, [user?.id]);
 
   // Fetch real service offers data
   const fetchServiceOffers = async () => {
@@ -205,7 +205,7 @@ export default function NGODashboard() {
     };
 
     fetchAllData();
-  }, [user]);
+  }, [user?.id]);
 
   return (
     <ProtectedRoute userTypes={['ngo']}>

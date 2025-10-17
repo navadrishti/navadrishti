@@ -21,10 +21,12 @@ import { VerificationBadge } from "@/components/verification-badge"
 
 export function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
-  const { user, logout } = useAuth()
+  const { user, logout, refreshUser } = useAuth()
   const { getCartItemCount } = useCart()
   const router = useRouter()
   const cartItemCount = getCartItemCount()
+  
+
   
   const handleLogout = () => {
     logout()

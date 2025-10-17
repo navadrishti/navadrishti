@@ -34,6 +34,7 @@ interface AuthContextType {
   logout: () => void;
   clearError: () => void;
   updateUser: (userData: Partial<User>) => void;
+  refreshUser: () => Promise<void>;
 }
 
 interface SignupData {
@@ -210,6 +211,27 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   };
 
+  // Refresh user data from server
+  const refreshUser = async () => {
+    if (!token) return;
+    
+    try {
+      const response = await fetch('/api/auth/me', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setUser(data.user);
+        localStorage.setItem('user', JSON.stringify(data.user));
+      }
+    } catch (error) {
+      console.error('Failed to refresh user data:', error);
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -221,7 +243,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
         signup,
         logout,
         clearError,
-        updateUser
+        updateUser,
+        refreshUser
       }}
     >
       {children}

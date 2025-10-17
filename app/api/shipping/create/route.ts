@@ -83,7 +83,6 @@ export async function POST(request: NextRequest) {
         seller_name: shipmentData.pickupAddress.name,
         seller_inv: '',
         quantity: '1',
-        waybill: waybillNumber,
         shipment_width: shipmentData.packageDetails.breadth,
         shipment_height: shipmentData.packageDetails.height,
         shipment_length: shipmentData.packageDetails.length,

@@ -14,7 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import { VerificationBadge, VerificationDetails } from '@/components/verification-badge';
 
 export default function CompanyDashboard() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const { toast } = useToast();
   const [stats, setStats] = useState({
     acceptedServiceRequests: 0,
@@ -120,7 +120,7 @@ export default function CompanyDashboard() {
     if (user) {
       fetchStats();
     }
-  }, [user]);
+  }, [user?.id]);
 
   // Fetch real marketplace listings data
   const fetchMarketplaceListings = async () => {
@@ -178,7 +178,7 @@ export default function CompanyDashboard() {
     };
 
     fetchAllData();
-  }, [user]);
+  }, [user?.id]);
 
   return (
     <ProtectedRoute userTypes={['company']}>

@@ -87,12 +87,13 @@ export async function POST(request: NextRequest) {
     const updatedOrders = await Promise.all(updatePromises);
 
     // Clear user's cart after successful payment
-    try {
-      await db.cart.clearByUserId(userId);
-    } catch (error) {
-      console.error('Error clearing cart:', error);
-      // Don't fail the entire operation if cart clearing fails
-    }
+    // TODO: Implement clearByUserId method in db.cart
+    // try {
+    //   await db.cart.clearByUserId(userId);
+    // } catch (error) {
+    //   console.error('Error clearing cart:', error);
+    //   // Don't fail the entire operation if cart clearing fails
+    // }
 
     return Response.json({
       success: true,
