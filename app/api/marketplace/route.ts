@@ -19,6 +19,7 @@ export async function GET(request: NextRequest) {
     const category = searchParams.get('category');
     const search = searchParams.get('search');
     const userId = searchParams.get('userId');
+    const sellerId = searchParams.get('seller_id');
     const view = searchParams.get('view'); // 'all', 'my-listings', 'purchased'
     const minPrice = searchParams.get('minPrice');
     const maxPrice = searchParams.get('maxPrice');
@@ -47,6 +48,9 @@ export async function GET(request: NextRequest) {
     }
     if (view === 'my-listings' && authenticatedUserId) {
       filters.seller_id = authenticatedUserId;
+    }
+    if (sellerId) {
+      filters.seller_id = sellerId;
     }
 
     // Get marketplace items with seller information using Supabase
@@ -79,9 +83,19 @@ export async function GET(request: NextRequest) {
       marketplaceItems = [];
     }
 
+    // Format the data to ensure seller information is properly structured
+    const formattedItems = marketplaceItems?.map(item => ({
+      ...item,
+      seller_id: item.seller_id,
+      seller_name: item.seller?.name || 'Unknown Seller',
+      seller_email: item.seller?.email,
+      seller_type: item.seller?.user_type,
+      seller_location: item.seller?.location
+    })) || [];
+
     return NextResponse.json({
       success: true,
-      data: marketplaceItems || []
+      data: formattedItems
     });
 
   } catch (error) {

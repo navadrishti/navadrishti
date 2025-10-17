@@ -198,84 +198,86 @@ export function Header() {
               </Button>
             </div>
             <div className="flex-1 overflow-y-auto">
-              <div className="px-4 py-6">
-            <div className="space-y-8">
-              <div className="relative">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input type="search" placeholder="Search marketplace, resources, services..." className="w-full rounded-full bg-background pl-8" />
-              </div>
-              <nav className="space-y-4">
-              {/* Only show Verify People link in mobile menu if user is an NGO */}
-              {isNgo && (
-                <Link 
-                  href="/skills/verify" 
-                  className="flex items-center gap-2 text-lg font-medium text-white hover:text-udaan-orange transition-colors py-2"
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  <UserCheck className="h-5 w-5" />
-                  Verify People
-                </Link>
-              )}
-              <Link 
-                href="/service-requests" 
-                className="flex items-center gap-2 text-lg font-medium text-white hover:text-udaan-orange transition-colors py-2"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                <Award className="h-5 w-5" />
-                Service Requests
-              </Link>
-              <Link 
-                href="/service-offers" 
-                className="flex items-center gap-2 text-lg font-medium text-white hover:text-udaan-orange transition-colors py-2"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                <Briefcase className="h-5 w-5" />
-                Service Offers
-              </Link>
-              <Link 
-                href="/marketplace" 
-                className="flex items-center gap-2 text-lg font-medium text-white hover:text-udaan-orange transition-colors py-2"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                <ShoppingBag className="h-5 w-5" />
-                Marketplace
-              </Link>
-            </nav>
-            
-            {user ? (
-              <>
-                <div className="flex items-center gap-4">
-                  <Avatar className="h-9 w-9 border-2 border-udaan-orange">
-                    <AvatarImage src="https://images.unsplash.com/photo-1633332755192-727a05c4013d?q=80&w=150&auto=format&fit=crop" alt={user.name} />
-                    <AvatarFallback className="bg-udaan-orange text-white">{getInitials(user.name)}</AvatarFallback>
+              <div className="px-6 py-6">
+                <div className="space-y-8">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input type="search" placeholder="Search marketplace, resources, services..." className="w-full rounded-full bg-background pl-8" />
+                  </div>
+                  <nav className="space-y-6">
+                    {/* Only show Verify People link in mobile menu if user is an NGO */}
+                    {isNgo && (
+                      <Link 
+                        href="/skills/verify" 
+                        className="flex items-center gap-3 text-lg font-medium text-white hover:text-udaan-orange transition-colors py-3 px-2 rounded-lg hover:bg-white/5"
+                        onClick={() => setIsMenuOpen(false)}
+                      >
+                        <UserCheck className="h-6 w-6" />
+                        Verify People
+                      </Link>
+                    )}
+                    <Link 
+                      href="/service-requests" 
+                      className="flex items-center gap-3 text-lg font-medium text-white hover:text-udaan-orange transition-colors py-3 px-2 rounded-lg hover:bg-white/5"
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      <Award className="h-6 w-6" />
+                      Service Requests
+                    </Link>
+                    <Link 
+                      href="/service-offers" 
+                      className="flex items-center gap-3 text-lg font-medium text-white hover:text-udaan-orange transition-colors py-3 px-2 rounded-lg hover:bg-white/5"
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      <Briefcase className="h-6 w-6" />
+                      Service Offers
+                    </Link>
+                    <Link 
+                      href="/marketplace" 
+                      className="flex items-center gap-3 text-lg font-medium text-white hover:text-udaan-orange transition-colors py-3 px-2 rounded-lg hover:bg-white/5"
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      <ShoppingBag className="h-6 w-6" />
+                      Marketplace
+                    </Link>
+                  </nav>
+                  
+                  {/* Separator */}
+                  <div className="border-t border-white/20"></div>
+                  
+                  {user ? (
+                    <>
+                      <div className="flex items-center gap-4 mb-6">
+                  <Avatar className="h-12 w-12 border-2 border-udaan-orange">
+                    <AvatarFallback className="bg-udaan-orange text-white font-semibold text-lg">{getInitials(user.name)}</AvatarFallback>
                   </Avatar>
-                  <div className="grid gap-0.5">
-                    <p className="text-sm font-medium text-white">{user.name}</p>
-                    <p className="text-xs text-gray-300">{user.email}</p>
+                  <div className="grid gap-1">
+                    <p className="text-lg font-medium text-white">{user.name}</p>
+                    <p className="text-sm text-gray-300">{user.email}</p>
                   </div>
                 </div>
-                <div className="space-y-3">
+                <div className="space-y-4">
                   <Link href="/profile" onClick={() => setIsMenuOpen(false)}>
-                    <Button variant="outline" className="w-full text-white border-white hover:bg-udaan-orange hover:border-udaan-orange hover:text-white">Profile</Button>
+                    <Button variant="outline" className="w-full h-12 text-udaan-navy border-udaan-navy bg-white hover:bg-udaan-orange hover:border-udaan-orange hover:text-white transition-colors">Profile</Button>
                   </Link>
                   <Link href={getDashboardLink()} onClick={() => setIsMenuOpen(false)}>
-                    <Button variant="outline" className="w-full text-white border-white hover:bg-udaan-orange hover:border-udaan-orange hover:text-white">Dashboard</Button>
+                    <Button variant="outline" className="w-full h-12 text-udaan-navy border-udaan-navy bg-white hover:bg-udaan-orange hover:border-udaan-orange hover:text-white transition-colors">Dashboard</Button>
                   </Link>
                   <Link href="/orders" onClick={() => setIsMenuOpen(false)}>
-                    <Button variant="outline" className="w-full text-white border-white hover:bg-udaan-orange hover:border-udaan-orange hover:text-white">My Orders</Button>
+                    <Button variant="outline" className="w-full h-12 text-udaan-navy border-udaan-navy bg-white hover:bg-udaan-orange hover:border-udaan-orange hover:text-white transition-colors">My Orders</Button>
                   </Link>
                   {/* Only show Verify People in mobile menu if user is an NGO */}
                   {isNgo && (
                     <Link href="/skills/verify" onClick={() => setIsMenuOpen(false)}>
-                      <Button variant="outline" className="w-full text-white border-white hover:bg-udaan-orange hover:border-udaan-orange hover:text-white">Verify People</Button>
+                      <Button variant="outline" className="w-full h-12 text-udaan-navy border-udaan-navy bg-white hover:bg-udaan-orange hover:border-udaan-orange hover:text-white transition-colors">Verify People</Button>
                     </Link>
                   )}
                   <Link href="/settings" onClick={() => setIsMenuOpen(false)}>
-                    <Button variant="outline" className="w-full text-white border-white hover:bg-udaan-orange hover:border-udaan-orange hover:text-white">Settings</Button>
+                    <Button variant="outline" className="w-full h-12 text-udaan-navy border-udaan-navy bg-white hover:bg-udaan-orange hover:border-udaan-orange hover:text-white transition-colors">Settings</Button>
                   </Link>
                   <Button 
                     variant="outline" 
-                    className="w-full text-white border-white hover:bg-udaan-orange hover:border-udaan-orange hover:text-white" 
+                    className="w-full h-12 text-white border-red-500 bg-red-500 hover:bg-red-600 hover:border-red-600 hover:text-white transition-colors" 
                     onClick={() => {
                       setIsMenuOpen(false);
                       handleLogout();
@@ -286,21 +288,21 @@ export function Header() {
                 </div>
               </>
             ) : (
-              <div className="space-y-6">
+              <div className="space-y-4 mt-8">
                 <Link href="/login" onClick={() => setIsMenuOpen(false)}>
-                  <Button variant="outline" className="w-full text-udaan-navy bg-white border-white hover:bg-udaan-orange hover:border-udaan-orange hover:text-white">
+                  <Button variant="outline" className="w-full h-12 text-udaan-navy border-udaan-navy bg-white hover:bg-udaan-navy hover:text-white transition-colors">
                     Sign In
                   </Button>
                 </Link>
                 <Link href="/register" onClick={() => setIsMenuOpen(false)}>
-                  <Button className="w-full bg-udaan-orange hover:bg-udaan-orange/90 border-none text-white">
+                  <Button className="w-full h-12 bg-udaan-orange hover:bg-udaan-orange/90 border-none text-white transition-colors">
                     Get Started
                   </Button>
                 </Link>
               </div>
             )}
+                </div>
               </div>
-            </div>
             </div>
           </div>
         </div>

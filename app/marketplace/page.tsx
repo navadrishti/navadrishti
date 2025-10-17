@@ -221,7 +221,7 @@ export default function MarketplacePage() {
                   description={`${item.description} • Quantity: ${item.quantity}`}
                   category={item.category}
                   price={item.price}
-                  image={item.images?.[0] || "https://images.unsplash.com/photo-1441986300917-64674bd600d8"}
+                  image={item.images?.[0] || ""}
                   provider={item.seller_name}
                   providerType={item.seller_type}
                   location={item.seller_location}
@@ -250,7 +250,7 @@ export default function MarketplacePage() {
                   description={`${item.description} • Quantity: ${item.quantity}`}
                   category={item.category}
                   price={item.price}
-                  image={item.images?.[0] || "https://images.unsplash.com/photo-1441986300917-64674bd600d8"}
+                  image={item.images?.[0] || ""}
                   provider={item.seller_name}
                   providerType={item.seller_type}
                   location={item.seller_location}
@@ -279,7 +279,7 @@ export default function MarketplacePage() {
                   description={`${item.description} • Quantity: ${item.quantity}`}
                   category={item.category}
                   price={item.price}
-                  image={item.images?.[0] || "https://images.unsplash.com/photo-1441986300917-64674bd600d8"}
+                  image={item.images?.[0] || ""}
                   provider={item.seller_name}
                   providerType={item.seller_type}
                   location={item.seller_location}

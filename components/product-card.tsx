@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Star, Plus, Minus, MapPin, Truck, ShoppingCart, Trash2 } from "lucide-react"
+import { Star, Plus, Minus, MapPin, Truck, ShoppingCart, Trash2, User, Building, Users, Shield } from "lucide-react"
 import { formatPrice } from "@/lib/currency"
 import { ProductDetails } from "./product-details"
 import { useCart } from "@/lib/cart-context"
@@ -290,22 +290,53 @@ export function ProductCard({
       
       <CardContent className="p-5 flex-1 flex flex-col">
         <div className="space-y-3 flex-1">
-          {/* Category and Brand */}
+          {/* Category and Seller */}
           <div className="flex items-center justify-between">
             {category && (
               <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
                 {category}
               </Badge>
             )}
-            {provider && (
-              <p className="text-xs text-muted-foreground font-medium">
+            {provider && item?.seller_id && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  router.push(`/profile/${item.seller_id}`);
+                }}
+                className="text-xs text-blue-600 hover:text-blue-800 font-medium hover:underline transition-colors"
+              >
                 by {provider} {verified && <span className="text-green-500">✓</span>}
-              </p>
+              </button>
             )}
           </div>
           
           {/* Title */}
           <h3 className="font-semibold text-lg line-clamp-2 leading-tight text-gray-900">{title}</h3>
+          
+          {/* Seller Information - Prominent */}
+          {provider && item?.seller_id && (
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
+                {providerType === 'individual' && <User size={14} className="text-gray-500" />}
+                {providerType === 'company' && <Building size={14} className="text-gray-500" />}
+                {providerType === 'ngo' && <Users size={14} className="text-gray-500" />}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    router.push(`/profile/${item.seller_id}`);
+                  }}
+                  className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors"
+                >
+                  {provider}
+                </button>
+              </div>
+              {verified && (
+                <span className="text-green-500" title="Verified Seller">
+                  <Shield size={14} />
+                </span>
+              )}
+            </div>
+          )}
           
           {/* Rating and Reviews - Only show if real data exists */}
           {item?.rating_average > 0 && item?.rating_count > 0 && (
