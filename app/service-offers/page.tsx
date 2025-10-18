@@ -403,7 +403,7 @@ export default function ServiceOffersPage() {
                       </Link>
                     ) : (
                       <Link href={`/service-offers/${offer.id}`} className="w-full">
-                        <Button variant="secondary" className="w-full">
+                        <Button variant="outline" className="w-full border-blue-600 text-blue-600 hover:bg-blue-600 hover:!text-white font-medium shadow-md hover:shadow-lg transition-all duration-200">
                           View Details
                         </Button>
                       </Link>
