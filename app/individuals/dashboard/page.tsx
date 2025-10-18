@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { UserRound, Clock, CheckCircle, AlertTriangle, ShoppingBag, HeartHandshake, TicketCheck, Package, Trash2 } from 'lucide-react';
+import { UserRound, Clock, CheckCircle, AlertTriangle, ShoppingBag, HeartHandshake, TicketCheck, Package, Trash2, Plus } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 import { VerificationBadge, VerificationDetails } from '@/components/verification-badge';
@@ -226,15 +226,16 @@ export default function IndividualDashboard() {
                   Manage your volunteering, services, and marketplace activities
                 </p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <Link href="/service-requests">
-                  <Button variant="outline" className="flex items-center gap-2">
+                  <Button variant="outline" className="flex items-center gap-2 w-full sm:w-auto text-sm">
                     <TicketCheck className="h-4 w-4" />
-                    Browse Service Requests
+                    <span className="hidden sm:inline">Browse Service Requests</span>
+                    <span className="sm:hidden">Service Requests</span>
                   </Button>
                 </Link>
                 <Link href="/marketplace">
-                  <Button className="flex items-center gap-2">
+                  <Button className="flex items-center gap-2 w-full sm:w-auto text-sm">
                     <ShoppingBag className="h-4 w-4" />
                     Marketplace
                   </Button>
@@ -330,15 +331,15 @@ export default function IndividualDashboard() {
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-500">Skills</p>
-                          <p>{user?.profile_data?.skills || user?.profile?.skills || 'Skills not set'}</p>
+                          <p>{(user as any)?.profile_data?.skills || (user as any)?.profile?.skills || 'Skills not set'}</p>
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-500">Interests</p>
-                          <p>{user?.profile_data?.interests || user?.profile?.interests || 'Interests not set'}</p>
+                          <p>{(user as any)?.profile_data?.interests || (user as any)?.profile?.interests || 'Interests not set'}</p>
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-500">Joined</p>
-                          <p>{user?.created_at ? new Date(user.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long' }) : 'Join date not available'}</p>
+                          <p>{(user as any)?.created_at ? new Date((user as any).created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long' }) : 'Join date not available'}</p>
                         </div>
                       </div>
                     </div>
@@ -389,10 +390,10 @@ export default function IndividualDashboard() {
               </CardHeader>
               <CardContent>
                 <Tabs defaultValue="service-requests" className="w-full">
-                  <TabsList className="grid w-full grid-cols-3">
-                    <TabsTrigger value="service-requests">Service Requests</TabsTrigger>
-                    <TabsTrigger value="services-hired">Services Hired</TabsTrigger>
-                    <TabsTrigger value="marketplace">Marketplace</TabsTrigger>
+                  <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 h-auto">
+                    <TabsTrigger value="service-requests" className="text-xs sm:text-sm">Service Requests</TabsTrigger>
+                    <TabsTrigger value="services-hired" className="text-xs sm:text-sm">Services Hired</TabsTrigger>
+                    <TabsTrigger value="marketplace" className="text-xs sm:text-sm">Marketplace</TabsTrigger>
                   </TabsList>
                   
                   <TabsContent value="service-requests" className="mt-4 space-y-4">
@@ -497,10 +498,13 @@ export default function IndividualDashboard() {
                       </TabsContent>
                       
                       <TabsContent value="selling" className="mt-4">
-                        <div className="flex justify-between items-center mb-4">
-                          <h3 className="font-medium">Your Items for Sale</h3>
-                          <Link href="/marketplace/create">
-                            <Button variant="outline" size="sm">List New Item</Button>
+                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-4 mb-4">
+                          <h3 className="font-medium text-lg">Your Items for Sale</h3>
+                          <Link href="/marketplace/create" className="flex-shrink-0">
+                            <Button variant="outline" size="sm" className="w-full sm:w-auto">
+                              <Plus className="h-4 w-4 mr-2" />
+                              List New Item
+                            </Button>
                           </Link>
                         </div>
                         <div className="rounded-md border">
