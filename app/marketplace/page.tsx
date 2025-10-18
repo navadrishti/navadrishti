@@ -177,6 +177,15 @@ export default function MarketplacePage() {
       <Header />
       
       <main className="flex-1 px-6 py-8 md:px-10">
+        <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Marketplace</h1>
+            <p className="text-muted-foreground">
+              Buy and sell items to support community initiatives
+            </p>
+          </div>
+        </div>
+
         {/* Enhanced Call-to-Action Section for Listing Items */}
         {user && (
           <div className="mb-8 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200">
@@ -201,15 +210,6 @@ export default function MarketplacePage() {
             </div>
           </div>
         )}
-
-        <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Marketplace</h1>
-            <p className="text-muted-foreground">
-              Buy and sell items to support community initiatives
-            </p>
-          </div>
-        </div>
 
         <Tabs value={currentView} onValueChange={handleTabChange} className="space-y-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
