@@ -62,7 +62,11 @@ async function handler(req: NextRequest) {
         city: freshUserData.city,
         state_province: freshUserData.state_province,
         pincode: freshUserData.pincode,
-        country: freshUserData.country
+        country: freshUserData.country,
+        created_at: freshUserData.created_at,
+        profile_data: freshUserData.profile_data || {}, // Include profile_data
+        // For backward compatibility, also extract profile fields
+        profile: freshUserData.profile_data || {}
       }
     });
     

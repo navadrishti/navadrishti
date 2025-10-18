@@ -1,7 +1,7 @@
 // DigiLocker OAuth callback handler
 import { NextRequest, NextResponse } from 'next/server';
 import { DigiLockerService } from '@/lib/digilocker';
-import { executeQuery } from '@/lib/db';
+import { supabase } from '@/lib/db';
 
 const digiLocker = new DigiLockerService();
 
@@ -24,71 +24,66 @@ export async function GET(req: NextRequest) {
     const tokenData = await digiLocker.exchangeCodeForToken(code, state);
     
     // Store the token for later use
-    await executeQuery({
-      query: `UPDATE individual_verifications 
-              SET digilocker_token = ? 
-              WHERE user_id = ?`,
-      values: [tokenData.accessToken, tokenData.userId]
-    });
+    await supabase
+      .from('individual_verifications')
+      .update({ digilocker_token: tokenData.accessToken })
+      .eq('user_id', tokenData.userId);
 
     // Fetch document data based on document type
     if (tokenData.documentType === 'aadhaar') {
       const aadhaarData = await digiLocker.fetchAadhaarData(tokenData.accessToken);
       
       // Update verification record with Aadhaar data
-      await executeQuery({
-        query: `UPDATE individual_verifications 
-                SET aadhaar_number = ?, aadhaar_name = ?, aadhaar_dob = ?, 
-                    aadhaar_address = ?, aadhaar_verified = ?, aadhaar_verification_date = NOW()
-                WHERE user_id = ?`,
-        values: [
-          aadhaarData.aadhaarNumber,
-          aadhaarData.name,
-          aadhaarData.dateOfBirth,
-          JSON.stringify(aadhaarData.address),
-          true,
-          tokenData.userId
-        ]
-      });
+      await supabase
+        .from('individual_verifications')
+        .update({
+          aadhaar_number: aadhaarData.aadhaarNumber,
+          aadhaar_name: aadhaarData.name,
+          aadhaar_dob: aadhaarData.dateOfBirth,
+          aadhaar_address: JSON.stringify(aadhaarData.address),
+          aadhaar_verified: true,
+          aadhaar_verification_date: new Date().toISOString()
+        })
+        .eq('user_id', tokenData.userId);
 
     } else if (tokenData.documentType === 'pan') {
       const panData = await digiLocker.fetchPANData(tokenData.accessToken);
       
       // Update verification record with PAN data
-      await executeQuery({
-        query: `UPDATE individual_verifications 
-                SET pan_number = ?, pan_name = ?, pan_father_name = ?, 
-                    pan_verified = ?, pan_verification_date = NOW()
-                WHERE user_id = ?`,
-        values: [
-          panData.panNumber,
-          panData.name,
-          panData.fatherName,
-          true,
-          tokenData.userId
-        ]
-      });
+      await supabase
+        .from('individual_verifications')
+        .update({
+          pan_number: panData.panNumber,
+          pan_name: panData.name,
+          pan_father_name: panData.fatherName,
+          pan_verified: true,
+          pan_verification_date: new Date().toISOString()
+        })
+        .eq('user_id', tokenData.userId);
     }
 
     // Check if verification is complete
-    const verification = await executeQuery({
-      query: 'SELECT aadhaar_verified, pan_verified FROM individual_verifications WHERE user_id = ?',
-      values: [tokenData.userId]
-    }) as any[];
+    const { data: verification, error: verificationError } = await supabase
+      .from('individual_verifications')
+      .select('aadhaar_verified, pan_verified')
+      .eq('user_id', tokenData.userId)
+      .single();
 
-    if (verification.length && verification[0].aadhaar_verified && verification[0].pan_verified) {
+    if (!verificationError && verification && verification.aadhaar_verified && verification.pan_verified) {
       // Update user verification status
-      await executeQuery({
-        query: `UPDATE individual_verifications 
-                SET verification_status = 'verified' 
-                WHERE user_id = ?`,
-        values: [tokenData.userId]
-      });
+      await supabase
+        .from('individual_verifications')
+        .update({ verification_status: 'verified' })
+        .eq('user_id', tokenData.userId);
 
-      await executeQuery({
-        query: 'UPDATE users SET verification_status = ?, verified_at = NOW(), verification_level = ? WHERE id = ?',
-        values: ['verified', 'advanced', tokenData.userId]
-      });
+      await supabase
+        .from('users')
+        .update({
+          verification_status: 'verified',
+          verified_at: new Date().toISOString(),
+          verification_level: 'advanced'
+        })
+        .eq('id', tokenData.userId);
     }
 
     // Redirect back to verification page with success

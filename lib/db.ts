@@ -275,18 +275,37 @@ export const db = {
       
       if (error) throw error;
       
-      // Fetch requester data separately and merge
+      // Fetch requester data and volunteer counts separately
       if (data && data.length > 0) {
         const requesterIds = [...new Set(data.map((item: any) => item.ngo_id))];
-        const { data: users } = await supabase
-          .from('users')
-          .select('id, name, email, user_type')
-          .in('id', requesterIds);
+        const requestIds = data.map((item: any) => item.id);
         
-        // Merge requester data
+        const [usersResult, volunteersResult] = await Promise.all([
+          supabase
+            .from('users')
+            .select('id, name, email, user_type')
+            .in('id', requesterIds),
+          supabase
+            .from('service_volunteers')
+            .select('service_request_id')
+            .in('service_request_id', requestIds)
+            .in('status', ['accepted', 'active', 'completed']) // Include completed volunteers in count
+        ]);
+        
+        const users = usersResult.data || [];
+        const volunteers = volunteersResult.data || [];
+        
+        // Count volunteers per request
+        const volunteerCounts = volunteers.reduce((acc: any, vol: any) => {
+          acc[vol.service_request_id] = (acc[vol.service_request_id] || 0) + 1;
+          return acc;
+        }, {});
+        
+        // Merge requester data and volunteer counts
         return data.map((request: any) => ({
           ...request,
           requester: users?.find((user: any) => user.id === request.ngo_id),
+          volunteers_count: volunteerCounts[request.id] || 0,
           // Add requester_id for backward compatibility
           requester_id: request.ngo_id
         }));
@@ -346,6 +365,21 @@ export const db = {
       return data;
     },
 
+    async updateStatus(id: number, status: string) {
+      const { data, error } = await supabase
+        .from('service_requests')
+        .update({ 
+          status,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+
     async delete(id: string | number, requesterId?: number) {
       // First delete related volunteers
       await supabase
@@ -391,6 +425,30 @@ export const db = {
       const { data, error } = await query.order('created_at', { ascending: false });
       
       if (error) throw error;
+      
+      // Fetch hire counts for each service offer
+      if (data && data.length > 0) {
+        const offerIds = data.map((item: any) => item.id);
+        
+        const { data: hires } = await supabase
+          .from('service_clients') // Correct table name
+          .select('service_offer_id')
+          .in('service_offer_id', offerIds)
+          .eq('status', 'accepted'); // Only count accepted clients
+        
+        // Count hires per offer
+        const hireCounts = (hires || []).reduce((acc: any, hire: any) => {
+          acc[hire.service_offer_id] = (acc[hire.service_offer_id] || 0) + 1;
+          return acc;
+        }, {});
+        
+        // Add hire counts to offers
+        return data.map((offer: any) => ({
+          ...offer,
+          hires_count: hireCounts[offer.id] || 0
+        }));
+      }
+      
       return data;
     },
 
@@ -748,6 +806,62 @@ export const db = {
         .single();
       
       if (error) throw error;
+      
+      // Auto-update service request status based on volunteer completion
+      if (data) {
+        const serviceRequestId = data.service_request_id;
+        
+        // Get all volunteers for this service request
+        const { data: allVolunteers } = await supabase
+          .from('service_volunteers')
+          .select('status')
+          .eq('service_request_id', serviceRequestId);
+        
+        if (allVolunteers && allVolunteers.length > 0) {
+          // Count volunteers by status
+          const acceptedCount = allVolunteers.filter(v => v.status === 'accepted').length;
+          const activeCount = allVolunteers.filter(v => v.status === 'active').length;
+          const completedCount = allVolunteers.filter(v => v.status === 'completed').length;
+          const workingVolunteers = acceptedCount + activeCount; // Still working
+          
+          // Get current service request status
+          const { data: currentRequest } = await supabase
+            .from('service_requests')
+            .select('status')
+            .eq('id', serviceRequestId)
+            .single();
+          
+          let newRequestStatus = null;
+          
+          // Logic for status updates:
+          if (workingVolunteers === 0 && completedCount > 0 && currentRequest?.status !== 'completed') {
+            // No more volunteers working and at least one completed - mark as completed
+            newRequestStatus = 'completed';
+          } else if (status === 'rejected' && workingVolunteers === 0 && completedCount === 0) {
+            // All volunteers rejected and none completed - could reopen or leave as active
+            // For now, leave as active so NGO can find new volunteers
+            newRequestStatus = 'active';
+          } else if (workingVolunteers > 0 && currentRequest?.status === 'completed') {
+            // Some volunteers still working but request was marked completed - reopen it
+            newRequestStatus = 'active';
+          }
+          
+          // Update service request status if needed
+          if (newRequestStatus && currentRequest?.status !== newRequestStatus) {
+            await supabase
+              .from('service_requests')
+              .update({ 
+                status: newRequestStatus,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', serviceRequestId);
+            
+            console.log(`✅ Auto-updated service request ${serviceRequestId} status to: ${newRequestStatus}`);
+            console.log(`📊 Volunteer counts - Accepted: ${acceptedCount}, Active: ${activeCount}, Completed: ${completedCount}`);
+          }
+        }
+      }
+      
       return data;
     }
   },

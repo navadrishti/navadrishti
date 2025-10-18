@@ -1,7 +1,7 @@
 // EntityLocker OAuth callback handler
 import { NextRequest, NextResponse } from 'next/server';
 import { EntityLockerService } from '@/lib/entitylocker';
-import { executeQuery } from '@/lib/db';
+import { supabase } from '@/lib/db';
 
 const entityLocker = new EntityLockerService();
 
@@ -25,12 +25,10 @@ export async function GET(req: NextRequest) {
     
     // Store the token for later use
     const table = tokenData.entityType === 'ngo' ? 'ngo_verifications' : 'company_verifications';
-    await executeQuery({
-      query: `UPDATE ${table} 
-              SET entitylocker_token = ? 
-              WHERE user_id = ?`,
-      values: [tokenData.accessToken, tokenData.userId]
-    });
+    await supabase
+      .from(table)
+      .update({ entitylocker_token: tokenData.accessToken })
+      .eq('user_id', tokenData.userId);
 
     // Redirect back to verification page with success
     return NextResponse.redirect(`${process.env.FRONTEND_URL}/verification?success=true&type=${tokenData.entityType}`);

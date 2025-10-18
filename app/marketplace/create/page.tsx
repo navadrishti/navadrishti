@@ -134,7 +134,16 @@ export default function CreateListingPage() {
       try {
         const responseText = await response.text();
         console.log('Raw response:', responseText);
+        
+        if (!responseText.trim()) {
+          console.error('Empty response received from server');
+          setError(`Server returned empty response. Status: ${response.status}`);
+          setLoading(false);
+          return;
+        }
+        
         data = JSON.parse(responseText);
+        console.log('Parsed response data:', data);
       } catch (parseError) {
         console.error('JSON parse error:', parseError);
         setError(`Server returned invalid response. Status: ${response.status}`);
@@ -148,7 +157,13 @@ export default function CreateListingPage() {
         router.push('/marketplace');
       } else {
         const errorMsg = data.error || data.message || 'Failed to create listing';
-        console.error('API Error:', data);
+        
+        // Safely log the error - avoid logging empty objects
+        if (data && Object.keys(data).length > 0) {
+          console.error('API Error:', data);
+        } else {
+          console.error('API Error: Empty response received');
+        }
         
         // Handle verification requirement specifically
         if (data.requiresVerification || response.status === 403) {

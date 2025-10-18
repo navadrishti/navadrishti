@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { executeQuery } from '@/lib/db';
+import { db, supabase } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 
@@ -26,15 +26,17 @@ export async function GET(
     
     if (userId) {
       // Public request to check if user has applied
-      const userApplication = await executeQuery({
-        query: `SELECT sc.*, u.name as client_name, u.email as client_email
-                 FROM service_clients sc
-                 JOIN users u ON sc.client_id = u.id
-                 WHERE sc.service_offer_id = ? AND sc.client_id = ?`,
-        values: [offerId, parseInt(userId)]
-      }) as any[];
+      const { data: userApplication } = await supabase
+        .from('service_clients')
+        .select(`
+          *,
+          client:users!client_id(name, email)
+        `)
+        .eq('service_offer_id', offerId)
+        .eq('client_id', parseInt(userId))
+        .single();
 
-      return NextResponse.json(userApplication);
+      return NextResponse.json(userApplication || null);
     }
     
     // Get JWT token from Authorization header for NGO requests
@@ -53,33 +55,25 @@ export async function GET(
     }
 
     // First, verify that this offer belongs to the authenticated NGO
-    const offerCheck = await executeQuery({
-      query: `SELECT ngo_id FROM service_offers WHERE id = ?`,
-      values: [offerId]
-    }) as any[];
+    const offer = await db.serviceOffers.getById(offerId);
 
-    if (offerCheck.length === 0) {
+    if (!offer) {
       return NextResponse.json({ error: 'Service offer not found' }, { status: 404 });
     }
 
-    if (offerCheck[0].ngo_id !== ngoUserId) {
+    if (offer.ngo_id !== ngoUserId) {
       return NextResponse.json({ error: 'You can only view applicants for your own offers' }, { status: 403 });
     }
 
     // Fetch clients for this offer
-    const clients = await executeQuery({
-      query: `
-        SELECT 
-          sc.*,
-          u.name as client_name,
-          u.email as client_email
-        FROM service_clients sc
-        JOIN users u ON sc.client_id = u.id
-        WHERE sc.service_offer_id = ?
-        ORDER BY sc.created_at DESC
-      `,
-      values: [offerId]
-    }) as any[];
+    const { data: clients, error } = await supabase
+      .from('service_clients')
+      .select(`
+        *,
+        client:users!client_id(name, email)
+      `)
+      .eq('service_offer_id', offerId)
+      .order('created_at', { ascending: false });
 
     return NextResponse.json({
       success: true,
@@ -116,13 +110,14 @@ export async function POST(
     const offerId = parseInt(id);
 
     // Check if the client has already applied
-    const existingApplication = await executeQuery({
-      query: `SELECT id FROM service_clients 
-               WHERE service_offer_id = ? AND client_id = ?`,
-      values: [offerId, client_id]
-    }) as any[];
+    const { data: existingApplication } = await supabase
+      .from('service_clients')
+      .select('id')
+      .eq('service_offer_id', offerId)
+      .eq('client_id', client_id)
+      .single();
 
-    if (existingApplication.length > 0) {
+    if (existingApplication) {
       return NextResponse.json(
         { error: 'You have already applied for this service offer' },
         { status: 400 }
@@ -130,40 +125,29 @@ export async function POST(
     }
 
     // Insert the client application
-    const result = await executeQuery({
-      query: `INSERT INTO service_clients 
-               (service_offer_id, client_id, client_type, message, start_date, end_date, amount_paid, status) 
-               VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')`,
-      values: [
-        offerId,
-        client_id,
-        client_type,
-        message,
-        start_date || null,
-        end_date || null,
-        proposed_amount || 0
-      ]
-    }) as any;
+    const { data: result, error: insertError } = await supabase
+      .from('service_clients')
+      .insert({
+        service_offer_id: offerId,
+        client_id: client_id,
+        client_type: client_type,
+        message: message,
+        start_date: start_date || null,
+        end_date: end_date || null,
+        amount_paid: proposed_amount || 0,
+        status: 'pending'
+      })
+      .select(`
+        *,
+        client:users!client_id(name, email)
+      `)
+      .single();
 
-    if (result && result.insertId) {
-      // Return the created application
-      const newApplication = await executeQuery({
-        query: `SELECT sc.*, u.name as client_name, u.email as client_email
-                 FROM service_clients sc
-                 JOIN users u ON sc.client_id = u.id
-                 WHERE sc.id = ?`,
-        values: [result.insertId]
-      }) as any[];
-
-      if (newApplication.length > 0) {
-        return NextResponse.json(newApplication[0], { status: 201 });
-      }
+    if (insertError) {
+      throw insertError;
     }
 
-    return NextResponse.json(
-      { error: 'Failed to create application' },
-      { status: 500 }
-    );
+    return NextResponse.json(result, { status: 201 });
 
   } catch (error) {
     console.error('Error creating client application:', error);

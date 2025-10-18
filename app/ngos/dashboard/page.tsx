@@ -20,6 +20,7 @@ export default function NGODashboard() {
     serviceOffersPending: 0,
     serviceOffersCompleted: 0,
     serviceRequestsPending: 0,
+    serviceRequestsCompleted: 0, // Add this field
     serviceRequestsAccepted: 0,
     marketplaceItemsListed: 0,
     marketplaceItemsSold: 0
@@ -33,6 +34,7 @@ export default function NGODashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [deletingRequest, setDeletingRequest] = useState<number | null>(null);
+  const [deletingListing, setDeletingListing] = useState<number | null>(null);
 
   // Helper function to ensure numbers are valid
   const safeNumber = (value: any, defaultValue: number = 0): number => {
@@ -85,6 +87,51 @@ export default function NGODashboard() {
     }
   };
 
+  // Handle marketplace listing deletion
+  const handleDeleteListing = async (itemId: number, itemTitle: string) => {
+    if (!confirm(`Are you sure you want to delete "${itemTitle}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      setDeletingListing(itemId);
+      const token = localStorage.getItem('token');
+      
+      const response = await fetch(`/api/marketplace/${itemId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast({
+          title: "Success",
+          description: "Listing deleted successfully",
+        });
+        // Refresh the marketplace items
+        fetchMarketplaceItems();
+      } else {
+        toast({
+          title: "Error",
+          description: data.error || "Failed to delete listing",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to delete listing",
+        variant: "destructive",
+      });
+    } finally {
+      setDeletingListing(null);
+    }
+  };
+
   // Fetch real data from API
   useEffect(() => {
     const fetchStats = async () => {
@@ -106,6 +153,7 @@ export default function NGODashboard() {
             serviceOffersPending: safeNumber(data.data?.serviceOffersPending),
             serviceOffersCompleted: safeNumber(data.data?.serviceOffersCompleted),
             serviceRequestsPending: safeNumber(data.data?.serviceRequestsPending),
+            serviceRequestsCompleted: safeNumber(data.data?.serviceRequestsCompleted), // Add this field
             serviceRequestsAccepted: safeNumber(data.data?.serviceRequestsAccepted),
             marketplaceItemsListed: safeNumber(data.data?.marketplaceItemsListed),
             marketplaceItemsSold: safeNumber(data.data?.marketplaceItemsSold)
@@ -133,6 +181,7 @@ export default function NGODashboard() {
       const token = localStorage.getItem('token');
       if (!token) return;
 
+      console.log('Fetching service offers...');
       const response = await fetch('/api/service-offers?view=my-offers&limit=5', {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -140,8 +189,12 @@ export default function NGODashboard() {
       });
 
       const data = await response.json();
+      console.log('Service offers response:', data);
       if (data.success) {
         setServiceOffers(data.data || []);
+        console.log('Service offers set:', data.data?.length || 0, 'items');
+      } else {
+        console.error('Service offers fetch failed:', data.error);
       }
     } catch (error) {
       console.error('Error fetching service offers:', error);
@@ -154,6 +207,7 @@ export default function NGODashboard() {
       const token = localStorage.getItem('token');
       if (!token) return;
 
+      console.log('Fetching service requests...');
       const response = await fetch('/api/service-requests?view=my-requests&limit=5', {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -161,8 +215,18 @@ export default function NGODashboard() {
       });
 
       const data = await response.json();
+      console.log('Service requests response:', data);
       if (data.success) {
         setServiceRequests(data.data || []);
+        console.log('Service requests set:', data.data?.length || 0, 'items');
+        console.log('📊 Detailed service requests:', (data.data || []).map((req: any) => ({
+          id: req.id,
+          title: req.title,
+          status: req.status,
+          volunteers_count: req.volunteers_count
+        })));
+      } else {
+        console.error('Service requests fetch failed:', data.error);
       }
     } catch (error) {
       console.error('Error fetching service requests:', error);
@@ -175,6 +239,7 @@ export default function NGODashboard() {
       const token = localStorage.getItem('token');
       if (!token) return;
 
+      console.log('Fetching marketplace items...');
       const response = await fetch('/api/marketplace?view=my-listings&limit=5', {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -182,8 +247,12 @@ export default function NGODashboard() {
       });
 
       const data = await response.json();
+      console.log('Marketplace items response:', data);
       if (data.success) {
         setMarketplaceItems(data.data || []);
+        console.log('Marketplace items set:', data.data?.length || 0, 'items');
+      } else {
+        console.error('Marketplace items fetch failed:', data.error);
       }
     } catch (error) {
       console.error('Error fetching marketplace items:', error);
@@ -194,13 +263,41 @@ export default function NGODashboard() {
   useEffect(() => {
     const fetchAllData = async () => {
       if (user) {
+        console.log('NGO Dashboard: Starting to fetch all data for user:', user.id);
         setLoadingData(true);
+        
+        // Refresh user profile data to get latest info
+        console.log('🔄 Refreshing user profile data...');
+        await refreshUser();
+        
+        // Auto-update service request statuses before fetching data
+        console.log('🔄 Running automatic status update check...');
+        try {
+          const token = localStorage.getItem('token');
+          if (token) {
+            const autoUpdateResponse = await fetch('/api/auto-update-statuses', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+              }
+            });
+            const autoUpdateData = await autoUpdateResponse.json();
+            console.log('🔄 Auto-update result:', autoUpdateData);
+          }
+        } catch (autoUpdateError) {
+          console.error('Auto-update error (non-critical):', autoUpdateError);
+        }
+        
         await Promise.all([
           fetchServiceOffers(),
           fetchServiceRequests(),
           fetchMarketplaceItems()
         ]);
         setLoadingData(false);
+        console.log('NGO Dashboard: Finished fetching all data');
+      } else {
+        console.log('NGO Dashboard: No user found, skipping data fetch');
       }
     };
 
@@ -267,7 +364,7 @@ export default function NGODashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="flex flex-col">
-                    <div className="text-2xl font-bold">{safeNumber(stats.serviceRequestsPending) + safeNumber(stats.serviceRequestsAccepted)}</div>
+                    <div className="text-2xl font-bold">{safeNumber(stats.serviceRequestsPending) + safeNumber(stats.serviceRequestsCompleted || 0)}</div>
                     <div className="flex items-center gap-2 mt-1">
                       <Badge variant="outline" className="text-amber-600 border-amber-600">
                         <AlertTriangle className="h-3 w-3 mr-1" />
@@ -275,7 +372,7 @@ export default function NGODashboard() {
                       </Badge>
                       <Badge variant="outline" className="text-green-600 border-green-600">
                         <CheckCircle className="h-3 w-3 mr-1" />
-                        {safeNumber(stats.serviceRequestsAccepted)} Accepted
+                        {safeNumber(stats.serviceRequestsCompleted || 0)} Completed
                       </Badge>
                     </div>
                   </div>
@@ -315,8 +412,16 @@ export default function NGODashboard() {
               <CardContent className="space-y-6">
                 <div className="flex flex-col md:flex-row gap-6">
                   <div className="w-full md:w-1/4">
-                    <div className="aspect-square rounded-lg bg-gray-100 flex items-center justify-center">
-                      <Building className="h-12 w-12 text-gray-400" />
+                    <div className="aspect-square rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden">
+                      {user?.profile_image ? (
+                        <img 
+                          src={user.profile_image} 
+                          alt={user?.name || 'Profile'} 
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <Building className="h-12 w-12 text-gray-400" />
+                      )}
                     </div>
                   </div>
                   <div className="w-full md:w-3/4 space-y-4">
@@ -367,29 +472,31 @@ export default function NGODashboard() {
                         </div>
                       </div>
                     </div>
-                    <Button variant="outline">Edit Profile</Button>
+                    <Button variant="outline" asChild>
+                      <Link href="/profile">Edit Profile</Link>
+                    </Button>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Services & Marketplace Section */}
+            {/* Activities & Engagements */}
             <Card>
               <CardHeader>
-                <CardTitle>Services & Marketplace Management</CardTitle>
+                <CardTitle>Activities & Engagements</CardTitle>
                 <CardDescription>
-                  Manage your service offerings, service requests, and marketplace listings
+                  Manage your service offerings, service requests, and marketplace activities
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <Tabs defaultValue="services-offers" className="w-full">
+                <Tabs defaultValue="service-offers" className="w-full">
                   <TabsList className="grid w-full grid-cols-3">
-                    <TabsTrigger value="services-offers">Service Offers</TabsTrigger>
+                    <TabsTrigger value="service-offers">Service Offers</TabsTrigger>
                     <TabsTrigger value="service-requests">Service Requests</TabsTrigger>
-                    <TabsTrigger value="marketplace">Marketplace Items</TabsTrigger>
+                    <TabsTrigger value="marketplace">Marketplace</TabsTrigger>
                   </TabsList>
                   
-                  <TabsContent value="services-offers" className="mt-4 space-y-4">
+                  <TabsContent value="service-offers" className="mt-4 space-y-4">
                     <div className="flex justify-between items-center">
                       <h3 className="font-medium">Your Service Offerings</h3>
                       <Link href="/service-offers/create">
@@ -409,12 +516,16 @@ export default function NGODashboard() {
                       </div>
                       <div className="divide-y">
                         {loadingData ? (
-                          <div className="p-8 text-center text-gray-500">
-                            Loading your service offers...
+                          <div className="p-4 text-center">
+                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto"></div>
+                            <p className="text-sm text-muted-foreground mt-2">Loading service offers...</p>
                           </div>
                         ) : serviceOffers.length === 0 ? (
-                          <div className="p-8 text-center text-gray-500">
-                            No service offers found. <Link href="/service-offers/create" className="text-blue-600 hover:underline">Create your first service offer</Link>
+                          <div className="p-4 text-center text-muted-foreground">
+                            <p>No service offers yet</p>
+                            <Link href="/service-offers/create">
+                              <Button size="sm" className="mt-2">Create Your First Service Offer</Button>
+                            </Link>
                           </div>
                         ) : (
                           serviceOffers.map((offer) => (
@@ -429,7 +540,7 @@ export default function NGODashboard() {
                                     ? 'bg-amber-50 text-amber-700'
                                     : 'bg-gray-50 text-gray-700'
                                 }`}>
-                                  {offer.status === 'active' ? 'Available' : offer.status}
+                                  {offer.status === 'active' ? 'Available' : offer.status?.charAt(0).toUpperCase() + offer.status?.slice(1) || 'Unknown'}
                                 </span>
                               </div>
                               <div>{offer.hires_count || 0} requests</div>
@@ -439,6 +550,9 @@ export default function NGODashboard() {
                                 </Link>
                                 <Link href={`/service-offers/edit/${offer.id}`}>
                                   <Button variant="outline" size="sm">Edit</Button>
+                                </Link>
+                                <Link href={`/service-offers/hires/${offer.id}`}>
+                                  <Button variant="outline" size="sm">Hires</Button>
                                 </Link>
                               </div>
                             </div>
@@ -468,12 +582,16 @@ export default function NGODashboard() {
                       </div>
                       <div className="divide-y">
                         {loadingData ? (
-                          <div className="p-8 text-center text-gray-500">
-                            Loading your service requests...
+                          <div className="p-4 text-center">
+                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto"></div>
+                            <p className="text-sm text-muted-foreground mt-2">Loading service requests...</p>
                           </div>
                         ) : serviceRequests.length === 0 ? (
-                          <div className="p-8 text-center text-gray-500">
-                            No service requests found. <Link href="/service-requests/create" className="text-blue-600 hover:underline">Create your first service request</Link>
+                          <div className="p-4 text-center text-muted-foreground">
+                            <p>No service requests yet</p>
+                            <Link href="/service-requests/create">
+                              <Button size="sm" className="mt-2">Create Your First Service Request</Button>
+                            </Link>
                           </div>
                         ) : (
                           serviceRequests.map((request) => (
@@ -486,9 +604,14 @@ export default function NGODashboard() {
                                     ? 'bg-green-50 text-green-700'
                                     : request.status === 'in_progress'
                                     ? 'bg-blue-50 text-blue-700'
+                                    : request.status === 'completed'
+                                    ? 'bg-purple-50 text-purple-700'
                                     : 'bg-gray-50 text-gray-700'
                                 }`}>
-                                  {request.status === 'active' ? 'Open' : request.status === 'in_progress' ? 'In Progress' : request.status}
+                                  {request.status === 'active' ? 'Open' : 
+                                   request.status === 'completed' ? 'Completed' :
+                                   request.status === 'in_progress' ? 'In Progress' : 
+                                   request.status?.charAt(0).toUpperCase() + request.status?.slice(1) || 'Unknown'}
                                 </span>
                               </div>
                               <div>{request.volunteers_count || 0} volunteers</div>
@@ -498,6 +621,9 @@ export default function NGODashboard() {
                                 </Link>
                                 <Link href={`/service-requests/edit/${request.id}`}>
                                   <Button variant="outline" size="sm">Edit</Button>
+                                </Link>
+                                <Link href={`/service-requests/applicants/${request.id}`}>
+                                  <Button variant="outline" size="sm">Applicants</Button>
                                 </Link>
                                 <Button 
                                   variant="outline" 
@@ -521,52 +647,98 @@ export default function NGODashboard() {
                   </TabsContent>
                   
                   <TabsContent value="marketplace" className="mt-4 space-y-4">
-                    <div className="flex justify-between items-center">
-                      <h3 className="font-medium">Your Marketplace Listings</h3>
-                      <Link href="/marketplace/create">
-                        <Button variant="outline" size="sm">
-                          <Plus className="h-3.5 w-3.5 mr-1" />
-                          Add Item
-                        </Button>
-                      </Link>
-                    </div>
-                    <div className="rounded-md border">
-                      <div className="grid grid-cols-1 md:grid-cols-5 p-4 text-sm font-medium text-gray-500 border-b">
-                        <div>Item</div>
-                        <div>Category</div>
-                        <div>Condition</div>
-                        <div>Price</div>
-                        <div className="text-right">Actions</div>
-                      </div>
-                      <div className="divide-y">
-                        {loadingData ? (
-                          <div className="p-8 text-center text-gray-500">
-                            Loading your marketplace items...
+                    <Tabs defaultValue="selling" className="w-full">
+                      <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="selling">Your Listings</TabsTrigger>
+                        <TabsTrigger value="purchasing">Purchased Items</TabsTrigger>
+                      </TabsList>
+                      
+                      <TabsContent value="selling" className="mt-4">
+                        <div className="flex justify-between items-center mb-4">
+                          <h3 className="font-medium">Your Items for Sale</h3>
+                          <Link href="/marketplace/create">
+                            <Button variant="outline" size="sm">List New Item</Button>
+                          </Link>
+                        </div>
+                        <div className="rounded-md border">
+                          <div className="grid grid-cols-1 md:grid-cols-5 p-4 text-sm font-medium text-gray-500 border-b">
+                            <div>Item</div>
+                            <div>Category</div>
+                            <div>Price</div>
+                            <div>Status</div>
+                            <div className="text-right">Actions</div>
                           </div>
-                        ) : marketplaceItems.length === 0 ? (
-                          <div className="p-8 text-center text-gray-500">
-                            No marketplace items found. <Link href="/marketplace/create" className="text-blue-600 hover:underline">List your first item</Link>
-                          </div>
-                        ) : (
-                          marketplaceItems.map((item) => (
-                            <div key={item.id} className="grid grid-cols-1 md:grid-cols-5 p-4 text-sm items-center">
-                              <div className="font-medium">{item.title}</div>
-                              <div>{item.category}</div>
-                              <div className="capitalize">{item.condition}</div>
-                              <div>₹{item.price}</div>
-                              <div className="flex justify-end gap-2">
-                                <Link href={`/marketplace/product/${item.id}`}>
-                                  <Button variant="ghost" size="sm">View</Button>
-                                </Link>
-                                <Link href={`/marketplace/edit/${item.id}`}>
-                                  <Button variant="outline" size="sm">Edit</Button>
+                          <div className="divide-y">
+                            {loadingData ? (
+                              <div className="p-4 text-center">
+                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto"></div>
+                                <p className="text-sm text-muted-foreground mt-2">Loading marketplace items...</p>
+                              </div>
+                            ) : marketplaceItems.length === 0 ? (
+                              <div className="p-4 text-center text-muted-foreground">
+                                <p>No items listed yet</p>
+                                <Link href="/marketplace/create">
+                                  <Button size="sm" className="mt-2">Create Your First Listing</Button>
                                 </Link>
                               </div>
-                            </div>
-                          ))
-                        )}
-                      </div>
-                    </div>
+                            ) : (
+                              marketplaceItems.map((item) => (
+                                <div key={item.id} className="grid grid-cols-1 md:grid-cols-5 p-4 text-sm items-center">
+                                  <div className="font-medium">{item.title}</div>
+                                  <div>{item.category}</div>
+                                  <div>₹{item.price?.toLocaleString() || '0'}</div>
+                                  <div>
+                                    <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
+                                      item.status === 'active' ? 'bg-green-50 text-green-700' :
+                                      item.status === 'sold' ? 'bg-blue-50 text-blue-700' :
+                                      item.status === 'inactive' ? 'bg-gray-50 text-gray-700' :
+                                      'bg-yellow-50 text-yellow-700'
+                                    }`}>
+                                      {item.status?.charAt(0).toUpperCase() + item.status?.slice(1) || 'Unknown'}
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-end gap-2">
+                                    <Link href={`/marketplace/product/${item.id}`}>
+                                      <Button variant="ghost" size="sm">View</Button>
+                                    </Link>
+                                    <Link href={`/marketplace/edit/${item.id}`}>
+                                      <Button variant="outline" size="sm">Edit</Button>
+                                    </Link>
+                                    <Button 
+                                      variant="outline" 
+                                      size="sm"
+                                      className="border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300"
+                                      onClick={() => handleDeleteListing(item.id, item.title)}
+                                      disabled={deletingListing === item.id}
+                                    >
+                                      {deletingListing === item.id ? (
+                                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-red-600 border-t-transparent" />
+                                      ) : (
+                                        <Trash2 size={14} />
+                                      )}
+                                    </Button>
+                                  </div>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      </TabsContent>
+                      
+                      <TabsContent value="purchasing" className="mt-4">
+                        <h3 className="font-medium mb-4">Items You've Purchased</h3>
+                        <div className="rounded-md border p-8 text-center">
+                          <div className="text-muted-foreground">
+                            <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                            <p className="text-lg font-medium mb-2">Purchase History Coming Soon</p>
+                            <p className="text-sm mb-4">Track your marketplace purchases and order history here.</p>
+                            <Link href="/marketplace">
+                              <Button variant="outline">Browse Marketplace</Button>
+                            </Link>
+                          </div>
+                        </div>
+                      </TabsContent>
+                    </Tabs>
                   </TabsContent>
                 </Tabs>
               </CardContent>

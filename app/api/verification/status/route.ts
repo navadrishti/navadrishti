@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
-import { executeQuery } from '@/lib/db';
+import { supabase } from '@/lib/db';
 import { JWT_SECRET } from '@/lib/auth';
 
 interface JWTPayload {
@@ -30,18 +30,21 @@ export async function GET(request: NextRequest) {
 
     // Get verification status from all three tables
     const [individualResult, ngoResult, companyResult] = await Promise.allSettled([
-      executeQuery({
-        query: 'SELECT * FROM individual_verifications WHERE user_id = ?',
-        values: [userId]
-      }),
-      executeQuery({
-        query: 'SELECT * FROM ngo_verifications WHERE user_id = ?',
-        values: [userId]
-      }),
-      executeQuery({
-        query: 'SELECT * FROM company_verifications WHERE user_id = ?',
-        values: [userId]
-      })
+      supabase
+        .from('individual_verifications')
+        .select('*')
+        .eq('user_id', userId)
+        .single(),
+      supabase
+        .from('ngo_verifications')
+        .select('*')
+        .eq('user_id', userId)
+        .single(),
+      supabase
+        .from('company_verifications')
+        .select('*')
+        .eq('user_id', userId)
+        .single()
     ]);
 
     // Combine all verification data
@@ -58,8 +61,8 @@ export async function GET(request: NextRequest) {
     };
 
     // Process individual verification
-    if (individualResult.status === 'fulfilled' && Array.isArray(individualResult.value) && individualResult.value.length > 0) {
-      const data = individualResult.value[0] as any;
+    if (individualResult.status === 'fulfilled' && individualResult.value.data) {
+      const data = individualResult.value.data as any;
       verificationData.individual = {
         aadhaarVerified: data.aadhaar_verified,
         panVerified: data.pan_verified,
@@ -77,8 +80,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Process NGO verification
-    if (ngoResult.status === 'fulfilled' && Array.isArray(ngoResult.value) && ngoResult.value.length > 0) {
-      const data = ngoResult.value[0] as any;
+    if (ngoResult.status === 'fulfilled' && ngoResult.value.data) {
+      const data = ngoResult.value.data as any;
       verificationData.ngo = {
         organizationName: data.organization_name,
         registrationNumber: data.registration_number,
@@ -99,8 +102,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Process company verification
-    if (companyResult.status === 'fulfilled' && Array.isArray(companyResult.value) && companyResult.value.length > 0) {
-      const data = companyResult.value[0] as any;
+    if (companyResult.status === 'fulfilled' && companyResult.value.data) {
+      const data = companyResult.value.data as any;
       verificationData.company = {
         companyName: data.company_name,
         cinNumber: data.cin_number,

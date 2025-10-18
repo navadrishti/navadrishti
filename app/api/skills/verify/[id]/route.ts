@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { executeQuery } from '@/lib/db';
+import { supabase } from '@/lib/db';
 import { verifyToken } from '@/lib/auth';
 
 interface RouteParams {
@@ -34,14 +34,16 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
     if (action === 'verify') {
       // Update verification status
-      await executeQuery({
-        query: `
-          UPDATE people_skills_verification 
-          SET verification_status = ?, verified_by = ?, verified_at = NOW(), updated_at = NOW()
-          WHERE id = ? AND ngo_id = ?
-        `,
-        values: [status, user.id, id, user.id]
-      });
+      await supabase
+        .from('people_skills_verification')
+        .update({
+          verification_status: status,
+          verified_by: user.id,
+          verified_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .eq('ngo_id', user.id);
 
       return Response.json({
         success: true,
@@ -50,14 +52,15 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
     } else if (action === 'update_performance') {
       // Update rating and completed projects
-      await executeQuery({
-        query: `
-          UPDATE people_skills_verification 
-          SET rating = ?, completed_projects = ?, updated_at = NOW()
-          WHERE id = ? AND ngo_id = ?
-        `,
-        values: [rating, completedProjects, id, user.id]
-      });
+      await supabase
+        .from('people_skills_verification')
+        .update({
+          rating: rating,
+          completed_projects: completedProjects,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .eq('ngo_id', user.id);
 
       return Response.json({
         success: true,
@@ -105,10 +108,11 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return Response.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    await executeQuery({
-      query: 'DELETE FROM people_skills_verification WHERE id = ? AND ngo_id = ?',
-      values: [id, user.id]
-    });
+    await supabase
+      .from('people_skills_verification')
+      .delete()
+      .eq('id', id)
+      .eq('ngo_id', user.id);
 
     return Response.json({
       success: true,

@@ -59,13 +59,76 @@ export default function ProfilePage() {
     }
   }, [user]);
 
+  // Add real-time refresh when page becomes visible
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && user) {
+        console.log('👁️ Page became visible, refreshing profile data...');
+        fetchProfile();
+        fetchVerificationStatus();
+      }
+    };
+
+    const handleFocus = () => {
+      if (user) {
+        console.log('🔍 Window focused, refreshing profile data...');
+        fetchProfile();
+        fetchVerificationStatus();
+      }
+    };
+
+    // Listen for visibility and focus changes
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+
+    // Auto-refresh every 30 seconds when page is active
+    const refreshInterval = setInterval(() => {
+      if (!document.hidden && user) {
+        console.log('⏰ Auto-refreshing profile data...');
+        fetchProfile();
+      }
+    }, 30000);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+      clearInterval(refreshInterval);
+    };
+  }, [user]);
+
   const fetchProfile = async () => {
     try {
-      // For now, set default profile data and load from user object
+      // First refresh user data to get the latest profile information
+      console.log('🔄 Refreshing user profile data...');
+      await refreshUser();
+      
+      // Fetch fresh profile data from API
+      const token = localStorage.getItem('token');
+      if (!token) {
+        console.error('No auth token found');
+        return;
+      }
+
+      console.log('📡 Fetching fresh profile data from API...');
+      const response = await fetch('/api/auth/me', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch profile data');
+      }
+
+      const data = await response.json();
+      const freshUser = data.user;
+      console.log('📊 Fresh user data received:', freshUser);
+      
+      // Set profile with fresh data
       setProfile({
-        ...user,
-        bio: user?.bio || '',
-        phone: user?.phone || '',
+        ...freshUser,
+        bio: freshUser?.bio || '',
+        phone: freshUser?.phone || '',
         address: '',
         skills: [],
         interests: [],
@@ -74,16 +137,17 @@ export default function ProfilePage() {
         website: ''
       });
       
-      // Load location fields from user data
-      setCity(user?.city || '');
-      setStateProvince(user?.state_province || '');
-      setPincode(user?.pincode || '');
-      setCountry(user?.country || 'India');
-      setPhone(user?.phone || '');
-      setBio(user?.bio || '');
+      // Load location fields from fresh user data
+      setCity(freshUser?.city || '');
+      setStateProvince(freshUser?.state_province || '');
+      setPincode(freshUser?.pincode || '');
+      setCountry(freshUser?.country || 'India');
+      setPhone(freshUser?.phone || '');
+      setBio(freshUser?.bio || '');
       
-      // Load additional profile fields
-      const userProfile = user?.profile || {};
+      // Load additional profile fields from profile_data
+      const userProfile = freshUser?.profile_data || {};
+      console.log('📋 Profile data loaded:', userProfile);
       setSkills(userProfile.skills || '');
       setInterests(userProfile.interests || '');
       setCategories(userProfile.categories || '');
@@ -96,11 +160,53 @@ export default function ProfilePage() {
       setCompanyWebsite(userProfile.company_website || '');
       
       // Load profile image if available
-      if (user?.profile_image) {
-        setProfileImageUrl(user.profile_image);
+      if (freshUser?.profile_image) {
+        console.log('🖼️ Setting profile image:', freshUser.profile_image);
+        setProfileImageUrl(freshUser.profile_image);
       }
     } catch (error) {
       console.error('Error fetching profile:', error);
+      // Fallback to cached user data if API fails
+      if (user) {
+        console.log('📦 Using cached user data as fallback');
+        setProfile({
+          ...user,
+          bio: user?.bio || '',
+          phone: user?.phone || '',
+          address: '',
+          skills: [],
+          interests: [],
+          portfolio: [],
+          experience: '',
+          website: ''
+        });
+        
+        // Load location fields from cached user data
+        setCity(user?.city || '');
+        setStateProvince(user?.state_province || '');
+        setPincode(user?.pincode || '');
+        setCountry(user?.country || 'India');
+        setPhone(user?.phone || '');
+        setBio(user?.bio || '');
+        
+        // Load additional profile fields
+        const userProfile = (user as any)?.profile_data || (user as any)?.profile || {};
+        setSkills(userProfile.skills || '');
+        setInterests(userProfile.interests || '');
+        setCategories(userProfile.categories || '');
+        setRegistrationNumber(userProfile.registration_number || '');
+        setFoundedYear(userProfile.founded_year || '');
+        setFocusAreas(userProfile.focus_areas || '');
+        setOrganizationWebsite(userProfile.organization_website || '');
+        setIndustry(userProfile.industry || '');
+        setCompanySize(userProfile.company_size || '');
+        setCompanyWebsite(userProfile.company_website || '');
+        
+        // Load profile image if available
+        if (user?.profile_image) {
+          setProfileImageUrl(user.profile_image);
+        }
+      }
     } finally {
       setLoading(false);
     }
@@ -237,6 +343,10 @@ export default function ProfilePage() {
         throw new Error('Failed to save portfolio');
       }
       
+      // Refresh user data to get updated portfolio info
+      await refreshUser();
+      await fetchProfile();
+      
       const itemCount = [
         portfolioDescription.trim() ? 'description' : null,
         certifications.trim() ? 'certifications' : null,
@@ -289,6 +399,8 @@ export default function ProfilePage() {
 
       // Refresh user data from server to get the latest profile image and other data
       await refreshUser();
+      // Also refresh the profile page data immediately
+      await fetchProfile();
       
       console.log('Profile saved successfully:', profileData);
       
@@ -332,6 +444,8 @@ export default function ProfilePage() {
       }
 
       await refreshUser();
+      // Also refresh the profile page data immediately
+      await fetchProfile();
       toast.success('Skills and interests saved successfully!');
     } catch (error) {
       console.error('Error saving skills and interests:', error);
@@ -369,6 +483,8 @@ export default function ProfilePage() {
       }
 
       await refreshUser();
+      // Also refresh the profile page data immediately
+      await fetchProfile();
       toast.success('Organization details saved successfully!');
     } catch (error) {
       console.error('Error saving organization details:', error);
@@ -405,6 +521,8 @@ export default function ProfilePage() {
       }
 
       await refreshUser();
+      // Also refresh the profile page data immediately
+      await fetchProfile();
       toast.success('Company details saved successfully!');
     } catch (error) {
       console.error('Error saving company details:', error);

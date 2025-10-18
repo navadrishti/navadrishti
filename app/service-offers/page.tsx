@@ -185,16 +185,35 @@ export default function ServiceOffersPage() {
               Services offered by NGOs for individuals and companies
             </p>
           </div>
-          
-          {user && isNGO && (
-            <Link href="/service-offers/create">
-              <Button className="gap-2">
-                <Plus size={16} />
-                Post New Service
-              </Button>
-            </Link>
-          )}
         </div>
+
+        {/* Create Service Offer CTA */}
+        {user && isNGO && (
+          <div className="mb-8 p-6 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl border border-green-200">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+              <div className="text-center md:text-left">
+                <h2 className="text-xl font-semibold text-green-900 mb-2">
+                  Have Services to Offer?
+                </h2>
+                <p className="text-green-700 text-sm">
+                  List your services and connect with individuals and companies who need them
+                </p>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <Link href="/service-offers/create">
+                  <Button 
+                    size="lg" 
+                    className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 text-base font-medium shadow-lg hover:shadow-xl transition-all duration-200"
+                  >
+                    <Plus size={20} className="mr-2" />
+                    Create Service Offer
+                    <ArrowRight size={16} className="ml-2" />
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
         
         <Tabs value={currentView} className="mb-8" onValueChange={handleTabChange}>
           <TabsList className="mb-6">
@@ -234,68 +253,112 @@ export default function ServiceOffersPage() {
               {filteredOffers.length > 0 ? (
                 <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {filteredOffers.map((offer) => (
-                <Card key={offer.id} className="overflow-hidden">
-                  <CardHeader className="pb-3">
+                <Card key={offer.id} className="group overflow-hidden hover:shadow-xl transition-all duration-300 border border-gray-200 bg-white">
+                  {/* Status Indicator */}
+                  <div className={`h-1 w-full ${
+                    offer.status === 'Limited Availability' ? 'bg-orange-500' : 
+                    offer.status === 'Available' ? 'bg-green-500' : 
+                    'bg-gray-400'
+                  }`} />
+                  
+                  <CardHeader className="pb-4 space-y-3">
                     <div className="flex justify-between items-start">
-                      <CardTitle className="text-lg">{offer.title}</CardTitle>
-                      <Badge variant={offer.status === 'Limited Availability' ? 'outline' : 'secondary'}>
+                      <CardTitle className="text-xl font-bold leading-tight text-gray-900 group-hover:text-primary transition-colors">
+                        {offer.title}
+                      </CardTitle>
+                      <Badge 
+                        variant={offer.status === 'Limited Availability' ? 'default' : 'secondary'} 
+                        className={`font-medium shadow-sm ${
+                          offer.status === 'Available' ? 'bg-green-100 text-green-800 border-green-200' : ''
+                        }`}
+                      >
                         {offer.status}
                       </Badge>
                     </div>
-                  </CardHeader>
-                  <CardContent className="p-4">
-                    <div className="mb-4 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline">{offer.category}</Badge>
-                      </div>
-                      <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                        <span>{typeof offer.price === 'number' ? formatPrice(offer.price) : offer.price}</span>
-                      </div>
-                    </div>
                     
-                    <div className="mb-4">
-                      <p className="line-clamp-2 text-sm text-muted-foreground">{offer.description}</p>
-                    </div>
-                    
-                    <div className="mb-4">
-                      <div className="flex flex-wrap gap-1">
-                        {(typeof offer.tags === 'string' ? JSON.parse(offer.tags) : offer.tags || []).map((tag: string) => (
-                          <Badge key={tag} variant="outline" className="text-xs">
-                            {tag}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
-                          <HeartHandshake size={16} className="text-primary" />
+                    {/* NGO Profile Section */}
+                    <div className="flex items-center justify-between bg-gray-50 rounded-lg p-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-green-500 to-green-600 shadow-md">
+                          <HeartHandshake size={16} className="text-white" />
                         </div>
                         <div>
-                          <p className="text-sm font-medium">{offer.ngo_name}</p>
-                          <p className="text-xs text-muted-foreground">NGO</p>
+                          <p className="font-semibold text-gray-900">{offer.ngo_name}</p>
+                          <p className="text-xs text-gray-500">Service Provider</p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <MapPin size={14} className="text-muted-foreground" />
-                        <span className="text-xs text-muted-foreground">{offer.location}</span>
+                      <Badge variant="outline" className="bg-white border-gray-300 text-gray-700 font-medium">
+                        {offer.category}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  
+                  <CardContent className="px-6 pb-6 space-y-4">
+                    {/* Description */}
+                    <div>
+                      <p className="text-gray-600 leading-relaxed line-clamp-3 text-sm">{offer.description}</p>
+                    </div>
+                    
+                    {/* Price & Location Grid */}
+                    <div className="grid grid-cols-2 gap-3">
+                      {/* Price */}
+                      <div className="flex items-center gap-2 bg-blue-50 rounded-lg p-2">
+                        <DollarSign size={16} className="text-blue-600" />
+                        <div>
+                          <p className="text-xs text-blue-700 font-medium">Price</p>
+                          <p className="text-sm font-semibold text-blue-800">
+                            {typeof offer.price === 'number' ? formatPrice(offer.price) : offer.price}
+                          </p>
+                        </div>
+                      </div>
+                      
+                      {/* Location */}
+                      <div className="flex items-center gap-2 bg-purple-50 rounded-lg p-2">
+                        <MapPin size={16} className="text-purple-600" />
+                        <div>
+                          <p className="text-xs text-purple-700 font-medium">Location</p>
+                          <p className="text-sm font-semibold text-purple-800 truncate">{offer.location}</p>
+                        </div>
                       </div>
                     </div>
+                    
+                    {/* Service Tags */}
+                    {(typeof offer.tags === 'string' ? JSON.parse(offer.tags) : offer.tags || []).length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-gray-500 mb-2">Services Included:</p>
+                        <div className="flex flex-wrap gap-1">
+                          {(typeof offer.tags === 'string' ? JSON.parse(offer.tags) : offer.tags || []).slice(0, 4).map((tag: string) => (
+                            <Badge key={tag} variant="secondary" className="text-xs bg-green-100 text-green-700 border-green-200 hover:bg-green-200">
+                              {tag}
+                            </Badge>
+                          ))}
+                          {(typeof offer.tags === 'string' ? JSON.parse(offer.tags) : offer.tags || []).length > 4 && (
+                            <Badge variant="secondary" className="text-xs bg-gray-100 text-gray-600">
+                              +{(typeof offer.tags === 'string' ? JSON.parse(offer.tags) : offer.tags || []).length - 4} more
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </CardContent>
-                  <CardFooter className="border-t bg-muted/40 p-4">
+                  
+                  <CardFooter className="border-t bg-gradient-to-r from-gray-50 to-gray-100 p-4">
                     {user && canHireServices ? (
                       <Link href={`/service-offers/${offer.id}`} className="w-full">
-                        <Button className="w-full">
-                          Show Interest
-                        </Button>
+                          <Button className="w-full h-11 bg-green-600 hover:bg-green-700 text-white font-medium shadow-md hover:shadow-lg transition-all duration-200">
+                            <HeartHandshake size={18} className="mr-2" />
+                            Show Interest
+                            <ArrowRight size={16} className="ml-2" />
+                          </Button>
                       </Link>
                     ) : user && isNGO && (offer.ngo_name === user?.name) ? (
                       <div className="flex w-full gap-2">
-                        <Button variant="outline" className="flex-1">
+                        <Button variant="outline" className="flex-1 h-11 border-gray-300 hover:bg-gray-50 shadow-sm">
+                          <Edit size={16} className="mr-2" />
                           Edit
                         </Button>
-                        <Button variant="outline" className="flex-1">
+                        <Button variant="outline" className="flex-1 h-11 border-gray-300 hover:bg-gray-50 shadow-sm">
+                          <Eye size={16} className="mr-2" />
                           View Requests
                         </Button>
                         <DropdownMenu>
@@ -394,47 +457,104 @@ export default function ServiceOffersPage() {
                     {filteredOffers
                       .filter(offer => offer.ngo_name === user?.name)
                       .map((offer) => (
-                        <Card key={offer.id} className="overflow-hidden">
-                          <CardHeader className="pb-3">
+                        <Card key={offer.id} className="group overflow-hidden hover:shadow-xl transition-all duration-300 border border-gray-200 bg-white">
+                          {/* Status Indicator */}
+                          <div className={`h-1 w-full ${
+                            offer.status === 'Limited Availability' ? 'bg-orange-500' : 
+                            offer.status === 'Available' ? 'bg-green-500' : 
+                            'bg-gray-400'
+                          }`} />
+                          
+                          <CardHeader className="pb-4 space-y-3">
                             <div className="flex justify-between items-start">
-                              <CardTitle className="text-lg">{offer.title}</CardTitle>
-                              <Badge variant={offer.status === 'Limited Availability' ? 'outline' : 'secondary'}>
+                              <CardTitle className="text-xl font-bold leading-tight text-gray-900 group-hover:text-primary transition-colors">
+                                {offer.title}
+                              </CardTitle>
+                              <Badge 
+                                variant={offer.status === 'Limited Availability' ? 'default' : 'secondary'} 
+                                className={`font-medium shadow-sm ${
+                                  offer.status === 'Available' ? 'bg-green-100 text-green-800 border-green-200' : ''
+                                }`}
+                              >
                                 {offer.status}
                               </Badge>
                             </div>
+                            
+                            {/* NGO Profile Section */}
+                            <div className="flex items-center justify-between bg-gray-50 rounded-lg p-3">
+                              <div className="flex items-center gap-3">
+                                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-green-500 to-green-600 shadow-md">
+                                  <HeartHandshake size={16} className="text-white" />
+                                </div>
+                                <div>
+                                  <p className="font-semibold text-gray-900">{offer.ngo_name}</p>
+                                  <p className="text-xs text-gray-500">Your Service</p>
+                                </div>
+                              </div>
+                              <Badge variant="outline" className="bg-white border-gray-300 text-gray-700 font-medium">
+                                {offer.category}
+                              </Badge>
+                            </div>
                           </CardHeader>
-                          <CardContent className="p-4">
-                            <div className="mb-4 flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <Badge variant="outline">{offer.category}</Badge>
+                          
+                          <CardContent className="px-6 pb-6 space-y-4">
+                            {/* Description */}
+                            <div>
+                              <p className="text-gray-600 leading-relaxed line-clamp-3 text-sm">{offer.description}</p>
+                            </div>
+                            
+                            {/* Price & Location Grid */}
+                            <div className="grid grid-cols-2 gap-3">
+                              {/* Price */}
+                              <div className="flex items-center gap-2 bg-blue-50 rounded-lg p-2">
+                                <DollarSign size={16} className="text-blue-600" />
+                                <div>
+                                  <p className="text-xs text-blue-700 font-medium">Price</p>
+                                  <p className="text-sm font-semibold text-blue-800">
+                                    {typeof offer.price === 'number' ? formatPrice(offer.price) : offer.price}
+                                  </p>
+                                </div>
                               </div>
-                              <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                                <span>{typeof offer.price === 'number' ? formatPrice(offer.price) : offer.price}</span>
+                              
+                              {/* Location */}
+                              <div className="flex items-center gap-2 bg-purple-50 rounded-lg p-2">
+                                <MapPin size={16} className="text-purple-600" />
+                                <div>
+                                  <p className="text-xs text-purple-700 font-medium">Location</p>
+                                  <p className="text-sm font-semibold text-purple-800 truncate">{offer.location}</p>
+                                </div>
                               </div>
                             </div>
                             
-                            <div className="mb-4">
-                              <p className="line-clamp-2 text-sm text-muted-foreground">{offer.description}</p>
-                            </div>
-                            
-                            <div className="mb-4">
-                              <div className="flex flex-wrap gap-1">
-                                {(typeof offer.tags === 'string' ? JSON.parse(offer.tags) : offer.tags || []).map((tag: string) => (
-                                  <Badge key={tag} variant="outline" className="text-xs">
-                                    {tag}
-                                  </Badge>
-                                ))}
+                            {/* Service Tags */}
+                            {(typeof offer.tags === 'string' ? JSON.parse(offer.tags) : offer.tags || []).length > 0 && (
+                              <div>
+                                <p className="text-xs font-medium text-gray-500 mb-2">Services Included:</p>
+                                <div className="flex flex-wrap gap-1">
+                                  {(typeof offer.tags === 'string' ? JSON.parse(offer.tags) : offer.tags || []).slice(0, 4).map((tag: string) => (
+                                    <Badge key={tag} variant="secondary" className="text-xs bg-green-100 text-green-700 border-green-200 hover:bg-green-200">
+                                      {tag}
+                                    </Badge>
+                                  ))}
+                                  {(typeof offer.tags === 'string' ? JSON.parse(offer.tags) : offer.tags || []).length > 4 && (
+                                    <Badge variant="secondary" className="text-xs bg-gray-100 text-gray-600">
+                                      +{(typeof offer.tags === 'string' ? JSON.parse(offer.tags) : offer.tags || []).length - 4} more
+                                    </Badge>
+                                  )}
+                                </div>
                               </div>
-                            </div>
+                            )}
                           </CardContent>
-                          <CardFooter className="border-t bg-muted/40 p-4">
+                          
+                          <CardFooter className="border-t bg-gradient-to-r from-gray-50 to-gray-100 p-4">
                             <div className="flex w-full gap-2">
-                              <Button variant="outline" className="flex-1">
+                              <Button variant="outline" className="flex-1 h-11 border-gray-300 hover:bg-gray-50 shadow-sm">
+                                <Eye size={16} className="mr-2" />
                                 View Requests
                               </Button>
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
-                                  <Button variant="outline" size="icon">
+                                  <Button variant="outline" size="icon" className="h-11 w-11 border-gray-300 hover:bg-gray-50 shadow-sm">
                                     <MoreVertical size={16} />
                                   </Button>
                                 </DropdownMenuTrigger>

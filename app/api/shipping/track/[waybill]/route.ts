@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { executeQuery } from '@/lib/db';
+import { db, supabase } from '@/lib/db';
 
 const DELHIVERY_BASE_URL = process.env.DELHIVERY_BASE_URL || 'https://track.delhivery.com/api';
 const DELHIVERY_TOKEN = process.env.DELHIVERY_TOKEN;
@@ -17,18 +17,20 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get existing tracking data
-    const shippingResult = await executeQuery({
-      query: `SELECT sd.*, o.order_number FROM shipping_details sd 
-        JOIN orders o ON sd.order_id = o.id 
-        WHERE sd.delhivery_waybill = ?`,
-      values: [waybill]
-    }) as any[];
+    const { data: shippingData, error } = await supabase
+      .from('shipping_details')
+      .select(`
+        *,
+        order:orders!order_id(order_number)
+      `)
+      .eq('delhivery_waybill', waybill)
+      .single();
 
-    if (!shippingResult.length) {
+    if (error || !shippingData) {
       return Response.json({ error: 'Shipment not found' }, { status: 404 });
     }
 
-    const shipping = shippingResult[0];
+    const shipping = shippingData;
 
     // Call Delhivery tracking API (mock for now)
     // const response = await fetch(`${DELHIVERY_BASE_URL}/v1/packages/json/?waybill=${waybill}`, {
@@ -59,18 +61,14 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     };
 
     // Update tracking data in database
-    await executeQuery({
-      query: `UPDATE shipping_details SET 
-        tracking_status = ?, 
-        tracking_updates = ?,
-        updated_at = NOW()
-      WHERE delhivery_waybill = ?`,
-      values: [
-        mockTrackingData.status,
-        JSON.stringify(mockTrackingData.scans),
-        waybill
-      ]
-    });
+    await supabase
+      .from('shipping_details')
+      .update({
+        tracking_status: mockTrackingData.status,
+        tracking_updates: JSON.stringify(mockTrackingData.scans),
+        updated_at: new Date().toISOString()
+      })
+      .eq('delhivery_waybill', waybill);
 
     return Response.json({
       success: true,
@@ -103,50 +101,61 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const trackingUpdate = await request.json();
 
     // Update shipping details
-    await executeQuery({
-      query: `UPDATE shipping_details SET 
-        tracking_status = ?, 
-        tracking_updates = JSON_ARRAY_APPEND(COALESCE(tracking_updates, JSON_ARRAY()), '$', ?),
-        updated_at = NOW()
-      WHERE delhivery_waybill = ?`,
-      values: [
-        trackingUpdate.status,
-        JSON.stringify({
-          date: new Date().toISOString(),
-          activity: trackingUpdate.activity,
-          location: trackingUpdate.location,
-          status: trackingUpdate.status
-        }),
-        waybill
-      ]
-    });
+    const { data: currentShipping } = await supabase
+      .from('shipping_details')
+      .select('tracking_updates')
+      .eq('delhivery_waybill', waybill)
+      .single();
+
+    const existingUpdates = currentShipping?.tracking_updates ? JSON.parse(currentShipping.tracking_updates) : [];
+    const newUpdate = {
+      date: new Date().toISOString(),
+      activity: trackingUpdate.activity,
+      location: trackingUpdate.location,
+      status: trackingUpdate.status
+    };
+
+    await supabase
+      .from('shipping_details')
+      .update({
+        tracking_status: trackingUpdate.status,
+        tracking_updates: JSON.stringify([...existingUpdates, newUpdate]),
+        updated_at: new Date().toISOString()
+      })
+      .eq('delhivery_waybill', waybill);
 
     // If delivered, update order status
     if (trackingUpdate.status === 'Delivered') {
-      await executeQuery({
-        query: `UPDATE orders SET status = 'delivered' 
-          WHERE id = (SELECT order_id FROM shipping_details WHERE delhivery_waybill = ?)`,
-        values: [waybill]
-      });
+      // Get the order ID first
+      const { data: shippingInfo } = await supabase
+        .from('shipping_details')
+        .select('order_id')
+        .eq('delhivery_waybill', waybill)
+        .single();
 
-      // Log status change
-      await executeQuery({
-        query: `INSERT INTO order_status_history (
-          order_id, previous_status, new_status, reason
-        ) VALUES (
-          (SELECT order_id FROM shipping_details WHERE delhivery_waybill = ?), 
-          'shipped', 
-          'delivered', 
-          'Package delivered successfully'
-        )`,
-        values: [waybill]
-      });
+      if (shippingInfo?.order_id) {
+        // Update order status
+        await supabase
+          .from('orders')
+          .update({ status: 'delivered' })
+          .eq('id', shippingInfo.order_id);
 
-      // Update actual delivery date
-      await executeQuery({
-        query: 'UPDATE shipping_details SET actual_delivery = NOW() WHERE delhivery_waybill = ?',
-        values: [waybill]
-      });
+        // Log status change
+        await supabase
+          .from('order_status_history')
+          .insert({
+            order_id: shippingInfo.order_id,
+            previous_status: 'shipped',
+            new_status: 'delivered',
+            reason: 'Package delivered successfully'
+          });
+
+        // Update actual delivery date
+        await supabase
+          .from('shipping_details')
+          .update({ actual_delivery: new Date().toISOString() })
+          .eq('delhivery_waybill', waybill);
+      }
     }
 
     return Response.json({ success: true });

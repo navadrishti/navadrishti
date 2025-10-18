@@ -178,7 +178,7 @@ export default function MarketplacePage() {
       
       <main className="flex-1 px-6 py-8 md:px-10">
         {/* Enhanced Call-to-Action Section for Listing Items */}
-        {user && user.user_type !== 'ngo' && (
+        {user && (
           <div className="mb-8 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200">
             <div className="flex flex-col md:flex-row items-center justify-between gap-4">
               <div className="text-center md:text-left">

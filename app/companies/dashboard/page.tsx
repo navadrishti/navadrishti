@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Building, ShoppingBag, HeartHandshake, TicketCheck, Package, Clock, CheckCircle, AlertTriangle, Trash2 } from 'lucide-react';
+import { Building, ShoppingBag, HeartHandshake, TicketCheck, Package, Clock, CheckCircle, AlertTriangle, Trash2, HandHeart, ShoppingCart } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 import { VerificationBadge, VerificationDetails } from '@/components/verification-badge';
@@ -168,6 +168,10 @@ export default function CompanyDashboard() {
   useEffect(() => {
     const fetchAllData = async () => {
       if (user) {
+        // Refresh user profile data to get latest info
+        console.log('🔄 Refreshing user profile data...');
+        await refreshUser();
+        
         setLoadingData(true);
         await Promise.all([
           fetchMarketplaceListings(),
@@ -211,29 +215,39 @@ export default function CompanyDashboard() {
             </div>
 
             {/* Stats Cards */}
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between pb-2">
                   <CardTitle className="text-sm font-medium">Service Requests</CardTitle>
-                  <TicketCheck className="h-4 w-4 text-blue-600" />
+                  <TicketCheck className="h-4 w-4 text-purple-600" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{safeNumber(stats.acceptedServiceRequests)}</div>
-                  <p className="text-xs text-gray-500">
-                    Requests you've fulfilled
-                  </p>
+                  <div className="flex flex-col">
+                    <div className="text-2xl font-bold">{safeNumber(stats.acceptedServiceRequests)}</div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Badge variant="outline" className="text-green-600 border-green-600">
+                        <CheckCircle className="h-3 w-3 mr-1" />
+                        Fulfilled
+                      </Badge>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between pb-2">
                   <CardTitle className="text-sm font-medium">Services Hired</CardTitle>
-                  <HeartHandshake className="h-4 w-4 text-purple-600" />
+                  <HeartHandshake className="h-4 w-4 text-blue-600" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{safeNumber(stats.acceptedServiceOffers)}</div>
-                  <p className="text-xs text-gray-500">
-                    Services hired from NGOs
-                  </p>
+                  <div className="flex flex-col">
+                    <div className="text-2xl font-bold">{safeNumber(stats.acceptedServiceOffers)}</div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Badge variant="outline" className="text-blue-600 border-blue-600">
+                        <HandHeart className="h-3 w-3 mr-1" />
+                        From NGOs
+                      </Badge>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
               <Card>
@@ -242,10 +256,15 @@ export default function CompanyDashboard() {
                   <ShoppingBag className="h-4 w-4 text-green-600" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{safeNumber(stats.marketplaceItemsPurchased)}</div>
-                  <p className="text-xs text-gray-500">
-                    Items bought from marketplace
-                  </p>
+                  <div className="flex flex-col">
+                    <div className="text-2xl font-bold">{safeNumber(stats.marketplaceItemsPurchased)}</div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Badge variant="outline" className="text-green-600 border-green-600">
+                        <ShoppingCart className="h-3 w-3 mr-1" />
+                        Marketplace
+                      </Badge>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
               <Card>
@@ -254,10 +273,15 @@ export default function CompanyDashboard() {
                   <Package className="h-4 w-4 text-amber-600" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{safeNumber(stats.marketplaceItemsSold)}</div>
-                  <p className="text-xs text-gray-500">
-                    Your items sold in marketplace
-                  </p>
+                  <div className="flex flex-col">
+                    <div className="text-2xl font-bold">{safeNumber(stats.marketplaceItemsSold)}</div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Badge variant="outline" className="text-amber-600 border-amber-600">
+                        <span className="text-xs mr-1">₹</span>
+                        Revenue
+                      </Badge>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
             </div>
@@ -273,8 +297,16 @@ export default function CompanyDashboard() {
               <CardContent className="space-y-6">
                 <div className="flex flex-col md:flex-row gap-6">
                   <div className="w-full md:w-1/4">
-                    <div className="aspect-square rounded-lg bg-gray-100 flex items-center justify-center">
-                      <Building className="h-12 w-12 text-gray-400" />
+                    <div className="aspect-square rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden">
+                      {user?.profile_image ? (
+                        <img 
+                          src={user.profile_image} 
+                          alt={user?.name || 'Profile'} 
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <Building className="h-12 w-12 text-gray-400" />
+                      )}
                     </div>
                   </div>
                   <div className="w-full md:w-3/4 space-y-4">
@@ -325,18 +357,20 @@ export default function CompanyDashboard() {
                         </div>
                       </div>
                     </div>
-                    <Button variant="outline">Edit Profile</Button>
+                    <Button variant="outline" asChild>
+                      <Link href="/profile">Edit Profile</Link>
+                    </Button>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Activity & Engagements */}
+            {/* Activities & Engagements */}
             <Card>
               <CardHeader>
-                <CardTitle>CSR Activities & Engagements</CardTitle>
+                <CardTitle>Activities & Engagements</CardTitle>
                 <CardDescription>
-                  Track your service requests, offers, and marketplace activities
+                  Track your CSR activities, service requests, and marketplace activities
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -348,85 +382,42 @@ export default function CompanyDashboard() {
                   </TabsList>
                   
                   <TabsContent value="service-requests" className="mt-4 space-y-4">
-                    <h3 className="font-medium">NGO Requests Your Company Has Supported</h3>
-                    <div className="rounded-md border">
-                      <div className="grid grid-cols-1 md:grid-cols-5 p-4 text-sm font-medium text-gray-500 border-b">
-                        <div>Request</div>
-                        <div>NGO</div>
-                        <div>Category</div>
-                        <div>Status</div>
-                        <div className="text-right">Actions</div>
-                      </div>
-                      <div className="divide-y">
-                        <div className="grid grid-cols-1 md:grid-cols-5 p-4 text-sm items-center">
-                          <div className="font-medium">Food Distribution Volunteers</div>
-                          <div>Hunger Relief Initiative</div>
-                          <div>Social Welfare</div>
-                          <div>
-                            <span className="inline-flex items-center rounded-full bg-green-50 px-2 py-1 text-xs font-medium text-green-700">
-                              In Progress
-                            </span>
-                          </div>
-                          <div className="flex justify-end gap-2">
-                            <Button variant="ghost" size="sm">View</Button>
-                            <Button variant="outline" size="sm">Message</Button>
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-5 p-4 text-sm items-center">
-                          <div className="font-medium">Legal Aid for NGO Registration</div>
-                          <div>Community Support Network</div>
-                          <div>Legal</div>
-                          <div>
-                            <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">
-                              Completed
-                            </span>
-                          </div>
-                          <div className="flex justify-end gap-2">
-                            <Button variant="ghost" size="sm">View</Button>
-                            <Button variant="outline" size="sm">Certificate</Button>
-                          </div>
-                        </div>
+                    <h3 className="font-medium">NGO Requests You've Volunteered For</h3>
+                    <div className="rounded-md border p-8 text-center">
+                      <div className="text-muted-foreground">
+                        <TicketCheck className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                        <p className="text-lg font-medium mb-2">Service Requests Coming Soon</p>
+                        <p className="text-sm mb-4">We're working on the CSR service request system where companies can volunteer for NGO projects.</p>
+                        <Link href="/service-requests">
+                          <Button variant="outline">Browse Available Requests</Button>
+                        </Link>
                       </div>
                     </div>
                   </TabsContent>
                   
                   <TabsContent value="services-hired" className="mt-4 space-y-4">
-                    <h3 className="font-medium">Services Your Company Has Hired from NGOs</h3>
-                    <div className="rounded-md border">
-                      <div className="grid grid-cols-1 md:grid-cols-5 p-4 text-sm font-medium text-gray-500 border-b">
-                        <div>Service</div>
-                        <div>NGO</div>
-                        <div>Category</div>
-                        <div>Status</div>
-                        <div className="text-right">Actions</div>
-                      </div>
-                      <div className="divide-y">
-                        <div className="grid grid-cols-1 md:grid-cols-5 p-4 text-sm items-center">
-                          <div className="font-medium">Handicraft Production</div>
-                          <div>Artisan Support Network</div>
-                          <div>Arts & Crafts</div>
-                          <div>
-                            <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">
-                              In Progress
-                            </span>
-                          </div>
-                          <div className="flex justify-end gap-2">
-                            <Button variant="ghost" size="sm">View</Button>
-                            <Button variant="outline" size="sm">Message</Button>
-                          </div>
-                        </div>
+                    <h3 className="font-medium">Services You've Hired from NGOs</h3>
+                    <div className="rounded-md border p-8 text-center">
+                      <div className="text-muted-foreground">
+                        <HeartHandshake className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                        <p className="text-lg font-medium mb-2">Service Hiring Coming Soon</p>
+                        <p className="text-sm mb-4">Hire services from verified NGOs for your CSR initiatives and community programs.</p>
+                        <Link href="/service-offers">
+                          <Button variant="outline">Browse Service Offers</Button>
+                        </Link>
                       </div>
                     </div>
                   </TabsContent>
                   
                   <TabsContent value="marketplace" className="mt-4 space-y-4">
-                    <Tabs defaultValue="purchased">
-                      <TabsList>
-                        <TabsTrigger value="purchased">Items Purchased</TabsTrigger>
+                    <Tabs defaultValue="purchasing" className="w-full">
+                      <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="purchasing">Purchased Items</TabsTrigger>
                         <TabsTrigger value="selling">Your Listings</TabsTrigger>
                       </TabsList>
                       
-                      <TabsContent value="purchased" className="mt-4">
+                      <TabsContent value="purchasing" className="mt-4">
+                        <h3 className="font-medium mb-4">Items You've Purchased</h3>
                         <div className="rounded-md border">
                           <div className="grid grid-cols-1 md:grid-cols-5 p-4 text-sm font-medium text-gray-500 border-b">
                             <div>Item</div>
@@ -437,37 +428,41 @@ export default function CompanyDashboard() {
                           </div>
                           <div className="divide-y">
                             {loadingData ? (
-                              <div className="p-8 text-center text-gray-500">
-                                Loading your purchased items...
+                              <div className="p-4 text-center">
+                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto"></div>
+                                <p className="text-sm text-muted-foreground mt-2">Loading purchased items...</p>
                               </div>
                             ) : purchasedItems.length === 0 ? (
-                              <div className="p-8 text-center text-gray-500">
-                                No purchased items found. <Link href="/marketplace" className="text-blue-600 hover:underline">Browse marketplace</Link>
+                              <div className="p-4 text-center text-muted-foreground">
+                                <p>No purchases yet</p>
+                                <Link href="/marketplace">
+                                  <Button size="sm" className="mt-2">Browse Marketplace</Button>
+                                </Link>
                               </div>
                             ) : (
                               purchasedItems.map((order) => (
                                 <div key={order.id} className="grid grid-cols-1 md:grid-cols-5 p-4 text-sm items-center">
                                   <div className="font-medium">{order.item_title}</div>
                                   <div>{order.seller_name}</div>
-                                  <div>₹{order.total_amount}</div>
+                                  <div>₹{order.total_amount?.toLocaleString() || '0'}</div>
                                   <div>
                                     <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
-                                      order.status === 'delivered' 
-                                        ? 'bg-green-50 text-green-700'
-                                        : order.status === 'shipped'
-                                        ? 'bg-blue-50 text-blue-700'
-                                        : order.status === 'confirmed'
-                                        ? 'bg-amber-50 text-amber-700'
-                                        : 'bg-gray-50 text-gray-700'
+                                      order.status === 'delivered' ? 'bg-green-50 text-green-700' :
+                                      order.status === 'cancelled' ? 'bg-red-50 text-red-700' :
+                                      order.status === 'shipped' ? 'bg-blue-50 text-blue-700' :
+                                      order.status === 'confirmed' ? 'bg-yellow-50 text-yellow-700' :
+                                      'bg-gray-50 text-gray-700'
                                     }`}>
-                                      {order.status === 'delivered' ? 'Delivered' : order.status === 'shipped' ? 'Shipped' : order.status === 'confirmed' ? 'Confirmed' : order.status}
+                                      {order.status?.charAt(0).toUpperCase() + order.status?.slice(1) || 'Unknown'}
                                     </span>
                                   </div>
                                   <div className="flex justify-end gap-2">
                                     <Link href={`/orders/${order.order_number}`}>
                                       <Button variant="ghost" size="sm">View</Button>
                                     </Link>
-                                    <Button variant="outline" size="sm">Receipt</Button>
+                                    {order.status === 'delivered' && (
+                                      <Button variant="outline" size="sm">Rate</Button>
+                                    )}
                                   </div>
                                 </div>
                               ))
@@ -493,28 +488,31 @@ export default function CompanyDashboard() {
                           </div>
                           <div className="divide-y">
                             {loadingData ? (
-                              <div className="p-8 text-center text-gray-500">
-                                Loading your marketplace listings...
+                              <div className="p-4 text-center">
+                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto"></div>
+                                <p className="text-sm text-muted-foreground mt-2">Loading listings...</p>
                               </div>
                             ) : marketplaceListings.length === 0 ? (
-                              <div className="p-8 text-center text-gray-500">
-                                No items listed for sale. <Link href="/marketplace/create" className="text-blue-600 hover:underline">List your first item</Link>
+                              <div className="p-4 text-center text-muted-foreground">
+                                <p>No items listed yet</p>
+                                <Link href="/marketplace/create">
+                                  <Button size="sm" className="mt-2">Create Your First Listing</Button>
+                                </Link>
                               </div>
                             ) : (
                               marketplaceListings.map((item) => (
                                 <div key={item.id} className="grid grid-cols-1 md:grid-cols-5 p-4 text-sm items-center">
                                   <div className="font-medium">{item.title}</div>
                                   <div>{item.category}</div>
-                                  <div>₹{item.price}</div>
+                                  <div>₹{item.price?.toLocaleString() || '0'}</div>
                                   <div>
                                     <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
-                                      item.status === 'active' 
-                                        ? 'bg-green-50 text-green-700'
-                                        : item.status === 'sold'
-                                        ? 'bg-blue-50 text-blue-700'
-                                        : 'bg-gray-50 text-gray-700'
+                                      item.status === 'active' ? 'bg-green-50 text-green-700' :
+                                      item.status === 'sold' ? 'bg-blue-50 text-blue-700' :
+                                      item.status === 'inactive' ? 'bg-gray-50 text-gray-700' :
+                                      'bg-yellow-50 text-yellow-700'
                                     }`}>
-                                      {item.status === 'active' ? 'Listed' : item.status}
+                                      {item.status?.charAt(0).toUpperCase() + item.status?.slice(1) || 'Unknown'}
                                     </span>
                                   </div>
                                   <div className="flex justify-end gap-2">

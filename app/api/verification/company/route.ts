@@ -1,8 +1,7 @@
 // API endpoint for Company verification using EntityLocker
 import { NextRequest, NextResponse } from 'next/server';
 import { EntityLockerService } from '@/lib/entitylocker';
-import { executeQuery } from '@/lib/db';
-import { supabase } from '@/lib/db';
+import { db, supabase } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 
@@ -25,12 +24,9 @@ export async function POST(req: NextRequest) {
     }
 
     // Verify user is a company
-    const user = await executeQuery({
-      query: 'SELECT user_type FROM users WHERE id = ?',
-      values: [userId]
-    }) as any[];
+    const user = await db.users.findById(userId);
 
-    if (!user.length || user[0].user_type !== 'company') {
+    if (!user || user.user_type !== 'company') {
       return NextResponse.json({ error: 'Only companies can use this verification method' }, { status: 403 });
     }
 
@@ -71,25 +67,31 @@ async function initiateCompanyVerification(
   const authUrl = entityLocker.generateAuthUrl(userId, 'company');
   
   // Create or update verification record
-  const existingVerification = await executeQuery({
-    query: 'SELECT id FROM company_verifications WHERE user_id = ?',
-    values: [userId]
-  }) as any[];
+  const { data: existingVerification } = await supabase
+    .from('company_verifications')
+    .select('id')
+    .eq('user_id', userId)
+    .single();
 
-  if (existingVerification.length === 0) {
-    await executeQuery({
-      query: `INSERT INTO company_verifications 
-              (user_id, company_name, cin_number, company_type, verification_status) 
-              VALUES (?, ?, ?, ?, ?)`,
-      values: [userId, companyName, cinNumber, companyType, 'pending']
-    });
+  if (!existingVerification) {
+    await supabase
+      .from('company_verifications')
+      .insert({
+        user_id: userId,
+        company_name: companyName,
+        cin_number: cinNumber,
+        company_type: companyType,
+        verification_status: 'pending'
+      });
   } else {
-    await executeQuery({
-      query: `UPDATE company_verifications 
-              SET company_name = ?, cin_number = ?, company_type = ? 
-              WHERE user_id = ?`,
-      values: [companyName, cinNumber, companyType, userId]
-    });
+    await supabase
+      .from('company_verifications')
+      .update({
+        company_name: companyName,
+        cin_number: cinNumber,
+        company_type: companyType
+      })
+      .eq('user_id', userId);
   }
 
   return NextResponse.json({
@@ -105,12 +107,14 @@ async function verifyGST(userId: number, gstNumber: string) {
     return NextResponse.json({ error: 'Invalid GST number format' }, { status: 400 });
   }
 
-  await executeQuery({
-    query: `UPDATE company_verifications 
-     SET gst_number = ?, gst_verified = ?, gst_verification_date = NOW()
-     WHERE user_id = ?`,
-    values: [gstNumber, true, userId]
-  });
+  await supabase
+    .from('company_verifications')
+    .update({
+      gst_number: gstNumber,
+      gst_verified: true,
+      gst_verification_date: new Date().toISOString()
+    })
+    .eq('user_id', userId);
 
   // Check verification completion
   await checkCompanyVerificationCompletion(userId);
@@ -128,12 +132,14 @@ async function verifyCompanyPAN(userId: number, panNumber: string) {
     return NextResponse.json({ error: 'Invalid PAN number format' }, { status: 400 });
   }
 
-  await executeQuery({
-    query: `UPDATE company_verifications 
-     SET pan_number = ?, pan_verified = ?, pan_verification_date = NOW()
-     WHERE user_id = ?`,
-    values: [panNumber, true, userId]
-  });
+  await supabase
+    .from('company_verifications')
+    .update({
+      pan_number: panNumber,
+      pan_verified: true,
+      pan_verification_date: new Date().toISOString()
+    })
+    .eq('user_id', userId);
 
   // Check verification completion
   await checkCompanyVerificationCompletion(userId);
@@ -150,12 +156,10 @@ async function verifyCIN(userId: number, cinNumber: string) {
     return NextResponse.json({ error: 'Invalid CIN number format' }, { status: 400 });
   }
 
-  await executeQuery({
-    query: `UPDATE company_verifications 
-     SET cin_number = ?
-     WHERE user_id = ?`,
-    values: [cinNumber, userId]
-  });
+  await supabase
+    .from('company_verifications')
+    .update({ cin_number: cinNumber })
+    .eq('user_id', userId);
 
   return NextResponse.json({
     success: true,
@@ -165,23 +169,26 @@ async function verifyCIN(userId: number, cinNumber: string) {
 
 async function checkCompanyVerificationCompletion(userId: number) {
   // Check if both GST and PAN are verified
-  const verification = await executeQuery({
-    query: 'SELECT gst_verified, pan_verified FROM company_verifications WHERE user_id = ?',
-    values: [userId]
-  }) as any[];
+  const { data: verification } = await supabase
+    .from('company_verifications')
+    .select('gst_verified, pan_verified')
+    .eq('user_id', userId)
+    .single();
 
-  if (verification.length && verification[0].gst_verified && verification[0].pan_verified) {
-    await executeQuery({
-      query: `UPDATE company_verifications 
-               SET verification_status = 'verified' 
-               WHERE user_id = ?`,
-      values: [userId]
-    });
+  if (verification?.gst_verified && verification?.pan_verified) {
+    await supabase
+      .from('company_verifications')
+      .update({ verification_status: 'verified' })
+      .eq('user_id', userId);
 
-    await executeQuery({
-      query: 'UPDATE users SET verification_status = ?, verified_at = NOW(), verification_level = ? WHERE id = ?',
-      values: ['verified', 'advanced', userId]
-    });
+    await supabase
+      .from('users')
+      .update({
+        verification_status: 'verified',
+        verified_at: new Date().toISOString(),
+        verification_level: 'advanced'
+      })
+      .eq('id', userId);
   }
 }
 
