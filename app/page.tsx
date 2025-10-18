@@ -5,7 +5,7 @@ import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Header } from "@/components/header"
-import { Building, HeartHandshake, GraduationCap, ShoppingBag, UserCheck, Users, ArrowRight, Briefcase, User, Compass, Globe, Map } from "lucide-react"
+import { Building, HeartHandshake, GraduationCap, ShoppingBag, UserCheck, Users, ArrowRight, Briefcase, User, Compass, Globe, Map, Award } from "lucide-react"
 import { useState } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { useAuth } from "@/lib/auth-context"
@@ -133,55 +133,37 @@ export default function Home() {
               <div className="space-y-2">
                 <h2 className="text-3xl font-bold tracking-tighter text-udaan-navy md:text-4xl">How It Works</h2>
                 <p className="max-w-[900px] text-udaan-navy/80 md:text-xl/relaxed">
-                  Our platform connects NGOs with skilled individuals and companies to maximize social impact.
+                  Connect through service requests, professional offerings, and marketplace - building bridges between NGOs and skilled volunteers.
                 </p>
               </div>
             </div>
             <div className="mx-auto grid max-w-5xl grid-cols-1 gap-6 py-8 md:grid-cols-3">
               <div className="flex flex-col items-center space-y-4 text-center bg-white p-6 rounded-lg shadow-sm hover-scale">
                 <div className="flex h-16 w-16 items-center justify-center rounded-full bg-udaan-navy">
-                  <Building className="h-8 w-8 text-udaan-white" />
+                  <Award className="h-8 w-8 text-udaan-white" />
                 </div>
-                <h3 className="text-xl font-bold text-udaan-navy">NGOs Register</h3>
+                <h3 className="text-xl font-bold text-udaan-navy">Service Requests</h3>
                 <p className="text-udaan-navy/70">
-                  NGOs create profiles and list individuals with specific skills required for their projects.
+                  NGOs post volunteer opportunities and service requests. Individuals and companies can browse and apply to help with specific projects.
                 </p>
-                <Link href="/ngos/register" passHref>
-                  <Button variant="link" className="font-medium text-udaan-orange">
-                    Register Now
-                    <ArrowRight className="ml-1 h-4 w-4" />
-                  </Button>
-                </Link>
               </div>
               <div className="flex flex-col items-center space-y-4 text-center bg-white p-6 rounded-lg shadow-sm hover-scale">
                 <div className="flex h-16 w-16 items-center justify-center rounded-full bg-udaan-blue">
-                  <GraduationCap className="h-8 w-8 text-udaan-white" />
+                  <Briefcase className="h-8 w-8 text-udaan-white" />
                 </div>
-                <h3 className="text-xl font-bold text-udaan-navy">Browse Training</h3>
+                <h3 className="text-xl font-bold text-udaan-navy">Service Offers</h3>
                 <p className="text-udaan-navy/70">
-                  Access free courses, tutorials, and resources to enhance your skills and professional development.
+                  Professionals offer their skills and services to NGOs. From healthcare to education, connect your expertise with meaningful causes.
                 </p>
-                <Link href="/training" passHref>
-                  <Button variant="link" className="font-medium text-udaan-orange">
-                    Start Learning
-                    <ArrowRight className="ml-1 h-4 w-4" />
-                  </Button>
-                </Link>
               </div>
               <div className="flex flex-col items-center space-y-4 text-center bg-white p-6 rounded-lg shadow-sm hover-scale">
                 <div className="flex h-16 w-16 items-center justify-center rounded-full bg-udaan-orange">
-                  <HeartHandshake className="h-8 w-8 text-udaan-white" />
+                  <ShoppingBag className="h-8 w-8 text-udaan-white" />
                 </div>
-                <h3 className="text-xl font-bold text-udaan-navy">Connect & Collaborate</h3>
+                <h3 className="text-xl font-bold text-udaan-navy">Marketplace</h3>
                 <p className="text-udaan-navy/70">
-                  Companies and individuals connect with NGOs to support projects and initiatives.
+                  Buy and sell goods while supporting social causes. Find essential supplies, donate items, and shop from socially conscious sellers.
                 </p>
-                <Link href="/marketplace" passHref>
-                  <Button variant="link" className="font-medium text-udaan-orange">
-                    Browse Marketplace
-                    <ArrowRight className="ml-1 h-4 w-4" />
-                  </Button>
-                </Link>
               </div>
             </div>
           </div>
