@@ -76,11 +76,18 @@ export async function GET(request: NextRequest) {
       if (requestIds.length === 0) {
         serviceRequests = [];
       } else {
-        // Get the service requests for these IDs
-        const { data, error } = await supabase
+        // Get the service requests for these IDs with filtering
+        let query = supabase
           .from('service_requests')
           .select('*')
           .in('id', requestIds);
+        
+        // Apply category filter if specified
+        if (category && category !== 'All Categories') {
+          query = query.eq('category', category);
+        }
+        
+        const { data, error } = await query;
         
         if (error) throw error;
         serviceRequests = data || [];

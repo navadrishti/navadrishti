@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ArrowLeft, Upload, Plus } from 'lucide-react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth-context'
@@ -189,6 +190,13 @@ export default function CreateListingPage() {
     setFormData({
       ...formData,
       [e.target.name]: e.target.value
+    });
+  };
+
+  const handleSelectChange = (name: string, value: string) => {
+    setFormData({
+      ...formData,
+      [name]: value
     });
   };
 
@@ -395,21 +403,18 @@ export default function CreateListingPage() {
                   <div className="grid gap-4 md:grid-cols-2">
                     <div>
                       <Label htmlFor="category">Category *</Label>
-                      <select
-                        id="category"
-                        name="category"
-                        value={formData.category}
-                        onChange={handleChange}
-                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                        required
-                      >
-                        <option value="">Select a category</option>
-                        {categories.map((category) => (
-                          <option key={category} value={category}>
-                            {category}
-                          </option>
-                        ))}
-                      </select>
+                      <Select value={formData.category} onValueChange={(value) => handleSelectChange('category', value)}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select a category" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {categories.map((category) => (
+                            <SelectItem key={category} value={category}>
+                              {category}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
 
                     <div>
@@ -433,20 +438,18 @@ export default function CreateListingPage() {
                   <div className="grid gap-4 md:grid-cols-2">
                     <div>
                       <Label htmlFor="condition_type">Item Condition *</Label>
-                      <select
-                        id="condition_type"
-                        name="condition_type"
-                        value={formData.condition_type}
-                        onChange={handleChange}
-                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                        required
-                      >
-                        <option value="new">New</option>
-                        <option value="like_new">Like New</option>
-                        <option value="good">Good</option>
-                        <option value="fair">Fair</option>
-                        <option value="poor">Poor</option>
-                      </select>
+                      <Select value={formData.condition_type} onValueChange={(value) => handleSelectChange('condition_type', value)}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select item condition" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="new">New</SelectItem>
+                          <SelectItem value="like_new">Like New</SelectItem>
+                          <SelectItem value="good">Good</SelectItem>
+                          <SelectItem value="fair">Fair</SelectItem>
+                          <SelectItem value="poor">Poor</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
 
                     <div>

@@ -16,22 +16,24 @@ import Link from 'next/link'
 
 const categories = [
   'Healthcare & Medical',
-  'Education & Tutoring',
+  'Education & Training',
   'Food & Nutrition',
   'Legal & Documentation',
-  'Financial Assistance',
+  'Financial Services',
   'Housing & Shelter',
   'Transportation',
   'Counseling & Mental Health',
   'Job Training & Employment',
   'Elderly Care',
-  'Child Care',
+  'Child Welfare',
   'Disability Support',
   'Emergency Relief',
-  'Community Outreach',
+  'Community Development',
+  'Women Empowerment',
+  'Environmental Services',
   'General Support Services',
   'Translation & Language',
-  'Administrative Help',
+  'Administrative Services',
   'Other'
 ];
 
