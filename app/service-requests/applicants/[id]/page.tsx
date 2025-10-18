@@ -271,7 +271,7 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
           <CardContent>
             <p className="text-gray-700 mb-4">{request.description}</p>
             {request.location && (
-              <p className="text-sm text-gray-500">📍 {request.location}</p>
+              <p className="text-sm text-gray-500">Location: {request.location}</p>
             )}
           </CardContent>
         </Card>

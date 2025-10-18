@@ -368,7 +368,7 @@ function ServiceRequestsContent() {
                           if (additionalInfo.budget) {
                             return (
                               <div className="flex items-center gap-2 bg-green-50 rounded-lg p-2">
-                                <div className="text-green-600">💰</div>
+                                <div className="w-4 h-4 bg-green-600 rounded-full flex-shrink-0"></div>
                                 <div>
                                   <p className="text-xs text-green-700 font-medium">Budget</p>
                                   <p className="text-sm font-semibold text-green-800">{additionalInfo.budget}</p>
@@ -384,20 +384,17 @@ function ServiceRequestsContent() {
                       
                       {/* Deadline */}
                       {request.deadline && !String(request.deadline).includes('T') && (
-                        <div className="flex items-center gap-2 bg-blue-50 rounded-lg p-2">
-                          <Clock size={16} className="text-blue-600" />
-                          <div>
-                            <p className="text-xs text-blue-700 font-medium">Deadline</p>
-                            <p className="text-sm font-semibold text-blue-800">{request.deadline}</p>
-                          </div>
+                        <div className="bg-blue-50 rounded-lg p-2">
+                          <p className="text-xs text-blue-700 font-medium">Deadline</p>
+                          <p className="text-sm font-semibold text-blue-800">{request.deadline}</p>
                         </div>
                       )}
                     </div>
                     
                     {/* Location */}
                     {request.location && (
-                      <div className="flex items-center gap-2 text-gray-600 bg-gray-50 rounded-lg p-2">
-                        <MapPin size={16} className="text-gray-400" />
+                      <div className="text-gray-600 bg-gray-50 rounded-lg p-2">
+                        <p className="text-xs text-gray-500 font-medium">Location</p>
                         <span className="text-sm font-medium">{request.location}</span>
                       </div>
                     )}
@@ -588,7 +585,7 @@ function ServiceRequestsContent() {
                                   if (additionalInfo.budget) {
                                     return (
                                       <div className="flex items-center gap-2 bg-green-50 rounded-lg p-2">
-                                        <div className="text-green-600">💰</div>
+                                        <div className="w-4 h-4 bg-green-600 rounded-full flex-shrink-0"></div>
                                         <div>
                                           <p className="text-xs text-green-700 font-medium">Budget</p>
                                           <p className="text-sm font-semibold text-green-800">{additionalInfo.budget}</p>
@@ -604,20 +601,17 @@ function ServiceRequestsContent() {
                               
                               {/* Deadline */}
                               {request.deadline && !String(request.deadline).includes('T') && !String(request.deadline).includes('Z') && (
-                                <div className="flex items-center gap-2 bg-blue-50 rounded-lg p-2">
-                                  <Clock size={16} className="text-blue-600" />
-                                  <div>
-                                    <p className="text-xs text-blue-700 font-medium">Deadline</p>
-                                    <p className="text-sm font-semibold text-blue-800">{request.deadline}</p>
-                                  </div>
+                                <div className="bg-blue-50 rounded-lg p-2">
+                                  <p className="text-xs text-blue-700 font-medium">Deadline</p>
+                                  <p className="text-sm font-semibold text-blue-800">{request.deadline}</p>
                                 </div>
                               )}
                             </div>
                             
                             {/* Location */}
                             {request.location && (
-                              <div className="flex items-center gap-2 text-gray-600 bg-gray-50 rounded-lg p-2">
-                                <MapPin size={16} className="text-gray-400" />
+                              <div className="text-gray-600 bg-gray-50 rounded-lg p-2">
+                                <p className="text-xs text-gray-500 font-medium">Location</p>
                                 <span className="text-sm font-medium">{request.location}</span>
                               </div>
                             )}
@@ -756,10 +750,10 @@ function ServiceRequestsContent() {
                                 request.volunteer_application?.status === 'rejected' ? '' : 'bg-orange-100 text-orange-800 border-orange-200'
                               }`}
                             >
-                              {request.volunteer_application?.status === 'accepted' ? '✅ Accepted' :
-                               request.volunteer_application?.status === 'active' ? '🔄 Active' :
-                               request.volunteer_application?.status === 'completed' ? '🎉 Completed' :
-                               request.volunteer_application?.status === 'rejected' ? '❌ Rejected' : '⏳ Pending'}
+                              {request.volunteer_application?.status === 'accepted' ? 'Accepted' :
+                               request.volunteer_application?.status === 'active' ? 'Active' :
+                               request.volunteer_application?.status === 'completed' ? 'Completed' :
+                               request.volunteer_application?.status === 'rejected' ? 'Rejected' : 'Pending'}
                             </Badge>
                           </div>
                         </div>

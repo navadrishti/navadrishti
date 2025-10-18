@@ -350,32 +350,23 @@ export default function ServiceRequestDetailPage() {
                           return (
                             <div className="space-y-3">
                               {requirements.budget && (
-                                <div className="flex items-center gap-3 p-3 bg-green-50 rounded-lg border border-green-200">
-                                  <div className="text-green-600">💰</div>
-                                  <div>
-                                    <p className="text-sm font-medium text-green-800">Budget</p>
-                                    <p className="text-sm text-green-700">{requirements.budget}</p>
-                                  </div>
+                                <div className="p-3 bg-green-50 rounded-lg border border-green-200">
+                                  <p className="text-sm font-medium text-green-800 mb-1">Budget</p>
+                                  <p className="text-sm text-green-700">{requirements.budget}</p>
                                 </div>
                               )}
                               
                               {requirements.timeline && (
-                                <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                                  <Clock className="h-4 w-4 text-blue-600" />
-                                  <div>
-                                    <p className="text-sm font-medium text-blue-800">Timeline</p>
-                                    <p className="text-sm text-blue-700">{requirements.timeline}</p>
-                                  </div>
+                                <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                                  <p className="text-sm font-medium text-blue-800 mb-1">Timeline</p>
+                                  <p className="text-sm text-blue-700">{requirements.timeline}</p>
                                 </div>
                               )}
                               
                               {requirements.contactInfo && (
-                                <div className="flex items-center gap-3 p-3 bg-amber-50 rounded-lg border border-amber-200">
-                                  <MessageSquare className="h-4 w-4 text-amber-600" />
-                                  <div>
-                                    <p className="text-sm font-medium text-amber-800">Contact Method</p>
-                                    <p className="text-sm text-amber-700 capitalize">{requirements.contactInfo}</p>
-                                  </div>
+                                <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
+                                  <p className="text-sm font-medium text-amber-800 mb-1">Contact Method</p>
+                                  <p className="text-sm text-amber-700 capitalize">{requirements.contactInfo}</p>
                                 </div>
                               )}
                             </div>
