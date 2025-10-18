@@ -403,17 +403,6 @@ export default function MarketplacePage() {
             </div>
           </TabsContent>
         </Tabs>
-
-        {/* Floating Action Button for Mobile */}
-        {user && user.user_type !== 'ngo' && (
-          <div className="fixed bottom-6 right-6 md:hidden z-50">
-            <Link href="/marketplace/create">
-              <Button size="lg" className="h-14 w-14 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-200">
-                <Plus size={24} />
-              </Button>
-            </Link>
-          </div>
-        )}
       </main>
     </div>
   );
