@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription, SheetClose } from "@/components/ui/sheet"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,7 +21,6 @@ import { useCart } from "@/lib/cart-context"
 import { VerificationBadge } from "@/components/verification-badge"
 
 export function Header() {
-  const [isMenuOpen, setIsMenuOpen] = useState(false)
   const { user, logout, refreshUser } = useAuth()
   const { getCartItemCount } = useCart()
   const router = useRouter()
@@ -183,94 +183,104 @@ export function Header() {
               )}
             </Button>
           )}
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="text-white hover:bg-white/10" 
-            onClick={() => {
-              console.log('Mobile menu button clicked, current state:', isMenuOpen);
-              setIsMenuOpen(true);
-            }}
-          >
-            <Menu className="h-5 w-5" />
-            <span className="sr-only">Toggle menu</span>
-          </Button>
-        </div>
-      </div>
-      {isMenuOpen && (
-        <div className="fixed inset-0 z-[100] bg-udaan-navy md:hidden">
-          <div className="h-full flex flex-col">
-            <div className="flex h-16 items-center justify-between px-4 border-b border-white/10 flex-shrink-0">
-              <Link 
-                href="/" 
-                className="flex items-center gap-2 font-bold text-xl text-white"
-                onClick={() => setIsMenuOpen(false)}
-              >
-                <HeartHandshake className="h-6 w-6 text-udaan-orange" />
-                <span>Navdrishti</span>
-              </Link>
+          
+          {/* Mobile Menu Sheet */}
+          <Sheet>
+            <SheetTrigger asChild>
               <Button 
                 variant="ghost" 
                 size="icon" 
                 className="text-white hover:bg-white/10" 
-                onClick={() => {
-                  console.log('Close button clicked');
-                  setIsMenuOpen(false);
-                }}
               >
-                <X className="h-5 w-5" />
-                <span className="sr-only">Close menu</span>
+                <Menu className="h-5 w-5" />
+                <span className="sr-only">Toggle menu</span>
               </Button>
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              <div className="px-6 py-6">
-                <div className="space-y-8">
-                  <div className="relative">
-                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input type="search" placeholder="Search marketplace, resources, services..." className="w-full rounded-full bg-background pl-8" />
+            </SheetTrigger>
+
+            <SheetContent side="right" className="bg-udaan-navy border-l border-white/30 w-full p-0">
+              <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
+              <SheetDescription className="sr-only">
+                Access navigation links, search, and user account options
+              </SheetDescription>
+              
+              <div className="flex flex-col h-full">
+                {/* Fixed Header */}
+                <div className="flex-shrink-0 p-6 border-b border-white/10">
+                  <div className="flex items-center justify-between">
+                    <Link 
+                      href="/" 
+                      className="flex items-center gap-2 font-bold text-xl text-white"
+                    >
+                      <HeartHandshake className="h-6 w-6 text-udaan-orange" />
+                      <span>Navdrishti</span>
+                    </Link>
+                    
+                    <SheetClose asChild>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="text-white hover:bg-white/10 h-8 w-8" 
+                      >
+                        <X className="h-5 w-5" />
+                        <span className="sr-only">Close menu</span>
+                      </Button>
+                    </SheetClose>
                   </div>
-                  <nav className="space-y-6">
-                    {/* Only show Verify People link in mobile menu if user is an NGO */}
+                </div>
+
+                {/* Scrollable Content */}
+                <div className="flex-1 overflow-y-auto p-6">
+                  {/* Search */}
+                  <div className="relative mb-6">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input 
+                      type="search" 
+                      placeholder="Search marketplace, resources, services..." 
+                      className="w-full rounded-full bg-background pl-8" 
+                    />
+                  </div>
+
+                  {/* Navigation */}
+                  <nav className="grid gap-6 text-lg font-medium mb-8">
                     {isNgo && (
                       <Link 
                         href="/skills/verify" 
-                        className="flex items-center gap-3 text-lg font-medium text-white hover:text-udaan-orange transition-colors py-3 px-2 rounded-lg hover:bg-white/5"
-                        onClick={() => setIsMenuOpen(false)}
+                        className="flex items-center gap-3 text-white hover:text-udaan-orange transition-colors duration-300"
                       >
-                        <UserCheck className="h-6 w-6" />
-                        Verify People
+                        <UserCheck className="h-5 w-5" />
+                        <span>Verify People</span>
                       </Link>
                     )}
+
                     <Link 
                       href="/service-requests" 
-                      className="flex items-center gap-3 text-lg font-medium text-white hover:text-udaan-orange transition-colors py-3 px-2 rounded-lg hover:bg-white/5"
-                      onClick={() => setIsMenuOpen(false)}
+                      className="flex items-center gap-3 text-white hover:text-udaan-orange transition-colors duration-300"
                     >
-                      <Award className="h-6 w-6" />
-                      Service Requests
+                      <Award className="h-5 w-5" />
+                      <span>Service Requests</span>
                     </Link>
+
                     <Link 
                       href="/service-offers" 
-                      className="flex items-center gap-3 text-lg font-medium text-white hover:text-udaan-orange transition-colors py-3 px-2 rounded-lg hover:bg-white/5"
-                      onClick={() => setIsMenuOpen(false)}
+                      className="flex items-center gap-3 text-white hover:text-udaan-orange transition-colors duration-300"
                     >
-                      <Briefcase className="h-6 w-6" />
-                      Service Offers
+                      <Briefcase className="h-5 w-5" />
+                      <span>Service Offers</span>
                     </Link>
+
                     <Link 
                       href="/marketplace" 
-                      className="flex items-center gap-3 text-lg font-medium text-white hover:text-udaan-orange transition-colors py-3 px-2 rounded-lg hover:bg-white/5"
-                      onClick={() => setIsMenuOpen(false)}
+                      className="flex items-center gap-3 text-white hover:text-udaan-orange transition-colors duration-300"
                     >
-                      <ShoppingBag className="h-6 w-6" />
-                      Marketplace
+                      <ShoppingBag className="h-5 w-5" />
+                      <span>Marketplace</span>
                     </Link>
+
                     <Link 
                       href="/cart" 
-                      className="flex items-center gap-3 text-lg font-medium text-white hover:text-udaan-orange transition-colors py-3 px-2 rounded-lg hover:bg-white/5"
-                      onClick={() => setIsMenuOpen(false)}
+                      className="flex items-center gap-3 text-white hover:text-udaan-orange transition-colors duration-300"
                     >
-                      <ShoppingCart className="h-6 w-6" />
+                      <ShoppingCart className="h-5 w-5" />
                       <span>Cart</span>
                       {cartItemCount > 0 && (
                         <span className="bg-udaan-orange text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-medium ml-auto">
@@ -279,84 +289,73 @@ export function Header() {
                       )}
                     </Link>
                   </nav>
-                  
-                  {/* Separator */}
-                  <div className="border-t border-white/20"></div>
-                  
-                  {user ? (
-                    <>
-                      <div className="flex items-center gap-4 mb-6">
-                  <Avatar className="h-12 w-12">
-                    {user.profile_image && <AvatarImage src={user.profile_image} alt={user.name} />}
-                    <AvatarFallback className="bg-udaan-orange text-white font-semibold text-lg">{getInitials(user.name)}</AvatarFallback>
-                  </Avatar>
-                  <div className="grid gap-1">
-                    <p className="text-lg font-medium text-white">{user.name}</p>
-                    <p className="text-sm text-gray-300">{user.email}</p>
+
+                  {/* User Section */}
+                  <div className="border-t border-white/20 pt-6">
+                    {user ? (
+                      <div>
+                        <div className="flex items-center gap-4 mb-6">
+                          <Avatar className="h-12 w-12">
+                            {user.profile_image && <AvatarImage src={user.profile_image} alt={user.name} />}
+                            <AvatarFallback className="bg-udaan-orange text-white font-semibold text-lg">{getInitials(user.name)}</AvatarFallback>
+                          </Avatar>
+                          <div className="grid gap-1">
+                            <p className="text-lg font-medium text-white">{user.name}</p>
+                            <p className="text-sm text-gray-300">{user.email}</p>
+                          </div>
+                        </div>
+                        
+                        <div className="space-y-3 pb-8">
+                          <Link href="/profile">
+                            <Button variant="outline" className="w-full h-12 text-udaan-navy border-udaan-navy bg-white hover:bg-udaan-orange hover:border-udaan-orange hover:text-white transition-colors">
+                              Profile
+                            </Button>
+                          </Link>
+                          <Link href={getDashboardLink()}>
+                            <Button variant="outline" className="w-full h-12 text-udaan-navy border-udaan-navy bg-white hover:bg-udaan-orange hover:border-udaan-orange hover:text-white transition-colors">
+                              Dashboard
+                            </Button>
+                          </Link>
+                          <Link href="/orders">
+                            <Button variant="outline" className="w-full h-12 text-udaan-navy border-udaan-navy bg-white hover:bg-udaan-orange hover:border-udaan-orange hover:text-white transition-colors">
+                              My Orders
+                            </Button>
+                          </Link>
+                          <Link href="/settings">
+                            <Button variant="outline" className="w-full h-12 text-udaan-navy border-udaan-navy bg-white hover:bg-udaan-orange hover:border-udaan-orange hover:text-white transition-colors">
+                              Settings
+                            </Button>
+                          </Link>
+                          <Button 
+                            variant="outline" 
+                            className="w-full h-12 text-white border-red-500 bg-red-500 hover:bg-red-600 hover:border-red-600 hover:text-white transition-colors" 
+                            onClick={handleLogout}
+                          >
+                            Log out
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-3 pb-8">
+                        <Link href="/login">
+                          <Button variant="outline" className="w-full h-12 text-udaan-navy border-udaan-navy bg-white hover:bg-udaan-navy hover:text-white transition-colors">
+                            Sign In
+                          </Button>
+                        </Link>
+                        <Link href="/register">
+                          <Button className="w-full h-12 bg-udaan-orange hover:bg-udaan-orange/90 border-none text-white transition-colors">
+                            Get Started
+                          </Button>
+                        </Link>
+                      </div>
+                    )}
                   </div>
                 </div>
-                <div className="space-y-4">
-                  <Link href="/cart" onClick={() => setIsMenuOpen(false)}>
-                    <Button variant="outline" className="w-full h-12 text-udaan-navy border-udaan-navy bg-white hover:bg-udaan-orange hover:border-udaan-orange hover:text-white transition-colors relative">
-                      <ShoppingCart className="h-4 w-4 mr-2" />
-                      Cart
-                      {cartItemCount > 0 && (
-                        <span className="absolute -top-1 -right-1 bg-udaan-orange text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-medium">
-                          {cartItemCount > 99 ? '99+' : cartItemCount}
-                        </span>
-                      )}
-                    </Button>
-                  </Link>
-                  <Link href="/profile" onClick={() => setIsMenuOpen(false)}>
-                    <Button variant="outline" className="w-full h-12 text-udaan-navy border-udaan-navy bg-white hover:bg-udaan-orange hover:border-udaan-orange hover:text-white transition-colors">Profile</Button>
-                  </Link>
-                  <Link href={getDashboardLink()} onClick={() => setIsMenuOpen(false)}>
-                    <Button variant="outline" className="w-full h-12 text-udaan-navy border-udaan-navy bg-white hover:bg-udaan-orange hover:border-udaan-orange hover:text-white transition-colors">Dashboard</Button>
-                  </Link>
-                  <Link href="/orders" onClick={() => setIsMenuOpen(false)}>
-                    <Button variant="outline" className="w-full h-12 text-udaan-navy border-udaan-navy bg-white hover:bg-udaan-orange hover:border-udaan-orange hover:text-white transition-colors">My Orders</Button>
-                  </Link>
-                  {/* Only show Verify People in mobile menu if user is an NGO */}
-                  {isNgo && (
-                    <Link href="/skills/verify" onClick={() => setIsMenuOpen(false)}>
-                      <Button variant="outline" className="w-full h-12 text-udaan-navy border-udaan-navy bg-white hover:bg-udaan-orange hover:border-udaan-orange hover:text-white transition-colors">Verify People</Button>
-                    </Link>
-                  )}
-                  <Link href="/settings" onClick={() => setIsMenuOpen(false)}>
-                    <Button variant="outline" className="w-full h-12 text-udaan-navy border-udaan-navy bg-white hover:bg-udaan-orange hover:border-udaan-orange hover:text-white transition-colors">Settings</Button>
-                  </Link>
-                  <Button 
-                    variant="outline" 
-                    className="w-full h-12 text-white border-red-500 bg-red-500 hover:bg-red-600 hover:border-red-600 hover:text-white transition-colors" 
-                    onClick={() => {
-                      setIsMenuOpen(false);
-                      handleLogout();
-                    }}
-                  >
-                    Log out
-                  </Button>
-                </div>
-              </>
-            ) : (
-              <div className="space-y-4 mt-8">
-                <Link href="/login" onClick={() => setIsMenuOpen(false)}>
-                  <Button variant="outline" className="w-full h-12 text-udaan-navy border-udaan-navy bg-white hover:bg-udaan-navy hover:text-white transition-colors">
-                    Sign In
-                  </Button>
-                </Link>
-                <Link href="/register" onClick={() => setIsMenuOpen(false)}>
-                  <Button className="w-full h-12 bg-udaan-orange hover:bg-udaan-orange/90 border-none text-white transition-colors">
-                    Get Started
-                  </Button>
-                </Link>
               </div>
-            )}
-                </div>
-              </div>
-            </div>
-          </div>
+            </SheetContent>
+          </Sheet>
         </div>
-      )}
+      </div>
     </header>
   )
 }
