@@ -477,7 +477,7 @@ function ServiceRequestsContent() {
                         </Link>
                       ) : (
                         <Link href={`/service-requests/${request.id}`} className="w-full">
-                          <Button variant="secondary" className="w-full h-11 hover:bg-gray-200 shadow-md">
+                          <Button variant="outline" className="w-full h-11 border-blue-600 text-blue-600 hover:bg-blue-600 hover:!text-white font-medium shadow-md hover:shadow-lg transition-all duration-200">
                             View Details
                             <ArrowRight size={16} className="ml-2" />
                           </Button>
@@ -829,7 +829,7 @@ function ServiceRequestsContent() {
                       
                       <CardFooter className="border-t bg-gradient-to-r from-gray-50 to-gray-100 p-4">
                         <Link href={`/service-requests/${request.id}`} className="w-full">
-                          <Button variant="outline" className="w-full h-11 border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white font-medium shadow-md hover:shadow-lg transition-all duration-200">
+                          <Button variant="outline" className="w-full h-11 border-blue-600 text-blue-600 hover:bg-blue-600 hover:!text-white font-medium shadow-md hover:shadow-lg transition-all duration-200">
                             View Details
                             <ArrowRight size={16} className="ml-2" />
                           </Button>
