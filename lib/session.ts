@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { executeQuery } from './db';
+import { supabase } from './db';
 import jwt, { JwtPayload, SignOptions } from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import { JWT_SECRET } from './auth';
@@ -49,21 +49,21 @@ export class SessionManager {
     };
 
     // Store session in database
-    await executeQuery({
-      query: `INSERT INTO user_sessions 
-              (id, user_id, user_type, session_data, ip_address, user_agent, device_info, expires_at) 
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      values: [
-        sessionId,
-        userId,
-        userType,
-        JSON.stringify(sessionData),
-        ipAddress,
-        userAgent,
-        JSON.stringify(deviceInfo),
-        expiresAt
-      ]
-    });
+    await supabase
+      .from('user_sessions')
+      .insert({
+        id: sessionId,
+        user_id: userId,
+        user_type: userType,
+        session_data: JSON.stringify(sessionData),
+        ip_address: ipAddress,
+        user_agent: userAgent,
+        device_info: JSON.stringify(deviceInfo),
+        expires_at: expiresAt.toISOString(),
+        is_active: true,
+        created_at: new Date().toISOString(),
+        last_activity: new Date().toISOString()
+      });
 
     // Log successful login
     await this.logLoginActivity(userId, sessionId, ipAddress, userAgent, deviceInfo, 'success');
@@ -71,15 +71,15 @@ export class SessionManager {
     // Create JWT token
     const token = jwt.sign(
       { sessionId, userId, userType, email },
-      JWT_SECRET,
+      JWT_SECRET as string,
       { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );
 
     // Update user's last login
-    await executeQuery({
-      query: 'UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?',
-      values: [userId]
-    });
+    await supabase
+      .from('users')
+      .update({ last_login: new Date().toISOString() })
+      .eq('id', userId);
 
     return { sessionId, token };
   }
@@ -92,13 +92,15 @@ export class SessionManager {
       const { sessionId, userId } = decoded;
 
       // Check session in database
-      const sessions = await executeQuery({
-        query: `SELECT * FROM user_sessions 
-                WHERE id = ? AND user_id = ? AND is_active = true AND expires_at > NOW()`,
-        values: [sessionId, userId]
-      }) as any[];
+      const { data: sessions, error } = await supabase
+        .from('user_sessions')
+        .select('*')
+        .eq('id', sessionId)
+        .eq('user_id', userId)
+        .eq('is_active', true)
+        .gt('expires_at', new Date().toISOString());
 
-      if (sessions.length === 0) {
+      if (error || !sessions || sessions.length === 0) {
         return null;
       }
 
@@ -106,10 +108,10 @@ export class SessionManager {
       const sessionData = JSON.parse(session.session_data);
 
       // Update last activity
-      await executeQuery({
-        query: 'UPDATE user_sessions SET last_activity = CURRENT_TIMESTAMP WHERE id = ?',
-        values: [sessionId]
-      });
+      await supabase
+        .from('user_sessions')
+        .update({ last_activity: new Date().toISOString() })
+        .eq('id', sessionId);
 
       return sessionData;
     } catch (error) {
@@ -120,36 +122,43 @@ export class SessionManager {
 
   // Destroy session
   static async destroySession(sessionId: string): Promise<void> {
-    await executeQuery({
-      query: 'UPDATE user_sessions SET is_active = false WHERE id = ?',
-      values: [sessionId]
-    });
+    await supabase
+      .from('user_sessions')
+      .update({ is_active: false })
+      .eq('id', sessionId);
   }
 
   // Destroy all user sessions (for logout from all devices)
   static async destroyAllUserSessions(userId: number): Promise<void> {
-    await executeQuery({
-      query: 'UPDATE user_sessions SET is_active = false WHERE user_id = ?',
-      values: [userId]
-    });
+    await supabase
+      .from('user_sessions')
+      .update({ is_active: false })
+      .eq('user_id', userId);
   }
 
   // Clean expired sessions
   static async cleanExpiredSessions(): Promise<void> {
-    await executeQuery({
-      query: 'DELETE FROM user_sessions WHERE expires_at < NOW() OR (last_activity < DATE_SUB(NOW(), INTERVAL 30 DAY))'
-    });
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    
+    await supabase
+      .from('user_sessions')
+      .delete()
+      .or(`expires_at.lt.${new Date().toISOString()},last_activity.lt.${thirtyDaysAgo}`);
   }
 
   // Get active sessions for user
   static async getUserActiveSessions(userId: number): Promise<any[]> {
-    const sessions = await executeQuery({
-      query: `SELECT id, device_info, ip_address, last_activity, created_at 
-              FROM user_sessions 
-              WHERE user_id = ? AND is_active = true AND expires_at > NOW()
-              ORDER BY last_activity DESC`,
-      values: [userId]
-    }) as any[];
+    const { data: sessions, error } = await supabase
+      .from('user_sessions')
+      .select('id, device_info, ip_address, last_activity, created_at')
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .gt('expires_at', new Date().toISOString())
+      .order('last_activity', { ascending: false });
+
+    if (error || !sessions) {
+      return [];
+    }
 
     return sessions.map(session => ({
       ...session,
@@ -191,18 +200,16 @@ export class SessionManager {
     deviceInfo: DeviceInfo,
     status: 'success' | 'failed'
   ): Promise<void> {
-    await executeQuery({
-      query: `INSERT INTO login_history 
-              (user_id, session_id, ip_address, user_agent, device_info, login_status) 
-              VALUES (?, ?, ?, ?, ?, ?)`,
-      values: [
-        userId,
-        sessionId,
-        ipAddress,
-        userAgent,
-        JSON.stringify(deviceInfo),
-        status
-      ]
-    });
+    await supabase
+      .from('login_history')
+      .insert({
+        user_id: userId,
+        session_id: sessionId,
+        ip_address: ipAddress,
+        user_agent: userAgent,
+        device_info: JSON.stringify(deviceInfo),
+        login_status: status,
+        created_at: new Date().toISOString()
+      });
   }
 }

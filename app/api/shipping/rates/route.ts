@@ -1,5 +1,4 @@
 import { NextRequest } from 'next/server';
-import { executeQuery } from '@/lib/db';
 
 // Delhivery API base URL
 const DELHIVERY_BASE_URL = process.env.DELHIVERY_BASE_URL || 'https://track.delhivery.com/api';

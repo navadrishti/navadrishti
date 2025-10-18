@@ -1,7 +1,6 @@
 // API endpoint for NGO verification using EntityLocker
 import { NextRequest, NextResponse } from 'next/server';
 import { EntityLockerService } from '@/lib/entitylocker';
-import { executeQuery } from '@/lib/db';
 import { supabase } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';

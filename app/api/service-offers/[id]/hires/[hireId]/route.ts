@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { executeQuery } from '@/lib/db';
+import { db, supabase } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 
@@ -46,43 +46,46 @@ export async function PUT(
     }
 
     // First, verify that this offer belongs to the authenticated NGO
-    const offerCheck = await executeQuery({
-      query: `SELECT ngo_id FROM service_offers WHERE id = ?`,
-      values: [offerId]
-    }) as any[];
+    const offer = await db.serviceOffers.getById(offerId);
 
-    if (offerCheck.length === 0) {
+    if (!offer) {
       return NextResponse.json({ error: 'Service offer not found' }, { status: 404 });
     }
 
-    if (offerCheck[0].ngo_id !== userId) {
+    if (offer.ngo_id !== userId) {
       return NextResponse.json({ error: 'You can only update hires for your own offers' }, { status: 403 });
     }
 
     // Check if hire exists for this offer
-    const hireCheck = await executeQuery({
-      query: `SELECT id FROM service_hires WHERE id = ? AND service_offer_id = ?`,
-      values: [hId, offerId]
-    }) as any[];
+    const { data: hire } = await supabase
+      .from('service_hires')
+      .select('id')
+      .eq('id', hId)
+      .eq('service_offer_id', offerId)
+      .single();
 
-    if (hireCheck.length === 0) {
+    if (!hire) {
       return NextResponse.json({ error: 'Hire not found for this offer' }, { status: 404 });
     }
 
     // Update hire status
-    const updateQuery = `
-      UPDATE service_hires 
-      SET status = ?, 
-          ${status === 'active' ? 'start_date = CURRENT_DATE,' : ''}
-          ${status === 'completed' ? 'end_date = CURRENT_DATE,' : ''}
-          updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND service_offer_id = ?
-    `;
+    const updateData: any = {
+      status: status,
+      updated_at: new Date().toISOString()
+    };
 
-    await executeQuery({
-      query: updateQuery,
-      values: [status, hId, offerId]
-    });
+    if (status === 'active') {
+      updateData.start_date = new Date().toISOString();
+    }
+    if (status === 'completed') {
+      updateData.end_date = new Date().toISOString();
+    }
+
+    await supabase
+      .from('service_hires')
+      .update(updateData)
+      .eq('id', hId)
+      .eq('service_offer_id', offerId);
 
     return NextResponse.json({
       success: true,

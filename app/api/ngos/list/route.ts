@@ -1,24 +1,25 @@
-import { executeQuery } from '@/lib/db';
+import { supabase } from '@/lib/db';
 
 export async function GET() {
   try {
     // Get all NGOs from the database
-    const ngos = await executeQuery({
-      query: `
-        SELECT id, name, email
-        FROM users 
-        WHERE user_type = 'ngo'
-        ORDER BY name ASC
-      `
-    }) as any[];
+    const { data: ngos, error } = await supabase
+      .from('users')
+      .select('id, name, email')
+      .eq('user_type', 'ngo')
+      .order('name', { ascending: true });
+
+    if (error) {
+      throw error;
+    }
 
     return Response.json({
       success: true,
-      ngos: ngos.map(ngo => ({
+      ngos: ngos?.map(ngo => ({
         id: ngo.id,
         name: ngo.name,
         email: ngo.email
-      }))
+      })) || []
     });
 
   } catch (error: any) {

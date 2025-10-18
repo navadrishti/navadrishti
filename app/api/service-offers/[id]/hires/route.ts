@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { executeQuery } from '@/lib/db';
+import { db, supabase } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 
@@ -37,33 +37,29 @@ export async function GET(
     const offerId = parseInt(id);
 
     // First, verify that this offer belongs to the authenticated NGO
-    const offerCheck = await executeQuery({
-      query: `SELECT ngo_id FROM service_offers WHERE id = ?`,
-      values: [offerId]
-    }) as any[];
+    const offer = await db.serviceOffers.getById(offerId);
 
-    if (offerCheck.length === 0) {
+    if (!offer) {
       return NextResponse.json({ error: 'Service offer not found' }, { status: 404 });
     }
 
-    if (offerCheck[0].ngo_id !== userId) {
+    if (offer.ngo_id !== userId) {
       return NextResponse.json({ error: 'You can only view hires for your own offers' }, { status: 403 });
     }
 
     // Fetch hires for this offer
-    const hires = await executeQuery({
-      query: `
-        SELECT 
-          sh.*,
-          u.name as client_name,
-          u.email as client_email
-        FROM service_hires sh
-        JOIN users u ON sh.client_id = u.id
-        WHERE sh.service_offer_id = ?
-        ORDER BY sh.created_at DESC
-      `,
-      values: [offerId]
-    }) as any[];
+    const { data: hires, error } = await supabase
+      .from('service_hires')
+      .select(`
+        *,
+        client:users!client_id(name, email)
+      `)
+      .eq('service_offer_id', offerId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      throw error;
+    }
 
     return NextResponse.json({
       success: true,

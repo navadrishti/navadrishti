@@ -203,9 +203,12 @@ export default function IndividualDashboard() {
     };
 
     if (user) {
-      fetchStats();
-      fetchOrders();
-      fetchMyListings();
+      // Refresh user profile data to get latest info
+      refreshUser().then(() => {
+        fetchStats();
+        fetchOrders();
+        fetchMyListings();
+      });
     }
   }, [user?.id]);
 
@@ -302,8 +305,16 @@ export default function IndividualDashboard() {
               <CardContent className="space-y-6">
                 <div className="flex flex-col md:flex-row gap-6">
                   <div className="w-full md:w-1/4">
-                    <div className="aspect-square rounded-lg bg-gray-100 flex items-center justify-center">
-                      <UserRound className="h-12 w-12 text-gray-400" />
+                    <div className="aspect-square rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden">
+                      {user?.profile_image ? (
+                        <img 
+                          src={user.profile_image} 
+                          alt={user?.name || 'Profile'} 
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <UserRound className="h-12 w-12 text-gray-400" />
+                      )}
                     </div>
                   </div>
                   <div className="w-full md:w-3/4 space-y-4">
@@ -315,19 +326,19 @@ export default function IndividualDashboard() {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                           <p className="text-sm font-medium text-gray-500">Location</p>
-                          <p>{user?.profile?.location || 'Delhi, India'}</p>
+                          <p>{user?.city && user?.state_province ? `${user.city}, ${user.state_province}${user.country ? `, ${user.country}` : ''}` : (user?.city || user?.state_province || 'Location not set')}</p>
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-500">Skills</p>
-                          <p>{user?.profile?.skills?.join(', ') || 'Teaching, Project Management, Communication'}</p>
+                          <p>{user?.profile_data?.skills || user?.profile?.skills || 'Skills not set'}</p>
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-500">Interests</p>
-                          <p>{user?.profile?.interests?.join(', ') || 'Education, Environment, Healthcare'}</p>
+                          <p>{user?.profile_data?.interests || user?.profile?.interests || 'Interests not set'}</p>
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-500">Joined</p>
-                          <p>{user?.joinedAt ? new Date(user.joinedAt).toLocaleDateString() : 'January 2023'}</p>
+                          <p>{user?.created_at ? new Date(user.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long' }) : 'Join date not available'}</p>
                         </div>
                       </div>
                     </div>
@@ -360,7 +371,9 @@ export default function IndividualDashboard() {
                         <Badge variant="default" className="bg-green-100 text-green-800">Verified</Badge>
                       </div>
                     </div>
-                    <Button variant="outline">Edit Profile</Button>
+                    <Button variant="outline" asChild>
+                      <Link href="/profile">Edit Profile</Link>
+                    </Button>
                   </div>
                 </div>
               </CardContent>

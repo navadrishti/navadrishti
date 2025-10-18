@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { executeQuery } from '@/lib/db';
+import { db, supabase } from '@/lib/db';
 
 const DELHIVERY_BASE_URL = process.env.DELHIVERY_BASE_URL || 'https://track.delhivery.com/api';
 const DELHIVERY_TOKEN = process.env.DELHIVERY_TOKEN;
@@ -40,16 +40,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Get order details
-    const orderResult = await executeQuery({
-      query: 'SELECT * FROM orders WHERE id = ?',
-      values: [shipmentData.orderId]
-    }) as any[];
+    const order = await db.orders.getById(shipmentData.orderId.toString());
 
-    if (!orderResult.length) {
+    if (!order) {
       return Response.json({ error: 'Order not found' }, { status: 404 });
     }
-
-    const order = orderResult[0];
 
     // Generate waybill number (in real implementation, this comes from Delhivery)
     const waybillNumber = `DL${Date.now()}${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
@@ -121,50 +116,44 @@ export async function POST(request: NextRequest) {
     };
 
     // Store shipping details in database
-    await executeQuery({
-      query: `INSERT INTO shipping_details (
-        order_id, delhivery_waybill, delhivery_order_id, 
-        pickup_date, expected_delivery, tracking_status,
-        courier_partner, weight_kg, dimensions_cm,
-        pickup_address, delivery_address
-      ) VALUES (?, ?, ?, NOW(), ?, ?, 'Delhivery', ?, ?, ?, ?)`,
-      values: [
-        shipmentData.orderId,
-        waybillNumber,
-        mockDelhiveryResponse.order_id,
-        mockDelhiveryResponse.expected_delivery_date,
-        'Manifest Generated',
-        shipmentData.packageDetails.weight,
-        JSON.stringify(shipmentData.packageDetails),
-        JSON.stringify(shipmentData.pickupAddress),
-        JSON.stringify(shipmentData.deliveryAddress)
-      ]
+    await db.shippingDetails.create({
+      order_id: shipmentData.orderId,
+      delhivery_waybill: waybillNumber,
+      delhivery_order_id: mockDelhiveryResponse.order_id,
+      pickup_date: new Date().toISOString(),
+      expected_delivery: mockDelhiveryResponse.expected_delivery_date,
+      tracking_status: 'Manifest Generated',
+      courier_partner: 'Delhivery',
+      weight_kg: shipmentData.packageDetails.weight,
+      dimensions_cm: JSON.stringify(shipmentData.packageDetails),
+      pickup_address: JSON.stringify(shipmentData.pickupAddress),
+      delivery_address: JSON.stringify(shipmentData.deliveryAddress)
     });
 
     // Update order status to shipped
-    await executeQuery({
-      query: 'UPDATE orders SET status = "shipped" WHERE id = ?',
-      values: [shipmentData.orderId]
-    });
+    await db.orders.update(shipmentData.orderId, { status: 'shipped' });
 
     // Log status change
-    await executeQuery({
-      query: `INSERT INTO order_status_history (
-        order_id, previous_status, new_status, reason
-      ) VALUES (?, 'processing', 'shipped', 'Shipment created with Delhivery')`,
-      values: [shipmentData.orderId]
-    });
+    await supabase
+      .from('order_status_history')
+      .insert({
+        order_id: shipmentData.orderId,
+        previous_status: 'processing',
+        new_status: 'shipped',
+        reason: 'Shipment created with Delhivery'
+      });
 
     // Create notification
-    await executeQuery({
-      query: `INSERT INTO notifications (user_id, title, message, type, category, action_url) VALUES (?, ?, ?, 'info', 'shipping', ?)`,
-      values: [
-        order.buyer_id,
-        'Order Shipped',
-        `Your order has been shipped! Tracking number: ${waybillNumber}`,
-        `/orders/${order.order_number}`
-      ]
-    });
+    await supabase
+      .from('notifications')
+      .insert({
+        user_id: order.buyer_id,
+        title: 'Order Shipped',
+        message: `Your order has been shipped! Tracking number: ${waybillNumber}`,
+        type: 'info',
+        category: 'shipping',
+        action_url: `/orders/${order.order_number}`
+      });
 
     return Response.json({
       success: true,

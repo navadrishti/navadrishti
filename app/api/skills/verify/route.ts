@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { executeQuery } from '@/lib/db';
+import { supabase } from '@/lib/db';
 import { verifyToken } from '@/lib/auth';
 
 interface RouteParams {
@@ -35,32 +35,30 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
 
-    let query = `
-      SELECT psv.*, u.name as ngo_name
-      FROM people_skills_verification psv
-      LEFT JOIN users u ON psv.ngo_id = u.id
-      WHERE psv.ngo_id = ?
-    `;
-    
-    const values: any[] = [user.id];
+    let query = supabase
+      .from('people_skills_verification')
+      .select(`
+        *,
+        ngo:users!ngo_id(name)
+      `)
+      .eq('ngo_id', user.id);
 
     if (status && status !== 'all') {
-      query += ' AND psv.verification_status = ?';
-      values.push(status);
+      query = query.eq('verification_status', status);
     }
 
-    query += ' ORDER BY psv.created_at DESC';
+    const { data: records, error } = await query
+      .order('created_at', { ascending: false });
 
-    const records = await executeQuery({
-      query,
-      values
-    }) as any[];
+    if (error) {
+      throw error;
+    }
 
     // Parse JSON fields
-    const formattedRecords = records.map(record => ({
+    const formattedRecords = records?.map(record => ({
       ...record,
       work_photos: record.work_photos ? JSON.parse(record.work_photos) : []
-    }));
+    })) || [];
 
     return Response.json({
       success: true,
@@ -126,34 +124,33 @@ export async function POST(request: NextRequest) {
     }
 
     // Insert new record
-    const result = await executeQuery({
-      query: `
-        INSERT INTO people_skills_verification (
-          name, ngo_id, ngo_affiliation, age, contact_number, aadhaar_number,
-          skillset, past_work, experience, profile_picture_url, work_photos,
-          verification_status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `,
-      values: [
-        name,
-        user.id,
-        ngoAffiliation || user.name,
-        age || null,
-        contactNumber,
-        aadharCard,
-        skillset || null,
-        pastWork || null,
-        experience || null,
-        profilePicture || null,
-        JSON.stringify(workPhotos || []),
-        isDraft ? 'draft' : 'pending_digilocker'
-      ]
-    }) as any;
+    const { data: result, error } = await supabase
+      .from('people_skills_verification')
+      .insert({
+        name: name,
+        ngo_id: user.id,
+        ngo_affiliation: ngoAffiliation || user.name,
+        age: age || null,
+        contact_number: contactNumber,
+        aadhaar_number: aadharCard,
+        skillset: skillset || null,
+        past_work: pastWork || null,
+        experience: experience || null,
+        profile_picture_url: profilePicture || null,
+        work_photos: JSON.stringify(workPhotos || []),
+        verification_status: isDraft ? 'draft' : 'pending_digilocker'
+      })
+      .select()
+      .single();
+
+    if (error) {
+      throw error;
+    }
 
     return Response.json({
       success: true,
       message: isDraft ? 'Record saved as draft' : 'Record submitted for verification',
-      recordId: result.insertId
+      recordId: result.id
     });
 
   } catch (error: any) {
