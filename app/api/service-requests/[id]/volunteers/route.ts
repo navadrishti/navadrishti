@@ -93,6 +93,39 @@ export async function POST(
 
     const requestId = parseInt(id);
 
+    // Check user verification status before allowing volunteer application
+    const user = await db.users.findById(volunteer_id);
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    // Verification requirements based on user type
+    if (user.user_type === 'individual') {
+      // For individuals, require at least basic verification (email + identity)
+      if (user.verification_status !== 'verified') {
+        return NextResponse.json({ 
+          error: 'Account verification required', 
+          message: 'Please complete your identity verification (Aadhaar & PAN) before applying for volunteer opportunities.',
+          requiresVerification: true
+        }, { status: 403 });
+      }
+    } else if (user.user_type === 'company') {
+      // For companies, require organization verification
+      if (user.verification_status !== 'verified') {
+        return NextResponse.json({ 
+          error: 'Organization verification required', 
+          message: 'Please complete your organization verification before applying for volunteer opportunities.',
+          requiresVerification: true
+        }, { status: 403 });
+      }
+    } else if (user.user_type === 'ngo') {
+      // NGOs cannot apply for volunteer opportunities (they create service requests)
+      return NextResponse.json({ 
+        error: 'Invalid user type', 
+        message: 'NGOs cannot apply for volunteer opportunities. Only individuals and companies can volunteer.',
+      }, { status: 403 });
+    }
+
     // Check if the volunteer has already applied using Supabase helper
     const existingApplication = await db.serviceVolunteers.findExisting(requestId, volunteer_id);
 

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, MapPin, Users, Clock, Target, Calendar, User, Building, MessageSquare, CheckCircle, XCircle, Loader2 } from 'lucide-react'
+import { ArrowLeft, MapPin, Users, Clock, Target, Calendar, User, Building, MessageSquare, CheckCircle, XCircle, Loader2, AlertTriangle } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
 import { Header } from '@/components/header'
@@ -181,11 +181,27 @@ export default function ServiceRequestDetailPage() {
         }
       } else {
         const error = await response.json()
-        toast({
-          title: "Application Failed",
-          description: error.error || "Failed to submit application",
-          variant: "destructive"
-        })
+        const errorMsg = error.error || 'Failed to submit application'
+        
+        // Handle verification requirement specifically
+        if (error.requiresVerification || response.status === 403) {
+          const verificationMessage = error.message || 'Please complete account verification before applying for volunteer opportunities.'
+          toast({
+            title: "Verification Required",
+            description: verificationMessage,
+            variant: "destructive"
+          })
+          // Optionally redirect to verification page after a delay
+          setTimeout(() => {
+            router.push('/verification')
+          }, 3000)
+        } else {
+          toast({
+            title: "Application Failed",
+            description: errorMsg,
+            variant: "destructive"
+          })
+        }
       }
     } catch (error) {
       console.error('Error applying:', error)
@@ -324,13 +340,58 @@ export default function ServiceRequestDetailPage() {
                   <>
                     <Separator />
                     <div>
-                      <h3 className="font-semibold mb-2">Requirements</h3>
-                      <p className="text-muted-foreground">
-                        {typeof request.requirements === 'string' 
-                          ? request.requirements 
-                          : JSON.stringify(request.requirements, null, 2)
+                      <h3 className="font-semibold mb-3">Requirements</h3>
+                      {(() => {
+                        try {
+                          const requirements = typeof request.requirements === 'string' 
+                            ? JSON.parse(request.requirements) 
+                            : request.requirements;
+                          
+                          return (
+                            <div className="space-y-3">
+                              {requirements.budget && (
+                                <div className="flex items-center gap-3 p-3 bg-green-50 rounded-lg border border-green-200">
+                                  <div className="text-green-600">💰</div>
+                                  <div>
+                                    <p className="text-sm font-medium text-green-800">Budget</p>
+                                    <p className="text-sm text-green-700">{requirements.budget}</p>
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {requirements.timeline && (
+                                <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                                  <Clock className="h-4 w-4 text-blue-600" />
+                                  <div>
+                                    <p className="text-sm font-medium text-blue-800">Timeline</p>
+                                    <p className="text-sm text-blue-700">{requirements.timeline}</p>
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {requirements.contactInfo && (
+                                <div className="flex items-center gap-3 p-3 bg-amber-50 rounded-lg border border-amber-200">
+                                  <MessageSquare className="h-4 w-4 text-amber-600" />
+                                  <div>
+                                    <p className="text-sm font-medium text-amber-800">Contact Method</p>
+                                    <p className="text-sm text-amber-700 capitalize">{requirements.contactInfo}</p>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        } catch (e) {
+                          // Fallback for invalid JSON
+                          return (
+                            <p className="text-muted-foreground text-sm">
+                              {typeof request.requirements === 'string' 
+                                ? request.requirements 
+                                : 'Requirements not specified'
+                              }
+                            </p>
+                          );
                         }
-                      </p>
+                      })()}
                     </div>
                   </>
                 )}
@@ -373,6 +434,30 @@ export default function ServiceRequestDetailPage() {
                       NGOs cannot apply to service requests. Only individuals and companies can volunteer.
                     </AlertDescription>
                   </Alert>
+                ) : user && user.verification_status !== 'verified' ? (
+                  <div className="space-y-4">
+                    <Alert>
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertDescription>
+                        Account verification required to apply for volunteer opportunities.
+                      </AlertDescription>
+                    </Alert>
+                    
+                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-md">
+                      <div className="flex items-start gap-3">
+                        <div className="text-amber-600">⚠️</div>
+                        <div>
+                          <p className="text-amber-800 font-medium text-sm">Verification Required</p>
+                          <p className="text-amber-700 text-sm mt-1">
+                            You need to complete {user?.user_type === 'individual' ? 'identity verification (Aadhaar & PAN)' : 'organization verification'} before you can apply for volunteer opportunities.
+                            <Link href="/verification" className="underline font-medium ml-1 hover:text-amber-900">
+                              Complete verification now
+                            </Link>
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 ) : userApplication ? (
                   <div className="space-y-4">
                     <Alert>
@@ -431,7 +516,7 @@ export default function ServiceRequestDetailPage() {
                     
                     <Button 
                       onClick={handleApply} 
-                      disabled={applying || !applicationMessage.trim()}
+                      disabled={applying || !applicationMessage.trim() || (user && user.verification_status !== 'verified')}
                       className="w-full"
                     >
                       {applying ? (
@@ -439,6 +524,8 @@ export default function ServiceRequestDetailPage() {
                           <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                           Submitting...
                         </>
+                      ) : user && user.verification_status !== 'verified' ? (
+                        'Verification Required'
                       ) : (
                         'Submit Application'
                       )}

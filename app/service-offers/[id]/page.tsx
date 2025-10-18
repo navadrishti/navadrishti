@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, MapPin, Users, Clock, Target, Calendar, User, Building, MessageSquare, CheckCircle, XCircle, Loader2, DollarSign } from 'lucide-react'
+import { ArrowLeft, MapPin, Users, Clock, Target, Calendar, User, Building, MessageSquare, CheckCircle, XCircle, Loader2, DollarSign, AlertTriangle } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
 import { formatPrice } from '@/lib/currency'
@@ -169,11 +169,27 @@ export default function ServiceOfferDetailPage() {
         })
       } else {
         const error = await response.json()
-        toast({
-          title: "Application Failed",
-          description: error.error || "Failed to submit application",
-          variant: "destructive"
-        })
+        const errorMsg = error.error || 'Failed to submit application'
+        
+        // Handle verification requirement specifically
+        if (error.requiresVerification || response.status === 403) {
+          const verificationMessage = error.message || 'Please complete account verification before hiring services.'
+          toast({
+            title: "Verification Required",
+            description: verificationMessage,
+            variant: "destructive"
+          })
+          // Optionally redirect to verification page after a delay
+          setTimeout(() => {
+            router.push('/verification')
+          }, 3000)
+        } else {
+          toast({
+            title: "Application Failed",
+            description: errorMsg,
+            variant: "destructive"
+          })
+        }
       }
     } catch (error) {
       console.error('Error applying:', error)
@@ -340,6 +356,30 @@ export default function ServiceOfferDetailPage() {
                       NGOs cannot hire services from other NGOs. Only individuals and companies can hire services.
                     </AlertDescription>
                   </Alert>
+                ) : user && user.verification_status !== 'verified' ? (
+                  <div className="space-y-4">
+                    <Alert>
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertDescription>
+                        Account verification required to hire services.
+                      </AlertDescription>
+                    </Alert>
+                    
+                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-md">
+                      <div className="flex items-start gap-3">
+                        <div className="text-amber-600">⚠️</div>
+                        <div>
+                          <p className="text-amber-800 font-medium text-sm">Verification Required</p>
+                          <p className="text-amber-700 text-sm mt-1">
+                            You need to complete {user?.user_type === 'individual' ? 'identity verification (Aadhaar & PAN)' : 'organization verification'} before you can hire services.
+                            <Link href="/verification" className="underline font-medium ml-1 hover:text-amber-900">
+                              Complete verification now
+                            </Link>
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 ) : userApplication ? (
                   <div className="space-y-4">
                     <Alert>
@@ -433,7 +473,7 @@ export default function ServiceOfferDetailPage() {
                     
                     <Button 
                       onClick={handleApply} 
-                      disabled={applying || !applicationMessage.trim()}
+                      disabled={applying || !applicationMessage.trim() || (user && user.verification_status !== 'verified')}
                       className="w-full"
                     >
                       {applying ? (
@@ -441,6 +481,8 @@ export default function ServiceOfferDetailPage() {
                           <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                           Submitting...
                         </>
+                      ) : user && user.verification_status !== 'verified' ? (
+                        'Verification Required'
                       ) : (
                         'Submit Application'
                       )}
