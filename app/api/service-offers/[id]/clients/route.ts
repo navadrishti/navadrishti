@@ -109,6 +109,39 @@ export async function POST(
 
     const offerId = parseInt(id);
 
+    // Check user verification status before allowing hiring application
+    const user = await db.users.findById(client_id);
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    // Verification requirements based on user type
+    if (user.user_type === 'individual') {
+      // For individuals, require at least basic verification (email + identity)
+      if (user.verification_status !== 'verified') {
+        return NextResponse.json({ 
+          error: 'Account verification required', 
+          message: 'Please complete your identity verification (Aadhaar & PAN) before hiring services.',
+          requiresVerification: true
+        }, { status: 403 });
+      }
+    } else if (user.user_type === 'company') {
+      // For companies, require organization verification
+      if (user.verification_status !== 'verified') {
+        return NextResponse.json({ 
+          error: 'Organization verification required', 
+          message: 'Please complete your organization verification before hiring services.',
+          requiresVerification: true
+        }, { status: 403 });
+      }
+    } else if (user.user_type === 'ngo') {
+      // NGOs cannot hire services from other NGOs
+      return NextResponse.json({ 
+        error: 'Invalid user type', 
+        message: 'NGOs cannot hire services from other NGOs. Only individuals and companies can hire services.',
+      }, { status: 403 });
+    }
+
     // Check if the client has already applied
     const { data: existingApplication } = await supabase
       .from('service_clients')

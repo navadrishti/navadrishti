@@ -658,7 +658,7 @@ export default function CreateListingPage() {
                 <div className="flex gap-4 pt-6">
                   <Button 
                     type="submit" 
-                    disabled={loading || (user && user.verification_status !== 'verified')} 
+                    disabled={loading || !!(user && user.verification_status !== 'verified')} 
                     className="flex-1"
                   >
                     {loading ? 'Creating...' : 
