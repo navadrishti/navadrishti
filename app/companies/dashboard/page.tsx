@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Building, ShoppingBag, HeartHandshake, TicketCheck, Package, Clock, CheckCircle, AlertTriangle, Trash2, HandHeart, ShoppingCart } from 'lucide-react';
+import { Building, ShoppingBag, HeartHandshake, TicketCheck, Package, Clock, CheckCircle, AlertTriangle, Trash2, HandHeart, ShoppingCart, Plus } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 import { VerificationBadge, VerificationDetails } from '@/components/verification-badge';
@@ -198,15 +198,16 @@ export default function CompanyDashboard() {
                   Manage your company CSR activities and marketplace listings
                 </p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <Link href="/service-requests">
-                  <Button variant="outline" className="flex items-center gap-2">
+                  <Button variant="outline" className="flex items-center gap-2 w-full sm:w-auto text-sm">
                     <TicketCheck className="h-4 w-4" />
-                    Browse Service Requests
+                    <span className="hidden sm:inline">Browse Service Requests</span>
+                    <span className="sm:hidden">Service Requests</span>
                   </Button>
                 </Link>
                 <Link href="/marketplace">
-                  <Button className="flex items-center gap-2">
+                  <Button className="flex items-center gap-2 w-full sm:w-auto text-sm">
                     <ShoppingBag className="h-4 w-4" />
                     Marketplace
                   </Button>
@@ -375,10 +376,10 @@ export default function CompanyDashboard() {
               </CardHeader>
               <CardContent>
                 <Tabs defaultValue="service-requests" className="w-full">
-                  <TabsList className="grid w-full grid-cols-3">
-                    <TabsTrigger value="service-requests">Service Requests</TabsTrigger>
-                    <TabsTrigger value="services-hired">Services Hired</TabsTrigger>
-                    <TabsTrigger value="marketplace">Marketplace</TabsTrigger>
+                  <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 h-auto">
+                    <TabsTrigger value="service-requests" className="text-xs sm:text-sm">Service Requests</TabsTrigger>
+                    <TabsTrigger value="services-hired" className="text-xs sm:text-sm">Services Hired</TabsTrigger>
+                    <TabsTrigger value="marketplace" className="text-xs sm:text-sm">Marketplace</TabsTrigger>
                   </TabsList>
                   
                   <TabsContent value="service-requests" className="mt-4 space-y-4">
@@ -411,9 +412,9 @@ export default function CompanyDashboard() {
                   
                   <TabsContent value="marketplace" className="mt-4 space-y-4">
                     <Tabs defaultValue="purchasing" className="w-full">
-                      <TabsList className="grid w-full grid-cols-2">
-                        <TabsTrigger value="purchasing">Purchased Items</TabsTrigger>
-                        <TabsTrigger value="selling">Your Listings</TabsTrigger>
+                      <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 h-auto">
+                        <TabsTrigger value="purchasing" className="text-xs sm:text-sm">Purchased Items</TabsTrigger>
+                        <TabsTrigger value="selling" className="text-xs sm:text-sm">Your Listings</TabsTrigger>
                       </TabsList>
                       
                       <TabsContent value="purchasing" className="mt-4">
@@ -472,10 +473,13 @@ export default function CompanyDashboard() {
                       </TabsContent>
                       
                       <TabsContent value="selling" className="mt-4">
-                        <div className="flex justify-between items-center mb-4">
-                          <h3 className="font-medium">Your Items for Sale</h3>
-                          <Link href="/marketplace/create">
-                            <Button variant="outline" size="sm">List New Item</Button>
+                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-4 mb-4">
+                          <h3 className="font-medium text-lg">Your Items for Sale</h3>
+                          <Link href="/marketplace/create" className="flex-shrink-0">
+                            <Button variant="outline" size="sm" className="w-full sm:w-auto">
+                              <Plus className="h-4 w-4 mr-2" />
+                              List New Item
+                            </Button>
                           </Link>
                         </div>
                         <div className="rounded-md border">

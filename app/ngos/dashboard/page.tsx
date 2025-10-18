@@ -318,17 +318,19 @@ export default function NGODashboard() {
                   Manage your NGO profile, services, and marketplace listings
                 </p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <Link href="/service-offers/create">
-                  <Button variant="outline" className="flex items-center gap-2">
+                  <Button variant="outline" className="flex items-center gap-2 w-full sm:w-auto text-sm">
                     <HeartHandshake className="h-4 w-4" />
-                    New Service Offer
+                    <span className="hidden sm:inline">New Service Offer</span>
+                    <span className="sm:hidden">New Offer</span>
                   </Button>
                 </Link>
                 <Link href="/service-requests/create">
-                  <Button className="flex items-center gap-2">
+                  <Button className="flex items-center gap-2 w-full sm:w-auto text-sm">
                     <TicketCheck className="h-4 w-4" />
-                    New Service Request
+                    <span className="hidden sm:inline">New Service Request</span>
+                    <span className="sm:hidden">New Request</span>
                   </Button>
                 </Link>
               </div>
@@ -490,10 +492,10 @@ export default function NGODashboard() {
               </CardHeader>
               <CardContent>
                 <Tabs defaultValue="service-offers" className="w-full">
-                  <TabsList className="grid w-full grid-cols-3">
-                    <TabsTrigger value="service-offers">Service Offers</TabsTrigger>
-                    <TabsTrigger value="service-requests">Service Requests</TabsTrigger>
-                    <TabsTrigger value="marketplace">Marketplace</TabsTrigger>
+                  <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 h-auto">
+                    <TabsTrigger value="service-offers" className="text-xs sm:text-sm">Service Offers</TabsTrigger>
+                    <TabsTrigger value="service-requests" className="text-xs sm:text-sm">Service Requests</TabsTrigger>
+                    <TabsTrigger value="marketplace" className="text-xs sm:text-sm">Marketplace</TabsTrigger>
                   </TabsList>
                   
                   <TabsContent value="service-offers" className="mt-4 space-y-4">
@@ -648,16 +650,19 @@ export default function NGODashboard() {
                   
                   <TabsContent value="marketplace" className="mt-4 space-y-4">
                     <Tabs defaultValue="selling" className="w-full">
-                      <TabsList className="grid w-full grid-cols-2">
-                        <TabsTrigger value="selling">Your Listings</TabsTrigger>
-                        <TabsTrigger value="purchasing">Purchased Items</TabsTrigger>
+                      <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 h-auto">
+                        <TabsTrigger value="selling" className="text-xs sm:text-sm">Your Listings</TabsTrigger>
+                        <TabsTrigger value="purchasing" className="text-xs sm:text-sm">Purchased Items</TabsTrigger>
                       </TabsList>
                       
                       <TabsContent value="selling" className="mt-4">
-                        <div className="flex justify-between items-center mb-4">
-                          <h3 className="font-medium">Your Items for Sale</h3>
-                          <Link href="/marketplace/create">
-                            <Button variant="outline" size="sm">List New Item</Button>
+                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 sm:gap-4 mb-4">
+                          <h3 className="font-medium text-lg">Your Items for Sale</h3>
+                          <Link href="/marketplace/create" className="flex-shrink-0">
+                            <Button variant="outline" size="sm" className="w-full sm:w-auto">
+                              <Plus className="h-4 w-4 mr-2" />
+                              List New Item
+                            </Button>
                           </Link>
                         </div>
                         <div className="rounded-md border">
