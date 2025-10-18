@@ -265,7 +265,7 @@ export default function ServiceOfferHiresPage({ params }: { params: Promise<{ id
           <CardContent>
             <p className="text-gray-700 mb-4">{offer.description}</p>
             {offer.location && (
-              <p className="text-sm text-gray-500">📍 {offer.location}</p>
+              <p className="text-sm text-gray-500">Location: {offer.location}</p>
             )}
           </CardContent>
         </Card>
