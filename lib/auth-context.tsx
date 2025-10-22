@@ -2,6 +2,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { notify } from './notifications';
 
 // Types
 export interface User {
@@ -77,8 +78,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const verifyTokenAsync = async () => {
       if (!token) return;
       
-      console.log('Verifying token...', { token: token.substring(0, 20) + '...' });
-      
       try {
         const response = await fetch('/api/auth/me', {
           headers: {
@@ -86,27 +85,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
           }
         });
         
-        console.log('Token verification response:', { status: response.status, ok: response.ok });
-        
         if (response.ok) {
           const data = await response.json();
-          console.log('Token verification successful:', data);
           setUser(data.user);
           // Update localStorage with fresh user data
           localStorage.setItem('user', JSON.stringify(data.user));
         } else if (response.status === 401) {
           // Token is invalid, expired, or has signature issues
-          console.log('Invalid token detected, clearing authentication...');
+          notify.error('Your session has expired. Please log in again.');
           logout();
         } else {
           // Other error, but still clear auth to be safe
-          console.log('Other error during token verification:', response.status);
-          const errorData = await response.json();
-          console.log('Error data:', errorData);
+          notify.error('Authentication error. Please log in again.');
           logout();
         }
       } catch (error) {
-        console.error('Failed to verify token:', error);
+        notify.error('Connection error. Please check your internet connection.');
         logout();
       }
     };
@@ -122,8 +116,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setError(null);
     
     try {
-      console.log('Attempting login for:', email);
-      
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
@@ -133,23 +125,25 @@ export function AuthProvider({ children }: AuthProviderProps) {
       });
       
       const data = await response.json();
-      console.log('Login response:', { status: response.status, ok: response.ok, data });
       
       if (!response.ok) {
-        throw new Error(data.error || 'Login failed');
+        const errorMessage = data.error || 'Login failed';
+        setError(errorMessage);
+        notify.error(errorMessage);
+        return;
       }
       
       // Save token and user to state and localStorage
-      console.log('Setting token and user...', { token: data.token.substring(0, 20) + '...', user: data.user });
       setToken(data.token);
       setUser(data.user);
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
       
-      console.log('Login successful!');
+      notify.success(`Welcome back, ${data.user.name}!`);
     } catch (error: any) {
-      console.error('Login error:', error);
-      setError(error.message || 'An error occurred during login');
+      const errorMessage = error.message || 'An error occurred during login';
+      setError(errorMessage);
+      notify.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -172,7 +166,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const data = await response.json();
       
       if (!response.ok) {
-        throw new Error(data.error || 'Signup failed');
+        const errorMessage = data.error || 'Signup failed';
+        setError(errorMessage);
+        notify.error(errorMessage);
+        return;
       }
       
       // Save token and user to state and localStorage
@@ -180,9 +177,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setUser(data.user);
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
+      
+      notify.success(`Welcome to Navdrishti, ${data.user.name}!`);
     } catch (error: any) {
-      setError(error.message || 'An error occurred during signup');
-      console.error('Signup error:', error);
+      const errorMessage = error.message || 'An error occurred during signup';
+      setError(errorMessage);
+      notify.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -190,11 +190,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   // Logout function
   const logout = () => {
-    console.log('Logout called!');
     setToken(null);
     setUser(null);
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    notify.info('You have been logged out');
   };
 
   // Clear error
@@ -226,9 +226,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const data = await response.json();
         setUser(data.user);
         localStorage.setItem('user', JSON.stringify(data.user));
+      } else {
+        notify.error('Failed to refresh user data');
       }
     } catch (error) {
-      console.error('Failed to refresh user data:', error);
+      notify.error('Failed to refresh user data');
     }
   };
 

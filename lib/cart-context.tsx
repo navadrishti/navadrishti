@@ -1,7 +1,7 @@
 'use client'
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
-import { toast } from 'sonner'
+import { notify } from '@/lib/notifications'
 import { useAuth } from '@/lib/auth-context'
 
 interface CartItem {
@@ -118,7 +118,7 @@ export function CartProvider({ children }: CartProviderProps) {
       setLoading(true)
       const token = getAuthToken()
       if (!token) {
-        toast.error('Please login to add items to cart')
+        notify.error('Please login to add items to cart')
         return false
       }
 
@@ -138,17 +138,16 @@ export function CartProvider({ children }: CartProviderProps) {
       const data = await response.json()
       
       if (response.ok && data.success) {
-        toast.success('Item added to cart!')
+        notify.success('Item added to cart!')
         // Refresh cart immediately to ensure real-time updates
         await refreshCart()
         return true
       } else {
-        toast.error(data.error || 'Failed to add item to cart')
+        notify.error(data.error || 'Failed to add item to cart')
         return false
       }
     } catch (error) {
-      console.error('Add to cart error:', error)
-      toast.error('Failed to add item to cart')
+      notify.error('Failed to add item to cart')
       return false
     } finally {
       setLoading(false)
@@ -161,7 +160,7 @@ export function CartProvider({ children }: CartProviderProps) {
       setLoading(true)
       const token = getAuthToken()
       if (!token) {
-        toast.error('Please login to update cart')
+        notify.error('Please login to update cart')
         return false
       }
 
@@ -182,19 +181,19 @@ export function CartProvider({ children }: CartProviderProps) {
       if (response.ok && data.success) {
         // Show appropriate message
         if (quantity === 0) {
-          toast.success('Item removed from cart')
+          notify.success('Item removed from cart')
         } else {
-          toast.success('Quantity updated')
+          notify.success('Quantity updated')
         }
         await refreshCart()
         return true
       } else {
-        toast.error(data.error || 'Failed to update quantity')
+        notify.error(data.error || 'Failed to update quantity')
         return false
       }
     } catch (error) {
       console.error('Update quantity error:', error)
-      toast.error('Failed to update quantity')
+      notify.error('Failed to update quantity')
       return false
     } finally {
       setLoading(false)
@@ -207,7 +206,7 @@ export function CartProvider({ children }: CartProviderProps) {
       setLoading(true)
       const token = getAuthToken()
       if (!token) {
-        toast.error('Please login to remove items')
+        notify.error('Please login to remove items')
         return false
       }
 
@@ -222,16 +221,16 @@ export function CartProvider({ children }: CartProviderProps) {
       const data = await response.json()
       
       if (response.ok && data.success) {
-        toast.success('Item removed from cart')
+        notify.success('Item removed from cart')
         await refreshCart()
         return true
       } else {
-        toast.error(data.error || 'Failed to remove item')
+        notify.error(data.error || 'Failed to remove item')
         return false
       }
     } catch (error) {
       console.error('Remove from cart error:', error)
-      toast.error('Failed to remove item')
+      notify.error('Failed to remove item')
       return false
     } finally {
       setLoading(false)

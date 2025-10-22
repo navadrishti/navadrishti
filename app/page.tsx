@@ -5,6 +5,7 @@ import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Header } from "@/components/header"
+import { HowItWorks } from "@/components/ui/how-it-works"
 import { Building, HeartHandshake, GraduationCap, ShoppingBag, UserCheck, Users, ArrowRight, Briefcase, User, Compass, Globe, Map, Award } from "lucide-react"
 import { useState } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
@@ -126,48 +127,8 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Features Section */}
-        <section className="w-full py-12 md:py-16 lg:py-20 bg-udaan-cream">
-          <div className="udaan-container px-4 md:px-6">
-            <div className="flex flex-col items-center justify-center space-y-4 text-center">
-              <div className="space-y-2">
-                <h2 className="text-3xl font-bold tracking-tighter text-udaan-navy md:text-4xl">How It Works</h2>
-                <p className="max-w-[900px] text-udaan-navy/80 md:text-xl/relaxed">
-                  Connect through service requests, professional offerings, and marketplace - building bridges between NGOs and skilled volunteers.
-                </p>
-              </div>
-            </div>
-            <div className="mx-auto grid max-w-5xl grid-cols-1 gap-6 py-8 md:grid-cols-3">
-              <div className="flex flex-col items-center space-y-4 text-center bg-white p-6 rounded-lg shadow-sm hover-scale">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-udaan-navy">
-                  <Award className="h-8 w-8 text-udaan-white" />
-                </div>
-                <h3 className="text-xl font-bold text-udaan-navy">Service Requests</h3>
-                <p className="text-udaan-navy/70">
-                  NGOs post volunteer opportunities and service requests. Individuals and companies can browse and apply to help with specific projects.
-                </p>
-              </div>
-              <div className="flex flex-col items-center space-y-4 text-center bg-white p-6 rounded-lg shadow-sm hover-scale">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-udaan-blue">
-                  <Briefcase className="h-8 w-8 text-udaan-white" />
-                </div>
-                <h3 className="text-xl font-bold text-udaan-navy">Service Offers</h3>
-                <p className="text-udaan-navy/70">
-                  Professionals offer their skills and services to NGOs. From healthcare to education, connect your expertise with meaningful causes.
-                </p>
-              </div>
-              <div className="flex flex-col items-center space-y-4 text-center bg-white p-6 rounded-lg shadow-sm hover-scale">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-udaan-orange">
-                  <ShoppingBag className="h-8 w-8 text-udaan-white" />
-                </div>
-                <h3 className="text-xl font-bold text-udaan-navy">Marketplace</h3>
-                <p className="text-udaan-navy/70">
-                  Buy and sell goods while supporting social causes. Find essential supplies, donate items, and shop from socially conscious sellers.
-                </p>
-              </div>
-            </div>
-          </div>
-        </section>
+        {/* Enhanced How It Works Section */}
+        <HowItWorks />
 
         {/* CTA Section */}
         <section className="w-full py-12 md:py-24 lg:py-32 bg-udaan-navy text-white">
