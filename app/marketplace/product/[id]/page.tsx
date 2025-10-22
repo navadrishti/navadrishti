@@ -603,65 +603,141 @@ export default function ProductDetailsPage({ params }: { params: Promise<{ id: s
               </div>
             </div>
 
-            {/* Location Information */}
-            {(product.city || product.state_province || product.pincode || product.location) && (
-              <div className="border rounded-lg p-4 bg-blue-50">
-                <div className="flex items-start gap-3">
-                  <MapPin size={20} className="text-blue-600 mt-0.5" />
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-gray-900 mb-3">Complete Item Address</h3>
-                    <div className="space-y-2">
-                      {/* Complete Address Display */}
-                      <div className="bg-white rounded-lg p-3 border">
-                        <div className="space-y-1 text-sm">
-                          {product.city && (
+            {/* Location Information - Always show if any location data exists */}
+            <div className="border rounded-lg p-4 bg-blue-50">
+              <div className="flex items-start gap-3">
+                <MapPin size={20} className="text-blue-600 mt-0.5" />
+                <div className="flex-1">
+                  <h3 className="font-semibold text-gray-900 mb-3">Complete Item Address</h3>
+                  <div className="space-y-2">
+                    {/* Complete Address Display */}
+                    <div className="bg-white rounded-lg p-3 border">
+                      <div className="space-y-1 text-sm">
+                        {/* Check if we have meaningful location data (not just default country) */}
+                        {(product.city || product.state_province || product.pincode) ? (
+                          /* Show structured location fields */
+                          <>
+                            {product.country && product.country !== 'India' && (
+                              <div className="flex">
+                                <span className="text-gray-600 w-20">Country:</span>
+                                <span className="font-medium text-gray-900">{product.country}</span>
+                              </div>
+                            )}
+                            {product.state_province && (
+                              <div className="flex">
+                                <span className="text-gray-600 w-20">State:</span>
+                                <span className="font-medium text-gray-900">{product.state_province}</span>
+                              </div>
+                            )}
+                            {product.city && (
+                              <div className="flex">
+                                <span className="text-gray-600 w-20">City:</span>
+                                <span className="font-medium text-gray-900">{product.city}</span>
+                              </div>
+                            )}
+                            {product.pincode && (
+                              <div className="flex">
+                                <span className="text-gray-600 w-20">PIN Code:</span>
+                                <span className="font-medium text-gray-900">{product.pincode}</span>
+                              </div>
+                            )}
+                            {/* Show India only if no specific location is provided but it's not default */}
+                            {!product.state_province && !product.city && !product.pincode && product.country === 'India' && (
+                              <div className="flex">
+                                <span className="text-gray-600 w-20">Country:</span>
+                                <span className="font-medium text-gray-900">India</span>
+                              </div>
+                            )}
+                          </>
+                        ) : product.location ? (
+                          /* Fallback to basic location field */
+                          <div className="space-y-1">
                             <div className="flex">
-                              <span className="text-gray-600 w-16">City:</span>
-                              <span className="font-medium text-gray-900">{product.city}</span>
-                            </div>
-                          )}
-                          {product.state_province && (
-                            <div className="flex">
-                              <span className="text-gray-600 w-16">State:</span>
-                              <span className="font-medium text-gray-900">{product.state_province}</span>
-                            </div>
-                          )}
-                          {product.pincode && (
-                            <div className="flex">
-                              <span className="text-gray-600 w-16">PIN:</span>
-                              <span className="font-medium text-gray-900">{product.pincode}</span>
-                            </div>
-                          )}
-                          {product.country && (
-                            <div className="flex">
-                              <span className="text-gray-600 w-16">Country:</span>
-                              <span className="font-medium text-gray-900">{product.country}</span>
-                            </div>
-                          )}
-                          {/* Fallback to old location field if structured fields not available */}
-                          {!product.city && !product.state_province && product.location && (
-                            <div className="flex">
-                              <span className="text-gray-600 w-16">Location:</span>
+                              <span className="text-gray-600 w-20">Location:</span>
                               <span className="font-medium text-gray-900">{product.location}</span>
                             </div>
-                          )}
-                        </div>
+                            {product.country && product.country !== 'India' && (
+                              <div className="flex">
+                                <span className="text-gray-600 w-20">Country:</span>
+                                <span className="font-medium text-gray-900">{product.country}</span>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          /* Show seller location as fallback */
+                          <div className="space-y-1">
+                            {(product.seller_city || product.seller_state_province || product.seller_pincode) ? (
+                              <>
+                                <div className="flex items-center gap-2 mb-2">
+                                  <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">Seller Location</span>
+                                </div>
+                                {product.seller_state_province && (
+                                  <div className="flex">
+                                    <span className="text-gray-600 w-20">State:</span>
+                                    <span className="font-medium text-gray-900">{product.seller_state_province}</span>
+                                  </div>
+                                )}
+                                {product.seller_city && (
+                                  <div className="flex">
+                                    <span className="text-gray-600 w-20">City:</span>
+                                    <span className="font-medium text-gray-900">{product.seller_city}</span>
+                                  </div>
+                                )}
+                                {product.seller_pincode && (
+                                  <div className="flex">
+                                    <span className="text-gray-600 w-20">PIN Code:</span>
+                                    <span className="font-medium text-gray-900">{product.seller_pincode}</span>
+                                  </div>
+                                )}
+                              </>
+                            ) : (
+                              /* Final fallback */
+                              <div className="flex">
+                                <span className="text-gray-600 w-20">Location:</span>
+                                <span className="font-medium text-gray-500">Contact seller for location details</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
-                      {/* Delivery Options */}
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Truck size={16} className="text-blue-500" />
-                          <span className="text-sm text-blue-600 font-medium">Delivery available in this area</span>
-                        </div>
-                        <Button variant="outline" size="sm" className="text-xs">
-                          Check Pincode
-                        </Button>
+                    </div>
+                    {/* Delivery Options */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Truck size={16} className="text-blue-500" />
+                        <span className="text-sm text-blue-600 font-medium">
+                          {(product.city || product.state_province || product.pincode || product.location) 
+                            ? 'Delivery available in this area' 
+                            : (product.seller_city || product.seller_state_province || product.seller_pincode)
+                            ? 'Delivery from seller location'
+                            : 'Contact seller for delivery options'
+                          }
+                        </span>
                       </div>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="text-xs"
+                        disabled={!product.pincode && !product.seller_pincode && !product.location}
+                        onClick={() => {
+                          if (product.pincode) {
+                            toast.info(`Checking delivery availability for PIN: ${product.pincode}`)
+                          } else if (product.seller_pincode) {
+                            toast.info(`Item ships from PIN: ${product.seller_pincode}. Contact seller for delivery options.`)
+                          } else if (product.location) {
+                            toast.info(`Item location: ${product.location}. Contact seller for delivery options.`)
+                          } else {
+                            toast.info('Please contact seller for delivery options')
+                          }
+                        }}
+                      >
+                        Check Pincode
+                      </Button>
                     </div>
                   </div>
                 </div>
               </div>
-            )}
+            </div>
 
             {/* Condition & Category */}
             <div className="flex flex-wrap gap-2">
@@ -936,7 +1012,7 @@ export default function ProductDetailsPage({ params }: { params: Promise<{ id: s
                             <span>{product.weight_kg} kg</span>
                           </div>
                         )}
-                        {product.dimensions_cm && Object.values(product.dimensions_cm).some(v => v && v > 0) && (
+                        {product.dimensions_cm && Object.values(product.dimensions_cm).some((v: any) => v && typeof v === 'number' && v > 0) && (
                           <div className="flex justify-between border-b border-gray-200 pb-2">
                             <span className="text-gray-600 font-medium">Dimensions (L×W×H):</span>
                             <span>
@@ -1035,7 +1111,7 @@ export default function ProductDetailsPage({ params }: { params: Promise<{ id: s
                 {/* Show message if no specifications are available */}
                 {!product.brand && 
                  (!product.weight_kg || product.weight_kg <= 0) && 
-                 (!product.dimensions_cm || !Object.values(product.dimensions_cm).some(v => v && v > 0)) &&
+                 (!product.dimensions_cm || !Object.values(product.dimensions_cm).some((v: any) => v && typeof v === 'number' && v > 0)) &&
                  (!product.specifications || Object.keys(product.specifications).length === 0) &&
                  (!product.features || product.features.length === 0) && (
                   <div className="text-center py-12 text-gray-500">

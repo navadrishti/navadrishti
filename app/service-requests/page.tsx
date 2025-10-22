@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ProductCard } from '@/components/product-card'
+import { SkeletonHeader, SkeletonServiceCard } from '@/components/ui/skeleton'
 import { Search, MapPin, Users, Target, Clock, ArrowRight, Plus, HeartHandshake, UserRound, Building, Trash2, MoreVertical, Edit, Eye, Calendar } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
@@ -312,7 +313,13 @@ function ServiceRequestsContent() {
           
           <TabsContent value="all" className="mt-0">
             <div className="min-h-[400px]">
-              {filteredRequests.length > 0 ? (
+              {loading ? (
+                <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <SkeletonServiceCard key={i} />
+                  ))}
+                </div>
+              ) : filteredRequests.length > 0 ? (
                 <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
               {filteredRequests.map((request) => (
                 <Card key={request.id} className="group overflow-hidden hover:shadow-xl transition-all duration-300 border border-gray-200 bg-white">
@@ -513,7 +520,13 @@ function ServiceRequestsContent() {
             <div className="min-h-[400px]">
               {isNGO && (
                 <>
-                  {filteredRequests.length === 0 ? (
+                  {loading ? (
+                    <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                      {Array.from({ length: 6 }).map((_, i) => (
+                        <SkeletonServiceCard key={i} />
+                      ))}
+                    </div>
+                  ) : filteredRequests.length === 0 ? (
                   <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center">
                     <div className="mb-4 rounded-full bg-muted p-3">
                       <Target size={24} className="text-muted-foreground" />
@@ -697,7 +710,13 @@ function ServiceRequestsContent() {
                 </div>
               )}
               
-              {canVolunteer && filteredRequests.length === 0 ? (
+              {canVolunteer && loading ? (
+                <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <SkeletonServiceCard key={i} />
+                  ))}
+                </div>
+              ) : canVolunteer && filteredRequests.length === 0 ? (
                 <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center">
                   <div className="mb-4 rounded-full bg-muted p-3">
                     <HeartHandshake size={24} className="text-muted-foreground" />
@@ -847,7 +866,19 @@ function ServiceRequestsContent() {
 
 export default function ServiceRequestsPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-gray-50"><Header /><div className="container mx-auto px-4 py-8"><div className="text-center">Loading...</div></div></div>}>
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50">
+        <Header />
+        <div className="container mx-auto px-4 py-8">
+          <SkeletonHeader />
+          <div className="mt-8 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <SkeletonServiceCard key={i} />
+            ))}
+          </div>
+        </div>
+      </div>
+    }>
       <ServiceRequestsContent />
     </Suspense>
   )

@@ -7,6 +7,7 @@ import { ArrowLeft, MapPin, Users, Clock, Target, Calendar, User, Building, Mess
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
 import { Header } from '@/components/header'
+import { SkeletonHeader, SkeletonAvatarText, SkeletonTextLines, SkeletonBigBox } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -241,8 +242,52 @@ export default function ServiceRequestDetailPage() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
         <Header />
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <Loader2 className="h-8 w-8 animate-spin" />
+        <div className="container mx-auto px-4 py-8 max-w-4xl">
+          {/* Back button skeleton */}
+          <div className="mb-8">
+            <div className="h-10 bg-gray-200 rounded-md w-32 animate-pulse"></div>
+          </div>
+
+          {/* Main content skeleton */}
+          <div className="grid gap-8 md:grid-cols-3">
+            {/* Main content */}
+            <div className="md:col-span-2 space-y-6">
+              <SkeletonBigBox />
+              
+              {/* Details section */}
+              <div className="rounded-lg border bg-white p-6 space-y-4">
+                <SkeletonHeader />
+                <SkeletonTextLines lines={4} />
+                
+                {/* Info items */}
+                <div className="grid gap-4 md:grid-cols-2 mt-6">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <SkeletonAvatarText key={i} />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Sidebar */}
+            <div className="space-y-6">
+              <div className="rounded-lg border bg-white p-6">
+                <SkeletonAvatarText />
+                <div className="mt-4 space-y-3">
+                  <SkeletonTextLines lines={2} />
+                  <div className="h-10 bg-blue-200 rounded-md w-full animate-pulse"></div>
+                </div>
+              </div>
+              
+              <div className="rounded-lg border bg-white p-6">
+                <div className="h-6 bg-gray-200 rounded w-24 animate-pulse mb-4"></div>
+                <div className="space-y-3">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <SkeletonAvatarText key={i} />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     )

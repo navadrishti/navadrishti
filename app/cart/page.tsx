@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from 'sonner'
+import { SkeletonHeader, SkeletonImageText, SkeletonCard } from '@/components/ui/skeleton'
 import { 
   ShoppingCart, 
   Plus, 
@@ -245,11 +246,50 @@ export default function CartPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-background">
         <Header />
-        <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        </div>
+        <main className="flex-1 px-6 py-8 md:px-10">
+          {/* Header Skeleton */}
+          <div className="flex items-center justify-between mb-8">
+            <div className="h-10 bg-gray-200 rounded-md w-40 animate-pulse"></div>
+            <div className="flex items-center gap-3">
+              <div className="h-6 w-6 bg-gray-200 rounded animate-pulse"></div>
+              <SkeletonHeader />
+            </div>
+          </div>
+
+          {/* Cart Content Skeleton */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Cart Items */}
+            <div className="lg:col-span-2 space-y-4">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="rounded-lg border p-4 sm:p-6">
+                  <SkeletonImageText />
+                  <div className="mt-4 flex justify-between items-center">
+                    <div className="h-8 bg-gray-200 rounded-md w-24 animate-pulse"></div>
+                    <div className="h-6 bg-gray-200 rounded-md w-20 animate-pulse"></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Order Summary Skeleton */}
+            <div className="lg:col-span-1">
+              <div className="sticky top-4 rounded-lg border p-6 space-y-4">
+                <div className="h-6 bg-gray-200 rounded-md w-32 animate-pulse"></div>
+                <div className="space-y-3">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="flex justify-between">
+                      <div className="h-4 bg-gray-200 rounded w-20 animate-pulse"></div>
+                      <div className="h-4 bg-gray-200 rounded w-16 animate-pulse"></div>
+                    </div>
+                  ))}
+                </div>
+                <div className="h-12 bg-blue-200 rounded-md w-full animate-pulse"></div>
+              </div>
+            </div>
+          </div>
+        </main>
       </div>
     )
   }
@@ -258,7 +298,7 @@ export default function CartPage() {
     <div className="min-h-screen bg-background">
       <Header />
       
-      <main className="container mx-auto px-4 py-8">
+      <main className="flex-1 px-6 py-8 md:px-10">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <Button 

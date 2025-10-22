@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { ProductCard } from '@/components/product-card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { SkeletonCard, SkeletonHeader } from '@/components/ui/skeleton'
 import { Search, PackagePlus, Trash2, Plus, ArrowRight, ShoppingBag } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
@@ -151,8 +152,40 @@ export default function MarketplacePage() {
       <div className="flex min-h-screen flex-col">
         <Header />
         <main className="flex-1 px-6 py-8 md:px-10">
-          <div className="text-center py-8">
-            <p>Loading marketplace...</p>
+          {/* Header Skeleton */}
+          <div className="mb-8">
+            <SkeletonHeader />
+          </div>
+
+          {/* CTA Section Skeleton */}
+          {user && (
+            <div className="mb-8 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200">
+              <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+                <div className="text-center md:text-left space-y-2">
+                  <div className="h-6 bg-blue-200 rounded-full w-48 animate-pulse"></div>
+                  <div className="h-4 bg-blue-200 rounded-full w-64 animate-pulse"></div>
+                </div>
+                <div className="h-12 bg-blue-200 rounded-md w-32 animate-pulse"></div>
+              </div>
+            </div>
+          )}
+
+          {/* Tabs and Controls Skeleton */}
+          <div className="space-y-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="h-10 bg-gray-200 rounded-md w-72 animate-pulse"></div>
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                <div className="h-10 bg-gray-200 rounded-md w-80 animate-pulse"></div>
+                <div className="h-10 bg-gray-200 rounded-md w-48 animate-pulse"></div>
+              </div>
+            </div>
+
+            {/* Products Grid Skeleton */}
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <SkeletonCard key={i} />
+              ))}
+            </div>
           </div>
         </main>
       </div>

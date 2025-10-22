@@ -12,6 +12,7 @@ import { Building, ShoppingBag, HeartHandshake, TicketCheck, Package, Clock, Che
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 import { VerificationBadge, VerificationDetails } from '@/components/verification-badge';
+import { SkeletonOrderItem } from '@/components/ui/skeleton';
 
 export default function CompanyDashboard() {
   const { user, refreshUser } = useAuth();
@@ -429,9 +430,10 @@ export default function CompanyDashboard() {
                           </div>
                           <div className="divide-y">
                             {loadingData ? (
-                              <div className="p-4 text-center">
-                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto"></div>
-                                <p className="text-sm text-muted-foreground mt-2">Loading purchased items...</p>
+                              <div className="space-y-3 p-4">
+                                {Array.from({ length: 3 }).map((_, i) => (
+                                  <SkeletonOrderItem key={i} />
+                                ))}
                               </div>
                             ) : purchasedItems.length === 0 ? (
                               <div className="p-4 text-center text-muted-foreground">
@@ -492,9 +494,10 @@ export default function CompanyDashboard() {
                           </div>
                           <div className="divide-y">
                             {loadingData ? (
-                              <div className="p-4 text-center">
-                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto"></div>
-                                <p className="text-sm text-muted-foreground mt-2">Loading listings...</p>
+                              <div className="space-y-3 p-4">
+                                {Array.from({ length: 3 }).map((_, i) => (
+                                  <SkeletonOrderItem key={i} />
+                                ))}
                               </div>
                             ) : marketplaceListings.length === 0 ? (
                               <div className="p-4 text-center text-muted-foreground">
