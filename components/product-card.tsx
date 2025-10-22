@@ -9,7 +9,7 @@ import { Star, Plus, Minus, MapPin, Truck, ShoppingCart, Trash2, User, Building,
 import { formatPrice } from "@/lib/currency"
 import { ProductDetails } from "./product-details"
 import { useCart } from "@/lib/cart-context"
-import { toast } from "sonner"
+import { notify } from "@/lib/notifications"
 
 interface ProductCardProps {
   title: string
@@ -245,7 +245,7 @@ export function ProductCard({
                     );
                   }
                 } catch (parseError) {
-                  console.warn('Failed to parse images JSON for item:', item?.id, parseError);
+                  // Silent fallback for invalid JSON
                 }
               } else if (Array.isArray(item?.images)) {
                 imagesArray = item.images.filter((url: any) => 
@@ -253,7 +253,7 @@ export function ProductCard({
                 );
               }
             } catch (e) {
-              console.warn('Error parsing images for item:', item?.id, e);
+              // Silent fallback to empty array for invalid image data
               imagesArray = [];
             }
 

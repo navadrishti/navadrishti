@@ -5,6 +5,7 @@ import { AuthProvider } from '@/lib/auth-context'
 import { CartProvider } from '@/lib/cart-context'
 import { ThemeProvider } from '@/components/theme-provider'
 import { PageTransition } from '@/components/page-transition'
+import { Toaster } from 'sonner'
 import Script from 'next/script'
 
 export const metadata: Metadata = {
@@ -132,6 +133,13 @@ export default function RootLayout({
               <PageTransition>
                 {children}
               </PageTransition>
+              <Toaster 
+                position="top-right" 
+                richColors 
+                closeButton 
+                duration={4000}
+                theme="system"
+              />
             </CartProvider>
           </AuthProvider>
         </ThemeProvider>
