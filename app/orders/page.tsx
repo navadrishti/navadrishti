@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { SkeletonHeader, SkeletonOrderItem } from '@/components/ui/skeleton'
 import { Package, MapPin, Clock, CreditCard, Truck, CheckCircle, XCircle, AlertCircle } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import Link from 'next/link'
@@ -287,8 +288,27 @@ export default function OrdersPage() {
 
           <TabsContent value={activeTab}>
             {loading ? (
-              <div className="flex justify-center items-center h-64">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+              <div className="space-y-4">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="rounded-lg border">
+                    <div className="p-4 border-b space-y-3">
+                      <div className="flex justify-between items-start">
+                        <div className="space-y-2">
+                          <div className="h-5 bg-gray-200 rounded w-32 animate-pulse"></div>
+                          <div className="flex gap-2">
+                            <div className="h-6 bg-blue-200 rounded-full w-20 animate-pulse"></div>
+                            <div className="h-6 bg-green-200 rounded-full w-16 animate-pulse"></div>
+                          </div>
+                        </div>
+                        <div className="text-right space-y-2">
+                          <div className="h-8 bg-gray-200 rounded w-20 animate-pulse"></div>
+                          <div className="h-4 bg-gray-200 rounded w-24 animate-pulse"></div>
+                        </div>
+                      </div>
+                    </div>
+                    <SkeletonOrderItem />
+                  </div>
+                ))}
               </div>
             ) : error ? (
               <div className="text-center py-8">

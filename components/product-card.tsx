@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { ImageCarousel } from "@/components/ui/image-carousel"
 import { Star, Plus, Minus, MapPin, Truck, ShoppingCart, Trash2, User, Building, Users, Shield } from "lucide-react"
 import { formatPrice } from "@/lib/currency"
 import { ProductDetails } from "./product-details"
@@ -87,7 +88,6 @@ export function ProductCard({
   const { addToCart } = useCart();
   const [showDetails, setShowDetails] = useState(false);
   const [quantity, setQuantity] = useState(1);
-  const [selectedImage, setSelectedImage] = useState(0);
   const [addingToCart, setAddingToCart] = useState(false);
   
   // Determine what type of card to render based on provided props
@@ -225,58 +225,84 @@ export function ProductCard({
         <div className="relative h-56 overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100 rounded-t-xl">
           {(() => {
             // Safely parse images - handle both string and array formats
-            let imagesArray = [];
+            // Support Cloudinary URLs stored in the database
+            let imagesArray: string[] = [];
+            
+            // Better validation for image URLs
+            const isValidImageUrl = (url: string): boolean => {
+              if (!url || typeof url !== 'string' || url.trim() === '') return false;
+              // Check if it's actually a URL (starts with http/https or is a valid path)
+              return url.startsWith('http') || url.startsWith('/') || url.includes('.');
+            };
+
             try {
-              if (typeof item?.images === 'string') {
-                imagesArray = JSON.parse(item.images);
+              if (typeof item?.images === 'string' && item.images.trim() && item.images !== '[]') {
+                try {
+                  const parsed = JSON.parse(item.images);
+                  if (Array.isArray(parsed)) {
+                    imagesArray = parsed.filter((url: any) => 
+                      url && typeof url === 'string' && isValidImageUrl(url)
+                    );
+                  }
+                } catch (parseError) {
+                  console.warn('Failed to parse images JSON for item:', item?.id, parseError);
+                }
               } else if (Array.isArray(item?.images)) {
-                imagesArray = item.images;
+                imagesArray = item.images.filter((url: any) => 
+                  url && typeof url === 'string' && isValidImageUrl(url)
+                );
               }
             } catch (e) {
+              console.warn('Error parsing images for item:', item?.id, e);
               imagesArray = [];
             }
 
+            // Fallback to the single image prop if no images in array
+            if (imagesArray.length === 0 && image && typeof image === 'string' && isValidImageUrl(image)) {
+              imagesArray = [image];
+            }
+            
             return (
               <>
-                {(imagesArray?.[selectedImage] || image) ? (
-                  <img 
-                    src={imagesArray?.[selectedImage] || image} 
-                    alt={title} 
-                    className="w-full h-full object-cover transition-all duration-500 group-hover:scale-110" 
-                  />
-                ) : (
-                  <div className="w-full h-full bg-gray-100 flex items-center justify-center text-gray-400">
-                    <div className="text-center">
-                      <svg className="w-12 h-12 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                      <p className="text-xs">No image</p>
+                {/* Enhanced ImageCarousel with hover effects and Cloudinary support */}
+                {imagesArray.length === 0 ? (
+                  <div className="h-full w-full bg-gray-50 flex items-center justify-center">
+                    <div className="text-center p-6">
+                      <div className="w-16 h-16 mx-auto mb-3 text-gray-300">
+                        <svg fill="currentColor" viewBox="0 0 24 24" className="w-full h-full">
+                          <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
+                        </svg>
+                      </div>
+                      <p className="text-sm text-gray-400">No image available</p>
                     </div>
                   </div>
+                ) : (
+                  <ImageCarousel
+                    images={imagesArray}
+                    alt={title}
+                    className="h-full w-full"
+                    showThumbnails={false}
+                    autoplay={true}
+                    autoplayInterval={3000}
+                    hoverToPlay={true}
+                    showImageCount={imagesArray.length > 1}
+                    enableKeyboardNav={false}
+                  />
                 )}
-                
-                {/* Image indicators */}
-                {imagesArray && imagesArray.length > 1 && (
-                  <div className="absolute bottom-2 left-2 flex gap-1">
-                    {imagesArray.slice(0, 4).map((_: any, index: number) => (
-                      <button
-                        key={index}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedImage(index);
-                        }}
-                        className={`w-2 h-2 rounded-full transition-colors ${
-                          selectedImage === index ? 'bg-white' : 'bg-white/50'
-                        }`}
-                      />
-                    ))}
-                    {imagesArray.length > 4 && (
-                      <div className="w-2 h-2 rounded-full bg-white/50 flex items-center justify-center">
-                        <span className="text-xs text-black">+</span>
-                      </div>
-                    )}
+
+                {/* Multiple Images Badge */}
+                {imagesArray.length > 1 && (
+                  <div className="absolute bottom-2 left-2">
+                    <Badge variant="secondary" className="text-xs bg-black/70 text-white border-0 backdrop-blur-sm">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" className="mr-1">
+                        <path d="M22 16V7c0-1.1-.9-2-2-2H9c-1.1 0-2 .9-2 2v9c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2zm-10.6-3.47l1.63 2.18 2.58-3.22c.2-.25.58-.25.78 0l2.96 3.7c.26.33.03.81-.39.81H9.5c-.42 0-.65-.48-.39-.81l1.29-1.66z"/>
+                        <path d="M2 7v12c0 1.1.9 2 2 2h12v-2H4V7H2z"/>
+                      </svg>
+                      {imagesArray.length}
+                    </Badge>
                   </div>
                 )}
+
               </>
             );
           })()}

@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { ProductCard } from '@/components/product-card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { SkeletonHeader, SkeletonServiceCard } from '@/components/ui/skeleton'
 import { Search, MapPin, Users, Target, Clock, ArrowRight, Plus, HeartHandshake, UserRound, Building, DollarSign, Trash2, MoreVertical, Edit, Eye } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { formatPrice } from '@/lib/currency'
@@ -254,7 +255,13 @@ export default function ServiceOffersPage() {
           
           <TabsContent value="all" className="mt-0">
             <div className="min-h-[400px]">
-              {filteredOffers.length > 0 ? (
+              {loading ? (
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <SkeletonServiceCard key={i} />
+                  ))}
+                </div>
+              ) : filteredOffers.length > 0 ? (
                 <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {filteredOffers.map((offer) => (
                 <Card key={offer.id} className="group overflow-hidden hover:shadow-xl transition-all duration-300 border border-gray-200 bg-white">
@@ -440,7 +447,13 @@ export default function ServiceOffersPage() {
             <div className="min-h-[400px]">
               {isNGO && (
                 <>
-                  {filteredOffers.filter(offer => offer.ngo_name === user?.name).length === 0 ? (
+                  {loading ? (
+                    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                      {Array.from({ length: 6 }).map((_, i) => (
+                        <SkeletonServiceCard key={i} />
+                      ))}
+                    </div>
+                  ) : filteredOffers.filter(offer => offer.ngo_name === user?.name).length === 0 ? (
                     <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center h-[400px]">
                       <div className="mb-4 rounded-full bg-muted p-3">
                         <Target size={24} className="text-muted-foreground" />
@@ -602,7 +615,13 @@ export default function ServiceOffersPage() {
           
           <TabsContent value="hired" className="mt-0">
             <div className="min-h-[400px]">
-              {canHireServices && (
+              {canHireServices && loading ? (
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <SkeletonServiceCard key={i} />
+                  ))}
+                </div>
+              ) : canHireServices && (
                 <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center h-[400px]">
                   <div className="mb-4 rounded-full bg-muted p-3">
                     <Target size={24} className="text-muted-foreground" />

@@ -8,10 +8,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Building, Users, ShoppingBag, BarChart4, Clock, Plus, HeartHandshake, TicketCheck, CheckCircle, DollarSign, AlertTriangle, Package, Trash2 } from 'lucide-react';
+import { UserRound, Clock, CheckCircle, AlertTriangle, ShoppingBag, HeartHandshake, Trash2, Plus, Building, TicketCheck, Package } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 import { VerificationBadge, VerificationDetails } from '@/components/verification-badge';
+import { SkeletonOrderItem } from '@/components/ui/skeleton';
 
 export default function NGODashboard() {
   const { user, refreshUser } = useAuth();
@@ -675,9 +676,10 @@ export default function NGODashboard() {
                           </div>
                           <div className="divide-y">
                             {loadingData ? (
-                              <div className="p-4 text-center">
-                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto"></div>
-                                <p className="text-sm text-muted-foreground mt-2">Loading marketplace items...</p>
+                              <div className="space-y-3 p-4">
+                                {Array.from({ length: 3 }).map((_, i) => (
+                                  <SkeletonOrderItem key={i} />
+                                ))}
                               </div>
                             ) : marketplaceItems.length === 0 ? (
                               <div className="p-4 text-center text-muted-foreground">

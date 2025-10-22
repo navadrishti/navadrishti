@@ -12,6 +12,7 @@ import { UserRound, Clock, CheckCircle, AlertTriangle, ShoppingBag, HeartHandsha
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 import { VerificationBadge, VerificationDetails } from '@/components/verification-badge';
+import { SkeletonHeader, SkeletonStats, SkeletonOrderItem } from '@/components/ui/skeleton';
 
 export default function IndividualDashboard() {
   const { user, refreshUser } = useAuth();
@@ -442,9 +443,10 @@ export default function IndividualDashboard() {
                           </div>
                           <div className="divide-y">
                             {loadingOrders ? (
-                              <div className="p-4 text-center">
-                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto"></div>
-                                <p className="text-sm text-muted-foreground mt-2">Loading orders...</p>
+                              <div className="space-y-3 p-4">
+                                {Array.from({ length: 3 }).map((_, i) => (
+                                  <SkeletonOrderItem key={i} />
+                                ))}
                               </div>
                             ) : orders.length === 0 ? (
                               <div className="p-4 text-center text-muted-foreground">
@@ -517,9 +519,10 @@ export default function IndividualDashboard() {
                           </div>
                           <div className="divide-y">
                             {loadingListings ? (
-                              <div className="p-4 text-center">
-                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto"></div>
-                                <p className="text-sm text-muted-foreground mt-2">Loading listings...</p>
+                              <div className="space-y-3 p-4">
+                                {Array.from({ length: 3 }).map((_, i) => (
+                                  <SkeletonOrderItem key={i} />
+                                ))}
                               </div>
                             ) : myListings.length === 0 ? (
                               <div className="p-4 text-center text-muted-foreground">
