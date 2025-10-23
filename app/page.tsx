@@ -125,13 +125,7 @@ export default function Home() {
                 <div className="w-full h-full bg-udaan-blue" />
               </div>
               
-              {/* Red diagonal line - Desktop only */}
-              <div 
-                className="absolute inset-0 pointer-events-none"
-                style={{
-                  background: 'linear-gradient(135deg, transparent 45%, #ef4444 45%, #ef4444 47%, transparent 47%)'
-                }}
-              />
+
             </div>
 
             {/* Tablet Layout - More conservative diagonal for better text space */}
@@ -145,12 +139,7 @@ export default function Home() {
                 <div className="w-full h-full bg-udaan-blue" />
               </div>
               
-              <div 
-                className="absolute inset-0 pointer-events-none"
-                style={{
-                  background: 'linear-gradient(115deg, transparent 25%, #ef4444 25%, #ef4444 27%, transparent 27%)'
-                }}
-              />
+
             </div>
 
             {/* Mobile Layout - Creative Liquid Container Design */}
@@ -262,7 +251,7 @@ export default function Home() {
                   <div className="space-y-3 sm:space-y-4 md:backdrop-blur-none backdrop-blur-sm md:bg-transparent bg-black/10 md:p-0 p-4 md:rounded-none rounded-2xl">
                     <h1 className="text-2xl xs:text-3xl sm:text-4xl md:text-3xl lg:text-5xl xl:text-6xl font-bold tracking-tight text-white leading-tight max-w-full sm:max-w-lg md:max-w-xs lg:max-w-lg xl:max-w-none drop-shadow-lg">
                       Empowering Communities Through Business 
-                      <span className="block text-orange-400 animate-pulse">Literacy</span>
+                      <span className="block text-orange-400">Literacy</span>
                     </h1>
                     <p className="text-sm xs:text-base sm:text-lg md:text-sm lg:text-lg xl:text-xl text-white/95 leading-relaxed max-w-full sm:max-w-md md:max-w-xs lg:max-w-md xl:max-w-2xl drop-shadow-md">
                       We equip individuals with the knowledge and skills to foster economic growth and create sustainable livelihoods in their communities.
