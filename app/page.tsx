@@ -129,9 +129,9 @@ export default function Home() {
           {/* Content Container */}
           <div className="relative z-10 h-full">
             <div className="udaan-container px-4 md:px-6 h-full">
-              <div className="flex lg:grid lg:grid-cols-2 gap-8 h-full items-center justify-center lg:justify-start">
-                {/* Left Side Content - Centered on mobile, left-aligned on desktop */}
-                <div className="flex flex-col justify-center space-y-6 animate-fadeIn lg:pr-12 w-full lg:w-auto text-center lg:text-left">
+              <div className="flex lg:grid lg:grid-cols-2 gap-8 h-full items-center justify-start">
+                {/* Left Side Content - Left-aligned on both mobile and desktop */}
+                <div className="flex flex-col justify-center space-y-6 animate-fadeIn lg:pr-12 w-full lg:w-auto text-left">
                   <div className="space-y-4">
                     <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-white leading-tight max-w-lg lg:max-w-none">
                       Empowering Communities Through Business 
@@ -142,7 +142,7 @@ export default function Home() {
                     </p>
                   </div>
                   
-                  <div className="flex flex-col sm:flex-row gap-4 items-center lg:items-start">
+                  <div className="flex flex-col sm:flex-row gap-4 items-start">
                     <Dialog open={open} onOpenChange={setOpen}>
                       <DialogTrigger asChild>
                         <Button 
