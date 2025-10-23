@@ -27,6 +27,7 @@ export function HeroCarousel({
 }: HeroCarouselProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isAutoPlaying, setIsAutoPlaying] = useState(true);
+  const [imageErrors, setImageErrors] = useState<Set<number>>(new Set());
 
   // Auto-play functionality
   useEffect(() => {
@@ -59,6 +60,18 @@ export function HeroCarousel({
     setTimeout(() => setIsAutoPlaying(true), 3000); // Resume auto-play after 3 seconds
   };
 
+  const handleImageError = (index: number) => {
+    setImageErrors(prev => new Set([...prev, index]));
+  };
+
+  const handleImageLoad = (index: number) => {
+    setImageErrors(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(index);
+      return newSet;
+    });
+  };
+
   if (images.length === 0) {
     return (
       <div className="w-full h-full bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center">
@@ -78,14 +91,26 @@ export function HeroCarousel({
               index === currentIndex ? 'opacity-100' : 'opacity-0'
             }`}
           >
-            <Image
-              src={image.src}
-              alt={image.alt}
-              fill
-              className="object-cover"
-              priority={index === 0}
-              sizes="(max-width: 768px) 100vw, 50vw"
-            />
+            {imageErrors.has(index) ? (
+              <div className="w-full h-full bg-gradient-to-br from-blue-100 via-blue-200 to-blue-300 flex items-center justify-center">
+                <div className="text-center text-blue-600">
+                  <div className="text-4xl mb-2">🖼️</div>
+                  <p className="text-lg font-medium">Image Loading...</p>
+                  <p className="text-sm opacity-75">Please wait</p>
+                </div>
+              </div>
+            ) : (
+              <Image
+                src={image.src}
+                alt={image.alt}
+                fill
+                className="object-cover"
+                priority={index === 0}
+                sizes="(max-width: 768px) 100vw, 50vw"
+                onError={() => handleImageError(index)}
+                onLoad={() => handleImageLoad(index)}
+              />
+            )}
             {/* Overlay for better text readability */}
             <div className="absolute inset-0 bg-black/20" />
             

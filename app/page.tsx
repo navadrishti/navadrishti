@@ -77,7 +77,7 @@ export default function Home() {
                     description: "Building sustainable livelihoods through business education"
                   },
                   {
-                    src: "https://images.unsplash.com/photo-1544027993-37dbfe43562a?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1920&q=95", 
+                    src: "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1920&q=95", 
                     alt: "Skill development and training",
                     title: "Skill Development",
                     description: "Professional training programs for economic growth"
