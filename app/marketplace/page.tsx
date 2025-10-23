@@ -247,9 +247,8 @@ export default function MarketplacePage() {
 
         <Tabs value={currentView} onValueChange={handleTabChange} className="space-y-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <TabsList className="grid w-full grid-cols-3 lg:w-auto">
+            <TabsList className="grid w-full grid-cols-2 lg:w-auto">
               <TabsTrigger value="all">All Items</TabsTrigger>
-              <TabsTrigger value="featured">Featured</TabsTrigger>
               <TabsTrigger value="nearby">Nearby</TabsTrigger>
             </TabsList>
             
@@ -318,51 +317,6 @@ export default function MarketplacePage() {
                         <Button size="lg" className="bg-blue-600 hover:bg-blue-700 text-white">
                           <Plus size={18} className="mr-2" />
                           Be the first to list an item
-                        </Button>
-                      </Link>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          </TabsContent>
-
-          <TabsContent value="featured" className="space-y-6">
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {filteredItems.filter((item: any) => item.featured).map((item: any) => (
-                <ProductCard
-                  key={item.id}
-                  title={item.title}
-                  description={`${item.description} • Quantity: ${item.quantity}`}
-                  category={item.category}
-                  price={item.price}
-                  image={item.images?.[0] || ""}
-                  provider={item.seller_name}
-                  providerType={item.seller_type}
-                  location={item.seller_location}
-                  tags={Array.isArray(item.tags) ? item.tags : []}
-                  item={item}
-                  badge={<Badge variant="secondary" className="bg-yellow-100 text-yellow-800">Featured</Badge>}
-                  showDeleteButton={!!(user && user.id === item.seller_id)}
-                  onDelete={() => handleDeleteItem(item.id)}
-                  isDeleting={deleting === item.id}
-                />
-              ))}
-              {filteredItems.filter((item: any) => item.featured).length === 0 && (
-                <div className="col-span-full text-center py-12">
-                  <div className="max-w-md mx-auto">
-                    <div className="mb-4">
-                      <ShoppingBag size={48} className="mx-auto text-gray-400 mb-4" />
-                    </div>
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">No featured items</h3>
-                    <p className="text-gray-500 mb-6">
-                      No featured items available right now.
-                    </p>
-                    {user && user.user_type !== 'ngo' && (
-                      <Link href="/marketplace/create">
-                        <Button size="lg" className="bg-blue-600 hover:bg-blue-700 text-white">
-                          <Plus size={18} className="mr-2" />
-                          List your item
                         </Button>
                       </Link>
                     )}
