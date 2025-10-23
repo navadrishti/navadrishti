@@ -48,14 +48,14 @@ export default function Home() {
       <Header />
       <main className="flex-1">
         {/* Hero Section with Diagonal Split */}
-        <section className="relative w-full h-screen min-h-[600px] overflow-hidden">
+        <section className="relative w-full h-screen min-h-[500px] sm:min-h-[600px] md:min-h-[700px] lg:min-h-[600px] overflow-hidden">
           {/* Background Container */}
           <div className="absolute inset-0">
             {/* Left Side - Solid Blue Background */}
             <div className="absolute inset-0 bg-udaan-blue" />
             
-            {/* Right Side - Image Carousel - Desktop Only */}
-            <div className="absolute inset-0 hidden lg:block">
+            {/* Right Side - Image Carousel - Tablet and Desktop */}
+            <div className="absolute inset-0 hidden md:block">
               <HeroCarousel
                 images={[
                   {
@@ -122,37 +122,152 @@ export default function Home() {
               />
             </div>
 
-            {/* Mobile Layout - Full blue background */}
-            <div className="absolute inset-0 lg:hidden bg-udaan-blue" />
+            {/* Tablet Layout - More conservative diagonal for better text space */}
+            <div className="absolute inset-0 hidden md:block lg:hidden">
+              <div 
+                className="absolute inset-0 bg-transparent"
+                style={{
+                  clipPath: 'polygon(0 0, 40% 0, 25% 100%, 0 100%)'
+                }}
+              >
+                <div className="w-full h-full bg-udaan-blue" />
+              </div>
+              
+              <div 
+                className="absolute inset-0 pointer-events-none"
+                style={{
+                  background: 'linear-gradient(115deg, transparent 25%, #ef4444 25%, #ef4444 27%, transparent 27%)'
+                }}
+              />
+            </div>
+
+            {/* Mobile Layout - Creative Liquid Container Design */}
+            <div className="absolute inset-0 md:hidden">
+              {/* Base gradient background */}
+              <div className="absolute inset-0 bg-gradient-to-br from-udaan-blue via-blue-600 to-udaan-navy overflow-hidden"></div>
+              
+              {/* Animated liquid blobs */}
+              <div className="absolute inset-0">
+                {/* Large floating blob */}
+                <div 
+                  className="absolute w-96 h-96 bg-gradient-to-r from-orange-400/30 to-orange-500/20 rounded-full blur-3xl animate-float-slow"
+                  style={{
+                    top: '10%',
+                    right: '-20%',
+                    animationDelay: '0s'
+                  }}
+                ></div>
+                
+                {/* Medium blob */}
+                <div 
+                  className="absolute w-64 h-64 bg-gradient-to-l from-blue-300/25 to-cyan-400/15 rounded-full blur-2xl animate-float-medium"
+                  style={{
+                    bottom: '20%',
+                    left: '-15%',
+                    animationDelay: '2s'
+                  }}
+                ></div>
+                
+                {/* Small accent blob */}
+                <div 
+                  className="absolute w-32 h-32 bg-gradient-to-tr from-orange-300/40 to-yellow-400/25 rounded-full blur-xl animate-float-fast"
+                  style={{
+                    top: '60%',
+                    right: '10%',
+                    animationDelay: '1s'
+                  }}
+                ></div>
+                
+                {/* Tiny floating elements */}
+                <div 
+                  className="absolute w-16 h-16 bg-white/10 rounded-full blur-sm animate-float-gentle"
+                  style={{
+                    top: '30%',
+                    left: '20%',
+                    animationDelay: '3s'
+                  }}
+                ></div>
+                
+                <div 
+                  className="absolute w-20 h-20 bg-orange-200/20 rounded-full blur-md animate-float-gentle"
+                  style={{
+                    bottom: '40%',
+                    right: '30%',
+                    animationDelay: '4s'
+                  }}
+                ></div>
+              </div>
+              
+              {/* Animated particles */}
+              <div className="absolute inset-0 overflow-hidden">
+                {[...Array(8)].map((_, i) => (
+                  <div
+                    key={i}
+                    className="absolute w-1 h-1 bg-white/30 rounded-full animate-particle"
+                    style={{
+                      left: `${Math.random() * 100}%`,
+                      top: `${Math.random() * 100}%`,
+                      animationDelay: `${i * 0.5}s`,
+                      animationDuration: `${3 + Math.random() * 2}s`
+                    }}
+                  ></div>
+                ))}
+              </div>
+            </div>
+            
+            {/* Infinite liquid wave overlay - Mobile only */}
+            <div className="absolute bottom-0 left-0 right-0 h-16 md:hidden pointer-events-none overflow-hidden">
+              <div className="absolute bottom-0 w-full h-full animate-wave-flow">
+                <svg 
+                  className="absolute bottom-0 w-[200%] h-full" 
+                  viewBox="0 0 2400 60" 
+                  preserveAspectRatio="none"
+                >
+                  <path 
+                    d="M0,40 Q300,10 600,40 T1200,40 Q1500,10 1800,40 T2400,40 L2400,60 L0,60 Z" 
+                    fill="url(#infiniteWaveGradient)"
+                  />
+                  <defs>
+                    <linearGradient id="infiniteWaveGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="0%" stopColor="rgba(244, 123, 32, 0.5)" />
+                      <stop offset="25%" stopColor="rgba(59, 130, 246, 0.4)" />
+                      <stop offset="50%" stopColor="rgba(244, 123, 32, 0.5)" />
+                      <stop offset="75%" stopColor="rgba(59, 130, 246, 0.4)" />
+                      <stop offset="100%" stopColor="rgba(244, 123, 32, 0.5)" />
+                    </linearGradient>
+                  </defs>
+                </svg>
+              </div>
+            </div>
           </div>
 
           {/* Content Container */}
           <div className="relative z-10 h-full">
-            <div className="udaan-container px-4 md:px-6 h-full">
-              <div className="flex lg:grid lg:grid-cols-2 gap-8 h-full items-center justify-start">
-                {/* Left Side Content - Left-aligned on both mobile and desktop */}
-                <div className="flex flex-col justify-center space-y-6 animate-fadeIn lg:pr-12 w-full lg:w-auto text-left">
-                  <div className="space-y-4">
-                    <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-white leading-tight max-w-lg lg:max-w-none">
+            <div className="udaan-container px-4 sm:px-6 md:px-8 lg:px-6 h-full">
+              <div className="flex md:grid md:grid-cols-5 lg:grid-cols-2 gap-4 md:gap-6 lg:gap-8 h-full items-center justify-start">
+                {/* Left Side Content - Enhanced for mobile liquid design */}
+                <div className="flex flex-col justify-center space-y-4 sm:space-y-5 md:space-y-6 animate-fadeIn md:pr-4 lg:pr-12 w-full md:col-span-2 lg:col-span-1 text-left relative z-10">
+                  <div className="space-y-3 sm:space-y-4 md:backdrop-blur-none backdrop-blur-sm md:bg-transparent bg-black/10 md:p-0 p-4 md:rounded-none rounded-2xl">
+                    <h1 className="text-2xl xs:text-3xl sm:text-4xl md:text-3xl lg:text-5xl xl:text-6xl font-bold tracking-tight text-white leading-tight max-w-full sm:max-w-lg md:max-w-xs lg:max-w-lg xl:max-w-none drop-shadow-lg">
                       Empowering Communities Through Business 
-                      <span className="block text-orange-400">Literacy</span>
+                      <span className="block text-orange-400 animate-pulse">Literacy</span>
                     </h1>
-                    <p className="text-base sm:text-lg md:text-xl text-white/90 leading-relaxed max-w-md lg:max-w-2xl">
+                    <p className="text-sm xs:text-base sm:text-lg md:text-sm lg:text-lg xl:text-xl text-white/95 leading-relaxed max-w-full sm:max-w-md md:max-w-xs lg:max-w-md xl:max-w-2xl drop-shadow-md">
                       We equip individuals with the knowledge and skills to foster economic growth and create sustainable livelihoods in their communities.
                     </p>
                   </div>
                   
-                  <div className="flex flex-col sm:flex-row gap-4 items-start">
+                  <div className="flex flex-col md:flex-row gap-3 sm:gap-4 items-start">
                     <Dialog open={open} onOpenChange={setOpen}>
                       <DialogTrigger asChild>
                         <Button 
                           size="lg" 
-                          className="h-14 text-lg px-8" 
+                          className="group h-12 xs:h-13 sm:h-14 md:h-12 lg:h-14 text-base xs:text-lg sm:text-lg md:text-base lg:text-lg px-6 xs:px-7 sm:px-8 md:px-6 lg:px-8 w-full md:w-auto md:transform-none transform hover:scale-105 transition-all duration-300 shadow-lg md:shadow-none hover:shadow-xl" 
                           variant="udaan-primary"
                           onClick={handleGetStarted}
                         >
                           {user ? 'Go to Dashboard' : 'Get Started'}
-                          <ArrowRight className="ml-2 h-5 w-5" />
+                          <ArrowRight className="ml-2 h-4 xs:h-5 sm:h-5 md:h-4 lg:h-5 w-4 xs:w-5 sm:w-5 md:w-4 lg:w-5 transition-transform group-hover:translate-x-1" />
                         </Button>
                       </DialogTrigger>
                       <DialogContent className="sm:max-w-md">
@@ -196,7 +311,7 @@ export default function Home() {
                     
                     {!user ? (
                       <Link href="/login">
-                        <Button size="lg" variant="udaan-outline" className="h-14 text-lg px-8">
+                        <Button size="lg" variant="udaan-outline" className="h-12 xs:h-13 sm:h-14 md:h-12 lg:h-14 text-base xs:text-lg sm:text-lg md:text-base lg:text-lg px-6 xs:px-7 sm:px-8 md:px-6 lg:px-8 w-full md:w-auto">
                           Sign In
                         </Button>
                       </Link>
@@ -205,9 +320,9 @@ export default function Home() {
                         <Button 
                           size="lg" 
                           variant="udaan-outline" 
-                          className="h-14 text-lg px-8"
+                          className="h-12 xs:h-13 sm:h-14 md:h-12 lg:h-14 text-base xs:text-lg sm:text-lg md:text-base lg:text-lg px-6 xs:px-7 sm:px-8 md:px-6 lg:px-8 w-full md:w-auto"
                         >
-                          <HeartHandshake className="mr-2 h-5 w-5" />
+                          <HeartHandshake className="mr-2 h-4 xs:h-5 sm:h-5 md:h-4 lg:h-5 w-4 xs:w-5 sm:w-5 md:w-4 lg:w-5" />
                           <span className="font-medium">Find Opportunities</span>
                         </Button>
                       </Link>
@@ -215,43 +330,43 @@ export default function Home() {
                   </div>
 
                   {/* Real Platform Stats */}
-                  <div className="grid grid-cols-3 gap-4 pt-8 border-t border-white/20">
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-orange-400">
+                  <div className="grid grid-cols-3 gap-2 xs:gap-3 sm:gap-4 pt-6 sm:pt-8 border-t border-white/20">
+                    <div className="text-center group">
+                      <div className="text-lg xs:text-xl sm:text-2xl font-bold text-orange-400 transition-all duration-300 group-hover:scale-110 md:group-hover:scale-100">
                         {loading ? (
-                          <div className="animate-pulse bg-orange-400/20 h-8 w-12 mx-auto rounded"></div>
+                          <div className="animate-pulse bg-orange-400/20 h-6 xs:h-7 sm:h-8 w-8 xs:w-10 sm:w-12 mx-auto rounded"></div>
                         ) : (
-                          <span className="animate-fadeIn">{stats.activeUsers || 0}</span>
+                          <span className="animate-fadeIn md:animate-none animate-pulse">{stats.activeUsers || 0}</span>
                         )}
                       </div>
-                      <div className="text-sm text-white/70">Active Users</div>
+                      <div className="text-xs xs:text-sm text-white/70">Active Users</div>
                     </div>
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-orange-400">
+                    <div className="text-center group">
+                      <div className="text-lg xs:text-xl sm:text-2xl font-bold text-orange-400 transition-all duration-300 group-hover:scale-110 md:group-hover:scale-100">
                         {loading ? (
-                          <div className="animate-pulse bg-orange-400/20 h-8 w-12 mx-auto rounded"></div>
+                          <div className="animate-pulse bg-orange-400/20 h-6 xs:h-7 sm:h-8 w-8 xs:w-10 sm:w-12 mx-auto rounded"></div>
                         ) : (
-                          <span className="animate-fadeIn">{stats.partnerNGOs || 0}</span>
+                          <span className="animate-fadeIn md:animate-none animate-pulse">{stats.partnerNGOs || 0}</span>
                         )}
                       </div>
-                      <div className="text-sm text-white/70">Partner NGOs</div>
+                      <div className="text-xs xs:text-sm text-white/70">Partner NGOs</div>
                     </div>
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-orange-400">
+                    <div className="text-center group">
+                      <div className="text-lg xs:text-xl sm:text-2xl font-bold text-orange-400 transition-all duration-300 group-hover:scale-110 md:group-hover:scale-100">
                         {loading ? (
-                          <div className="animate-pulse bg-orange-400/20 h-8 w-12 mx-auto rounded"></div>
+                          <div className="animate-pulse bg-orange-400/20 h-6 xs:h-7 sm:h-8 w-8 xs:w-10 sm:w-12 mx-auto rounded"></div>
                         ) : (
-                          <span className="animate-fadeIn">{stats.partnerCompanies || 0}</span>
+                          <span className="animate-fadeIn md:animate-none animate-pulse">{stats.partnerCompanies || 0}</span>
                         )}
                       </div>
-                      <div className="text-sm text-white/70">Companies</div>
+                      <div className="text-xs xs:text-sm text-white/70">Companies</div>
                     </div>
                   </div>
                 </div>
 
-                {/* Right Side - Hidden on smaller screens, carousel shows through */}
-                <div className="hidden lg:block">
-                  {/* This space is for the carousel which shows through the clip-path */}
+                {/* Right Side - Spacer for tablets, hidden on mobile */}
+                <div className="hidden md:block lg:block md:col-span-3 lg:col-span-1">
+                  {/* This space allows proper carousel display and prevents text overlap */}
                 </div>
               </div>
             </div>
