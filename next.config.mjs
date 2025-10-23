@@ -16,7 +16,14 @@ const nextConfig = {
   },
   images: {
     unoptimized: false, // Changed to false for Vercel
-    domains: ['images.unsplash.com'], // Add domains for external images
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'images.unsplash.com',
+        port: '',
+        pathname: '/**',
+      },
+    ],
   },
   // Enable React strict mode for better compatibility
   reactStrictMode: true,

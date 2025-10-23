@@ -20,6 +20,18 @@ export default function Home() {
   const router = useRouter()
   const { stats, loading } = useStats()
 
+  // Predefined particle configurations to avoid hydration mismatches
+  const particleConfigs = [
+    { left: 15, top: 25, delay: 0, duration: 3.5 },
+    { left: 85, top: 60, delay: 0.5, duration: 4.2 },
+    { left: 45, top: 80, delay: 1, duration: 3.8 },
+    { left: 70, top: 15, delay: 1.5, duration: 4.0 },
+    { left: 20, top: 90, delay: 2, duration: 3.3 },
+    { left: 90, top: 40, delay: 2.5, duration: 4.5 },
+    { left: 60, top: 70, delay: 3, duration: 3.7 },
+    { left: 35, top: 35, delay: 3.5, duration: 4.1 },
+  ]
+
   // Function to handle get started button click for authenticated users
   const handleGetStarted = () => {
     if (user) {
@@ -200,15 +212,15 @@ export default function Home() {
               
               {/* Animated particles */}
               <div className="absolute inset-0 overflow-hidden">
-                {[...Array(8)].map((_, i) => (
+                {particleConfigs.map((config, i) => (
                   <div
                     key={i}
                     className="absolute w-1 h-1 bg-white/30 rounded-full animate-particle"
                     style={{
-                      left: `${Math.random() * 100}%`,
-                      top: `${Math.random() * 100}%`,
-                      animationDelay: `${i * 0.5}s`,
-                      animationDuration: `${3 + Math.random() * 2}s`
+                      left: `${config.left}%`,
+                      top: `${config.top}%`,
+                      animationDelay: `${config.delay}s`,
+                      animationDuration: `${config.duration}s`
                     }}
                   ></div>
                 ))}
