@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS users (
   raw_app_meta_data JSONB,
   locked_until TIMESTAMPTZ,
   raw_user_meta_data JSONB,
-  is_super_admin BOOLEAN,
+
   timezone VARCHAR(50) DEFAULT 'UTC',
   preferences JSONB,
   privacy_settings JSONB,
@@ -568,108 +568,7 @@ CREATE POLICY "Marketplace items are viewable by everyone" ON marketplace_items 
 CREATE POLICY "Service requests are viewable by everyone" ON service_requests FOR SELECT USING (true);
 CREATE POLICY "Service offers are viewable by everyone" ON service_offers FOR SELECT USING (true);
 
--- ========================================
--- ADMIN SYSTEM TABLES
--- ========================================
--- Added: Admin panel tables for Navdrishti platform management
 
--- 25. Admin users table
-CREATE TABLE IF NOT EXISTS admin_users (
-    id SERIAL PRIMARY KEY,
-    email VARCHAR(255) NOT NULL UNIQUE,
-    password_hash VARCHAR(255) NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    role VARCHAR(50) DEFAULT 'admin' CHECK (role IN ('super_admin', 'admin', 'moderator', 'analyst')),
-    permissions JSONB DEFAULT '[]'::jsonb,
-    is_active BOOLEAN DEFAULT true,
-    last_login TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- Indexes for admin_users
-CREATE INDEX IF NOT EXISTS idx_admin_users_email ON admin_users(email);
-CREATE INDEX IF NOT EXISTS idx_admin_users_role ON admin_users(role);
-CREATE INDEX IF NOT EXISTS idx_admin_users_is_active ON admin_users(is_active);
-
--- 26. Admin sessions table
-CREATE TABLE IF NOT EXISTS admin_sessions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    admin_user_id INTEGER NOT NULL REFERENCES admin_users(id) ON DELETE CASCADE,
-    session_token VARCHAR(255) NOT NULL UNIQUE,
-    ip_address INET,
-    user_agent TEXT,
-    expires_at TIMESTAMPTZ NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- Indexes for admin_sessions
-CREATE INDEX IF NOT EXISTS idx_admin_sessions_token ON admin_sessions(session_token);
-CREATE INDEX IF NOT EXISTS idx_admin_sessions_admin_user_id ON admin_sessions(admin_user_id);
-CREATE INDEX IF NOT EXISTS idx_admin_sessions_expires_at ON admin_sessions(expires_at);
-
--- 27. Audit logs table for tracking admin actions
-CREATE TABLE IF NOT EXISTS audit_logs (
-    id SERIAL PRIMARY KEY,
-    admin_user_id INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
-    admin_email VARCHAR(255),
-    action VARCHAR(100) NOT NULL,
-    resource_type VARCHAR(50) NOT NULL,
-    resource_id VARCHAR(50),
-    old_values JSONB,
-    new_values JSONB,
-    ip_address INET,
-    user_agent TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- Indexes for audit_logs
-CREATE INDEX IF NOT EXISTS idx_audit_logs_admin_user_id ON audit_logs(admin_user_id);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_resource_type ON audit_logs(resource_type);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
-
--- 28. Content moderation table
-CREATE TABLE IF NOT EXISTS content_moderation (
-    id SERIAL PRIMARY KEY,
-    content_type VARCHAR(50) NOT NULL CHECK (content_type IN ('product', 'service_request', 'service_offer', 'user_profile', 'review')),
-    content_id INTEGER NOT NULL,
-    user_id VARCHAR(255), -- User identifier without foreign key constraint
-    status VARCHAR(50) DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'flagged')),
-    admin_user_id INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
-    admin_notes TEXT,
-    flagged_reason VARCHAR(255),
-    action_required BOOLEAN DEFAULT false,
-    priority VARCHAR(20) DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
-    reviewed_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- Indexes for content_moderation
-CREATE INDEX IF NOT EXISTS idx_content_moderation_content_type ON content_moderation(content_type);
-CREATE INDEX IF NOT EXISTS idx_content_moderation_status ON content_moderation(status);
-CREATE INDEX IF NOT EXISTS idx_content_moderation_user_id ON content_moderation(user_id);
-CREATE INDEX IF NOT EXISTS idx_content_moderation_created_at ON content_moderation(created_at);
-CREATE INDEX IF NOT EXISTS idx_content_moderation_action_required ON content_moderation(action_required);
-
--- 29. Platform settings table
-CREATE TABLE IF NOT EXISTS platform_settings (
-    id SERIAL PRIMARY KEY,
-    setting_key VARCHAR(100) NOT NULL UNIQUE,
-    setting_value JSONB NOT NULL,
-    description TEXT,
-    category VARCHAR(50) DEFAULT 'general',
-    is_public BOOLEAN DEFAULT false,
-    admin_user_id INTEGER REFERENCES admin_users(id) ON DELETE SET NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- Indexes for platform_settings
-CREATE INDEX IF NOT EXISTS idx_platform_settings_key ON platform_settings(setting_key);
-CREATE INDEX IF NOT EXISTS idx_platform_settings_category ON platform_settings(category);
-CREATE INDEX IF NOT EXISTS idx_platform_settings_is_public ON platform_settings(is_public);
 
 -- 30. System notifications table
 CREATE TABLE IF NOT EXISTS system_notifications (
@@ -692,108 +591,25 @@ CREATE INDEX IF NOT EXISTS idx_system_notifications_target_audience ON system_no
 CREATE INDEX IF NOT EXISTS idx_system_notifications_is_active ON system_notifications(is_active);
 CREATE INDEX IF NOT EXISTS idx_system_notifications_dates ON system_notifications(start_date, end_date);
 
--- Add updated_at triggers for admin tables
-CREATE TRIGGER update_admin_users_updated_at BEFORE UPDATE ON admin_users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_content_moderation_updated_at BEFORE UPDATE ON content_moderation FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-CREATE TRIGGER update_platform_settings_updated_at BEFORE UPDATE ON platform_settings FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 CREATE TRIGGER update_system_notifications_updated_at BEFORE UPDATE ON system_notifications FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Enable Row Level Security for admin tables
-ALTER TABLE admin_users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE admin_sessions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE content_moderation ENABLE ROW LEVEL SECURITY;  
-ALTER TABLE platform_settings ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE system_notifications ENABLE ROW LEVEL SECURITY;
 
--- RLS Policies for admin tables (allow admin operations)
-CREATE POLICY "Admin users management" ON admin_users FOR ALL USING (true);
-CREATE POLICY "Admin sessions management" ON admin_sessions FOR ALL USING (true);
-CREATE POLICY "Admin can read audit logs" ON audit_logs FOR SELECT USING (true);
-CREATE POLICY "System can write audit logs" ON audit_logs FOR INSERT WITH CHECK (true);
-CREATE POLICY "Admin can manage content moderation" ON content_moderation FOR ALL USING (true);
-CREATE POLICY "Admin can manage platform settings" ON platform_settings FOR ALL USING (true);
+
 CREATE POLICY "Admin can manage system notifications" ON system_notifications FOR ALL USING (true);
 
--- Admin analytics view
-CREATE OR REPLACE VIEW admin_dashboard_stats AS
-SELECT 
-    -- Safe queries that won't fail if tables don't exist
-    1 as total_users, -- Placeholder - will be updated by API
-    0 as new_users_month,
-    0 as active_products,
-    0 as open_service_requests,
-    0 as active_service_offers,
-    (SELECT COUNT(*) FROM content_moderation WHERE status = 'pending') as pending_moderation,
-    0 as pending_verifications;
 
--- Admin utility functions
-CREATE OR REPLACE FUNCTION cleanup_expired_admin_sessions()
-RETURNS INTEGER AS $$
-DECLARE
-    deleted_count INTEGER;
-BEGIN
-    DELETE FROM admin_sessions WHERE expires_at < NOW();
-    GET DIAGNOSTICS deleted_count = ROW_COUNT;
-    RETURN deleted_count;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
 
-CREATE OR REPLACE FUNCTION log_admin_action(
-    p_admin_user_id INTEGER,
-    p_admin_email VARCHAR(255),
-    p_action VARCHAR(100),
-    p_resource_type VARCHAR(50),
-    p_resource_id VARCHAR(50) DEFAULT NULL,
-    p_old_values JSONB DEFAULT NULL,
-    p_new_values JSONB DEFAULT NULL,
-    p_ip_address INET DEFAULT NULL,
-    p_user_agent TEXT DEFAULT NULL
-)
-RETURNS INTEGER AS $$
-DECLARE
-    log_id INTEGER;
-BEGIN
-    INSERT INTO audit_logs (
-        admin_user_id, admin_email, action, resource_type, resource_id,
-        old_values, new_values, ip_address, user_agent
-    ) VALUES (
-        p_admin_user_id, p_admin_email, p_action, p_resource_type, p_resource_id,
-        p_old_values, p_new_values, p_ip_address, p_user_agent
-    ) RETURNING id INTO log_id;
-    
-    RETURN log_id;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Insert default platform settings
-INSERT INTO platform_settings (setting_key, setting_value, description, category, is_public) VALUES
-    ('maintenance_mode', '{"enabled": false, "message": "Site under maintenance"}', 'System maintenance mode settings', 'system', false),
-    ('featured_items_limit', '{"max_featured": 10, "auto_expire_days": 30}', 'Featured items configuration', 'marketplace', false),
-    ('auto_moderation', '{"enabled": true, "keywords": ["spam", "fraud"], "auto_flag": true}', 'Automatic content moderation settings', 'moderation', false),
-    ('user_verification', '{"require_email": true, "require_phone": false, "require_documents": true}', 'User verification requirements', 'users', true),
-    ('notification_settings', '{"email_enabled": true, "sms_enabled": false, "push_enabled": true}', 'Platform notification settings', 'notifications', false)
-ON CONFLICT (setting_key) DO NOTHING;
 
--- Create default admin user (password: admin123)
--- Note: In production, change this password immediately after first login
-INSERT INTO admin_users (email, password_hash, name, role, permissions) VALUES 
-(
-    'admin@navdrishti.com',
-    '$2b$12$eoOzJcPwfmyskuNV5FPgKO3b4lk7E8ixVXhCcONcbVAH8.o2cSRrG', -- bcrypt hash of 'admin123'
-    'Super Admin',
-    'super_admin',
-    '["users.read", "users.write", "marketplace.read", "marketplace.write", "marketplace.moderate", "services.read", "services.write", "services.moderate", "analytics.read", "settings.read", "settings.write", "audit.read", "system.admin"]'::jsonb
-)
-ON CONFLICT (email) DO NOTHING;
 
--- Insert sample moderation items for testing
-INSERT INTO content_moderation (content_type, content_id, user_id, status, flagged_reason, action_required) VALUES
-    ('product', 1, 'user123', 'pending', 'Inappropriate content', true),
-    ('service_request', 1, 'user456', 'flagged', 'Spam detected', true),
-    ('user_profile', 1, 'user789', 'approved', NULL, false)
-ON CONFLICT DO NOTHING;
+
+
+
+
 
 -- Success message
-SELECT 'PostgreSQL schema created successfully! Ready for safe data migration. Admin system included!' as status;
+SELECT 'PostgreSQL schema created successfully! Ready for safe data migration.' as status;
 
