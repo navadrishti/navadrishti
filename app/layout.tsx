@@ -7,6 +7,8 @@ import { ThemeProvider } from '@/components/theme-provider'
 import { PageTransition } from '@/components/page-transition'
 import { Toaster } from 'sonner'
 import Script from 'next/script'
+import { Analytics } from '@vercel/analytics/next'
+import { SpeedInsights } from '@vercel/speed-insights/next'
 
 export const metadata: Metadata = {
   title: 'Navdrishti',
@@ -143,6 +145,8 @@ export default function RootLayout({
             </CartProvider>
           </AuthProvider>
         </ThemeProvider>
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   )
