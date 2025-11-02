@@ -27,16 +27,16 @@ export function VerificationBadge({
         return {
           variant: 'secondary' as const,
           icon: Clock,
-          text: 'Pending',
+          text: 'Verification Pending',
           className: 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200 border-yellow-300'
         }
       case 'unverified':
       default:
         return {
           variant: 'outline' as const,
-          icon: XCircle,
-          text: 'Unverified',
-          className: 'bg-red-50 text-red-700 hover:bg-red-100 border-red-300'
+          icon: AlertCircle,
+          text: 'Not Verified',
+          className: 'bg-gray-100 text-gray-700 hover:bg-gray-200 border-gray-300'
         }
     }
   }

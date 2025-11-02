@@ -20,7 +20,13 @@ export interface User {
   // Additional profile fields
   phone?: string;
   bio?: string;
-  // Verification status
+  // Email verification
+  email_verified?: boolean;
+  email_verified_at?: string;
+  // Phone verification
+  phone_verified?: boolean;
+  phone_verified_at?: string;
+  // Document verification status
   verification_status?: 'verified' | 'unverified' | 'pending';
   verification_details?: any;
 }
