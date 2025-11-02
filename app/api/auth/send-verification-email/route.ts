@@ -44,8 +44,10 @@ export const POST = withAuth(async (req: NextRequest) => {
       }, { status: 500 });
     }
 
-    // In production, send actual email
-    if (process.env.NODE_ENV === 'production' && process.env.SMTP_HOST) {
+    // Check if email service is configured
+    const isEmailConfigured = process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS;
+    
+    if (isEmailConfigured) {
       try {
         const { sendEmail, generateEmailVerificationTemplate } = await import('@/lib/email');
         
@@ -67,7 +69,13 @@ export const POST = withAuth(async (req: NextRequest) => {
           }, { status: 500 });
         }
 
-        console.log('Verification email sent successfully to:', user.email);
+        console.log('📧 Verification email sent successfully to:', user.email);
+        
+        return NextResponse.json({ 
+          message: 'Verification email sent successfully',
+          sent: true
+        });
+        
       } catch (error) {
         console.error('Email service error:', error);
         return NextResponse.json({ 
@@ -75,18 +83,19 @@ export const POST = withAuth(async (req: NextRequest) => {
         }, { status: 500 });
       }
     } else {
-      // Development mode - just log the token
+      // Email service not configured - development mode
+      console.log('📧 Email Service Not Configured');
       console.log(`Development: Email verification token for ${user.email}: ${verificationToken}`);
       console.log(`Verification URL: ${process.env.APP_URL}/verify-email?token=${verificationToken}`);
-    }
-
-    return NextResponse.json({ 
-      message: 'Verification email sent successfully',
-      ...(process.env.NODE_ENV === 'development' && { 
+      
+      return NextResponse.json({ 
+        message: 'Email service not configured - check console for verification link',
+        sent: false,
+        development: true,
         token: verificationToken,
         verificationUrl: `${process.env.APP_URL}/verify-email?token=${verificationToken}`
-      })
-    });
+      });
+    }
 
   } catch (error) {
     console.error('Send verification email error:', error);
