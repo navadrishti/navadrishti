@@ -44,17 +44,35 @@ export const POST = withAuth(async (req: NextRequest) => {
       }, { status: 500 });
     }
 
-    // In production, send email here
+    // In production, send actual email
     if (process.env.NODE_ENV === 'production' && process.env.SMTP_HOST) {
-      // Import email service dynamically to avoid issues during build
       try {
-        const { emailService } = await import('@/lib/email-service');
-        const emailSent = await emailService.sendVerificationEmail(user.email, verificationToken);
+        const { sendEmail, generateEmailVerificationTemplate } = await import('@/lib/email');
+        
+        const emailHtml = generateEmailVerificationTemplate(
+          `${process.env.APP_URL}/verify-email?token=${verificationToken}`,
+          user.email
+        );
+
+        const emailSent = await sendEmail({
+          to: user.email,
+          subject: 'Verify your Navdrishti account',
+          html: emailHtml
+        });
+
         if (!emailSent) {
           console.error('Failed to send verification email');
+          return NextResponse.json({ 
+            error: 'Failed to send verification email' 
+          }, { status: 500 });
         }
+
+        console.log('Verification email sent successfully to:', user.email);
       } catch (error) {
         console.error('Email service error:', error);
+        return NextResponse.json({ 
+          error: 'Email service unavailable' 
+        }, { status: 500 });
       }
     } else {
       // Development mode - just log the token

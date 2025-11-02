@@ -1,14 +1,36 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Header } from '@/components/header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { CheckCircle, AlertTriangle, Mail } from 'lucide-react';
+import { CheckCircle, AlertTriangle, Mail, Loader2 } from 'lucide-react';
 
-export default function VerifyEmailPage() {
+// Loading component for Suspense fallback
+function LoadingSpinner() {
+  return (
+    <div className="flex min-h-screen flex-col">
+      <Header />
+      <main className="flex-1 px-6 py-8 md:px-10">
+        <div className="max-w-md mx-auto">
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex flex-col items-center gap-4">
+                <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+                <p>Loading verification...</p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+// Component that uses useSearchParams - needs to be wrapped in Suspense
+function VerifyEmailContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
@@ -122,5 +144,14 @@ export default function VerifyEmailPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+// Main component with Suspense wrapper
+export default function VerifyEmailPage() {
+  return (
+    <Suspense fallback={<LoadingSpinner />}>
+      <VerifyEmailContent />
+    </Suspense>
   );
 }
