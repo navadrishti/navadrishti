@@ -36,20 +36,22 @@ export const POST = withAuth(async (req: NextRequest) => {
       }, { status: 500 });
     }
 
-    // In production, send actual SMS
-    if (process.env.NODE_ENV === 'production' && process.env.MSG91_API_KEY) {
+    // Check if SMS service is configured
+    const isSmsConfigured = process.env.MSG91_API_KEY && process.env.MSG91_TEMPLATE_ID;
+    
+    if (isSmsConfigured) {
       try {
         // MSG91 SMS Service Implementation
         const smsResponse = await fetch('https://api.msg91.com/api/v5/otp', {
           method: 'POST',
           headers: {
-            'authkey': process.env.MSG91_API_KEY,
+            'authkey': process.env.MSG91_API_KEY!,
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            template_id: process.env.MSG91_TEMPLATE_ID,
+            template_id: process.env.MSG91_TEMPLATE_ID!,
             mobile: phone,
-            authkey: process.env.MSG91_API_KEY,
+            authkey: process.env.MSG91_API_KEY!,
             otp: otp
           })
         });
@@ -63,7 +65,13 @@ export const POST = withAuth(async (req: NextRequest) => {
           }, { status: 500 });
         }
 
-        console.log('SMS sent successfully to:', phone);
+        console.log('📱 SMS sent successfully to:', phone);
+        
+        return NextResponse.json({ 
+          message: 'OTP sent successfully',
+          sent: true
+        });
+        
       } catch (smsError) {
         console.error('SMS service error:', smsError);
         return NextResponse.json({ 
@@ -71,16 +79,17 @@ export const POST = withAuth(async (req: NextRequest) => {
         }, { status: 500 });
       }
     } else {
-      // Development mode - just log the OTP
+      // SMS service not configured - development mode
+      console.log('📱 SMS Service Not Configured');
       console.log(`Development: Phone verification OTP for ${phone}: ${otp}`);
+      
+      return NextResponse.json({ 
+        message: 'SMS service not configured - check console for OTP',
+        sent: false,
+        development: true,
+        otp: otp // Only in development when SMS is not configured
+      });
     }
-
-    return NextResponse.json({ 
-      message: 'OTP sent successfully',
-      ...(process.env.NODE_ENV === 'development' && { 
-        otp: otp // Only in development
-      })
-    });
 
   } catch (error) {
     console.error('Send OTP error:', error);

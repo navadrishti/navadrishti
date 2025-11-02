@@ -14,6 +14,141 @@ import Link from 'next/link'
 import { toast } from 'sonner'
 import { VerificationBadge, VerificationDetails } from '@/components/verification-badge'
 
+// Phone Verification Component
+function PhoneVerificationSection({ phone, onVerificationComplete }: { 
+  phone: string, 
+  onVerificationComplete: () => void 
+}) {
+  const [otp, setOtp] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+  const [sendingOtp, setSendingOtp] = useState(false);
+  const [verifyingOtp, setVerifyingOtp] = useState(false);
+
+  const sendOtp = async () => {
+    try {
+      setSendingOtp(true);
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/auth/send-phone-otp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ phone })
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        setOtpSent(true);
+        if (data.otp) {
+          // Development mode - show OTP
+          toast.success(`SMS service not configured. OTP: ${data.otp}`);
+          console.log('Development OTP:', data.otp);
+        } else {
+          // Production mode - OTP sent via SMS
+          toast.success('OTP sent to your phone!');
+        }
+      } else {
+        toast.error(data.error || 'Failed to send OTP');
+      }
+    } catch (error) {
+      toast.error('Failed to send OTP');
+    } finally {
+      setSendingOtp(false);
+    }
+  };
+
+  const verifyOtp = async () => {
+    if (!otp.trim()) {
+      toast.error('Please enter the OTP');
+      return;
+    }
+
+    try {
+      setVerifyingOtp(true);
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/auth/verify-phone', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ phone, otp })
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        toast.success('Phone verified successfully!');
+        setOtpSent(false);
+        setOtp('');
+        onVerificationComplete();
+      } else {
+        toast.error(data.error || 'Invalid OTP');
+      }
+    } catch (error) {
+      toast.error('Failed to verify OTP');
+    } finally {
+      setVerifyingOtp(false);
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      {!otpSent ? (
+        <Button 
+          variant="outline" 
+          size="sm" 
+          className="w-full"
+          onClick={sendOtp}
+          disabled={sendingOtp}
+        >
+          {sendingOtp ? 'Sending...' : 'Send Phone Verification'}
+        </Button>
+      ) : (
+        <div className="space-y-2">
+          <Input
+            type="text"
+            placeholder="Enter 6-digit OTP"
+            value={otp}
+            onChange={(e) => setOtp(e.target.value)}
+            maxLength={6}
+            className="text-center text-lg tracking-widest"
+          />
+          <div className="flex gap-2">
+            <Button 
+              size="sm" 
+              onClick={verifyOtp}
+              disabled={verifyingOtp}
+              className="flex-1"
+            >
+              {verifyingOtp ? 'Verifying...' : 'Verify OTP'}
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => {
+                setOtpSent(false);
+                setOtp('');
+              }}
+            >
+              Cancel
+            </Button>
+          </div>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={sendOtp}
+            disabled={sendingOtp}
+            className="w-full text-xs"
+          >
+            {sendingOtp ? 'Resending...' : 'Resend OTP'}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ProfilePage() {
   const { user, updateUser, refreshUser } = useAuth();
   const [profile, setProfile] = useState<any>(null);
@@ -1018,7 +1153,12 @@ export default function ProfilePage() {
                               });
                               const data = await response.json();
                               if (response.ok) {
-                                toast.success('Verification email sent!');
+                                if (data.sent) {
+                                  toast.success('Verification email sent to your inbox!');
+                                } else {
+                                  toast.info('Email service not configured. Check console for verification link.');
+                                  console.log('Verification link:', data.verificationUrl);
+                                }
                               } else {
                                 toast.error(data.error || 'Failed to send email');
                               }
@@ -1029,6 +1169,24 @@ export default function ProfilePage() {
                         >
                           Send Email Verification
                         </Button>
+                      )}
+                      
+                      {phone && !user?.phone_verified && (
+                        <PhoneVerificationSection 
+                          phone={phone}
+                          onVerificationComplete={async () => {
+                            await fetchProfile();
+                            await fetchVerificationStatus();
+                          }}
+                        />
+                      )}
+                      
+                      {!phone && (
+                        <div className="text-center py-2">
+                          <p className="text-sm text-gray-500 mb-2">
+                            Add your phone number above to enable SMS verification
+                          </p>
+                        </div>
                       )}
                     </div>
                   </div>
