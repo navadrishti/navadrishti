@@ -204,12 +204,11 @@ export default function IndividualDashboard() {
     };
 
     if (user) {
-      // Refresh user profile data to get latest info
-      refreshUser().then(() => {
-        fetchStats();
-        fetchOrders();
-        fetchMyListings();
-      });
+      // REMOVED refreshUser() call to prevent infinite loop
+      // Just fetch data directly without refreshing auth context
+      fetchStats();
+      fetchOrders();
+      fetchMyListings();
     }
   }, [user?.id]);
 
@@ -328,7 +327,17 @@ export default function IndividualDashboard() {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                           <p className="text-sm font-medium text-gray-500">Location</p>
-                          <p>{user?.city && user?.state_province ? `${user.city}, ${user.state_province}${user.country ? `, ${user.country}` : ''}` : (user?.city || user?.state_province || 'Location not set')}</p>
+                          <p>{user?.city && user?.state_province ? `${user.city}, ${user.state_province}${user.country ? `, ${user.country}` : ''}` : 'Location not set'}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-500">Phone</p>
+                          <div className="flex items-center gap-2">
+                            <span>{user?.phone || 'Phone not set'}</span>
+                            <VerificationBadge 
+                              status={user?.phone_verified ? 'verified' : 'unverified'} 
+                              size="sm"
+                            />
+                          </div>
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-500">Skills</p>
@@ -337,6 +346,12 @@ export default function IndividualDashboard() {
                         <div>
                           <p className="text-sm font-medium text-gray-500">Interests</p>
                           <p>{(user as any)?.profile_data?.interests || (user as any)?.profile?.interests || 'Interests not set'}</p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                        <div>
+                          <p className="text-sm font-medium text-gray-500">Bio</p>
+                          <p>{user?.bio || 'Bio not set'}</p>
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-500">Joined</p>
@@ -368,9 +383,23 @@ export default function IndividualDashboard() {
                           </div>
                         )}
                       </div>
-                      <div className="flex gap-4 items-center">
-                        <span className="text-sm font-medium text-gray-500">Email:</span>
-                        <Badge variant="default" className="bg-green-100 text-green-800">Verified</Badge>
+                      <div className="space-y-2">
+                        <div className="flex gap-4 items-center">
+                          <span className="text-sm font-medium text-gray-500">Email:</span>
+                          <VerificationBadge 
+                            status={user?.email_verified ? 'verified' : 'unverified'} 
+                            size="sm"
+                            showText={true}
+                          />
+                        </div>
+                        <div className="flex gap-4 items-center">
+                          <span className="text-sm font-medium text-gray-500">Phone:</span>
+                          <VerificationBadge 
+                            status={user?.phone_verified ? 'verified' : 'unverified'} 
+                            size="sm"
+                            showText={true}
+                          />
+                        </div>
                       </div>
                     </div>
                     <Button variant="outline" asChild>

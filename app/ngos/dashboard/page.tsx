@@ -267,10 +267,6 @@ export default function NGODashboard() {
         console.log('NGO Dashboard: Starting to fetch all data for user:', user.id);
         setLoadingData(true);
         
-        // Refresh user profile data to get latest info
-        console.log('🔄 Refreshing user profile data...');
-        await refreshUser();
-        
         // Auto-update service request statuses before fetching data
         console.log('🔄 Running automatic status update check...');
         try {
@@ -459,19 +455,41 @@ export default function NGODashboard() {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                           <p className="text-sm font-medium text-gray-500">Location</p>
-                          <p>{user?.profile?.location || 'Not specified'}</p>
+                          <p>{user?.city && user?.state_province ? `${user.city}, ${user.state_province}${user.country ? `, ${user.country}` : ''}` : 'Location not set'}</p>
                         </div>
                         <div>
-                          <p className="text-sm font-medium text-gray-500">Founded</p>
-                          <p>{user?.profile?.founded || 'Not specified'}</p>
+                          <p className="text-sm font-medium text-gray-500">Phone</p>
+                          <div className="flex items-center gap-2">
+                            <span>{user?.phone || 'Phone not set'}</span>
+                            <VerificationBadge 
+                              status={user?.phone_verified ? 'verified' : 'unverified'} 
+                              size="sm"
+                            />
+                          </div>
                         </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-500">Founded Year</p>
+                          <p>{(user as any)?.profile_data?.founded_year || (user as any)?.profile?.founded_year || 'Founded year not set'}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-500">Registration Number</p>
+                          <p>{(user as any)?.profile_data?.registration_number || (user as any)?.profile?.registration_number || 'Registration not set'}</p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                         <div>
                           <p className="text-sm font-medium text-gray-500">Focus Areas</p>
-                          <p>{user?.profile?.focus_areas?.join(', ') || 'Not specified'}</p>
+                          <p>{(user as any)?.profile_data?.focus_areas || (user as any)?.profile?.focus_areas || 'Focus areas not set'}</p>
                         </div>
                         <div>
-                          <p className="text-sm font-medium text-gray-500">Team Size</p>
-                          <p>{user?.profile?.team_size || 'Not specified'}</p>
+                          <p className="text-sm font-medium text-gray-500">Website</p>
+                          <p>{(user as any)?.profile_data?.organization_website || (user as any)?.profile?.organization_website || 'Website not set'}</p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 mt-4">
+                        <div>
+                          <p className="text-sm font-medium text-gray-500">Bio</p>
+                          <p>{user?.bio || 'Bio not set'}</p>
                         </div>
                       </div>
                     </div>

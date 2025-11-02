@@ -59,11 +59,11 @@ export default function ProfilePage() {
     }
   }, [user]);
 
-  // Add real-time refresh when page becomes visible
+  // Add real-time refresh when page becomes visible - FIXED to prevent infinite loop
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (!document.hidden && user) {
-        console.log('👁️ Page became visible, refreshing profile data...');
+        console.log('Page became visible, refreshing profile data...');
         fetchProfile();
         fetchVerificationStatus();
       }
@@ -71,7 +71,7 @@ export default function ProfilePage() {
 
     const handleFocus = () => {
       if (user) {
-        console.log('🔍 Window focused, refreshing profile data...');
+        console.log('Window focused, refreshing profile data...');
         fetchProfile();
         fetchVerificationStatus();
       }
@@ -81,26 +81,20 @@ export default function ProfilePage() {
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('focus', handleFocus);
 
-    // Auto-refresh every 30 seconds when page is active
-    const refreshInterval = setInterval(() => {
-      if (!document.hidden && user) {
-        console.log('⏰ Auto-refreshing profile data...');
-        fetchProfile();
-      }
-    }, 30000);
+    // REMOVED AUTO-REFRESH INTERVAL TO PREVENT INFINITE LOOP
+    // Auto-refresh was causing infinite loop by triggering user state updates
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleFocus);
-      clearInterval(refreshInterval);
+      // No interval to clear anymore
     };
-  }, [user]);
+  }, [user]); // Keep user dependency to refresh when user changes
 
   const fetchProfile = async () => {
     try {
-      // First refresh user data to get the latest profile information
-      console.log('🔄 Refreshing user profile data...');
-      await refreshUser();
+      // REMOVED refreshUser() call to prevent infinite loop
+      // Only fetch profile data directly without updating auth context
       
       // Fetch fresh profile data from API
       const token = localStorage.getItem('token');
@@ -109,7 +103,7 @@ export default function ProfilePage() {
         return;
       }
 
-      console.log('📡 Fetching fresh profile data from API...');
+      console.log('Fetching fresh profile data from API...');
       const response = await fetch('/api/auth/me', {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -122,7 +116,7 @@ export default function ProfilePage() {
 
       const data = await response.json();
       const freshUser = data.user;
-      console.log('📊 Fresh user data received:', freshUser);
+      console.log('Fresh user data received:', freshUser);
       
       // Set profile with fresh data
       setProfile({
@@ -147,7 +141,7 @@ export default function ProfilePage() {
       
       // Load additional profile fields from profile_data
       const userProfile = freshUser?.profile_data || {};
-      console.log('📋 Profile data loaded:', userProfile);
+      console.log('Profile data loaded:', userProfile);
       setSkills(userProfile.skills || '');
       setInterests(userProfile.interests || '');
       setCategories(userProfile.categories || '');
@@ -161,14 +155,14 @@ export default function ProfilePage() {
       
       // Load profile image if available
       if (freshUser?.profile_image) {
-        console.log('🖼️ Setting profile image:', freshUser.profile_image);
+        console.log('Setting profile image:', freshUser.profile_image);
         setProfileImageUrl(freshUser.profile_image);
       }
     } catch (error) {
       console.error('Error fetching profile:', error);
       // Fallback to cached user data if API fails
       if (user) {
-        console.log('📦 Using cached user data as fallback');
+        console.log('Using cached user data as fallback');
         setProfile({
           ...user,
           bio: user?.bio || '',
@@ -376,13 +370,13 @@ export default function ProfilePage() {
         profileData.profileImageUrl = profileImageUrl;
       }
       
-      // Add location fields
-      if (city) profileData.city = city;
-      if (stateProvince) profileData.state_province = stateProvince;
-      if (pincode) profileData.pincode = pincode;
-      if (country) profileData.country = country;
-      if (phone) profileData.phone = phone;
-      if (bio) profileData.bio = bio;
+      // Add location fields - only add non-empty values
+      if (city?.trim()) profileData.city = city.trim();
+      if (stateProvince?.trim()) profileData.state_province = stateProvince.trim();
+      if (pincode?.trim()) profileData.pincode = pincode.trim();
+      if (country?.trim()) profileData.country = country.trim();
+      if (phone?.trim()) profileData.phone = phone.trim();
+      if (bio?.trim()) profileData.bio = bio.trim();
       
       // Save all profile data
       const response = await fetch('/api/profile/update', {
@@ -397,9 +391,7 @@ export default function ProfilePage() {
         throw new Error('Failed to update profile');
       }
 
-      // Refresh user data from server to get the latest profile image and other data
-      await refreshUser();
-      // Also refresh the profile page data immediately
+      // Refresh the profile page data immediately to show updated values
       await fetchProfile();
       
       console.log('Profile saved successfully:', profileData);
@@ -623,11 +615,18 @@ export default function ProfilePage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <Label>Full Name</Label>
-                      <Input value={user.name} readOnly />
+                      <Input value={user.name || 'Please update your name'} readOnly />
                     </div>
                     <div>
                       <Label>Email</Label>
-                      <Input value={user.email} readOnly />
+                      <div className="relative">
+                        <Input value={user.email} readOnly />
+                        {!user?.email_verified && (
+                          <div className="absolute right-2 top-1/2 transform -translate-y-1/2">
+                            <Badge variant="outline" className="text-xs">Not Verified</Badge>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -636,19 +635,31 @@ export default function ProfilePage() {
                       <Input value={user.user_type.charAt(0).toUpperCase() + user.user_type.slice(1)} readOnly />
                     </div>
                     <div>
-                      <Label>Phone</Label>
-                      <Input 
-                        placeholder="Add your phone number" 
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                      />
+                      <Label>Phone Number</Label>
+                      <div className="relative">
+                        <Input 
+                          placeholder={phone ? "" : "Enter your phone number"} 
+                          value={phone}
+                          onChange={(e) => setPhone(e.target.value)}
+                        />
+                        {phone && !user?.phone_verified && (
+                          <div className="absolute right-2 top-1/2 transform -translate-y-1/2">
+                            <Badge variant="outline" className="text-xs">Not Verified</Badge>
+                          </div>
+                        )}
+                        {!phone && (
+                          <div className="absolute right-2 top-1/2 transform -translate-y-1/2">
+                            <Badge variant="outline" className="text-xs text-gray-400">Not Set</Badge>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                   
                   {/* Location Fields for Nearby Functionality */}
                   <div className="space-y-4">
                     <div className="border-t pt-4">
-                      <h3 className="text-lg font-medium mb-4">📍 Location Information</h3>
+                      <h3 className="text-lg font-medium mb-4">Location Information</h3>
                       <p className="text-sm text-gray-600 mb-4">
                         This information helps others find your items in the nearby section
                       </p>
@@ -954,10 +965,26 @@ export default function ProfilePage() {
                 <CardContent className="space-y-6">
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">Overall Status</span>
+                      <span className="text-sm font-medium">Document Status</span>
                       <VerificationBadge 
                         status={user?.verification_status || 'unverified'} 
                         size="md"
+                      />
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">Email Verification</span>
+                      <VerificationBadge 
+                        status={user?.email_verified ? 'verified' : 'unverified'} 
+                        size="sm"
+                      />
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">Phone Verification</span>
+                      <VerificationBadge 
+                        status={user?.phone_verified ? 'verified' : 'unverified'} 
+                        size="sm"
                       />
                     </div>
                     
@@ -969,13 +996,40 @@ export default function ProfilePage() {
                       />
                     )}
                     
-                    <div className="pt-4 border-t">
+                    <div className="pt-4 border-t space-y-2">
                       <Link href="/verification">
                         <Button variant="outline" size="sm" className="w-full">
                           <UserCheck className="h-4 w-4 mr-2" />
-                          {user?.verification_status === 'verified' ? "Manage Verification" : "Complete Verification"}
+                          {user?.verification_status === 'verified' ? "Manage Documents" : "Verify Documents"}
                         </Button>
                       </Link>
+                      
+                      {!user?.email_verified && (
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="w-full"
+                          onClick={async () => {
+                            try {
+                              const token = localStorage.getItem('token');
+                              const response = await fetch('/api/auth/send-verification-email', {
+                                method: 'POST',
+                                headers: { 'Authorization': `Bearer ${token}` }
+                              });
+                              const data = await response.json();
+                              if (response.ok) {
+                                toast.success('Verification email sent!');
+                              } else {
+                                toast.error(data.error || 'Failed to send email');
+                              }
+                            } catch (error) {
+                              toast.error('Failed to send verification email');
+                            }
+                          }}
+                        >
+                          Send Email Verification
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </CardContent>

@@ -169,10 +169,8 @@ export default function CompanyDashboard() {
   useEffect(() => {
     const fetchAllData = async () => {
       if (user) {
-        // Refresh user profile data to get latest info
-        console.log('🔄 Refreshing user profile data...');
-        await refreshUser();
-        
+        // REMOVED refreshUser() call to prevent infinite loop
+        // Just fetch data directly without refreshing auth context
         setLoadingData(true);
         await Promise.all([
           fetchMarketplaceListings(),
@@ -343,19 +341,35 @@ export default function CompanyDashboard() {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                           <p className="text-sm font-medium text-gray-500">Location</p>
-                          <p>{user?.profile?.location || 'Not specified'}</p>
+                          <p>{user?.city && user?.state_province ? `${user.city}, ${user.state_province}${user.country ? `, ${user.country}` : ''}` : 'Location not set'}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-500">Phone</p>
+                          <div className="flex items-center gap-2">
+                            <span>{user?.phone || 'Phone not set'}</span>
+                            <VerificationBadge 
+                              status={user?.phone_verified ? 'verified' : 'unverified'} 
+                              size="sm"
+                            />
+                          </div>
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-500">Industry</p>
-                          <p>{user?.profile?.industry || 'Not specified'}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-500">CSR Focus Areas</p>
-                          <p>{user?.profile?.csr_focus_areas?.join(', ') || 'Not specified'}</p>
+                          <p>{(user as any)?.profile_data?.industry || (user as any)?.profile?.industry || 'Industry not set'}</p>
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-500">Company Size</p>
-                          <p>{user?.profile?.company_size || 'Not specified'}</p>
+                          <p>{(user as any)?.profile_data?.company_size || (user as any)?.profile?.company_size || 'Company size not set'}</p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                        <div>
+                          <p className="text-sm font-medium text-gray-500">Bio</p>
+                          <p>{user?.bio || 'Bio not set'}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-500">Website</p>
+                          <p>{(user as any)?.profile_data?.company_website || (user as any)?.profile?.company_website || 'Website not set'}</p>
                         </div>
                       </div>
                     </div>
