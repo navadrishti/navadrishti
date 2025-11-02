@@ -36,10 +36,40 @@ export const POST = withAuth(async (req: NextRequest) => {
       }, { status: 500 });
     }
 
-    // In production, send SMS here
+    // In production, send actual SMS
     if (process.env.NODE_ENV === 'production' && process.env.MSG91_API_KEY) {
-      // TODO: Implement actual SMS sending with MSG91 or other service
-      console.log('Would send SMS with OTP:', otp);
+      try {
+        // MSG91 SMS Service Implementation
+        const smsResponse = await fetch('https://api.msg91.com/api/v5/otp', {
+          method: 'POST',
+          headers: {
+            'authkey': process.env.MSG91_API_KEY,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            template_id: process.env.MSG91_TEMPLATE_ID,
+            mobile: phone,
+            authkey: process.env.MSG91_API_KEY,
+            otp: otp
+          })
+        });
+
+        const smsData = await smsResponse.json();
+        
+        if (!smsResponse.ok) {
+          console.error('SMS sending failed:', smsData);
+          return NextResponse.json({ 
+            error: 'Failed to send OTP via SMS' 
+          }, { status: 500 });
+        }
+
+        console.log('SMS sent successfully to:', phone);
+      } catch (smsError) {
+        console.error('SMS service error:', smsError);
+        return NextResponse.json({ 
+          error: 'SMS service unavailable' 
+        }, { status: 500 });
+      }
     } else {
       // Development mode - just log the OTP
       console.log(`Development: Phone verification OTP for ${phone}: ${otp}`);
