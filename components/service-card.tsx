@@ -298,7 +298,7 @@ export function ServiceCard({
             <div>
               <div className="flex items-center gap-2">
                 <p className="font-semibold text-gray-900 text-sm">{ngo_name}</p>
-                {verification_status === 'verified' && (
+                {verified && (
                   <VerificationBadge status="verified" size="sm" showText={false} />
                 )}
               </div>
