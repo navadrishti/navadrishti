@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ImageCarousel } from "@/components/ui/image-carousel"
 import { Star, Plus, Minus, MapPin, Truck, ShoppingCart, Trash2, User, Building, Users, Shield } from "lucide-react"
+import { VerificationBadge } from "./verification-badge"
 import { formatPrice } from "@/lib/currency"
 import { ProductDetails } from "./product-details"
 import { useCart } from "@/lib/cart-context"
@@ -219,7 +220,11 @@ export function ProductCard({
 
   // Enhanced marketplace card
   return (
-    <Card className="overflow-hidden group h-full flex flex-col hover:shadow-xl hover:-translate-y-1 transition-all duration-300 border-0 shadow-md bg-white rounded-xl">
+    <div className="relative group h-full">
+      {/* Colorful border only */}
+      <div className="absolute -inset-0.5 bg-gradient-to-r from-pink-500 via-purple-500 to-yellow-500 rounded-xl opacity-60 group-hover:opacity-100 transition duration-300"></div>
+      
+      <Card className="relative overflow-hidden group h-full flex flex-col hover:shadow-xl hover:-translate-y-1 transition-all duration-300 border-0 shadow-md bg-white rounded-xl">
       {/* Image Section with Gallery - Clickable to product details */}
       <CardHeader className="p-0 relative cursor-pointer" onClick={handleCardClick}>
         <div className="relative h-56 overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100 rounded-t-xl">
@@ -344,12 +349,10 @@ export function ProductCard({
                 >
                   {provider}
                 </button>
+                {item.seller?.verification_status === 'verified' && (
+                  <VerificationBadge status="verified" size="sm" showText={false} />
+                )}
               </div>
-              {verified && (
-                <span className="text-green-500" title="Verified Seller">
-                  <Shield size={14} />
-                </span>
-              )}
             </div>
           )}
           
@@ -572,6 +575,7 @@ export function ProductCard({
         </Dialog>
       )}
     </Card>
+    </div>
   )
 }
 

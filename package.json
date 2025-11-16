@@ -1,5 +1,5 @@
 {
-  "name": "navdrishti",
+  "name": "Navadrishti",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -10,7 +10,7 @@
     "build:vercel": "npm run build && npm run lint",
     "migrate:safe": "npx tsx scripts/safe-migration.ts",
     "migrate:verify": "npx tsx scripts/verify-migration.ts",
-    "db:export": "mysqldump -u navdrishti_user -p navdrishti > backup/navdrishti_$(date +%Y%m%d_%H%M%S).sql"
+    "db:export": "mysqldump -u Navadrishti_user -p Navadrishti > backup/Navadrishti_$(date +%Y%m%d_%H%M%S).sql"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
@@ -43,6 +43,7 @@
     "@radix-ui/react-tooltip": "^1.1.6",
     "@supabase/supabase-js": "^2.75.0",
     "@types/nodemailer": "^7.0.3",
+    "@types/pg": "^8.15.6",
     "@vercel/analytics": "^1.5.0",
     "@vercel/speed-insights": "^1.2.0",
     "autoprefixer": "^10.4.20",
@@ -60,10 +61,11 @@
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.454.0",
     "mysql2": "^3.15.2",
-    "next": "15.2.4",
+    "next": "15.5.6",
     "next-auth": "^4.24.11",
     "next-themes": "^0.4.4",
     "nodemailer": "^7.0.10",
+    "pg": "^8.16.3",
     "razorpay": "^2.9.6",
     "react": "^19",
     "react-day-picker": "9.11.1",

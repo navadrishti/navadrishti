@@ -51,7 +51,7 @@ class EmailService {
 
     try {
       const mailOptions = {
-        from: `${process.env.FROM_NAME || 'Navdrishti'} <${process.env.FROM_EMAIL || process.env.SMTP_USER}>`,
+        from: `${process.env.FROM_NAME || 'Navadrishti'} <${process.env.FROM_EMAIL || process.env.SMTP_USER}>`,
         to: config.to,
         subject: config.subject,
         html: config.html,
@@ -75,7 +75,7 @@ class EmailService {
       <html>
       <head>
         <meta charset="utf-8">
-        <title>Verify Your Email - Navdrishti</title>
+        <title>Verify Your Email - Navadrishti</title>
         <style>
           body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
           .container { max-width: 600px; margin: 0 auto; padding: 20px; }
@@ -99,7 +99,7 @@ class EmailService {
             <h1>Email Verification</h1>
           </div>
           <div class="content">
-            <h2>Welcome to Navdrishti!</h2>
+            <h2>Welcome to Navadrishti!</h2>
             <p>Thank you for creating an account. To complete your registration and access all platform features, please verify your email address.</p>
             
             <p>Click the button below to verify your email:</p>
@@ -110,10 +110,10 @@ class EmailService {
             
             <p><strong>Important:</strong> This link will expire in 24 hours for security reasons.</p>
             
-            <p>If you didn't create an account with Navdrishti, please ignore this email.</p>
+            <p>If you didn't create an account with Navadrishti, please ignore this email.</p>
           </div>
           <div class="footer">
-            <p>This email was sent by Navdrishti Platform</p>
+            <p>This email was sent by Navadrishti Platform</p>
             <p>If you have any questions, please contact our support team.</p>
           </div>
         </div>
@@ -123,7 +123,7 @@ class EmailService {
 
     return this.sendEmail({
       to: email,
-      subject: 'Verify Your Email Address - Navdrishti',
+      subject: 'Verify Your Email Address - Navadrishti',
       html
     });
   }
@@ -134,7 +134,7 @@ class EmailService {
       <html>
       <head>
         <meta charset="utf-8">
-        <title>Welcome to Navdrishti</title>
+        <title>Welcome to Navadrishti</title>
         <style>
           body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
           .container { max-width: 600px; margin: 0 auto; padding: 20px; }
@@ -146,7 +146,7 @@ class EmailService {
       <body>
         <div class="container">
           <div class="header">
-            <h1>Welcome to Navdrishti!</h1>
+            <h1>Welcome to Navadrishti!</h1>
           </div>
           <div class="content">
             <h2>Hello ${name}!</h2>
@@ -183,7 +183,7 @@ class EmailService {
 
     return this.sendEmail({
       to: email,
-      subject: 'Welcome to Navdrishti - Your Account is Ready!',
+      subject: 'Welcome to Navadrishti - Your Account is Ready!',
       html
     });
   }
@@ -196,7 +196,7 @@ class EmailService {
       <html>
       <head>
         <meta charset="utf-8">
-        <title>Reset Your Password - Navdrishti</title>
+        <title>Reset Your Password - Navadrishti</title>
         <style>
           body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
           .container { max-width: 600px; margin: 0 auto; padding: 20px; }
@@ -220,7 +220,7 @@ class EmailService {
           </div>
           <div class="content">
             <h2>Reset Your Password</h2>
-            <p>We received a request to reset your password for your Navdrishti account.</p>
+            <p>We received a request to reset your password for your Navadrishti account.</p>
             
             <p>Click the button below to reset your password:</p>
             <a href="${resetUrl}" class="button">Reset Password</a>
@@ -239,7 +239,7 @@ class EmailService {
 
     return this.sendEmail({
       to: email,
-      subject: 'Password Reset Request - Navdrishti',
+      subject: 'Password Reset Request - Navadrishti',
       html
     });
   }

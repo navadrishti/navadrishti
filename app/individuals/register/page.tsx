@@ -9,7 +9,6 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { HeartHandshake } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
@@ -111,9 +110,8 @@ export default function IndividualRegister() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
-      <Link href="/" className="flex items-center gap-2 text-2xl font-bold mb-8">
-        <HeartHandshake className="h-8 w-8" />
-        <span>Navdrishti</span>
+      <Link href="/" className="flex items-center text-2xl font-bold mb-6">
+        <img src="/photos/logo1.svg" alt="Navadrishti" className="h-16 w-16" />
       </Link>
       
       <Card className="w-full max-w-2xl">

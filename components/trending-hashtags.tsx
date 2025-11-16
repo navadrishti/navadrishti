@@ -1,0 +1,236 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { TrendingUp, Hash, Activity } from 'lucide-react'
+
+interface TrendingHashtag {
+  id: number
+  tag: string
+  daily_mentions: number
+  weekly_mentions: number
+  total_mentions: number
+  trending_score: number
+  category: string
+  is_trending: boolean
+}
+
+interface TrendingHashtagsProps {
+  limit?: number
+  showDetails?: boolean
+  onHashtagClick?: (hashtag: string) => void
+}
+
+export function TrendingHashtags({ 
+  limit = 5, 
+  showDetails = false,
+  onHashtagClick 
+}: TrendingHashtagsProps) {
+  const [hashtags, setHashtags] = useState<TrendingHashtag[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    fetchTrendingHashtags()
+  }, [limit])
+
+  const fetchTrendingHashtags = async () => {
+    try {
+      setLoading(true)
+      setError('')
+
+      const response = await fetch(`/api/hashtags/trending?limit=${limit}`)
+      const data = await response.json()
+
+      if (data.success) {
+        setHashtags(data.data || [])
+      } else {
+        setError('Failed to load trending hashtags')
+        setHashtags([])
+      }
+    } catch (err) {
+      setError('Unable to load trending hashtags')
+      setHashtags([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleHashtagClick = (tag: string) => {
+    if (onHashtagClick) {
+      onHashtagClick(tag)
+    } else {
+      // Default behavior: could navigate to hashtag search page
+      // For now, just log or copy to clipboard
+      navigator.clipboard?.writeText(`#${tag}`)
+    }
+  }
+
+  const getTrendingIcon = (score: number) => {
+    if (score > 20) return <TrendingUp className="h-4 w-4 text-red-500" />
+    if (score > 10) return <TrendingUp className="h-4 w-4 text-orange-500" />
+    return <TrendingUp className="h-4 w-4 text-blue-500" />
+  }
+
+  const getCategoryColor = (category: string) => {
+    const colors: { [key: string]: string } = {
+      'social_impact': 'bg-green-100 text-green-800',
+      'technology': 'bg-blue-100 text-blue-800',
+      'education': 'bg-purple-100 text-purple-800',
+      'business': 'bg-yellow-100 text-yellow-800',
+      'general': 'bg-gray-100 text-gray-800'
+    }
+    return colors[category] || colors['general']
+  }
+
+  if (loading) {
+    return (
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Hash className="h-5 w-5" />
+            Trending Hashtags
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {Array.from({ length: limit }).map((_, i) => (
+              <div key={i} className="animate-pulse">
+                <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+                <div className="h-3 bg-gray-100 rounded w-1/2"></div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (error) {
+    return (
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Hash className="h-5 w-5" />
+            Trending Hashtags
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground text-center py-4">
+            {error}
+          </p>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (hashtags.length === 0) {
+    return (
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Hash className="h-5 w-5" />
+            Trending Hashtags
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-6">
+            <Activity className="h-8 w-8 mx-auto text-gray-400 mb-2" />
+            <p className="text-sm text-muted-foreground">
+              No trending hashtags yet
+            </p>
+            <p className="text-xs text-gray-400 mt-1">
+              Be the first to start a trend!
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-lg flex items-center gap-2">
+          <Hash className="h-5 w-5" />
+          Trending Hashtags
+          {hashtags.length > 0 && (
+            <Badge variant="secondary" className="ml-auto">
+              {hashtags.length}
+            </Badge>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-3">
+          {hashtags.map((hashtag, index) => (
+            <div
+              key={hashtag.id}
+              onClick={() => handleHashtagClick(hashtag.tag)}
+              className="group flex items-center justify-between p-3 rounded-lg border hover:bg-gray-50 cursor-pointer transition-colors"
+            >
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                {/* Ranking number */}
+                <div className="flex-shrink-0">
+                  <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-800 text-xs font-bold flex items-center justify-center">
+                    {index + 1}
+                  </div>
+                </div>
+
+                {/* Hashtag info */}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm group-hover:text-blue-600 transition-colors">
+                      #{hashtag.tag}
+                    </span>
+                    {hashtag.is_trending && getTrendingIcon(hashtag.trending_score)}
+                  </div>
+                  
+                  {showDetails && (
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-xs text-muted-foreground">
+                        {hashtag.daily_mentions} today
+                      </span>
+                      <span className="text-xs text-gray-300">•</span>
+                      <span className="text-xs text-muted-foreground">
+                        {hashtag.weekly_mentions} this week
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Category and mentions */}
+                <div className="flex-shrink-0 text-right">
+                  {showDetails && hashtag.category !== 'general' && (
+                    <Badge 
+                      variant="outline" 
+                      className={`text-xs mb-1 ${getCategoryColor(hashtag.category)}`}
+                    >
+                      {hashtag.category}
+                    </Badge>
+                  )}
+                  <div className="text-sm font-semibold text-blue-600">
+                    {hashtag.daily_mentions}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    mentions
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Footer */}
+        <div className="mt-4 pt-3 border-t">
+          <p className="text-xs text-muted-foreground text-center">
+            Updated in real-time • Rankings based on recent activity
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+export default TrendingHashtags

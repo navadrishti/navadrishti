@@ -8,9 +8,9 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { ProductCard } from '@/components/product-card'
+import { ServiceCard } from '@/components/service-card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { SkeletonHeader, SkeletonServiceCard } from '@/components/ui/skeleton'
+import { SkeletonHeader, SkeletonServiceCard, SkeletonCTA } from '@/components/ui/skeleton'
 import { Search, MapPin, Users, Target, Clock, ArrowRight, Plus, HeartHandshake, UserRound, Building, DollarSign, Trash2, MoreVertical, Edit, Eye } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { formatPrice } from '@/lib/currency'
@@ -46,6 +46,8 @@ export default function ServiceOffersPage() {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All Categories');
+  const [locationFilter, setLocationFilter] = useState('');
+  const [employmentTypeFilter, setEmploymentTypeFilter] = useState('all');
   const [currentView, setCurrentView] = useState('all');
   const [serviceOffers, setServiceOffers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -117,6 +119,12 @@ export default function ServiceOffersPage() {
       if (searchTerm) {
         params.append('search', searchTerm);
       }
+      if (locationFilter) {
+        params.append('location', locationFilter);
+      }
+      if (employmentTypeFilter && employmentTypeFilter !== 'all') {
+        params.append('employment_type', employmentTypeFilter);
+      }
       if (user?.id) {
         params.append('userId', user.id.toString());
       }
@@ -147,7 +155,7 @@ export default function ServiceOffersPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedCategory, searchTerm, currentView, user?.id]);
+  }, [selectedCategory, searchTerm, locationFilter, employmentTypeFilter, currentView, user?.id]);
 
   // Load data on component mount and when filters change
   useEffect(() => {
@@ -190,27 +198,35 @@ export default function ServiceOffersPage() {
         </div>
 
         {/* Create Service Offer CTA */}
-        {user && isNGO && (
-          <div className="mb-8 p-6 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl border border-green-200">
-            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+        {loading ? (
+          <SkeletonCTA />
+        ) : user && isNGO && (
+          <div className="mb-8 p-8 bg-gradient-to-br from-gray-900 via-gray-800 to-black rounded-2xl border border-gray-700 shadow-2xl relative overflow-hidden">
+            {/* Background gradient overlay */}
+            <div className="absolute inset-0 bg-gradient-to-r from-blue-600/10 via-purple-600/10 to-green-600/10 pointer-events-none"></div>
+            
+            <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
               <div className="text-center md:text-left">
-                <h2 className="text-xl font-semibold text-green-900 mb-2">
+                <h2 className="text-2xl font-bold text-white mb-3">
                   Have Services to Offer?
                 </h2>
-                <p className="text-green-700 text-sm">
+                <p className="text-gray-300 text-base max-w-md">
                   List your services and connect with individuals and companies who need them
                 </p>
               </div>
-              <div className="flex flex-col sm:flex-row gap-3">
+              <div className="flex flex-col sm:flex-row gap-4">
+                <Link href="/service-offers/track">
+                  <button className="gradient-border-btn shadow-xl text-white transition-all duration-300 px-8 py-4 h-auto font-medium text-base">
+                    <Clock size={20} className="mr-3" />
+                    Track My Offers
+                  </button>
+                </Link>
                 <Link href="/service-offers/create">
-                  <Button 
-                    size="lg" 
-                    className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 text-base font-medium shadow-lg hover:shadow-xl transition-all duration-200"
-                  >
-                    <Plus size={20} className="mr-2" />
+                  <button className="gradient-border-btn shadow-xl text-white transition-all duration-300 px-8 py-4 h-auto font-medium text-base">
+                    <Plus size={20} className="mr-3" />
                     Create Service Offer
-                    <ArrowRight size={16} className="ml-2" />
-                  </Button>
+                    <ArrowRight size={16} className="ml-3" />
+                  </button>
                 </Link>
               </div>
             </div>
@@ -264,163 +280,32 @@ export default function ServiceOffersPage() {
               ) : filteredOffers.length > 0 ? (
                 <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {filteredOffers.map((offer) => (
-                <Card key={offer.id} className="group overflow-hidden hover:shadow-xl transition-all duration-300 border border-gray-200 bg-white">
-                  {/* Status Indicator */}
-                  <div className={`h-1 w-full ${
-                    offer.status === 'Limited Availability' ? 'bg-orange-500' : 
-                    offer.status === 'Available' ? 'bg-green-500' : 
-                    'bg-gray-400'
-                  }`} />
-                  
-                  <CardHeader className="pb-4 space-y-3">
-                    <div className="flex justify-between items-start">
-                      <CardTitle className="text-xl font-bold leading-tight text-gray-900 group-hover:text-primary transition-colors">
-                        {offer.title}
-                      </CardTitle>
-                      <Badge 
-                        variant={offer.status === 'Limited Availability' ? 'default' : 'secondary'} 
-                        className={`font-medium shadow-sm ${
-                          offer.status === 'Available' ? 'bg-green-100 text-green-800 border-green-200' : ''
-                        }`}
-                      >
-                        {offer.status}
-                      </Badge>
-                    </div>
-                    
-                    {/* NGO Profile Section */}
-                    <div className="flex items-center justify-between bg-gray-50 rounded-lg p-3">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-green-500 to-green-600 shadow-md">
-                          <HeartHandshake size={16} className="text-white" />
-                        </div>
-                        <div>
-                          <p className="font-semibold text-gray-900">{offer.ngo_name}</p>
-                          <p className="text-xs text-gray-500">Service Provider</p>
-                        </div>
-                      </div>
-                      <Badge variant="outline" className="bg-white border-gray-300 text-gray-700 font-medium">
-                        {offer.category}
-                      </Badge>
-                    </div>
-                  </CardHeader>
-                  
-                  <CardContent className="px-6 pb-6 space-y-4">
-                    {/* Description */}
-                    <div>
-                      <p className="text-gray-600 leading-relaxed line-clamp-3 text-sm">{offer.description}</p>
-                    </div>
-                    
-                    {/* Price & Location Grid */}
-                    <div className="grid grid-cols-2 gap-3">
-                      {/* Price */}
-                      <div className="flex items-center gap-2 bg-blue-50 rounded-lg p-2">
-                        <DollarSign size={16} className="text-blue-600" />
-                        <div>
-                          <p className="text-xs text-blue-700 font-medium">Price</p>
-                          <p className="text-sm font-semibold text-blue-800">
-                            {typeof offer.price === 'number' ? formatPrice(offer.price) : offer.price}
-                          </p>
-                        </div>
-                      </div>
-                      
-                      {/* Location */}
-                      <div className="flex items-center gap-2 bg-purple-50 rounded-lg p-2">
-                        <MapPin size={16} className="text-purple-600" />
-                        <div>
-                          <p className="text-xs text-purple-700 font-medium">Location</p>
-                          <p className="text-sm font-semibold text-purple-800 truncate">{offer.location}</p>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    {/* Service Tags */}
-                    {(typeof offer.tags === 'string' ? JSON.parse(offer.tags) : offer.tags || []).length > 0 && (
-                      <div>
-                        <p className="text-xs font-medium text-gray-500 mb-2">Services Included:</p>
-                        <div className="flex flex-wrap gap-1">
-                          {(typeof offer.tags === 'string' ? JSON.parse(offer.tags) : offer.tags || []).slice(0, 4).map((tag: string) => (
-                            <Badge key={tag} variant="secondary" className="text-xs bg-green-100 text-green-700 border-green-200 hover:bg-green-200">
-                              {tag}
-                            </Badge>
-                          ))}
-                          {(typeof offer.tags === 'string' ? JSON.parse(offer.tags) : offer.tags || []).length > 4 && (
-                            <Badge variant="secondary" className="text-xs bg-gray-100 text-gray-600">
-                              +{(typeof offer.tags === 'string' ? JSON.parse(offer.tags) : offer.tags || []).length - 4} more
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                  
-                  <CardFooter className="border-t bg-gradient-to-r from-gray-50 to-gray-100 p-4">
-                    {user && canHireServices ? (
-                      <Link href={`/service-offers/${offer.id}`} className="w-full">
-                          <Button className="w-full h-11 bg-green-600 hover:bg-green-700 text-white font-medium shadow-md hover:shadow-lg transition-all duration-200">
-                            <HeartHandshake size={18} className="mr-2" />
-                            Show Interest
-                            <ArrowRight size={16} className="ml-2" />
-                          </Button>
-                      </Link>
-                    ) : user && isNGO && (offer.ngo_name === user?.name) ? (
-                      <div className="flex w-full gap-2">
-                        <Button variant="outline" className="flex-1 h-11 border-gray-300 hover:bg-gray-50 shadow-sm">
-                          <Edit size={16} className="mr-2" />
-                          Edit
-                        </Button>
-                        <Button variant="outline" className="flex-1 h-11 border-gray-300 hover:bg-gray-50 shadow-sm">
-                          <Eye size={16} className="mr-2" />
-                          View Requests
-                        </Button>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="outline" size="icon">
-                              <MoreVertical size={16} />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem asChild>
-                              <Link href={`/service-offers/edit/${offer.id}`} className="flex items-center cursor-pointer">
-                                <Edit size={16} className="mr-2" />
-                                Edit Offer
-                              </Link>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem asChild>
-                              <Link href={`/service-offers/hires/${offer.id}`} className="flex items-center cursor-pointer">
-                                <Eye size={16} className="mr-2" />
-                                View Hires
-                              </Link>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem 
-                              onClick={() => handleDeleteOffer(offer.id)}
-                              disabled={deleting === offer.id}
-                              className="text-red-600 focus:text-red-600"
-                            >
-                              {deleting === offer.id ? (
-                                <div className="h-4 w-4 animate-spin rounded-full border-2 border-red-600 border-t-transparent mr-2" />
-                              ) : (
-                                <Trash2 size={16} className="mr-2" />
-                              )}
-                              Delete Offer
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    ) : !user ? (
-                      <Link href="/login">
-                        <Button variant="outline" className="w-full">
-                          Sign in to Show Interest
-                        </Button>
-                      </Link>
-                    ) : (
-                      <Link href={`/service-offers/${offer.id}`} className="w-full">
-                        <Button variant="outline" className="w-full border-blue-600 text-blue-600 hover:bg-blue-600 hover:!text-white font-medium shadow-md hover:shadow-lg transition-all duration-200">
-                          View Details
-                        </Button>
-                      </Link>
-                    )}
-                  </CardFooter>
-                </Card>
+                  <ServiceCard
+                    key={offer.id}
+                    id={offer.id}
+                    title={offer.title}
+                    description={offer.description}
+                    category={offer.category}
+                    location={offer.location}
+                    images={offer.images}
+                    ngo_name={offer.ngo_name}
+                    ngo_id={offer.ngo_id}
+                    provider={offer.ngo_name}
+                    providerType="ngo"
+                    verified={offer.verified}
+                    tags={offer.tags}
+                    created_at={offer.created_at}
+                    price_amount={offer.price_amount}
+                    price_type={offer.price_type}
+                    price_description={offer.price_description}
+                    status={offer.status}
+                    type="offer"
+                    onDelete={() => handleDeleteOffer(offer.id)}
+                    isDeleting={deleting === offer.id}
+                    showDeleteButton={!!(user && user.id === offer.ngo_id)}
+                    isOwner={!!(user && user.id === offer.ngo_id)}
+                    canInteract={true}
+                  />
                 ))}
               </div>
             ) : (
@@ -462,149 +347,52 @@ export default function ServiceOffersPage() {
                     <p className="mb-4 text-muted-foreground">
                       You haven't posted any service offerings yet.
                     </p>
-                    <Link href="/service-offers/create">
-                      <Button>
-                        <Plus size={16} className="mr-2" />
-                        Post New Service
-                      </Button>
-                    </Link>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <Link href="/service-offers/track">
+                        <Button variant="outline">
+                          <Clock size={16} className="mr-2" />
+                          Track My Offers
+                        </Button>
+                      </Link>
+                      <Link href="/service-offers/create">
+                        <Button>
+                          <Plus size={16} className="mr-2" />
+                          Post New Service
+                        </Button>
+                      </Link>
+                    </div>
                   </div>
                 ) : (
                   <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                     {filteredOffers
                       .filter(offer => offer.ngo_name === user?.name)
                       .map((offer) => (
-                        <Card key={offer.id} className="group overflow-hidden hover:shadow-xl transition-all duration-300 border border-gray-200 bg-white">
-                          {/* Status Indicator */}
-                          <div className={`h-1 w-full ${
-                            offer.status === 'Limited Availability' ? 'bg-orange-500' : 
-                            offer.status === 'Available' ? 'bg-green-500' : 
-                            'bg-gray-400'
-                          }`} />
-                          
-                          <CardHeader className="pb-4 space-y-3">
-                            <div className="flex justify-between items-start">
-                              <CardTitle className="text-xl font-bold leading-tight text-gray-900 group-hover:text-primary transition-colors">
-                                {offer.title}
-                              </CardTitle>
-                              <Badge 
-                                variant={offer.status === 'Limited Availability' ? 'default' : 'secondary'} 
-                                className={`font-medium shadow-sm ${
-                                  offer.status === 'Available' ? 'bg-green-100 text-green-800 border-green-200' : ''
-                                }`}
-                              >
-                                {offer.status}
-                              </Badge>
-                            </div>
-                            
-                            {/* NGO Profile Section */}
-                            <div className="flex items-center justify-between bg-gray-50 rounded-lg p-3">
-                              <div className="flex items-center gap-3">
-                                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-green-500 to-green-600 shadow-md">
-                                  <HeartHandshake size={16} className="text-white" />
-                                </div>
-                                <div>
-                                  <p className="font-semibold text-gray-900">{offer.ngo_name}</p>
-                                  <p className="text-xs text-gray-500">Your Service</p>
-                                </div>
-                              </div>
-                              <Badge variant="outline" className="bg-white border-gray-300 text-gray-700 font-medium">
-                                {offer.category}
-                              </Badge>
-                            </div>
-                          </CardHeader>
-                          
-                          <CardContent className="px-6 pb-6 space-y-4">
-                            {/* Description */}
-                            <div>
-                              <p className="text-gray-600 leading-relaxed line-clamp-3 text-sm">{offer.description}</p>
-                            </div>
-                            
-                            {/* Price & Location Grid */}
-                            <div className="grid grid-cols-2 gap-3">
-                              {/* Price */}
-                              <div className="flex items-center gap-2 bg-blue-50 rounded-lg p-2">
-                                <DollarSign size={16} className="text-blue-600" />
-                                <div>
-                                  <p className="text-xs text-blue-700 font-medium">Price</p>
-                                  <p className="text-sm font-semibold text-blue-800">
-                                    {typeof offer.price === 'number' ? formatPrice(offer.price) : offer.price}
-                                  </p>
-                                </div>
-                              </div>
-                              
-                              {/* Location */}
-                              <div className="flex items-center gap-2 bg-purple-50 rounded-lg p-2">
-                                <MapPin size={16} className="text-purple-600" />
-                                <div>
-                                  <p className="text-xs text-purple-700 font-medium">Location</p>
-                                  <p className="text-sm font-semibold text-purple-800 truncate">{offer.location}</p>
-                                </div>
-                              </div>
-                            </div>
-                            
-                            {/* Service Tags */}
-                            {(typeof offer.tags === 'string' ? JSON.parse(offer.tags) : offer.tags || []).length > 0 && (
-                              <div>
-                                <p className="text-xs font-medium text-gray-500 mb-2">Services Included:</p>
-                                <div className="flex flex-wrap gap-1">
-                                  {(typeof offer.tags === 'string' ? JSON.parse(offer.tags) : offer.tags || []).slice(0, 4).map((tag: string) => (
-                                    <Badge key={tag} variant="secondary" className="text-xs bg-green-100 text-green-700 border-green-200 hover:bg-green-200">
-                                      {tag}
-                                    </Badge>
-                                  ))}
-                                  {(typeof offer.tags === 'string' ? JSON.parse(offer.tags) : offer.tags || []).length > 4 && (
-                                    <Badge variant="secondary" className="text-xs bg-gray-100 text-gray-600">
-                                      +{(typeof offer.tags === 'string' ? JSON.parse(offer.tags) : offer.tags || []).length - 4} more
-                                    </Badge>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-                          </CardContent>
-                          
-                          <CardFooter className="border-t bg-gradient-to-r from-gray-50 to-gray-100 p-4">
-                            <div className="flex w-full gap-2">
-                              <Button variant="outline" className="flex-1 h-11 border-gray-300 hover:bg-gray-50 shadow-sm">
-                                <Eye size={16} className="mr-2" />
-                                View Requests
-                              </Button>
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button variant="outline" size="icon" className="h-11 w-11 border-gray-300 hover:bg-gray-50 shadow-sm">
-                                    <MoreVertical size={16} />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuItem asChild>
-                                    <Link href={`/service-offers/edit/${offer.id}`} className="flex items-center cursor-pointer">
-                                      <Edit size={16} className="mr-2" />
-                                      Edit Offer
-                                    </Link>
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem asChild>
-                                    <Link href={`/service-offers/hires/${offer.id}`} className="flex items-center cursor-pointer">
-                                      <Eye size={16} className="mr-2" />
-                                      View Hires
-                                    </Link>
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem 
-                                    onClick={() => handleDeleteOffer(offer.id)}
-                                    disabled={deleting === offer.id}
-                                    className="text-red-600 focus:text-red-600"
-                                  >
-                                    {deleting === offer.id ? (
-                                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-red-600 border-t-transparent mr-2" />
-                                    ) : (
-                                      <Trash2 size={16} className="mr-2" />
-                                    )}
-                                    Delete Offer
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </div>
-                          </CardFooter>
-                        </Card>
+                        <ServiceCard
+                          key={offer.id}
+                          id={offer.id}
+                          title={offer.title}
+                          description={offer.description}
+                          category={offer.category}
+                          location={offer.location}
+                          images={offer.images}
+                          ngo_name={offer.ngo_name}
+                          ngo_id={offer.ngo_id}
+                          provider={offer.ngo_name}
+                          providerType="ngo"
+                          verified={offer.verified}
+                          tags={offer.tags}
+                          created_at={offer.created_at}
+                          price_amount={offer.price_amount}
+                          price_type={offer.price_type}
+                          price_description={offer.price_description}
+                          status={offer.status}
+                          type="offer"
+                          onDelete={() => handleDeleteOffer(offer.id)}
+                          isDeleting={deleting === offer.id}
+                          showDeleteButton={true}
+                          isOwner={true}
+                          canInteract={true}
+                        />
                       ))}
                   </div>
                 )}

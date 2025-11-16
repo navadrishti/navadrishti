@@ -7,6 +7,7 @@ import { ArrowLeft, MapPin, Users, Clock, Target, Calendar, User, Building, Mess
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
 import { Header } from '@/components/header'
+import { ServiceDetails } from '@/components/service-details'
 import { SkeletonHeader, SkeletonAvatarText, SkeletonTextLines, SkeletonBigBox } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -24,6 +25,8 @@ interface ServiceRequest {
   urgency_level: 'low' | 'medium' | 'high' | 'critical'
   category: string
   location: string
+  images?: string[]
+  tags?: string[]
   requirements: string | object
   volunteers_needed: number
   timeline: string
@@ -324,125 +327,27 @@ export default function ServiceRequestDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Main Content */}
           <div className="lg:col-span-2">
-            <Card>
-              <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <CardTitle className="text-2xl mb-2">{request.title}</CardTitle>
-                    <CardDescription className="text-base">
-                      Requested by <span className="font-semibold">{request.ngo_name}</span>
-                    </CardDescription>
-                  </div>
-                  <Badge className={getUrgencyColor(request.urgency_level)}>
-                    {request.urgency_level ? 
-                      request.urgency_level.charAt(0).toUpperCase() + request.urgency_level.slice(1) : 
-                      'Medium'
-                    } Priority
-                  </Badge>
-                </div>
-              </CardHeader>
-              
-              <CardContent className="space-y-6">
-                <div>
-                  <h3 className="font-semibold mb-2">Description</h3>
-                  <p className="text-muted-foreground leading-relaxed">{request.description}</p>
-                </div>
-
-                <Separator />
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="flex items-center gap-2">
-                    <MapPin className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm">{request.location}</span>
-                  </div>
-                  
-                  <div className="flex items-center gap-2">
-                    <Users className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm">{request.volunteers_needed} volunteers needed</span>
-                  </div>
-                  
-                  <div className="flex items-center gap-2">
-                    <Target className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm">{request.category}</span>
-                  </div>
-                  
-                  {request.timeline && (
-                    <div className="flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm">{request.timeline}</span>
-                    </div>
-                  )}
-                  
-                  {request.deadline && (
-                    <div className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-sm">Deadline: {new Date(request.deadline).toLocaleDateString()}</span>
-                    </div>
-                  )}
-                </div>
-
-                {request.requirements && (
-                  <>
-                    <Separator />
-                    <div>
-                      <h3 className="font-semibold mb-3">Requirements</h3>
-                      {(() => {
-                        try {
-                          const requirements = typeof request.requirements === 'string' 
-                            ? JSON.parse(request.requirements) 
-                            : request.requirements;
-                          
-                          return (
-                            <div className="space-y-3">
-                              {requirements.budget && (
-                                <div className="p-3 bg-green-50 rounded-lg border border-green-200">
-                                  <p className="text-sm font-medium text-green-800 mb-1">Budget</p>
-                                  <p className="text-sm text-green-700">{requirements.budget}</p>
-                                </div>
-                              )}
-                              
-                              {requirements.timeline && (
-                                <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-                                  <p className="text-sm font-medium text-blue-800 mb-1">Timeline</p>
-                                  <p className="text-sm text-blue-700">{requirements.timeline}</p>
-                                </div>
-                              )}
-                              
-                              {requirements.contactInfo && (
-                                <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
-                                  <p className="text-sm font-medium text-amber-800 mb-1">Contact Method</p>
-                                  <p className="text-sm text-amber-700 capitalize">{requirements.contactInfo}</p>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        } catch (e) {
-                          // Fallback for invalid JSON
-                          return (
-                            <p className="text-muted-foreground text-sm">
-                              {typeof request.requirements === 'string' 
-                                ? request.requirements 
-                                : 'Requirements not specified'
-                              }
-                            </p>
-                          );
-                        }
-                      })()}
-                    </div>
-                  </>
-                )}
-
-                {request.contact_info && (
-                  <>
-                    <Separator />
-                    <div>
-                      <h3 className="font-semibold mb-2">Contact Information</h3>
-                      <p className="text-muted-foreground">{request.contact_info}</p>
-                    </div>
-                  </>
-                )}
-              </CardContent>
-            </Card>
+            <ServiceDetails
+              id={request.id}
+              title={request.title}
+              description={request.description}
+              category={request.category}
+              location={request.location}
+              images={request.images}
+              ngo_name={request.ngo_name}
+              ngo_id={request.ngo_id}
+              provider={request.ngo_name}
+              providerType="ngo"
+              verified={true}
+              tags={request.tags}
+              created_at={request.created_at}
+              urgency_level={request.urgency_level}
+              volunteers_needed={request.volunteers_needed}
+              timeline={request.timeline}
+              deadline={request.deadline}
+              requirements={request.requirements}
+              type="request"
+            />
           </div>
 
           {/* Application Sidebar */}

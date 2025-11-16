@@ -63,42 +63,58 @@ async function initiateCompanyVerification(
   cinNumber: string, 
   companyType: string
 ) {
-  // Generate EntityLocker authorization URL
-  const authUrl = entityLocker.generateAuthUrl(userId, 'company');
-  
-  // Create or update verification record
-  const { data: existingVerification } = await supabase
-    .from('company_verifications')
-    .select('id')
-    .eq('user_id', userId)
-    .single();
-
-  if (!existingVerification) {
-    await supabase
-      .from('company_verifications')
-      .insert({
-        user_id: userId,
-        company_name: companyName,
-        cin_number: cinNumber,
-        company_type: companyType,
-        verification_status: 'pending'
-      });
-  } else {
-    await supabase
-      .from('company_verifications')
-      .update({
-        company_name: companyName,
-        cin_number: cinNumber,
-        company_type: companyType
-      })
-      .eq('user_id', userId);
+  // Check if EntityLocker service is available
+  if (!entityLocker.isAvailable()) {
+    return NextResponse.json({
+      error: 'EntityLocker verification service is not configured. Please contact administrator.',
+      code: 'SERVICE_NOT_CONFIGURED'
+    }, { status: 503 });
   }
 
-  return NextResponse.json({
-    success: true,
-    authUrl,
-    message: 'Please complete verification on EntityLocker'
-  });
+  try {
+    // Generate EntityLocker authorization URL
+    const authUrl = entityLocker.generateAuthUrl(userId, 'company');
+    
+    // Create or update verification record
+    const { data: existingVerification } = await supabase
+      .from('company_verifications')
+      .select('id')
+      .eq('user_id', userId)
+      .single();
+
+    if (!existingVerification) {
+      await supabase
+        .from('company_verifications')
+        .insert({
+          user_id: userId,
+          company_name: companyName,
+          cin_number: cinNumber,
+          company_type: companyType,
+          verification_status: 'pending'
+        });
+    } else {
+      await supabase
+        .from('company_verifications')
+        .update({
+          company_name: companyName,
+          cin_number: cinNumber,
+          company_type: companyType
+        })
+        .eq('user_id', userId);
+    }
+
+    return NextResponse.json({
+      success: true,
+      authUrl,
+      message: 'Please complete verification on EntityLocker'
+    });
+  } catch (error: any) {
+    console.error('EntityLocker initiation error:', error);
+    return NextResponse.json({
+      error: error.message || 'Failed to initiate verification',
+      code: 'INITIATION_FAILED'
+    }, { status: 500 });
+  }
 }
 
 async function verifyGST(userId: number, gstNumber: string) {

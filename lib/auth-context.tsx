@@ -68,12 +68,43 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   // Load user from localStorage on initial render
   useEffect(() => {
-    const storedToken = localStorage.getItem('token');
-    const storedUser = localStorage.getItem('user');
-    
-    if (storedToken && storedUser) {
-      setToken(storedToken);
-      setUser(JSON.parse(storedUser));
+    try {
+      const storedToken = localStorage.getItem('token');
+      const storedUser = localStorage.getItem('user');
+      
+      // Check if token exists and is not the string "undefined" or "null"
+      if (storedToken && 
+          storedToken !== 'undefined' && 
+          storedToken !== 'null' && 
+          storedUser && 
+          storedUser !== 'undefined' && 
+          storedUser !== 'null') {
+        
+        // Clean the token of any quotes or extra characters
+        const cleanToken = storedToken.replace(/[\"']/g, '').trim();
+        
+        if (cleanToken.length > 0 && cleanToken !== 'undefined' && cleanToken !== 'null') {
+          setToken(cleanToken);
+          try {
+            const parsedUser = JSON.parse(storedUser);
+            setUser(parsedUser);
+          } catch (parseError) {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+          }
+        } else {
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+        }
+      } else {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+      }
+    } catch (error) {
+      console.error('Error loading auth data from localStorage:', error);
+      // Clear potentially corrupted data
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
     }
     
     setLoading(false);
@@ -85,9 +116,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
       if (!token) return;
       
       try {
+        // Clean token before sending
+        const cleanToken = token.replace(/[\"']/g, '').trim();
+        
+        if (!cleanToken || cleanToken.length === 0) {
+          console.error('Token is empty after cleaning');
+          logout();
+          return;
+        }
+
         const response = await fetch('/api/auth/me', {
           headers: {
-            'Authorization': `Bearer ${token}`
+            'Authorization': `Bearer ${cleanToken}`
           }
         });
         
@@ -97,15 +137,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
           // Update localStorage with fresh user data
           localStorage.setItem('user', JSON.stringify(data.user));
         } else if (response.status === 401) {
-          // Token is invalid, expired, or has signature issues
+          // Token is invalid, expired, or malformed
+          console.log('Token verification failed with 401');
           notify.error('Your session has expired. Please log in again.');
           logout();
         } else {
           // Other error, but still clear auth to be safe
+          console.log('Token verification failed with status:', response.status);
           notify.error('Authentication error. Please log in again.');
           logout();
         }
       } catch (error) {
+        console.error('Token verification error:', error);
         notify.error('Connection error. Please check your internet connection.');
         logout();
       }
@@ -184,7 +227,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
       
-      notify.success(`Welcome to Navdrishti, ${data.user.name}!`);
+      notify.success(`Welcome to Navadrishti, ${data.user.name}!`);
     } catch (error: any) {
       const errorMessage = error.message || 'An error occurred during signup';
       setError(errorMessage);
@@ -198,8 +241,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const logout = () => {
     setToken(null);
     setUser(null);
+    setError(null);
+    
+    // Clear all auth-related data from storage
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    sessionStorage.removeItem('token');
+    sessionStorage.removeItem('user');
+    
+    // Clear auth cookies if they exist
+    document.cookie = 'token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+    document.cookie = 'user=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+    
     notify.info('You have been logged out');
   };
 

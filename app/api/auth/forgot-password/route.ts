@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
         const emailHtml = generatePasswordResetEmail(resetUrl, email);
         const emailSent = await sendEmail({
           to: email,
-          subject: 'Password Reset - Navdrishti',
+          subject: 'Password Reset - Navadrishti',
           html: emailHtml
         });
         

@@ -1,4 +1,4 @@
-# Navdrishti
+# Navadrishti
 
 A comprehensive platform connecting NGOs, individuals, and companies for social impact through service requests, service offerings, and a collaborative marketplace.
 
@@ -54,8 +54,8 @@ A comprehensive platform connecting NGOs, individuals, and companies for social 
 ### Development Setup
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/navdrishti.git
-cd navdrishti
+git clone https://github.com/yourusername/Navadrishti.git
+cd Navadrishti
 
 # Install dependencies
 npm install
@@ -73,7 +73,7 @@ Visit `http://localhost:3000` to see the application.
 ## 📁 Project Structure
 
 ```
-navdrishti/
+Navadrishti/
 ├── app/                    # Next.js App Router
 │   ├── api/               # API routes
 │   ├── (auth)/            # Authentication pages
@@ -100,7 +100,7 @@ SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 
 # Application Configuration
 NODE_ENV=development
-APP_NAME=Navdrishti
+APP_NAME=Navadrishti
 APP_URL=http://localhost:3000
 
 # JWT Configuration

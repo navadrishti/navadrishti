@@ -336,6 +336,7 @@ export default function IndividualDashboard() {
                             <VerificationBadge 
                               status={user?.phone_verified ? 'verified' : 'unverified'} 
                               size="sm"
+                              showText={false}
                             />
                           </div>
                         </div>
@@ -365,7 +366,8 @@ export default function IndividualDashboard() {
                           <h4 className="font-medium">Verification Status</h4>
                           <VerificationBadge 
                             status={user?.verification_status || 'unverified'} 
-                            size="md"
+                            size="sm"
+                            showText={false}
                           />
                         </div>
                         {user?.verification_details && (
@@ -389,7 +391,7 @@ export default function IndividualDashboard() {
                           <VerificationBadge 
                             status={user?.email_verified ? 'verified' : 'unverified'} 
                             size="sm"
-                            showText={true}
+                            showText={false}
                           />
                         </div>
                         <div className="flex gap-4 items-center">
@@ -397,7 +399,8 @@ export default function IndividualDashboard() {
                           <VerificationBadge 
                             status={user?.phone_verified ? 'verified' : 'unverified'} 
                             size="sm"
-                            showText={true}
+                            showText={false}
+                          />
                           />
                         </div>
                       </div>

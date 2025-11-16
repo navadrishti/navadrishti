@@ -159,13 +159,18 @@ export default function MarketplacePage() {
 
           {/* CTA Section Skeleton */}
           {user && (
-            <div className="mb-8 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200">
-              <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-                <div className="text-center md:text-left space-y-2">
-                  <div className="h-6 bg-blue-200 rounded-full w-48 animate-pulse"></div>
-                  <div className="h-4 bg-blue-200 rounded-full w-64 animate-pulse"></div>
+            <div className="mb-8 p-8 bg-gradient-to-br from-gray-900 via-gray-800 to-black rounded-2xl border border-gray-700 shadow-2xl relative overflow-hidden">
+              {/* Background gradient overlay */}
+              <div className="absolute inset-0 bg-gradient-to-r from-purple-600/10 via-pink-600/10 to-indigo-600/10 pointer-events-none"></div>
+              
+              <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
+                <div className="text-center md:text-left space-y-3">
+                  <div className="h-8 bg-gray-700 rounded-md w-64 animate-pulse"></div>
+                  <div className="h-5 bg-gray-700 rounded-md w-80 animate-pulse"></div>
                 </div>
-                <div className="h-12 bg-blue-200 rounded-md w-32 animate-pulse"></div>
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <div className="h-12 bg-gray-700 rounded-lg w-40 animate-pulse"></div>
+                </div>
               </div>
             </div>
           )}
@@ -222,23 +227,26 @@ export default function MarketplacePage() {
 
         {/* Enhanced Call-to-Action Section for Listing Items */}
         {user && (
-          <div className="mb-8 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200">
-            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="mb-8 p-8 bg-gradient-to-br from-gray-900 via-gray-800 to-black rounded-2xl border border-gray-700 shadow-2xl relative overflow-hidden">
+            {/* Background gradient overlay */}
+            <div className="absolute inset-0 bg-gradient-to-r from-purple-600/10 via-pink-600/10 to-indigo-600/10 pointer-events-none"></div>
+            
+            <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
               <div className="text-center md:text-left">
-                <h2 className="text-xl font-semibold text-blue-900 mb-2">
+                <h2 className="text-2xl font-bold text-white mb-3">
                   Got items to sell or donate?
                 </h2>
-                <p className="text-blue-700 text-sm">
+                <p className="text-gray-300 text-base max-w-md">
                   Help your community by listing items others might need. It's quick and easy!
                 </p>
               </div>
-              <div className="flex flex-col sm:flex-row gap-3">
+              <div className="flex flex-col sm:flex-row gap-4">
                 <Link href="/marketplace/create">
-                  <Button size="lg" className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 text-base font-medium shadow-lg hover:shadow-xl transition-all duration-200">
-                    <Plus size={20} className="mr-2" />
+                  <button className="gradient-border-btn shadow-xl text-white transition-all duration-300 px-8 py-4 h-auto font-medium text-base">
+                    <Plus size={20} className="mr-3" />
                     List Your Item
-                    <ArrowRight size={16} className="ml-2" />
-                  </Button>
+                    <ArrowRight size={16} className="ml-3" />
+                  </button>
                 </Link>
               </div>
             </div>

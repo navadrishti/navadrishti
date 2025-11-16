@@ -60,24 +60,40 @@ export async function POST(req: NextRequest) {
 }
 
 async function initiateVerification(userId: number, documentType: 'aadhaar' | 'pan') {
-  // Generate DigiLocker authorization URL
-  const authUrl = digiLocker.generateAuthUrl(userId, documentType);
-  
-  // Create or update verification record
-  const existingVerification = await db.individualVerifications.findByUserId(userId);
-
-  if (!existingVerification) {
-    await db.individualVerifications.create({
-      user_id: userId,
-      verification_status: 'pending'
-    });
+  // Check if DigiLocker service is available
+  if (!digiLocker.isAvailable()) {
+    return NextResponse.json({
+      error: 'DigiLocker verification service is not configured. Please contact administrator.',
+      code: 'SERVICE_NOT_CONFIGURED'
+    }, { status: 503 });
   }
 
-  return NextResponse.json({
-    success: true,
-    authUrl,
-    message: 'Please complete verification on DigiLocker'
-  });
+  try {
+    // Generate DigiLocker authorization URL
+    const authUrl = digiLocker.generateAuthUrl(userId, documentType);
+    
+    // Create or update verification record
+    const existingVerification = await db.individualVerifications.findByUserId(userId);
+
+    if (!existingVerification) {
+      await db.individualVerifications.create({
+        user_id: userId,
+        verification_status: 'pending'
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      authUrl,
+      message: 'Please complete verification on DigiLocker'
+    });
+  } catch (error: any) {
+    console.error('DigiLocker initiation error:', error);
+    return NextResponse.json({
+      error: error.message || 'Failed to initiate verification',
+      code: 'INITIATION_FAILED'
+    }, { status: 500 });
+  }
 }
 
 async function verifyAadhaar(userId: number, aadhaarNumber: string) {

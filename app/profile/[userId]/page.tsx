@@ -7,6 +7,7 @@ import { Header } from '@/components/header'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { VerificationBadge } from '@/components/verification-badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Label } from '@/components/ui/label'
@@ -26,20 +27,21 @@ import {
   Award
 } from 'lucide-react'
 import { ProductCard } from '@/components/product-card'
+import { PostsFeed } from '@/components/posts-feed'
 import { toast } from 'sonner'
 
 interface ProfileData {
   id: string
-  full_name: string
+  full_name?: string
+  name?: string
   user_type: string
   bio?: string
   location?: string
-  skills?: string[]
-  languages?: string[]
-  interests?: string[]
   website?: string
   portfolio?: any[]
   experience?: string
+  proof_of_work?: string[] // Photo URLs of work
+  resume_url?: string
   profile_image?: string
   created_at: string
   rating_average?: number
@@ -57,7 +59,15 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userId
   const [soldItems, setSoldItems] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [activeTab, setActiveTab] = useState<'about' | 'listings' | 'sales' | 'activity'>('about')
+  const [activeTab, setActiveTab] = useState<'about' | 'listings' | 'sales' | 'posts' | 'activity'>('about')
+
+  // Generate initials for avatar fallback
+  const getInitials = (name: string) => {
+    if (!name) return "U"
+    const names = name.split(' ')
+    if (names.length === 1) return names[0].charAt(0).toUpperCase()
+    return (names[0].charAt(0) + names[names.length - 1].charAt(0)).toUpperCase()
+  }
 
   // Calculate joinedDate from profile data
   const joinedDate = profile?.created_at ? new Date(profile.created_at).toLocaleDateString('en-US', {
@@ -146,10 +156,11 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userId
   const getVerificationBadge = (status?: string) => {
     if (status === 'verified') {
       return (
-        <Badge variant="secondary" className="bg-green-100 text-green-800">
-          <Shield size={12} className="mr-1" />
-          Verified
-        </Badge>
+        <VerificationBadge 
+          status="verified" 
+          size="sm" 
+          showText={false}
+        />
       )
     }
     return null
@@ -219,9 +230,9 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userId
               {/* Profile Image */}
               <div className="flex-shrink-0">
                 <Avatar className="w-24 h-24">
-                  <AvatarImage src={profile.profile_image} alt={profile.full_name || 'User'} />
-                  <AvatarFallback>
-                    {profile.full_name?.split(' ').map(n => n[0]).join('').toUpperCase() || 'U'}
+                  <AvatarImage src={profile.profile_image} alt={profile.name || profile.full_name || 'User'} />
+                  <AvatarFallback className="bg-gradient-to-br from-blue-400 to-indigo-500 text-white font-semibold text-xl">
+                    {getInitials(profile.name || profile.full_name || 'User')}
                   </AvatarFallback>
                 </Avatar>
               </div>
@@ -231,7 +242,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userId
                 <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
                   <div>
                     <div className="flex items-center gap-2 mb-2">
-                      <h1 className="text-2xl font-bold text-gray-900">{profile.full_name || 'User'}</h1>
+                      <h1 className="text-2xl font-bold text-gray-900">{profile.name || profile.full_name || 'User'}</h1>
                       {getVerificationBadge(profile.verification_status)}
                     </div>
                     
@@ -385,13 +396,14 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userId
 
         {/* Profile Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="about">About</TabsTrigger>
+            <TabsTrigger value="posts">Posts</TabsTrigger>
             <TabsTrigger value="listings">
-              Active Listings ({listings?.length || 0})
+              Listings ({listings?.length || 0})
             </TabsTrigger>
             <TabsTrigger value="sales">
-              Sales History ({soldItems?.length || 0})
+              Sales ({soldItems?.length || 0})
             </TabsTrigger>
             <TabsTrigger value="activity">Activity</TabsTrigger>
           </TabsList>
@@ -400,7 +412,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userId
           <TabsContent value="about" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>About {profile.full_name || 'User'}</CardTitle>
+                <CardTitle>About {profile.name || profile.full_name || 'User'}</CardTitle>
                 <CardDescription>
                   Learn more about this {getUserTypeLabel(profile.user_type).toLowerCase()}
                 </CardDescription>
@@ -446,18 +458,46 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userId
                   )}
                 </div>
 
-                {/* Skills */}
-                {profile.skills && profile.skills.length > 0 && (
-                  <div>
-                    <h3 className="font-semibold text-gray-900 mb-3">Skills</h3>
-                    <div className="flex flex-wrap gap-2">
-                      {profile.skills.map((skill, index) => (
-                        <Badge key={index} variant="secondary">
-                          {skill}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
+                {/* Experience & Proof of Work (for individuals) */}
+                {profile.user_type === 'individual' && (
+                  <>
+                    {profile.experience && (
+                      <div>
+                        <h3 className="font-semibold text-gray-900 mb-3">Experience</h3>
+                        <p className="text-gray-700">{profile.experience}</p>
+                      </div>
+                    )}
+                    
+                    {profile.proof_of_work && profile.proof_of_work.length > 0 && (
+                      <div>
+                        <h3 className="font-semibold text-gray-900 mb-3">Proof of Work</h3>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                          {profile.proof_of_work.map((imageUrl, index) => (
+                            <img
+                              key={index}
+                              src={imageUrl}
+                              alt={`Work sample ${index + 1}`}
+                              className="w-full h-24 object-cover rounded"
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {profile.resume_url && (
+                      <div>
+                        <h3 className="font-semibold text-gray-900 mb-3">Resume</h3>
+                        <a 
+                          href={profile.resume_url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:text-blue-700 underline"
+                        >
+                          View Resume
+                        </a>
+                      </div>
+                    )}
+                  </>
                 )}
 
                 {/* Languages */}
@@ -487,14 +527,21 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userId
                     </div>
                   </div>
                 )}
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-                {/* Experience */}
-                {profile.experience && (
-                  <div>
-                    <h3 className="font-semibold text-gray-900 mb-2">Experience</h3>
-                    <p className="text-gray-700">{profile.experience}</p>
-                  </div>
-                )}
+          {/* Posts Tab */}
+          <TabsContent value="posts" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Posts</CardTitle>
+                <CardDescription>
+                  Social posts shared by {profile.name || profile.full_name || 'this user'}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <PostsFeed userId={parseInt(resolvedParams.userId)} />
               </CardContent>
             </Card>
           </TabsContent>

@@ -33,27 +33,56 @@ function SkeletonCard() {
 // Skeleton for service cards
 function SkeletonServiceCard() {
   return (
-    <div className="rounded-lg border p-6 space-y-4">
-      <div className="flex items-start space-x-4">
-        <Skeleton className="h-12 w-12 rounded-full" />
-        <div className="flex-1 space-y-2">
-          <Skeleton className="h-4 w-3/4" />
-          <Skeleton className="h-3 w-1/2" />
+    <div className="relative group h-full">
+      {/* Colorful border skeleton */}
+      <div className="absolute -inset-0.5 bg-gradient-to-r from-pink-500 via-purple-500 to-yellow-500 rounded-xl opacity-30"></div>
+      
+      {/* Compact card skeleton */}
+      <div className="relative bg-white rounded-xl p-4 h-full flex flex-col shadow-sm border border-gray-100 space-y-3">
+        {/* Header with category and badge */}
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-6 w-16 rounded-full" />
+          <Skeleton className="h-6 w-20 rounded-full" />
         </div>
-      </div>
-      <div className="space-y-2">
-        <Skeleton className="h-3 w-full" />
-        <Skeleton className="h-3 w-5/6" />
-        <Skeleton className="h-3 w-2/3" />
-      </div>
-      <div className="flex items-center space-x-2">
-        <Skeleton className="h-6 w-16" />
-        <Skeleton className="h-6 w-20" />
-        <Skeleton className="h-6 w-12" />
-      </div>
-      <div className="flex justify-between">
-        <Skeleton className="h-8 w-24" />
-        <Skeleton className="h-8 w-16" />
+
+        {/* Title in highlighted box */}
+        <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+          <Skeleton className="h-5 w-3/4 rounded-md" />
+        </div>
+
+        {/* Description skeleton */}
+        <div className="space-y-2 flex-grow">
+          <Skeleton className="h-3 w-full rounded-md" />
+          <Skeleton className="h-3 w-4/5 rounded-md" />
+        </div>
+
+        {/* Provider info in highlighted box */}
+        <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-8 w-8 rounded-full" />
+            <div className="space-y-1">
+              <Skeleton className="h-4 w-24 rounded-md" />
+              <Skeleton className="h-3 w-20 rounded-md" />
+            </div>
+          </div>
+        </div>
+
+        {/* Simple info grid */}
+        <div className="grid grid-cols-2 gap-2">
+          <div className="text-center space-y-1">
+            <Skeleton className="h-3 w-12 rounded-md mx-auto" />
+            <Skeleton className="h-4 w-16 rounded-md mx-auto" />
+          </div>
+          <div className="text-center space-y-1">
+            <Skeleton className="h-3 w-14 rounded-md mx-auto" />
+            <Skeleton className="h-4 w-18 rounded-md mx-auto" />
+          </div>
+        </div>
+
+        {/* Simple action button */}
+        <div className="mt-auto">
+          <Skeleton className="h-10 w-full rounded-md" />
+        </div>
       </div>
     </div>
   )
@@ -276,6 +305,27 @@ function SkeletonGrid({ items = 4 }: { items?: number }) {
   )
 }
 
+// CTA Skeleton
+function SkeletonCTA() {
+  return (
+    <div className="mb-8 p-8 bg-gradient-to-br from-gray-900 via-gray-800 to-black rounded-2xl border border-gray-700 shadow-2xl relative overflow-hidden">
+      {/* Background gradient overlay */}
+      <div className="absolute inset-0 bg-gradient-to-r from-blue-600/10 via-purple-600/10 to-green-600/10 pointer-events-none"></div>
+      
+      <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
+        <div className="text-center md:text-left">
+          <Skeleton className="h-8 w-48 mb-3 bg-gray-600" />
+          <Skeleton className="h-4 w-80 bg-gray-700" />
+        </div>
+        <div className="flex flex-col sm:flex-row gap-4">
+          <Skeleton className="h-12 w-40 rounded-lg bg-gray-600" />
+          <Skeleton className="h-12 w-48 rounded-lg bg-gray-600" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export { 
   Skeleton,
   SkeletonCard,
@@ -294,5 +344,6 @@ export {
   SkeletonButton,
   SkeletonHeader,
   SkeletonStats,
-  SkeletonGrid
+  SkeletonGrid,
+  SkeletonCTA
 }

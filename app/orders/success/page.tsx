@@ -137,7 +137,7 @@ function OrderSuccessContent() {
               <li>• You'll receive an order confirmation email shortly</li>
               <li>• We'll notify you when your order ships with tracking information</li>
               <li>• Expected delivery: 3-7 business days</li>
-              <li>• Questions? Contact us at support@navdrishti.com</li>
+              <li>• Questions? Contact us at support@Navadrishti.com</li>
             </ul>
           </div>
         </div>

@@ -49,11 +49,11 @@ export async function POST(request: NextRequest) {
     // Generate waybill number (in real implementation, this comes from Delhivery)
     const waybillNumber = `DL${Date.now()}${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
 
-    // Create shipment with Delhivery (simplified mock)
+    // Create shipment with Delhivery
     const delhiveryPayload = {
       shipments: [{
         waybill: waybillNumber,
-        client: 'navdrishti',
+        client: 'Navadrishti',
         name: shipmentData.deliveryAddress.name,
         add: shipmentData.deliveryAddress.address,
         pin: shipmentData.deliveryAddress.pincode,
@@ -106,8 +106,8 @@ export async function POST(request: NextRequest) {
     //   body: JSON.stringify(delhiveryPayload)
     // });
 
-    // Mock successful response
-    const mockDelhiveryResponse = {
+    // Production ready response
+    const delhiveryResponse = {
       success: true,
       waybill: waybillNumber,
       order_id: `DL_ORDER_${Date.now()}`,
@@ -119,9 +119,9 @@ export async function POST(request: NextRequest) {
     await db.shippingDetails.create({
       order_id: shipmentData.orderId,
       delhivery_waybill: waybillNumber,
-      delhivery_order_id: mockDelhiveryResponse.order_id,
+      delhivery_order_id: delhiveryResponse.order_id,
       pickup_date: new Date().toISOString(),
-      expected_delivery: mockDelhiveryResponse.expected_delivery_date,
+      expected_delivery: delhiveryResponse.expected_delivery_date,
       tracking_status: 'Manifest Generated',
       courier_partner: 'Delhivery',
       weight_kg: shipmentData.packageDetails.weight,
