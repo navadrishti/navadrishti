@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { sendEmail } from '@/lib/email-service';
+import { emailService } from '@/lib/email-service';
 
 // Auto-reject service offers that have been pending for more than 5 days
 export async function POST(request: NextRequest) {
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
         // Send email notification to NGO
         if (offer.organization?.email) {
           try {
-            await sendEmail({
+            await emailService.sendEmail({
               to: offer.organization.email,
               subject: '⏰ Service Offer Auto-Rejected - Review Deadline Exceeded',
               html: `

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { verifyToken } from '@/lib/auth';
-import { sendEmail } from '@/lib/email-service';
+import { emailService } from '@/lib/email-service';
 
 export async function POST(
   request: NextRequest,
@@ -154,7 +154,7 @@ export async function POST(
         .single();
 
       // Send the email
-      const emailResult = await sendEmail({
+      const emailResult = await emailService.sendEmail({
         to: serviceOffer.organization.email,
         subject,
         html: emailBody
