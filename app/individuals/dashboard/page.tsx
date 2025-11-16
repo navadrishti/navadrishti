@@ -401,7 +401,6 @@ export default function IndividualDashboard() {
                             size="sm"
                             showText={false}
                           />
-                          />
                         </div>
                       </div>
                     </div>
