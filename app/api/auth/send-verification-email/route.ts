@@ -58,7 +58,7 @@ export const POST = withAuth(async (req: NextRequest) => {
 
         const emailSent = await sendEmail({
           to: user.email,
-          subject: 'Verify your Navdrishti account',
+          subject: 'Verify your Navadrishti account',
           html: emailHtml
         });
 

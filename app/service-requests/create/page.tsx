@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ArrowLeft, Calendar } from 'lucide-react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth-context'
-import ProtectedRoute from '@/components/protected-route'
+import ProtectedRoute from '@/components/enhanced-protected-route'
 
 const categories = [
   'Healthcare & Medical',
@@ -123,7 +123,11 @@ export default function CreateServiceRequestPage() {
   };
 
   return (
-    <ProtectedRoute userTypes={['ngo']}>
+    <ProtectedRoute 
+      userTypes={['ngo', 'company']} 
+      requireVerification={true}
+      permission="canCreateServiceRequests"
+    >
       <div className="flex min-h-screen flex-col">
         <Header />
         

@@ -39,12 +39,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
     }
     
-    // Generate JWT token
+    // Generate JWT token with verification status
     const userData = {
       id: user.id,
       email: user.email,
       name: user.name,
-      user_type: user.user_type
+      user_type: user.user_type,
+      verification_status: user.verification_status || 'unverified',
+      email_verified: user.email_verified || false,
+      phone_verified: user.phone_verified || false
     };
     
     const token = generateToken(userData);

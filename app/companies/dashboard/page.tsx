@@ -320,7 +320,8 @@ export default function CompanyDashboard() {
                           <h4 className="font-medium">Verification Status</h4>
                           <VerificationBadge 
                             status={user?.verification_status || 'unverified'} 
-                            size="md"
+                            size="sm"
+                            showText={false}
                           />
                         </div>
                         {user?.verification_details && (
@@ -350,6 +351,7 @@ export default function CompanyDashboard() {
                             <VerificationBadge 
                               status={user?.phone_verified ? 'verified' : 'unverified'} 
                               size="sm"
+                              showText={false}
                             />
                           </div>
                         </div>

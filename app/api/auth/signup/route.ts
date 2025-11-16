@@ -50,12 +50,15 @@ export async function POST(req: NextRequest) {
       console.log('Profile data provided but not stored:', profile_data);
     }
     
-    // Generate JWT token
+    // Generate JWT token with verification status
     const user = {
       id: newUser.id,
       email,
       name,
-      user_type
+      user_type,
+      verification_status: 'unverified' as const,
+      email_verified: false,
+      phone_verified: false
     };
     
     const token = generateToken(user);
@@ -67,7 +70,10 @@ export async function POST(req: NextRequest) {
         id: newUser.id,
         email,
         name,
-        user_type
+        user_type,
+        verification_status: 'unverified',
+        email_verified: false,
+        phone_verified: false
       },
       token
     }, { status: 201 });

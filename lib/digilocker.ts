@@ -30,6 +30,7 @@ interface PANData {
 
 export class DigiLockerService {
   private config: DigiLockerConfig;
+  private isConfigured: boolean;
 
   constructor() {
     this.config = {
@@ -38,10 +39,26 @@ export class DigiLockerService {
       redirectUri: process.env.DIGILOCKER_REDIRECT_URI || 'http://localhost:3000/api/auth/digilocker/callback',
       baseUrl: process.env.DIGILOCKER_BASE_URL || 'https://api.digitallocker.gov.in'
     };
+    
+    // Check if DigiLocker is properly configured
+    this.isConfigured = !!(this.config.clientId && this.config.clientSecret);
+    
+    if (!this.isConfigured) {
+      console.warn('DigiLocker API not configured. Add DIGILOCKER_CLIENT_ID and DIGILOCKER_CLIENT_SECRET to enable verification.');
+    }
+  }
+
+  // Check if DigiLocker service is available
+  isAvailable(): boolean {
+    return this.isConfigured;
   }
 
   // Generate authorization URL for DigiLocker OAuth
   generateAuthUrl(userId: number, documentType: 'aadhaar' | 'pan'): string {
+    if (!this.isConfigured) {
+      throw new Error('DigiLocker service not configured. Please add DIGILOCKER_CLIENT_ID and DIGILOCKER_CLIENT_SECRET environment variables.');
+    }
+
     const state = this.generateState(userId, documentType);
     const params = new URLSearchParams({
       response_type: 'code',

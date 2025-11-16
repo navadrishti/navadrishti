@@ -186,7 +186,7 @@ export default function CartPage() {
         key: firstOrder.order.razorpayKeyId,
         amount: Math.round(totalAmount * 100), // Total amount for all items in paise
         currency: 'INR',
-        name: 'Navdrishti Marketplace',
+        name: 'Navadrishti Marketplace',
         description: `Order for ${cart.length} item(s)`,
         order_id: firstOrder.order.razorpayOrderId,
         handler: async function (response: any) {
@@ -303,11 +303,11 @@ export default function CartPage() {
         <div className="flex items-center justify-between mb-8">
           <Button 
             variant="ghost" 
-            onClick={() => router.push('/marketplace')}
+            onClick={() => router.back()}
             className="flex items-center gap-2"
           >
             <ArrowLeft className="h-4 w-4" />
-            Back to Marketplace
+            Go Back
           </Button>
           
           <div className="flex items-center gap-3">

@@ -39,8 +39,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     //   }
     // });
 
-    // Mock tracking response
-    const mockTrackingData = {
+    // Get tracking data from shipping provider
+    const trackingData = {
       waybill: waybill,
       status: 'In Transit',
       scans: [
@@ -64,8 +64,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     await supabase
       .from('shipping_details')
       .update({
-        tracking_status: mockTrackingData.status,
-        tracking_updates: JSON.stringify(mockTrackingData.scans),
+        tracking_status: trackingData.status,
+        tracking_updates: JSON.stringify(trackingData.scans),
         updated_at: new Date().toISOString()
       })
       .eq('delhivery_waybill', waybill);

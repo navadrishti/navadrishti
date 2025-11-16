@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { HeartHandshake, CheckCircle } from 'lucide-react';
+import { CheckCircle } from 'lucide-react';
 
 function ResetPasswordContent() {
   const [password, setPassword] = useState('');
@@ -108,11 +108,6 @@ function ResetPasswordContent() {
   if (success) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
-        <Link href="/" className="flex items-center gap-2 text-2xl font-bold mb-8">
-          <HeartHandshake className="h-8 w-8" />
-          <span>Navdrishti</span>
-        </Link>
-        
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
             <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-green-100 flex items-center justify-center">
@@ -143,11 +138,6 @@ function ResetPasswordContent() {
   if (tokenValid === false) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
-        <Link href="/" className="flex items-center gap-2 text-2xl font-bold mb-8">
-          <HeartHandshake className="h-8 w-8" />
-          <span>Navdrishti</span>
-        </Link>
-        
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
             <CardTitle className="text-2xl font-bold text-destructive">Invalid Reset Link</CardTitle>
@@ -184,11 +174,6 @@ function ResetPasswordContent() {
   if (tokenValid === null) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
-        <Link href="/" className="flex items-center gap-2 text-2xl font-bold mb-8">
-          <HeartHandshake className="h-8 w-8" />
-          <span>Navdrishti</span>
-        </Link>
-        
         <Card className="w-full max-w-md">
           <CardContent className="flex items-center justify-center py-8">
             <div className="text-center">
@@ -203,14 +188,9 @@ function ResetPasswordContent() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
-      <Link href="/" className="flex items-center gap-2 text-2xl font-bold mb-8">
-        <HeartHandshake className="h-8 w-8" />
-        <span>Navdrishti</span>
-      </Link>
-      
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold text-center">Reset Your Password</CardTitle>
+          <CardTitle className="text-2xl font-bold text-center">Reset Password</CardTitle>
           <CardDescription className="text-center">
             Enter your new password below
           </CardDescription>

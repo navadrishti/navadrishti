@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v2 as cloudinary } from 'cloudinary';
-import jwt from 'jsonwebtoken';
-import { JWT_SECRET } from '@/lib/auth';
+import { verifyToken } from '@/lib/auth';
 
 // Configure route settings
 export const runtime = 'nodejs';
@@ -14,13 +13,6 @@ cloudinary.config({
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
-
-interface JWTPayload {
-  id: number;
-  user_type: string;
-  email: string;
-  name: string;
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -43,21 +35,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check authentication
+    // Check authentication using JWT token
     const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    let token;
+    
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7);
+    } else {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
-
-    const token = authHeader.split(' ')[1];
-    let decoded: JWTPayload;
-    try {
-      decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
-    } catch (jwtError) {
-      console.error('JWT verification failed:', jwtError);
+    
+    const user = verifyToken(token);
+    if (!user) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
-    const { id: userId } = decoded;
+    
+    const userId = user.id;
 
     // Get the uploaded file
     const formData = await request.formData();
@@ -141,5 +134,40 @@ export async function POST(request: NextRequest) {
       },
       { status: statusCode }
     );
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    // Check authentication using JWT token
+    const authHeader = request.headers.get('authorization');
+    let token;
+    
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7);
+    } else {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
+    
+    const user = verifyToken(token);
+    if (!user) {
+      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const publicId = searchParams.get('publicId');
+
+    if (!publicId) {
+      return NextResponse.json({ error: 'Public ID is required' }, { status: 400 });
+    }
+
+    // Delete from Cloudinary
+    await cloudinary.uploader.destroy(publicId);
+
+    return NextResponse.json({ success: true }, { status: 200 });
+
+  } catch (error) {
+    console.error('Error deleting image:', error);
+    return NextResponse.json({ error: 'Failed to delete image' }, { status: 500 });
   }
 }

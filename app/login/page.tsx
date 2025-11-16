@@ -9,7 +9,6 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { HeartHandshake } from 'lucide-react';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -20,7 +19,7 @@ export default function LoginPage() {
   // Add effect to redirect user when successfully logged in
   useEffect(() => {
     if (user) {
-      router.push('/');
+      router.push('/home');
     }
   }, [user, router]);
 
@@ -42,11 +41,6 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
-      <Link href="/" className="flex items-center gap-2 text-2xl font-bold mb-8">
-        <HeartHandshake className="h-8 w-8" />
-        <span>Navdrishti</span>
-      </Link>
-      
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-center">Sign In</CardTitle>

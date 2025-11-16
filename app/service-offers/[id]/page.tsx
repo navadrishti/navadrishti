@@ -8,6 +8,7 @@ import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
 import { formatPrice } from '@/lib/currency'
 import { Header } from '@/components/header'
+import { ServiceDetails } from '@/components/service-details'
 import { SkeletonHeader, SkeletonAvatarText, SkeletonTextLines, SkeletonBigBox } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -24,6 +25,8 @@ interface ServiceOffer {
   description: string
   category: string
   location: string
+  images?: string[]
+  tags?: string[]
   price_amount: number
   price_type: 'fixed' | 'negotiable' | 'project_based' | 'hourly'
   price_description: string
@@ -301,79 +304,27 @@ export default function ServiceOfferDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Main Content */}
           <div className="lg:col-span-2">
-            <Card>
-              <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <CardTitle className="text-2xl mb-2">{offer.title}</CardTitle>
-                    <CardDescription className="text-base">
-                      Offered by <span className="font-semibold">{offer.ngo_name}</span>
-                    </CardDescription>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-2xl font-bold text-green-600 flex items-center">
-                      <DollarSign className="h-5 w-5" />
-                      {formatPrice(offer.price_amount)}
-                    </div>
-                    <div className="text-sm text-muted-foreground">{offer.price_type} pricing</div>
-                    {offer.price_description && (
-                      <div className="text-xs text-muted-foreground">{offer.price_description}</div>
-                    )}
-                  </div>
-                </div>
-              </CardHeader>
-              
-              <CardContent className="space-y-6">
-                <div>
-                  <h3 className="font-semibold mb-2">Description</h3>
-                  <p className="text-muted-foreground leading-relaxed">{offer.description}</p>
-                </div>
-
-                <Separator />
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="flex items-center gap-2">
-                    <MapPin className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm">{offer.location}</span>
-                  </div>
-                  
-                  <div className="flex items-center gap-2">
-                    <Target className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm">{offer.category}</span>
-                  </div>
-                  
-                  <div className="flex items-center gap-2">
-                    <Clock className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm">{offer.price_type} pricing</span>
-                  </div>
-                  
-                  <div className="flex items-center gap-2">
-                    <Calendar className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm">{offer.status} status</span>
-                  </div>
-                </div>
-
-                {offer.price_description && (
-                  <>
-                    <Separator />
-                    <div>
-                      <h3 className="font-semibold mb-2">Pricing Details</h3>
-                      <p className="text-muted-foreground">{offer.price_description}</p>
-                    </div>
-                  </>
-                )}
-
-                {offer.contact_info && (
-                  <>
-                    <Separator />
-                    <div>
-                      <h3 className="font-semibold mb-2">Contact Information</h3>
-                      <p className="text-muted-foreground">{offer.contact_info}</p>
-                    </div>
-                  </>
-                )}
-              </CardContent>
-            </Card>
+            <ServiceDetails
+              id={offer.id}
+              title={offer.title}
+              description={offer.description}
+              category={offer.category}
+              location={offer.location}
+              images={offer.images}
+              ngo_name={offer.ngo_name}
+              ngo_id={offer.ngo_id}
+              provider={offer.ngo_name}
+              providerType="ngo"
+              verified={true}
+              tags={offer.tags}
+              created_at={offer.created_at}
+              price_amount={offer.price_amount}
+              price_type={offer.price_type}
+              price_description={offer.price_description}
+              status={offer.status}
+              contact_info={offer.contact_info}
+              type="offer"
+            />
           </div>
 
           {/* Application Sidebar */}

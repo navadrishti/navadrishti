@@ -27,7 +27,7 @@ export async function sendSMS(options: SMSOptions): Promise<boolean> {
         mobile: options.phone.replace(/[^\d]/g, ''), // Clean phone number
         authkey: process.env.MSG91_API_KEY,
         otp: options.otp,
-        message: options.template || `Your Navdrishti verification code is ${options.otp}. Valid for 10 minutes. Do not share this code.`
+        message: options.template || `Your Navadrishti verification code is ${options.otp}. Valid for 10 minutes. Do not share this code.`
       })
     });
 
@@ -60,7 +60,7 @@ export async function sendSMSWithTwilio(options: SMSOptions): Promise<boolean> {
     const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
 
     await client.messages.create({
-      body: options.template || `Your Navdrishti verification code is ${options.otp}. Valid for 10 minutes.`,
+      body: options.template || `Your Navadrishti verification code is ${options.otp}. Valid for 10 minutes.`,
       from: process.env.TWILIO_PHONE_NUMBER,
       to: options.phone
     });
@@ -74,6 +74,6 @@ export async function sendSMSWithTwilio(options: SMSOptions): Promise<boolean> {
   }
 }
 
-export function generateOTPMessage(otp: string, appName: string = 'Navdrishti'): string {
+export function generateOTPMessage(otp: string, appName: string = 'Navadrishti'): string {
   return `Your ${appName} verification code is ${otp}. Valid for 10 minutes. Do not share this code with anyone.`;
 }

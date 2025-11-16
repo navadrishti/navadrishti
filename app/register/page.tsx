@@ -3,16 +3,11 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Building, HeartHandshake, Briefcase, User } from 'lucide-react';
+import { Building, Briefcase, User } from 'lucide-react';
 
 export default function RegisterPage() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
-      <Link href="/" className="flex items-center gap-2 text-2xl font-bold mb-8">
-        <HeartHandshake className="h-8 w-8" />
-        <span>Navdrishti</span>
-      </Link>
-      
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-center">Create an Account</CardTitle>

@@ -64,42 +64,58 @@ async function initiateNGOVerification(
   registrationNumber: string, 
   registrationType: string
 ) {
-  // Generate EntityLocker authorization URL
-  const authUrl = entityLocker.generateAuthUrl(userId, 'ngo');
-  
-  // Create or update verification record using Supabase
-  const { data: existingVerification } = await supabase
-    .from('ngo_verifications')
-    .select('id')
-    .eq('user_id', userId)
-    .single();
-
-  if (!existingVerification) {
-    await supabase
-      .from('ngo_verifications')
-      .insert({
-        user_id: userId,
-        ngo_name: organizationName,
-        registration_number: registrationNumber,
-        registration_type: registrationType,
-        verification_status: 'pending'
-      });
-  } else {
-    await supabase
-      .from('ngo_verifications')
-      .update({
-        ngo_name: organizationName,
-        registration_number: registrationNumber,
-        registration_type: registrationType
-      })
-      .eq('user_id', userId);
+  // Check if EntityLocker service is available
+  if (!entityLocker.isAvailable()) {
+    return NextResponse.json({
+      error: 'EntityLocker verification service is not configured. Please contact administrator.',
+      code: 'SERVICE_NOT_CONFIGURED'
+    }, { status: 503 });
   }
 
-  return NextResponse.json({
-    success: true,
-    authUrl,
-    message: 'Please complete verification on EntityLocker'
-  });
+  try {
+    // Generate EntityLocker authorization URL
+    const authUrl = entityLocker.generateAuthUrl(userId, 'ngo');
+    
+    // Create or update verification record using Supabase
+    const { data: existingVerification } = await supabase
+      .from('ngo_verifications')
+      .select('id')
+      .eq('user_id', userId)
+      .single();
+
+    if (!existingVerification) {
+      await supabase
+        .from('ngo_verifications')
+        .insert({
+          user_id: userId,
+          ngo_name: organizationName,
+          registration_number: registrationNumber,
+          registration_type: registrationType,
+          verification_status: 'pending'
+        });
+    } else {
+      await supabase
+        .from('ngo_verifications')
+        .update({
+          ngo_name: organizationName,
+          registration_number: registrationNumber,
+          registration_type: registrationType
+        })
+        .eq('user_id', userId);
+    }
+
+    return NextResponse.json({
+      success: true,
+      authUrl,
+      message: 'Please complete verification on EntityLocker'
+    });
+  } catch (error: any) {
+    console.error('EntityLocker initiation error:', error);
+    return NextResponse.json({
+      error: error.message || 'Failed to initiate verification',
+      code: 'INITIATION_FAILED'
+    }, { status: 500 });
+  }
 }
 
 async function verifyGST(userId: number, gstNumber: string) {

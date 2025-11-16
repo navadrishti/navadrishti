@@ -87,13 +87,20 @@ export async function POST(request: NextRequest) {
     const updatedOrders = await Promise.all(updatePromises);
 
     // Clear user's cart after successful payment
-    // TODO: Implement clearByUserId method in db.cart
-    // try {
-    //   await db.cart.clearByUserId(userId);
-    // } catch (error) {
-    //   console.error('Error clearing cart:', error);
-    //   // Don't fail the entire operation if cart clearing fails
-    // }
+    try {
+      // Delete all cart items for this user
+      const { error: cartError } = await supabase
+        .from('cart')
+        .delete()
+        .eq('user_id', userId);
+      
+      if (cartError) {
+        console.error('Failed to clear cart after payment:', cartError.message);
+      }
+    } catch (error) {
+      console.error('Error clearing cart:', error);
+      // Don't fail the entire operation if cart clearing fails
+    }
 
     return Response.json({
       success: true,

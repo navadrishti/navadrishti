@@ -26,6 +26,7 @@ interface CompanyPANData {
 
 export class EntityLockerService {
   private config: EntityLockerConfig;
+  private isConfigured: boolean;
 
   constructor() {
     this.config = {
@@ -34,10 +35,26 @@ export class EntityLockerService {
       redirectUri: process.env.ENTITYLOCKER_REDIRECT_URI || 'http://localhost:3000/api/auth/entitylocker/callback',
       baseUrl: process.env.ENTITYLOCKER_BASE_URL || 'https://api.entitylocker.gov.in'
     };
+    
+    // Check if EntityLocker is properly configured
+    this.isConfigured = !!(this.config.clientId && this.config.clientSecret);
+    
+    if (!this.isConfigured) {
+      console.warn('EntityLocker API not configured. Add ENTITYLOCKER_CLIENT_ID and ENTITYLOCKER_CLIENT_SECRET to enable verification.');
+    }
+  }
+
+  // Check if EntityLocker service is available
+  isAvailable(): boolean {
+    return this.isConfigured;
   }
 
   // Generate authorization URL for EntityLocker OAuth
   generateAuthUrl(userId: number, entityType: 'ngo' | 'company'): string {
+    if (!this.isConfigured) {
+      throw new Error('EntityLocker service not configured. Please add ENTITYLOCKER_CLIENT_ID and ENTITYLOCKER_CLIENT_SECRET environment variables.');
+    }
+
     const state = this.generateState(userId, entityType);
     const params = new URLSearchParams({
       response_type: 'code',

@@ -27,7 +27,7 @@ export async function uploadToCloudinary(
 ): Promise<{ secure_url: string; public_id: string; [key: string]: any }> {
   try {
     const uploadOptions = {
-      folder: options.folder || 'navdrishti',
+      folder: options.folder || 'Navadrishti',
       quality: options.quality || 'auto:good',
       format: options.format || 'webp', // Convert to WebP for optimization
       ...options

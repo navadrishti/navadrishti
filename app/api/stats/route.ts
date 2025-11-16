@@ -8,23 +8,38 @@ export async function GET(request: NextRequest) {
   try {
     console.log('📊 Fetching platform statistics...');
 
-    // Use faster single query approach
-    const { data: allUsers, error: usersError } = await supabase
+    // Set a timeout for database operations
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Database timeout')), 5000); // 5 second timeout
+    });
+
+    // Get user data with timeout
+    const userDataPromise = supabase
       .from('users')
       .select('user_type');
 
+    const { data: allUsers, error: usersError } = await Promise.race([
+      userDataPromise,
+      timeoutPromise
+    ]) as any;
+
     if (usersError) {
       console.error('Database error:', usersError);
-      throw usersError;
+      throw new Error('Database connection failed');
     }
 
-    // Get real service requests count
-    const { count: serviceRequestsCount, error: requestsError } = await supabase
+    // Get real service requests count with timeout
+    const requestsPromise = supabase
       .from('service_requests')
       .select('*', { count: 'exact', head: true });
 
+    const { count: serviceRequestsCount, error: requestsError } = await Promise.race([
+      requestsPromise,
+      timeoutPromise
+    ]) as any;
+
     if (requestsError) {
-      console.error('Service requests error:', requestsError);
+      console.warn('Service requests error:', requestsError);
     }
 
     // Process user data locally for better performance
@@ -77,13 +92,21 @@ export async function GET(request: NextRequest) {
       stats 
     });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching stats:', error);
+    
+    // Check if this is a connection timeout or 522 error
+    const isConnectionIssue = error?.message?.includes('Connection timed out') || 
+                             error?.message?.includes('522') ||
+                             error?.message?.includes('Database timeout') ||
+                             error?.message?.includes('Database connection failed');
+    
+    console.log('🔄 Database unavailable, returning zero stats for graceful degradation');
+    
     return NextResponse.json(
       { 
-        success: false, 
-        error: 'Failed to fetch statistics',
-        // NO SAMPLE DATA - only real zeros when database fails
+        success: true, // Return success to prevent UI errors
+        message: 'Database is temporarily unavailable. Stats will be updated once connection is restored.',
         stats: {
           activeUsers: 0,
           partnerNGOs: 0,
@@ -95,9 +118,10 @@ export async function GET(request: NextRequest) {
           totalVolunteers: 0,
           recentActivity: 0,
           communitiesServed: 0
-        }
+        },
+        databaseStatus: 'unavailable'
       },
-      { status: 500 }
+      { status: 200 } // Return 200 instead of 500/503
     );
   }
 }

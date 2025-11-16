@@ -316,6 +316,13 @@ export default function NGODashboard() {
                 </p>
               </div>
               <div className="flex flex-col gap-2 sm:flex-row">
+                <Link href="/service-offers/track">
+                  <Button variant="outline" className="flex items-center gap-2 w-full sm:w-auto text-sm">
+                    <Clock className="h-4 w-4" />
+                    <span className="hidden sm:inline">Track Service Offers</span>
+                    <span className="sm:hidden">Track Offers</span>
+                  </Button>
+                </Link>
                 <Link href="/service-offers/create">
                   <Button variant="outline" className="flex items-center gap-2 w-full sm:w-auto text-sm">
                     <HeartHandshake className="h-4 w-4" />
@@ -434,7 +441,8 @@ export default function NGODashboard() {
                           <h4 className="font-medium">Verification Status</h4>
                           <VerificationBadge 
                             status={user?.verification_status || 'unverified'} 
-                            size="md"
+                            size="sm"
+                            showText={false}
                           />
                         </div>
                         {user?.verification_details && (
@@ -464,6 +472,7 @@ export default function NGODashboard() {
                             <VerificationBadge 
                               status={user?.phone_verified ? 'verified' : 'unverified'} 
                               size="sm"
+                              showText={false}
                             />
                           </div>
                         </div>

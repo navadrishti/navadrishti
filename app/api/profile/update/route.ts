@@ -17,7 +17,10 @@ const updateProfileSchema = z.object({
   pincode: z.string().optional(),
   country: z.string().optional(),
   phone: z.string().optional(),
-  bio: z.string().optional()
+  bio: z.string().optional(),
+  experience: z.string().optional(),
+  proof_of_work: z.array(z.string().url()).optional(),
+  resume_url: z.string().url().optional()
 });
 
 export async function POST(request: NextRequest) {
@@ -31,7 +34,10 @@ export async function POST(request: NextRequest) {
       pincode, 
       country, 
       phone, 
-      bio 
+      bio,
+      experience,
+      proof_of_work,
+      resume_url
     } = body;
 
     if (!userId) {
@@ -50,6 +56,33 @@ export async function POST(request: NextRequest) {
     if (country) updateData.country = country;
     if (phone) updateData.phone = phone;
     if (bio) updateData.bio = bio;
+
+    // Handle profile_data for additional fields
+    if (experience || proof_of_work || resume_url) {
+      // Get current profile_data first
+      const { data: currentUser, error: fetchError } = await supabase
+        .from('users')
+        .select('profile_data')
+        .eq('id', userId)
+        .single();
+
+      if (fetchError) {
+        console.error('Error fetching current user data:', fetchError);
+        return NextResponse.json(
+          { error: 'Failed to fetch current user data' },
+          { status: 500 }
+        );
+      }
+
+      const currentProfileData = currentUser?.profile_data || {};
+      const newProfileData = { ...currentProfileData };
+
+      if (experience !== undefined) newProfileData.experience = experience;
+      if (proof_of_work !== undefined) newProfileData.proof_of_work = proof_of_work;
+      if (resume_url !== undefined) newProfileData.resume_url = resume_url;
+
+      updateData.profile_data = newProfileData;
+    }
 
     // Only proceed if there's data to update
     if (Object.keys(updateData).length === 0) {

@@ -119,7 +119,7 @@ export const db = {
         .from('marketplace_items')
         .select(`
           *,
-          seller:users!seller_id(id, name, email, user_type, location, city, state_province, pincode)
+          seller:users!seller_id(id, name, email, user_type, location, city, state_province, pincode, verification_status)
         `)
         .eq('status', 'active');
       
@@ -141,7 +141,7 @@ export const db = {
         .from('marketplace_items')
         .select(`
           *,
-          seller:users!seller_id(id, name, email, user_type, location, city, state_province, pincode)
+          seller:users!seller_id(id, name, email, user_type, location, city, state_province, pincode, verification_status)
         `)
         .eq('status', 'active');
       
@@ -207,7 +207,7 @@ export const db = {
         .from('marketplace_items')
         .select(`
           *,
-          seller:users!seller_id(id, name, email, user_type, location, city, state_province, pincode)
+          seller:users!seller_id(id, name, email, user_type, location, city, state_province, pincode, verification_status)
         `)
         .eq('id', id)
         .single();

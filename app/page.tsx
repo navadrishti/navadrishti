@@ -1,503 +1,853 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import Link from "next/link"
-import Image from "next/image" 
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Header } from "@/components/header"
-import { HowItWorks } from "@/components/ui/how-it-works"
-import { Building, HeartHandshake, GraduationCap, ShoppingBag, UserCheck, Users, ArrowRight, Briefcase, User, Compass, Globe, Map, Award } from "lucide-react"
-import { useState } from "react"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { useAuth } from "@/lib/auth-context"
-import { useRouter } from "next/navigation"
-import { HeroCarousel } from "@/components/hero-carousel"
-import { useStats } from "@/hooks/use-stats"
+import { User, LayoutDashboard } from "lucide-react"
 
-export default function Home() {
-  const [open, setOpen] = useState(false)
+interface PlatformStats {
+  activeUsers: number
+  partnerNGOs: number
+  partnerCompanies: number
+  successStories: number
+}
+
+export default function HomePage() {
   const { user } = useAuth()
-  const router = useRouter()
-  const { stats, loading } = useStats()
+  const [stats, setStats] = useState<PlatformStats>({
+    activeUsers: 0,
+    partnerNGOs: 0,
+    partnerCompanies: 0,
+    successStories: 0
+  })
+  const [statsLoading, setStatsLoading] = useState(true)
+  const [statsError, setStatsError] = useState<string | null>(null)
 
-  // Predefined particle configurations to avoid hydration mismatches
-  const particleConfigs = [
-    { left: 15, top: 25, delay: 0, duration: 3.5 },
-    { left: 85, top: 60, delay: 0.5, duration: 4.2 },
-    { left: 45, top: 80, delay: 1, duration: 3.8 },
-    { left: 70, top: 15, delay: 1.5, duration: 4.0 },
-    { left: 20, top: 90, delay: 2, duration: 3.3 },
-    { left: 90, top: 40, delay: 2.5, duration: 4.5 },
-    { left: 60, top: 70, delay: 3, duration: 3.7 },
-    { left: 35, top: 35, delay: 3.5, duration: 4.1 },
-  ]
-
-  // Function to handle get started button click for authenticated users
-  const handleGetStarted = () => {
-    if (user) {
-      // Redirect to appropriate dashboard based on user type
-      switch (user.user_type) {
-        case 'ngo':
-          router.push('/ngos/dashboard')
-          break
-        case 'company':
-          router.push('/companies/dashboard')
-          break
-        case 'individual':
-          router.push('/individuals/dashboard')
-          break
-        default:
-          setOpen(true)
+  // Fetch real-time stats
+  useEffect(() => {
+    const fetchStats = async () => {
+      setStatsLoading(true)
+      setStatsError(null)
+      try {
+        const response = await fetch('/api/stats', {
+          headers: {
+            'Cache-Control': 'no-cache'
+          }
+        })
+        
+        if (response.ok) {
+          const result = await response.json()
+          if (result.success) {
+            setStats({
+              activeUsers: result.stats.activeUsers || 0,
+              partnerNGOs: result.stats.partnerNGOs || 0,
+              partnerCompanies: result.stats.partnerCompanies || 0,
+              successStories: result.stats.successStories || 0
+            })
+          } else {
+            setStatsError(result.error || 'Failed to load statistics')
+          }
+        } else if (response.status === 503) {
+          setStatsError('Database is starting up')
+        } else {
+          setStatsError('Failed to load statistics')
+        }
+      } catch (error: any) {
+        console.error('Error fetching stats:', error)
+        setStatsError(error.message || 'Network error')
+      } finally {
+        setStatsLoading(false)
       }
-    } else {
-      // Open registration dialog for unauthenticated users
-      setOpen(true)
     }
-  }
+
+    fetchStats()
+    
+    // Refresh stats every 30 seconds for real-time updates, but only if no error
+    const interval = setInterval(() => {
+      if (!statsError) {
+        fetchStats()
+      }
+    }, 30000)
+    
+    return () => clearInterval(interval)
+  }, [statsError])
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <Header />
-      <main className="flex-1">
-        {/* Hero Section with Diagonal Split */}
-        <section className="relative w-full h-screen min-h-[500px] sm:min-h-[600px] md:min-h-[700px] lg:min-h-[600px] overflow-hidden">
-          {/* Background Container */}
-          <div className="absolute inset-0">
-            {/* Left Side - Solid Blue Background */}
-            <div className="absolute inset-0 bg-udaan-blue" />
-            
-            {/* Right Side - Image Carousel - Tablet and Desktop */}
-            <div className="absolute inset-0 hidden md:block">
-              <HeroCarousel
-                images={[
-                  {
-                    src: "https://images.unsplash.com/photo-1559027615-cd4628902d4a?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1920&q=95",
-                    alt: "Community empowerment through business literacy",
-                    title: "Empowering Communities",
-                    description: "Building sustainable livelihoods through business education"
-                  },
-                  {
-                    src: "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1920&q=95", 
-                    alt: "Skill development and training",
-                    title: "Skill Development",
-                    description: "Professional training programs for economic growth"
-                  },
-                  {
-                    src: "https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1920&q=95",
-                    alt: "Community collaboration and networking",
-                    title: "Community Network",
-                    description: "Connecting individuals, NGOs, and businesses"
-                  },
-                  {
-                    src: "https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1920&q=95",
-                    alt: "Sustainable economic development",
-                    title: "Economic Growth",
-                    description: "Creating opportunities for sustainable development"
-                  },
-                  {
-                    src: "https://images.unsplash.com/photo-1469571486292-0ba58a3f068b?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1920&q=95",
-                    alt: "Educational workshops and training",
-                    title: "Education & Training",
-                    description: "Comprehensive learning programs for community development"
-                  },
-                  {
-                    src: "https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1920&q=95",
-                    alt: "Women empowerment and leadership",
-                    title: "Women Empowerment",
-                    description: "Supporting women entrepreneurs and leaders"
-                  }
-                ]}
-                autoPlayInterval={6000}
-                showIndicators={true}
-                showNavigation={false}
-              />
-            </div>
-            
-            {/* Diagonal Divider with Red Line - Responsive */}
-            <div className="absolute inset-0 hidden lg:block">
-              {/* Diagonal clip path for right side - Desktop only */}
-              <div 
-                className="absolute inset-0 bg-transparent"
-                style={{
-                  clipPath: 'polygon(0 0, 65% 0, 45% 100%, 0 100%)'
-                }}
-              >
-                <div className="w-full h-full bg-udaan-blue" />
-              </div>
-              
+    <div className="min-h-screen bg-black">
+      {/* Top Navigation */}
+      <div className="absolute top-6 right-6 z-50 flex gap-3">
+        <Link 
+          href="/home" 
+          className="group"
+        >
+          <div 
+            className="flex justify-center items-center bg-gray-800/80 backdrop-blur-md shadow-xl text-gray-200 hover:text-white transition-all duration-300 hover:bg-gray-700/80 rounded-lg cursor-pointer"
+            style={{ 
+              padding: '1.25rem 2.5rem', 
+              minWidth: '200px',
+              fontSize: '1.125rem',
+              fontWeight: '500'
+            }}
+          >
+            <User className="w-5 h-5 mr-3" />
+            Home
+          </div>
+        </Link>
+        
+        {user ? (
+          <Link 
+            href={`/${user.user_type}s/dashboard`}
+            className="group"
+          >
+            <Button 
+              variant="ghost" 
+              size="lg"
+              className="gradient-border-btn shadow-xl text-white transition-all duration-300 px-8 py-4 h-auto font-medium text-base"
+            >
+              <LayoutDashboard className="w-5 h-5 mr-3" />
+              Dashboard
+            </Button>
+          </Link>
+        ) : (
+          <a 
+            href="https://navdrishti-portfolio.vercel.app"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group"
+          >
+            <Button 
+              variant="ghost" 
+              size="lg"
+              className="gradient-border-btn shadow-xl text-white transition-all duration-300 px-8 py-4 h-auto font-medium text-base"
+            >
+              <LayoutDashboard className="w-5 h-5 mr-3" />
+              Portfolio
+            </Button>
+          </a>
+        )}
+      </div>
 
-            </div>
-
-            {/* Tablet Layout - More conservative diagonal for better text space */}
-            <div className="absolute inset-0 hidden md:block lg:hidden">
-              <div 
-                className="absolute inset-0 bg-transparent"
-                style={{
-                  clipPath: 'polygon(0 0, 40% 0, 25% 100%, 0 100%)'
-                }}
-              >
-                <div className="w-full h-full bg-udaan-blue" />
-              </div>
-              
-
-            </div>
-
-            {/* Mobile Layout - Creative Liquid Container Design */}
-            <div className="absolute inset-0 md:hidden">
-              {/* Base gradient background */}
-              <div className="absolute inset-0 bg-gradient-to-br from-udaan-blue via-blue-600 to-udaan-navy overflow-hidden"></div>
-              
-              {/* Animated liquid blobs */}
-              <div className="absolute inset-0">
-                {/* Large floating blob */}
-                <div 
-                  className="absolute w-96 h-96 bg-gradient-to-r from-orange-400/30 to-orange-500/20 rounded-full blur-3xl animate-float-slow"
-                  style={{
-                    top: '10%',
-                    right: '-20%',
-                    animationDelay: '0s'
-                  }}
-                ></div>
-                
-                {/* Medium blob */}
-                <div 
-                  className="absolute w-64 h-64 bg-gradient-to-l from-blue-300/25 to-cyan-400/15 rounded-full blur-2xl animate-float-medium"
-                  style={{
-                    bottom: '20%',
-                    left: '-15%',
-                    animationDelay: '2s'
-                  }}
-                ></div>
-                
-                {/* Small accent blob */}
-                <div 
-                  className="absolute w-32 h-32 bg-gradient-to-tr from-orange-300/40 to-yellow-400/25 rounded-full blur-xl animate-float-fast"
-                  style={{
-                    top: '60%',
-                    right: '10%',
-                    animationDelay: '1s'
-                  }}
-                ></div>
-                
-                {/* Tiny floating elements */}
-                <div 
-                  className="absolute w-16 h-16 bg-white/10 rounded-full blur-sm animate-float-gentle"
-                  style={{
-                    top: '30%',
-                    left: '20%',
-                    animationDelay: '3s'
-                  }}
-                ></div>
-                
-                <div 
-                  className="absolute w-20 h-20 bg-orange-200/20 rounded-full blur-md animate-float-gentle"
-                  style={{
-                    bottom: '40%',
-                    right: '30%',
-                    animationDelay: '4s'
-                  }}
-                ></div>
-              </div>
-              
-              {/* Animated particles */}
-              <div className="absolute inset-0 overflow-hidden">
-                {particleConfigs.map((config, i) => (
-                  <div
-                    key={i}
-                    className="absolute w-1 h-1 bg-white/30 rounded-full animate-particle"
-                    style={{
-                      left: `${config.left}%`,
-                      top: `${config.top}%`,
-                      animationDelay: `${config.delay}s`,
-                      animationDuration: `${config.duration}s`
-                    }}
-                  ></div>
-                ))}
-              </div>
-            </div>
-            
-            {/* Infinite liquid wave overlay - Mobile only */}
-            <div className="absolute bottom-0 left-0 right-0 h-16 md:hidden pointer-events-none overflow-hidden">
-              <div className="absolute bottom-0 w-full h-full animate-wave-flow">
-                <svg 
-                  className="absolute bottom-0 w-[200%] h-full" 
-                  viewBox="0 0 2400 60" 
-                  preserveAspectRatio="none"
-                >
-                  <path 
-                    d="M0,40 Q300,10 600,40 T1200,40 Q1500,10 1800,40 T2400,40 L2400,60 L0,60 Z" 
-                    fill="url(#infiniteWaveGradient)"
-                  />
-                  <defs>
-                    <linearGradient id="infiniteWaveGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                      <stop offset="0%" stopColor="rgba(244, 123, 32, 0.5)" />
-                      <stop offset="25%" stopColor="rgba(59, 130, 246, 0.4)" />
-                      <stop offset="50%" stopColor="rgba(244, 123, 32, 0.5)" />
-                      <stop offset="75%" stopColor="rgba(59, 130, 246, 0.4)" />
-                      <stop offset="100%" stopColor="rgba(244, 123, 32, 0.5)" />
-                    </linearGradient>
-                  </defs>
-                </svg>
-              </div>
-            </div>
+      {/* Photo Grid Hero Section */}
+      <div className="relative min-h-screen">
+        {/* Grid Container - Optimized layout with better coverage */}
+        <div className="grid grid-cols-5 grid-rows-4 gap-1 p-2 h-screen opacity-40">
+          
+          {/* Row 1 */}
+          <div className="relative overflow-hidden rounded-xl shadow-lg">
+            <img 
+              src="/photos/pic 1.jpeg" 
+              alt="Community empowerment"
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-black/5"></div>
           </div>
 
-          {/* Content Container */}
-          <div className="relative z-10 h-full">
-            <div className="udaan-container px-4 sm:px-6 md:px-8 lg:px-6 h-full">
-              <div className="flex md:grid md:grid-cols-5 lg:grid-cols-2 gap-4 md:gap-6 lg:gap-8 h-full items-center justify-start">
-                {/* Left Side Content - Enhanced for mobile liquid design */}
-                <div className="flex flex-col justify-center space-y-4 sm:space-y-5 md:space-y-6 animate-fadeIn md:pr-4 lg:pr-12 w-full md:col-span-2 lg:col-span-1 text-left relative z-10">
-                  <div className="space-y-3 sm:space-y-4 md:backdrop-blur-none backdrop-blur-sm md:bg-transparent bg-black/10 md:p-0 p-4 md:rounded-none rounded-2xl">
-                    <h1 className="text-2xl xs:text-3xl sm:text-4xl md:text-3xl lg:text-5xl xl:text-6xl font-bold tracking-tight text-white leading-tight max-w-full sm:max-w-lg md:max-w-xs lg:max-w-lg xl:max-w-none drop-shadow-lg">
-                      Empowering Communities Through Business 
-                      <span className="block text-orange-400">Literacy</span>
-                    </h1>
-                    <p className="text-sm xs:text-base sm:text-lg md:text-sm lg:text-lg xl:text-xl text-white/95 leading-relaxed max-w-full sm:max-w-md md:max-w-xs lg:max-w-md xl:max-w-2xl drop-shadow-md">
-                      We equip individuals with the knowledge and skills to foster economic growth and create sustainable livelihoods in their communities.
-                    </p>
-                  </div>
-                  
-                  <div className="flex flex-col md:flex-row gap-3 sm:gap-4 items-start">
-                    <Dialog open={open} onOpenChange={setOpen}>
-                      <DialogTrigger asChild>
-                        <Button 
-                          size="lg" 
-                          className="group h-12 xs:h-13 sm:h-14 md:h-12 lg:h-14 text-base xs:text-lg sm:text-lg md:text-base lg:text-lg px-6 xs:px-7 sm:px-8 md:px-6 lg:px-8 w-full md:w-auto md:transform-none transform hover:scale-105 transition-all duration-300 shadow-lg md:shadow-none hover:shadow-xl" 
-                          variant="udaan-primary"
-                          onClick={handleGetStarted}
-                        >
-                          {user ? 'Go to Dashboard' : 'Get Started'}
-                          <ArrowRight className="ml-2 h-4 xs:h-5 sm:h-5 md:h-4 lg:h-5 w-4 xs:w-5 sm:w-5 md:w-4 lg:w-5 transition-transform group-hover:translate-x-1" />
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="sm:max-w-md">
-                        <DialogHeader>
-                          <DialogTitle>Choose Registration Type</DialogTitle>
-                          <DialogDescription>
-                            Select how you would like to join our platform
-                          </DialogDescription>
-                        </DialogHeader>
-                        <div className="grid grid-cols-1 gap-4 py-4">
-                          <Link href="/ngos/register" passHref onClick={() => setOpen(false)}>
-                            <Button className="w-full justify-start" variant="outline">
-                              <Building className="mr-2 h-5 w-5" />
-                              <div className="flex flex-col items-start">
-                                <span>Register as NGO</span>
-                                <span className="text-xs text-gray-500">For non-profit organizations</span>
-                              </div>
-                            </Button>
-                          </Link>
-                          <Link href="/companies/register" passHref onClick={() => setOpen(false)}>
-                            <Button className="w-full justify-start" variant="outline">
-                              <Briefcase className="mr-2 h-5 w-5" />
-                              <div className="flex flex-col items-start">
-                                <span>Register as Company</span>
-                                <span className="text-xs text-gray-500">For businesses looking to hire or support</span>
-                              </div>
-                            </Button>
-                          </Link>
-                          <Link href="/individuals/register" passHref onClick={() => setOpen(false)}>
-                            <Button className="w-full justify-start" variant="outline">
-                              <User className="mr-2 h-5 w-5" />
-                              <div className="flex flex-col items-start">
-                                <span>Register as Individual</span>
-                                <span className="text-xs text-gray-500">For professionals seeking opportunities</span>
-                              </div>
-                            </Button>
-                          </Link>
-                        </div>
-                      </DialogContent>
-                    </Dialog>
-                    
-                    {!user ? (
-                      <Link href="/login">
-                        <Button size="lg" variant="udaan-outline" className="h-12 xs:h-13 sm:h-14 md:h-12 lg:h-14 text-base xs:text-lg sm:text-lg md:text-base lg:text-lg px-6 xs:px-7 sm:px-8 md:px-6 lg:px-8 w-full md:w-auto">
-                          Sign In
-                        </Button>
-                      </Link>
-                    ) : (
-                      <Link href="/service-requests">
-                        <Button 
-                          size="lg" 
-                          variant="udaan-outline" 
-                          className="h-12 xs:h-13 sm:h-14 md:h-12 lg:h-14 text-base xs:text-lg sm:text-lg md:text-base lg:text-lg px-6 xs:px-7 sm:px-8 md:px-6 lg:px-8 w-full md:w-auto"
-                        >
-                          <HeartHandshake className="mr-2 h-4 xs:h-5 sm:h-5 md:h-4 lg:h-5 w-4 xs:w-5 sm:w-5 md:w-4 lg:w-5" />
-                          <span className="font-medium">Find Opportunities</span>
-                        </Button>
-                      </Link>
-                    )}
-                  </div>
-
-                  {/* Real Platform Stats */}
-                  <div className="grid grid-cols-3 gap-2 xs:gap-3 sm:gap-4 pt-6 sm:pt-8 border-t border-white/20">
-                    <div className="text-center group">
-                      <div className="text-lg xs:text-xl sm:text-2xl font-bold text-orange-400 transition-all duration-300 group-hover:scale-110 md:group-hover:scale-100">
-                        {loading ? (
-                          <div className="animate-pulse bg-orange-400/20 h-6 xs:h-7 sm:h-8 w-8 xs:w-10 sm:w-12 mx-auto rounded"></div>
-                        ) : (
-                          <span className="animate-fadeIn md:animate-none animate-pulse">{stats.activeUsers || 0}</span>
-                        )}
-                      </div>
-                      <div className="text-xs xs:text-sm text-white/70">Active Users</div>
-                    </div>
-                    <div className="text-center group">
-                      <div className="text-lg xs:text-xl sm:text-2xl font-bold text-orange-400 transition-all duration-300 group-hover:scale-110 md:group-hover:scale-100">
-                        {loading ? (
-                          <div className="animate-pulse bg-orange-400/20 h-6 xs:h-7 sm:h-8 w-8 xs:w-10 sm:w-12 mx-auto rounded"></div>
-                        ) : (
-                          <span className="animate-fadeIn md:animate-none animate-pulse">{stats.partnerNGOs || 0}</span>
-                        )}
-                      </div>
-                      <div className="text-xs xs:text-sm text-white/70">Partner NGOs</div>
-                    </div>
-                    <div className="text-center group">
-                      <div className="text-lg xs:text-xl sm:text-2xl font-bold text-orange-400 transition-all duration-300 group-hover:scale-110 md:group-hover:scale-100">
-                        {loading ? (
-                          <div className="animate-pulse bg-orange-400/20 h-6 xs:h-7 sm:h-8 w-8 xs:w-10 sm:w-12 mx-auto rounded"></div>
-                        ) : (
-                          <span className="animate-fadeIn md:animate-none animate-pulse">{stats.partnerCompanies || 0}</span>
-                        )}
-                      </div>
-                      <div className="text-xs xs:text-sm text-white/70">Companies</div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Right Side - Spacer for tablets, hidden on mobile */}
-                <div className="hidden md:block lg:block md:col-span-3 lg:col-span-1">
-                  {/* This space allows proper carousel display and prevents text overlap */}
-                </div>
-              </div>
-            </div>
+          <div className="relative overflow-hidden rounded-xl shadow-lg">
+            <img 
+              src="/photos/pic 2.jpeg" 
+              alt="Social innovation"
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-black/5"></div>
           </div>
 
-        </section>
-
-        {/* Enhanced How It Works Section */}
-        <HowItWorks />
-
-        {/* CTA Section */}
-        <section className="w-full py-12 md:py-24 lg:py-32 bg-udaan-navy text-white">
-          <div className="udaan-container px-4 md:px-6">
-            <div className="flex flex-col items-center justify-center space-y-4 text-center">
-              <div className="space-y-2">
-                <h2 className="text-3xl font-bold tracking-tighter md:text-4xl">Ready to Get Started?</h2>
-                <p className="max-w-[900px] text-white/80 md:text-xl/relaxed">
-                  Join our platform today and be part of a growing community dedicated to making a positive impact.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-4 mt-6">
-                {!user ? (
-                  <>
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <Button size="lg" variant="udaan-primary" className="h-12">Get Started</Button>
-                      </DialogTrigger>
-                      <DialogContent className="sm:max-w-md">
-                        <DialogHeader>
-                          <DialogTitle>Choose Registration Type</DialogTitle>
-                          <DialogDescription>
-                            Select how you would like to join our platform
-                          </DialogDescription>
-                        </DialogHeader>
-                        <div className="grid grid-cols-1 gap-4 py-4">
-                          <Link href="/ngos/register" passHref>
-                            <Button className="w-full justify-start" variant="outline">
-                              <Building className="mr-2 h-5 w-5" />
-                              <div className="flex flex-col items-start">
-                                <span>Register as NGO</span>
-                                <span className="text-xs text-gray-500">For non-profit organizations</span>
-                              </div>
-                            </Button>
-                          </Link>
-                          <Link href="/companies/register" passHref>
-                            <Button className="w-full justify-start" variant="outline">
-                              <Briefcase className="mr-2 h-5 w-5" />
-                              <div className="flex flex-col items-start">
-                                <span>Register as Company</span>
-                                <span className="text-xs text-gray-500">For businesses looking to hire or support</span>
-                              </div>
-                            </Button>
-                          </Link>
-                          <Link href="/individuals/register" passHref>
-                            <Button className="w-full justify-start" variant="outline">
-                              <User className="mr-2 h-5 w-5" />
-                              <div className="flex flex-col items-start">
-                                <span>Register as Individual</span>
-                                <span className="text-xs text-gray-500">For professionals seeking opportunities</span>
-                              </div>
-                            </Button>
-                          </Link>
-                        </div>
-                      </DialogContent>
-                    </Dialog>
-                    <Link href="/login">
-                      <Button size="lg" variant="udaan-navy-outline" className="h-12">Sign In</Button>
-                    </Link>
-                  </>
-                ) : (
-                  <>
-                    <Link href={`/${user.user_type}s/dashboard`}>
-                      <Button size="lg" variant="udaan-primary" className="h-12">Go to Dashboard</Button>
-                    </Link>
-                    <Link href="/marketplace">
-                      <Button size="lg" variant="udaan-navy-outline" className="h-12">Browse Marketplace</Button>
-                    </Link>
-                  </>
-                )}
-              </div>
-            </div>
+          {/* Center large image - spans 3 columns, 2 rows */}
+          <div className="col-span-3 row-span-2 relative overflow-hidden rounded-2xl shadow-xl">
+            <img 
+              src="/photos/pic 3.jpeg" 
+              alt="Community empowerment through business literacy"
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-black/5"></div>
           </div>
-        </section>
-      </main>
-      
-      {/* Footer */}
-      <footer className="w-full border-t bg-udaan-cream py-6 md:py-12">
-        <div className="udaan-container px-4 md:px-6">
-          <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-4">
-            <div className="space-y-4">
-              <Link href="/" className="flex items-center gap-2 font-bold text-xl">
-                <HeartHandshake className="h-6 w-6 text-udaan-orange" />
-                <span className="text-udaan-navy">Navdrishti</span>
-              </Link>
-              <p className="text-sm text-udaan-navy/70">
-                Connecting NGOs, skilled individuals, and companies to maximize social impact.
-              </p>
-            </div>
-            <div className="space-y-4">
-              <h3 className="text-lg font-medium text-udaan-navy">Platform</h3>
-              <ul className="space-y-2 text-sm">
-                <li><Link href="/ngos" className="text-udaan-navy/70 hover:text-udaan-orange">NGOs</Link></li>
-                <li><Link href="/skills/verify" className="text-udaan-navy/70 hover:text-udaan-orange">Skills Verification</Link></li>
-                <li><Link href="/marketplace" className="text-udaan-navy/70 hover:text-udaan-orange">Resource Marketplace</Link></li>
-                <li><Link href="/training" className="text-udaan-navy/70 hover:text-udaan-orange">Training & Learning</Link></li>
-              </ul>
-            </div>
-            <div className="space-y-4">
-              <h3 className="text-lg font-medium text-udaan-navy">Resources</h3>
-              <ul className="space-y-2 text-sm">
-                <li><Link href="#" className="text-udaan-navy/70 hover:text-udaan-orange">Help Center</Link></li>
-                <li><Link href="#" className="text-udaan-navy/70 hover:text-udaan-orange">Blog</Link></li>
-                <li><Link href="#" className="text-udaan-navy/70 hover:text-udaan-orange">FAQs</Link></li>
-                <li><Link href="#" className="text-udaan-navy/70 hover:text-udaan-orange">Contact Us</Link></li>
-              </ul>
-            </div>
-            <div className="space-y-4">
-              <h3 className="text-lg font-medium text-udaan-navy">Legal</h3>
-              <ul className="space-y-2 text-sm">
-                <li><Link href="#" className="text-udaan-navy/70 hover:text-udaan-orange">Privacy Policy</Link></li>
-                <li><Link href="#" className="text-udaan-navy/70 hover:text-udaan-orange">Terms of Service</Link></li>
-                <li><Link href="#" className="text-udaan-navy/70 hover:text-udaan-orange">Code of Conduct</Link></li>
-              </ul>
-            </div>
+
+          {/* Row 2 */}
+          <div className="relative overflow-hidden rounded-xl shadow-lg">
+            <img 
+              src="/photos/pic 4.jpeg" 
+              alt="Teamwork and collaboration"
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-black/5"></div>
           </div>
-          <div className="mt-8 border-t border-udaan-navy/10 pt-6 text-center text-sm text-udaan-navy/70">
-            <p>&copy; {new Date().getFullYear()} Navdrishti. All rights reserved.</p>
+
+          <div className="relative overflow-hidden rounded-xl shadow-lg">
+            <img 
+              src="/photos/pic 5.jpeg" 
+              alt="Community collaboration"
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-black/5"></div>
+          </div>
+
+          {/* Row 3 */}
+          <div className="relative overflow-hidden rounded-xl shadow-lg">
+            <img 
+              src="/photos/pic 6.jpeg" 
+              alt="Economic development"
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-black/5"></div>
+          </div>
+
+          <div className="relative overflow-hidden rounded-xl shadow-lg">
+            <img 
+              src="/photos/pic 7.jpeg" 
+              alt="Education and training"
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-black/5"></div>
+          </div>
+
+          <div className="relative overflow-hidden rounded-xl shadow-lg">
+            <img 
+              src="/photos/pic 8.jpeg" 
+              alt="Growth and development"
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-black/5"></div>
+          </div>
+
+          <div className="relative overflow-hidden rounded-xl shadow-lg">
+            <img 
+              src="/photos/pic 9.jpeg" 
+              alt="Leadership"
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-black/5"></div>
+          </div>
+
+          <div className="relative overflow-hidden rounded-xl shadow-lg">
+            <img 
+              src="/photos/pic 10.jpeg" 
+              alt="Women empowerment"
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-black/5"></div>
+          </div>
+
+          {/* Row 4 */}
+          <div className="relative overflow-hidden rounded-xl shadow-lg">
+            <img 
+              src="/photos/pic 11.jpeg" 
+              alt="Social innovation"
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-black/5"></div>
+          </div>
+
+          <div className="relative overflow-hidden rounded-xl shadow-lg">
+            <img 
+              src="/photos/pic 12.jpeg" 
+              alt="Mentorship"
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-black/5"></div>
+          </div>
+
+          <div className="relative overflow-hidden rounded-xl shadow-lg">
+            <img 
+              src="/photos/pic 13.jpeg" 
+              alt="Business development"
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-black/5"></div>
+          </div>
+
+          <div className="relative overflow-hidden rounded-xl shadow-lg">
+            <img 
+              src="/photos/pic 14.jpeg" 
+              alt="Sustainability"
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-black/5"></div>
+          </div>
+
+          <div className="relative overflow-hidden rounded-xl shadow-lg">
+            <img 
+              src="/photos/pic 15.jpeg" 
+              alt="Community impact"
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-black/5"></div>
           </div>
         </div>
-      </footer>
+
+        {/* Enhanced Text and Button Overlay */}
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ paddingTop: '8rem' }}>
+          <div className="text-center pointer-events-auto">
+            <h1 className="text-8xl md:text-9xl font-extrabold text-white mb-6 tracking-tight drop-shadow-[0_8px_32px_rgba(0,0,0,0.8)]">
+              <span className="bg-gradient-to-r from-white via-blue-100 to-white bg-clip-text text-transparent">
+                Navadrishti
+              </span>
+            </h1>
+            <p className="text-3xl md:text-4xl text-white/95 mb-12 drop-shadow-[0_4px_16px_rgba(0,0,0,0.7)] max-w-5xl mx-auto leading-relaxed font-medium whitespace-nowrap">
+              Empowering Communities Through Business Literacy
+            </p>
+            
+            {/* Real-time Stats Counter */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
+              <div className="text-center">
+                <div className="text-4xl md:text-5xl font-bold text-blue-400 mb-2">
+                  {statsLoading || statsError ? (
+                    <div className="relative overflow-hidden">
+                      <div className="h-14 w-32 mx-auto bg-blue-400/10 rounded-xl flex items-center justify-center">
+                        {statsError ? (
+                          <span className="text-sm text-amber-400">Database Starting</span>
+                        ) : (
+                          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-blue-400/30 to-transparent animate-shimmer"></div>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    `${stats.activeUsers.toLocaleString()}+`
+                  )}
+                </div>
+                <div className="text-white/70 text-sm uppercase tracking-wide">
+                  {statsLoading || statsError ? (
+                    <div className="relative overflow-hidden mt-2">
+                      <div className="h-4 w-20 mx-auto bg-gray-400/10 rounded-lg flex items-center justify-center">
+                        {!statsError && <div className="absolute inset-0 bg-gradient-to-r from-transparent via-gray-400/30 to-transparent animate-shimmer"></div>}
+                      </div>
+                    </div>
+                  ) : (
+                    "Active Users"
+                  )}
+                </div>
+              </div>
+              <div className="text-center">
+                <div className="text-4xl md:text-5xl font-bold text-purple-400 mb-2">
+                  {statsLoading || statsError ? (
+                    <div className="relative overflow-hidden">
+                      <div className="h-14 w-32 mx-auto bg-purple-400/10 rounded-xl flex items-center justify-center">
+                        {statsError ? (
+                          <span className="text-sm text-amber-400">Please Wait</span>
+                        ) : (
+                          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-purple-400/30 to-transparent animate-shimmer"></div>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    `${stats.partnerCompanies.toLocaleString()}+`
+                  )}
+                </div>
+                <div className="text-white/70 text-sm uppercase tracking-wide">
+                  {statsLoading || statsError ? (
+                    <div className="relative overflow-hidden mt-2">
+                      <div className="h-4 w-18 mx-auto bg-gray-400/10 rounded-lg flex items-center justify-center">
+                        {!statsError && <div className="absolute inset-0 bg-gradient-to-r from-transparent via-gray-400/30 to-transparent animate-shimmer"></div>}
+                      </div>
+                    </div>
+                  ) : (
+                    "Companies"
+                  )}
+                </div>
+              </div>
+              <div className="text-center">
+                <div className="text-4xl md:text-5xl font-bold text-teal-400 mb-2">
+                  {statsLoading || statsError ? (
+                    <div className="relative overflow-hidden">
+                      <div className="h-14 w-32 mx-auto bg-teal-400/10 rounded-xl flex items-center justify-center">
+                        {statsError ? (
+                          <span className="text-sm text-amber-400">2-3 Minutes</span>
+                        ) : (
+                          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-teal-400/30 to-transparent animate-shimmer"></div>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    `${stats.partnerNGOs.toLocaleString()}+`
+                  )}
+                </div>
+                <div className="text-white/70 text-sm uppercase tracking-wide">
+                  {statsLoading || statsError ? (
+                    <div className="relative overflow-hidden mt-2">
+                      <div className="h-4 w-24 mx-auto bg-gray-400/10 rounded-lg flex items-center justify-center">
+                        {!statsError && <div className="absolute inset-0 bg-gradient-to-r from-transparent via-gray-400/30 to-transparent animate-shimmer"></div>}
+                      </div>
+                    </div>
+                  ) : (
+                    "Partner NGOs"
+                  )}
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex flex-col sm:flex-row gap-4 justify-center mt-8">
+              <Link href="/home">
+                <button className="star-btn">
+                  <div id="container-stars"></div>
+                  <div id="glow">
+                    <div className="circle"></div>
+                    <div className="circle"></div>
+                  </div>
+                  <strong>Explore Platform</strong>
+                </button>
+              </Link>
+              <a href="mailto:support@navdrishti.com">
+                <button className="gradient-border-btn px-8 py-4 rounded-xl font-semibold text-lg">
+                  Contact Support
+                </button>
+              </a>
+            </div>
+          </div>
+        </div>
+
+        {/* Elegant floating elements */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          {/* Premium floating orbs */}
+          {[...Array(4)].map((_, i) => (
+            <div
+              key={i}
+              className="absolute rounded-full animate-float opacity-20"
+              style={{
+                left: `${15 + i * 25}%`,
+                top: `${20 + (i % 2) * 40}%`,
+                animationDelay: `${i * 3}s`,
+                animationDuration: `${8 + i * 2}s`,
+                width: `${8 + i * 6}px`,
+                height: `${8 + i * 6}px`,
+                background: i % 2 === 0 
+                  ? 'radial-gradient(circle, rgba(59,130,246,0.6) 0%, rgba(99,102,241,0.4) 100%)' 
+                  : 'radial-gradient(circle, rgba(147,51,234,0.6) 0%, rgba(168,85,247,0.4) 100%)'
+              }}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Design Tool Section - Exact Pactto Copy */}
+      <section className="w-full min-h-screen bg-gray-900 py-16">
+        <div className="max-w-7xl mx-auto px-6">
+          {/* Header */}
+          <div className="text-center mb-12">
+            <h2 className="text-5xl font-bold text-white mb-6">
+              How it works?
+            </h2>
+          </div>
+
+          {/* Main Design Interface - Dark Desktop OS with Ribbon Screensaver Background */}
+          <div className="bg-gray-900 rounded-lg shadow-2xl overflow-hidden border border-gray-700 relative">
+            {/* Desktop Wallpaper Background - Colorful Ribbons Screensaver */}
+            <div className="absolute inset-0 bg-gradient-to-br from-black via-gray-900 to-black overflow-hidden">
+              {/* Animated Ribbons */}
+              <div className="absolute inset-0">
+                {/* Ribbon 1 */}
+                <div className="absolute w-full h-8 bg-gradient-to-r from-transparent via-red-500/40 to-transparent transform -rotate-12 animate-pulse" 
+                     style={{
+                       top: '10%',
+                       left: '-20%',
+                       animation: 'float 15s linear infinite',
+                       animationDelay: '0s'
+                     }}>
+                </div>
+                {/* Ribbon 2 */}
+                <div className="absolute w-full h-6 bg-gradient-to-r from-transparent via-blue-500/40 to-transparent transform rotate-6 animate-pulse" 
+                     style={{
+                       top: '25%',
+                       left: '-30%',
+                       animation: 'float 20s linear infinite',
+                       animationDelay: '3s'
+                     }}>
+                </div>
+                {/* Ribbon 3 */}
+                <div className="absolute w-full h-10 bg-gradient-to-r from-transparent via-green-500/40 to-transparent transform -rotate-3 animate-pulse" 
+                     style={{
+                       top: '45%',
+                       left: '-25%',
+                       animation: 'float 18s linear infinite',
+                       animationDelay: '6s'
+                     }}>
+                </div>
+                {/* Ribbon 4 */}
+                <div className="absolute w-full h-7 bg-gradient-to-r from-transparent via-purple-500/40 to-transparent transform rotate-8 animate-pulse" 
+                     style={{
+                       top: '65%',
+                       left: '-35%',
+                       animation: 'float 22s linear infinite',
+                       animationDelay: '9s'
+                     }}>
+                </div>
+                {/* Ribbon 5 */}
+                <div className="absolute w-full h-9 bg-gradient-to-r from-transparent via-yellow-500/40 to-transparent transform -rotate-6 animate-pulse" 
+                     style={{
+                       top: '80%',
+                       left: '-15%',
+                       animation: 'float 16s linear infinite',
+                       animationDelay: '12s'
+                     }}>
+                </div>
+                {/* Ribbon 6 */}
+                <div className="absolute w-full h-5 bg-gradient-to-r from-transparent via-pink-500/40 to-transparent transform rotate-12 animate-pulse" 
+                     style={{
+                       top: '35%',
+                       left: '-40%',
+                       animation: 'float 25s linear infinite',
+                       animationDelay: '2s'
+                     }}>
+                </div>
+              </div>
+              
+              {/* Subtle overlay for depth */}
+              <div className="absolute inset-0 bg-gradient-to-br from-black/30 via-transparent to-black/30"></div>
+            </div>
+            
+            {/* Desktop Content */}
+            <div className="relative h-[600px] flex flex-col">
+              {/* Browser Window */}
+              <div className="mx-8 mt-8 mb-16 bg-gray-800 rounded-lg shadow-xl flex-1 flex flex-col overflow-hidden border border-gray-600">
+                {/* Browser Header - Dark Theme */}
+                <div className="bg-gray-700 px-4 py-2 border-b border-gray-600 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    {/* Window Controls */}
+                    <div className="flex gap-1">
+                      <div className="w-3 h-3 bg-red-500 rounded-full"></div>
+                      <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
+                      <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                    </div>
+                  </div>
+                  <div className="flex-1 mx-4">
+                    <div className="bg-gray-600 border border-gray-500 rounded-md px-3 py-1 text-sm text-gray-200">
+                      🔒 https://Navadrishti.org/community-impact
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-gray-400">
+                    <span>⟲</span>
+                    <span>⟳</span>
+                    <span>⋮</span>
+                  </div>
+                </div>
+                
+                {/* Website Content Area */}
+                <div className="flex-1 bg-gray-800 relative">
+                  <video 
+                    key="ngo-video"
+                    className="w-full h-full object-cover"
+                    autoPlay 
+                    muted 
+                    loop 
+                    playsInline
+                    preload="auto"
+                    style={{
+                      willChange: 'transform',
+                    }}
+                    onError={(e) => {
+                      console.error('Video error:', e);
+                      console.error('Error code:', e.currentTarget.error?.code);
+                      console.error('Error message:', e.currentTarget.error?.message);
+                      // Show fallback on error
+                      const fallback = document.querySelector('.video-fallback');
+                      if (fallback) {
+                        (fallback as HTMLElement).style.display = 'flex';
+                      }
+                    }}
+                    onLoadStart={() => console.log('Video loading started')}
+                    onCanPlay={() => {
+                      console.log('Video can play');
+                      // Hide fallback when video can play
+                      const fallback = document.querySelector('.video-fallback');
+                      if (fallback) {
+                        (fallback as HTMLElement).style.display = 'none';
+                      }
+                    }}
+                    onLoadedData={() => console.log('Video data loaded')}
+                    onLoadedMetadata={() => console.log('Video metadata loaded')}
+                  >
+                    <source src="/videos/ngo.mp4" type="video/mp4" />
+                    Your browser does not support the video tag.
+                  </video>
+                  
+                  {/* Fallback content - initially hidden */}
+                  <div className="video-fallback absolute inset-0 bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-700 flex items-center justify-center" style={{ display: 'none' }}>
+                    <div className="text-white text-center">
+                      <div className="bg-white/20 backdrop-blur-sm px-3 py-1 rounded text-sm w-fit mb-4 mx-auto">
+                        Navadrishti
+                      </div>
+                      <h3 className="text-2xl font-bold mb-2">
+                        Community Impact Video
+                      </h3>
+                      <p className="text-sm opacity-80">Video: /videos/ngo.mp4</p>
+                      <button 
+                        className="mt-4 px-4 py-2 bg-white/20 rounded hover:bg-white/30 transition-colors"
+                        onClick={() => {
+                          const video = document.querySelector('video');
+                          if (video) {
+                            video.load();
+                            video.play().catch(e => console.error('Play failed:', e));
+                          }
+                        }}
+                      >
+                        Retry Video
+                      </button>
+                    </div>
+                  </div>
+                  
+                  {/* Video Controls Overlay */}
+                  <div className="absolute bottom-4 left-4 bg-black/80 backdrop-blur-sm rounded-lg px-3 py-2">
+                    <div className="flex items-center gap-3 text-white text-sm">
+                      <button>⏸️</button>
+                      <div className="flex items-center gap-2">
+                        <div className="w-16 h-1 bg-white/30 rounded">
+                          <div className="w-1/3 h-1 bg-white rounded"></div>
+                        </div>
+                        <span className="text-xs">1:23 / 3:45</span>
+                      </div>
+                      <button>🔊</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Desktop Taskbar - Dark Theme with Realistic Icons */}
+              <div className="absolute bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-md border-t border-gray-700 px-4 py-2 flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  {/* App Icons - 4 Essential Apps */}
+                  <div className="flex space-x-3">
+                    {/* Microsoft Edge */}
+                    <div className="w-8 h-8 cursor-pointer hover:bg-white/10 rounded-sm p-1 transition-all duration-200">
+                      <svg className="w-full h-full" viewBox="0 0 24 24" fill="none">
+                        <circle cx="12" cy="12" r="11" fill="#0078D4"/>
+                        <path d="M6.5 12.5c0-3.5 2.8-6.3 6.3-6.3 1.8 0 3.4.8 4.5 2" stroke="white" strokeWidth="2" fill="none"/>
+                        <path d="M17.5 11.5c0 3.5-2.8 6.3-6.3 6.3-1.8 0-3.4-.8-4.5-2" stroke="white" strokeWidth="2" fill="none"/>
+                      </svg>
+                    </div>
+                    
+                    {/* File Explorer */}
+                    <div className="w-8 h-8 cursor-pointer hover:bg-white/10 rounded-sm p-1 transition-all duration-200">
+                      <svg className="w-full h-full" viewBox="0 0 24 24" fill="none">
+                        <path d="M3 6h6l2 2h10c1 0 1 0 1 1v10c0 1 0 1-1 1H3V6z" fill="#FFB300"/>
+                        <path d="M3 9h18v10H3V9z" fill="#FFD54F"/>
+                        <path d="M9 6l2 2h10v1H3V6h6z" fill="#FFF176"/>
+                      </svg>
+                    </div>
+                    
+                    {/* Discord */}
+                    <div className="w-8 h-8 cursor-pointer hover:bg-white/10 rounded-sm p-1 transition-all duration-200">
+                      <svg className="w-full h-full" viewBox="0 0 24 24" fill="none">
+                        <rect width="24" height="24" fill="#5865F2" rx="4"/>
+                        <path d="M19.27 5.33C17.94 4.71 16.5 4.26 15 4a.09.09 0 0 0-.07.03c-.18.33-.39.76-.53 1.09a16.09 16.09 0 0 0-4.8 0c-.14-.34-.35-.76-.54-1.09-.01-.02-.04-.03-.07-.03-1.5.26-2.93.71-4.27 1.33-.01 0-.02.01-.03.02-2.72 4.07-3.47 8.03-3.1 11.95 0 .02.01.04.03.05 1.8 1.32 3.53 2.12 5.24 2.65.03.01.06 0 .07-.02.4-.55.76-1.13 1.07-1.74.02-.04 0-.08-.04-.09-.57-.22-1.11-.48-1.64-.78-.04-.02-.04-.08-.01-.11.11-.08.22-.17.33-.25.02-.02.05-.02.07-.01 3.44 1.57 7.15 1.57 10.55 0 .02-.01.05-.01.07.01.11.09.22.17.33.26.04.03.04.09-.01.11-.52.31-1.07.56-1.64.78-.04.01-.05.06-.04.09.32.61.68 1.19 1.07 1.74.03.01.06.02.09.01 1.72-.53 3.45-1.33 5.25-2.65.02-.01.03-.03.03-.05.44-4.53-.73-8.46-3.1-11.95-.01-.01-.02-.02-.04-.02zM8.52 14.91c-1.03 0-1.89-.95-1.89-2.12s.84-2.12 1.89-2.12c1.06 0 1.9.96 1.89 2.12 0 1.17-.84 2.12-1.89 2.12zm6.97 0c-1.03 0-1.89-.95-1.89-2.12s.84-2.12 1.89-2.12c1.06 0 1.9.96 1.89 2.12 0 1.17-.83 2.12-1.89 2.12z" fill="white"/>
+                      </svg>
+                    </div>
+                    
+                    {/* Steam */}
+                    <div className="w-8 h-8 cursor-pointer hover:bg-white/10 rounded-sm p-1 transition-all duration-200">
+                      <svg className="w-full h-full" viewBox="0 0 24 24" fill="none">
+                        <circle cx="12" cy="12" r="12" fill="#1b2838"/>
+                        <path d="M12 2C6.48 2 2 6.48 2 12c0 2.85 1.2 5.41 3.11 7.24l3.58-1.48c-.05-.3-.08-.61-.08-.93 0-2.21 1.79-4 4-4s4 1.79 4 4-1.79 4-4 4c-.22 0-.44-.02-.65-.06L8.76 22C9.77 21.68 10.84 21.5 12 21.5c5.52 0 10-4.48 10-10S17.52 2 12 2z" fill="#66c0f4"/>
+                        <circle cx="17" cy="7" r="2.5" fill="white"/>
+                        <circle cx="8.5" cy="15.5" r="3" fill="white"/>
+                        <circle cx="8.5" cy="15.5" r="1.5" fill="#1b2838"/>
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* System Tray - Dark Theme */}
+                <div className="flex items-center space-x-3 text-gray-300 text-xs">
+                  <div className="cursor-pointer hover:bg-white/10 px-2 py-1 rounded transition-colors">
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+                    </svg>
+                  </div>
+                  <div className="cursor-pointer hover:bg-white/10 px-2 py-1 rounded transition-colors">
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.07 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"/>
+                    </svg>
+                  </div>
+                  <div className="cursor-pointer hover:bg-white/10 px-2 py-1 rounded transition-colors">
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M15.67 4H14V2c0-.55-.45-1-1-1s-1 .45-1 1v2H9.33C7.6 4 6.4 5.47 6.4 7.2v9.6c0 1.73 1.2 3.2 2.93 3.2h6.34c1.73 0 2.93-1.47 2.93-3.2V7.2C18.6 5.47 17.4 4 15.67 4z"/>
+                    </svg>
+                  </div>
+                  <div className="border-l border-gray-600 pl-3 ml-2">
+                    <div className="text-white">2:30 PM</div>
+                    <div className="text-gray-400">11/14/2025</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Facilities Section */}
+      <section className="w-full bg-gray-950 py-20 relative overflow-hidden">
+        {/* Ribbon Background */}
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="ribbon ribbon-1"></div>
+          <div className="ribbon ribbon-2"></div>
+          <div className="ribbon ribbon-3"></div>
+          <div className="ribbon ribbon-4"></div>
+          <div className="ribbon ribbon-5"></div>
+          <div className="ribbon ribbon-6"></div>
+          <div className="ribbon ribbon-7"></div>
+          <div className="ribbon ribbon-8"></div>
+        </div>
+        
+        <div className="max-w-7xl mx-auto px-6 relative z-10">
+          {/* Section Header */}
+          <div className="text-center mb-16">
+            <h2 className="text-5xl font-bold text-white mb-6">
+              Our Platform Features
+            </h2>
+            <p className="text-xl text-gray-300 max-w-3xl mx-auto">
+              Discover the comprehensive tools and services that make Navdrishti your one-stop platform for community empowerment and business development.
+            </p>
+          </div>
+
+          {/* Cards Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {/* Marketplace Card */}
+            <div className="backdrop-blur-sm rounded-lg p-6 animate-rainbow-border transition-all duration-300">
+              <div className="w-10 h-10 bg-gray-800 rounded-lg flex items-center justify-center mb-4 border border-gray-600">
+                <svg className="w-5 h-5 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/>
+                </svg>
+              </div>
+              <h3 className="text-lg font-medium text-white mb-3">Marketplace</h3>
+              <p className="text-gray-400 text-sm mb-4 leading-relaxed">Buy and sell products within our community-driven marketplace. Support local businesses and find unique items.</p>
+              <div className="space-y-1 text-xs text-gray-500">
+                <div>• Product listings & management</div>
+                <div>• Secure payment processing</div>
+                <div>• Community ratings & reviews</div>
+              </div>
+            </div>
+
+            {/* Service Exchange Card */}
+            <div className="backdrop-blur-sm rounded-lg p-6 animate-rainbow-border transition-all duration-300">
+              <div className="w-10 h-10 bg-gray-800 rounded-lg flex items-center justify-center mb-4 border border-gray-600">
+                <svg className="w-5 h-5 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/>
+                </svg>
+              </div>
+              <h3 className="text-lg font-medium text-white mb-3">Service Exchange</h3>
+              <p className="text-gray-400 text-sm mb-4 leading-relaxed">Offer your skills and find services you need. Connect with professionals and grow your network.</p>
+              <div className="space-y-1 text-xs text-gray-500">
+                <div>• Skill verification system</div>
+                <div>• Service requests & offers</div>
+                <div>• Professional networking</div>
+              </div>
+            </div>
+
+            {/* Social Feed Card */}
+            <div className="backdrop-blur-sm rounded-lg p-6 animate-rainbow-border transition-all duration-300">
+              <div className="w-10 h-10 bg-gray-800 rounded-lg flex items-center justify-center mb-4 border border-gray-600">
+                <svg className="w-5 h-5 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/>
+                </svg>
+              </div>
+              <h3 className="text-lg font-medium text-white mb-3">Social Community</h3>
+              <p className="text-gray-400 text-sm mb-4 leading-relaxed">Stay connected with community updates, share experiences, and engage in meaningful discussions.</p>
+              <div className="space-y-1 text-xs text-gray-500">
+                <div>• Community posts & updates</div>
+                <div>• Interactive discussions</div>
+                <div>• Event announcements</div>
+              </div>
+            </div>
+
+            {/* Business Dashboard Card */}
+            <div className="backdrop-blur-sm rounded-lg p-6 animate-rainbow-border transition-all duration-300">
+              <div className="w-10 h-10 bg-gray-800 rounded-lg flex items-center justify-center mb-4 border border-gray-600">
+                <svg className="w-5 h-5 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                </svg>
+              </div>
+              <h3 className="text-lg font-medium text-white mb-3">Business Analytics</h3>
+              <p className="text-gray-400 text-sm mb-4 leading-relaxed">Track your business performance with detailed analytics and insights to make data-driven decisions.</p>
+              <div className="space-y-1 text-xs text-gray-500">
+                <div>• Sales & revenue tracking</div>
+                <div>• Customer insights</div>
+                <div>• Performance reports</div>
+              </div>
+            </div>
+
+            {/* Learning Hub Card */}
+            <div className="backdrop-blur-sm rounded-lg p-6 animate-rainbow-border transition-all duration-300">
+              <div className="w-10 h-10 bg-gray-800 rounded-lg flex items-center justify-center mb-4 border border-gray-600">
+                <svg className="w-5 h-5 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                </svg>
+              </div>
+              <h3 className="text-lg font-medium text-white mb-3">Learning Hub</h3>
+              <p className="text-gray-400 text-sm mb-4 leading-relaxed">Access educational resources, courses, and training programs to enhance your business skills.</p>
+              <div className="space-y-1 text-xs text-gray-500">
+                <div>• Business literacy courses</div>
+                <div>• Skill development programs</div>
+                <div>• Certification tracking</div>
+              </div>
+            </div>
+
+            {/* Verification System Card */}
+            <div className="backdrop-blur-sm rounded-lg p-6 animate-rainbow-border transition-all duration-300">
+              <div className="w-10 h-10 bg-gray-800 rounded-lg flex items-center justify-center mb-4 border border-gray-600">
+                <svg className="w-5 h-5 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+              </div>
+              <h3 className="text-lg font-medium text-white mb-3">Verification System</h3>
+              <p className="text-gray-400 text-sm mb-4 leading-relaxed">Build trust with verified profiles, skills, and business credentials through our comprehensive verification system.</p>
+              <div className="space-y-1 text-xs text-gray-500">
+                <div>• Identity verification</div>
+                <div>• Skill authentication</div>
+                <div>• Business validation</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Building Tomorrow's Connected Communities Section */}
+      <section className="w-full bg-gradient-to-b from-gray-900 via-gray-950 to-black py-20 relative overflow-hidden">
+        {/* Background Pattern */}
+        <div className="absolute inset-0 opacity-20">
+          <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-teal-500/10"></div>
+          {/* Floating elements for visual interest */}
+          {[...Array(6)].map((_, i) => (
+            <div
+              key={i}
+              className="absolute rounded-full animate-float opacity-30"
+              style={{
+                left: `${10 + i * 15}%`,
+                top: `${20 + (i % 2) * 60}%`,
+                animationDelay: `${i * 2}s`,
+                animationDuration: `${10 + i * 2}s`,
+                width: `${4 + i * 2}px`,
+                height: `${4 + i * 2}px`,
+                background: i % 3 === 0 
+                  ? 'radial-gradient(circle, rgba(255,153,51,0.4) 0%, rgba(255,153,51,0.2) 100%)' 
+                  : i % 3 === 1
+                  ? 'radial-gradient(circle, rgba(19,136,8,0.4) 0%, rgba(19,136,8,0.2) 100%)'
+                  : 'radial-gradient(circle, rgba(59,130,246,0.4) 0%, rgba(99,102,241,0.2) 100%)'
+              }}
+            />
+          ))}
+        </div>
+        
+        <div className="max-w-6xl mx-auto px-6 relative z-10">
+          {/* Main Message */}
+          <div className="mb-16 flex justify-center">
+            <h2 className="text-4xl md:text-5xl font-bold text-white mb-8 leading-tight text-center">
+              <span className="whitespace-nowrap">
+                Let's join hands to revolutionize{' '}
+                <span className="inline-block">
+                  <span style={{ color: '#FF9933' }}>I</span>
+                  <span style={{ color: '#FF9933' }}>n</span>
+                  <span style={{ color: '#FFFFFF' }}>d</span>
+                  <span style={{ color: '#FFFFFF' }}>i</span>
+                  <span style={{ color: '#138808' }}>a</span>
+                </span>'s{' '}
+                <span className="bg-gradient-to-r from-blue-400 via-purple-400 to-teal-400 bg-clip-text text-transparent">
+                  social growth
+                </span>{' '}
+                <span className="text-red-500">❤️</span>
+              </span>
+            </h2>
+          </div>
+        </div>
+      </section>
+
+
     </div>
   )
 }

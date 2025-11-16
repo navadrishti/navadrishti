@@ -43,6 +43,14 @@ export function ProfileCard({
   badge
 }: ProfileCardProps) {
   
+  // Generate initials for avatar fallback
+  const getInitials = (name: string) => {
+    if (!name) return "U"
+    const names = name.split(' ')
+    if (names.length === 1) return names[0].charAt(0).toUpperCase()
+    return (names[0].charAt(0) + names[names.length - 1].charAt(0)).toUpperCase()
+  }
+  
   // Use either name or title for display
   const displayName = name || title || "User"
   
@@ -64,7 +72,7 @@ export function ProfileCard({
         <div className="flex justify-between -mt-12">
           <Avatar className="h-20 w-20 border-4 border-background shadow-lg transition-transform duration-500 ease-out group-hover:scale-105 group-hover:shadow-xl">
             <AvatarImage src={profileImage} alt={displayName} />
-            <AvatarFallback className="bg-gradient-to-br from-blue-400 to-indigo-500 text-white">{displayName.charAt(0)}</AvatarFallback>
+            <AvatarFallback className="bg-gradient-to-br from-blue-400 to-indigo-500 text-white font-semibold">{getInitials(displayName)}</AvatarFallback>
           </Avatar>
           {!footer && (
             <Button 

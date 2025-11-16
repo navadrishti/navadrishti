@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ArrowLeft, Upload, Plus } from 'lucide-react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth-context'
-import ProtectedRoute from '@/components/protected-route'
+import ProtectedRoute from '@/components/enhanced-protected-route'
 
 const categories = [
   'Clothing & Textiles',
@@ -268,7 +268,11 @@ export default function CreateListingPage() {
   };
 
   return (
-    <ProtectedRoute>
+    <ProtectedRoute 
+      userTypes={['ngo', 'company']} 
+      requireVerification={true}
+      permission="canCreateMarketplaceListings"
+    >
       <div className="flex min-h-screen flex-col">
         <Header />
         

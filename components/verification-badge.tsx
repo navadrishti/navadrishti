@@ -14,61 +14,75 @@ export function VerificationBadge({
   showText = true, 
   size = 'md' 
 }: VerificationBadgeProps) {
-  const getStatusConfig = (status: string) => {
-    switch (status) {
-      case 'verified':
-        return {
-          variant: 'default' as const,
-          icon: CheckCircle,
-          text: 'Verified',
-          className: 'bg-green-100 text-green-800 hover:bg-green-200 border-green-300'
-        }
-      case 'pending':
-        return {
-          variant: 'secondary' as const,
-          icon: Clock,
-          text: 'Verification Pending',
-          className: 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200 border-yellow-300'
-        }
-      case 'unverified':
-      default:
-        return {
-          variant: 'outline' as const,
-          icon: AlertCircle,
-          text: 'Not Verified',
-          className: 'bg-gray-100 text-gray-700 hover:bg-gray-200 border-gray-300'
-        }
+  // Only render for verified status to ensure consistency
+  if (status !== 'verified') {
+    return null;
+  }
+
+  const Icon = CheckCircle;
+
+  // Force exact pixel sizes for consistency
+  const sizeStyles = {
+    sm: {
+      width: '20px',
+      height: '20px',
+      fontSize: '10px',
+      padding: '2px',
+      iconSize: 12
+    },
+    md: {
+      width: '24px', 
+      height: '24px',
+      fontSize: '11px',
+      padding: '3px',
+      iconSize: 14
+    },
+    lg: {
+      width: '28px',
+      height: '28px', 
+      fontSize: '12px',
+      padding: '4px',
+      iconSize: 16
     }
   }
 
-  const config = getStatusConfig(status)
-  const Icon = config.icon
-
-  const sizeClasses = {
-    sm: 'text-xs px-1.5 py-0.5',
-    md: 'text-xs px-2 py-1',
-    lg: 'text-sm px-2.5 py-1.5'
-  }
-
-  const iconSizes = {
-    sm: 10,
-    md: 12,
-    lg: 14
-  }
+  const currentSize = sizeStyles[size]
 
   return (
-    <Badge 
-      variant={config.variant}
-      className={`
-        ${config.className} 
-        ${sizeClasses[size]} 
-        inline-flex items-center gap-1 font-medium
-        ${className}
-      `}
+    <div 
+      className={`inline-flex items-center justify-center rounded-full shrink-0 ${className}`}
+      style={{
+        backgroundColor: '#dcfce7',
+        color: '#166534',
+        border: '1px solid #bbf7d0',
+        width: currentSize.width,
+        height: currentSize.height,
+        minWidth: currentSize.width,
+        minHeight: currentSize.height,
+        padding: currentSize.padding,
+        fontSize: showText ? currentSize.fontSize : '0',
+        fontWeight: '500',
+        gap: showText ? '2px' : '0'
+      }}
     >
-      <Icon size={iconSizes[size]} />
-      {showText && config.text}
-    </Badge>
+      <Icon 
+        size={currentSize.iconSize} 
+        style={{ 
+          color: '#166534',
+          flexShrink: 0
+        }} 
+      />
+      {showText && (
+        <span style={{ 
+          color: '#166534',
+          fontSize: currentSize.fontSize,
+          fontWeight: '500',
+          whiteSpace: 'nowrap'
+        }}>
+          Verified
+        </span>
+      )}
+    </div>
   )
 }
 

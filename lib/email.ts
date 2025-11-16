@@ -41,7 +41,7 @@ export async function sendEmail(options: EmailOptions): Promise<boolean> {
 
     // Send the email
     const info = await transporter.sendMail({
-      from: `${process.env.FROM_NAME || 'Navdrishti'} <${process.env.FROM_EMAIL || process.env.SMTP_USER}>`,
+      from: `${process.env.FROM_NAME || 'Navadrishti'} <${process.env.FROM_EMAIL || process.env.SMTP_USER}>`,
       to: options.to,
       subject: options.subject,
       html: options.html,
@@ -66,12 +66,12 @@ export function generateEmailVerificationTemplate(verificationUrl: string, userE
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Email Verification - Navdrishti</title>
+        <title>Email Verification - Navadrishti</title>
     </head>
     <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
         <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
             <h1 style="color: #3b82f6; margin: 0; text-align: center;">
-                🤝 Navdrishti
+                🤝 Navadrishti
             </h1>
         </div>
         
@@ -80,7 +80,7 @@ export function generateEmailVerificationTemplate(verificationUrl: string, userE
             
             <p>Hello,</p>
             
-            <p>Welcome to Navdrishti! Please verify your email address to complete your account setup and access all platform features.</p>
+            <p>Welcome to Navadrishti! Please verify your email address to complete your account setup and access all platform features.</p>
             
             <p>Click the button below to verify your email:</p>
             
@@ -104,13 +104,13 @@ export function generateEmailVerificationTemplate(verificationUrl: string, userE
                 </p>
             </div>
             
-            <p>If you didn't create an account on Navdrishti, you can safely ignore this email.</p>
+            <p>If you didn't create an account on Navadrishti, you can safely ignore this email.</p>
             
             <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
             
             <div style="text-align: center; color: #6b7280; font-size: 14px;">
-                <p>This email was sent from Navdrishti</p>
-                <p>© 2025 Navdrishti. All rights reserved.</p>
+                <p>This email was sent from Navadrishti</p>
+                <p>© 2025 Navadrishti. All rights reserved.</p>
             </div>
         </div>
     </body>
@@ -125,12 +125,12 @@ export function generatePasswordResetEmail(resetUrl: string, userEmail: string):
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Password Reset - Navdrishti</title>
+        <title>Password Reset - Navadrishti</title>
     </head>
     <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
         <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
             <h1 style="color: #3b82f6; margin: 0; text-align: center;">
-                🤝 Navdrishti
+                🤝 Navadrishti
             </h1>
         </div>
         
@@ -139,7 +139,7 @@ export function generatePasswordResetEmail(resetUrl: string, userEmail: string):
             
             <p>Hello,</p>
             
-            <p>We received a request to reset your password for your Navdrishti account.</p>
+            <p>We received a request to reset your password for your Navadrishti account.</p>
             
             <p>Click the button below to reset your password:</p>
             
@@ -174,9 +174,9 @@ export function generatePasswordResetEmail(resetUrl: string, userEmail: string):
         <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
         
         <div style="text-align: center; color: #6b7280; font-size: 14px;">
-            <p>This email was sent by Navdrishti</p>
+            <p>This email was sent by Navadrishti</p>
             <p>If you have any questions, please contact our support team.</p>
-            <p>© ${new Date().getFullYear()} Navdrishti. All rights reserved.</p>
+            <p>© ${new Date().getFullYear()} Navadrishti. All rights reserved.</p>
         </div>
     </body>
     </html>
