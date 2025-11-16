@@ -199,7 +199,7 @@ export default function ServiceOffersPage() {
 
         {/* Create Service Offer CTA */}
         {loading ? (
-          <SkeletonCTA />
+          user && isNGO && <SkeletonCTA />
         ) : user && isNGO && (
           <div className="mb-8 p-8 bg-gradient-to-br from-gray-900 via-gray-800 to-black rounded-2xl border border-gray-700 shadow-2xl relative overflow-hidden">
             {/* Background gradient overlay */}
