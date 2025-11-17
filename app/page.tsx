@@ -75,8 +75,8 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-black">
-      {/* Top Navigation */}
-      <div className="absolute top-6 right-6 z-50 flex gap-3">
+      {/* Top Navigation - Hidden on mobile */}
+      <div className="absolute top-6 right-6 z-50 hidden sm:flex gap-3">
         <Link 
           href="/home" 
           className="group"
@@ -277,24 +277,25 @@ export default function HomePage() {
         {/* Enhanced Text and Button Overlay */}
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ paddingTop: '8rem' }}>
           <div className="text-center pointer-events-auto">
-            <h1 className="text-8xl md:text-9xl font-extrabold text-white mb-6 tracking-tight drop-shadow-[0_8px_32px_rgba(0,0,0,0.8)]">
+            <h1 className="text-4xl sm:text-6xl md:text-8xl lg:text-9xl xl:text-9xl font-extrabold text-white mb-6 tracking-tight drop-shadow-[0_8px_32px_rgba(0,0,0,0.8)] px-2">
               <span className="bg-gradient-to-r from-white via-blue-100 to-white bg-clip-text text-transparent">
                 Navadrishti
               </span>
             </h1>
-            <p className="text-3xl md:text-4xl text-white/95 mb-12 drop-shadow-[0_4px_16px_rgba(0,0,0,0.7)] max-w-5xl mx-auto leading-relaxed font-medium whitespace-nowrap">
-              Empowering Communities Through Business Literacy
+            <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl xl:text-4xl text-white/95 mb-10 drop-shadow-[0_4px_16px_rgba(0,0,0,0.7)] max-w-5xl mx-auto leading-relaxed font-medium px-6">
+              <span className="block sm:hidden text-center leading-snug">Empowering Communities<br />Through Business Literacy</span>
+              <span className="hidden sm:block whitespace-nowrap">Empowering Communities Through Business Literacy</span>
             </p>
             
             {/* Real-time Stats Counter */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
+            <div className="grid grid-cols-3 gap-2 sm:gap-4 md:gap-8 mb-12 px-4">
               <div className="text-center">
-                <div className="text-4xl md:text-5xl font-bold text-blue-400 mb-2">
+                <div className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-blue-400 mb-1 sm:mb-2">
                   {statsLoading || statsError ? (
                     <div className="relative overflow-hidden">
-                      <div className="h-14 w-32 mx-auto bg-blue-400/10 rounded-xl flex items-center justify-center">
+                      <div className="h-8 sm:h-12 md:h-14 w-16 sm:w-24 md:w-32 mx-auto bg-blue-400/10 rounded-xl flex items-center justify-center">
                         {statsError ? (
-                          <span className="text-sm text-amber-400">Database Starting</span>
+                          <span className="text-xs sm:text-sm text-amber-400">Loading</span>
                         ) : (
                           <div className="absolute inset-0 bg-gradient-to-r from-transparent via-blue-400/30 to-transparent animate-shimmer"></div>
                         )}
@@ -304,25 +305,28 @@ export default function HomePage() {
                     `${stats.activeUsers.toLocaleString()}+`
                   )}
                 </div>
-                <div className="text-white/70 text-sm uppercase tracking-wide">
+                <div className="text-white/70 text-xs sm:text-sm uppercase tracking-wide">
                   {statsLoading || statsError ? (
-                    <div className="relative overflow-hidden mt-2">
-                      <div className="h-4 w-20 mx-auto bg-gray-400/10 rounded-lg flex items-center justify-center">
+                    <div className="relative overflow-hidden mt-1 sm:mt-2">
+                      <div className="h-3 sm:h-4 w-12 sm:w-16 md:w-20 mx-auto bg-gray-400/10 rounded-lg flex items-center justify-center">
                         {!statsError && <div className="absolute inset-0 bg-gradient-to-r from-transparent via-gray-400/30 to-transparent animate-shimmer"></div>}
                       </div>
                     </div>
                   ) : (
-                    "Active Users"
+                    <>
+                      <span className="hidden sm:inline">Active Users</span>
+                      <span className="sm:hidden">Users</span>
+                    </>
                   )}
                 </div>
               </div>
               <div className="text-center">
-                <div className="text-4xl md:text-5xl font-bold text-purple-400 mb-2">
+                <div className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-purple-400 mb-1 sm:mb-2">
                   {statsLoading || statsError ? (
                     <div className="relative overflow-hidden">
-                      <div className="h-14 w-32 mx-auto bg-purple-400/10 rounded-xl flex items-center justify-center">
+                      <div className="h-8 sm:h-12 md:h-14 w-16 sm:w-24 md:w-32 mx-auto bg-purple-400/10 rounded-xl flex items-center justify-center">
                         {statsError ? (
-                          <span className="text-sm text-amber-400">Please Wait</span>
+                          <span className="text-xs sm:text-sm text-amber-400">Wait</span>
                         ) : (
                           <div className="absolute inset-0 bg-gradient-to-r from-transparent via-purple-400/30 to-transparent animate-shimmer"></div>
                         )}
@@ -332,10 +336,10 @@ export default function HomePage() {
                     `${stats.partnerCompanies.toLocaleString()}+`
                   )}
                 </div>
-                <div className="text-white/70 text-sm uppercase tracking-wide">
+                <div className="text-white/70 text-xs sm:text-sm uppercase tracking-wide">
                   {statsLoading || statsError ? (
-                    <div className="relative overflow-hidden mt-2">
-                      <div className="h-4 w-18 mx-auto bg-gray-400/10 rounded-lg flex items-center justify-center">
+                    <div className="relative overflow-hidden mt-1 sm:mt-2">
+                      <div className="h-3 sm:h-4 w-12 sm:w-16 md:w-18 mx-auto bg-gray-400/10 rounded-lg flex items-center justify-center">
                         {!statsError && <div className="absolute inset-0 bg-gradient-to-r from-transparent via-gray-400/30 to-transparent animate-shimmer"></div>}
                       </div>
                     </div>
@@ -345,12 +349,12 @@ export default function HomePage() {
                 </div>
               </div>
               <div className="text-center">
-                <div className="text-4xl md:text-5xl font-bold text-teal-400 mb-2">
+                <div className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-teal-400 mb-1 sm:mb-2">
                   {statsLoading || statsError ? (
                     <div className="relative overflow-hidden">
-                      <div className="h-14 w-32 mx-auto bg-teal-400/10 rounded-xl flex items-center justify-center">
+                      <div className="h-8 sm:h-12 md:h-14 w-16 sm:w-24 md:w-32 mx-auto bg-teal-400/10 rounded-xl flex items-center justify-center">
                         {statsError ? (
-                          <span className="text-sm text-amber-400">2-3 Minutes</span>
+                          <span className="text-xs sm:text-sm text-amber-400">Soon</span>
                         ) : (
                           <div className="absolute inset-0 bg-gradient-to-r from-transparent via-teal-400/30 to-transparent animate-shimmer"></div>
                         )}
@@ -360,21 +364,25 @@ export default function HomePage() {
                     `${stats.partnerNGOs.toLocaleString()}+`
                   )}
                 </div>
-                <div className="text-white/70 text-sm uppercase tracking-wide">
+                <div className="text-white/70 text-xs sm:text-sm uppercase tracking-wide">
                   {statsLoading || statsError ? (
-                    <div className="relative overflow-hidden mt-2">
-                      <div className="h-4 w-24 mx-auto bg-gray-400/10 rounded-lg flex items-center justify-center">
+                    <div className="relative overflow-hidden mt-1 sm:mt-2">
+                      <div className="h-3 sm:h-4 w-12 sm:w-16 md:w-24 mx-auto bg-gray-400/10 rounded-lg flex items-center justify-center">
                         {!statsError && <div className="absolute inset-0 bg-gradient-to-r from-transparent via-gray-400/30 to-transparent animate-shimmer"></div>}
                       </div>
                     </div>
                   ) : (
-                    "Partner NGOs"
+                    <>
+                      <span className="hidden sm:inline">Partner NGOs</span>
+                      <span className="sm:hidden">NGOs</span>
+                    </>
                   )}
                 </div>
               </div>
             </div>
             
-            <div className="flex flex-col sm:flex-row gap-4 justify-center mt-8">
+            {/* Desktop Buttons - Hide on mobile */}
+            <div className="hidden sm:flex flex-col sm:flex-row gap-4 justify-center mt-8">
               <Link href="/home" className="group">
                 <div 
                   className="flex justify-center items-center bg-gray-800/80 backdrop-blur-md shadow-xl text-gray-200 hover:text-white transition-all duration-300 hover:bg-gray-700/80 rounded-lg cursor-pointer"
@@ -403,6 +411,60 @@ export default function HomePage() {
                 </button>
               </a>
             </div>
+            
+            {/* Mobile Buttons - Show only on mobile */}
+            <div className="flex sm:hidden flex-col gap-3 items-center mt-8 px-4 pb-8">
+              <Link href="/home" className="group w-full max-w-xs">
+                <div 
+                  className="flex justify-center items-center bg-gray-800/80 backdrop-blur-md shadow-xl text-gray-200 hover:text-white transition-all duration-300 hover:bg-gray-700/80 rounded-lg cursor-pointer w-full"
+                  style={{ 
+                    padding: '0.875rem 1.25rem', 
+                    fontSize: '0.9rem',
+                    fontWeight: '500'
+                  }}
+                >
+                  <User className="w-4 h-4 mr-2" />
+                  Home
+                </div>
+              </Link>
+              {user ? (
+                <Link 
+                  href={`/${user.user_type}s/dashboard`}
+                  className="group w-full max-w-xs"
+                >
+                  <div 
+                    className="flex justify-center items-center shadow-xl text-white transition-all duration-300 rounded-lg cursor-pointer gradient-border-btn w-full"
+                    style={{ 
+                      padding: '0.875rem 1.25rem !important', 
+                      fontSize: '0.9rem !important',
+                      fontWeight: '500 !important'
+                    }}
+                  >
+                    <LayoutDashboard className="w-4 h-4 mr-2" />
+                    Dashboard
+                  </div>
+                </Link>
+              ) : (
+                <a 
+                  href="https://navdrishti-portfolio.vercel.app"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group w-full max-w-xs"
+                >
+                  <div 
+                    className="flex justify-center items-center shadow-xl text-white transition-all duration-300 rounded-lg cursor-pointer gradient-border-btn w-full"
+                    style={{ 
+                      padding: '0.875rem 1.25rem !important', 
+                      fontSize: '0.9rem !important',
+                      fontWeight: '500 !important'
+                    }}
+                  >
+                    <LayoutDashboard className="w-4 h-4 mr-2" />
+                    Portfolio
+                  </div>
+                </a>
+              )}
+            </div>
           </div>
         </div>
 
@@ -429,8 +491,8 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Design Tool Section - Exact Pactto Copy */}
-      <section className="w-full min-h-screen bg-gray-900 py-16">
+      {/* Design Tool Section - Hidden on mobile */}
+      <section className="hidden lg:block w-full min-h-screen bg-gray-900 py-16">
         <div className="max-w-7xl mx-auto px-6">
           {/* Header */}
           <div className="text-center mb-12">
@@ -810,7 +872,7 @@ export default function HomePage() {
       </section>
 
       {/* Building Tomorrow's Connected Communities Section */}
-      <section className="w-full bg-gradient-to-b from-gray-900 via-gray-950 to-black py-20 relative overflow-hidden">
+      <section className="w-full bg-gradient-to-b from-gray-900 via-gray-950 to-black py-8 relative overflow-hidden">
         {/* Background Pattern */}
         <div className="absolute inset-0 opacity-20">
           <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-teal-500/10"></div>
@@ -838,9 +900,24 @@ export default function HomePage() {
         
         <div className="max-w-6xl mx-auto px-6 relative z-10">
           {/* Main Message */}
-          <div className="mb-16 flex justify-center">
-            <h2 className="text-4xl md:text-5xl font-bold text-white mb-8 leading-tight text-center">
-              <span className="whitespace-nowrap">
+          <div className="mb-4 flex justify-center">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-white mb-0 leading-tight text-center px-4">
+              <span className="block sm:hidden">
+                Let's join hands to revolutionize{' '}
+                <br />
+                <span className="inline-block">
+                  <span style={{ color: '#FF9933' }}>I</span>
+                  <span style={{ color: '#FF9933' }}>n</span>
+                  <span style={{ color: '#FFFFFF' }}>d</span>
+                  <span style={{ color: '#FFFFFF' }}>i</span>
+                  <span style={{ color: '#138808' }}>a</span>
+                </span>'s{' '}
+                <span className="bg-gradient-to-r from-blue-400 via-purple-400 to-teal-400 bg-clip-text text-transparent">
+                  social growth
+                </span>{' '}
+                <span className="text-red-500">❤️</span>
+              </span>
+              <span className="hidden sm:block whitespace-nowrap">
                 Let's join hands to revolutionize{' '}
                 <span className="inline-block">
                   <span style={{ color: '#FF9933' }}>I</span>
