@@ -6,7 +6,6 @@ export const revalidate = 300; // Cache for 5 minutes
 
 export async function GET(request: NextRequest) {
   try {
-    console.log('📊 Fetching platform statistics...');
 
     // Set a timeout for database operations
     const timeoutPromise = new Promise((_, reject) => {
@@ -56,12 +55,7 @@ export async function GET(request: NextRequest) {
     const totalCompanies = userCounts.companies;
     const totalServiceRequests = Number(serviceRequestsCount) || 0;
 
-    console.log('👥 User counts:', {
-      total: totalUsers,
-      ngos: totalNGOs,
-      companies: totalCompanies,
-      serviceRequests: totalServiceRequests
-    });
+
 
     const stats = {
       // ONLY REAL DATA - NO ESTIMATES OR SAMPLES

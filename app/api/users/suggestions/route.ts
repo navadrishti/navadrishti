@@ -52,12 +52,7 @@ export async function GET(request: NextRequest) {
       state_province: user.state_province || ''
     })) || [];
 
-    // Debug logging to verify we're getting recent users
-    console.log('Suggested users (ordered by created_at desc):', suggestions.map(u => ({
-      name: u.name, 
-      created_at: u.created_at,
-      verification_status: u.verification_status
-    })));
+
 
     return NextResponse.json({
       success: true,
