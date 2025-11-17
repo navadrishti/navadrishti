@@ -143,10 +143,6 @@ export default function HomePage() {
               <TrendingHashtags 
                 limit={5} 
                 showDetails={true}
-                onHashtagClick={(tag) => {
-                  // Handle hashtag click - copy to clipboard as fallback
-                  navigator.clipboard?.writeText(`#${tag}`)
-                }}
               />
             </div>
 

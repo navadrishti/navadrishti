@@ -17,11 +17,16 @@ export default function IndividualRegister() {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
+    phone: '',
     password: '',
     confirmPassword: '',
-    skills: '',
+    age: '',
+    city: '',
+    state: '',
+    pincode: '',
+    country: 'India',
     experience: '',
-    education: ''
+    proofOfWork: ''
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [portfolioFiles, setPortfolioFiles] = useState<File[]>([]);
@@ -33,6 +38,18 @@ export default function IndividualRegister() {
     setFormData(prev => ({ ...prev, [name]: value }));
     
     // Clear error for this field when user starts typing
+    if (formErrors[name]) {
+      setFormErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[name];
+        return newErrors;
+      });
+    }
+  };
+
+  const handleSelectChange = (name: string, value: string) => {
+    setFormData(prev => ({ ...prev, [name]: value }));
+    
     if (formErrors[name]) {
       setFormErrors(prev => {
         const newErrors = { ...prev };
@@ -55,6 +72,12 @@ export default function IndividualRegister() {
       errors.email = 'Email is invalid';
     }
     
+    if (!formData.phone.trim()) {
+      errors.phone = 'Phone number is required';
+    } else if (!/^[+]?[1-9]\d{1,14}$/.test(formData.phone.replace(/\s+/g, ''))) {
+      errors.phone = 'Please enter a valid phone number';
+    }
+    
     if (!formData.password) {
       errors.password = 'Password is required';
     } else if (formData.password.length < 8) {
@@ -63,6 +86,20 @@ export default function IndividualRegister() {
     
     if (formData.password !== formData.confirmPassword) {
       errors.confirmPassword = 'Passwords do not match';
+    }
+    
+    if (!formData.age) {
+      errors.age = 'Age is required';
+    } else if (parseInt(formData.age) < 18 || parseInt(formData.age) > 100) {
+      errors.age = 'Age must be between 18 and 100';
+    }
+    
+    if (!formData.city.trim()) {
+      errors.city = 'City is required';
+    }
+    
+    if (!formData.state.trim()) {
+      errors.state = 'State/Province is required';
     }
     
     setFormErrors(errors);
@@ -88,18 +125,25 @@ export default function IndividualRegister() {
     }
     
     // Prepare user data for signup
-      const userData = {
-        email: formData.email,
-        password: formData.password,
-        name: formData.name,
-        user_type: 'individual' as const,
-        additional_data: {
-          skills: formData.skills.split(',').map((skill: string) => skill.trim()),
-          experience: formData.experience,
-          education: formData.education,
-          portfolio_files: portfolioFiles.map(file => file.name) // Files stored temporarily, upload after registration
-        }
-      };    // Call signup function from auth context
+    const userData = {
+      email: formData.email,
+      password: formData.password,
+      name: formData.name,
+      user_type: 'individual' as const,
+      phone: formData.phone,
+      city: formData.city,
+      state_province: formData.state,
+      pincode: formData.pincode,
+      country: formData.country,
+      profile_data: {
+        age: parseInt(formData.age),
+        experience: formData.experience,
+        proof_of_work: formData.proofOfWork,
+        portfolio_files: portfolioFiles.map(file => file.name)
+      }
+    };
+    
+    // Call signup function from auth context
     await signup(userData);
     
     // If signup is successful, redirect to dashboard
@@ -110,10 +154,6 @@ export default function IndividualRegister() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
-      <Link href="/" className="flex items-center text-2xl font-bold mb-6">
-        <img src="/photos/logo1.svg" alt="Navadrishti" className="h-16 w-16" />
-      </Link>
-      
       <Card className="w-full max-w-2xl">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-center">Register as Individual</CardTitle>
@@ -157,6 +197,34 @@ export default function IndividualRegister() {
               </div>
               
               <div className="space-y-2">
+                <Label htmlFor="phone">Phone Number</Label>
+                <Input
+                  id="phone"
+                  name="phone"
+                  type="tel"
+                  value={formData.phone}
+                  onChange={handleChange}
+                  placeholder="+91 9876543210"
+                />
+                {formErrors.phone && <p className="text-sm text-red-500">{formErrors.phone}</p>}
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="age">Age</Label>
+                <Input
+                  id="age"
+                  name="age"
+                  type="number"
+                  min="18"
+                  max="100"
+                  value={formData.age}
+                  onChange={handleChange}
+                  placeholder="25"
+                />
+                {formErrors.age && <p className="text-sm text-red-500">{formErrors.age}</p>}
+              </div>
+              
+              <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
                 <Input
                   id="password"
@@ -183,39 +251,91 @@ export default function IndividualRegister() {
               </div>
             </div>
             
-            <div className="space-y-2">
-              <Label htmlFor="skills">Skills (comma separated)</Label>
-              <Input
-                id="skills"
-                name="skills"
-                value={formData.skills}
-                onChange={handleChange}
-                placeholder="Teaching, Project Management, Communication"
-              />
+            {/* Location Information */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-medium">Location Information</h3>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="city">City</Label>
+                  <Input
+                    id="city"
+                    name="city"
+                    value={formData.city}
+                    onChange={handleChange}
+                    placeholder="Mumbai, Delhi, etc."
+                  />
+                  {formErrors.city && <p className="text-sm text-red-500">{formErrors.city}</p>}
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="state">State/Province</Label>
+                  <Input
+                    id="state"
+                    name="state"
+                    value={formData.state}
+                    onChange={handleChange}
+                    placeholder="Maharashtra, Delhi, etc."
+                  />
+                  {formErrors.state && <p className="text-sm text-red-500">{formErrors.state}</p>}
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="pincode">Pincode (Optional)</Label>
+                  <Input
+                    id="pincode"
+                    name="pincode"
+                    value={formData.pincode}
+                    onChange={handleChange}
+                    placeholder="400001"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="country">Country</Label>
+                  <Select value={formData.country} onValueChange={(value) => handleSelectChange('country', value)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select country" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="India">India</SelectItem>
+                      <SelectItem value="Bangladesh">Bangladesh</SelectItem>
+                      <SelectItem value="Nepal">Nepal</SelectItem>
+                      <SelectItem value="Sri Lanka">Sri Lanka</SelectItem>
+                      <SelectItem value="Pakistan">Pakistan</SelectItem>
+                      <SelectItem value="Other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </div>
             
-            <div className="space-y-2">
-              <Label htmlFor="experience">Experience</Label>
-              <Textarea
-                id="experience"
-                name="experience"
-                value={formData.experience}
-                onChange={handleChange}
-                placeholder="Briefly describe your professional experience"
-                rows={3}
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="education">Education</Label>
-              <Textarea
-                id="education"
-                name="education"
-                value={formData.education}
-                onChange={handleChange}
-                placeholder="Briefly describe your educational background"
-                rows={3}
-              />
+            {/* Professional Information */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-medium">Professional Information</h3>
+              
+              <div className="space-y-2">
+                <Label htmlFor="experience">Experience & Skills</Label>
+                <Textarea
+                  id="experience"
+                  name="experience"
+                  value={formData.experience}
+                  onChange={handleChange}
+                  placeholder="Briefly describe your professional experience, skills, and areas of expertise"
+                  rows={4}
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="proofOfWork">Proof of Work/Experience</Label>
+                <Textarea
+                  id="proofOfWork"
+                  name="proofOfWork"
+                  value={formData.proofOfWork}
+                  onChange={handleChange}
+                  placeholder="Describe your past projects, achievements, certifications, or any relevant work that demonstrates your capabilities"
+                  rows={3}
+                />
+              </div>
             </div>
             
             <div className="space-y-2">
