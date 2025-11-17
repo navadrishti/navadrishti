@@ -158,6 +158,7 @@ export default function ProfilePage() {
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [profileImageFile, setProfileImageFile] = useState<File | null>(null);
   const [profileImageUrl, setProfileImageUrl] = useState<string>('');
+  const [uploadingProfileImage, setUploadingProfileImage] = useState(false);
   const [projectPhotos, setProjectPhotos] = useState<File[]>([]);
   const [projectPhotoUrls, setProjectPhotoUrls] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -255,6 +256,7 @@ export default function ProfilePage() {
       // Load profile image if available
       if (freshUser?.profile_image) {
         setProfileImageUrl(freshUser.profile_image);
+        setProfileImage(freshUser.profile_image);
       }
     } catch (error) {
       console.error('Error fetching profile:', error);
@@ -283,6 +285,62 @@ export default function ProfilePage() {
     }
   };
 
+  const handleProfileImageUpload = async (file: File) => {
+    try {
+      setUploadingProfileImage(true);
+      
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Upload failed');
+      }
+      
+      const result = await response.json();
+      const imageUrl = result.data.url;
+      
+      setProfileImageUrl(imageUrl);
+      setProfileImage(imageUrl);
+      
+      // Automatically save the profile image to the database
+      const profileData = {
+        userId: user?.id,
+        profileImageUrl: imageUrl
+      };
+      
+      const saveResponse = await fetch('/api/profile/update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(profileData),
+      });
+
+      if (saveResponse.ok) {
+        await refreshUser(); // Refresh the user data in auth context
+        toast.success('Profile picture updated successfully!');
+      } else {
+        toast.success('Profile picture uploaded successfully! Click "Update Profile" to save changes.');
+      }
+      
+    } catch (error) {
+      console.error('Error uploading profile image:', error);
+      toast.error('Failed to upload profile picture. Please try again.');
+    } finally {
+      setUploadingProfileImage(false);
+    }
+  };
+
   const handleSaveProfile = async () => {
     try {
       setLoading(true);
@@ -291,8 +349,9 @@ export default function ProfilePage() {
         userId: user?.id,
       };
       
-      if (profileImageUrl) {
-        profileData.profileImageUrl = profileImageUrl;
+      // Include profile image URL if available
+      if (profileImageUrl && profileImageUrl.trim()) {
+        profileData.profileImageUrl = profileImageUrl.trim();
       }
       
       if (city?.trim()) profileData.city = city.trim();
@@ -338,7 +397,7 @@ export default function ProfilePage() {
       for (const file of proofOfWork) {
         const formData = new FormData();
         formData.append('file', file);
-        formData.append('upload_preset', 'udaan-collective');
+        formData.append('upload_preset', 'navdrishti_uploads');
         
         const response = await fetch('https://api.cloudinary.com/v1_1/dgevlmwpt/image/upload', {
           method: 'POST',
@@ -358,7 +417,7 @@ export default function ProfilePage() {
       if (resume) {
         const formData = new FormData();
         formData.append('file', resume);
-        formData.append('upload_preset', 'udaan-collective');
+        formData.append('upload_preset', 'navdrishti_uploads');
         formData.append('resource_type', 'raw'); // For PDF/doc files
         
         const response = await fetch('https://api.cloudinary.com/v1_1/dgevlmwpt/raw/upload', {
@@ -451,6 +510,63 @@ export default function ProfilePage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  {/* Profile Picture Section */}
+                  <div className="flex flex-col items-center gap-4 pb-4 border-b">
+                    <div className="relative">
+                      <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-gray-200">
+                        {profileImageUrl ? (
+                          <img 
+                            src={profileImageUrl} 
+                            alt="Profile" 
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-gradient-to-br from-blue-400 to-indigo-500 text-white font-semibold flex items-center justify-center text-xl">
+                            {user?.name ? user.name.split(' ').map(n => n[0]).join('').toUpperCase() : 'U'}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-center gap-2">
+                      <label className="cursor-pointer">
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          disabled={uploadingProfileImage}
+                          asChild
+                        >
+                          <span>
+                            {uploadingProfileImage ? 'Uploading...' : 'Change Profile Picture'}
+                          </span>
+                        </Button>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              handleProfileImageUpload(file);
+                            }
+                          }}
+                          className="hidden"
+                          disabled={uploadingProfileImage}
+                        />
+                      </label>
+                      {profileImageUrl && (
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={() => {
+                            setProfileImageUrl('');
+                            setProfileImage(null);
+                          }}
+                          className="text-red-600 hover:text-red-700"
+                        >
+                          Remove Picture
+                        </Button>
+                      )}
+                    </div>
+                  </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <Label>Full Name</Label>
@@ -605,6 +721,36 @@ export default function ProfilePage() {
                         size="sm"
                       />
                     </div>
+                    
+                    {user?.phone && !user?.phone_verified && (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium">Phone Verification</span>
+                          <VerificationBadge 
+                            status={user?.phone_verified ? 'verified' : 'unverified'} 
+                            size="sm"
+                          />
+                        </div>
+                        <PhoneVerificationSection 
+                          phone={user.phone} 
+                          onVerificationComplete={() => {
+                            refreshUser();
+                            fetchVerificationStatus();
+                          }} 
+                        />
+                      </div>
+                    )}
+                    
+                    {(!user?.verification_status || user?.verification_status === 'unverified') && (
+                      <div className="pt-4 border-t">
+                        <Link href={`/verification?userType=${user?.user_type}`} className="block">
+                          <Button variant="default" size="sm" className="w-full">
+                            <Shield className="h-4 w-4 mr-2" />
+                            Get Verified
+                          </Button>
+                        </Link>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
