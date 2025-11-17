@@ -375,18 +375,30 @@ export default function HomePage() {
             </div>
             
             <div className="flex flex-col sm:flex-row gap-4 justify-center mt-8">
-              <Link href="/home">
-                <button className="star-btn">
-                  <div id="container-stars"></div>
-                  <div id="glow">
-                    <div className="circle"></div>
-                    <div className="circle"></div>
-                  </div>
-                  <strong>Explore Platform</strong>
-                </button>
+              <Link href="/home" className="group">
+                <div 
+                  className="flex justify-center items-center bg-gray-800/80 backdrop-blur-md shadow-xl text-gray-200 hover:text-white transition-all duration-300 hover:bg-gray-700/80 rounded-lg cursor-pointer"
+                  style={{ 
+                    padding: '1.25rem 2.5rem', 
+                    minWidth: '200px',
+                    fontSize: '1.125rem',
+                    fontWeight: '500'
+                  }}
+                >
+                  <User className="w-5 h-5 mr-3" />
+                  Explore Platform
+                </div>
               </Link>
               <a href="mailto:support@navdrishti.com">
-                <button className="gradient-border-btn px-8 py-4 rounded-xl font-semibold text-lg">
+                <button 
+                  className="gradient-border-btn shadow-xl text-white transition-all duration-300 h-auto"
+                  style={{ 
+                    padding: '1.25rem 2.5rem !important', 
+                    minWidth: '200px !important',
+                    fontSize: '1.125rem !important',
+                    fontWeight: '500 !important'
+                  }}
+                >
                   Contact Support
                 </button>
               </a>
