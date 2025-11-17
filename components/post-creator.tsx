@@ -344,25 +344,6 @@ export function PostCreator({ onPostCreated, className }: PostCreatorProps) {
         )}
         
 
-
-        {/* Hashtags */}
-        {hashtags.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {hashtags.map((tag, index) => (
-              <Badge 
-                key={index} 
-                variant="secondary" 
-                className="cursor-pointer hover:bg-destructive hover:text-destructive-foreground"
-                onClick={() => removeHashtag(tag)}
-              >
-                #{tag} <X className="w-3 h-3 ml-1" />
-              </Badge>
-            ))}
-          </div>
-        )}
-
-
-
         {/* Location */}
         {location && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">

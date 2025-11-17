@@ -262,6 +262,65 @@ export const socialFeedDb = {
       }
     },
 
+    // Method to decrement hashtag statistics when posts are deleted
+    async decrementHashtagStats(tags: string[]) {
+      for (const tag of tags) {
+        try {
+          const tagLower = tag.toLowerCase().trim();
+          
+          if (!tagLower || tagLower.length === 0) continue;
+          
+          // Get current hashtag stats
+          const { data: existing, error: selectError } = await supabase
+            .from('hashtags')
+            .select('id, total_mentions, daily_mentions, weekly_mentions')
+            .eq('tag', tagLower)
+            .maybeSingle();
+
+          if (selectError || !existing) {
+            continue; // Skip if hashtag doesn't exist
+          }
+
+          const newDailyMentions = Math.max(0, (existing.daily_mentions || 1) - 1);
+          const newWeeklyMentions = Math.max(0, (existing.weekly_mentions || 1) - 1);
+          const newTotalMentions = Math.max(0, (existing.total_mentions || 1) - 1);
+          
+          // If no mentions left, delete the hashtag
+          if (newTotalMentions === 0) {
+            await supabase
+              .from('hashtags')
+              .delete()
+              .eq('id', existing.id);
+          } else {
+            // Recalculate trending score
+            const trendingScore = this.calculateTrendingScore(newDailyMentions, newWeeklyMentions, newTotalMentions);
+            
+            // Update hashtag with decremented stats
+            await supabase
+              .from('hashtags')
+              .update({
+                total_mentions: newTotalMentions,
+                daily_mentions: newDailyMentions,
+                weekly_mentions: newWeeklyMentions,
+                trending_score: trendingScore,
+                is_trending: newDailyMentions >= 2 && trendingScore > 5, // Update trending status
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', existing.id);
+          }
+        } catch (tagError: any) {
+          console.warn(`Failed to decrement stats for hashtag ${tag}:`, tagError?.message);
+        }
+      }
+      
+      // Update trending rankings after decrementing
+      try {
+        await this.updateTrendingRankings();
+      } catch (error: any) {
+        console.warn('Failed to update trending rankings after decrement:', error?.message);
+      }
+    },
+
     // Enhanced trending score calculation
     calculateTrendingScore(daily: number, weekly: number, total: number): number {
       const recencyWeight = daily * 4.0;     // High weight for recent activity
@@ -272,66 +331,123 @@ export const socialFeedDb = {
       return Math.round((recencyWeight + consistencyWeight + popularityWeight + velocityBonus) * 100) / 100;
     },
 
+    // Reset daily/weekly counts based on actual post dates
+    async resetDailyWeeklyCounts() {
+      try {
+        const today = new Date();
+        const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString();
+        const weekStart = new Date(today.getTime() - (7 * 24 * 60 * 60 * 1000)).toISOString();
+        
+        // Get all hashtags
+        const { data: hashtags, error: hashtagsError } = await supabase
+          .from('hashtags')
+          .select('*');
+        
+        if (hashtagsError) throw hashtagsError;
+
+        for (const hashtag of hashtags || []) {
+          // Count actual mentions from posts created today
+          const { data: todayPosts, error: todayError } = await supabase
+            .from('posts')
+            .select('content')
+            .gte('created_at', todayStart);
+          
+          if (todayError) continue;
+
+          // Count actual mentions from posts created this week
+          const { data: weekPosts, error: weekError } = await supabase
+            .from('posts')
+            .select('content')
+            .gte('created_at', weekStart);
+          
+          if (weekError) continue;
+
+          // Count hashtag occurrences
+          let dailyCount = 0;
+          let weeklyCount = 0;
+          const hashtagRegex = new RegExp(`#${hashtag.tag}\\b`, 'gi');
+          
+          for (const post of todayPosts || []) {
+            const matches = post.content.match(hashtagRegex);
+            dailyCount += matches ? matches.length : 0;
+          }
+
+          for (const post of weekPosts || []) {
+            const matches = post.content.match(hashtagRegex);
+            weeklyCount += matches ? matches.length : 0;
+          }
+
+          // Calculate new trending score
+          const trendingScore = this.calculateTrendingScore(dailyCount, weeklyCount, hashtag.total_mentions);
+
+          // Update the hashtag
+          await supabase
+            .from('hashtags')
+            .update({
+              daily_mentions: dailyCount,
+              weekly_mentions: weeklyCount,
+              trending_score: trendingScore,
+              is_trending: dailyCount >= 1 && trendingScore > 2, // Lower threshold
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', hashtag.id);
+        }
+
+        // Update trending rankings
+        await this.updateTrendingRankings();
+        
+        return { success: true, processed: hashtags?.length || 0 };
+      } catch (error: any) {
+        console.error('Error resetting daily/weekly counts:', error);
+        throw error;
+      }
+    },
+
     // Update trending rankings and determine top trending hashtags
     async updateTrendingRankings() {
       try {
-        // Get all hashtags with recent activity
+        // Get all hashtags ordered primarily by daily mentions (today's activity)
         const { data: allHashtags, error: fetchError } = await supabase
           .from('hashtags')
           .select('*')
-          .gt('daily_mentions', 0)
-          .order('trending_score', { ascending: false });
+          .gte('total_mentions', 1) // Must have at least 1 total mention
+          .order('daily_mentions', { ascending: false }) // Primary: Today's mentions
+          .order('weekly_mentions', { ascending: false }) // Secondary: This week's mentions
+          .order('trending_score', { ascending: false }) // Tertiary: Trending score
+          .order('total_mentions', { ascending: false }); // Final: Total mentions
 
         if (fetchError || !allHashtags) return;
 
-        // Determine top 5 trending hashtags
-        const top5Trending = allHashtags.slice(0, 5);
-        const trendingIds = top5Trending.map(h => h.id);
-
-        // Reset all trending status
+        // Reset all trending status first
         await supabase
           .from('hashtags')
           .update({ is_trending: false });
 
-        // Set top 5 as trending
-        if (trendingIds.length > 0) {
+        // Get top 5 hashtags based on daily mentions hierarchy
+        const top5 = allHashtags.slice(0, 5);
+        
+        if (top5.length > 0) {
+          const trendingIds = top5.map(h => h.id);
           await supabase
             .from('hashtags')
             .update({ is_trending: true })
             .in('id', trendingIds);
-        }
-
-        // Replace hashtags that drop below threshold
-        const eligibleHashtags = allHashtags.filter(h => 
-          h.daily_mentions >= 2 && h.trending_score > 5
-        );
-
-        // If we have more eligible hashtags than current trending, update the list
-        if (eligibleHashtags.length > 5) {
-          const newTop5 = eligibleHashtags.slice(0, 5);
-          const newTrendingIds = newTop5.map(h => h.id);
-          
-          // Reset all and set new top 5
-          await supabase.from('hashtags').update({ is_trending: false });
-          await supabase
-            .from('hashtags')
-            .update({ is_trending: true })
-            .in('id', newTrendingIds);
         }
       } catch (error) {
         // Silent fail for production
       }
     },
 
-    // Get current trending hashtags with rankings
+    // Get current trending hashtags with rankings (ordered by daily mentions first)
     async getTrendingHashtags(limit: number = 5) {
       const { data, error } = await supabase
         .from('hashtags')
         .select('*')
         .eq('is_trending', true)
-        .order('trending_score', { ascending: false })
-        .order('daily_mentions', { ascending: false })
-        .order('weekly_mentions', { ascending: false })
+        .order('daily_mentions', { ascending: false }) // Primary: Today's mentions
+        .order('weekly_mentions', { ascending: false }) // Secondary: This week's mentions  
+        .order('trending_score', { ascending: false }) // Tertiary: Trending score
+        .order('total_mentions', { ascending: false }) // Final: Total mentions
         .limit(limit);
 
       if (error) {
@@ -339,6 +455,124 @@ export const socialFeedDb = {
       }
 
       return data || [];
+    },
+
+    // Maintenance function to fix hashtag inconsistencies
+    async performHashtagMaintenance() {
+      try {
+        // Step 1: Get all posts and their hashtags
+        const { data: allPosts, error: postsError } = await supabase
+          .from('posts')
+          .select('id, content');
+        
+        if (postsError) throw postsError;
+
+        // Step 2: Build a count of actual hashtag usage
+        const hashtagCounts = new Map<string, number>();
+        
+        for (const post of allPosts || []) {
+          const hashtagRegex = /#([a-zA-Z0-9_]+)/g;
+          const hashtags = post.content.match(hashtagRegex)?.map(tag => tag.replace('#', '').toLowerCase()) || [];
+          
+          hashtags.forEach(tag => {
+            hashtagCounts.set(tag, (hashtagCounts.get(tag) || 0) + 1);
+          });
+        }
+
+        // Step 3: Get all stored hashtags
+        const { data: storedHashtags, error: hashtagsError } = await supabase
+          .from('hashtags')
+          .select('*');
+        
+        if (hashtagsError) throw hashtagsError;
+
+        const results = {
+          corrected: 0,
+          deleted: 0,
+          created: 0,
+          errors: [] as string[]
+        };
+
+        // Step 4: Fix or remove incorrect hashtags
+        for (const storedHashtag of storedHashtags || []) {
+          const actualCount = hashtagCounts.get(storedHashtag.tag) || 0;
+          
+          if (actualCount === 0) {
+            // Delete hashtags that don't exist in any posts
+            const { error: deleteError } = await supabase
+              .from('hashtags')
+              .delete()
+              .eq('id', storedHashtag.id);
+            
+            if (deleteError) {
+              results.errors.push(`Failed to delete ${storedHashtag.tag}: ${deleteError.message}`);
+            } else {
+              results.deleted++;
+            }
+          } else if (actualCount !== storedHashtag.total_mentions) {
+            // Fix incorrect counts
+            const trendingScore = this.calculateTrendingScore(actualCount, actualCount, actualCount);
+            
+            const { error: updateError } = await supabase
+              .from('hashtags')
+              .update({
+                total_mentions: actualCount,
+                daily_mentions: Math.min(actualCount, storedHashtag.daily_mentions || 0),
+                weekly_mentions: Math.min(actualCount, storedHashtag.weekly_mentions || 0),
+                trending_score: trendingScore,
+                is_trending: actualCount >= 2 && trendingScore > 5,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', storedHashtag.id);
+            
+            if (updateError) {
+              results.errors.push(`Failed to update ${storedHashtag.tag}: ${updateError.message}`);
+            } else {
+              results.corrected++;
+            }
+          }
+          
+          // Remove from actual counts after processing
+          hashtagCounts.delete(storedHashtag.tag);
+        }
+
+        // Step 5: Create missing hashtags
+        for (const [tag, count] of hashtagCounts.entries()) {
+          const trendingScore = this.calculateTrendingScore(count, count, count);
+          
+          const { error: insertError } = await supabase
+            .from('hashtags')
+            .insert({
+              tag,
+              total_mentions: count,
+              daily_mentions: count,
+              weekly_mentions: count,
+              trending_score: trendingScore,
+              is_trending: count >= 2 && trendingScore > 5,
+              category: 'general',
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            });
+          
+          if (insertError) {
+            results.errors.push(`Failed to create ${tag}: ${insertError.message}`);
+          } else {
+            results.created++;
+          }
+        }
+
+        // Step 6: Update trending rankings
+        await this.updateTrendingRankings();
+
+        return {
+          message: 'Hashtag maintenance completed',
+          ...results,
+          totalProcessed: (storedHashtags?.length || 0) + hashtagCounts.size
+        };
+
+      } catch (error: any) {
+        throw new Error(`Hashtag maintenance failed: ${error.message}`);
+      }
     },
 
     async update(id: string, updateData: any) {
@@ -357,14 +591,43 @@ export const socialFeedDb = {
     },
 
     async delete(id: string, authorId: number) {
-      const { error } = await supabase
-        .from('posts')
-        .delete()
-        .eq('id', id)
-        .eq('author_id', authorId); // Security: only author can delete
+      try {
+        // First get the post content to extract hashtags before deletion
+        const { data: post, error: getError } = await supabase
+          .from('posts')
+          .select('content')
+          .eq('id', id)
+          .eq('author_id', authorId)
+          .single();
+        
+        if (getError) throw getError;
+        
+        // Extract hashtags from the post content
+        const hashtagRegex = /#([a-zA-Z0-9_]+)/g;
+        const hashtags = post?.content.match(hashtagRegex)?.map(tag => tag.replace('#', '').toLowerCase()) || [];
+        
+        // Delete the post
+        const { error } = await supabase
+          .from('posts')
+          .delete()
+          .eq('id', id)
+          .eq('author_id', authorId); // Security: only author can delete
 
-      if (error) throw error;
-      return true;
+        if (error) throw error;
+        
+        // Manually decrement hashtag stats since triggers might not be working properly
+        if (hashtags.length > 0) {
+          try {
+            await this.decrementHashtagStats(hashtags);
+          } catch (hashtagError: any) {
+            console.warn('Hashtag decrement failed (non-critical):', hashtagError?.message || hashtagError);
+          }
+        }
+        
+        return true;
+      } catch (error) {
+        throw error;
+      }
     },
 
     async getFeedForUser(userId: number, options: {

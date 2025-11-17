@@ -1,20 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { TrendingUp, Hash, Activity } from 'lucide-react'
-
-interface TrendingHashtag {
-  id: number
-  tag: string
-  daily_mentions: number
-  weekly_mentions: number
-  total_mentions: number
-  trending_score: number
-  category: string
-  is_trending: boolean
-}
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useTrendingHashtags } from '@/hooks/use-realtime-hashtags'
+import { Activity, Hash, TrendingUp, Wifi, WifiOff } from 'lucide-react'
 
 interface TrendingHashtagsProps {
   limit?: number
@@ -27,35 +16,14 @@ export function TrendingHashtags({
   showDetails = false,
   onHashtagClick 
 }: TrendingHashtagsProps) {
-  const [hashtags, setHashtags] = useState<TrendingHashtag[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-
-  useEffect(() => {
-    fetchTrendingHashtags()
-  }, [limit])
-
-  const fetchTrendingHashtags = async () => {
-    try {
-      setLoading(true)
-      setError('')
-
-      const response = await fetch(`/api/hashtags/trending?limit=${limit}`)
-      const data = await response.json()
-
-      if (data.success) {
-        setHashtags(data.data || [])
-      } else {
-        setError('Failed to load trending hashtags')
-        setHashtags([])
-      }
-    } catch (err) {
-      setError('Unable to load trending hashtags')
-      setHashtags([])
-    } finally {
-      setLoading(false)
-    }
-  }
+  const { 
+    trendingHashtags, 
+    loading, 
+    connectionStatus, 
+    lastUpdate, 
+    refreshTrending,
+    isRealTime 
+  } = useTrendingHashtags(limit)
 
   const handleHashtagClick = (tag: string) => {
     if (onHashtagClick) {
@@ -84,13 +52,22 @@ export function TrendingHashtags({
     return colors[category] || colors['general']
   }
 
-  if (loading) {
+  const getConnectionIcon = () => {
+    return null
+  }
+
+  // Removed network status indicators to reduce visual clutter
+
+  if (loading && trendingHashtags.length === 0) {
     return (
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-lg flex items-center gap-2">
             <Hash className="h-5 w-5" />
             Trending Hashtags
+            <div className="ml-auto flex items-center gap-1">
+              {getConnectionIcon()}
+            </div>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -107,7 +84,7 @@ export function TrendingHashtags({
     )
   }
 
-  if (error) {
+  if (connectionStatus === 'disconnected' && trendingHashtags.length === 0) {
     return (
       <Card>
         <CardHeader className="pb-3">
@@ -117,21 +94,33 @@ export function TrendingHashtags({
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground text-center py-4">
-            {error}
-          </p>
+          <div className="text-center py-6">
+            <WifiOff className="h-8 w-8 mx-auto text-red-400 mb-2" />
+            <p className="text-sm text-muted-foreground mb-2">
+              Unable to connect to real-time updates
+            </p>
+            <button 
+              onClick={refreshTrending}
+              className="text-xs text-blue-600 hover:text-blue-800"
+            >
+              Try again
+            </button>
+          </div>
         </CardContent>
       </Card>
     )
   }
 
-  if (hashtags.length === 0) {
+  if (trendingHashtags.length === 0) {
     return (
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-lg flex items-center gap-2">
             <Hash className="h-5 w-5" />
             Trending Hashtags
+            <div className="ml-auto flex items-center gap-1">
+              {getConnectionIcon()}
+            </div>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -155,20 +144,21 @@ export function TrendingHashtags({
         <CardTitle className="text-lg flex items-center gap-2">
           <Hash className="h-5 w-5" />
           Trending Hashtags
-          {hashtags.length > 0 && (
-            <Badge variant="secondary" className="ml-auto">
-              {hashtags.length}
-            </Badge>
-          )}
+          <div className="ml-auto flex items-center gap-2">
+            {trendingHashtags.length > 0 && (
+              <Badge variant="secondary">
+                {trendingHashtags.length}
+              </Badge>
+            )}
+          </div>
         </CardTitle>
       </CardHeader>
       <CardContent>
         <div className="space-y-3">
-          {hashtags.map((hashtag, index) => (
+          {trendingHashtags.map((hashtag, index) => (
             <div
               key={hashtag.id}
-              onClick={() => handleHashtagClick(hashtag.tag)}
-              className="group flex items-center justify-between p-3 rounded-lg border hover:bg-gray-50 cursor-pointer transition-colors"
+              className="flex items-center justify-between p-3 rounded-lg border"
             >
               <div className="flex items-center gap-3 min-w-0 flex-1">
                 {/* Ranking number */}
@@ -181,7 +171,7 @@ export function TrendingHashtags({
                 {/* Hashtag info */}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="font-medium text-sm group-hover:text-blue-600 transition-colors">
+                    <span className="font-medium text-sm">
                       #{hashtag.tag}
                     </span>
                     {hashtag.is_trending && getTrendingIcon(hashtag.trending_score)}
@@ -224,9 +214,16 @@ export function TrendingHashtags({
 
         {/* Footer */}
         <div className="mt-4 pt-3 border-t">
-          <p className="text-xs text-muted-foreground text-center">
-            Updated in real-time • Rankings based on recent activity
-          </p>
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>
+              Rankings by activity
+            </span>
+            {lastUpdate && (
+              <span>
+                Updated {lastUpdate.toLocaleTimeString()}
+              </span>
+            )}
+          </div>
         </div>
       </CardContent>
     </Card>

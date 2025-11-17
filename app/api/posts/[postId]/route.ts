@@ -41,11 +41,34 @@ export async function PUT(
       return NextResponse.json({ error: 'Unauthorized to edit this post' }, { status: 403 });
     }
 
-    // Update the post
+    // Extract hashtags from the updated content
+    const hashtagRegex = /#([a-zA-Z0-9_]+)/g;
+    const newHashtags = content.match(hashtagRegex)?.map(tag => tag.replace('#', '').toLowerCase()) || [];
+    
+    // Get the old hashtags to decrement their stats
+    const oldHashtags = existingPost.tags ? (Array.isArray(existingPost.tags) ? existingPost.tags : JSON.parse(existingPost.tags)) : [];
+
+    // Update the post with new content and hashtags
     const updatedPost = await socialFeedDb.posts.update(postId, {
       content: content.trim(),
+      tags: newHashtags,
       updated_at: new Date().toISOString()
     });
+
+    // Handle hashtag statistics updates
+    try {
+      // Decrement stats for old hashtags
+      if (oldHashtags.length > 0) {
+        await socialFeedDb.posts.decrementHashtagStats(oldHashtags);
+      }
+      
+      // Increment stats for new hashtags
+      if (newHashtags.length > 0) {
+        await socialFeedDb.posts.updateHashtagStats(newHashtags);
+      }
+    } catch (hashtagError: any) {
+      console.warn('Hashtag update failed (non-critical):', hashtagError?.message || hashtagError);
+    }
 
     return NextResponse.json({
       success: true,

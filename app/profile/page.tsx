@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { useAuth } from '@/lib/auth-context'
@@ -190,6 +191,14 @@ export default function ProfilePage() {
   const [industry, setIndustry] = useState('');
   const [companySize, setCompanySize] = useState('');
   const [companyWebsite, setCompanyWebsite] = useState('');
+  
+  // Individual specific fields
+  const [age, setAge] = useState('');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [editableEmail, setEditableEmail] = useState('');
+  const [editableName, setEditableName] = useState('');
+  const [ngoSize, setNgoSize] = useState('');
 
   useEffect(() => {
     if (user) {
@@ -252,6 +261,12 @@ export default function ProfilePage() {
       setIndustry(userProfile.industry || '');
       setCompanySize(userProfile.company_size || '');
       setCompanyWebsite(userProfile.company_website || '');
+      setAge(userProfile.age || '');
+      setNgoSize(userProfile.ngo_size || '');
+      
+      // Set editable name and email
+      setEditableName(freshUser?.name || '');
+      setEditableEmail(freshUser?.email || '');
       
       // Load profile image if available
       if (freshUser?.profile_image) {
@@ -354,12 +369,39 @@ export default function ProfilePage() {
         profileData.profileImageUrl = profileImageUrl.trim();
       }
       
+      // Basic fields for all user types
+      if (editableName?.trim()) profileData.name = editableName.trim();
+      if (editableEmail?.trim()) profileData.email = editableEmail.trim();
       if (city?.trim()) profileData.city = city.trim();
       if (stateProvince?.trim()) profileData.state_province = stateProvince.trim();
       if (pincode?.trim()) profileData.pincode = pincode.trim();
       if (country?.trim()) profileData.country = country.trim();
       if (phone?.trim()) profileData.phone = phone.trim();
       if (bio?.trim()) profileData.bio = bio.trim();
+      
+      // User type specific fields
+      const profileDataFields: any = {};
+      
+      if (user?.user_type === 'individual') {
+        if (age) profileDataFields.age = parseInt(age);
+        if (experience) profileDataFields.experience = experience;
+        if (proofOfWorkUrls.length > 0) profileDataFields.proof_of_work = proofOfWorkUrls;
+        if (resumeUrl) profileDataFields.resume_url = resumeUrl;
+      } else if (user?.user_type === 'company') {
+        if (industry) profileDataFields.industry = industry;
+        if (companySize) profileDataFields.company_size = companySize;
+        if (companyWebsite) profileDataFields.company_website = companyWebsite;
+        profileDataFields.company_name = editableName || user?.name;
+      } else if (user?.user_type === 'ngo') {
+        if (ngoSize) profileDataFields.ngo_size = ngoSize;
+        if (organizationWebsite) profileDataFields.organization_website = organizationWebsite;
+        profileDataFields.ngo_name = editableName || user?.name;
+      }
+      
+      // Add profile_data if there are fields to update
+      if (Object.keys(profileDataFields).length > 0) {
+        profileData.profile_data = profileDataFields;
+      }
       
       const response = await fetch('/api/profile/update', {
         method: 'POST',
@@ -570,11 +612,20 @@ export default function ProfilePage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <Label>Full Name</Label>
-                      <Input value={user.name || 'Please update your name'} readOnly />
+                      <Input 
+                        value={editableName} 
+                        onChange={(e) => setEditableName(e.target.value)}
+                        placeholder="Enter your full name"
+                      />
                     </div>
                     <div>
                       <Label>Email</Label>
-                      <Input value={user.email} readOnly />
+                      <Input 
+                        value={editableEmail} 
+                        onChange={(e) => setEditableEmail(e.target.value)}
+                        placeholder="Enter your email"
+                        type="email"
+                      />
                     </div>
                   </div>
                   
@@ -606,6 +657,110 @@ export default function ProfilePage() {
                       onChange={(e) => setBio(e.target.value)}
                     />
                   </div>
+                  
+                  {/* Individual-specific fields */}
+                  {user?.user_type === 'individual' && (
+                    <div>
+                      <Label>Age</Label>
+                      <Input 
+                        type="number"
+                        min="18"
+                        max="100"
+                        placeholder="Enter your age"
+                        value={age}
+                        onChange={(e) => setAge(e.target.value)}
+                      />
+                    </div>
+                  )}
+                  
+                  {/* Company-specific fields */}
+                  {user?.user_type === 'company' && (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <Label>Industry</Label>
+                          <Select value={industry} onValueChange={setIndustry}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select industry" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="technology">Technology</SelectItem>
+                              <SelectItem value="healthcare">Healthcare</SelectItem>
+                              <SelectItem value="education">Education</SelectItem>
+                              <SelectItem value="manufacturing">Manufacturing</SelectItem>
+                              <SelectItem value="finance">Finance & Banking</SelectItem>
+                              <SelectItem value="retail">Retail</SelectItem>
+                              <SelectItem value="consulting">Consulting</SelectItem>
+                              <SelectItem value="media">Media & Entertainment</SelectItem>
+                              <SelectItem value="energy">Energy</SelectItem>
+                              <SelectItem value="ecommerce">E-commerce</SelectItem>
+                              <SelectItem value="other">Other</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        
+                        <div>
+                          <Label>Company Size</Label>
+                          <Select value={companySize} onValueChange={setCompanySize}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select company size" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="1-10">1-10 employees</SelectItem>
+                              <SelectItem value="11-50">11-50 employees</SelectItem>
+                              <SelectItem value="51-200">51-200 employees</SelectItem>
+                              <SelectItem value="201-500">201-500 employees</SelectItem>
+                              <SelectItem value="501-1000">501-1000 employees</SelectItem>
+                              <SelectItem value="1001+">1001+ employees</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <Label>Company Website</Label>
+                        <Input 
+                          type="url"
+                          placeholder="https://www.yourcompany.com"
+                          value={companyWebsite}
+                          onChange={(e) => setCompanyWebsite(e.target.value)}
+                        />
+                      </div>
+                    </>
+                  )}
+                  
+                  {/* NGO-specific fields */}
+                  {user?.user_type === 'ngo' && (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <Label>NGO Size</Label>
+                          <Select value={ngoSize} onValueChange={setNgoSize}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select NGO size" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="1-10">1-10 members</SelectItem>
+                              <SelectItem value="11-50">11-50 members</SelectItem>
+                              <SelectItem value="51-200">51-200 members</SelectItem>
+                              <SelectItem value="201-500">201-500 members</SelectItem>
+                              <SelectItem value="501+">501+ members</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        
+                        <div>
+                          <Label>Organization Website</Label>
+                          <Input 
+                            type="url"
+                            placeholder="https://www.yourngo.org"
+                            value={organizationWebsite}
+                            onChange={(e) => setOrganizationWebsite(e.target.value)}
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
                   
                   <Button onClick={handleSaveProfile} disabled={loading}>
                     {loading ? 'Saving...' : 'Update Profile'}

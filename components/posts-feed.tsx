@@ -936,11 +936,7 @@ function PostCard({
         return (
           <span 
             key={index} 
-            className="text-blue-600 font-medium hover:text-blue-700 cursor-pointer"
-            onClick={(e) => {
-              e.preventDefault();
-              navigator.clipboard?.writeText(`#${part}`);
-            }}
+            className="text-blue-600 font-medium"
           >
             #{part}
           </span>

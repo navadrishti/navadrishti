@@ -1,113 +1,71 @@
 {
   "enums": {
-    "account_status_enum": [
-      "active",
-      "suspended",
-      "banned",
-      "pending_verification"
-    ],
-    "comment_status_enum": [
-      "active",
-      "hidden",
-      "flagged",
-      "deleted"
-    ],
-    "condition_type_enum": [
-      "new",
-      "like_new",
-      "good",
-      "fair",
-      "poor"
-    ],
-    "content_visibility_enum": [
-      "public",
-      "connections",
-      "organization",
-      "private"
-    ],
-    "csr_employee_role_enum": [
-      "volunteer",
-      "coordinator",
-      "lead",
-      "manager"
-    ],
-    "csr_metric_unit_enum": [
-      "count",
-      "hours",
-      "currency",
-      "percentage",
-      "tons",
-      "liters",
-      "kWh"
-    ],
-    "csr_project_status_enum": [
-      "planning",
-      "active",
-      "on-hold",
-      "completed",
-      "cancelled"
-    ],
-    "item_status_enum": [
-      "active",
-      "sold",
-      "reserved",
-      "cancelled"
-    ],
-    "item_type_enum": [
-      "single",
-      "bulk"
-    ],
-    "post_type_enum": [
-      "text",
-      "image",
-      "video",
-      "article",
-      "event",
-      "achievement",
-      "update"
-    ],
-    "priority_enum": [
-      "low",
-      "medium",
-      "high",
-      "urgent"
-    ],
-    "reaction_type_enum": [
-      "like",
-      "love",
-      "support",
-      "celebrate",
-      "insightful"
-    ],
-    "service_status_enum": [
-      "active",
-      "in_progress",
-      "completed",
-      "cancelled"
-    ],
-    "urgency_level_enum": [
-      "low",
-      "medium",
-      "high",
-      "critical"
-    ],
-    "user_type_enum": [
-      "individual",
-      "ngo",
-      "company"
-    ],
-    "verification_level_enum": [
-      "basic",
-      "advanced"
-    ],
-    "verification_status_enum": [
-      "unverified",
-      "pending",
-      "verified",
-      "rejected"
-    ]
-  }
-}
+    "account_status_enum": ["active", "suspended", "banned", "pending_verification"],
+    "comment_status_enum": ["active", "hidden", "flagged", "deleted"],
+    "condition_type_enum": ["new", "like_new", "good", "fair", "poor"],
+    "content_visibility_enum": ["public", "connections", "organization", "private"],
+    "csr_employee_role_enum": ["volunteer", "coordinator", "lead", "manager"],
+    "csr_metric_unit_enum": ["count", "hours", "currency", "percentage", "tons", "liters", "kWh"],
+    "csr_project_status_enum": ["planning", "active", "on-hold", "completed", "cancelled"],
+    "item_status_enum": ["active", "sold", "reserved", "cancelled"],
+    "item_type_enum": ["single", "bulk"],
+    "post_type_enum": ["text", "image", "video", "article", "event", "achievement", "update"],
+    "priority_enum": ["low", "medium", "high", "urgent"],
+    "reaction_type_enum": ["like", "love", "support", "celebrate", "insightful"],
+    "service_status_enum": ["active", "in_progress", "completed", "cancelled"],
+    "urgency_level_enum": ["low", "medium", "high", "critical"],
+    "user_type_enum": ["individual", "ngo", "company"],
+    "verification_level_enum": ["basic", "advanced"],
+    "verification_status_enum": ["unverified", "pending", "verified", "rejected"],
+    "admin_status_enum": ["pending", "approved", "rejected"]
+  },
+  "tables": {
+    "users": {
+      "name": "users",
+      "columns": [
+        { "name": "id", "pgType": "integer", "tsType": "number", "nullable": false, "default": "nextval('users_id_seq')", "isPrimaryKey": true },
+        { "name": "email", "pgType": "varchar", "tsType": "string", "nullable": false, "isUnique": true },
+        { "name": "password", "pgType": "varchar", "tsType": "string", "nullable": false },
+        { "name": "user_type", "pgType": "user_type_enum", "tsType": "string", "nullable": false },
+        { "name": "name", "pgType": "varchar", "tsType": "string", "nullable": false },
+        { "name": "phone", "pgType": "varchar", "tsType": "string | null", "nullable": true },
+        { "name": "location", "pgType": "varchar", "tsType": "string | null", "nullable": true },
+        { "name": "verified", "pgType": "boolean", "tsType": "boolean", "nullable": true, "default": false },
+        { "name": "created_at", "pgType": "timestamptz", "tsType": "string", "nullable": true, "default": "now()" },
+        { "name": "updated_at", "pgType": "timestamptz", "tsType": "string", "nullable": true, "default": "now()" },
+        { "name": "email_verified", "pgType": "boolean", "tsType": "boolean", "nullable": true, "default": false },
+        { "name": "phone_verified", "pgType": "boolean", "tsType": "boolean", "nullable": true, "default": false },
+        { "name": "two_factor_enabled", "pgType": "boolean", "tsType": "boolean", "nullable": true, "default": false },
+        { "name": "two_factor_secret", "pgType": "varchar", "tsType": "string | null", "nullable": true },
+        { "name": "account_status", "pgType": "account_status_enum", "tsType": "string", "nullable": true, "default": "pending_verification" },
+        { "name": "last_login", "pgType": "timestamptz", "tsType": "string | null", "nullable": true },
+        { "name": "login_attempts", "pgType": "integer", "tsType": "number", "nullable": true, "default": 0 },
+        { "name": "locked_until", "pgType": "timestamptz", "tsType": "string | null", "nullable": true },
+        { "name": "timezone", "pgType": "varchar", "tsType": "string", "nullable": true, "default": "'UTC'" },
+        { "name": "preferences", "pgType": "jsonb", "tsType": "any", "nullable": true },
+        { "name": "privacy_settings", "pgType": "jsonb", "tsType": "any", "nullable": true },
+        { "name": "verification_status", "pgType": "verification_status_enum", "tsType": "string", "nullable": true, "default": "unverified" },
+        { "name": "verification_level", "pgType": "verification_level_enum", "tsType": "string", "nullable": true, "default": "basic" },
+        { "name": "verified_at", "pgType": "timestamptz", "tsType": "string | null", "nullable": true },
+        { "name": "identity_verified", "pgType": "boolean", "tsType": "boolean", "nullable": true, "default": false },
+        { "name": "profile_image", "pgType": "text", "tsType": "string | null", "nullable": true },
+        { "name": "city", "pgType": "varchar", "tsType": "string | null", "nullable": true },
+        { "name": "state_province", "pgType": "varchar", "tsType": "string | null", "nullable": true },
+        { "name": "pincode", "pgType": "varchar", "tsType": "string | null", "nullable": true },
+        { "name": "country", "pgType": "varchar", "tsType": "string", "nullable": true, "default": "India" },
+        { "name": "email_verified_at", "pgType": "timestamp", "tsType": "string | null", "nullable": true },
+        { "name": "phone_verified_at", "pgType": "timestamp", "tsType": "string | null", "nullable": true },
+        { "name": "profile_data", "pgType": "jsonb", "tsType": "any", "nullable": true },
+        { "name": "bio", "pgType": "text", "tsType": "string | null", "nullable": true }
+      ],
+      "foreignKeys": [],
+      "enumFields": [
+        { "column": "user_type", "enum": "user_type_enum" },
+        { "column": "account_status", "enum": "account_status_enum" },
+        { "column": "verification_status", "enum": "verification_status_enum" },
+        { "column": "verification_level", "enum": "verification_level_enum" }
+      ]
+    },
 {
   "name": "users",
   "columns": [
@@ -152,29 +110,29 @@
     { "column": "verification_level", "enum": "verification_level_enum" }
   ]
 }
-{
-  "name": "user_addresses",
-  "columns": [
-    { "name": "id", "pgType": "bigint", "tsType": "number", "nullable": false, "default": "nextval('user_addresses_id_seq')", "isPrimaryKey": true },
-    { "name": "user_id", "pgType": "bigint", "tsType": "number", "nullable": false },
-    { "name": "name", "pgType": "varchar", "tsType": "string", "nullable": false },
-    { "name": "address_line_1", "pgType": "text", "tsType": "string", "nullable": false },
-    { "name": "address_line_2", "pgType": "text", "tsType": "string | null", "nullable": true },
-    { "name": "city", "pgType": "varchar", "tsType": "string", "nullable": false },
-    { "name": "state", "pgType": "varchar", "tsType": "string", "nullable": false },
-    { "name": "pincode", "pgType": "varchar", "tsType": "string", "nullable": false },
-    { "name": "country", "pgType": "varchar", "tsType": "string", "nullable": true, "default": "India" },
-    { "name": "phone", "pgType": "varchar", "tsType": "string", "nullable": false },
-    { "name": "address_type", "pgType": "varchar", "tsType": "string", "nullable": true, "default": "home" },
-    { "name": "is_default", "pgType": "boolean", "tsType": "boolean", "nullable": true, "default": false },
-    { "name": "created_at", "pgType": "timestamptz", "tsType": "string", "nullable": true, "default": "now()" },
-    { "name": "updated_at", "pgType": "timestamptz", "tsType": "string", "nullable": true, "default": "now()" }
-  ],
-  "foreignKeys": [
-    { "column": "user_id", "references": { "table": "users", "column": "id" } }
-  ],
-  "enumFields": []
-}
+    "user_addresses": {
+      "name": "user_addresses",
+      "columns": [
+        { "name": "id", "pgType": "bigint", "tsType": "number", "nullable": false, "default": "nextval('user_addresses_id_seq')", "isPrimaryKey": true },
+        { "name": "user_id", "pgType": "bigint", "tsType": "number", "nullable": false },
+        { "name": "name", "pgType": "varchar", "tsType": "string", "nullable": false },
+        { "name": "address_line_1", "pgType": "text", "tsType": "string", "nullable": false },
+        { "name": "address_line_2", "pgType": "text", "tsType": "string | null", "nullable": true },
+        { "name": "city", "pgType": "varchar", "tsType": "string", "nullable": false },
+        { "name": "state", "pgType": "varchar", "tsType": "string", "nullable": false },
+        { "name": "pincode", "pgType": "varchar", "tsType": "string", "nullable": false },
+        { "name": "country", "pgType": "varchar", "tsType": "string", "nullable": true, "default": "India" },
+        { "name": "phone", "pgType": "varchar", "tsType": "string", "nullable": false },
+        { "name": "address_type", "pgType": "varchar", "tsType": "string", "nullable": true, "default": "home" },
+        { "name": "is_default", "pgType": "boolean", "tsType": "boolean", "nullable": true, "default": false },
+        { "name": "created_at", "pgType": "timestamptz", "tsType": "string", "nullable": true, "default": "now()" },
+        { "name": "updated_at", "pgType": "timestamptz", "tsType": "string", "nullable": true, "default": "now()" }
+      ],
+      "foreignKeys": [
+        { "column": "user_id", "references": { "table": "users", "column": "id" } }
+      ],
+      "enumFields": []
+    },
 {
   "name": "user_sessions",
   "columns": [
@@ -970,24 +928,14 @@
 }
 {
   "enums": {
-    "account_status_enum": ["active", "suspended", "banned", "pending_verification"],
-    "comment_status_enum": ["active", "hidden", "flagged", "deleted"],
-    "condition_type_enum": ["new", "like_new", "good", "fair", "poor"],
-    "content_visibility_enum": ["public", "connections", "organization", "private"],
-    "csr_employee_role_enum": ["volunteer", "coordinator", "lead", "manager"],
-    "csr_metric_unit_enum": ["count", "hours", "currency", "percentage", "tons", "liters", "kWh"],
-    "csr_project_status_enum": ["planning", "active", "on-hold", "completed", "cancelled"],
-    "item_status_enum": ["active", "sold", "reserved", "cancelled"],
-    "item_type_enum": ["single", "bulk"],
-    "post_type_enum": ["text", "image", "video", "article", "event", "achievement", "update"],
-    "priority_enum": ["low", "medium", "high", "urgent"],
-    "reaction_type_enum": ["like", "love", "support", "celebrate", "insightful"],
-    "service_status_enum": ["active", "in_progress", "completed", "cancelled"],
+
+e_status_enum": ["active", "in_progress", "completed", "cancelled"],
     "urgency_level_enum": ["low", "medium", "high", "critical"],
     "user_type_enum": ["individual", "ngo", "company"],
     "verification_level_enum": ["basic", "advanced"],
     "verification_status_enum": ["unverified", "pending", "verified", "rejected"]
-  },
+  }
+}  },
 
   "tables": {
     "users": { ... },
@@ -1037,3 +985,230 @@
     "system_notifications": { ... }
   }
 }
+  }
+}-- ===============================================================
+-- SERVICE OFFER ADMIN APPROVAL SYSTEM
+-- Simple workflow: NGO creates → Pending → Admin approves/rejects → Visible to all OR Track tab
+-- ===============================================================
+
+-- 1. Create admin status enum
+DO $$ 
+BEGIN
+    -- Create admin status enum if it doesn't exist
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'admin_status_enum') THEN
+        CREATE TYPE admin_status_enum AS ENUM ('pending', 'approved', 'rejected');
+    END IF;
+END $$;
+
+-- ===============================================================
+-- 2. ADD ADMIN APPROVAL COLUMNS TO SERVICE_OFFERS
+-- ===============================================================
+
+-- Add admin approval columns to service_offers table
+ALTER TABLE service_offers 
+ADD COLUMN IF NOT EXISTS admin_status admin_status_enum DEFAULT 'pending',
+ADD COLUMN IF NOT EXISTS admin_re-- ===============================================================
+-- SERVICE OFFER ADMIN APPROVAL SYSTEM
+-- Simple workflow: NGO creates → Pending → Admin approves/rejects → Visible to all OR Track tab
+-- ===============================================================
+
+-- 1. Create admin status enum
+DO $$ 
+BEGIN
+    -- Create admin status enum if it doesn't exist
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'admin_status_enum') THEN
+        CREATE TYPE admin_status_enum AS ENUM ('pending', 'approved', 'rejected');
+    END IF;
+END $$;
+
+-- ===============================================================
+-- 2. ADD ADMIN APPROVAL COLUMNS TO SERVICE_OFFERS
+-- ===============================================================
+
+-- Add admin approval columns to service_offers table
+ALTER TABLE service_offers 
+ADD COLUMN IF NOT EXISTS admin_status admin_status_enum DEFAULT 'pending',
+ADD COLUMN IF NOT EXISTS admin_reviewed_at timestamptz NULL,
+ADD COLUMN IF NOT EXISTS admin_reviewed_by integer NULL,
+ADD COLUMN IF NOT EXISTS admin_comments text NULL,
+ADD COLUMN IF NOT EXISTS submitted_for_review_at timestamptz DEFAULT NOW();
+
+-- Add foreign key constraint for admin_reviewed_by
+DO $$
+BEGIN
+    -- Add foreign key constraint if it doesn't exist
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints 
+        WHERE constraint_name = 'fk_service_offers_admin_reviewed_by'
+    ) THEN
+        ALTER TABLE service_offers 
+        ADD CONSTRAINT fk_service_offers_admin_reviewed_by 
+        FOREIGN KEY (admin_reviewed_by) REFERENCES users(id) ON DELETE SET NULL;
+    END IF;
+END $$;
+
+-- Add indexes for performance
+CREATE INDEX IF NOT EXISTS idx_service_offers_admin_status ON service_offers(admin_status);
+CREATE INDEX IF NOT EXISTS idx_service_offers_admin_reviewed_at ON service_offers(admin_reviewed_at);
+CREATE INDEX IF NOT EXISTS idx_service_offers_submitted_for_review_at ON service_offers(submitted_for_review_at);
+CREATE INDEX IF NOT EXISTS idx_service_offers_ngo_id ON service_offers(ngo_id);
+
+-- ===============================================================
+-- 3. WORKFLOW RULES
+-- ===============================================================
+
+-- Update existing service offers to approved status (since they were created before admin approval)
+-- New offers will default to 'pending' and need admin approval
+UPDATE service_offers 
+SET 
+    admin_status = 'approved', 
+    admin_reviewed_at = NOW(),
+    submitted_for_review_at = COALESCE(created_at, NOW())
+WHERE admin_status IS NULL;
+
+COMMIT;
+
+-- ===============================================================
+-- WORKFLOW SUMMARY
+-- ===============================================================
+
+-- 📝 NGO Workflow:
+-- 1. NGO creates service offer → admin_status = 'pending'
+-- 2. Offer appears in NGO's "Track Offers" tab as pending
+-- 3. After admin review:
+--    - If approved: Offer visible to everyone on service offers page
+--    - If rejected: Shows rejection reason in "Track Offers" tab
+
+-- 👨‍💼 Admin Workflow:
+-- 1. Admin sees all pending offers in admin panel
+-- 2. Admin can approve/reject with comments
+-- 3. Approved offers go live for everyone to see
+-- 4. Rejected offers are stored for history and NGO tracking
+
+-- 🎯 Database Logic:
+-- - admin_status = 'pending': Visible only to NGO (Track Offers) and Admin
+-- - admin_status = 'approved': Visible to everyone on service offers page  
+-- - admin_status = 'rejected': Visible to NGO (Track Offers) and Admin (history)
+-- - admin_comments: Feedback for NGO on approval/rejection
+-- - submitted_for_review_at: Used for 5-day deadline tracking
+
+-- Migration to ensure hashtag tracking tables exist
+-- Run this in your Supabase SQL editor
+
+-- Create hashtags table if it doesn't exist
+CREATE TABLE IF NOT EXISTS hashtags (
+    id SERIAL PRIMARY KEY,
+    tag VARCHAR(100) UNIQUE NOT NULL,
+    total_mentions INTEGER DEFAULT 0,
+    weekly_mentions INTEGER DEFAULT 0,
+    daily_mentions INTEGER DEFAULT 0,
+    trending_score DECIMAL(10, 2) DEFAULT 0,
+    category VARCHAR(50) DEFAULT 'general',
+    is_trending BOOLEAN DEFAULT false,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create indexes for performance
+CREATE INDEX IF NOT EXISTS idx_hashtags_tag ON hashtags(tag);
+CREATE INDEX IF NOT EXISTS idx_hashtags_trending ON hashtags(is_trending);
+CREATE INDEX IF NOT EXISTS idx_hashtags_score ON hashtags(trending_score DESC);
+CREATE INDEX IF NOT EXISTS idx_hashtags_daily_mentions ON hashtags(daily_mentions DESC);
+CREATE INDEX IF NOT EXISTS idx_hashtags_category ON hashtags(category);
+
+-- Create hashtag usage tracking table if it doesn't exist
+CREATE TABLE IF NOT EXISTS hashtag_usage (
+    id SERIAL PRIMARY KEY,
+    hashtag_id INTEGER NOT NULL REFERENCES hashtags(id) ON DELETE CASCADE,
+    post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    usage_context VARCHAR(20) DEFAULT 'post',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(hashtag_id, post_id)
+);
+
+-- Create indexes for hashtag_usage
+CREATE INDEX IF NOT EXISTS idx_hashtag_usage_hashtag_id ON hashtag_usage(hashtag_id);
+CREATE INDEX IF NOT EXISTS idx_hashtag_usage_post_id ON hashtag_usage(post_id);
+CREATE INDEX IF NOT EXISTS idx_hashtag_usage_user_id ON hashtag_usage(user_id);
+CREATE INDEX IF NOT EXISTS idx_hashtag_usage_created_at ON hashtag_usage(created_at);
+
+-- Function to reset daily/weekly counters (run this periodically)
+CREATE OR REPLACE FUNCTION reset_hashtag_counters()
+RETURNS VOID AS $$
+BEGIN
+    -- Reset daily counters (run this daily)
+    UPDATE hashtags SET daily_mentions = 0;
+    
+    -- Reset weekly counters (run this weekly)
+    -- UPDATE hashtags SET weekly_mentions = 0;
+    
+    -- Recalculate trending status
+    UPDATE hashtags 
+    SET is_trending = false;
+    
+    -- Set top hashtags as trending
+    WITH top_hashtags AS (
+        SELECT id 
+        FROM hashtags 
+        WHERE daily_mentions > 0 
+        ORDER BY trending_score DESC, daily_mentions DESC 
+        LIMIT 5
+    )
+    UPDATE hashtags 
+    SET is_trending = true 
+    WHERE id IN (SELECT id FROM top_hashtags);
+END;
+$$ LANGUAGE plpgsql;
+
+-- Remove sample data if it was accidentally inserted
+DELETE FROM hashtags WHERE tag IN ('socialimpact', 'education', 'sustainability', 'innovation', 'community');
+-- Add view_count column to posts table if it doesn't exist
+DO $$ 
+BEGIN
+    -- Add view_count column if it doesn't exist
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_name = 'posts' AND column_name = 'view_count') THEN
+        ALTER TABLE posts ADD COLUMN view_count INTEGER DEFAULT 0;
+    END IF;
+    
+    -- Update view_count based on existing post_interactions if the column was just added
+    IF EXISTS (SELECT 1 FROM information_schema.columns 
+               WHERE table_name = 'posts' AND column_name = 'view_count') THEN
+        UPDATE posts 
+        SET view_count = COALESCE((
+            SELECT COUNT(*) 
+            FROM post_interactions 
+            WHERE post_interactions.post_id = posts.id 
+            AND interaction_type = 'view'
+        ), 0)
+        WHERE view_count = 0;
+    END IF;
+END $$;
+
+-- Add share_count column if it doesn't exist (it might already exist from previous schema)
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_name = 'posts' AND column_name = 'share_count') THEN
+        ALTER TABLE posts ADD COLUMN share_count INTEGER DEFAULT 0;
+    END IF;
+END $$;
+
+-- Add reaction_count column if it doesn't exist 
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_name = 'posts' AND column_name = 'reaction_count') THEN
+        ALTER TABLE posts ADD COLUMN reaction_count INTEGER DEFAULT 0;
+    END IF;
+END $$;
+
+-- Add comment_count column if it doesn't exist
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_name = 'posts' AND column_name = 'comment_count') THEN
+        ALTER TABLE posts ADD COLUMN comment_count INTEGER DEFAULT 0;
+    END IF;
+END $$;

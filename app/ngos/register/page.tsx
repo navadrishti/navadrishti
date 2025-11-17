@@ -1,29 +1,26 @@
-"use client"
+'use client'
 
-import { useState, FormEvent } from "react"
-import Link from "next/link"
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { useAuth } from '@/lib/auth-context'
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Building, Mail, Phone, Globe, MapPin, Users } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Building2, Mail, Phone, MapPin, Users } from 'lucide-react'
 import { toast } from 'sonner'
 
-export default function CompanyRegistration() {
+export default function NGORegister() {
   const [formData, setFormData] = useState({
-    companyName: '',
-    industry: '',
+    ngoName: '',
     email: '',
     phone: '',
     password: '',
     confirmPassword: '',
-    companySize: '',
-    website: '',
+    ngoSize: '',
     city: '',
     state: '',
     pincode: '',
@@ -33,7 +30,7 @@ export default function CompanyRegistration() {
   const { signup, error, loading, clearError } = useAuth()
   const router = useRouter()
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
     setFormData(prev => ({ ...prev, [name]: value }))
     
@@ -62,12 +59,8 @@ export default function CompanyRegistration() {
   const validateForm = () => {
     const errors: Record<string, string> = {}
     
-    if (!formData.companyName.trim()) {
-      errors.companyName = 'Company name is required'
-    }
-    
-    if (!formData.industry) {
-      errors.industry = 'Industry is required'
+    if (!formData.ngoName.trim()) {
+      errors.ngoName = 'NGO name is required'
     }
     
     if (!formData.email.trim()) {
@@ -92,8 +85,8 @@ export default function CompanyRegistration() {
       errors.confirmPassword = 'Passwords do not match'
     }
     
-    if (!formData.companySize) {
-      errors.companySize = 'Company size is required'
+    if (!formData.ngoSize) {
+      errors.ngoSize = 'NGO size is required'
     }
     
     if (!formData.city.trim()) {
@@ -108,7 +101,7 @@ export default function CompanyRegistration() {
     return Object.keys(errors).length === 0
   }
 
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
     // Clear previous errors
@@ -123,18 +116,16 @@ export default function CompanyRegistration() {
     const userData = {
       email: formData.email,
       password: formData.password,
-      name: formData.companyName,
-      user_type: 'company' as const,
+      name: formData.ngoName,
+      user_type: 'ngo' as const,
       phone: formData.phone,
       city: formData.city,
       state_province: formData.state,
       pincode: formData.pincode,
       country: formData.country,
       profile_data: {
-        company_name: formData.companyName,
-        industry: formData.industry,
-        company_size: formData.companySize,
-        website: formData.website
+        ngo_name: formData.ngoName,
+        ngo_size: formData.ngoSize
       }
     }
     
@@ -151,9 +142,9 @@ export default function CompanyRegistration() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
       <Card className="w-full max-w-2xl">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold text-center">Register as Company</CardTitle>
+          <CardTitle className="text-2xl font-bold text-center">Register as NGO</CardTitle>
           <CardDescription className="text-center">
-            Create your company account to connect with NGOs and skilled individuals
+            Create your NGO account to connect with volunteers and companies
           </CardDescription>
         </CardHeader>
         
@@ -165,78 +156,42 @@ export default function CompanyRegistration() {
               </Alert>
             )}
             
-            {/* Basic Company Information */}
+            {/* Basic NGO Information */}
             <div className="space-y-4">
               <h3 className="text-lg font-medium flex items-center gap-2">
-                <Building className="h-5 w-5" />
-                Company Information
+                <Building2 className="h-5 w-5" />
+                NGO Information
               </h3>
               
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="companyName">Company Name</Label>
+                  <Label htmlFor="ngoName">NGO Name</Label>
                   <Input
-                    id="companyName"
-                    name="companyName"
-                    value={formData.companyName}
+                    id="ngoName"
+                    name="ngoName"
+                    value={formData.ngoName}
                     onChange={handleChange}
-                    placeholder="Your Company Name"
+                    placeholder="Your NGO Name"
                   />
-                  {formErrors.companyName && <p className="text-sm text-red-500">{formErrors.companyName}</p>}
+                  {formErrors.ngoName && <p className="text-sm text-red-500">{formErrors.ngoName}</p>}
                 </div>
                 
-                <div className="space-y-2">
-                  <Label htmlFor="industry">Industry</Label>
-                  <Select value={formData.industry} onValueChange={(value) => handleSelectChange('industry', value)}>
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="ngoSize">NGO Size</Label>
+                  <Select value={formData.ngoSize} onValueChange={(value) => handleSelectChange('ngoSize', value)}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select industry" />
+                      <SelectValue placeholder="Select NGO size" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="technology">Technology</SelectItem>
-                      <SelectItem value="healthcare">Healthcare</SelectItem>
-                      <SelectItem value="education">Education</SelectItem>
-                      <SelectItem value="manufacturing">Manufacturing</SelectItem>
-                      <SelectItem value="finance">Finance & Banking</SelectItem>
-                      <SelectItem value="retail">Retail</SelectItem>
-                      <SelectItem value="consulting">Consulting</SelectItem>
-                      <SelectItem value="media">Media & Entertainment</SelectItem>
-                      <SelectItem value="energy">Energy</SelectItem>
-                      <SelectItem value="ecommerce">E-commerce</SelectItem>
-                      <SelectItem value="other">Other</SelectItem>
+                      <SelectItem value="1-10">1-10 members</SelectItem>
+                      <SelectItem value="11-50">11-50 members</SelectItem>
+                      <SelectItem value="51-200">51-200 members</SelectItem>
+                      <SelectItem value="201-500">201-500 members</SelectItem>
+                      <SelectItem value="501+">501+ members</SelectItem>
                     </SelectContent>
                   </Select>
-                  {formErrors.industry && <p className="text-sm text-red-500">{formErrors.industry}</p>}
+                  {formErrors.ngoSize && <p className="text-sm text-red-500">{formErrors.ngoSize}</p>}
                 </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="companySize">Company Size</Label>
-                  <Select value={formData.companySize} onValueChange={(value) => handleSelectChange('companySize', value)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select company size" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="1-10">1-10 employees</SelectItem>
-                      <SelectItem value="11-50">11-50 employees</SelectItem>
-                      <SelectItem value="51-200">51-200 employees</SelectItem>
-                      <SelectItem value="201-500">201-500 employees</SelectItem>
-                      <SelectItem value="501-1000">501-1000 employees</SelectItem>
-                      <SelectItem value="1001+">1001+ employees</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {formErrors.companySize && <p className="text-sm text-red-500">{formErrors.companySize}</p>}
-                </div>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="website">Website (Optional)</Label>
-                <Input
-                  id="website"
-                  name="website"
-                  type="url"
-                  value={formData.website}
-                  onChange={handleChange}
-                  placeholder="https://www.yourcompany.com"
-                />
               </div>
             </div>
             
@@ -256,7 +211,7 @@ export default function CompanyRegistration() {
                     type="email"
                     value={formData.email}
                     onChange={handleChange}
-                    placeholder="company@example.com"
+                    placeholder="ngo@example.com"
                   />
                   {formErrors.email && <p className="text-sm text-red-500">{formErrors.email}</p>}
                 </div>
@@ -364,7 +319,7 @@ export default function CompanyRegistration() {
             
             <div className="flex flex-col space-y-4">
               <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? 'Creating Account...' : 'Create Company Account'}
+                {loading ? 'Creating Account...' : 'Create NGO Account'}
               </Button>
               
               <div className="text-center text-sm">
