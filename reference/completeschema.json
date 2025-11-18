@@ -66,50 +66,6 @@
         { "column": "verification_level", "enum": "verification_level_enum" }
       ]
     },
-{
-  "name": "users",
-  "columns": [
-    { "name": "id", "pgType": "integer", "tsType": "number", "nullable": false, "default": "nextval('users_id_seq')", "isPrimaryKey": true },
-    { "name": "email", "pgType": "varchar", "tsType": "string", "nullable": false, "isUnique": true },
-    { "name": "password", "pgType": "varchar", "tsType": "string", "nullable": false },
-    { "name": "user_type", "pgType": "user_type_enum", "tsType": "string", "nullable": false },
-    { "name": "name", "pgType": "varchar", "tsType": "string", "nullable": false },
-    { "name": "phone", "pgType": "varchar", "tsType": "string | null", "nullable": true },
-    { "name": "location", "pgType": "varchar", "tsType": "string | null", "nullable": true },
-    { "name": "verified", "pgType": "boolean", "tsType": "boolean", "nullable": true, "default": false },
-    { "name": "created_at", "pgType": "timestamptz", "tsType": "string", "nullable": true, "default": "now()" },
-    { "name": "updated_at", "pgType": "timestamptz", "tsType": "string", "nullable": true, "default": "now()" },
-    { "name": "email_verified", "pgType": "boolean", "tsType": "boolean", "nullable": true, "default": false },
-    { "name": "phone_verified", "pgType": "boolean", "tsType": "boolean", "nullable": true, "default": false },
-    { "name": "two_factor_enabled", "pgType": "boolean", "tsType": "boolean", "nullable": true, "default": false },
-    { "name": "two_factor_secret", "pgType": "varchar", "tsType": "string | null", "nullable": true },
-    { "name": "account_status", "pgType": "account_status_enum", "tsType": "string", "nullable": true, "default": "pending_verification" },
-    { "name": "last_login", "pgType": "timestamptz", "tsType": "string | null", "nullable": true },
-    { "name": "login_attempts", "pgType": "integer", "tsType": "number", "nullable": true, "default": 0 },
-    { "name": "locked_until", "pgType": "timestamptz", "tsType": "string | null", "nullable": true },
-    { "name": "timezone", "pgType": "varchar", "tsType": "string", "nullable": true, "default": "'UTC'" },
-    { "name": "preferences", "pgType": "jsonb", "tsType": "any", "nullable": true },
-    { "name": "privacy_settings", "pgType": "jsonb", "tsType": "any", "nullable": true },
-    { "name": "verification_status", "pgType": "verification_status_enum", "tsType": "string", "nullable": true, "default": "unverified" },
-    { "name": "verification_level", "pgType": "verification_level_enum", "tsType": "string", "nullable": true, "default": "basic" },
-    { "name": "verified_at", "pgType": "timestamptz", "tsType": "string | null", "nullable": true },
-    { "name": "identity_verified", "pgType": "boolean", "tsType": "boolean", "nullable": true, "default": false },
-    { "name": "profile_image", "pgType": "text", "tsType": "string | null", "nullable": true },
-    { "name": "city", "pgType": "varchar", "tsType": "string | null", "nullable": true },
-    { "name": "state_province", "pgType": "varchar", "tsType": "string | null", "nullable": true },
-    { "name": "pincode", "pgType": "varchar", "tsType": "string | null", "nullable": true },
-    { "name": "country", "pgType": "varchar", "tsType": "string", "nullable": true, "default": "India" },
-    { "name": "email_verified_at", "pgType": "timestamp", "tsType": "string | null", "nullable": true },
-    { "name": "phone_verified_at", "pgType": "timestamp", "tsType": "string | null", "nullable": true }
-  ],
-  "foreignKeys": [],
-  "enumFields": [
-    { "column": "user_type", "enum": "user_type_enum" },
-    { "column": "account_status", "enum": "account_status_enum" },
-    { "column": "verification_status", "enum": "verification_status_enum" },
-    { "column": "verification_level", "enum": "verification_level_enum" }
-  ]
-}
     "user_addresses": {
       "name": "user_addresses",
       "columns": [
@@ -133,8 +89,8 @@
       ],
       "enumFields": []
     },
-{
-  "name": "user_sessions",
+    "user_sessions": {
+      "name": "user_sessions",
   "columns": [
     { "name": "id", "pgType": "uuid", "tsType": "string", "nullable": false, "default": "uuid_generate_v4()", "isPrimaryKey": true },
     { "name": "user_id", "pgType": "integer", "tsType": "number", "nullable": false },
@@ -149,12 +105,12 @@
   "foreignKeys": [
     { "column": "user_id", "references": { "table": "users", "column": "id" } }
   ],
-  "enumFields": [
-    { "column": "user_type", "enum": "user_type_enum" }
-  ]
-}
-{
-  "name": "user_feed_preferences",
+      "enumFields": [
+        { "column": "user_type", "enum": "user_type_enum" }
+      ]
+    },
+    "user_feed_preferences": {
+      "name": "user_feed_preferences",
   "columns": [
     { "name": "id", "pgType": "bigint", "tsType": "number", "nullable": false, "default": "nextval('user_feed_preferences_id_seq')", "isPrimaryKey": true },
     { "name": "user_id", "pgType": "integer", "tsType": "number", "nullable": false, "isUnique": true },

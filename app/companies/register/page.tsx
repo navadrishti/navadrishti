@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Building, Mail, Phone, Globe, MapPin, Users } from "lucide-react"
+import { Building, Mail, Phone, Globe, MapPin, Users, Briefcase } from "lucide-react"
 import { toast } from 'sonner'
 
 export default function CompanyRegistration() {
@@ -27,9 +27,13 @@ export default function CompanyRegistration() {
     city: '',
     state: '',
     pincode: '',
-    country: 'India'
+    country: 'India',
+    description: '',
+    founded: '',
+    registrationNumber: ''
   })
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
+
   const { signup, error, loading, clearError } = useAuth()
   const router = useRouter()
 
@@ -108,6 +112,33 @@ export default function CompanyRegistration() {
     return Object.keys(errors).length === 0
   }
 
+  const uploadFileToCloudinary = async (file: File, folder: string = 'companies') => {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const token = localStorage.getItem('token');
+    if (!token) {
+      throw new Error('Authentication required');
+    }
+
+    const response = await fetch('/api/upload', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      body: formData
+    });
+
+    if (!response.ok) {
+      throw new Error('Upload failed');
+    }
+
+    const result = await response.json();
+    return result.data.url;
+  };
+
+
+
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     
@@ -119,31 +150,41 @@ export default function CompanyRegistration() {
       return
     }
     
-    // Prepare user data for signup
-    const userData = {
-      email: formData.email,
-      password: formData.password,
-      name: formData.companyName,
-      user_type: 'company' as const,
-      phone: formData.phone,
-      city: formData.city,
-      state_province: formData.state,
-      pincode: formData.pincode,
-      country: formData.country,
-      profile_data: {
-        company_name: formData.companyName,
-        industry: formData.industry,
-        company_size: formData.companySize,
-        website: formData.website
+    try {
+
+      
+      // Prepare user data for signup
+      const userData = {
+        email: formData.email,
+        password: formData.password,
+        name: formData.companyName,
+        user_type: 'company' as const,
+        phone: formData.phone,
+        city: formData.city,
+        state_province: formData.state,
+        pincode: formData.pincode,
+        country: formData.country,
+        profile_data: {
+          company_name: formData.companyName,
+          industry: formData.industry,
+          company_size: formData.companySize,
+          website: formData.website,
+          description: formData.description,
+          founded: formData.founded,
+          registration_number: formData.registrationNumber
+        }
       }
-    }
-    
-    // Call signup function from auth context
-    await signup(userData)
-    
-    // If signup is successful, redirect to dashboard
-    if (!error) {
-      router.push('/')
+      
+      // Call signup function from auth context
+      await signup(userData)
+      
+      // If signup is successful, redirect to dashboard
+      if (!error) {
+        toast.success('Company account created successfully!');
+        router.push('/companies/dashboard');
+      }
+    } catch (uploadError) {
+      toast.error('Failed to create account. Please try again.');
     }
   }
 
@@ -300,6 +341,53 @@ export default function CompanyRegistration() {
               </div>
             </div>
             
+            {/* Company Details */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-medium flex items-center gap-2">
+                <Briefcase className="h-5 w-5" />
+                Company Details
+              </h3>
+              
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="description">Company Description</Label>
+                  <Textarea
+                    id="description"
+                    name="description"
+                    value={formData.description}
+                    onChange={handleChange}
+                    placeholder="Brief description of your company's business and services"
+                    rows={3}
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="founded">Year Founded</Label>
+                  <Input
+                    id="founded"
+                    name="founded"
+                    type="number"
+                    min="1900"
+                    max="2025"
+                    value={formData.founded}
+                    onChange={handleChange}
+                    placeholder="2020"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="registrationNumber">Registration Number (Optional)</Label>
+                  <Input
+                    id="registrationNumber"
+                    name="registrationNumber"
+                    value={formData.registrationNumber}
+                    onChange={handleChange}
+                    placeholder="Company registration number"
+                  />
+                </div>
+              </div>
+            </div>
+            
             {/* Location Information */}
             <div className="space-y-4">
               <h3 className="text-lg font-medium flex items-center gap-2">
@@ -362,6 +450,7 @@ export default function CompanyRegistration() {
               </div>
             </div>
             
+
             <div className="flex flex-col space-y-4">
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading ? 'Creating Account...' : 'Create Company Account'}

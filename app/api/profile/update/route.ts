@@ -28,6 +28,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { 
       userId, 
+      name,
+      email,
       profileImageUrl, 
       city, 
       state_province, 
@@ -35,9 +37,7 @@ export async function POST(request: NextRequest) {
       country, 
       phone, 
       bio,
-      experience,
-      proof_of_work,
-      resume_url
+      profile_data
     } = body;
 
     if (!userId) {
@@ -49,16 +49,18 @@ export async function POST(request: NextRequest) {
 
     // Prepare update data - only include fields that are provided
     const updateData: any = {};
-    if (profileImageUrl) updateData.profile_image = profileImageUrl;
-    if (city) updateData.city = city;
-    if (state_province) updateData.state_province = state_province;
-    if (pincode) updateData.pincode = pincode;
-    if (country) updateData.country = country;
-    if (phone) updateData.phone = phone;
-    if (bio) updateData.bio = bio;
+    if (name !== undefined) updateData.name = name;
+    if (email !== undefined) updateData.email = email;
+    if (profileImageUrl !== undefined) updateData.profile_image = profileImageUrl;
+    if (city !== undefined) updateData.city = city;
+    if (state_province !== undefined) updateData.state_province = state_province;
+    if (pincode !== undefined) updateData.pincode = pincode;
+    if (country !== undefined) updateData.country = country;
+    if (phone !== undefined) updateData.phone = phone;
+    if (bio !== undefined) updateData.bio = bio;
 
     // Handle profile_data for additional fields
-    if (experience || proof_of_work || resume_url) {
+    if (profile_data && typeof profile_data === 'object') {
       // Get current profile_data first
       const { data: currentUser, error: fetchError } = await supabase
         .from('users')
@@ -75,11 +77,7 @@ export async function POST(request: NextRequest) {
       }
 
       const currentProfileData = currentUser?.profile_data || {};
-      const newProfileData = { ...currentProfileData };
-
-      if (experience !== undefined) newProfileData.experience = experience;
-      if (proof_of_work !== undefined) newProfileData.proof_of_work = proof_of_work;
-      if (resume_url !== undefined) newProfileData.resume_url = resume_url;
+      const newProfileData = { ...currentProfileData, ...profile_data };
 
       updateData.profile_data = newProfileData;
     }
@@ -91,6 +89,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Add updated timestamp
+    updateData.updated_at = new Date().toISOString();
 
     // Update the user's profile in the database
     const { data, error } = await supabase
