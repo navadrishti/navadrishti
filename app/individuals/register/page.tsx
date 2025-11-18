@@ -10,8 +10,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
+
 import { toast } from 'sonner';
+import { Upload, FileText, Image, X, User, MapPin, Camera } from 'lucide-react';
 
 export default function IndividualRegister() {
   const [formData, setFormData] = useState({
@@ -24,12 +25,16 @@ export default function IndividualRegister() {
     city: '',
     state: '',
     pincode: '',
-    country: 'India',
-    experience: '',
-    proofOfWork: ''
+    country: 'India'
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
-  const [portfolioFiles, setPortfolioFiles] = useState<File[]>([]);
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [workPhotos, setWorkPhotos] = useState<File[]>([]);
+  const [uploadedFiles, setUploadedFiles] = useState<{
+    resume?: string;
+    workPhotos: string[];
+  }>({ workPhotos: [] });
+  const [uploading, setUploading] = useState(false);
   const { signup, error, loading, clearError } = useAuth();
   const router = useRouter();
 
@@ -102,14 +107,88 @@ export default function IndividualRegister() {
       errors.state = 'State/Province is required';
     }
     
+    // Validate that at least one file (resume or work photos) is provided
+    if (!resumeFile && workPhotos.length === 0) {
+      errors.files = 'Please upload either a resume or work photos to proceed';
+    }
+    
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
-  const handlePortfolioUpload = (files: File[]) => {
-    setPortfolioFiles(files);
-    if (files.length > 0) {
-      toast.success(`${files.length} portfolio file${files.length > 1 ? 's' : ''} selected!`);
+  const uploadFileToCloudinary = async (file: File, folder: string = 'individuals') => {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const token = localStorage.getItem('token');
+    if (!token) {
+      throw new Error('Authentication required');
+    }
+
+    const response = await fetch('/api/upload', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      body: formData
+    });
+
+    if (!response.ok) {
+      throw new Error('Upload failed');
+    }
+
+    const result = await response.json();
+    return result.data.url;
+  };
+
+  const handleResumeUpload = async (file: File) => {
+    setResumeFile(file);
+    toast.success('Resume selected!');
+  };
+
+  const handleWorkPhotosUpload = (files: File[]) => {
+    if (workPhotos.length + files.length > 5) {
+      toast.error('Maximum 5 work photos allowed');
+      return;
+    }
+    
+    setWorkPhotos(prev => [...prev, ...files]);
+    toast.success(`${files.length} work photo${files.length > 1 ? 's' : ''} added!`);
+  };
+
+  const removeWorkPhoto = (index: number) => {
+    setWorkPhotos(prev => prev.filter((_, i) => i !== index));
+    toast.success('Photo removed');
+  };
+
+  const uploadAllFiles = async () => {
+    setUploading(true);
+    const uploadedUrls: { resume?: string; workPhotos: string[] } = { workPhotos: [] };
+    
+    try {
+      // Upload resume if provided
+      if (resumeFile) {
+        const resumeUrl = await uploadFileToCloudinary(resumeFile, 'individuals/resumes');
+        uploadedUrls.resume = resumeUrl;
+      }
+      
+      // Upload work photos
+      if (workPhotos.length > 0) {
+        const photoUrls = await Promise.all(
+          workPhotos.map(photo => uploadFileToCloudinary(photo, 'individuals/work-photos'))
+        );
+        uploadedUrls.workPhotos = photoUrls;
+      }
+      
+      setUploadedFiles(uploadedUrls);
+      toast.success('Files uploaded successfully!');
+      return uploadedUrls;
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast.error('Failed to upload files. Please try again.');
+      throw error;
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -124,31 +203,41 @@ export default function IndividualRegister() {
       return;
     }
     
-    // Prepare user data for signup
-    const userData = {
-      email: formData.email,
-      password: formData.password,
-      name: formData.name,
-      user_type: 'individual' as const,
-      phone: formData.phone,
-      city: formData.city,
-      state_province: formData.state,
-      pincode: formData.pincode,
-      country: formData.country,
-      profile_data: {
-        age: parseInt(formData.age),
-        experience: formData.experience,
-        proof_of_work: formData.proofOfWork,
-        portfolio_files: portfolioFiles.map(file => file.name)
+    try {
+      // Upload files first if any are selected
+      let fileUrls = uploadedFiles;
+      if ((resumeFile || workPhotos.length > 0) && (!uploadedFiles.resume && uploadedFiles.workPhotos.length === 0)) {
+        fileUrls = await uploadAllFiles();
       }
-    };
-    
-    // Call signup function from auth context
-    await signup(userData);
-    
-    // If signup is successful, redirect to dashboard
-    if (!error) {
-      router.push('/');
+      
+      // Prepare user data for signup
+      const userData = {
+        email: formData.email,
+        password: formData.password,
+        name: formData.name,
+        user_type: 'individual' as const,
+        phone: formData.phone,
+        city: formData.city,
+        state_province: formData.state,
+        pincode: formData.pincode,
+        country: formData.country,
+        profile_data: {
+          age: parseInt(formData.age),
+          resume_url: fileUrls.resume,
+          work_photos: fileUrls.workPhotos
+        }
+      };
+      
+      // Call signup function from auth context
+      await signup(userData);
+      
+      // If signup is successful, redirect to dashboard
+      if (!error) {
+        toast.success('Account created successfully!');
+        router.push('/individuals/dashboard');
+      }
+    } catch (uploadError) {
+      toast.error('Failed to create account. Please try again.');
     }
   };
 
@@ -253,7 +342,10 @@ export default function IndividualRegister() {
             
             {/* Location Information */}
             <div className="space-y-4">
-              <h3 className="text-lg font-medium">Location Information</h3>
+              <h3 className="text-lg font-medium flex items-center gap-2">
+                <MapPin className="h-5 w-5" />
+                Location Information
+              </h3>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="city">City</Label>
@@ -309,73 +401,95 @@ export default function IndividualRegister() {
               </div>
             </div>
             
-            {/* Professional Information */}
+            {/* Resume & Portfolio - MANDATORY */}
             <div className="space-y-4">
-              <h3 className="text-lg font-medium">Professional Information</h3>
+              <h3 className="text-lg font-medium flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                Resume & Portfolio - Required
+              </h3>
+              
+              {formErrors.files && (
+                <Alert variant="destructive">
+                  <AlertDescription>{formErrors.files}</AlertDescription>
+                </Alert>
+              )}
               
               <div className="space-y-2">
-                <Label htmlFor="experience">Experience & Skills</Label>
-                <Textarea
-                  id="experience"
-                  name="experience"
-                  value={formData.experience}
-                  onChange={handleChange}
-                  placeholder="Briefly describe your professional experience, skills, and areas of expertise"
-                  rows={4}
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="proofOfWork">Proof of Work/Experience</Label>
-                <Textarea
-                  id="proofOfWork"
-                  name="proofOfWork"
-                  value={formData.proofOfWork}
-                  onChange={handleChange}
-                  placeholder="Describe your past projects, achievements, certifications, or any relevant work that demonstrates your capabilities"
-                  rows={3}
-                />
-              </div>
-            </div>
-            
-            <div className="space-y-2">
-              <Label>Portfolio (Optional)</Label>
-              <div className="flex flex-col space-y-2">
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                  onChange={(e) => {
-                    if (e.target.files) {
-                      handlePortfolioUpload(Array.from(e.target.files));
-                    }
-                  }}
-                  disabled={loading}
-                />
-                <p className="text-sm text-gray-600">Share examples of your work to strengthen your profile (optional)</p>
-                {portfolioFiles.length > 0 && (
-                  <div className="mt-2">
-                    <p className="text-sm text-green-600 mb-2">✓ {portfolioFiles.length} file{portfolioFiles.length > 1 ? 's' : ''} selected</p>
-                    <div className="grid grid-cols-3 gap-2">
-                      {portfolioFiles.map((file, index) => (
-                        <img
-                          key={index}
-                          src={URL.createObjectURL(file)}
-                          alt={`Portfolio ${index + 1}`}
-                          className="h-20 w-20 object-cover rounded-lg"
-                        />
-                      ))}
+                <Label>Resume (PDF) - Upload at least resume OR work photos</Label>
+                <div className="flex flex-col space-y-2">
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx"
+                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        handleResumeUpload(e.target.files[0]);
+                      }
+                    }}
+                    disabled={loading || uploading}
+                  />
+                  <p className="text-sm text-gray-600">Upload your resume to showcase your qualifications</p>
+                  {resumeFile && (
+                    <div className="flex items-center gap-2 text-sm text-green-600">
+                      <FileText className="h-4 w-4" />
+                      ✓ {resumeFile.name}
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <Label>Work Photos - Upload at least resume OR work photos (Max 5 images)</Label>
+                <div className="flex flex-col space-y-2">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100"
+                    onChange={(e) => {
+                      if (e.target.files) {
+                        handleWorkPhotosUpload(Array.from(e.target.files));
+                      }
+                    }}
+                    disabled={loading || uploading || workPhotos.length >= 5}
+                  />
+                  <p className="text-sm text-gray-600">Share photos of your work, projects, or achievements</p>
+                  
+                  {workPhotos.length > 0 && (
+                    <div className="mt-4">
+                      <p className="text-sm text-green-600 mb-3">✓ {workPhotos.length} work photo{workPhotos.length > 1 ? 's' : ''} selected</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        {workPhotos.map((file, index) => (
+                          <div key={index} className="relative group">
+                            <img
+                              src={URL.createObjectURL(file)}
+                              alt={`Work photo ${index + 1}`}
+                              className="h-24 w-full object-cover rounded-lg border-2 border-gray-200"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removeWorkPhoto(index)}
+                              className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                              disabled={loading || uploading}
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                            <div className="absolute bottom-1 left-1 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
+                              {index + 1}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </CardContent>
           
           <CardFooter className="flex flex-col space-y-4">
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? 'Creating Account...' : 'Create Account'}
+            <Button type="submit" className="w-full" disabled={loading || uploading}>
+              {uploading ? 'Uploading Files...' : loading ? 'Creating Account...' : 'Create Account'}
             </Button>
             
             <div className="text-center text-sm">

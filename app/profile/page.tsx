@@ -252,7 +252,7 @@ export default function ProfilePage() {
       // Load additional profile fields from profile_data
       const userProfile = freshUser?.profile_data || {};
       setExperience(userProfile.experience || '');
-      setProofOfWorkUrls(userProfile.proof_of_work || []);
+      setProofOfWorkUrls(userProfile.work_photos || userProfile.proof_of_work || []);
       setResumeUrl(userProfile.resume_url || '');
       setRegistrationNumber(userProfile.registration_number || '');
       setFoundedYear(userProfile.founded_year || '');
@@ -365,27 +365,26 @@ export default function ProfilePage() {
       };
       
       // Include profile image URL if available
-      if (profileImageUrl && profileImageUrl.trim()) {
-        profileData.profileImageUrl = profileImageUrl.trim();
+      if (profileImageUrl !== undefined) {
+        profileData.profileImageUrl = profileImageUrl;
       }
       
       // Basic fields for all user types
-      if (editableName?.trim()) profileData.name = editableName.trim();
-      if (editableEmail?.trim()) profileData.email = editableEmail.trim();
-      if (city?.trim()) profileData.city = city.trim();
-      if (stateProvince?.trim()) profileData.state_province = stateProvince.trim();
-      if (pincode?.trim()) profileData.pincode = pincode.trim();
-      if (country?.trim()) profileData.country = country.trim();
-      if (phone?.trim()) profileData.phone = phone.trim();
-      if (bio?.trim()) profileData.bio = bio.trim();
+      if (editableName !== undefined) profileData.name = editableName;
+      if (editableEmail !== undefined) profileData.email = editableEmail;
+      if (city !== undefined) profileData.city = city;
+      if (stateProvince !== undefined) profileData.state_province = stateProvince;
+      if (pincode !== undefined) profileData.pincode = pincode;
+      if (country !== undefined) profileData.country = country;
+      if (phone !== undefined) profileData.phone = phone;
+      if (bio !== undefined) profileData.bio = bio;
       
       // User type specific fields
       const profileDataFields: any = {};
       
       if (user?.user_type === 'individual') {
         if (age) profileDataFields.age = parseInt(age);
-        if (experience) profileDataFields.experience = experience;
-        if (proofOfWorkUrls.length > 0) profileDataFields.proof_of_work = proofOfWorkUrls;
+        if (proofOfWorkUrls.length > 0) profileDataFields.work_photos = proofOfWorkUrls;
         if (resumeUrl) profileDataFields.resume_url = resumeUrl;
       } else if (user?.user_type === 'company') {
         if (industry) profileDataFields.industry = industry;
@@ -434,42 +433,51 @@ export default function ProfilePage() {
         return;
       }
 
-      // Upload proof of work photos to Cloudinary
+      const token = localStorage.getItem('token');
+      if (!token) {
+        toast.error('Authentication required');
+        return;
+      }
+
+      // Upload new proof of work photos
       const uploadedPhotos = [];
       for (const file of proofOfWork) {
         const formData = new FormData();
         formData.append('file', file);
-        formData.append('upload_preset', 'navdrishti_uploads');
         
-        const response = await fetch('https://api.cloudinary.com/v1_1/dgevlmwpt/image/upload', {
+        const response = await fetch('/api/upload', {
           method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          },
           body: formData,
         });
         
         if (response.ok) {
           const result = await response.json();
-          uploadedPhotos.push(result.secure_url);
+          uploadedPhotos.push(result.data.url);
         } else {
           throw new Error('Failed to upload proof of work photo');
         }
       }
 
-      // Upload resume to Cloudinary if provided
+      // Upload resume if provided
       let newResumeUrl = resumeUrl;
       if (resume) {
         const formData = new FormData();
         formData.append('file', resume);
-        formData.append('upload_preset', 'navdrishti_uploads');
-        formData.append('resource_type', 'raw'); // For PDF/doc files
         
-        const response = await fetch('https://api.cloudinary.com/v1_1/dgevlmwpt/raw/upload', {
+        const response = await fetch('/api/upload', {
           method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          },
           body: formData,
         });
         
         if (response.ok) {
           const result = await response.json();
-          newResumeUrl = result.secure_url;
+          newResumeUrl = result.data.url;
         } else {
           throw new Error('Failed to upload resume');
         }
@@ -478,12 +486,13 @@ export default function ProfilePage() {
       // Combine existing and new proof of work URLs
       const allProofOfWorkUrls = [...proofOfWorkUrls, ...uploadedPhotos];
 
-      // Update user profile with new experience and proof of work
+      // Update user profile with new proof of work
       const profileData = {
         userId: user.id,
-        experience: experience,
-        proof_of_work: allProofOfWorkUrls,
-        resume_url: newResumeUrl,
+        profile_data: {
+          work_photos: allProofOfWorkUrls,
+          resume_url: newResumeUrl,
+        }
       };
 
       const response = await fetch('/api/profile/update', {
@@ -498,7 +507,7 @@ export default function ProfilePage() {
         throw new Error('Failed to update proof of work');
       }
 
-      toast.success('Experience and proof of work updated successfully!');
+      toast.success('Proof of work updated successfully!');
 
       // Reset form state and refresh profile
       setProofOfWork([]);
@@ -507,7 +516,7 @@ export default function ProfilePage() {
 
     } catch (error) {
       console.error('Error updating proof of work:', error);
-      toast.error('Failed to update experience and proof of work. Please try again.');
+      toast.error('Failed to update proof of work. Please try again.');
     } finally {
       setUploading(false);
     }
@@ -779,19 +788,42 @@ export default function ProfilePage() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div>
-                      <Label>Experience</Label>
-                      <Textarea 
-                        placeholder="Describe your professional experience..."
-                        rows={4}
-                        value={experience}
-                        onChange={(e) => setExperience(e.target.value)}
-                      />
-                    </div>
-                    
-                    <div>
                       <Label>Proof of Work Photos</Label>
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2">
+                      <div className="space-y-4">
+                        {/* Current work photos display */}
+                        {proofOfWorkUrls.length > 0 && (
+                          <div>
+                            <p className="text-sm text-gray-600 mb-3">Current work photos:</p>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                              {proofOfWorkUrls.map((url, index) => (
+                                <div key={index} className="relative group">
+                                  <img
+                                    src={url}
+                                    alt={`Work sample ${index + 1}`}
+                                    className="w-full h-24 object-cover rounded-lg border-2 border-gray-200"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const newUrls = proofOfWorkUrls.filter((_, i) => i !== index);
+                                      setProofOfWorkUrls(newUrls);
+                                    }}
+                                    className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  >
+                                    <span className="text-xs">×</span>
+                                  </button>
+                                  <div className="absolute bottom-1 left-1 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
+                                    {index + 1}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* New work photos upload */}
+                        <div>
+                          <p className="text-sm font-medium mb-2">Add new work photos:</p>
                           <input
                             type="file"
                             accept="image/*"
@@ -800,21 +832,40 @@ export default function ProfilePage() {
                               const files = Array.from(e.target.files || []);
                               setProofOfWork(files);
                             }}
-                            className="text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                            className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100"
                           />
+                          
+                          {/* Preview of new files */}
+                          {proofOfWork.length > 0 && (
+                            <div className="mt-3">
+                              <p className="text-sm text-green-600 mb-2">✓ {proofOfWork.length} new photo{proofOfWork.length > 1 ? 's' : ''} selected</p>
+                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                {proofOfWork.map((file, index) => (
+                                  <div key={index} className="relative group">
+                                    <img
+                                      src={URL.createObjectURL(file)}
+                                      alt={`New work photo ${index + 1}`}
+                                      className="w-full h-24 object-cover rounded-lg border-2 border-green-200"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const newFiles = proofOfWork.filter((_, i) => i !== index);
+                                        setProofOfWork(newFiles);
+                                      }}
+                                      className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    >
+                                      <span className="text-xs">×</span>
+                                    </button>
+                                    <div className="absolute bottom-1 left-1 bg-green-600 bg-opacity-75 text-white text-xs px-2 py-1 rounded">
+                                      New
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
-                        {proofOfWorkUrls.length > 0 && (
-                          <div className="grid grid-cols-3 gap-2 mt-2">
-                            {proofOfWorkUrls.map((url, index) => (
-                              <img
-                                key={index}
-                                src={url}
-                                alt={`Work sample ${index + 1}`}
-                                className="w-full h-20 object-cover rounded"
-                              />
-                            ))}
-                          </div>
-                        )}
                       </div>
                     </div>
                     
@@ -828,7 +879,7 @@ export default function ProfilePage() {
                             const file = e.target.files?.[0] || null;
                             setResume(file);
                           }}
-                          className="text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                          className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                         />
                         {resumeUrl && (
                           <a 
@@ -840,11 +891,14 @@ export default function ProfilePage() {
                             View Current Resume
                           </a>
                         )}
+                        {resume && (
+                          <p className="text-sm text-green-600">✓ New resume selected: {resume.name}</p>
+                        )}
                       </div>
                     </div>
                     
                     <Button onClick={handleSaveProofOfWork} disabled={uploading}>
-                      {uploading ? 'Uploading...' : 'Save Experience & Work'}
+                      {uploading ? 'Uploading...' : 'Save Proof of Work'}
                     </Button>
                   </CardContent>
                 </Card>
