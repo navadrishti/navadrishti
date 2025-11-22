@@ -81,6 +81,12 @@ export default function CreateServiceRequestPage() {
 
     try {
       const token = localStorage.getItem('token');
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      
+      console.log('=== Service Request Creation Debug ===');
+      console.log('Current user:', user);
+      console.log('User type:', user.user_type);
+      console.log('Token present:', !!token);
       
       const response = await fetch('/api/service-requests', {
         method: 'POST',
@@ -94,11 +100,21 @@ export default function CreateServiceRequestPage() {
       });
 
       const data = await response.json();
+      console.log('Response status:', response.status);
+      console.log('Response data:', data);
 
-      if (data.success) {
+      if (response.ok && data.success) {
         router.push('/service-requests');
       } else {
-        setError(data.message || 'Failed to create service request');
+        // Handle different HTTP status codes
+        if (response.status === 403) {
+          const debugInfo = data.debug ? ` (Current user type: ${data.debug.userType})` : '';
+          setError(`Access denied. Only verified NGOs can create service requests.${debugInfo}`);
+        } else if (response.status === 401) {
+          setError('Authentication required. Please log in again.');
+        } else {
+          setError(data.error || data.message || 'Failed to create service request');
+        }
       }
     } catch (err) {
       setError('Error creating service request');
@@ -124,7 +140,7 @@ export default function CreateServiceRequestPage() {
 
   return (
     <ProtectedRoute 
-      userTypes={['ngo', 'company']} 
+      userTypes={['ngo']} 
       requireVerification={true}
       permission="canCreateServiceRequests"
     >

@@ -137,8 +137,11 @@ export function getUserPermissions(user: User | null): AccessPermissions {
     case 'company':
       return {
         ...basePermissions,
-        // Companies can create service requests when verified  
-        canCreateServiceRequests: isVerified,
+        // Companies can volunteer for service requests but cannot create them
+        canApplyToServiceRequests: isVerified,
+        
+        // Companies can apply to service offers when verified
+        canApplyToServiceOffers: isVerified,
         
         // Companies can create marketplace listings when verified
         canCreateMarketplaceListings: isVerified,
@@ -175,20 +178,28 @@ export function getPermissionErrorMessage(permission: keyof AccessPermissions, u
       return "Please sign in to create posts and comments."; // Only authentication required
         
     case 'canCreateServiceRequests':
-      if (user.user_type === 'individual') {
-        return "Only NGOs and companies can create service requests. Individuals can apply to existing requests.";
+      if (user.user_type !== 'ngo') {
+        return "Only NGOs can create service requests. Individuals and companies can volunteer for existing requests.";
       }
       return !isVerified 
-        ? "Please complete your organization verification to create service requests."
+        ? "Please complete your NGO verification to create service requests."
         : "You don't have permission to create service requests.";
         
     case 'canApplyToServiceRequests':
-      if (user.user_type !== 'individual') {
-        return "Only verified individuals can apply to service requests.";
+      if (user.user_type === 'ngo') {
+        return "NGOs create service requests, they cannot apply to them. Only individuals and companies can volunteer.";
       }
-      return !isVerified 
-        ? "Please complete your identity verification to apply for service requests."
-        : "You don't have permission to apply to service requests.";
+      if (user.user_type === 'individual') {
+        return !isVerified 
+          ? "Please complete your identity verification to apply for service requests."
+          : "You don't have permission to apply to service requests.";
+      }
+      if (user.user_type === 'company') {
+        return !isVerified 
+          ? "Please complete your organization verification to volunteer for service requests."
+          : "You don't have permission to volunteer for service requests.";
+      }
+      return "You don't have permission to apply to service requests.";
         
     case 'canCreateServiceOffers':
       if (user.user_type !== 'ngo') {
@@ -199,12 +210,20 @@ export function getPermissionErrorMessage(permission: keyof AccessPermissions, u
         : "You don't have permission to create service offers.";
         
     case 'canApplyToServiceOffers':
-      if (user.user_type !== 'individual') {
-        return "Only verified individuals can apply to service offers.";
+      if (user.user_type === 'ngo') {
+        return "NGOs create service offers, they cannot apply to them. Only individuals and companies can apply.";
       }
-      return !isVerified 
-        ? "Please complete your identity verification to apply for service offers."
-        : "You don't have permission to apply to service offers.";
+      if (user.user_type === 'individual') {
+        return !isVerified 
+          ? "Please complete your identity verification to apply for service offers."
+          : "You don't have permission to apply to service offers.";
+      }
+      if (user.user_type === 'company') {
+        return !isVerified 
+          ? "Please complete your organization verification to apply for service offers."
+          : "You don't have permission to apply to service offers.";
+      }
+      return "You don't have permission to apply to service offers.";
         
     case 'canCreateMarketplaceListings':
       if (user.user_type === 'individual') {

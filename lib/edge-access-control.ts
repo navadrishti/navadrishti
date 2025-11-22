@@ -40,7 +40,7 @@ export function hasBasicPermissionEdge(
       return true; // Only authentication required, no verification needed
     
     case 'create_service_request':
-      return isVerified && (user.user_type === 'ngo' || user.user_type === 'company');
+      return isVerified && user.user_type === 'ngo';
     
     case 'create_service_offer':
       return isVerified && user.user_type === 'ngo';

@@ -250,17 +250,34 @@ export async function POST(request: NextRequest) {
     }
 
     const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
-    const { id: userId, user_type: userType } = decoded;
+    let decoded;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
+    } catch (jwtError) {
+      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+    }
+    
+    const { id: userId, user_type: userType, verification_status } = decoded;
 
     const body = await request.json();
     const { action } = body;
 
     // If no action is specified, assume it's a create operation
     if (!action || action === 'create') {
-      // Only NGOs can create service requests
+
+      
+      // Only verified NGOs can create service requests
       if (userType !== 'ngo') {
-        return NextResponse.json({ error: 'Only NGOs can create service requests' }, { status: 403 });
+        return NextResponse.json({ 
+          error: 'Only verified NGOs can create service requests'
+        }, { status: 403 });
+      }
+      
+      if (verification_status !== 'verified') {
+        return NextResponse.json({ 
+          error: 'You need to complete verification before creating service requests.',
+          requiresVerification: true
+        }, { status: 403 });
       }
 
       const { 

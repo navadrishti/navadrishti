@@ -19,12 +19,29 @@ export interface EdgeUser {
  * Base64 URL decode (Edge Runtime compatible)
  */
 function base64UrlDecode(str: string): string {
-  // Add padding if needed
-  str += new Array(5 - str.length % 4).join('=');
-  // Replace URL-safe characters
-  str = str.replace(/-/g, '+').replace(/_/g, '/');
-  // Decode base64
-  return atob(str);
+  try {
+    // Replace URL-safe characters
+    let base64 = str.replace(/-/g, '+').replace(/_/g, '/');
+    
+    // Add padding if needed
+    while (base64.length % 4) {
+      base64 += '=';
+    }
+    
+    // Use TextDecoder for edge runtime compatibility
+    const binaryString = atob(base64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    
+    // Decode as UTF-8
+    const decoder = new TextDecoder('utf-8');
+    return decoder.decode(bytes);
+  } catch (error) {
+    console.log('Base64 decode error:', error);
+    throw error;
+  }
 }
 
 /**
@@ -66,13 +83,19 @@ function arrayBufferToBase64Url(buffer: ArrayBuffer): string {
  */
 export async function verifyEdgeToken(token: string): Promise<EdgeUser | null> {
   try {
+    console.log('=== Edge Token Verification Debug ===');
+    console.log('Token received:', token?.substring(0, 50) + '...');
+    
     if (!token || typeof token !== 'string') {
+      console.log('Token validation failed: null or not string');
       return null;
     }
 
     // Split JWT into parts
     const parts = token.split('.');
+    console.log('Token parts count:', parts.length);
     if (parts.length !== 3) {
+      console.log('Invalid JWT format: expected 3 parts, got', parts.length);
       return null;
     }
 
@@ -83,12 +106,16 @@ export async function verifyEdgeToken(token: string): Promise<EdgeUser | null> {
     try {
       header = JSON.parse(base64UrlDecode(headerB64));
       payload = JSON.parse(base64UrlDecode(payloadB64));
+      console.log('Header decoded successfully:', header);
+      console.log('Payload decoded successfully:', payload);
     } catch (e) {
+      console.log('Failed to decode header/payload:', e);
       return null;
     }
 
     // Check algorithm
     if (header.alg !== 'HS256') {
+      console.log('Unsupported algorithm:', header.alg);
       return null;
     }
 
@@ -97,14 +124,23 @@ export async function verifyEdgeToken(token: string): Promise<EdgeUser | null> {
     const expectedSignature = await hmacSha256(JWT_SECRET, signatureData);
     const expectedSignatureB64 = arrayBufferToBase64Url(expectedSignature);
 
+    console.log('Signature verification:');
+    console.log('  Received signature:', signatureB64.substring(0, 20) + '...');
+    console.log('  Expected signature:', expectedSignatureB64.substring(0, 20) + '...');
+    console.log('  Signatures match:', signatureB64 === expectedSignatureB64);
+
     if (signatureB64 !== expectedSignatureB64) {
+      console.log('Signature verification failed');
       return null;
     }
 
     // Check expiration
     if (payload.exp && Date.now() >= payload.exp * 1000) {
+      console.log('Token expired:', new Date(payload.exp * 1000));
       return null;
     }
+
+    console.log('Token verification successful, returning user data');
 
     // Return user data
     return {

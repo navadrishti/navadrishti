@@ -10,7 +10,8 @@
     "build:vercel": "npm run build && npm run lint",
     "migrate:safe": "npx tsx scripts/safe-migration.ts",
     "migrate:verify": "npx tsx scripts/verify-migration.ts",
-    "db:export": "mysqldump -u Navadrishti_user -p Navadrishti > backup/Navadrishti_$(date +%Y%m%d_%H%M%S).sql"
+    "db:export": "mysqldump -u Navadrishti_user -p Navadrishti > backup/Navadrishti_$(date +%Y%m%d_%H%M%S).sql",
+    "db:fix-sequences": "node scripts/fix-sequences.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

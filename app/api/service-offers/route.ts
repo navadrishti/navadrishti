@@ -191,11 +191,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid authentication token' }, { status: 401 });
     }
 
-    const { id: userId, user_type: userType } = decoded;
+    const { id: userId, user_type: userType, verification_status } = decoded;
 
-    // Only NGOs can create service offers
+    console.log('=== Service Offers Debug ===');
+    console.log('User ID:', userId);
+    console.log('User type:', userType);
+    console.log('Verification status from token:', verification_status);
+
+    // Only verified NGOs can create service offers
     if (userType !== 'ngo') {
-      return NextResponse.json({ error: 'Only NGOs can create service offers' }, { status: 403 });
+      return NextResponse.json({ error: 'Only verified NGOs can create service offers' }, { status: 403 });
+    }
+
+    if (verification_status !== 'verified') {
+      return NextResponse.json({ 
+        error: 'You need to complete verification before creating service offers.',
+        requiresVerification: true,
+        debug: {
+          tokenVerificationStatus: verification_status,
+          userId: userId
+        }
+      }, { status: 403 });
     }
 
     const body = await request.json();
