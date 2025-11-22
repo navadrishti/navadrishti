@@ -40,6 +40,14 @@ export async function POST(req: NextRequest) {
     }
     
     // Generate JWT token with verification status
+    console.log('=== Login Debug ===');
+    console.log('User from database:', {
+      id: user.id,
+      email: user.email,
+      user_type: user.user_type,
+      verification_status: user.verification_status
+    });
+    
     const userData = {
       id: user.id,
       email: user.email,
@@ -49,11 +57,10 @@ export async function POST(req: NextRequest) {
       email_verified: user.email_verified || false,
       phone_verified: user.phone_verified || false
     };
-    
+
+    console.log('User data for token:', userData);
     const token = generateToken(userData);
-    console.log(`User ${email} logged in successfully`);
-    
-    // Create response with cookie
+    console.log(`User ${email} logged in successfully`);    // Create response with cookie
     const response = NextResponse.json({
       message: 'Login successful',
       user: userData,

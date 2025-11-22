@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge'
 import { ArrowLeft, Loader2, Plus, X, Users, MapPin, DollarSign, Clock, Briefcase } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
+import ProtectedRoute from '@/components/enhanced-protected-route'
 import Link from 'next/link'
 
 const categories = [
@@ -330,49 +331,16 @@ export default function CreateServiceOfferPage() {
     return null
   }
 
-  // Check if user is verified
-  if (!user.verified) {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <Header />
-        <div className="max-w-4xl mx-auto p-6">
-          <div className="text-center py-12">
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 max-w-md mx-auto">
-              <h2 className="text-lg font-semibold text-yellow-800 mb-2">Verification Required</h2>
-              <p className="text-yellow-700 mb-4">You need to complete verification before creating service offers.</p>
-              <Link href="/verification" className="text-yellow-600 hover:text-yellow-700 underline">
-                Complete Verification
-              </Link>
-            </div>
-          </div>
-        </div>
-      </div>
-    )
-  }
 
-  // Check if user is verified
-  if (!user.verified) {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <Header />
-        <div className="max-w-4xl mx-auto p-6">
-          <div className="text-center py-12">
-            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 max-w-md mx-auto">
-              <h2 className="text-lg font-semibold text-yellow-800 mb-2">Verification Required</h2>
-              <p className="text-yellow-700 mb-4">You need to complete verification before creating service offers.</p>
-              <Link href="/verification" className="text-yellow-600 hover:text-yellow-700 underline">
-                Complete Verification
-              </Link>
-            </div>
-          </div>
-        </div>
-      </div>
-    )
-  }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Header />
+    <ProtectedRoute 
+      userTypes={['ngo']} 
+      requireVerification={true}
+      permission="canCreateServiceOffers"
+    >
+      <div className="min-h-screen bg-gray-50">
+        <Header />
       
       <div className="max-w-4xl mx-auto p-6">
         {/* Header */}
@@ -851,5 +819,6 @@ export default function CreateServiceOfferPage() {
         </form>
       </div>
     </div>
+    </ProtectedRoute>
   )
 }
