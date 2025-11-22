@@ -385,15 +385,15 @@ export default function HomePage() {
             <div className="hidden sm:flex flex-col sm:flex-row gap-4 justify-center mt-8">
               <Link href="/home" className="group">
                 <div 
-                  className="flex justify-center items-center bg-gray-800/80 backdrop-blur-md shadow-xl text-gray-200 hover:text-white transition-all duration-300 hover:bg-gray-700/80 rounded-lg cursor-pointer"
+                  className="flex justify-center items-center bg-gray-800/80 backdrop-blur-md shadow-xl text-gray-200 hover:text-white transition-all duration-300 hover:bg-gray-700/80 cursor-pointer"
                   style={{ 
                     padding: '1.25rem 2.5rem', 
                     minWidth: '200px',
                     fontSize: '1.125rem',
-                    fontWeight: '500'
+                    fontWeight: '500',
+                    borderRadius: '0'
                   }}
                 >
-                  <User className="w-5 h-5 mr-3" />
                   Explore Platform
                 </div>
               </Link>
