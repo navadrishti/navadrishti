@@ -279,7 +279,7 @@ export default function HomePage() {
           <div className="text-center pointer-events-auto">
             <h1 className="text-4xl sm:text-6xl md:text-8xl lg:text-9xl xl:text-9xl font-extrabold text-white mb-6 tracking-tight drop-shadow-[0_8px_32px_rgba(0,0,0,0.8)] px-2">
               <span className="bg-gradient-to-r from-white via-blue-100 to-white bg-clip-text text-transparent">
-                Navadrishti
+                नवdrishti
               </span>
             </h1>
             <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl xl:text-4xl text-white/95 mb-10 drop-shadow-[0_4px_16px_rgba(0,0,0,0.7)] max-w-5xl mx-auto leading-relaxed font-medium px-6">
