@@ -1,4 +1,10 @@
 {
   "version": 2,
-  "framework": "nextjs"
+  "framework": "nextjs",
+  "crons": [
+    {
+      "path": "/api/cron/auto-reject-expired",
+      "schedule": "0 2 * * *"
+    }
+  ]
 }
