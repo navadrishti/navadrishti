@@ -32,5 +32,6 @@ yarn-error.log*
 next-env.d.ts
 .vercel
 
-# reference files
-reference/completeschema.json
+# documentation and reference files
+docs/
+reference/
