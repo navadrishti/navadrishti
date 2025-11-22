@@ -394,6 +394,9 @@ export default function ProfilePage() {
       } else if (user?.user_type === 'ngo') {
         if (ngoSize) profileDataFields.ngo_size = ngoSize;
         if (organizationWebsite) profileDataFields.organization_website = organizationWebsite;
+        if (registrationNumber) profileDataFields.registration_number = registrationNumber;
+        if (foundedYear) profileDataFields.founded_year = parseInt(foundedYear);
+        if (focusAreas) profileDataFields.focus_areas = focusAreas;
         profileDataFields.ngo_name = editableName || user?.name;
       }
       
@@ -457,7 +460,9 @@ export default function ProfilePage() {
           const result = await response.json();
           uploadedPhotos.push(result.data.url);
         } else {
-          throw new Error('Failed to upload proof of work photo');
+          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+          console.error('Upload error response:', errorData);
+          throw new Error(errorData.error || 'Failed to upload proof of work photo');
         }
       }
 
@@ -479,7 +484,9 @@ export default function ProfilePage() {
           const result = await response.json();
           newResumeUrl = result.data.url;
         } else {
-          throw new Error('Failed to upload resume');
+          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+          console.error('Resume upload error:', errorData);
+          throw new Error(errorData.error || 'Failed to upload resume');
         }
       }
 
@@ -657,6 +664,33 @@ export default function ProfilePage() {
                     </div>
                   </div>
                   
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <Label>State/Province</Label>
+                      <Input 
+                        placeholder="e.g., Maharashtra, Karnataka" 
+                        value={stateProvince}
+                        onChange={(e) => setStateProvince(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <Label>Pincode</Label>
+                      <Input 
+                        placeholder="e.g., 400001" 
+                        value={pincode}
+                        onChange={(e) => setPincode(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <Label>Country</Label>
+                      <Input 
+                        placeholder="Country" 
+                        value={country}
+                        onChange={(e) => setCountry(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  
                   <div>
                     <Label>Bio</Label>
                     <Textarea 
@@ -759,6 +793,29 @@ export default function ProfilePage() {
                         </div>
                         
                         <div>
+                          <Label>Founded Year</Label>
+                          <Input 
+                            type="number"
+                            min="1800"
+                            max={new Date().getFullYear()}
+                            placeholder="e.g., 2010"
+                            value={foundedYear}
+                            onChange={(e) => setFoundedYear(e.target.value)}
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <Label>Registration Number</Label>
+                          <Input 
+                            placeholder="NGO Registration Number"
+                            value={registrationNumber}
+                            onChange={(e) => setRegistrationNumber(e.target.value)}
+                          />
+                        </div>
+                        
+                        <div>
                           <Label>Organization Website</Label>
                           <Input 
                             type="url"
@@ -767,6 +824,16 @@ export default function ProfilePage() {
                             onChange={(e) => setOrganizationWebsite(e.target.value)}
                           />
                         </div>
+                      </div>
+                      
+                      <div>
+                        <Label>Focus Areas</Label>
+                        <Textarea 
+                          placeholder="What areas does your NGO focus on? (e.g., Education, Healthcare, Environment)"
+                          rows={3}
+                          value={focusAreas}
+                          onChange={(e) => setFocusAreas(e.target.value)}
+                        />
                       </div>
                     </>
                   )}

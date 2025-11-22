@@ -1,7 +1,7 @@
 import { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Admin Dashboard - Navadrishti',
+  title: 'Admin',
   description: 'Administrative dashboard for managing service offers and approvals',
 }
 

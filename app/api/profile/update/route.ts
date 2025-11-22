@@ -18,6 +18,8 @@ const updateProfileSchema = z.object({
   country: z.string().optional(),
   phone: z.string().optional(),
   bio: z.string().optional(),
+  location: z.string().optional(),
+  timezone: z.string().optional(),
   experience: z.string().optional(),
   proof_of_work: z.array(z.string().url()).optional(),
   resume_url: z.string().url().optional()
@@ -37,6 +39,8 @@ export async function POST(request: NextRequest) {
       country, 
       phone, 
       bio,
+      location,
+      timezone,
       profile_data
     } = body;
 
@@ -58,6 +62,8 @@ export async function POST(request: NextRequest) {
     if (country !== undefined) updateData.country = country;
     if (phone !== undefined) updateData.phone = phone;
     if (bio !== undefined) updateData.bio = bio;
+    if (location !== undefined) updateData.location = location;
+    if (timezone !== undefined) updateData.timezone = timezone;
 
     // Handle profile_data for additional fields
     if (profile_data && typeof profile_data === 'object') {
