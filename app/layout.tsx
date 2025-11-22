@@ -12,8 +12,8 @@ import { SpeedInsights } from '@vercel/speed-insights/next'
 
 export const metadata: Metadata = {
   title: 'Navadrishti',
-  description: 'Created with v0',
-  generator: 'v0.dev',
+  description: 'Created by Shubhendu Chakrabarti',
+  generator: 'Shubhendu Chakrabarti',
 }
 
 export default function RootLayout({
