@@ -116,27 +116,64 @@ export function useTrendingHashtags(limit: number = 5): UseTrendingHashtagsRetur
     return () => clearTimeout(timer);
   }, [fetchTrendingHashtags]);
 
-  // Set up real-time updates with polling
+  // Set up hidden auto-refresh every 5 minutes
   useEffect(() => {
+    // Always set up the 5-minute refresh regardless of connection status
+    const autoRefreshInterval = setInterval(() => {
+      // Silent refresh - don't show loading state
+      const currentLoading = loading;
+      fetchTrendingHashtags().then(() => {
+        // Silently updated in background
+      });
+    }, 300000); // 5 minutes = 300,000ms
+
+    // Set up retry logic for failed connections
+    let retryTimer: NodeJS.Timeout | null = null;
     if (!isConnected && error) {
-      // If disconnected with error, try reconnecting after a delay
-      const retryTimer = setTimeout(() => {
+      retryTimer = setTimeout(() => {
         fetchTrendingHashtags();
       }, 60000); // Retry after 1 minute
-      
-      return () => clearTimeout(retryTimer);
     }
 
-    if (!isConnected) return;
-
-    const interval = setInterval(() => {
-      fetchTrendingHashtags();
-    }, 120000); // Refresh every 2 minutes
-
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(autoRefreshInterval);
+      if (retryTimer) clearTimeout(retryTimer);
+    };
   }, [fetchTrendingHashtags, isConnected, error]);
 
   // Removed visibility change handler to prevent excessive fetching
+
+  // Hidden refresh function for silent background updates
+  const silentRefresh = useCallback(async () => {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000); // Shorter timeout for silent refresh
+      
+      const response = await fetch(`/api/hashtags/trending?limit=${limit}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        cache: 'no-store',
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && Array.isArray(result.data)) {
+          setHashtags(result.data);
+          setIsConnected(true);
+          setLastUpdate(new Date());
+          setError(null);
+        }
+      }
+    } catch (err) {
+      // Silent failure for background refresh
+      console.log('Silent refresh failed, will retry in 5 minutes');
+    }
+  }, [limit]);
 
   return {
     hashtags,
@@ -150,6 +187,7 @@ export function useTrendingHashtags(limit: number = 5): UseTrendingHashtagsRetur
       setLoading(true);
       await fetchTrendingHashtags();
     },
+    silentRefresh,
     isRealTime: true,
     refetch: async () => {
       setError(null);
