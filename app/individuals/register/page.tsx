@@ -117,43 +117,97 @@ export default function IndividualRegister() {
   };
 
   const uploadFileToCloudinary = async (file: File, folder: string = 'individuals') => {
+    console.log('uploadFileToCloudinary called:', { fileName: file.name, fileType: file.type, fileSize: file.size, folder });
+    
     const formData = new FormData();
     formData.append('file', file);
     
+    // Try to get token, but don't require it during registration
     const token = localStorage.getItem('token');
-    if (!token) {
-      throw new Error('Authentication required');
+    const headers: any = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+      console.log('Using auth token for upload');
+    } else {
+      console.log('No auth token available, uploading anonymously');
     }
 
+    console.log('Making upload request to /api/upload...');
     const response = await fetch('/api/upload', {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`
-      },
+      headers,
       body: formData
     });
 
+    console.log('Upload response status:', response.status, response.statusText);
+
     if (!response.ok) {
-      throw new Error('Upload failed');
+      const errorData = await response.json().catch(() => ({ error: 'Failed to parse error response' }));
+      console.error('Upload failed with error:', errorData);
+      throw new Error(errorData.error || 'Upload failed');
     }
 
     const result = await response.json();
+    console.log('Upload successful:', result);
     return result.data.url;
   };
 
+  const validateFile = (file: File, type: 'resume' | 'image') => {
+    // Check file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      throw new Error('File too large. Maximum size is 10MB.');
+    }
+    
+    if (type === 'resume') {
+      const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+      if (!allowedTypes.includes(file.type)) {
+        throw new Error('Only PDF, DOC, and DOCX files are allowed for resume.');
+      }
+    } else if (type === 'image') {
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+      if (!allowedTypes.includes(file.type)) {
+        throw new Error('Only JPEG, PNG, GIF, and WebP images are allowed.');
+      }
+    }
+    
+    return true;
+  };
+
   const handleResumeUpload = async (file: File) => {
-    setResumeFile(file);
-    toast.success('Resume selected!');
+    try {
+      validateFile(file, 'resume');
+      setResumeFile(file);
+      toast.success(`Resume selected: ${file.name}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Invalid file selected');
+    }
   };
 
   const handleWorkPhotosUpload = (files: File[]) => {
-    if (workPhotos.length + files.length > 5) {
-      toast.error('Maximum 5 work photos allowed');
-      return;
+    try {
+      if (workPhotos.length + files.length > 5) {
+        toast.error('Maximum 5 work photos allowed');
+        return;
+      }
+      
+      // Validate each file
+      const validFiles = [];
+      for (const file of files) {
+        try {
+          validateFile(file, 'image');
+          validFiles.push(file);
+        } catch (error) {
+          toast.error(`${file.name}: ${error instanceof Error ? error.message : 'Invalid file'}`);
+        }
+      }
+      
+      if (validFiles.length > 0) {
+        setWorkPhotos(prev => [...prev, ...validFiles]);
+        toast.success(`${validFiles.length} work photo${validFiles.length > 1 ? 's' : ''} added!`);
+      }
+    } catch (error) {
+      toast.error('Error processing files');
     }
-    
-    setWorkPhotos(prev => [...prev, ...files]);
-    toast.success(`${files.length} work photo${files.length > 1 ? 's' : ''} added!`);
   };
 
   const removeWorkPhoto = (index: number) => {
@@ -166,26 +220,36 @@ export default function IndividualRegister() {
     const uploadedUrls: { resume?: string; workPhotos: string[] } = { workPhotos: [] };
     
     try {
+      console.log('Starting file uploads...', { resumeFile: !!resumeFile, workPhotosCount: workPhotos.length });
+      
       // Upload resume if provided
       if (resumeFile) {
+        console.log('Uploading resume:', resumeFile.name, resumeFile.type, resumeFile.size);
         const resumeUrl = await uploadFileToCloudinary(resumeFile, 'individuals/resumes');
         uploadedUrls.resume = resumeUrl;
+        console.log('Resume uploaded successfully:', resumeUrl);
       }
       
       // Upload work photos
       if (workPhotos.length > 0) {
+        console.log('Uploading work photos:', workPhotos.map(p => ({ name: p.name, type: p.type, size: p.size })));
         const photoUrls = await Promise.all(
-          workPhotos.map(photo => uploadFileToCloudinary(photo, 'individuals/work-photos'))
+          workPhotos.map((photo, index) => {
+            console.log(`Uploading photo ${index + 1}:`, photo.name);
+            return uploadFileToCloudinary(photo, 'individuals/work-photos');
+          })
         );
         uploadedUrls.workPhotos = photoUrls;
+        console.log('Work photos uploaded successfully:', photoUrls);
       }
       
       setUploadedFiles(uploadedUrls);
       toast.success('Files uploaded successfully!');
+      console.log('All files uploaded:', uploadedUrls);
       return uploadedUrls;
     } catch (error) {
       console.error('Upload error:', error);
-      toast.error('Failed to upload files. Please try again.');
+      toast.error(`Failed to upload files: ${error instanceof Error ? error.message : 'Unknown error'}`);
       throw error;
     } finally {
       setUploading(false);

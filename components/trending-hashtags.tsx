@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useTrendingHashtags } from '@/hooks/use-realtime-hashtags'
 import { Activity, Hash, TrendingUp, Wifi, WifiOff } from 'lucide-react'
+import { useEffect } from 'react'
 
 interface TrendingHashtagsProps {
   limit?: number
@@ -22,8 +23,32 @@ export function TrendingHashtags({
     connectionStatus, 
     lastUpdate, 
     refreshTrending,
+    silentRefresh,
     isRealTime 
   } = useTrendingHashtags(limit)
+
+  // Hidden background refresh of hashtag database every 5 minutes
+  useEffect(() => {
+    const backgroundRefresh = async () => {
+      try {
+        await fetch('/api/hashtags/refresh', { method: 'GET' });
+        // Silent refresh - no user indication
+      } catch (error) {
+        // Silent failure
+      }
+    };
+
+    // Initial background refresh after component mounts
+    const initialTimer = setTimeout(backgroundRefresh, 10000); // 10 seconds after mount
+
+    // Set up 5-minute interval for background refresh
+    const refreshInterval = setInterval(backgroundRefresh, 300000); // 5 minutes
+
+    return () => {
+      clearTimeout(initialTimer);
+      clearInterval(refreshInterval);
+    };
+  }, []);
 
   const handleHashtagClick = (tag: string) => {
     if (onHashtagClick) {

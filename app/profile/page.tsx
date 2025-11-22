@@ -457,7 +457,9 @@ export default function ProfilePage() {
           const result = await response.json();
           uploadedPhotos.push(result.data.url);
         } else {
-          throw new Error('Failed to upload proof of work photo');
+          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+          console.error('Upload error response:', errorData);
+          throw new Error(errorData.error || 'Failed to upload proof of work photo');
         }
       }
 
@@ -479,7 +481,9 @@ export default function ProfilePage() {
           const result = await response.json();
           newResumeUrl = result.data.url;
         } else {
-          throw new Error('Failed to upload resume');
+          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+          console.error('Resume upload error:', errorData);
+          throw new Error(errorData.error || 'Failed to upload resume');
         }
       }
 
