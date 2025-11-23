@@ -40,7 +40,6 @@ export function PostCreator({ onPostCreated, className }: PostCreatorProps) {
   const [images, setImages] = useState<UploadedImage[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isPosting, setIsPosting] = useState(false);
-  const [location, setLocation] = useState('');
   const [hashtags, setHashtags] = useState<string[]>([]);
 
   // Extract hashtags from content
@@ -138,49 +137,7 @@ export function PostCreator({ onPostCreated, className }: PostCreatorProps) {
     }
   };
 
-  // Get current location
-  const getCurrentLocation = () => {
-    if (!navigator.geolocation) {
-      toast({
-        title: "Location Not Supported",
-        description: "Geolocation is not supported by this browser.",
-        variant: "destructive"
-      });
-      return;
-    }
 
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        try {
-          const { latitude, longitude } = position.coords;
-          
-          // Use reverse geocoding to get location name
-          const response = await fetch(
-            `https://api.opencagedata.com/geocode/v1/json?q=${latitude}+${longitude}&key=${process.env.NEXT_PUBLIC_OPENCAGE_API_KEY}`
-          );
-          
-          if (response.ok) {
-            const data = await response.json();
-            const locationName = data.results[0]?.formatted || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
-            setLocation(locationName);
-          } else {
-            setLocation(`${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
-          }
-        } catch (error) {
-          console.error('Error getting location name:', error);
-          setLocation(`${position.coords.latitude.toFixed(4)}, ${position.coords.longitude.toFixed(4)}`);
-        }
-      },
-      (error) => {
-        console.error('Error getting location:', error);
-        toast({
-          title: "Location Error",
-          description: "Failed to get your location.",
-          variant: "destructive"
-        });
-      }
-    );
-  };
 
   // Remove hashtag
   const removeHashtag = (tagToRemove: string) => {
@@ -219,7 +176,6 @@ export function PostCreator({ onPostCreated, className }: PostCreatorProps) {
           width: img.width,
           height: img.height
         })),
-        location: location || null,
         hashtags
       };
 
@@ -242,7 +198,6 @@ export function PostCreator({ onPostCreated, className }: PostCreatorProps) {
       // Reset form
       setContent('');
       setImages([]);
-      setLocation('');
       setHashtags([]);
 
       toast({
@@ -344,22 +299,6 @@ export function PostCreator({ onPostCreated, className }: PostCreatorProps) {
         )}
         
 
-        {/* Location */}
-        {location && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <MapPin className="w-4 h-4" />
-            <span>{location}</span>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setLocation('')}
-              className="h-6 w-6 p-0"
-            >
-              <X className="w-3 h-3" />
-            </Button>
-          </div>
-        )}
-
         {/* Action Buttons */}
         <div className="flex items-center justify-between pt-2 border-t">
           <div className="flex gap-2">
@@ -387,15 +326,7 @@ export function PostCreator({ onPostCreated, className }: PostCreatorProps) {
               Photos
             </Button>
 
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={getCurrentLocation}
-              className="text-green-500 hover:text-green-600 hover:bg-green-50 transition-colors"
-            >
-              <MapPin className="w-4 h-4" />
-              Location
-            </Button>
+
           </div>
 
           <Button

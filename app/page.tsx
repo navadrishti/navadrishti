@@ -277,12 +277,12 @@ export default function HomePage() {
         {/* Enhanced Text and Button Overlay */}
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ paddingTop: '8rem' }}>
           <div className="text-center pointer-events-auto">
-            <h1 className="text-4xl sm:text-6xl md:text-8xl lg:text-9xl xl:text-9xl font-extrabold text-white mb-6 tracking-tight drop-shadow-[0_8px_32px_rgba(0,0,0,0.8)] px-2">
+            <h1 className="text-5xl sm:text-6xl md:text-8xl lg:text-9xl xl:text-9xl font-extrabold text-white mb-6 tracking-tight drop-shadow-[0_8px_32px_rgba(0,0,0,0.8)] px-2">
               <span className="bg-gradient-to-r from-white via-blue-100 to-white bg-clip-text text-transparent">
                 नवdrishti
               </span>
             </h1>
-            <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl xl:text-4xl text-white/95 mb-10 drop-shadow-[0_4px_16px_rgba(0,0,0,0.7)] max-w-5xl mx-auto leading-relaxed font-medium px-6">
+            <p className="text-xl sm:text-2xl md:text-3xl lg:text-4xl xl:text-5xl text-white/95 mb-10 drop-shadow-[0_4px_16px_rgba(0,0,0,0.7)] max-w-5xl mx-auto leading-relaxed font-medium px-6">
               <span className="block sm:hidden text-center leading-snug">Empowering Communities<br />Through Business Literacy</span>
               <span className="hidden sm:block whitespace-nowrap">Empowering Communities Through Business Literacy</span>
             </p>
@@ -290,7 +290,7 @@ export default function HomePage() {
             {/* Real-time Stats Counter */}
             <div className="grid grid-cols-3 gap-2 sm:gap-4 md:gap-8 mb-12 px-4">
               <div className="text-center">
-                <div className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-blue-400 mb-1 sm:mb-2">
+                <div className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-blue-400 mb-1 sm:mb-2">
                   {statsLoading || statsError ? (
                     <div className="relative overflow-hidden">
                       <div className="h-8 sm:h-12 md:h-14 w-16 sm:w-24 md:w-32 mx-auto bg-blue-400/10 rounded-xl flex items-center justify-center">
@@ -305,7 +305,7 @@ export default function HomePage() {
                     `${stats.activeUsers.toLocaleString()}+`
                   )}
                 </div>
-                <div className="text-white/70 text-xs sm:text-sm uppercase tracking-wide">
+                <div className="text-white/70 text-base sm:text-lg uppercase tracking-wide">
                   {statsLoading || statsError ? (
                     <div className="relative overflow-hidden mt-1 sm:mt-2">
                       <div className="h-3 sm:h-4 w-12 sm:w-16 md:w-20 mx-auto bg-gray-400/10 rounded-lg flex items-center justify-center">
@@ -321,7 +321,7 @@ export default function HomePage() {
                 </div>
               </div>
               <div className="text-center">
-                <div className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-purple-400 mb-1 sm:mb-2">
+                <div className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-purple-400 mb-1 sm:mb-2">
                   {statsLoading || statsError ? (
                     <div className="relative overflow-hidden">
                       <div className="h-8 sm:h-12 md:h-14 w-16 sm:w-24 md:w-32 mx-auto bg-purple-400/10 rounded-xl flex items-center justify-center">
@@ -336,7 +336,7 @@ export default function HomePage() {
                     `${stats.partnerCompanies.toLocaleString()}+`
                   )}
                 </div>
-                <div className="text-white/70 text-xs sm:text-sm uppercase tracking-wide">
+                <div className="text-white/70 text-base sm:text-lg uppercase tracking-wide">
                   {statsLoading || statsError ? (
                     <div className="relative overflow-hidden mt-1 sm:mt-2">
                       <div className="h-3 sm:h-4 w-12 sm:w-16 md:w-18 mx-auto bg-gray-400/10 rounded-lg flex items-center justify-center">
@@ -349,7 +349,7 @@ export default function HomePage() {
                 </div>
               </div>
               <div className="text-center">
-                <div className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-teal-400 mb-1 sm:mb-2">
+                <div className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-teal-400 mb-1 sm:mb-2">
                   {statsLoading || statsError ? (
                     <div className="relative overflow-hidden">
                       <div className="h-8 sm:h-12 md:h-14 w-16 sm:w-24 md:w-32 mx-auto bg-teal-400/10 rounded-xl flex items-center justify-center">
@@ -364,7 +364,7 @@ export default function HomePage() {
                     `${stats.partnerNGOs.toLocaleString()}+`
                   )}
                 </div>
-                <div className="text-white/70 text-xs sm:text-sm uppercase tracking-wide">
+                <div className="text-white/70 text-base sm:text-lg uppercase tracking-wide">
                   {statsLoading || statsError ? (
                     <div className="relative overflow-hidden mt-1 sm:mt-2">
                       <div className="h-3 sm:h-4 w-12 sm:w-16 md:w-24 mx-auto bg-gray-400/10 rounded-lg flex items-center justify-center">
@@ -385,7 +385,7 @@ export default function HomePage() {
             <div className="hidden sm:flex flex-col sm:flex-row gap-4 justify-center mt-8">
               <Link href="/home" className="group">
                 <div 
-                  className="flex justify-center items-center bg-gray-800/80 backdrop-blur-md shadow-xl text-gray-200 hover:text-white transition-all duration-300 hover:bg-gray-700/80 cursor-pointer"
+                  className="flex justify-center items-center bg-gray-800/80 backdrop-blur-md shadow-xl text-gray-200 hover:text-white transition-all duration-300 hover:bg-gray-700/80 cursor-pointer border border-gray-800 hover:border-gray-700"
                   style={{ 
                     padding: '1.25rem 2.5rem', 
                     minWidth: '200px',
