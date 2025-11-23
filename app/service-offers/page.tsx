@@ -192,7 +192,7 @@ export default function ServiceOffersPage() {
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Service Offers</h1>
             <p className="text-muted-foreground">
-              Services offered by NGOs for individuals and companies
+              Freelancing opportunities offered by NGOs - Apply to get hired for projects and services
             </p>
           </div>
         </div>

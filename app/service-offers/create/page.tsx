@@ -282,6 +282,24 @@ export default function CreateServiceOfferPage() {
       return
     }
 
+    if (formData.skills_required.length === 0) {
+      toast({
+        title: "Validation Error",
+        description: "Please add at least one skill your team can provide",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (formData.invited_individuals.length === 0) {
+      toast({
+        title: "Validation Error",
+        description: "Please assign at least one team member to work on projects",
+        variant: "destructive",
+      })
+      return
+    }
+
     setLoading(true)
 
     try {
@@ -350,7 +368,7 @@ export default function CreateServiceOfferPage() {
             Back to Service Offers
           </Link>
           <h1 className="text-3xl font-bold text-gray-900">Create Service Offer</h1>
-          <p className="text-gray-600 mt-2">Create a comprehensive job opportunity for individuals and companies</p>
+          <p className="text-gray-600 mt-2">Offer your NGO's services to companies and individuals who need them</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-8">
@@ -364,23 +382,23 @@ export default function CreateServiceOfferPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <Label htmlFor="title">Job Title *</Label>
+                <Label htmlFor="title">Service Title *</Label>
                 <Input
                   id="title"
                   value={formData.title}
                   onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
-                  placeholder="e.g., Community Health Worker, Education Coordinator"
+                  placeholder="e.g., Community Health Services, Education & Training, Legal Documentation"
                   required
                 />
               </div>
 
               <div>
-                <Label htmlFor="description">Job Description *</Label>
+                <Label htmlFor="description">Service Description *</Label>
                 <Textarea
                   id="description"
                   value={formData.description}
                   onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                  placeholder="Describe the role, responsibilities, and what you're looking for..."
+                  placeholder="Describe what services your NGO can provide, expertise areas, and value proposition..."
                   rows={4}
                   required
                 />
@@ -484,13 +502,13 @@ export default function CreateServiceOfferPage() {
             <CardHeader>
               <CardTitle className="flex items-center">
                 <DollarSign className="mr-2" size={20} />
-                Wages & Compensation
+                Service Pricing
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <Label htmlFor="min_wage">Minimum Amount (₹)</Label>
+                  <Label htmlFor="min_wage">Minimum Rate (₹)</Label>
                   <Input
                     id="min_wage"
                     type="number"
@@ -503,7 +521,7 @@ export default function CreateServiceOfferPage() {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="max_wage">Maximum Amount (₹)</Label>
+                  <Label htmlFor="max_wage">Maximum Rate (₹)</Label>
                   <Input
                     id="max_wage"
                     type="number"
@@ -547,28 +565,7 @@ export default function CreateServiceOfferPage() {
                     wage_info: { ...prev.wage_info, negotiable: checked as boolean }
                   }))}
                 />
-                <Label htmlFor="negotiable">Salary is negotiable</Label>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Benefits */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Benefits & Perks</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {commonBenefits.map((benefit) => (
-                  <div key={benefit} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={benefit}
-                      checked={formData.benefits.includes(benefit)}
-                      onCheckedChange={() => handleBenefitToggle(benefit)}
-                    />
-                    <Label htmlFor={benefit} className="text-sm">{benefit}</Label>
-                  </div>
-                ))}
+                <Label htmlFor="negotiable">Pricing is negotiable</Label>
               </div>
             </CardContent>
           </Card>
@@ -576,33 +573,26 @@ export default function CreateServiceOfferPage() {
           {/* Experience Requirements */}
           <Card>
             <CardHeader>
-              <CardTitle>Experience & Skills Required</CardTitle>
+              <CardTitle>Our Team Capabilities</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <Label htmlFor="experience_level">Experience Level</Label>
-                <Select
+                <Label htmlFor="team_capabilities">Team Experience & Capabilities</Label>
+                <Textarea
+                  id="team_capabilities"
                   value={formData.experience_requirements.level}
-                  onValueChange={(value) => setFormData(prev => ({
+                  onChange={(e) => setFormData(prev => ({
                     ...prev,
-                    experience_requirements: { ...prev.experience_requirements, level: value }
+                    experience_requirements: { ...prev.experience_requirements, level: e.target.value }
                   }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {experienceLevels.map((level) => (
-                      <SelectItem key={level.value} value={level.value}>
-                        {level.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  placeholder="Describe your team's experience, qualifications, certifications, and what makes them capable of delivering quality services..."
+                  rows={3}
+                />
               </div>
 
               <div>
-                <Label>Required Skills</Label>
+                <Label>Our Team Skills *</Label>
+                <p className="text-sm text-gray-600 mb-2">Add the skills and expertise your NGO team can provide</p>
                 <div className="flex flex-wrap gap-2 mb-2">
                   {formData.skills_required.map((skill) => (
                     <Badge key={skill} variant="secondary" className="pr-1">
@@ -633,6 +623,9 @@ export default function CreateServiceOfferPage() {
                     </Button>
                   ))}
                 </div>
+                {formData.skills_required.length === 0 && (
+                  <p className="text-sm text-red-500 mt-2">Please add at least one skill your team offers</p>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -729,17 +722,18 @@ export default function CreateServiceOfferPage() {
             <CardHeader>
               <CardTitle className="flex items-center">
                 <Users className="mr-2" size={20} />
-                Invite Specific Individuals (Optional)
+                Assign Team Members *
               </CardTitle>
+              <p className="text-sm text-gray-600">Select individuals from your NGO who will work on projects when hired</p>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <Label htmlFor="search_individuals">Search Individuals</Label>
+                <Label htmlFor="search_individuals">Search Team Members</Label>
                 <Input
                   id="search_individuals"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Search by name or email..."
+                  placeholder="Search for individuals to add to your service team..."
                 />
               </div>
 
@@ -761,13 +755,17 @@ export default function CreateServiceOfferPage() {
                 ))}
               </div>
 
-              {formData.invited_individuals.length > 0 && (
-                <div>
-                  <p className="text-sm text-gray-600">
-                    {formData.invited_individuals.length} individual(s) will be invited to apply
+              <div>
+                {formData.invited_individuals.length > 0 ? (
+                  <p className="text-sm text-green-600">
+                    ✓ {formData.invited_individuals.length} team member(s) assigned to this service
                   </p>
-                </div>
-              )}
+                ) : (
+                  <p className="text-sm text-red-500">
+                    Please assign at least one team member who will work on projects
+                  </p>
+                )}
+              </div>
             </CardContent>
           </Card>
 
