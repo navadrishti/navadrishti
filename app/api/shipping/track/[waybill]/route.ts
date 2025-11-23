@@ -5,12 +5,12 @@ const DELHIVERY_BASE_URL = process.env.DELHIVERY_BASE_URL || 'https://track.delh
 const DELHIVERY_TOKEN = process.env.DELHIVERY_TOKEN;
 
 interface RouteParams {
-  params: { waybill: string }
+  params: Promise<{ waybill: string }>
 }
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
-    const { waybill } = params;
+    const { waybill } = await params;
 
     if (!DELHIVERY_TOKEN) {
       return Response.json({ error: 'Delhivery API not configured' }, { status: 503 });
@@ -95,7 +95,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
-    const { waybill } = params;
+    const { waybill } = await params;
 
     // This endpoint can be used for webhook updates from Delhivery
     const trackingUpdate = await request.json();

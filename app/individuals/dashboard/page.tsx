@@ -31,6 +31,8 @@ export default function IndividualDashboard() {
   const [loadingListings, setLoadingListings] = useState(true);
   const [cancelingOrder, setCancelingOrder] = useState<string | null>(null);
   const [deletingListing, setDeletingListing] = useState<number | null>(null);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
 
   // Helper function to ensure numbers are valid
   const safeNumber = (value: any, defaultValue: number = 0): number => {
@@ -88,14 +90,11 @@ export default function IndividualDashboard() {
 
   // Handle order cancellation
   const handleCancelOrder = async (orderId: number, orderNumber: string) => {
-    if (!confirm(`Are you sure you want to cancel order #${orderNumber}? This action cannot be undone.`)) {
-      return;
-    }
 
     try {
       setCancelingOrder(orderNumber);
       const token = localStorage.getItem('token');
-      const response = await fetch(`/api/orders/${orderId}`, {
+      const response = await fetch(`/api/orders/${orderNumber}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -111,12 +110,15 @@ export default function IndividualDashboard() {
 
       if (data.success) {
         fetchOrders(); // Refresh orders
-        alert('Order cancelled successfully!');
+        setSuccessMessage('Order cancelled successfully!');
+        setTimeout(() => setSuccessMessage(''), 5000);
       } else {
-        alert('Failed to cancel order: ' + (data.error || 'Unknown error'));
+        setErrorMessage('Failed to cancel order: ' + (data.error || 'Unknown error'));
+        setTimeout(() => setErrorMessage(''), 5000);
       }
     } catch (err) {
-      alert('Error cancelling order. Please try again.');
+      setErrorMessage('Error cancelling order. Please try again.');
+      setTimeout(() => setErrorMessage(''), 5000);
       console.error('Error:', err);
     } finally {
       setCancelingOrder(null);
@@ -225,6 +227,16 @@ export default function IndividualDashboard() {
                 <p className="text-gray-500 mt-1">
                   Manage your volunteering, services, and marketplace activities
                 </p>
+                {successMessage && (
+                  <div className="mt-3 p-3 bg-green-100 border border-green-400 text-green-700 rounded text-sm">
+                    {successMessage}
+                  </div>
+                )}
+                {errorMessage && (
+                  <div className="mt-3 p-3 bg-red-100 border border-red-400 text-red-700 rounded text-sm">
+                    {errorMessage}
+                  </div>
+                )}
               </div>
               <div className="flex flex-col gap-2 sm:flex-row">
                 <Link href="/service-requests">
@@ -340,20 +352,8 @@ export default function IndividualDashboard() {
                             />
                           </div>
                         </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-500">Skills</p>
-                          <p>{(user as any)?.profile_data?.skills || (user as any)?.profile?.skills || 'Skills not set'}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-500">Interests</p>
-                          <p>{(user as any)?.profile_data?.interests || (user as any)?.profile?.interests || 'Interests not set'}</p>
-                        </div>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                        <div>
-                          <p className="text-sm font-medium text-gray-500">Bio</p>
-                          <p>{user?.bio || 'Bio not set'}</p>
-                        </div>
+                      <div className="grid grid-cols-1 md:grid-cols-1 gap-4 mt-4">
                         <div>
                           <p className="text-sm font-medium text-gray-500">Joined</p>
                           <p>{(user as any)?.created_at ? new Date((user as any).created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long' }) : 'Join date not available'}</p>

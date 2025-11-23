@@ -4,9 +4,12 @@ import { verifyToken } from '@/lib/auth';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { orderNumber: string } }
+  { params }: { params: Promise<{ orderNumber: string }> }
 ) {
   try {
+    // Await params as required by Next.js 15
+    const { orderNumber } = await params;
+    
     // Get authenticated user
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -23,8 +26,6 @@ export async function GET(
     if (!userId || typeof userId !== 'number') {
       return Response.json({ error: 'Invalid user ID in token' }, { status: 401 });
     }
-
-    const { orderNumber } = params;
 
     // Get order by order number
     const order = await db.orders.getById(orderNumber);
@@ -94,9 +95,12 @@ export async function GET(
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { orderNumber: string } }
+  { params }: { params: Promise<{ orderNumber: string }> }
 ) {
   try {
+    // Await params as required by Next.js 15
+    const { orderNumber } = await params;
+    
     // Get authenticated user
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -110,7 +114,6 @@ export async function PATCH(
     }
 
     const userId = payload.id;
-    const { orderNumber } = params;
     const body = await request.json();
 
     // Get order first
