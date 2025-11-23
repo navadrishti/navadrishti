@@ -21,8 +21,10 @@ const updateProfileSchema = z.object({
   location: z.string().optional(),
   timezone: z.string().optional(),
   experience: z.string().optional(),
-  proof_of_work: z.array(z.string().url()).optional(),
-  resume_url: z.string().url().optional()
+  proof_of_work: z.array(z.string()).optional(),
+  resume_url: z.string().optional(),
+  skills: z.string().optional(),
+  interests: z.string().optional()
 });
 
 export async function POST(request: NextRequest) {
@@ -134,11 +136,13 @@ export async function PUT(request: NextRequest) {
   try {
     // Get authenticated user
     const authHeader = request.headers.get('authorization');
+    
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
     const token = authHeader.substring(7);
+    
     const payload = verifyToken(token);
     if (!payload) {
       return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
@@ -147,15 +151,44 @@ export async function PUT(request: NextRequest) {
     const userId = payload.id;
     
     const body = await request.json();
+    
     const validationResult = updateProfileSchema.safeParse(body);
     
     if (!validationResult.success) {
+      console.error('Validation failed:', validationResult.error.errors);
       return NextResponse.json({ 
-        error: validationResult.error.errors[0].message 
+        error: validationResult.error.errors[0].message,
+        details: validationResult.error.errors
       }, { status: 400 });
     }
     
     const updateData = validationResult.data;
+    
+    // Custom validation for resume_url - must be valid URL if not empty
+    if (updateData.resume_url && updateData.resume_url.trim() !== '') {
+      try {
+        new URL(updateData.resume_url);
+      } catch {
+        return NextResponse.json({ 
+          error: 'Resume URL must be a valid URL' 
+        }, { status: 400 });
+      }
+    }
+    
+    // Custom validation for proof_of_work - all URLs must be valid
+    if (updateData.proof_of_work && Array.isArray(updateData.proof_of_work)) {
+      for (const url of updateData.proof_of_work) {
+        if (url && url.trim() !== '') {
+          try {
+            new URL(url);
+          } catch {
+            return NextResponse.json({ 
+              error: `Invalid proof of work URL: ${url}` 
+            }, { status: 400 });
+          }
+        }
+      }
+    }
     
     // Remove undefined values
     const cleanUpdateData = Object.fromEntries(
@@ -172,12 +205,65 @@ export async function PUT(request: NextRequest) {
     // Add updated timestamp
     cleanUpdateData.updated_at = new Date().toISOString();
     
+    // Get current profile_data to merge with new data
+    
+    // First try with just profile_data
+    let { data: currentUser, error: fetchError } = await supabase
+      .from('users')
+      .select('profile_data')
+      .eq('id', userId)
+      .single();
+
+    if (fetchError) {
+      // Try with just id to test basic access
+      const { data: testUser, error: testError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('id', userId)
+        .single();
+        
+      if (testError) {
+        return NextResponse.json(
+          { error: 'Failed to access user data' },
+          { status: 500 }
+        );
+      }
+      
+      currentUser = { profile_data: {} };
+    }
+
+
+
+
+
+    // Separate profile_data fields from direct user fields
+    const { proof_of_work, resume_url, skills, interests, experience, ...directUserFields } = cleanUpdateData;
+    
+    // Prepare profile_data update
+    const currentProfileData = currentUser?.profile_data || {};
+    const updatedProfileData = { ...currentProfileData };
+    
+    // Only update profile_data fields that were provided
+    if (proof_of_work !== undefined) updatedProfileData.proof_of_work = proof_of_work;
+    if (resume_url !== undefined) updatedProfileData.resume_url = resume_url;
+    if (skills !== undefined) updatedProfileData.skills = skills;
+    if (interests !== undefined) updatedProfileData.interests = interests;
+    if (experience !== undefined) updatedProfileData.experience = experience;
+    
+    // Prepare final update data
+    const finalUpdateData = {
+      ...directUserFields,
+      profile_data: updatedProfileData,
+      updated_at: new Date().toISOString()
+    };
+    
     // Update the user's profile in the database
+    
     const { data, error } = await supabase
       .from('users')
-      .update(cleanUpdateData)
+      .update(finalUpdateData)
       .eq('id', userId)
-      .select('id, email, name, user_type, profile_image, city, state_province, pincode, country, phone, bio');
+      .select('id, email, name, user_type, profile_image, city, state_province, pincode, country, phone, profile_data, location, timezone');
 
     if (error) {
       console.error('Error updating profile:', error);
@@ -194,18 +280,32 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    console.log(`✅ Profile updated successfully for user: ${data[0].email}`);
+
+
+    // Format response to include profile_data fields at the top level for compatibility
+    const user = data[0];
+    const profileData = user.profile_data || {};
+    
+    const formattedUser = {
+      ...user,
+      proof_of_work: profileData.proof_of_work || [],
+      resume_url: profileData.resume_url || '',
+      skills: profileData.skills || '',
+      interests: profileData.interests || '',
+      experience: profileData.experience || ''
+    };
 
     return NextResponse.json({ 
       success: true, 
       message: 'Profile updated successfully',
-      user: data[0]
+      user: formattedUser
     });
 
   } catch (error) {
     console.error('Error in profile update API (PUT):', error);
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }

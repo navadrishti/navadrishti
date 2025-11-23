@@ -9,6 +9,11 @@ const signupSchema = z.object({
   password: z.string().min(8, 'Password must be at least 8 characters'),
   name: z.string().min(2, 'Name must be at least 2 characters'),
   user_type: z.enum(['individual', 'ngo', 'company']),
+  phone: z.string().optional(),
+  city: z.string().optional(),
+  state_province: z.string().optional(),
+  pincode: z.string().optional(),
+  country: z.string().optional(),
   profile_data: z.record(z.any()).optional()
 });
 
@@ -22,7 +27,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: validationResult.error.errors }, { status: 400 });
     }
     
-    const { email, password, name, user_type, profile_data } = validationResult.data;
+    const { email, password, name, user_type, phone, city, state_province, pincode, country, profile_data } = validationResult.data;
     
     // Check if user already exists
     const existingUser = await db.users.findByEmail(email);
@@ -34,21 +39,21 @@ export async function POST(req: NextRequest) {
     // Hash password
     const hashedPassword = await hashPassword(password);
     
-    // Create user
+    // Create user with profile data
     const userData = {
       email,
       password: hashedPassword,
       name,
-      user_type
+      user_type,
+      phone,
+      city,
+      state_province,
+      pincode,
+      country,
+      profile_data: profile_data || {}
     };
     
     const newUser = await db.users.create(userData);
-    
-    // Add profile data if provided (skip for now, can be added to user_profiles table later)
-    if (profile_data && newUser.id) {
-      // Note: userProfiles helper not implemented yet, can be added if needed
-      console.log('Profile data provided but not stored:', profile_data);
-    }
     
     // Generate JWT token with verification status
     const user = {
@@ -73,7 +78,8 @@ export async function POST(req: NextRequest) {
         user_type,
         verification_status: 'unverified',
         email_verified: false,
-        phone_verified: false
+        phone_verified: false,
+        profile_data: newUser.profile_data || {}
       },
       token
     }, { status: 201 });
