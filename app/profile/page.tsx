@@ -234,11 +234,11 @@ export default function ProfilePage() {
         bio: freshUser?.bio || '',
         phone: freshUser?.phone || '',
         address: '',
-        proof_of_work: [],
-        resume_url: '',
-        portfolio: [],
-        experience: '',
-        website: ''
+        proof_of_work: freshUser?.proof_of_work || [],
+        resume_url: freshUser?.resume_url || '',
+        portfolio: freshUser?.portfolio || [],
+        experience: freshUser?.experience || '',
+        website: freshUser?.website || ''
       });
       
       // Load location fields from fresh user data
@@ -249,11 +249,11 @@ export default function ProfilePage() {
       setPhone(freshUser?.phone || '');
       setBio(freshUser?.bio || '');
       
-      // Load additional profile fields from profile_data
+      // Load additional profile fields from profile_data or direct fields
       const userProfile = freshUser?.profile_data || {};
-      setExperience(userProfile.experience || '');
-      setProofOfWorkUrls(userProfile.work_photos || userProfile.proof_of_work || []);
-      setResumeUrl(userProfile.resume_url || '');
+      setExperience(userProfile.experience || freshUser?.experience || '');
+      setProofOfWorkUrls(userProfile.work_photos || userProfile.proof_of_work || freshUser?.proof_of_work || []);
+      setResumeUrl(userProfile.resume_url || freshUser?.resume_url || '');
       setRegistrationNumber(userProfile.registration_number || '');
       setFoundedYear(userProfile.founded_year || '');
       setFocusAreas(userProfile.focus_areas || '');
@@ -483,6 +483,8 @@ export default function ProfilePage() {
         if (response.ok) {
           const result = await response.json();
           newResumeUrl = result.data.url;
+          // Update local state immediately after successful upload
+          setResumeUrl(newResumeUrl);
         } else {
           const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
           console.error('Resume upload error:', errorData);
@@ -494,27 +496,66 @@ export default function ProfilePage() {
       const allProofOfWorkUrls = [...proofOfWorkUrls, ...uploadedPhotos];
 
       // Update user profile with new proof of work
-      const profileData = {
-        userId: user.id,
-        profile_data: {
-          work_photos: allProofOfWorkUrls,
-          resume_url: newResumeUrl,
-        }
-      };
+      const profileData: any = {};
+      
+      // Always include proof_of_work (even if empty array)
+      profileData.proof_of_work = allProofOfWorkUrls;
+      
+      // Always include resume_url (even if empty string for clearing)
+      profileData.resume_url = newResumeUrl || '';
 
-      const response = await fetch('/api/profile/update', {
-        method: 'POST',
+      console.log('Sending profile data:', profileData);
+      console.log('Token exists:', !!token);
+      console.log('Token preview:', token?.substring(0, 20) + '...');
+
+      const url = '/api/profile/update';
+      console.log('Making request to:', url);
+
+      const response = await fetch(url, {
+        method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify(profileData),
       });
+      
+      console.log('Response received:', {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok
+      });
 
       if (!response.ok) {
-        throw new Error('Failed to update proof of work');
+        console.error('Response status:', response.status);
+        console.error('Response headers:', Object.fromEntries(response.headers.entries()));
+        
+        const responseText = await response.text();
+        console.error('Response text:', responseText);
+        
+        let errorData;
+        try {
+          errorData = JSON.parse(responseText);
+        } catch {
+          errorData = { error: responseText || 'Unknown error' };
+        }
+        
+        console.error('API Error Response:', errorData);
+        throw new Error(errorData.error || `Failed to update proof of work: ${response.status}`);
       }
 
+      // Get the response data to update local state
+      const responseData = await response.json();
+      
       toast.success('Proof of work updated successfully!');
+
+      // Update local state with saved data
+      if (responseData.user?.profile_data?.resume_url) {
+        setResumeUrl(responseData.user.profile_data.resume_url);
+      }
+      if (responseData.user?.profile_data?.proof_of_work) {
+        setProofOfWorkUrls(responseData.user.profile_data.proof_of_work);
+      }
 
       // Reset form state and refresh profile
       setProofOfWork([]);
@@ -855,7 +896,6 @@ export default function ProfilePage() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div>
-                      <Label>Proof of Work Photos</Label>
                       <div className="space-y-4">
                         {/* Current work photos display */}
                         {proofOfWorkUrls.length > 0 && (
@@ -875,9 +915,9 @@ export default function ProfilePage() {
                                       const newUrls = proofOfWorkUrls.filter((_, i) => i !== index);
                                       setProofOfWorkUrls(newUrls);
                                     }}
-                                    className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 shadow-md"
                                   >
-                                    <span className="text-xs">×</span>
+                                    <span className="text-sm font-medium leading-none">×</span>
                                   </button>
                                   <div className="absolute bottom-1 left-1 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
                                     {index + 1}
@@ -888,20 +928,89 @@ export default function ProfilePage() {
                           </div>
                         )}
                         
-                        {/* New work photos upload */}
+                        {/* Download current resume if exists */}
+                        {resumeUrl && (
+                          <div className="mb-4">
+                            <p className="text-sm text-gray-600 mb-2">Current Resume:</p>
+                            <button
+                              onClick={async () => {
+                                try {
+                                  // Fetch the file and create blob for proper download
+                                  const response = await fetch(resumeUrl);
+                                  const blob = await response.blob();
+                                  
+                                  // Determine file extension from content type or URL
+                                  let extension = '.pdf';
+                                  const contentType = response.headers.get('content-type');
+                                  if (contentType?.includes('pdf')) extension = '.pdf';
+                                  else if (contentType?.includes('msword') || contentType?.includes('wordprocessingml')) extension = '.doc';
+                                  else if (resumeUrl.toLowerCase().includes('.doc')) extension = '.doc';
+                                  else if (resumeUrl.toLowerCase().includes('.docx')) extension = '.docx';
+                                  
+                                  // Create download link with proper filename and extension
+                                  const url = window.URL.createObjectURL(blob);
+                                  const link = document.createElement('a');
+                                  link.href = url;
+                                  link.download = `resume-${user?.name?.replace(/[^a-zA-Z0-9]/g, '-') || 'user'}${extension}`;
+                                  document.body.appendChild(link);
+                                  link.click();
+                                  
+                                  // Cleanup
+                                  document.body.removeChild(link);
+                                  window.URL.revokeObjectURL(url);
+                                } catch (error) {
+                                  console.error('Download failed:', error);
+                                  // Fallback to simple download
+                                  window.open(resumeUrl, '_blank');
+                                }
+                              }}
+                              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors duration-200 shadow-sm hover:shadow-md"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                              Download Resume
+                            </button>
+                          </div>
+                        )}
+
+                        {/* New work photos and resume upload */}
                         <div>
-                          <p className="text-sm font-medium mb-2">Add new work photos:</p>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            multiple
-                            onChange={(e) => {
-                              const files = Array.from(e.target.files || []);
-                              setProofOfWork(files);
-                            }}
-                            className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100"
-                          />
+                          <p className="text-sm font-medium mb-2">Add new work photos and resume:</p>
+                          <div className="space-y-3">
+                            <div>
+                              <label className="text-xs text-gray-600 mb-1 block">Work Photos:</label>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                multiple
+                                onChange={(e) => {
+                                  const files = Array.from(e.target.files || []);
+                                  setProofOfWork(files);
+                                }}
+                                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-gray-600 mb-1 block">Resume:</label>
+                              <input
+                                type="file"
+                                accept=".pdf,.doc,.docx"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0] || null;
+                                  setResume(file);
+                                }}
+                                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                              />
+                            </div>
+                          </div>
                           
+                          
+                          {/* Preview of selected resume */}
+                          {resume && (
+                            <p className="text-sm text-blue-600 mt-2">✓ New resume selected: {resume.name}</p>
+                          )}
+
                           {/* Preview of new files */}
                           {proofOfWork.length > 0 && (
                             <div className="mt-3">
@@ -935,34 +1044,7 @@ export default function ProfilePage() {
                         </div>
                       </div>
                     </div>
-                    
-                    <div>
-                      <Label>Resume</Label>
-                      <div className="space-y-2">
-                        <input
-                          type="file"
-                          accept=".pdf,.doc,.docx"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0] || null;
-                            setResume(file);
-                          }}
-                          className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                        />
-                        {resumeUrl && (
-                          <a 
-                            href={resumeUrl} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="text-blue-600 hover:text-blue-700 underline text-sm block"
-                          >
-                            View Current Resume
-                          </a>
-                        )}
-                        {resume && (
-                          <p className="text-sm text-green-600">✓ New resume selected: {resume.name}</p>
-                        )}
-                      </div>
-                    </div>
+
                     
                     <Button onClick={handleSaveProofOfWork} disabled={uploading}>
                       {uploading ? 'Uploading...' : 'Save Proof of Work'}
