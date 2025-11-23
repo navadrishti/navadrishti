@@ -46,6 +46,7 @@ export default function OrdersPage() {
   const [activeTab, setActiveTab] = useState('all');
   const [error, setError] = useState('');
   const [cancelingOrder, setCancelingOrder] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState('');
 
   useEffect(() => {
     fetchOrders();
@@ -98,13 +99,10 @@ export default function OrdersPage() {
   };
 
   const handleCancelOrder = async (orderId: number, orderNumber: string) => {
-    if (!confirm(`Are you sure you want to cancel order #${orderNumber}? This action cannot be undone.`)) {
-      return;
-    }
 
     try {
       setCancelingOrder(orderNumber);
-      const response = await fetch(`/api/orders/${orderId}`, {
+      const response = await fetch(`/api/orders/${orderNumber}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -121,12 +119,15 @@ export default function OrdersPage() {
       if (data.success) {
         // Refresh orders list
         fetchOrders();
-        alert('Order cancelled successfully!');
+        setSuccessMessage('Order cancelled successfully!');
+        setTimeout(() => setSuccessMessage(''), 5000);
       } else {
-        alert('Failed to cancel order: ' + (data.error || 'Unknown error'));
+        setError('Failed to cancel order: ' + (data.error || 'Unknown error'));
+        setTimeout(() => setError(''), 5000);
       }
     } catch (err) {
-      alert('Error cancelling order. Please try again.');
+      setError('Error cancelling order. Please try again.');
+      setTimeout(() => setError(''), 5000);
       console.error('Error:', err);
     } finally {
       setCancelingOrder(null);
@@ -277,6 +278,16 @@ export default function OrdersPage() {
           <p className="text-muted-foreground">
             Track and manage your orders
           </p>
+          {successMessage && (
+            <div className="mt-4 p-3 bg-green-100 border border-green-400 text-green-700 rounded">
+              {successMessage}
+            </div>
+          )}
+          {error && (
+            <div className="mt-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
+              {error}
+            </div>
+          )}
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">

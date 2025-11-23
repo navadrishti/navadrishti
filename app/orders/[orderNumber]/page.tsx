@@ -75,6 +75,7 @@ export default function OrderDetailsPage({ params }: PageProps) {
   const [order, setOrder] = useState<OrderDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
   useEffect(() => {
     if (params.orderNumber) {
@@ -165,7 +166,8 @@ export default function OrderDetailsPage({ params }: PageProps) {
 
       if (data.success) {
         fetchOrderDetails(); // Refresh order details
-        alert('Order cancelled successfully');
+        setSuccessMessage('Order cancelled successfully');
+        setTimeout(() => setSuccessMessage(''), 5000);
       } else {
         setError(data.error || 'Failed to cancel order');
       }
@@ -200,7 +202,8 @@ export default function OrderDetailsPage({ params }: PageProps) {
 
       if (data.success) {
         fetchOrderDetails(); // Refresh order details
-        alert(`Order refunded successfully. Refund amount: ₹${data.refund_amount}`);
+        setSuccessMessage(`Order refunded successfully. Refund amount: ₹${data.refund_amount}`);
+        setTimeout(() => setSuccessMessage(''), 5000);
       } else {
         setError(data.error || 'Failed to refund order');
       }
@@ -260,6 +263,18 @@ export default function OrderDetailsPage({ params }: PageProps) {
             <p className="text-muted-foreground">Placed on {formatDate(order.created_at)}</p>
           </div>
         </div>
+        
+        {/* Success and Error Messages */}
+        {successMessage && (
+          <div className="mb-4 p-3 bg-green-100 border border-green-400 text-green-700 rounded">
+            {successMessage}
+          </div>
+        )}
+        {error && (
+          <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
+            {error}
+          </div>
+        )}
 
         {/* Order Status */}
         <Card className="mb-6">

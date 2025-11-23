@@ -4,7 +4,7 @@ import { verifyToken } from '@/lib/auth';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { orderNumber: string } }
+  { params }: { params: Promise<{ orderNumber: string }> }
 ) {
   try {
     // Get authenticated user
@@ -20,7 +20,7 @@ export async function POST(
     }
 
     const userId = payload.id;
-    const { orderNumber } = params;
+    const { orderNumber } = await params;
     const { reason } = await request.json();
 
     // Get order
