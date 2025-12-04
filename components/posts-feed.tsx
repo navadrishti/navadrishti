@@ -9,7 +9,6 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast as sonnerToast } from 'sonner';
 import { 
-  Heart, 
   MessageCircle, 
   Share2, 
   MapPin, 
@@ -21,6 +20,7 @@ import {
   Save,
   X
 } from 'lucide-react';
+import AnimatedHeart from '@/components/ui/animated-heart';
 import { VerificationBadge } from './verification-badge';
 import Image from 'next/image';
 import { formatDistanceToNow } from 'date-fns';
@@ -1154,25 +1154,19 @@ function PostCard({
         {/* Stats */}
         <div className="flex items-center justify-between pt-2 border-t">
           <div className="flex items-center gap-4">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => onInteraction(post.id, 'like')}
-              className={`flex items-center gap-2 transition-colors ${
-                isAuthenticated && post.user_interaction.has_liked 
-                  ? 'text-red-500 hover:text-red-600' 
-                  : 'text-muted-foreground hover:text-red-500'
-              }`}
-            >
-              <Heart 
-                className={`w-4 h-4 transition-all ${
-                  isAuthenticated && post.user_interaction.has_liked 
-                    ? 'fill-red-500 text-red-500' 
-                    : ''
-                }`} 
+            <div className="flex items-center gap-2">
+              <AnimatedHeart 
+                isLiked={Boolean(isAuthenticated && post.user_interaction.has_liked)}
+                onToggle={() => onInteraction(post.id, 'like')}
+                size={16}
+                className="cursor-pointer"
               />
-              <span className="text-xs font-medium">{post.stats.likes}</span>
-            </Button>
+              <span className={`text-xs font-medium transition-colors ${
+                isAuthenticated && post.user_interaction.has_liked 
+                  ? 'text-red-500' 
+                  : 'text-muted-foreground'
+              }`}>{post.stats.likes}</span>
+            </div>
 
             <Button
               size="sm"

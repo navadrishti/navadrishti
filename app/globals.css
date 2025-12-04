@@ -838,3 +838,121 @@ body {
     box-shadow: 0 0 0 0 rgba(0, 0, 0, 0);
   }
 }
+.heart-container {
+  --heart-color: rgb(255, 91, 137);
+  --heart-color-outline: rgb(156, 163, 175);
+  position: relative;
+  width: 50px;
+  height: 50px;
+  transition: transform 0.1s ease;
+}
+
+.heart-container:active {
+  transform: scale(0.95);
+}
+
+.heart-container .checkbox {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  z-index: 20;
+  cursor: pointer;
+}
+
+.heart-container .svg-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.heart-container .svg-outline {
+  fill: var(--heart-color-outline);
+  position: absolute;
+  transition: all 0.15s ease;
+  opacity: 1;
+}
+
+.heart-container .svg-filled {
+  fill: var(--heart-color);
+  position: absolute;
+  transform: scale(0);
+  opacity: 0;
+  transition: all 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.heart-container .svg-celebrate {
+  position: absolute;
+  stroke: var(--heart-color);
+  fill: var(--heart-color);
+  stroke-width: 2px;
+  transform: scale(0);
+  opacity: 0;
+  transition: all 0.3s ease;
+}
+
+/* Checked state - immediate response */
+.heart-container .checkbox:checked ~ .svg-container .svg-outline {
+  opacity: 0;
+  transform: scale(0.8);
+}
+
+.heart-container .checkbox:checked ~ .svg-container .svg-filled {
+  opacity: 1;
+  transform: scale(1);
+  animation: heartPop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.heart-container .checkbox:checked ~ .svg-container .svg-celebrate {
+  opacity: 1;
+  animation: celebrateAnimation 0.6s ease-out 0.1s;
+}
+
+/* Unchecked state - smooth transition back */
+.heart-container .checkbox:not(:checked) ~ .svg-container .svg-outline {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.heart-container .checkbox:not(:checked) ~ .svg-container .svg-filled {
+  opacity: 0;
+  transform: scale(0);
+}
+
+.heart-container .checkbox:not(:checked) ~ .svg-container .svg-celebrate {
+  opacity: 0;
+  transform: scale(0);
+}
+
+@keyframes heartPop {
+  0% {
+    transform: scale(0);
+  }
+  50% {
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes celebrateAnimation {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  15% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+  30% {
+    transform: scale(1.3);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
+  }
+}
