@@ -71,22 +71,6 @@ export async function proxy(request: NextRequest) {
 
   // API route permission checking
   if (pathname.startsWith('/api/')) {
-    // Only check permissions for endpoints that need organization verification
-    // Posts creation will be handled by the API route itself
-    
-    // Temporarily bypass middleware auth for service requests and offers - let API handle it
-    // if (pathname.startsWith('/api/service-offers') && request.method === 'POST') {
-    //   const user = await verifyAuthTokenEdge(request);
-    //   if (!hasBasicPermissionEdge(user, 'create_service_offer')) {
-    //     return NextResponse.json(
-    //       { 
-    //         error: 'Only verified NGOs can create service offers',
-    //         code: 'INSUFFICIENT_PERMISSIONS'
-    //       },
-    //       { status: 403 }
-    //     );
-    //   }
-    // } else 
     if (pathname.startsWith('/api/marketplace') && request.method === 'POST') {
       const user = await verifyAuthTokenEdge(request);
       if (!hasBasicPermissionEdge(user, 'create_marketplace')) {
