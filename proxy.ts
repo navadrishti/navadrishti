@@ -4,7 +4,7 @@ import { verifyAuthTokenEdge, hasBasicPermissionEdge } from '@/lib/edge-access-c
 // Rate limiting storage (in production, use Redis or database)
 const rateLimit = new Map<string, { count: number; resetTime: number }>();
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   // Security headers

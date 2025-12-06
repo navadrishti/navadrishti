@@ -1,8 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
   devIndicators: false,
   typescript: {
     ignoreBuildErrors: true,
@@ -44,31 +41,8 @@ const nextConfig = {
   },
   // Disable source maps in production
   productionBrowserSourceMaps: false,
-  // Fix process and other Node.js polyfills
-  webpack: (config, { dev, isServer }) => {
-    // Disable performance hints
-    config.performance = {
-      hints: false,
-    };
-    
-    if (!dev && !isServer) {
-      // Disable source maps in client production build
-      config.devtool = false;
-    }
-    
-    // Fix process is not defined error
-    if (!isServer) {
-      config.resolve.fallback = {
-        ...config.resolve.fallback,
-        fs: false,
-        net: false,
-        tls: false,
-        process: false,
-      };
-    }
-    
-    return config;
-  },
+  // Enable Turbopack with empty config to silence the warning
+  turbopack: {},
 }
 
 export default nextConfig
