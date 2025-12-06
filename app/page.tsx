@@ -672,70 +672,151 @@ export default function HomePage() {
                 </div>
               </div>
               
-              {/* Desktop Taskbar - Dark Theme with Realistic Icons */}
-              <div className="absolute bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-md border-t border-gray-700 px-4 py-2 flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  {/* App Icons - 4 Essential Apps */}
-                  <div className="flex space-x-3">
-                    {/* Microsoft Edge */}
-                    <div className="w-8 h-8 cursor-pointer hover:bg-white/10 rounded-sm p-1 transition-all duration-200">
-                      <svg className="w-full h-full" viewBox="0 0 24 24" fill="none">
-                        <circle cx="12" cy="12" r="11" fill="#0078D4"/>
-                        <path d="M6.5 12.5c0-3.5 2.8-6.3 6.3-6.3 1.8 0 3.4.8 4.5 2" stroke="white" strokeWidth="2" fill="none"/>
-                        <path d="M17.5 11.5c0 3.5-2.8 6.3-6.3 6.3-1.8 0-3.4-.8-4.5-2" stroke="white" strokeWidth="2" fill="none"/>
-                      </svg>
-                    </div>
-                    
-                    {/* File Explorer */}
-                    <div className="w-8 h-8 cursor-pointer hover:bg-white/10 rounded-sm p-1 transition-all duration-200">
-                      <svg className="w-full h-full" viewBox="0 0 24 24" fill="none">
-                        <path d="M3 6h6l2 2h10c1 0 1 0 1 1v10c0 1 0 1-1 1H3V6z" fill="#FFB300"/>
-                        <path d="M3 9h18v10H3V9z" fill="#FFD54F"/>
-                        <path d="M9 6l2 2h10v1H3V6h6z" fill="#FFF176"/>
-                      </svg>
-                    </div>
-                    
-                    {/* Discord */}
-                    <div className="w-8 h-8 cursor-pointer hover:bg-white/10 rounded-sm p-1 transition-all duration-200">
-                      <svg className="w-full h-full" viewBox="0 0 24 24" fill="none">
-                        <rect width="24" height="24" fill="#5865F2" rx="4"/>
-                        <path d="M19.27 5.33C17.94 4.71 16.5 4.26 15 4a.09.09 0 0 0-.07.03c-.18.33-.39.76-.53 1.09a16.09 16.09 0 0 0-4.8 0c-.14-.34-.35-.76-.54-1.09-.01-.02-.04-.03-.07-.03-1.5.26-2.93.71-4.27 1.33-.01 0-.02.01-.03.02-2.72 4.07-3.47 8.03-3.1 11.95 0 .02.01.04.03.05 1.8 1.32 3.53 2.12 5.24 2.65.03.01.06 0 .07-.02.4-.55.76-1.13 1.07-1.74.02-.04 0-.08-.04-.09-.57-.22-1.11-.48-1.64-.78-.04-.02-.04-.08-.01-.11.11-.08.22-.17.33-.25.02-.02.05-.02.07-.01 3.44 1.57 7.15 1.57 10.55 0 .02-.01.05-.01.07.01.11.09.22.17.33.26.04.03.04.09-.01.11-.52.31-1.07.56-1.64.78-.04.01-.05.06-.04.09.32.61.68 1.19 1.07 1.74.03.01.06.02.09.01 1.72-.53 3.45-1.33 5.25-2.65.02-.01.03-.03.03-.05.44-4.53-.73-8.46-3.1-11.95-.01-.01-.02-.02-.04-.02zM8.52 14.91c-1.03 0-1.89-.95-1.89-2.12s.84-2.12 1.89-2.12c1.06 0 1.9.96 1.89 2.12 0 1.17-.84 2.12-1.89 2.12zm6.97 0c-1.03 0-1.89-.95-1.89-2.12s.84-2.12 1.89-2.12c1.06 0 1.9.96 1.89 2.12 0 1.17-.83 2.12-1.89 2.12z" fill="white"/>
-                      </svg>
-                    </div>
-                    
-                    {/* Steam */}
-                    <div className="w-8 h-8 cursor-pointer hover:bg-white/10 rounded-sm p-1 transition-all duration-200">
-                      <svg className="w-full h-full" viewBox="0 0 24 24" fill="none">
-                        <circle cx="12" cy="12" r="12" fill="#1b2838"/>
-                        <path d="M12 2C6.48 2 2 6.48 2 12c0 2.85 1.2 5.41 3.11 7.24l3.58-1.48c-.05-.3-.08-.61-.08-.93 0-2.21 1.79-4 4-4s4 1.79 4 4-1.79 4-4 4c-.22 0-.44-.02-.65-.06L8.76 22C9.77 21.68 10.84 21.5 12 21.5c5.52 0 10-4.48 10-10S17.52 2 12 2z" fill="#66c0f4"/>
-                        <circle cx="17" cy="7" r="2.5" fill="white"/>
-                        <circle cx="8.5" cy="15.5" r="3" fill="white"/>
-                        <circle cx="8.5" cy="15.5" r="1.5" fill="#1b2838"/>
-                      </svg>
-                    </div>
+              {/* Desktop Taskbar - Modern Windows 11 Style */}
+              <div className="absolute bottom-0 left-0 right-0 bg-gray-900/80 backdrop-blur-xl border-t border-gray-700/50 px-4 py-2.5 flex items-center justify-between shadow-2xl">
+                {/* Left Section - Start & Search */}
+                <div className="flex items-center space-x-4">
+                  {/* Windows Start Button */}
+                  <div className="w-10 h-10 cursor-pointer hover:bg-white/10 rounded-lg flex items-center justify-center transition-all duration-200 active:scale-95">
+                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none">
+                      <rect x="3" y="3" width="8" height="8" fill="#0078D4" rx="1"/>
+                      <rect x="13" y="3" width="8" height="8" fill="#0078D4" rx="1"/>
+                      <rect x="3" y="13" width="8" height="8" fill="#0078D4" rx="1"/>
+                      <rect x="13" y="13" width="8" height="8" fill="#0078D4" rx="1"/>
+                    </svg>
+                  </div>
+                  
+                  {/* Search Bar */}
+                  <div className="hidden md:flex items-center bg-gray-800/60 backdrop-blur-sm rounded-full px-4 py-2 min-w-[280px] hover:bg-gray-800/80 transition-colors cursor-text border border-gray-700/50">
+                    <svg className="w-4 h-4 text-gray-400 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                      <circle cx="11" cy="11" r="8" strokeWidth="2"/>
+                      <path d="M21 21l-4.35-4.35" strokeWidth="2" strokeLinecap="round"/>
+                    </svg>
+                    <span className="text-gray-400 text-sm">Search</span>
                   </div>
                 </div>
                 
-                {/* System Tray - Dark Theme */}
-                <div className="flex items-center space-x-3 text-gray-300 text-xs">
-                  <div className="cursor-pointer hover:bg-white/10 px-2 py-1 rounded transition-colors">
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+                {/* Center Section - Pinned Apps */}
+                <div className="flex items-center space-x-1 bg-gray-800/40 backdrop-blur-sm rounded-xl px-2 py-1.5 border border-gray-700/30">
+                  {/* Microsoft Edge */}
+                  <div className="group relative w-11 h-11 cursor-pointer hover:bg-white/10 rounded-lg flex items-center justify-center transition-all duration-200 active:scale-95">
+                    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none">
+                      <defs>
+                        <linearGradient id="edgeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                          <stop offset="0%" stopColor="#0078D4"/>
+                          <stop offset="100%" stopColor="#00BCF2"/>
+                        </linearGradient>
+                      </defs>
+                      <circle cx="12" cy="12" r="10" fill="url(#edgeGradient)"/>
+                      <path d="M7 12c0-2.8 2.2-5 5-5 1.4 0 2.6.5 3.5 1.4" stroke="white" strokeWidth="2.5" strokeLinecap="round" fill="none"/>
+                      <path d="M17 12c0 2.8-2.2 5-5 5-1.4 0-2.6-.5-3.5-1.4" stroke="white" strokeWidth="2.5" strokeLinecap="round" fill="none"/>
                     </svg>
+                    <div className="absolute -bottom-1 w-6 h-0.5 bg-blue-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"></div>
                   </div>
-                  <div className="cursor-pointer hover:bg-white/10 px-2 py-1 rounded transition-colors">
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.07 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"/>
+                  
+                  {/* File Explorer */}
+                  <div className="group relative w-11 h-11 cursor-pointer hover:bg-white/10 rounded-lg flex items-center justify-center transition-all duration-200 active:scale-95">
+                    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none">
+                      <defs>
+                        <linearGradient id="folderGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                          <stop offset="0%" stopColor="#FFB300"/>
+                          <stop offset="100%" stopColor="#FFC107"/>
+                        </linearGradient>
+                      </defs>
+                      <path d="M3 6h6l2 2h10c1.1 0 2 .9 2 2v10c0 1.1-.9 2-2 2H3c-1.1 0-2-.9-2-2V8c0-1.1.9-2 2-2z" fill="url(#folderGradient)"/>
+                      <path d="M3 9h18v11H3V9z" fill="#FFD54F" opacity="0.8"/>
                     </svg>
+                    <div className="absolute -bottom-1 w-6 h-0.5 bg-yellow-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"></div>
                   </div>
-                  <div className="cursor-pointer hover:bg-white/10 px-2 py-1 rounded transition-colors">
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M15.67 4H14V2c0-.55-.45-1-1-1s-1 .45-1 1v2H9.33C7.6 4 6.4 5.47 6.4 7.2v9.6c0 1.73 1.2 3.2 2.93 3.2h6.34c1.73 0 2.93-1.47 2.93-3.2V7.2C18.6 5.47 17.4 4 15.67 4z"/>
+                  
+                  {/* VS Code */}
+                  <div className="group relative w-11 h-11 cursor-pointer hover:bg-white/10 rounded-lg flex items-center justify-center transition-all duration-200 active:scale-95">
+                    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none">
+                      <defs>
+                        <linearGradient id="vscodeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                          <stop offset="0%" stopColor="#007ACC"/>
+                          <stop offset="100%" stopColor="#005A9E"/>
+                        </linearGradient>
+                      </defs>
+                      <rect width="24" height="24" rx="2" fill="url(#vscodeGradient)"/>
+                      <path d="M17 5l-11 7 11 7V5z" fill="white"/>
+                      <path d="M6 12l5-3v6l-5-3z" fill="white" opacity="0.7"/>
                     </svg>
+                    <div className="absolute -bottom-1 w-6 h-0.5 bg-blue-500 rounded-full"></div>
                   </div>
-                  <div className="border-l border-gray-600 pl-3 ml-2">
-                    <div className="text-white">2:30 PM</div>
-                    <div className="text-gray-400">11/14/2025</div>
+                  
+                  {/* Discord */}
+                  <div className="group relative w-11 h-11 cursor-pointer hover:bg-white/10 rounded-lg flex items-center justify-center transition-all duration-200 active:scale-95">
+                    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none">
+                      <rect width="24" height="24" fill="#5865F2" rx="5"/>
+                      <path d="M19.27 5.33C17.94 4.71 16.5 4.26 15 4a.09.09 0 0 0-.07.03c-.18.33-.39.76-.53 1.09a16.09 16.09 0 0 0-4.8 0c-.14-.34-.35-.76-.54-1.09-.01-.02-.04-.03-.07-.03-1.5.26-2.93.71-4.27 1.33-.01 0-.02.01-.03.02-2.72 4.07-3.47 8.03-3.1 11.95 0 .02.01.04.03.05 1.8 1.32 3.53 2.12 5.24 2.65.03.01.06 0 .07-.02.4-.55.76-1.13 1.07-1.74.02-.04 0-.08-.04-.09-.57-.22-1.11-.48-1.64-.78-.04-.02-.04-.08-.01-.11.11-.08.22-.17.33-.25.02-.02.05-.02.07-.01 3.44 1.57 7.15 1.57 10.55 0 .02-.01.05-.01.07.01.11.09.22.17.33.26.04.03.04.09-.01.11-.52.31-1.07.56-1.64.78-.04.01-.05.06-.04.09.32.61.68 1.19 1.07 1.74.03.01.06.02.09.01 1.72-.53 3.45-1.33 5.25-2.65.02-.01.03-.03.03-.05.44-4.53-.73-8.46-3.1-11.95-.01-.01-.02-.02-.04-.02zM8.52 14.91c-1.03 0-1.89-.95-1.89-2.12s.84-2.12 1.89-2.12c1.06 0 1.9.96 1.89 2.12 0 1.17-.84 2.12-1.89 2.12zm6.97 0c-1.03 0-1.89-.95-1.89-2.12s.84-2.12 1.89-2.12c1.06 0 1.9.96 1.89 2.12 0 1.17-.83 2.12-1.89 2.12z" fill="white"/>
+                    </svg>
+                    <div className="absolute -bottom-1 w-6 h-0.5 bg-indigo-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                  </div>
+                  
+                  {/* Chrome */}
+                  <div className="group relative w-11 h-11 cursor-pointer hover:bg-white/10 rounded-lg flex items-center justify-center transition-all duration-200 active:scale-95">
+                    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none">
+                      <circle cx="12" cy="12" r="10" fill="#DB4437"/>
+                      <circle cx="12" cy="12" r="7" fill="#F4B400"/>
+                      <circle cx="12" cy="12" r="4.5" fill="white"/>
+                      <circle cx="12" cy="12" r="3" fill="#4285F4"/>
+                      <path d="M12 2C6.48 2 2 6.48 2 12h6c0-2.21 1.79-4 4-4" fill="#0F9D58"/>
+                      <path d="M12 22c5.52 0 10-4.48 10-10h-6c0 2.21-1.79 4-4 4" fill="#F4B400"/>
+                    </svg>
+                    <div className="absolute -bottom-1 w-6 h-0.5 bg-red-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                  </div>
+                  
+                  {/* Spotify */}
+                  <div className="group relative w-11 h-11 cursor-pointer hover:bg-white/10 rounded-lg flex items-center justify-center transition-all duration-200 active:scale-95">
+                    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none">
+                      <circle cx="12" cy="12" r="10" fill="#1DB954"/>
+                      <path d="M17.5 10.5c-3.5-2-9-2.2-12.2-1.2-.4.1-.7-.2-.8-.5-.1-.4.2-.7.5-.8 3.7-1.1 9.7-.9 13.6 1.4.4.2.5.6.3.9-.2.4-.6.5-.9.3zm-.3 2.5c-.2.3-.5.4-.8.2-2.8-1.7-7-2.2-10.3-1.2-.4.1-.7-.1-.8-.4-.1-.4.1-.7.4-.8 3.7-1.1 8.2-.6 11.4 1.4.3.1.4.5.2.8zm-.7 2.4c-.1.2-.4.3-.6.2-2.4-1.5-5.4-1.8-9-.9-.3.1-.5-.1-.6-.4-.1-.3.1-.5.4-.6 3.9-1 7.2-.6 9.8 1.1.2.1.3.4.2.6z" fill="white"/>
+                    </svg>
+                    <div className="absolute -bottom-1 w-6 h-0.5 bg-green-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                  </div>
+                </div>
+                
+                {/* Right Section - System Tray */}
+                <div className="flex items-center space-x-3">
+                  {/* System Icons */}
+                  <div className="hidden lg:flex items-center space-x-2 text-gray-300">
+                    {/* WiFi */}
+                    <div className="cursor-pointer hover:bg-white/10 rounded-lg p-1.5 transition-all duration-200 active:scale-95">
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.07 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"/>
+                      </svg>
+                    </div>
+                    
+                    {/* Volume */}
+                    <div className="cursor-pointer hover:bg-white/10 rounded-lg p-1.5 transition-all duration-200 active:scale-95">
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+                      </svg>
+                    </div>
+                    
+                    {/* Battery */}
+                    <div className="cursor-pointer hover:bg-white/10 rounded-lg p-1.5 transition-all duration-200 active:scale-95">
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M15.67 4H14V2c0-.55-.45-1-1-1s-1 .45-1 1v2H9.33C7.6 4 6.4 5.47 6.4 7.2v9.6c0 1.73 1.2 3.2 2.93 3.2h6.34c1.73 0 2.93-1.47 2.93-3.2V7.2C18.6 5.47 17.4 4 15.67 4z"/>
+                      </svg>
+                    </div>
+                  </div>
+                  
+                  {/* Clock & Date */}
+                  <div className="cursor-pointer hover:bg-white/10 rounded-lg px-3 py-2 transition-all duration-200 active:scale-95">
+                    <div className="text-right">
+                      <div className="text-white text-sm font-medium">2:30 PM</div>
+                      <div className="text-gray-400 text-xs">11/14/2025</div>
+                    </div>
+                  </div>
+                  
+                  {/* Notification Center */}
+                  <div className="cursor-pointer hover:bg-white/10 rounded-lg p-2 transition-all duration-200 active:scale-95 relative">
+                    <svg className="w-5 h-5 text-gray-300" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
+                    </svg>
+                    <div className="absolute top-1 right-1 w-2 h-2 bg-blue-500 rounded-full"></div>
                   </div>
                 </div>
               </div>
