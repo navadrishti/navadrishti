@@ -136,7 +136,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       if (shippingInfo?.order_id) {
         // Update order status
         await supabase
-          .from('orders')
+          .from('ecommerce_orders')
           .update({ status: 'delivered' })
           .eq('id', shippingInfo.order_id);
 

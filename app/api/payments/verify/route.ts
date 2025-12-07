@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
       .from('payments')
       .select(`
         *,
-        order:orders!order_id(*)
+        order:ecommerce_orders!order_id(*)
       `)
       .eq('razorpay_order_id', razorpay_order_id)
       .single();
@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
 
     // Update order status
     await supabase
-      .from('orders')
+      .from('ecommerce_orders')
       .update({ status: 'confirmed' })
       .eq('id', order.id);
 
