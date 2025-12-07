@@ -30,12 +30,12 @@ export const socialFeedDb = {
           published_at,
           created_at,
           reaction_count,
-          comment_count,
           share_count,
           view_count,
           is_approved,
           author:users!author_id(id, name, email, user_type, profile_image, verification_status),
-          reactions:post_reactions(user_id, reaction_type)
+          reactions:post_reactions(user_id, reaction_type),
+          comments:post_comments(id)
         `)
         .eq('is_approved', true)
         .order('published_at', { ascending: false });
@@ -72,6 +72,9 @@ export const socialFeedDb = {
           );
         }
 
+        // Get actual comment count from the comments array
+        const actualCommentCount = Array.isArray(post.comments) ? post.comments.length : 0;
+
         return {
           id: post.id.toString(),
           author: {
@@ -87,7 +90,7 @@ export const socialFeedDb = {
           image: post.media_urls?.[0] || undefined,
           timestamp: post.created_at || post.published_at || new Date().toISOString(),
           likes: post.reaction_count || 0,
-          comments: post.comment_count || 0,
+          comments: actualCommentCount,
           shares: post.share_count || 0,
           views: post.view_count || 0,
           liked: hasLiked,
