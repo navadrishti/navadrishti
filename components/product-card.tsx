@@ -224,7 +224,7 @@ export function ProductCard({
       {/* Colorful border only */}
       <div className="absolute -inset-0.5 bg-gradient-to-r from-pink-500 via-purple-500 to-yellow-500 rounded-xl opacity-60 group-hover:opacity-100 transition duration-300"></div>
       
-      <Card className="relative overflow-hidden group h-full flex flex-col hover:shadow-xl hover:-translate-y-1 transition-all duration-300 border-0 shadow-md bg-white rounded-xl">
+      <Card className="relative overflow-hidden group h-full flex flex-col hover:shadow-xl transition-all duration-300 border-0 shadow-md bg-white rounded-xl">
       {/* Image Section with Gallery - Clickable to product details */}
       <CardHeader className="p-0 relative cursor-pointer" onClick={handleCardClick}>
         <div className="relative h-56 overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100 rounded-t-xl">
@@ -447,19 +447,19 @@ export function ProductCard({
         <div className="flex gap-3 w-full">
           <Button 
             variant="outline"
-            className="flex-1 h-10 border-gray-300 hover:bg-gray-50"
+            className="flex-1 h-10 border-2 border-orange-500 text-orange-600 hover:bg-orange-500 hover:text-white font-medium transition-all duration-200"
             onClick={handleAddToCart}
             disabled={!item?.quantity || item.quantity === 0 || addingToCart}
           >
             {addingToCart ? (
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-orange-600 mr-2"></div>
             ) : (
               <ShoppingCart size={16} className="mr-2" />
             )}
             {addingToCart ? 'Adding...' : 'Add to Cart'}
           </Button>
           <Button 
-            className="flex-1 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-semibold rounded-md shadow-md hover:shadow-lg transition-all duration-300 h-10"
+            className="flex-1 h-10 bg-orange-500 hover:bg-orange-600 text-white font-semibold"
             onClick={handleBuyNow}
             disabled={!item?.quantity || item.quantity === 0}
           >

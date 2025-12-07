@@ -248,16 +248,16 @@ export function ServiceCard({
       <div className="absolute -inset-0.5 bg-gradient-to-r from-pink-500 via-purple-500 to-yellow-500 rounded-xl opacity-60 group-hover:opacity-100 transition duration-300"></div>
       
       {/* Compact card */}
-      <div className="relative bg-white rounded-xl p-4 h-full flex flex-col shadow-sm border border-gray-100">
+      <div className="relative bg-white rounded-xl p-5 h-full flex flex-col shadow-sm border border-gray-100">
         {/* Header with category and priority/status */}
-        <div className="flex items-center justify-between mb-3">
-          <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+        <div className="flex items-center justify-between mb-4">
+          <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200 px-3 py-1">
             {category}
           </Badge>
           
           {type === 'request' && (urgency_level || priority) && (
             <Badge 
-              className={`text-xs font-medium ${
+              className={`text-xs font-semibold px-3 py-1 ${
                 (urgency_level || priority) === 'urgent' || (urgency_level || priority) === 'critical' || (urgency_level || priority) === 'high' 
                   ? 'bg-red-100 text-red-700 border-red-200' 
                   : (urgency_level || priority) === 'medium' 
@@ -268,36 +268,31 @@ export function ServiceCard({
               {(urgency_level || priority)?.toUpperCase()}
             </Badge>
           )}
-          
-          {verified && (
-            <Badge variant="outline" className="bg-green-100 border-green-300 text-green-700 text-xs">
-              <Shield size={10} className="mr-1" />
-              Verified
-            </Badge>
-          )}
         </div>
 
-        {/* Title in highlighted box */}
-        <div className="bg-gray-50 rounded-lg p-3 mb-3 border border-gray-200">
+        {/* Title Block */}
+        <div className="bg-gray-50 rounded-lg p-4 mb-3 border border-gray-200">
           <h3 className="font-bold text-lg text-gray-900 line-clamp-2 leading-tight cursor-pointer hover:text-blue-600 transition-colors" onClick={handleCardClick}>
             {title}
           </h3>
         </div>
 
-        {/* Description in plain text */}
-        <p className="text-gray-600 text-sm mb-3 leading-relaxed line-clamp-2 flex-grow">
-          {description}
-        </p>
-
-        {/* Provider Information in highlighted box */}
+        {/* Description Block */}
         <div className="bg-gray-50 rounded-lg p-3 mb-3 border border-gray-200">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full flex items-center justify-center bg-blue-500 text-white font-semibold text-xs">
+          <p className="text-gray-600 text-sm leading-relaxed line-clamp-3">
+            {description}
+          </p>
+        </div>
+
+        {/* Organization Block */}
+        <div className="bg-white rounded-lg p-3 mb-3 border border-gray-300">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center bg-blue-600 text-white font-bold text-sm flex-shrink-0">
               {getInitials(ngo_name)}
             </div>
-            <div>
+            <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                <p className="font-semibold text-gray-900 text-sm">{ngo_name}</p>
+                <p className="font-semibold text-gray-900 text-sm truncate">{ngo_name}</p>
                 {verified && (
                   <VerificationBadge status="verified" size="sm" showText={false} />
                 )}
@@ -309,31 +304,51 @@ export function ServiceCard({
           </div>
         </div>
 
-        {/* Simple info grid */}
-        <div className="grid grid-cols-2 gap-2 mb-3">
-          <div className="text-center">
-            <p className="text-xs text-gray-500">Posted</p>
-            <p className="text-sm font-medium text-gray-800">{formatDate(created_at)}</p>
-          </div>
-          
-          {location && (
-            <div className="text-center">
-              <p className="text-xs text-gray-500">Location</p>
-              <p className="text-sm font-medium text-gray-800 truncate">{location}</p>
+        {/* Info Grid Block */}
+        <div className="bg-gray-50 rounded-lg p-3 mb-3 border border-gray-200">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <p className="text-xs text-gray-500 mb-1 flex items-center gap-1">
+                <Calendar size={12} />
+                Posted
+              </p>
+              <p className="text-sm font-semibold text-gray-900">{formatDate(created_at)}</p>
             </div>
-          )}
+            
+            {location && (
+              <div>
+                <p className="text-xs text-gray-500 mb-1 flex items-center gap-1">
+                  <MapPin size={12} />
+                  Location
+                </p>
+                <p className="text-sm font-semibold text-gray-900 truncate">{location}</p>
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Simple action button */}
+        {/* Quantity/Requirements Block - if exists */}
+        {type === 'request' && volunteers_needed && (
+          <div className="bg-gray-50 rounded-lg p-3 mb-3 border border-gray-200">
+            <div className="flex items-center gap-2">
+              <Users size={16} className="text-gray-700" />
+              <p className="text-sm font-semibold text-gray-900">
+                {volunteers_needed} volunteers needed
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Action Button */}
         <div className="mt-auto">
           <Link href={`/${type === 'request' ? 'service-requests' : 'service-offers'}/${id}`} className="block">
-            <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 transition-colors">
+            <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 transition-colors rounded-lg">
               View Details
-              <ArrowRight size={14} className="ml-2" />
+              <ArrowRight size={16} className="ml-2" />
             </Button>
           </Link>
 
-          {/* Simple delete button for owners */}
+          {/* Delete button for owners */}
           {showDeleteButton && onDelete && (
             <Button
               variant="outline"
@@ -343,12 +358,12 @@ export function ServiceCard({
                 onDelete();
               }}
               disabled={isDeleting}
-              className="w-full mt-2 border-red-200 text-red-600 hover:bg-red-50 text-xs"
+              className="w-full mt-2 border-red-300 text-red-600 hover:bg-red-50 text-sm font-medium"
             >
               {isDeleting ? (
                 <div className="h-3 w-3 animate-spin rounded-full border-2 border-red-600 border-t-transparent mr-2" />
               ) : (
-                <Trash2 size={12} className="mr-2" />
+                <Trash2 size={14} className="mr-2" />
               )}
               Delete Request
             </Button>
