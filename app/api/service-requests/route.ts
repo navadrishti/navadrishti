@@ -64,8 +64,6 @@ export async function GET(request: NextRequest) {
     if (view === 'my-requests' && authenticatedUserId) {
       filters.requester_id = authenticatedUserId;
     }
-
-    console.log('Service requests filters:', filters);
     
     let serviceRequests;
     if (view === 'volunteering' && authenticatedUserId) {
@@ -118,8 +116,6 @@ export async function GET(request: NextRequest) {
     } else {
       serviceRequests = await db.serviceRequests.getAll(filters);
     }
-    
-    console.log('Service requests fetched:', serviceRequests?.length || 0, 'items');
 
   // Ensure we have an array to process and handle old/new formats
   const requestsToProcess = Array.isArray(serviceRequests) ? serviceRequests : [];
@@ -173,7 +169,6 @@ export async function GET(request: NextRequest) {
     // Filter out completed requests from "All Requests" view
     let finalRequests = processedRequests;
     if (view === 'all') {
-      console.log('Processing "all" view - checking volunteer limits for', processedRequests.length, 'requests');
       // For each request, check if it has reached its volunteer limit
       const safeProcessed = Array.isArray(processedRequests) ? processedRequests : [];
 
@@ -200,8 +195,6 @@ export async function GET(request: NextRequest) {
             const volunteerLimit = request.volunteer_limit || request.volunteers_needed || 1;
             const isFull = acceptedCount >= volunteerLimit;
 
-            console.log(`Request ${request.id}: ${acceptedCount}/${volunteerLimit} volunteers, is_full: ${isFull}`);
-
             return {
               ...request,
               accepted_volunteers_count: acceptedCount,
@@ -220,10 +213,7 @@ export async function GET(request: NextRequest) {
 
       // Filter out requests that are full (unless user is viewing their own requests)
       const filteredRequests = requestsWithVolunteerCount.filter((request: any) => !request.is_full);
-      console.log('Filtered out', requestsWithVolunteerCount.length - filteredRequests.length, 'full requests from "all" view');
       finalRequests = filteredRequests;
-    } else {
-      console.log('Processing view:', view, 'with', processedRequests.length, 'requests (no filtering applied)');
     }
 
     return NextResponse.json({

@@ -7,35 +7,31 @@ export const revalidate = 300; // Cache for 5 minutes
 export async function GET(request: NextRequest) {
   try {
 
-    // Set a timeout for database operations
+    // Set a shorter timeout for database operations
     const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Database timeout')), 5000); // 5 second timeout
+      setTimeout(() => reject(new Error('Database timeout')), 3000); // 3 second timeout
     });
 
-    // Get user data with timeout
-    const userDataPromise = supabase
-      .from('users')
-      .select('user_type');
-
-    const { data: allUsers, error: usersError } = await Promise.race([
-      userDataPromise,
+    // Run all queries in parallel for better performance
+    const [usersResult, requestsResult] = await Promise.race([
+      Promise.all([
+        supabase
+          .from('users')
+          .select('user_type', { count: 'exact' }),
+        supabase
+          .from('service_requests')
+          .select('*', { count: 'exact', head: true })
+      ]),
       timeoutPromise
     ]) as any;
+
+    const { data: allUsers, count: totalUsers, error: usersError } = usersResult;
+    const { count: serviceRequestsCount, error: requestsError } = requestsResult;
 
     if (usersError) {
       console.error('Database error:', usersError);
       throw new Error('Database connection failed');
     }
-
-    // Get real service requests count with timeout
-    const requestsPromise = supabase
-      .from('service_requests')
-      .select('*', { count: 'exact', head: true });
-
-    const { count: serviceRequestsCount, error: requestsError } = await Promise.race([
-      requestsPromise,
-      timeoutPromise
-    ]) as any;
 
     if (requestsError) {
       console.warn('Service requests error:', requestsError);
@@ -43,14 +39,13 @@ export async function GET(request: NextRequest) {
 
     // Process user data locally for better performance
     const userCounts = allUsers?.reduce((acc: any, user: any) => {
-      acc.total = (acc.total || 0) + 1;
       if (user.user_type === 'ngo') acc.ngos = (acc.ngos || 0) + 1;
       if (user.user_type === 'company') acc.companies = (acc.companies || 0) + 1;
       if (user.user_type === 'individual') acc.individuals = (acc.individuals || 0) + 1;
       return acc;
-    }, { total: 0, ngos: 0, companies: 0, individuals: 0 }) || { total: 0, ngos: 0, companies: 0, individuals: 0 };
+    }, { ngos: 0, companies: 0, individuals: 0 }) || { ngos: 0, companies: 0, individuals: 0 };
 
-    const totalUsers = userCounts.total;
+    const total = Number(totalUsers) || 0;
     const totalNGOs = userCounts.ngos;
     const totalCompanies = userCounts.companies;
     const totalServiceRequests = Number(serviceRequestsCount) || 0;
@@ -59,7 +54,7 @@ export async function GET(request: NextRequest) {
 
     const stats = {
       // ONLY REAL DATA - NO ESTIMATES OR SAMPLES
-      activeUsers: totalUsers,
+      activeUsers: total,
       
       // Partner NGOs (actual registered NGOs only)
       partnerNGOs: totalNGOs,
@@ -71,14 +66,14 @@ export async function GET(request: NextRequest) {
       successStories: totalServiceRequests,
       
       // Additional real stats only
-      totalUsers: totalUsers,
-      activeIndividuals: Math.max(0, totalUsers - totalNGOs - totalCompanies),
+      totalUsers: total,
+      activeIndividuals: Math.max(0, total - totalNGOs - totalCompanies),
       activeServiceOffers: totalServiceRequests,
       totalVolunteers: 0, // Not displayed in hero section
       recentActivity: totalServiceRequests,
       
       // Legacy compatibility
-      communitiesServed: totalUsers
+      communitiesServed: total
     };
 
     return NextResponse.json({ 

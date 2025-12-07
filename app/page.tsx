@@ -490,339 +490,266 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Design Tool Section - Hidden on mobile */}
-      <section className="hidden lg:block w-full min-h-screen bg-gray-900 py-16">
-        <div className="max-w-7xl mx-auto px-6">
+      {/* Video Section - Hidden on mobile */}
+      <section id="video-section" className="hidden lg:block w-full min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 py-16 relative overflow-hidden">
+        {/* Animated Grid Background */}
+        <div className="absolute inset-0 pointer-events-none opacity-30">
+          <div className="absolute inset-0" style={{
+            backgroundImage: 'linear-gradient(rgba(147, 51, 234, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(147, 51, 234, 0.1) 1px, transparent 1px)',
+            backgroundSize: '50px 50px',
+            animation: 'gridMove 20s linear infinite'
+          }}></div>
+        </div>
+
+        {/* Animated Background Orbs */}
+        <div className="absolute inset-0 opacity-20">
+          <div className="absolute inset-0">
+            <div className="absolute w-96 h-96 bg-blue-500/30 rounded-full blur-3xl animate-pulse" style={{ top: '10%', left: '10%' }}></div>
+            <div className="absolute w-96 h-96 bg-purple-500/30 rounded-full blur-3xl animate-pulse" style={{ top: '60%', right: '10%', animationDelay: '2s' }}></div>
+            <div className="absolute w-96 h-96 bg-pink-500/30 rounded-full blur-3xl animate-pulse" style={{ bottom: '10%', left: '50%', animationDelay: '4s' }}></div>
+          </div>
+        </div>
+
+        <div className="max-w-7xl mx-auto px-6 relative z-10">
           {/* Header */}
           <div className="text-center mb-12">
-            <h2 className="text-5xl font-bold text-white mb-6">
+            <h2 className="text-5xl font-bold text-white mb-6 drop-shadow-[0_0_15px_rgba(255,255,255,0.3)]">
               How it works?
             </h2>
           </div>
 
-          {/* Main Design Interface - Dark Desktop OS with Ribbon Screensaver Background */}
-          <div className="bg-gray-900 rounded-lg shadow-2xl overflow-hidden border border-gray-700 relative">
-            {/* Desktop Wallpaper Background - Colorful Ribbons Screensaver */}
-            <div className="absolute inset-0 bg-gradient-to-br from-black via-gray-900 to-black overflow-hidden">
-              {/* Animated Ribbons */}
-              <div className="absolute inset-0">
-                {/* Ribbon 1 */}
-                <div className="absolute w-full h-8 bg-gradient-to-r from-transparent via-red-500/40 to-transparent transform -rotate-12 animate-pulse" 
-                     style={{
-                       top: '10%',
-                       left: '-20%',
-                       animation: 'float 15s linear infinite',
-                       animationDelay: '0s'
-                     }}>
-                </div>
-                {/* Ribbon 2 */}
-                <div className="absolute w-full h-6 bg-gradient-to-r from-transparent via-blue-500/40 to-transparent transform rotate-6 animate-pulse" 
-                     style={{
-                       top: '25%',
-                       left: '-30%',
-                       animation: 'float 20s linear infinite',
-                       animationDelay: '3s'
-                     }}>
-                </div>
-                {/* Ribbon 3 */}
-                <div className="absolute w-full h-10 bg-gradient-to-r from-transparent via-green-500/40 to-transparent transform -rotate-3 animate-pulse" 
-                     style={{
-                       top: '45%',
-                       left: '-25%',
-                       animation: 'float 18s linear infinite',
-                       animationDelay: '6s'
-                     }}>
-                </div>
-                {/* Ribbon 4 */}
-                <div className="absolute w-full h-7 bg-gradient-to-r from-transparent via-purple-500/40 to-transparent transform rotate-8 animate-pulse" 
-                     style={{
-                       top: '65%',
-                       left: '-35%',
-                       animation: 'float 22s linear infinite',
-                       animationDelay: '9s'
-                     }}>
-                </div>
-                {/* Ribbon 5 */}
-                <div className="absolute w-full h-9 bg-gradient-to-r from-transparent via-yellow-500/40 to-transparent transform -rotate-6 animate-pulse" 
-                     style={{
-                       top: '80%',
-                       left: '-15%',
-                       animation: 'float 16s linear infinite',
-                       animationDelay: '12s'
-                     }}>
-                </div>
-                {/* Ribbon 6 */}
-                <div className="absolute w-full h-5 bg-gradient-to-r from-transparent via-pink-500/40 to-transparent transform rotate-12 animate-pulse" 
-                     style={{
-                       top: '35%',
-                       left: '-40%',
-                       animation: 'float 25s linear infinite',
-                       animationDelay: '2s'
-                     }}>
-                </div>
-              </div>
+          {/* Two Column Layout: Video Left, Flowchart Right */}
+          <div className="grid grid-cols-[1.5fr_1fr] gap-8 items-start">
+            {/* Video Player - Left Side */}
+            <div className="group relative rounded-2xl overflow-hidden bg-black animate-rainbow-border">
+              <video 
+                id="main-video"
+                className="w-full h-full object-cover aspect-video"
+                playsInline
+                preload="metadata"
+                muted
+                loop
+              >
+                <source src="/videos/ngo.mp4" type="video/mp4" />
+                Your browser does not support the video tag.
+              </video>
               
-              {/* Subtle overlay for depth */}
-              <div className="absolute inset-0 bg-gradient-to-br from-black/30 via-transparent to-black/30"></div>
-            </div>
-            
-            {/* Desktop Content */}
-            <div className="relative h-[600px] flex flex-col">
-              {/* Browser Window */}
-              <div className="mx-8 mt-8 mb-16 bg-gray-800 rounded-lg shadow-xl flex-1 flex flex-col overflow-hidden border border-gray-600">
-                {/* Browser Header - Dark Theme */}
-                <div className="bg-gray-700 px-4 py-2 border-b border-gray-600 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    {/* Window Controls */}
-                    <div className="flex gap-1">
-                      <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-                      <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-                      <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                    </div>
-                  </div>
-                  <div className="flex-1 mx-4">
-                    <div className="bg-gray-600 border border-gray-500 rounded-md px-3 py-1 text-sm text-gray-200">
-                      🔒 https://Navadrishti.org/community-impact
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-gray-400">
-                    <span>⟲</span>
-                    <span>⟳</span>
-                    <span>⋮</span>
-                  </div>
-                </div>
-                
-                {/* Website Content Area */}
-                <div className="flex-1 bg-gray-800 relative">
-                  <video 
-                    key="ngo-video"
-                    className="w-full h-full object-cover"
-                    autoPlay 
-                    muted 
-                    loop 
-                    playsInline
-                    preload="auto"
-                    style={{
-                      willChange: 'transform',
-                    }}
-                    onError={(e) => {
-                      console.error('Video error:', e);
-                      console.error('Error code:', e.currentTarget.error?.code);
-                      console.error('Error message:', e.currentTarget.error?.message);
-                      // Show fallback on error
-                      const fallback = document.querySelector('.video-fallback');
-                      if (fallback) {
-                        (fallback as HTMLElement).style.display = 'flex';
-                      }
-                    }}
-                    onLoadStart={() => console.log('Video loading started')}
-                    onCanPlay={() => {
-                      console.log('Video can play');
-                      // Hide fallback when video can play
-                      const fallback = document.querySelector('.video-fallback');
-                      if (fallback) {
-                        (fallback as HTMLElement).style.display = 'none';
-                      }
-                    }}
-                    onLoadedData={() => console.log('Video data loaded')}
-                    onLoadedMetadata={() => console.log('Video metadata loaded')}
-                  >
-                    <source src="/videos/ngo.mp4" type="video/mp4" />
-                    Your browser does not support the video tag.
-                  </video>
-                  
-                  {/* Fallback content - initially hidden */}
-                  <div className="video-fallback absolute inset-0 bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-700 flex items-center justify-center" style={{ display: 'none' }}>
-                    <div className="text-white text-center">
-                      <div className="bg-white/20 backdrop-blur-sm px-3 py-1 rounded text-sm w-fit mb-4 mx-auto">
-                        Navadrishti
-                      </div>
-                      <h3 className="text-2xl font-bold mb-2">
-                        Community Impact Video
-                      </h3>
-                      <p className="text-sm opacity-80">Video: /videos/ngo.mp4</p>
-                      <button 
-                        className="mt-4 px-4 py-2 bg-white/20 rounded hover:bg-white/30 transition-colors"
-                        onClick={() => {
-                          const video = document.querySelector('video');
-                          if (video) {
-                            video.load();
-                            video.play().catch(e => console.error('Play failed:', e));
-                          }
-                        }}
-                      >
-                        Retry Video
-                      </button>
-                    </div>
-                  </div>
-                  
-                  {/* Video Controls Overlay */}
-                  <div className="absolute bottom-4 left-4 bg-black/80 backdrop-blur-sm rounded-lg px-3 py-2">
-                    <div className="flex items-center gap-3 text-white text-sm">
-                      <button>⏸️</button>
-                      <div className="flex items-center gap-2">
-                        <div className="w-16 h-1 bg-white/30 rounded">
-                          <div className="w-1/3 h-1 bg-white rounded"></div>
+              {/* Full Video Overlay with Controls - Show on Hover */}
+              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
+                {/* Controls at Bottom */}
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/70 to-transparent p-6">
+                  <div className="flex items-center gap-4">
+                    {/* Play/Pause Button */}
+                    <button 
+                      id="play-pause-btn"
+                      className="w-12 h-12 rounded-full bg-white/20 hover:bg-white/30 backdrop-blur-md flex items-center justify-center transition-colors"
+                      onClick={() => {
+                        const video = document.getElementById('main-video') as HTMLVideoElement;
+                        const btn = document.getElementById('play-pause-btn');
+                        if (video.paused) {
+                          video.play();
+                          if (btn) btn.innerHTML = '<svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/></svg>';
+                        } else {
+                          video.pause();
+                          if (btn) btn.innerHTML = '<svg class="w-6 h-6 text-white ml-1" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>';
+                        }
+                      }}
+                    >
+                      <svg className="w-6 h-6 text-white ml-1" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M8 5v14l11-7z"/>
+                      </svg>
+                    </button>
+
+                    {/* Progress Bar */}
+                    <div className="flex-1">
+                      <div className="relative">
+                        <div className="w-full h-2 bg-white/20 rounded-full overflow-hidden">
+                          <div id="progress-fill" className="h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full transition-all duration-100" style={{ width: '0%' }}></div>
                         </div>
-                        <span className="text-xs">1:23 / 3:45</span>
+                        <input 
+                          id="progress-bar"
+                          type="range" 
+                          min="0" 
+                          max="100" 
+                          defaultValue="0"
+                          className="absolute top-0 left-0 w-full h-2 bg-transparent rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:cursor-pointer"
+                          onInput={(e) => {
+                            const video = document.getElementById('main-video') as HTMLVideoElement;
+                            const target = e.target as HTMLInputElement;
+                            const time = (parseFloat(target.value) / 100) * video.duration;
+                            video.currentTime = time;
+                          }}
+                        />
                       </div>
-                      <button>🔊</button>
+                      <div className="flex justify-between text-xs text-white/70 mt-1">
+                        <span id="current-time" suppressHydrationWarning>0:00</span>
+                        <span id="duration" suppressHydrationWarning>0:00</span>
+                      </div>
                     </div>
+
+                    {/* Volume Control */}
+                    <button 
+                      id="mute-btn"
+                      className="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 backdrop-blur-md flex items-center justify-center transition-colors"
+                      onClick={() => {
+                        const video = document.getElementById('main-video') as HTMLVideoElement;
+                        const btn = document.getElementById('mute-btn');
+                        video.muted = !video.muted;
+                        if (btn) {
+                          btn.innerHTML = video.muted 
+                            ? '<svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>'
+                            : '<svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>';
+                        }
+                      }}
+                    >
+                      <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>
+                      </svg>
+                    </button>
+
+                    {/* Fullscreen Button */}
+                    <button 
+                      className="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 backdrop-blur-md flex items-center justify-center transition-colors"
+                      onClick={() => {
+                        const video = document.getElementById('main-video') as HTMLVideoElement;
+                        if (video.requestFullscreen) {
+                          video.requestFullscreen();
+                        }
+                      }}
+                    >
+                      <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
+                      </svg>
+                    </button>
                   </div>
                 </div>
               </div>
-              
-              {/* Desktop Taskbar - Modern Windows 11 Style */}
-              <div className="absolute bottom-0 left-0 right-0 bg-gray-900/80 backdrop-blur-xl border-t border-gray-700/50 px-4 py-2.5 flex items-center justify-between shadow-2xl">
-                {/* Left Section - Start & Search */}
-                <div className="flex items-center space-x-4">
-                  {/* Windows Start Button */}
-                  <div className="w-10 h-10 cursor-pointer hover:bg-white/10 rounded-lg flex items-center justify-center transition-all duration-200 active:scale-95">
-                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none">
-                      <rect x="3" y="3" width="8" height="8" fill="#0078D4" rx="1"/>
-                      <rect x="13" y="3" width="8" height="8" fill="#0078D4" rx="1"/>
-                      <rect x="3" y="13" width="8" height="8" fill="#0078D4" rx="1"/>
-                      <rect x="13" y="13" width="8" height="8" fill="#0078D4" rx="1"/>
-                    </svg>
-                  </div>
-                  
-                  {/* Search Bar */}
-                  <div className="hidden md:flex items-center bg-gray-800/60 backdrop-blur-sm rounded-full px-4 py-2 min-w-[280px] hover:bg-gray-800/80 transition-colors cursor-text border border-gray-700/50">
-                    <svg className="w-4 h-4 text-gray-400 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                      <circle cx="11" cy="11" r="8" strokeWidth="2"/>
-                      <path d="M21 21l-4.35-4.35" strokeWidth="2" strokeLinecap="round"/>
-                    </svg>
-                    <span className="text-gray-400 text-sm">Search</span>
+            </div>
+
+            {/* User Flow Chart - Right Side */}
+            <div className="space-y-4 flex flex-col justify-center h-full">
+              {/* Step 1 */}
+              <div className="relative pl-8">
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-gradient-to-r from-blue-500 to-cyan-500 animate-pulse"></div>
+                <div className="absolute left-1.5 top-full w-0.5 h-4 bg-gradient-to-b from-blue-500/50 to-purple-500/50"></div>
+                <div className="border-2 border-blue-500/50 rounded-xl p-5 backdrop-blur-sm">
+                  <div>
+                    <h3 className="text-lg font-bold text-white mb-1">Sign Up</h3>
+                    <p className="text-gray-400 text-xs">Create your account as an Individual, NGO, or Company</p>
                   </div>
                 </div>
-                
-                {/* Center Section - Pinned Apps */}
-                <div className="flex items-center space-x-1 bg-gray-800/40 backdrop-blur-sm rounded-xl px-2 py-1.5 border border-gray-700/30">
-                  {/* Microsoft Edge */}
-                  <div className="group relative w-11 h-11 cursor-pointer hover:bg-white/10 rounded-lg flex items-center justify-center transition-all duration-200 active:scale-95">
-                    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none">
-                      <defs>
-                        <linearGradient id="edgeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                          <stop offset="0%" stopColor="#0078D4"/>
-                          <stop offset="100%" stopColor="#00BCF2"/>
-                        </linearGradient>
-                      </defs>
-                      <circle cx="12" cy="12" r="10" fill="url(#edgeGradient)"/>
-                      <path d="M7 12c0-2.8 2.2-5 5-5 1.4 0 2.6.5 3.5 1.4" stroke="white" strokeWidth="2.5" strokeLinecap="round" fill="none"/>
-                      <path d="M17 12c0 2.8-2.2 5-5 5-1.4 0-2.6-.5-3.5-1.4" stroke="white" strokeWidth="2.5" strokeLinecap="round" fill="none"/>
-                    </svg>
-                    <div className="absolute -bottom-1 w-6 h-0.5 bg-blue-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                  </div>
-                  
-                  {/* File Explorer */}
-                  <div className="group relative w-11 h-11 cursor-pointer hover:bg-white/10 rounded-lg flex items-center justify-center transition-all duration-200 active:scale-95">
-                    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none">
-                      <defs>
-                        <linearGradient id="folderGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                          <stop offset="0%" stopColor="#FFB300"/>
-                          <stop offset="100%" stopColor="#FFC107"/>
-                        </linearGradient>
-                      </defs>
-                      <path d="M3 6h6l2 2h10c1.1 0 2 .9 2 2v10c0 1.1-.9 2-2 2H3c-1.1 0-2-.9-2-2V8c0-1.1.9-2 2-2z" fill="url(#folderGradient)"/>
-                      <path d="M3 9h18v11H3V9z" fill="#FFD54F" opacity="0.8"/>
-                    </svg>
-                    <div className="absolute -bottom-1 w-6 h-0.5 bg-yellow-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                  </div>
-                  
-                  {/* VS Code */}
-                  <div className="group relative w-11 h-11 cursor-pointer hover:bg-white/10 rounded-lg flex items-center justify-center transition-all duration-200 active:scale-95">
-                    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none">
-                      <defs>
-                        <linearGradient id="vscodeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                          <stop offset="0%" stopColor="#007ACC"/>
-                          <stop offset="100%" stopColor="#005A9E"/>
-                        </linearGradient>
-                      </defs>
-                      <rect width="24" height="24" rx="2" fill="url(#vscodeGradient)"/>
-                      <path d="M17 5l-11 7 11 7V5z" fill="white"/>
-                      <path d="M6 12l5-3v6l-5-3z" fill="white" opacity="0.7"/>
-                    </svg>
-                    <div className="absolute -bottom-1 w-6 h-0.5 bg-blue-500 rounded-full"></div>
-                  </div>
-                  
-                  {/* Discord */}
-                  <div className="group relative w-11 h-11 cursor-pointer hover:bg-white/10 rounded-lg flex items-center justify-center transition-all duration-200 active:scale-95">
-                    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none">
-                      <rect width="24" height="24" fill="#5865F2" rx="5"/>
-                      <path d="M19.27 5.33C17.94 4.71 16.5 4.26 15 4a.09.09 0 0 0-.07.03c-.18.33-.39.76-.53 1.09a16.09 16.09 0 0 0-4.8 0c-.14-.34-.35-.76-.54-1.09-.01-.02-.04-.03-.07-.03-1.5.26-2.93.71-4.27 1.33-.01 0-.02.01-.03.02-2.72 4.07-3.47 8.03-3.1 11.95 0 .02.01.04.03.05 1.8 1.32 3.53 2.12 5.24 2.65.03.01.06 0 .07-.02.4-.55.76-1.13 1.07-1.74.02-.04 0-.08-.04-.09-.57-.22-1.11-.48-1.64-.78-.04-.02-.04-.08-.01-.11.11-.08.22-.17.33-.25.02-.02.05-.02.07-.01 3.44 1.57 7.15 1.57 10.55 0 .02-.01.05-.01.07.01.11.09.22.17.33.26.04.03.04.09-.01.11-.52.31-1.07.56-1.64.78-.04.01-.05.06-.04.09.32.61.68 1.19 1.07 1.74.03.01.06.02.09.01 1.72-.53 3.45-1.33 5.25-2.65.02-.01.03-.03.03-.05.44-4.53-.73-8.46-3.1-11.95-.01-.01-.02-.02-.04-.02zM8.52 14.91c-1.03 0-1.89-.95-1.89-2.12s.84-2.12 1.89-2.12c1.06 0 1.9.96 1.89 2.12 0 1.17-.84 2.12-1.89 2.12zm6.97 0c-1.03 0-1.89-.95-1.89-2.12s.84-2.12 1.89-2.12c1.06 0 1.9.96 1.89 2.12 0 1.17-.83 2.12-1.89 2.12z" fill="white"/>
-                    </svg>
-                    <div className="absolute -bottom-1 w-6 h-0.5 bg-indigo-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                  </div>
-                  
-                  {/* Chrome */}
-                  <div className="group relative w-11 h-11 cursor-pointer hover:bg-white/10 rounded-lg flex items-center justify-center transition-all duration-200 active:scale-95">
-                    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none">
-                      <circle cx="12" cy="12" r="10" fill="#DB4437"/>
-                      <circle cx="12" cy="12" r="7" fill="#F4B400"/>
-                      <circle cx="12" cy="12" r="4.5" fill="white"/>
-                      <circle cx="12" cy="12" r="3" fill="#4285F4"/>
-                      <path d="M12 2C6.48 2 2 6.48 2 12h6c0-2.21 1.79-4 4-4" fill="#0F9D58"/>
-                      <path d="M12 22c5.52 0 10-4.48 10-10h-6c0 2.21-1.79 4-4 4" fill="#F4B400"/>
-                    </svg>
-                    <div className="absolute -bottom-1 w-6 h-0.5 bg-red-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                  </div>
-                  
-                  {/* Spotify */}
-                  <div className="group relative w-11 h-11 cursor-pointer hover:bg-white/10 rounded-lg flex items-center justify-center transition-all duration-200 active:scale-95">
-                    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none">
-                      <circle cx="12" cy="12" r="10" fill="#1DB954"/>
-                      <path d="M17.5 10.5c-3.5-2-9-2.2-12.2-1.2-.4.1-.7-.2-.8-.5-.1-.4.2-.7.5-.8 3.7-1.1 9.7-.9 13.6 1.4.4.2.5.6.3.9-.2.4-.6.5-.9.3zm-.3 2.5c-.2.3-.5.4-.8.2-2.8-1.7-7-2.2-10.3-1.2-.4.1-.7-.1-.8-.4-.1-.4.1-.7.4-.8 3.7-1.1 8.2-.6 11.4 1.4.3.1.4.5.2.8zm-.7 2.4c-.1.2-.4.3-.6.2-2.4-1.5-5.4-1.8-9-.9-.3.1-.5-.1-.6-.4-.1-.3.1-.5.4-.6 3.9-1 7.2-.6 9.8 1.1.2.1.3.4.2.6z" fill="white"/>
-                    </svg>
-                    <div className="absolute -bottom-1 w-6 h-0.5 bg-green-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              </div>
+
+              {/* Step 2 */}
+              <div className="relative pl-8">
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 animate-pulse" style={{ animationDelay: '0.5s' }}></div>
+                <div className="absolute left-1.5 top-full w-0.5 h-4 bg-gradient-to-b from-purple-500/50 to-pink-500/50"></div>
+                <div className="border-2 border-purple-500/50 rounded-xl p-5 backdrop-blur-sm">
+                  <div>
+                    <h3 className="text-lg font-bold text-white mb-1">Explore</h3>
+                    <p className="text-gray-400 text-xs">Browse marketplace, services, and connect with community</p>
                   </div>
                 </div>
-                
-                {/* Right Section - System Tray */}
-                <div className="flex items-center space-x-3">
-                  {/* System Icons */}
-                  <div className="hidden lg:flex items-center space-x-2 text-gray-300">
-                    {/* WiFi */}
-                    <div className="cursor-pointer hover:bg-white/10 rounded-lg p-1.5 transition-all duration-200 active:scale-95">
-                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.07 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z"/>
-                      </svg>
-                    </div>
-                    
-                    {/* Volume */}
-                    <div className="cursor-pointer hover:bg-white/10 rounded-lg p-1.5 transition-all duration-200 active:scale-95">
-                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
-                      </svg>
-                    </div>
-                    
-                    {/* Battery */}
-                    <div className="cursor-pointer hover:bg-white/10 rounded-lg p-1.5 transition-all duration-200 active:scale-95">
-                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M15.67 4H14V2c0-.55-.45-1-1-1s-1 .45-1 1v2H9.33C7.6 4 6.4 5.47 6.4 7.2v9.6c0 1.73 1.2 3.2 2.93 3.2h6.34c1.73 0 2.93-1.47 2.93-3.2V7.2C18.6 5.47 17.4 4 15.67 4z"/>
-                      </svg>
-                    </div>
+              </div>
+
+              {/* Step 3 */}
+              <div className="relative pl-8">
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-gradient-to-r from-pink-500 to-rose-500 animate-pulse" style={{ animationDelay: '1s' }}></div>
+                <div className="absolute left-1.5 top-full w-0.5 h-4 bg-gradient-to-b from-pink-500/50 to-orange-500/50"></div>
+                <div className="border-2 border-pink-500/50 rounded-xl p-5 backdrop-blur-sm">
+                  <div>
+                    <h3 className="text-lg font-bold text-white mb-1">Engage</h3>
+                    <p className="text-gray-400 text-xs">Post, request services, buy/sell products, and collaborate</p>
                   </div>
-                  
-                  {/* Clock & Date */}
-                  <div className="cursor-pointer hover:bg-white/10 rounded-lg px-3 py-2 transition-all duration-200 active:scale-95">
-                    <div className="text-right">
-                      <div className="text-white text-sm font-medium">2:30 PM</div>
-                      <div className="text-gray-400 text-xs">11/14/2025</div>
-                    </div>
-                  </div>
-                  
-                  {/* Notification Center */}
-                  <div className="cursor-pointer hover:bg-white/10 rounded-lg p-2 transition-all duration-200 active:scale-95 relative">
-                    <svg className="w-5 h-5 text-gray-300" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/>
-                    </svg>
-                    <div className="absolute top-1 right-1 w-2 h-2 bg-blue-500 rounded-full"></div>
+                </div>
+              </div>
+
+              {/* Step 4 */}
+              <div className="relative pl-8">
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-gradient-to-r from-orange-500 to-amber-500 animate-pulse" style={{ animationDelay: '1.5s' }}></div>
+                <div className="border-2 border-orange-500/50 rounded-xl p-5 backdrop-blur-sm">
+                  <div>
+                    <h3 className="text-lg font-bold text-white mb-1">Impact</h3>
+                    <p className="text-gray-400 text-xs">Make a difference and grow your network in the community</p>
                   </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
+
+        {/* Video Event Listeners */}
+        <script dangerouslySetInnerHTML={{ __html: `
+          document.addEventListener('DOMContentLoaded', function() {
+            const video = document.getElementById('main-video');
+            const progressBar = document.getElementById('progress-bar');
+            const progressFill = document.getElementById('progress-fill');
+            const currentTimeEl = document.getElementById('current-time');
+            const durationEl = document.getElementById('duration');
+            const videoSection = document.getElementById('video-section');
+            let hasAutoPlayed = false;
+
+            if (video) {
+              // Handle video metadata
+              video.addEventListener('loadedmetadata', function() {
+                const duration = Math.floor(video.duration);
+                const mins = Math.floor(duration / 60);
+                const secs = duration % 60;
+                durationEl.textContent = mins + ':' + (secs < 10 ? '0' : '') + secs;
+              });
+
+              // Update progress bar and visual fill
+              video.addEventListener('timeupdate', function() {
+                const progress = (video.currentTime / video.duration) * 100;
+                if (progressBar) {
+                  progressBar.value = progress;
+                }
+                if (progressFill) {
+                  progressFill.style.width = progress + '%';
+                }
+                
+                const currentTime = Math.floor(video.currentTime || 0);
+                const mins = Math.floor(currentTime / 60);
+                const secs = currentTime % 60;
+                if (currentTimeEl) {
+                  currentTimeEl.textContent = mins + ':' + (secs < 10 ? '0' : '') + secs;
+                }
+              });
+
+              // Reset play button on video end
+              video.addEventListener('ended', function() {
+                const btn = document.getElementById('play-pause-btn');
+                btn.innerHTML = '<svg class="w-6 h-6 text-white ml-1 drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>';
+              });
+
+              // Autoplay when scrolled into view
+              const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                  if (entry.isIntersecting && !hasAutoPlayed) {
+                    // Wait a bit for smooth effect
+                    setTimeout(() => {
+                      video.play().then(() => {
+                        const btn = document.getElementById('play-pause-btn');
+                        if (btn) {
+                          btn.innerHTML = '<svg class="w-6 h-6 text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]" fill="currentColor" viewBox="0 0 24 24"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/></svg>';
+                        }
+                        hasAutoPlayed = true;
+                      }).catch(err => {
+                        console.log('Autoplay prevented:', err);
+                      });
+                    }, 300);
+                  }
+                });
+              }, {
+                threshold: 0.5 // Trigger when 50% of the section is visible
+              });
+
+              if (videoSection) {
+                observer.observe(videoSection);
+              }
+            }
+          });
+        ` }} />
       </section>
 
       {/* Facilities Section */}
