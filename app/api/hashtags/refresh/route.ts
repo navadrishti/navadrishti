@@ -3,8 +3,6 @@ import { supabase } from '@/lib/db';
 
 export async function POST(request: NextRequest) {
   try {
-    console.log('🔄 Starting hashtag data refresh...');
-
     // Calculate time boundaries
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -20,8 +18,6 @@ export async function POST(request: NextRequest) {
     if (postsError) {
       throw new Error(`Failed to fetch posts: ${postsError.message}`);
     }
-
-    console.log(`📊 Analyzing ${allPosts?.length || 0} posts for hashtag mentions...`);
 
     // Calculate hashtag metrics
     const hashtagMetrics = new Map<string, {
@@ -57,8 +53,6 @@ export async function POST(request: NextRequest) {
         metrics.total++;
       });
     }
-
-    console.log(`🏷️ Found ${hashtagMetrics.size} unique hashtags`);
 
     // Get existing hashtags
     const { data: existingHashtags, error: fetchError } = await supabase
@@ -128,8 +122,6 @@ export async function POST(request: NextRequest) {
 
       created++;
     }
-
-    console.log(`✅ Hashtag refresh complete: ${updated} updated, ${created} created, ${deleted} deleted`);
 
     return NextResponse.json({
       success: true,

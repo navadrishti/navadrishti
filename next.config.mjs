@@ -41,8 +41,10 @@ const nextConfig = {
   },
   // Disable source maps in production
   productionBrowserSourceMaps: false,
-  // Enable Turbopack with empty config to silence the warning
-  turbopack: {},
+  // Set Turbopack root to current directory
+  turbopack: {
+    root: process.cwd(),
+  },
 }
 
 export default nextConfig
