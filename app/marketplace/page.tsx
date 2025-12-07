@@ -13,30 +13,9 @@ import { SkeletonCard, SkeletonHeader } from '@/components/ui/skeleton'
 import { Search, PackagePlus, Trash2, Plus, ArrowRight, ShoppingBag } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
+import { getMarketplaceCategoriesWithAll } from '@/lib/categories'
 
-const categories = [
-  'All Categories',
-  'Clothing & Apparel',
-  'Books & Stationery',
-  'Electronics & Devices',
-  'Furniture',
-  'Toys & Kids Items',
-  'Medical Supplies',
-  'Groceries & Essentials',
-  'Home & Kitchen Items',
-  'Sports Equipment',
-  'Beauty & Personal Care',
-  'Arts & Crafts',
-  'Tools & Hardware',
-  'Bicycles & Vehicles',
-  'Pet Supplies',
-  'Handmade NGO Products',
-  'Upcycled Products',
-  'Sustainable Goods',
-  'Local Community Listings',
-  'Free Giveaways',
-  'Donation Items'
-];
+const categories = getMarketplaceCategoriesWithAll();
 
 export default function MarketplacePage() {
   const { user } = useAuth();
