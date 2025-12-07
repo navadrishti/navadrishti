@@ -16,28 +16,9 @@ import { Search, MapPin, Users, Target, Clock, ArrowRight, Plus, HeartHandshake,
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { getServiceRequestCategoriesWithAll } from '@/lib/categories'
 
-const categories = [
-  'All Categories',
-  'Healthcare & Medical',
-  'Education & Tutoring',
-  'Food & Nutrition',
-  'Legal & Documentation',
-  'Financial Assistance',
-  'Housing & Shelter',
-  'Transportation',
-  'Counseling & Mental Health',
-  'Job Training & Employment',
-  'Elderly Care',
-  'Child Care',
-  'Disability Support',
-  'Emergency Relief',
-  'Community Outreach',
-  'General Support Services',
-  'Translation & Language',
-  'Administrative Help',
-  'Other'
-];
+const categories = getServiceRequestCategoriesWithAll();
 
 function ServiceRequestsContent() {
   const { user } = useAuth();

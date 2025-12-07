@@ -14,26 +14,11 @@ import { SkeletonHeader, SkeletonServiceCard, SkeletonCTA } from '@/components/u
 import { Search, MapPin, Users, Target, Clock, ArrowRight, Plus, HeartHandshake, UserRound, Building, DollarSign, Trash2, MoreVertical, Edit, Eye } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { formatPrice } from '@/lib/currency'
-import { useToast } from '@/hooks/use-toast'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { useToast } from '@/hooks/use-toast';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { getServiceOfferCategoriesWithAll } from '@/lib/categories';
 
-const categories = [
-  'All Categories',
-  'Training & Workshops',
-  'Community Outreach Programs',
-  'Environmental Sustainability Services',
-  'Healthcare Services & Camps',
-  'Research & Survey Services',
-  'Creative & Communication Services',
-  'Event Management',
-  'Skill Development Programs',
-  'Monitoring & Evaluation',
-  'Customized CSR Program Execution',
-  'Women Empowerment Training',
-  'Livelihood Development Programs',
-  'Digital Literacy Training',
-  'Awareness & Advocacy Campaigns'
-];
+const categories = getServiceOfferCategoriesWithAll();
 
 export default function ServiceOffersPage() {
   const { user } = useAuth();
