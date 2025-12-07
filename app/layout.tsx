@@ -14,6 +14,9 @@ export const metadata: Metadata = {
   title: 'Navadrishti',
   description: 'Created by Shubhendu Chakrabarti',
   generator: 'Shubhendu Chakrabarti',
+  icons: {
+    icon: '/photos/small-logo.svg',
+  },
 }
 
 export default function RootLayout({
