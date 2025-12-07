@@ -891,7 +891,7 @@ export default function HomePage() {
       </section>
 
       {/* Footer */}
-      <footer className="w-full bg-gradient-to-b from-gray-950 to-black border-t border-gray-800">
+      <footer className="w-full bg-gradient-to-b from-gray-900 to-gray-950 border-t border-gray-800">
         <div className="max-w-7xl mx-auto px-6 py-12">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
             {/* Brand Section */}
