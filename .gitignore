@@ -33,5 +33,7 @@ next-env.d.ts
 .vercel
 
 # documentation and reference files
-docs/
 reference/
+
+# ignore folder
+.ignore/

@@ -17,19 +17,26 @@ import ProtectedRoute from '@/components/protected-route'
 import { toast } from 'sonner'
 
 const categories = [
-  'Clothing & Textiles',
-  'Food & Nutrition', 
-  'Medical & Healthcare',
-  'Education & Books',
-  'Office & Supplies',
-  'Household Items',
-  'Furniture & Home',
-  'Baby & Children',
-  'Personal Care',
-  'Transportation',
-  'Emergency Supplies',
-  'Tools & Equipment',
-  'Other'
+  'Clothing & Apparel',
+  'Books & Stationery',
+  'Electronics & Devices',
+  'Furniture',
+  'Toys & Kids Items',
+  'Medical Supplies',
+  'Groceries & Essentials',
+  'Home & Kitchen Items',
+  'Sports Equipment',
+  'Beauty & Personal Care',
+  'Arts & Crafts',
+  'Tools & Hardware',
+  'Bicycles & Vehicles',
+  'Pet Supplies',
+  'Handmade NGO Products',
+  'Upcycled Products',
+  'Sustainable Goods',
+  'Local Community Listings',
+  'Free Giveaways',
+  'Donation Items'
 ];
 
 interface ListingData {

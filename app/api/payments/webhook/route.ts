@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
         .from('payments')
         .select(`
           *,
-          order:orders!order_id(*)
+          order:ecommerce_orders!order_id(*)
         `)
         .eq('razorpay_order_id', payment.order_id)
         .single();
@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
         
         // Update order status to confirmed
         await supabase
-          .from('orders')
+          .from('ecommerce_orders')
           .update({ status: 'confirmed' })
           .eq('id', order.id);
 
@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
       if (paymentData?.order_id) {
         // Update order status
         await supabase
-          .from('orders')
+          .from('ecommerce_orders')
           .update({ status: 'cancelled' })
           .eq('id', paymentData.order_id);
 

@@ -17,24 +17,20 @@ import Link from 'next/link'
 const categories = [
   'Healthcare & Medical',
   'Education & Training',
-  'Food & Nutrition',
-  'Legal & Documentation',
-  'Financial Services',
-  'Housing & Shelter',
-  'Transportation',
-  'Counseling & Mental Health',
-  'Job Training & Employment',
-  'Elderly Care',
-  'Child Welfare',
-  'Disability Support',
-  'Emergency Relief',
-  'Community Development',
-  'Women Empowerment',
-  'Environmental Services',
-  'General Support Services',
-  'Translation & Language',
-  'Administrative Services',
-  'Other'
+  'Training & Workshops',
+  'Community Outreach Programs',
+  'Environmental Sustainability Services',
+  'Healthcare Services & Camps',
+  'Research & Survey Services',
+  'Creative & Communication Services',
+  'Event Management',
+  'Skill Development Programs',
+  'Monitoring & Evaluation',
+  'Customized CSR Program Execution',
+  'Women Empowerment Training',
+  'Livelihood Development Programs',
+  'Digital Literacy Training',
+  'Awareness & Advocacy Campaigns'
 ];
 
 const priceTypes = [
