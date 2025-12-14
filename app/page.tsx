@@ -75,59 +75,6 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-black">
-      {/* Top Navigation - Hidden on mobile */}
-      <div className="absolute top-6 right-6 z-50 hidden sm:flex gap-3">
-        <Link 
-          href="/home" 
-          className="group"
-        >
-          <div 
-            className="flex justify-center items-center bg-gray-800/80 backdrop-blur-md shadow-xl text-gray-200 hover:text-white transition-all duration-300 hover:bg-gray-700/80 rounded-lg cursor-pointer"
-            style={{ 
-              padding: '1.25rem 2.5rem', 
-              minWidth: '200px',
-              fontSize: '1.125rem',
-              fontWeight: '500'
-            }}
-          >
-            <User className="w-5 h-5 mr-3" />
-            Home
-          </div>
-        </Link>
-        
-        {user ? (
-          <Link 
-            href={`/${user.user_type}s/dashboard`}
-            className="group"
-          >
-            <Button 
-              variant="ghost" 
-              size="lg"
-              className="gradient-border-btn shadow-xl text-white transition-all duration-300 px-8 py-4 h-auto font-medium text-base"
-            >
-              <LayoutDashboard className="w-5 h-5 mr-3" />
-              Dashboard
-            </Button>
-          </Link>
-        ) : (
-          <a 
-            href="https://navdrishti-portfolio.vercel.app"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="group"
-          >
-            <Button 
-              variant="ghost" 
-              size="lg"
-              className="gradient-border-btn shadow-xl text-white transition-all duration-300 px-8 py-4 h-auto font-medium text-base"
-            >
-              <LayoutDashboard className="w-5 h-5 mr-3" />
-              Portfolio
-            </Button>
-          </a>
-        )}
-      </div>
-
       {/* Photo Grid Hero Section */}
       <div className="relative min-h-screen">
         {/* Grid Container - Optimized layout with better coverage */}
@@ -393,22 +340,49 @@ export default function HomePage() {
                     fontWeight: '500'
                   }}
                 >
-                  Explore Platform
+                  <User className="w-5 h-5 mr-3" />
+                  Home
                 </div>
               </Link>
-              <a href="mailto:navadrishti@gmail.com">
-                <button 
-                  className="gradient-border-btn shadow-xl text-white transition-all duration-300 h-auto"
-                  style={{ 
-                    padding: '1.25rem 2.5rem !important', 
-                    minWidth: '200px !important',
-                    fontSize: '1.125rem !important',
-                    fontWeight: '500 !important'
-                  }}
+              {user ? (
+                <Link 
+                  href={`/${user.user_type}s/dashboard`}
+                  className="group"
                 >
-                  Contact Support
-                </button>
-              </a>
+                  <button 
+                    className="gradient-border-btn shadow-xl text-white transition-all duration-300 h-auto"
+                    style={{ 
+                      padding: '1.25rem 2.5rem !important', 
+                      minWidth: '200px !important',
+                      fontSize: '1.125rem !important',
+                      fontWeight: '500 !important'
+                    }}
+                  >
+                    <LayoutDashboard className="w-5 h-5 mr-3" />
+                    Dashboard
+                  </button>
+                </Link>
+              ) : (
+                <a 
+                  href="https://navdrishti-portfolio.vercel.app"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group"
+                >
+                  <button 
+                    className="gradient-border-btn shadow-xl text-white transition-all duration-300 h-auto"
+                    style={{ 
+                      padding: '1.25rem 2.5rem !important', 
+                      minWidth: '200px !important',
+                      fontSize: '1.125rem !important',
+                      fontWeight: '500 !important'
+                    }}
+                  >
+                    <LayoutDashboard className="w-5 h-5 mr-3" />
+                    Portfolio
+                  </button>
+                </a>
+              )}
             </div>
             
             {/* Mobile Buttons - Show only on mobile */}
