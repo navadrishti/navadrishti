@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import ProtectedRoute from '@/components/protected-route';
 import { Header } from '@/components/header';
@@ -17,6 +18,10 @@ import { SkeletonOrderItem } from '@/components/ui/skeleton';
 export default function CompanyDashboard() {
   const { user, refreshUser } = useAuth();
   const { toast } = useToast();
+  const searchParams = useSearchParams();
+  const activeTab = searchParams.get('tab') || 'service-requests';
+  const marketplaceSubTab = searchParams.get('subtab') || 'purchasing';
+  const tabsRef = useRef<HTMLDivElement>(null);
   const [stats, setStats] = useState({
     acceptedServiceRequests: 0,
     acceptedServiceOffers: 0,
@@ -182,6 +187,14 @@ export default function CompanyDashboard() {
 
     fetchAllData();
   }, [user?.id]);
+
+  useEffect(() => {
+    if ((activeTab || marketplaceSubTab) && tabsRef.current) {
+      setTimeout(() => {
+        tabsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 100)
+    }
+  }, [activeTab, marketplaceSubTab])
 
   return (
     <ProtectedRoute userTypes={['company']}>
@@ -392,12 +405,13 @@ export default function CompanyDashboard() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <Tabs defaultValue="service-requests" className="w-full">
-                  <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 h-auto">
-                    <TabsTrigger value="service-requests" className="text-xs sm:text-sm">Service Requests</TabsTrigger>
-                    <TabsTrigger value="services-hired" className="text-xs sm:text-sm">Services Hired</TabsTrigger>
-                    <TabsTrigger value="marketplace" className="text-xs sm:text-sm">Marketplace</TabsTrigger>
-                  </TabsList>
+                <div ref={tabsRef}>
+                  <Tabs value={activeTab} className="w-full">
+                    <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 h-auto">
+                      <TabsTrigger value="service-requests" className="text-xs sm:text-sm">Service Requests</TabsTrigger>
+                      <TabsTrigger value="services-hired" className="text-xs sm:text-sm">Services Hired</TabsTrigger>
+                      <TabsTrigger value="marketplace" className="text-xs sm:text-sm">Marketplace</TabsTrigger>
+                    </TabsList>
                   
                   <TabsContent value="service-requests" className="mt-4 space-y-4">
                     <h3 className="font-medium">NGO Requests You've Volunteered For</h3>
@@ -428,7 +442,7 @@ export default function CompanyDashboard() {
                   </TabsContent>
                   
                   <TabsContent value="marketplace" className="mt-4 space-y-4">
-                    <Tabs defaultValue="purchasing" className="w-full">
+                    <Tabs value={marketplaceSubTab} className="w-full">
                       <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 h-auto">
                         <TabsTrigger value="purchasing" className="text-xs sm:text-sm">Purchased Items</TabsTrigger>
                         <TabsTrigger value="selling" className="text-xs sm:text-sm">Your Listings</TabsTrigger>
@@ -568,6 +582,7 @@ export default function CompanyDashboard() {
                     </Tabs>
                   </TabsContent>
                 </Tabs>
+                </div>
               </CardContent>
             </Card>
           </div>

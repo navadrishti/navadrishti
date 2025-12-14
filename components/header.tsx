@@ -45,9 +45,29 @@ export function Header() {
   const [isSearchExpanded, setIsSearchExpanded] = useState(false)
   const [isInputFocused, setIsInputFocused] = useState(false)
   const [showAllResults, setShowAllResults] = useState(false)
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null)
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  
+  const dropdownTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
+  // Handle dropdown hover with delay
+  const handleDropdownEnter = (dropdown: string) => {
+    if (dropdownTimeoutRef.current) {
+      clearTimeout(dropdownTimeoutRef.current)
+    }
+    setOpenDropdown(dropdown)
+  }
+
+  const handleDropdownLeave = () => {
+    dropdownTimeoutRef.current = setTimeout(() => {
+      setOpenDropdown(null)
+    }, 150)
+  }
+
+  const handleDropdownStay = () => {
+    if (dropdownTimeoutRef.current) {
+      clearTimeout(dropdownTimeoutRef.current)
+    }
+  }
   
   // Profile search functionality
   const searchProfiles = async (query: string) => {
@@ -154,19 +174,365 @@ export function Header() {
           <img src="/photos/logo.svg" alt="Navadrishti" className="h-36 w-36" />
         </Link>
         <div className="hidden md:flex md:flex-1 md:items-center md:justify-end md:gap-4 lg:gap-6">
-          <nav className="flex items-center gap-4 lg:gap-6">
-            <Link href="/service-requests" className="flex items-center gap-2 text-sm font-medium udaan-nav-link">
-              <Award className="h-4 w-4" />
-              Service Requests
-            </Link>
-            <Link href="/service-offers" className="flex items-center gap-2 text-sm font-medium udaan-nav-link">
-              <Briefcase className="h-4 w-4" />
-              Service Offers
-            </Link>
-            <Link href="/marketplace" className="flex items-center gap-2 text-sm font-medium udaan-nav-link">
-              <ShoppingBag className="h-4 w-4" />
-              Marketplace
-            </Link>
+          <nav className="flex items-center gap-1 lg:gap-2">
+            {/* Company Navigation */}
+            {user?.user_type === 'company' && (
+              <>
+                {/* CSR Hub Dropdown */}
+                <div 
+                  className="relative"
+                  onMouseEnter={() => handleDropdownEnter('csr-hub')}
+                  onMouseLeave={handleDropdownLeave}
+                >
+                  <button className="px-3 py-2 text-sm font-medium text-white hover:text-udaan-orange transition-colors flex items-center gap-1">
+                    CSR Hub
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {openDropdown === 'csr-hub' && (
+                    <div 
+                      className="absolute top-full left-0 mt-1 w-56 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50"
+                      onMouseEnter={handleDropdownStay}
+                      onMouseLeave={handleDropdownLeave}
+                    >
+                      <Link href="/companies/csr-agent" className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
+                        <div>
+                          <div className="font-medium">AI CSR Agent</div>
+                          <div className="text-xs text-gray-500">Create campaigns</div>
+                        </div>
+                      </Link>
+                      <Link href="/companies/csr-budget" className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
+                        <div>
+                          <div className="font-medium">Budget Planner</div>
+                          <div className="text-xs text-gray-500">Manage CSR budget</div>
+                        </div>
+                      </Link>
+                      <Link href="/companies/impact-reports" className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
+                        <div>
+                          <div className="font-medium">Impact Reports</div>
+                          <div className="text-xs text-gray-500">Generate reports</div>
+                        </div>
+                      </Link>
+                      <Link href="/csr-campaigns" className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
+                        <div>
+                          <div className="font-medium">Browse NGO Partners</div>
+                          <div className="text-xs text-gray-500">Find partners</div>
+                        </div>
+                      </Link>
+                    </div>
+                  )}
+                </div>
+
+                {/* Services Dropdown */}
+                <div 
+                  className="relative"
+                  onMouseEnter={() => handleDropdownEnter('services-company')}
+                  onMouseLeave={handleDropdownLeave}
+                >
+                  <button className="px-3 py-2 text-sm font-medium text-white hover:text-udaan-orange transition-colors flex items-center gap-1">
+                    Services
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {openDropdown === 'services-company' && (
+                    <div 
+                      className="absolute top-full left-0 mt-1 w-56 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50"
+                      onMouseEnter={handleDropdownStay}
+                      onMouseLeave={handleDropdownLeave}
+                    >
+                      <Link href="/service-requests" className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
+                        <div>
+                          <div className="font-medium">Service Requests</div>
+                          <div className="text-xs text-gray-500">Volunteer opportunities</div>
+                        </div>
+                      </Link>
+                      <Link href="/service-offers" className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
+                        <div>
+                          <div className="font-medium">Service Offers</div>
+                          <div className="text-xs text-gray-500">Hire NGO services</div>
+                        </div>
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* NGO Navigation */}
+            {user?.user_type === 'ngo' && (
+              <>
+                {/* AI Tools Dropdown */}
+                <div 
+                  className="relative"
+                  onMouseEnter={() => handleDropdownEnter('ai-tools')}
+                  onMouseLeave={handleDropdownLeave}
+                >
+                  <button className="px-3 py-2 text-sm font-medium text-white hover:text-udaan-orange transition-colors flex items-center gap-1">
+                    AI Tools
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {openDropdown === 'ai-tools' && (
+                    <div 
+                      className="absolute top-full left-0 mt-1 w-56 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50"
+                      onMouseEnter={handleDropdownStay}
+                      onMouseLeave={handleDropdownLeave}
+                    >
+                      <Link href="/ngos/ai-assistant" className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
+                        <div>
+                          <div className="font-medium">Proposal Generator</div>
+                          <div className="text-xs text-gray-500">AI-powered proposals</div>
+                        </div>
+                      </Link>
+                      <Link href="/ngos/ai-assistant?tab=documentation" className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
+                        <div>
+                          <div className="font-medium">Documentation Helper</div>
+                          <div className="text-xs text-gray-500">Create documents</div>
+                        </div>
+                      </Link>
+                      <Link href="/ngos/ai-assistant?tab=outreach" className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
+                        <div>
+                          <div className="font-medium">Outreach Creator</div>
+                          <div className="text-xs text-gray-500">Generate emails</div>
+                        </div>
+                      </Link>
+                    </div>
+                  )}
+                </div>
+
+                {/* CSR & Funding Dropdown */}
+                <div 
+                  className="relative"
+                  onMouseEnter={() => handleDropdownEnter('csr-funding')}
+                  onMouseLeave={handleDropdownLeave}
+                >
+                  <button className="px-3 py-2 text-sm font-medium text-white hover:text-udaan-orange transition-colors flex items-center gap-1">
+                    CSR & Funding
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {openDropdown === 'csr-funding' && (
+                    <div 
+                      className="absolute top-full left-0 mt-1 w-56 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50"
+                      onMouseEnter={handleDropdownStay}
+                      onMouseLeave={handleDropdownLeave}
+                    >
+                      <Link href="/csr-campaigns" className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
+                        <div>
+                          <div className="font-medium">Browse CSR Campaigns</div>
+                          <div className="text-xs text-gray-500">Apply to campaigns</div>
+                        </div>
+                      </Link>
+                      <Link href="/ngos/campaign-updates" className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
+                        <div>
+                          <div className="font-medium">Campaign Updates</div>
+                          <div className="text-xs text-gray-500">Report progress</div>
+                        </div>
+                      </Link>
+                      <Link href="/marketplace/fundraising" className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
+                        <div>
+                          <div className="font-medium">Fundraising Campaigns</div>
+                          <div className="text-xs text-gray-500">Create fundraisers</div>
+                        </div>
+                      </Link>
+                    </div>
+                  )}
+                </div>
+
+                {/* Services Dropdown */}
+                <div 
+                  className="relative"
+                  onMouseEnter={() => handleDropdownEnter('services-ngo')}
+                  onMouseLeave={handleDropdownLeave}
+                >
+                  <button className="px-3 py-2 text-sm font-medium text-white hover:text-udaan-orange transition-colors flex items-center gap-1">
+                    Services
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {openDropdown === 'services-ngo' && (
+                    <div 
+                      className="absolute top-full left-0 mt-1 w-56 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50"
+                      onMouseEnter={handleDropdownStay}
+                      onMouseLeave={handleDropdownLeave}
+                    >
+                      <Link href="/service-offers" className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
+                        <div>
+                          <div className="font-medium">My Service Offers</div>
+                          <div className="text-xs text-gray-500">Manage offers</div>
+                        </div>
+                      </Link>
+                      <Link href="/service-requests" className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
+                        <div>
+                          <div className="font-medium">My Service Requests</div>
+                          <div className="text-xs text-gray-500">Manage requests</div>
+                        </div>
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* Individual Navigation */}
+            {user?.user_type === 'individual' && (
+              <>
+                {/* Opportunities Dropdown */}
+                <div 
+                  className="relative"
+                  onMouseEnter={() => handleDropdownEnter('opportunities')}
+                  onMouseLeave={handleDropdownLeave}
+                >
+                  <button className="px-3 py-2 text-sm font-medium text-white hover:text-udaan-orange transition-colors flex items-center gap-1">
+                    Opportunities
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {openDropdown === 'opportunities' && (
+                    <div 
+                      className="absolute top-full left-0 mt-1 w-56 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50"
+                      onMouseEnter={handleDropdownStay}
+                      onMouseLeave={handleDropdownLeave}
+                    >
+                      <Link href="/service-requests" className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
+                        <div>
+                          <div className="font-medium">Service Requests</div>
+                          <div className="text-xs text-gray-500">Volunteer opportunities</div>
+                        </div>
+                      </Link>
+                      <Link href="/service-offers" className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
+                        <div>
+                          <div className="font-medium">Service Offers</div>
+                          <div className="text-xs text-gray-500">Job opportunities</div>
+                        </div>
+                      </Link>
+                      <Link href="/csr-campaigns" className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
+                        <div>
+                          <div className="font-medium">CSR Campaigns</div>
+                          <div className="text-xs text-gray-500">Corporate volunteering</div>
+                        </div>
+                      </Link>
+                    </div>
+                  )}
+                </div>
+
+                {/* My Impact Dropdown */}
+                <div 
+                  className="relative"
+                  onMouseEnter={() => handleDropdownEnter('my-impact')}
+                  onMouseLeave={handleDropdownLeave}
+                >
+                  <button className="px-3 py-2 text-sm font-medium text-white hover:text-udaan-orange transition-colors flex items-center gap-1">
+                    My Impact
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {openDropdown === 'my-impact' && (
+                    <div 
+                      className="absolute top-full left-0 mt-1 w-56 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50"
+                      onMouseEnter={handleDropdownStay}
+                      onMouseLeave={handleDropdownLeave}
+                    >
+                      <Link href={`/profile/${user.id}`} className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
+                        <div>
+                          <div className="font-medium">Impact Profile</div>
+                          <div className="text-xs text-gray-500">Your social portfolio</div>
+                        </div>
+                      </Link>
+                      <Link href={`/profile/${user.id}?tab=history`} className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
+                        <div>
+                          <div className="font-medium">Volunteer History</div>
+                          <div className="text-xs text-gray-500">Track your contributions</div>
+                        </div>
+                      </Link>
+                      <Link href={`/profile/${user.id}?tab=achievements`} className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
+                        <div>
+                          <div className="font-medium">Achievements</div>
+                          <div className="text-xs text-gray-500">Badges & milestones</div>
+                        </div>
+                      </Link>
+                      <Link href={`/profile/${user.id}?tab=impact`} className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
+                        <div>
+                          <div className="font-medium">Impact Metrics</div>
+                          <div className="text-xs text-gray-500">View your impact</div>
+                        </div>
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* Non-logged in users - show simple links */}
+            {!user && (
+              <>
+                <Link href="/service-requests" className="px-3 py-2 text-sm font-medium text-white hover:text-udaan-orange transition-colors">
+                  Service Requests
+                </Link>
+                <Link href="/service-offers" className="px-3 py-2 text-sm font-medium text-white hover:text-udaan-orange transition-colors">
+                  Service Offers
+                </Link>
+              </>
+            )}
+
+            {/* Marketplace Dropdown - For all users */}
+            <div 
+              className="relative"
+              onMouseEnter={() => handleDropdownEnter('marketplace')}
+              onMouseLeave={handleDropdownLeave}
+            >
+              <button className="px-3 py-2 text-sm font-medium text-white hover:text-udaan-orange transition-colors flex items-center gap-1">
+                Marketplace
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {openDropdown === 'marketplace' && (
+                <div 
+                  className="absolute top-full left-0 mt-1 w-56 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50"
+                  onMouseEnter={handleDropdownStay}
+                  onMouseLeave={handleDropdownLeave}
+                >
+                  <Link href="/marketplace" className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
+                    <div>
+                      <div className="font-medium">Browse Products</div>
+                      <div className="text-xs text-gray-500">Shop community items</div>
+                    </div>
+                  </Link>
+                  {user?.user_type === 'ngo' && (
+                    <Link href="/marketplace/fundraising" className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
+                      <div>
+                        <div className="font-medium">Fundraising</div>
+                        <div className="text-xs text-gray-500">Create campaigns</div>
+                      </div>
+                    </Link>
+                  )}
+                  {user && (
+                    <>
+                      <Link href={`${getDashboardLink()}?tab=marketplace&subtab=selling`} className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
+                        <div>
+                          <div className="font-medium">My Listings</div>
+                          <div className="text-xs text-gray-500">Manage your items</div>
+                        </div>
+                      </Link>
+                      <Link href="/orders" className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
+                        <div>
+                          <div className="font-medium">My Orders</div>
+                          <div className="text-xs text-gray-500">Track purchases</div>
+                        </div>
+                      </Link>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
           </nav>
           <div className="relative hidden md:block">
             <div className="relative flex items-center">
@@ -390,9 +756,6 @@ export function Header() {
                   <Link href={getDashboardLink()}>
                     <DropdownMenuItem>Dashboard</DropdownMenuItem>
                   </Link>
-                  <Link href="/orders">
-                    <DropdownMenuItem>My Orders</DropdownMenuItem>
-                  </Link>
                   <Link href="/settings">
                     <DropdownMenuItem>Settings</DropdownMenuItem>
                   </Link>
@@ -405,7 +768,6 @@ export function Header() {
             <div className="flex items-center gap-3">
               <Link href="/login">
                 <Button variant="ghost" className="flex items-center gap-2 text-white hover:text-udaan-orange hover:bg-white/10">
-                  <LogIn className="h-4 w-4" />
                   Sign In
                 </Button>
               </Link>
@@ -464,12 +826,9 @@ export function Header() {
                 {/* Fixed Header */}
                 <div className="flex-shrink-0 p-6 border-b border-white/10">
                   <div className="flex items-center justify-between">
-                    <Link 
-                      href="/home" 
-                      className="flex items-center font-bold text-xl text-white"
-                    >
+                    <div className="flex items-center font-bold text-xl text-white">
                       <img src="/photos/logo.svg" alt="Navadrishti" className="h-36 w-36" />
-                    </Link>
+                    </div>
                     
                     <SheetClose asChild>
                       <Button 
@@ -603,34 +962,151 @@ export function Header() {
                   </div>
 
                   {/* Navigation */}
-                  <nav className="grid gap-6 text-lg font-medium mb-8">
-                    <Link 
-                      href="/service-requests" 
-                      className="flex items-center gap-3 text-white hover:text-udaan-orange transition-colors duration-300"
-                    >
-                      <Award className="h-5 w-5" />
-                      <span>Service Requests</span>
-                    </Link>
+                  <nav className="grid gap-2 text-base font-medium mb-8">
+                    {/* Company Mobile Nav */}
+                    {user?.user_type === 'company' && (
+                      <>
+                        <div className="mt-2 mb-1">
+                          <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3">CSR Hub</div>
+                        </div>
+                        <Link href="/companies/csr-agent" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
+                          <span>AI CSR Agent</span>
+                        </Link>
+                        <Link href="/companies/csr-budget" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
+                          <span>Budget Planner</span>
+                        </Link>
+                        <Link href="/companies/impact-reports" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
+                          <span>Impact Reports</span>
+                        </Link>
+                        <Link href="/csr-campaigns" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
+                          <span>Browse NGO Partners</span>
+                        </Link>
 
-                    <Link 
-                      href="/service-offers" 
-                      className="flex items-center gap-3 text-white hover:text-udaan-orange transition-colors duration-300"
-                    >
-                      <Briefcase className="h-5 w-5" />
-                      <span>Service Offers</span>
-                    </Link>
+                        <div className="mt-3 mb-1">
+                          <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3">Services</div>
+                        </div>
+                        <Link href="/service-requests" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
+                          <span>Service Requests</span>
+                        </Link>
+                        <Link href="/service-offers" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
+                          <span>Service Offers</span>
+                        </Link>
+                      </>
+                    )}
 
-                    <Link 
-                      href="/marketplace" 
-                      className="flex items-center gap-3 text-white hover:text-udaan-orange transition-colors duration-300"
-                    >
-                      <ShoppingBag className="h-5 w-5" />
-                      <span>Marketplace</span>
+                    {/* NGO Mobile Nav */}
+                    {user?.user_type === 'ngo' && (
+                      <>
+                        <div className="mt-2 mb-1">
+                          <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3">AI Tools</div>
+                        </div>
+                        <Link href="/ngos/ai-assistant" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
+                          <span>Proposal Generator</span>
+                        </Link>
+                        <Link href="/ngos/ai-assistant?tab=documentation" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
+                          <span>Documentation Helper</span>
+                        </Link>
+                        <Link href="/ngos/ai-assistant?tab=outreach" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
+                          <span>Outreach Creator</span>
+                        </Link>
+
+                        <div className="mt-3 mb-1">
+                          <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3">CSR & Funding</div>
+                        </div>
+                        <Link href="/csr-campaigns" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
+                          <span>Browse CSR Campaigns</span>
+                        </Link>
+                        <Link href="/ngos/campaign-updates" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
+                          <span>Campaign Updates</span>
+                        </Link>
+                        <Link href="/marketplace/fundraising" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
+                          <span>Fundraising Campaigns</span>
+                        </Link>
+
+                        <div className="mt-3 mb-1">
+                          <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3">Services</div>
+                        </div>
+                        <Link href="/service-offers" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
+                          <span>My Service Offers</span>
+                        </Link>
+                        <Link href="/service-requests" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
+                          <span>My Service Requests</span>
+                        </Link>
+                      </>
+                    )}
+
+                    {/* Individual Mobile Nav */}
+                    {user?.user_type === 'individual' && (
+                      <>
+                        <div className="mt-2 mb-1">
+                          <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3">Opportunities</div>
+                        </div>
+                        <Link href="/service-requests" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
+                          <span>Service Requests</span>
+                        </Link>
+                        <Link href="/service-offers" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
+                          <span>Service Offers</span>
+                        </Link>
+                        <Link href="/csr-campaigns" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
+                          <span>CSR Campaigns</span>
+                        </Link>
+
+                        <div className="mt-3 mb-1">
+                          <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3">My Impact</div>
+                        </div>
+                        <Link href={`/profile/${user.id}`} className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
+                          <span>Impact Profile</span>
+                        </Link>
+                        <Link href={`/profile/${user.id}?tab=history`} className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
+                          <span>Volunteer History</span>
+                        </Link>
+                        <Link href={`/profile/${user.id}?tab=achievements`} className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
+                          <span>Achievements</span>
+                        </Link>
+                        <Link href={`/profile/${user.id}?tab=impact`} className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
+                          <span>Impact Metrics</span>
+                        </Link>
+                      </>
+                    )}
+
+                    {/* Non-logged in users */}
+                    {!user && (
+                      <>
+                        <Link href="/service-requests" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
+                          <span>Service Requests</span>
+                        </Link>
+                        <Link href="/service-offers" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
+                          <span>Service Offers</span>
+                        </Link>
+                      </>
+                    )}
+
+                    {/* Marketplace - For all users */}
+                    <div className="mt-3 mb-1">
+                      <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3">Marketplace</div>
+                    </div>
+                    <Link href="/marketplace" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
+                      <span>Browse Products</span>
                     </Link>
+                    {user?.user_type === 'ngo' && (
+                      <Link href="/marketplace/fundraising" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
+                        <span>Fundraising</span>
+                      </Link>
+                    )}
+                    {user && (
+                      <>
+                        <Link href={`${getDashboardLink()}?tab=marketplace&subtab=selling`} className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
+                          <span>My Listings</span>
+                        </Link>
+                        <Link href="/orders" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
+                          <span>My Orders</span>
+                        </Link>
+                      </>
+                    )}
 
                     <Link 
                       href="/cart" 
-                      className="flex items-center gap-3 text-white hover:text-udaan-orange transition-colors duration-300"
+                      className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors duration-300"
                     >
                       <ShoppingCart className="h-5 w-5" />
                       <span>Cart</span>
@@ -666,11 +1142,6 @@ export function Header() {
                           <Link href={getDashboardLink()}>
                             <Button variant="outline" className="w-full h-12 text-udaan-navy border-udaan-navy bg-white hover:bg-udaan-orange hover:border-udaan-orange hover:text-white transition-colors">
                               Dashboard
-                            </Button>
-                          </Link>
-                          <Link href="/orders">
-                            <Button variant="outline" className="w-full h-12 text-udaan-navy border-udaan-navy bg-white hover:bg-udaan-orange hover:border-udaan-orange hover:text-white transition-colors">
-                              My Orders
                             </Button>
                           </Link>
                           <Link href="/settings">
