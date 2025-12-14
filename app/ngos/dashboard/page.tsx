@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import ProtectedRoute from '@/components/protected-route';
 import { Header } from '@/components/header';
@@ -17,6 +18,10 @@ import { SkeletonOrderItem } from '@/components/ui/skeleton';
 export default function NGODashboard() {
   const { user, refreshUser } = useAuth();
   const { toast } = useToast();
+  const searchParams = useSearchParams();
+  const activeTab = searchParams.get('tab') || 'service-offers';
+  const marketplaceSubTab = searchParams.get('subtab') || 'selling';
+  const tabsRef = useRef<HTMLDivElement>(null);
   const [stats, setStats] = useState({
     serviceOffersPending: 0,
     serviceOffersCompleted: 0,
@@ -301,6 +306,14 @@ export default function NGODashboard() {
     fetchAllData();
   }, [user?.id]);
 
+  useEffect(() => {
+    if ((activeTab || marketplaceSubTab) && tabsRef.current) {
+      setTimeout(() => {
+        tabsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 100)
+    }
+  }, [activeTab, marketplaceSubTab])
+
   return (
     <ProtectedRoute userTypes={['ngo']}>
       <div className="flex min-h-screen flex-col">
@@ -519,12 +532,13 @@ export default function NGODashboard() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <Tabs defaultValue="service-offers" className="w-full">
-                  <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 h-auto">
-                    <TabsTrigger value="service-offers" className="text-xs sm:text-sm">Service Offers</TabsTrigger>
-                    <TabsTrigger value="service-requests" className="text-xs sm:text-sm">Service Requests</TabsTrigger>
-                    <TabsTrigger value="marketplace" className="text-xs sm:text-sm">Marketplace</TabsTrigger>
-                  </TabsList>
+                <div ref={tabsRef}>
+                  <Tabs value={activeTab} className="w-full">
+                    <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 h-auto">
+                      <TabsTrigger value="service-offers" className="text-xs sm:text-sm">Service Offers</TabsTrigger>
+                      <TabsTrigger value="service-requests" className="text-xs sm:text-sm">Service Requests</TabsTrigger>
+                      <TabsTrigger value="marketplace" className="text-xs sm:text-sm">Marketplace</TabsTrigger>
+                    </TabsList>
                   
                   <TabsContent value="service-offers" className="mt-4 space-y-4">
                     <div className="flex justify-between items-center">
@@ -677,7 +691,7 @@ export default function NGODashboard() {
                   </TabsContent>
                   
                   <TabsContent value="marketplace" className="mt-4 space-y-4">
-                    <Tabs defaultValue="selling" className="w-full">
+                    <Tabs value={marketplaceSubTab} className="w-full">
                       <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 h-auto">
                         <TabsTrigger value="selling" className="text-xs sm:text-sm">Your Listings</TabsTrigger>
                         <TabsTrigger value="purchasing" className="text-xs sm:text-sm">Purchased Items</TabsTrigger>
@@ -775,6 +789,7 @@ export default function NGODashboard() {
                     </Tabs>
                   </TabsContent>
                 </Tabs>
+                </div>
               </CardContent>
             </Card>
           </div>
