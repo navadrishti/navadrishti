@@ -155,20 +155,6 @@ npm run test:watch
 npm run test:coverage
 ```
 
-## 🚀 Deployment
-
-### Development (Free)
-1. **Supabase**: Set up PostgreSQL database
-2. **Vercel**: Deploy from GitHub repository
-3. **Cost**: $0/month on free tiers
-
-### Production (Paid)
-1. **Railway**: MySQL database and backend
-2. **Custom Domain**: Professional branding
-3. **Cost**: ~$36/month for production
-
-See [DEVELOPMENT-DEPLOYMENT.md](./DEVELOPMENT-DEPLOYMENT.md) for detailed deployment instructions.
-
 ## 🤝 Contributing
 
 1. Fork the repository
