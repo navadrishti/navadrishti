@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, Suspense } from "react"
 import { useAuth } from "@/lib/auth-context"
 import { useSearchParams } from "next/navigation"
 import { Header } from "@/components/header"
@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Sparkles, FileText, Mail, Loader2, Download, Copy } from "lucide-react"
 
-export default function NGOAIAssistantPage() {
+function NGOAIAssistantContent() {
   const { user } = useAuth()
   const searchParams = useSearchParams()
   const initialTab = searchParams.get('tab') || 'proposal'
@@ -414,5 +414,13 @@ ${user?.name}
       </Tabs>
     </div>
     </>
+  )
+}
+
+export default function NGOAIAssistantPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-background"><Header /><div className="container mx-auto px-4 py-8">Loading...</div></div>}>
+      <NGOAIAssistantContent />
+    </Suspense>
   )
 }
