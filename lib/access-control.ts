@@ -1,5 +1,5 @@
 /**
- * Access Control System for Udaan Collective Platform
+ * Access Control System for Navadrishti Platform
  * 
  * Defines permissions based on user type and verification status
  * Controls access to posts, service requests/offers, marketplace, etc.
