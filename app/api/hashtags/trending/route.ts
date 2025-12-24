@@ -91,7 +91,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Sort by trending score and take top hashtags
+    // ONLY include hashtags with daily mentions > 0
     const sortedHashtags = Array.from(mergedHashtags.values())
+      .filter(hashtag => hashtag.daily_mentions > 0) // Filter out hashtags with 0 mentions in past 24 hours
       .sort((a, b) => {
         // Primary sort: daily mentions (today's activity)
         if (b.daily_mentions !== a.daily_mentions) {
@@ -115,7 +117,7 @@ export async function GET(request: NextRequest) {
       total_mentions: hashtag.total_mentions || 0,
       trending_score: Math.round(hashtag.trending_score * 10) / 10,
       category: hashtag.category || 'general',
-      is_trending: hashtag.daily_mentions > 0 || hashtag.weekly_mentions > 1
+      is_trending: hashtag.daily_mentions > 0 // Only trending if has daily mentions
     }));
 
     return NextResponse.json({
@@ -123,11 +125,14 @@ export async function GET(request: NextRequest) {
       data: formattedData,
       count: formattedData.length,
       timestamp: new Date().toISOString(),
+      message: formattedData.length === 0 ? 'No trending hashtags - all hashtags have 0 mentions in past 24 hours' : undefined,
       debug: {
         calculatedAt: now.toISOString(),
         todayStart: todayStart.toISOString(),
         weekStart: weekStart.toISOString(),
-        postsAnalyzed: recentPosts?.length || 0
+        postsAnalyzed: recentPosts?.length || 0,
+        totalHashtagsFound: mergedHashtags.size,
+        hashtagsWithDailyMentions: sortedHashtags.length
       }
     });
 

@@ -26,12 +26,12 @@ export async function generateMetadata({ params }: PostPageProps) {
     }
 
     return {
-      title: `${post.author.name} shared on Udaan Collective`,
+      title: `${post.author.name} shared on Navadrishti`,
       description: post.content.length > 150 
         ? post.content.substring(0, 150) + '...' 
         : post.content,
       openGraph: {
-        title: `${post.author.name} shared on Udaan Collective`,
+        title: `${post.author.name} shared on Navadrishti`,
         description: post.content.length > 150 
           ? post.content.substring(0, 150) + '...' 
           : post.content,
@@ -42,7 +42,7 @@ export async function generateMetadata({ params }: PostPageProps) {
       },
       twitter: {
         card: 'summary_large_image',
-        title: `${post.author.name} shared on Udaan Collective`,
+        title: `${post.author.name} shared on Navadrishti`,
         description: post.content.length > 150 
           ? post.content.substring(0, 150) + '...' 
           : post.content,
@@ -189,7 +189,7 @@ export default async function PostPage({ params }: PostPageProps) {
             <div className="pt-4 border-t">
               <div className="text-center">
                 <p className="text-sm text-muted-foreground mb-4">
-                  Join the conversation on Udaan Collective
+                  Join the conversation on Navadrishti
                 </p>
                 <div className="space-x-4">
                   <Link 
