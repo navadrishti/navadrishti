@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import ProtectedRoute from '@/components/protected-route';
@@ -15,7 +15,7 @@ import { useToast } from '@/hooks/use-toast';
 import { VerificationBadge, VerificationDetails } from '@/components/verification-badge';
 import { SkeletonOrderItem } from '@/components/ui/skeleton';
 
-export default function CompanyDashboard() {
+function CompanyDashboardContent() {
   const { user, refreshUser } = useAuth();
   const { toast } = useToast();
   const searchParams = useSearchParams();
@@ -589,5 +589,13 @@ export default function CompanyDashboard() {
         </main>
       </div>
     </ProtectedRoute>
+  );
+}
+
+export default function CompanyDashboard() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-background"><Header /><div className="container mx-auto px-4 py-8">Loading...</div></div>}>
+      <CompanyDashboardContent />
+    </Suspense>
   );
 }
