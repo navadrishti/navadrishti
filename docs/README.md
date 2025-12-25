@@ -31,7 +31,6 @@ Navdrishti serves as a bridge between those who need help and those who can prov
 | [ENVIRONMENT.md](./ENVIRONMENT.md) | Environment variables, configuration, and setup |
 | [VERIFICATION_FLOW.md](./VERIFICATION_FLOW.md) | User verification process and compliance |
 | [DEPLOYMENT.md](./DEPLOYMENT.md) | Deployment guides for development and production |
-| [CONTRIBUTING.md](./CONTRIBUTING.md) | Development guidelines and contribution process |
 
 ## 🚀 Quick Start
 
