@@ -73,7 +73,6 @@ This documentation is designed to help developers at all levels understand and c
 - **Backend Developers**: Focus on [API_REFERENCE.md](./API_REFERENCE.md) and [DATABASE_SCHEMA.md](./DATABASE_SCHEMA.md)
 - **Frontend Developers**: Review component structure and API integration patterns
 - **DevOps Engineers**: Check [DEPLOYMENT.md](./DEPLOYMENT.md) for infrastructure setup
-- **Contributors**: Read [CONTRIBUTING.md](./CONTRIBUTING.md) for development workflows
 
 ## 🎯 Project Goals
 
