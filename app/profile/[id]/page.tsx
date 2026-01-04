@@ -23,12 +23,13 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
   const tabsRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (activeTab && tabsRef.current) {
+    // Only scroll to tabs if explicitly set via URL parameter
+    if (searchParams.get('tab') && tabsRef.current) {
       setTimeout(() => {
         tabsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
       }, 100)
     }
-  }, [activeTab])
+  }, [searchParams])
 
   // Mock data - would come from API
   const profile = {
