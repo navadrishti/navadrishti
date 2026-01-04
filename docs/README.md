@@ -31,7 +31,6 @@ Navdrishti serves as a bridge between those who need help and those who can prov
 | [ENVIRONMENT.md](./ENVIRONMENT.md) | Environment variables, configuration, and setup |
 | [VERIFICATION_FLOW.md](./VERIFICATION_FLOW.md) | User verification process and compliance |
 | [DEPLOYMENT.md](./DEPLOYMENT.md) | Deployment guides for development and production |
-| [CONTRIBUTING.md](./CONTRIBUTING.md) | Development guidelines and contribution process |
 
 ## 🚀 Quick Start
 
@@ -74,7 +73,6 @@ This documentation is designed to help developers at all levels understand and c
 - **Backend Developers**: Focus on [API_REFERENCE.md](./API_REFERENCE.md) and [DATABASE_SCHEMA.md](./DATABASE_SCHEMA.md)
 - **Frontend Developers**: Review component structure and API integration patterns
 - **DevOps Engineers**: Check [DEPLOYMENT.md](./DEPLOYMENT.md) for infrastructure setup
-- **Contributors**: Read [CONTRIBUTING.md](./CONTRIBUTING.md) for development workflows
 
 ## 🎯 Project Goals
 

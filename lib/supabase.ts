@@ -1,5 +1,5 @@
-// Basic Supabase configuration for authentication
-// This setup allows using Supabase Auth while keeping your existing MySQL database
+// Supabase client configuration
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 
 export const supabaseConfig = {
   url: process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -7,16 +7,26 @@ export const supabaseConfig = {
   serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
 }
 
-// For now, we'll use a placeholder that returns null
-// This prevents errors when Supabase client isn't installed
+// Create Supabase client for client-side usage
 export const createClient = () => {
-  console.warn('Supabase client not configured - using MySQL database only')
-  return null
+  return createSupabaseClient(
+    supabaseConfig.url,
+    supabaseConfig.anonKey
+  );
 }
 
+// Create Supabase client with service role for server-side usage
 export const createServerClient = () => {
-  console.warn('Supabase server client not configured - using MySQL database only')
-  return null
+  return createSupabaseClient(
+    supabaseConfig.url,
+    supabaseConfig.serviceRoleKey,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    }
+  );
 }
 
 // Auth-related types for future Supabase integration
@@ -34,13 +44,15 @@ export interface Session {
   user: User
 }
 
-// Placeholder auth functions
+// Auth functions using Supabase client
 export const getUser = async (): Promise<User | null> => {
-  // This will be replaced with actual Supabase auth when client is installed
-  return null
+  const supabase = createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  return user;
 }
 
 export const getSession = async (): Promise<Session | null> => {
-  // This will be replaced with actual Supabase auth when client is installed
-  return null
+  const supabase = createClient();
+  const { data: { session } } = await supabase.auth.getSession();
+  return session;
 }

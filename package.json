@@ -10,7 +10,6 @@
     "build:vercel": "npm run build && npm run lint",
     "migrate:safe": "npx tsx scripts/safe-migration.ts",
     "migrate:verify": "npx tsx scripts/verify-migration.ts",
-    "db:export": "mysqldump -u Navadrishti_user -p Navadrishti > backup/Navadrishti_$(date +%Y%m%d_%H%M%S).sql",
     "db:fix-sequences": "node scripts/fix-sequences.js"
   },
   "dependencies": {
@@ -61,7 +60,6 @@
     "input-otp": "1.4.1",
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.454.0",
-    "mysql2": "^3.15.3",
     "next": "16.0.7",
     "next-auth": "^4.24.13",
     "next-themes": "^0.4.6",
