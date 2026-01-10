@@ -312,73 +312,74 @@ export function PostsFeed({ userId, limit = 10, refreshTrigger, showAllPosts = f
           });
           
           // Track share in database - but prevent duplicates for both user types
-          try {
-            // For anonymous users, check localStorage to prevent duplicate counting
-            if (!user || !token) {
-              const shareKey = `shared_post_${postId}`;
-              const hasShared = localStorage.getItem(shareKey);
-              
-              if (hasShared) {
-                // User has already shared this post, don't increment counter
-                return;
-              }
-              
-              // Mark as shared in localStorage
-              localStorage.setItem(shareKey, 'true');
+          // For anonymous users, check localStorage to prevent duplicate counting
+          if (!user || !token) {
+            const shareKey = `shared_post_${postId}`;
+            const hasShared = localStorage.getItem(shareKey);
+            
+            if (hasShared) {
+              // User has already shared this post, don't increment counter
+              return;
             }
             
-            const headers: { [key: string]: string } = {
-              'Content-Type': 'application/json'
-            };
-            
-            // Add auth header only if user is logged in
-            if (user && token) {
-              headers['Authorization'] = `Bearer ${token}`;
-            }
-            
-            const response = await fetch(`/api/posts/${postId}/interact`, {
-              method: 'POST',
-              headers,
-              body: JSON.stringify({ action: 'share' })
-            });
-            
-            if (response.ok) {
-              const result = await response.json();
+            // Mark as shared in localStorage
+            localStorage.setItem(shareKey, 'true');
+          }
+          
+          const headers: { [key: string]: string } = {
+            'Content-Type': 'application/json'
+          };
+          
+          // Add auth header only if user is logged in
+          if (user && token) {
+            headers['Authorization'] = `Bearer ${token}`;
+          }
+          
+          // Wait 20 seconds before tracking the share and updating UI
+          setTimeout(async () => {
+            try {
+              const response = await fetch(`/api/posts/${postId}/interact`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ action: 'share' })
+              });
               
-              // Only update UI if share was successfully counted
-              if (result.success) {
-                setPosts(prev => prev.map(post => 
-                  post.id === postId 
-                    ? {
-                        ...post,
-                        stats: {
-                          likes: result.stats.likes,
-                          comments: result.stats.comments,
-                          shares: result.stats.shares,
-                          views: result.stats.views
-                        },
-                        user_interaction: {
-                          has_liked: result.user_interaction?.has_liked || false,
-                          has_shared: true
+              if (response.ok) {
+                const result = await response.json();
+                
+                // Only update UI if share was successfully counted
+                if (result.success) {
+                  setPosts(prev => prev.map(post => 
+                    post.id === postId 
+                      ? {
+                          ...post,
+                          stats: {
+                            likes: result.stats.likes,
+                            comments: result.stats.comments,
+                            shares: result.stats.shares,
+                            views: result.stats.views
+                          },
+                          user_interaction: {
+                            has_liked: result.user_interaction?.has_liked || false,
+                            has_shared: true
+                          }
                         }
-                      }
-                    : post
-                ));
+                      : post
+                  ));
+                }
+              } else {
+                // If authenticated user has already shared, remove from localStorage for anonymous case
+                if (!user || !token) {
+                  localStorage.removeItem(`shared_post_${postId}`);
+                }
               }
-            } else {
-              // If authenticated user has already shared, remove from localStorage for anonymous case
+            } catch (error) {
+              console.log('Share tracking error:', error);
               if (!user || !token) {
                 localStorage.removeItem(`shared_post_${postId}`);
               }
             }
-          } catch (error) {
-            // Silent fail for tracking - don't block copying functionality
-            console.log('Share tracking error:', error);
-            // Remove localStorage entry if tracking failed
-            if (!user || !token) {
-              localStorage.removeItem(`shared_post_${postId}`);
-            }
-          }
+          }, 20000); // 20-second delay
           
         } catch (error) {
           // Fallback to manual copy
