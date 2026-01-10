@@ -863,7 +863,13 @@ export default function ProductDetailsPage({ params }: { params: Promise<{ id: s
         {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-sm text-gray-600 mb-6">
           <button 
-            onClick={() => router.back()}
+            onClick={() => {
+              if (window.history.length > 1) {
+                router.back()
+              } else {
+                router.push('/marketplace')
+              }
+            }}
             className="hover:text-blue-600 flex items-center gap-1"
           >
             <ArrowLeft size={16} />
