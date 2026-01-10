@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import ProtectedRoute from '@/components/protected-route';
 import { Header } from '@/components/header';
@@ -18,6 +18,7 @@ import { SkeletonHeader, SkeletonStats, SkeletonOrderItem } from '@/components/u
 function IndividualDashboardContent() {
   const { user, refreshUser } = useAuth();
   const { toast } = useToast();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const activeTab = searchParams.get('tab') || 'service-requests';
   const marketplaceSubTab = searchParams.get('subtab') || 'purchased';
@@ -435,7 +436,10 @@ function IndividualDashboardContent() {
               </CardHeader>
               <CardContent>
                 <div ref={tabsRef}>
-                  <Tabs value={activeTab} className="w-full">
+                  <Tabs value={activeTab} onValueChange={(value) => {
+                    window.history.replaceState(null, '', `/individuals/dashboard?tab=${value}`);
+                    router.replace(`/individuals/dashboard?tab=${value}`, { scroll: false });
+                  }} className="w-full">
                     <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 h-auto">
                       <TabsTrigger value="service-requests" className="text-xs sm:text-sm">Service Requests</TabsTrigger>
                       <TabsTrigger value="services-hired" className="text-xs sm:text-sm">Services Hired</TabsTrigger>
@@ -471,7 +475,10 @@ function IndividualDashboardContent() {
                   </TabsContent>
                   
                   <TabsContent value="marketplace" className="mt-4 space-y-4">
-                    <Tabs value={marketplaceSubTab}>
+                    <Tabs value={marketplaceSubTab} onValueChange={(value) => {
+                      window.history.replaceState(null, '', `/individuals/dashboard?tab=marketplace&subtab=${value}`);
+                      router.replace(`/individuals/dashboard?tab=marketplace&subtab=${value}`, { scroll: false });
+                    }}>
                       <TabsList>
                         <TabsTrigger value="purchased">Items Purchased</TabsTrigger>
                         <TabsTrigger value="selling">Your Listings</TabsTrigger>

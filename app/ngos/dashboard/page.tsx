@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import ProtectedRoute from '@/components/protected-route';
 import { Header } from '@/components/header';
@@ -18,6 +18,7 @@ import { SkeletonOrderItem } from '@/components/ui/skeleton';
 function NGODashboardContent() {
   const { user, refreshUser } = useAuth();
   const { toast } = useToast();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const activeTab = searchParams.get('tab') || 'service-offers';
   const marketplaceSubTab = searchParams.get('subtab') || 'selling';
@@ -533,7 +534,10 @@ function NGODashboardContent() {
               </CardHeader>
               <CardContent>
                 <div ref={tabsRef}>
-                  <Tabs value={activeTab} className="w-full">
+                  <Tabs value={activeTab} onValueChange={(value) => {
+                    window.history.replaceState(null, '', `/ngos/dashboard?tab=${value}`);
+                    router.replace(`/ngos/dashboard?tab=${value}`, { scroll: false });
+                  }} className="w-full">
                     <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 h-auto">
                       <TabsTrigger value="service-offers" className="text-xs sm:text-sm">Service Offers</TabsTrigger>
                       <TabsTrigger value="service-requests" className="text-xs sm:text-sm">Service Requests</TabsTrigger>
@@ -691,7 +695,10 @@ function NGODashboardContent() {
                   </TabsContent>
                   
                   <TabsContent value="marketplace" className="mt-4 space-y-4">
-                    <Tabs value={marketplaceSubTab} className="w-full">
+                    <Tabs value={marketplaceSubTab} onValueChange={(value) => {
+                      window.history.replaceState(null, '', `/ngos/dashboard?tab=marketplace&subtab=${value}`);
+                      router.replace(`/ngos/dashboard?tab=marketplace&subtab=${value}`, { scroll: false });
+                    }} className="w-full">
                       <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 h-auto">
                         <TabsTrigger value="selling" className="text-xs sm:text-sm">Your Listings</TabsTrigger>
                         <TabsTrigger value="purchasing" className="text-xs sm:text-sm">Purchased Items</TabsTrigger>
