@@ -39,7 +39,7 @@ export function TrendingHashtags({
     };
 
     // Initial background refresh after component mounts
-    const initialTimer = setTimeout(backgroundRefresh, 10000); // 10 seconds after mount
+    const initialTimer = setTimeout(backgroundRefresh, 2000); // 2 seconds after mount for faster loading
 
     // Set up 5-minute interval for background refresh
     const refreshInterval = setInterval(backgroundRefresh, 300000); // 5 minutes
@@ -95,7 +95,7 @@ export function TrendingHashtags({
             </div>
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent style={{ minHeight: '400px' }}>
           <div className="space-y-3">
             {Array.from({ length: limit }).map((_, i) => (
               <div key={i} className="animate-pulse">
@@ -118,7 +118,7 @@ export function TrendingHashtags({
             Trending Hashtags
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent style={{ minHeight: '400px' }}>
           <div className="text-center py-6">
             <WifiOff className="h-8 w-8 mx-auto text-red-400 mb-2" />
             <p className="text-sm text-muted-foreground mb-2">
@@ -148,7 +148,7 @@ export function TrendingHashtags({
             </div>
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent style={{ minHeight: '400px' }}>
           <div className="text-center py-6">
             <Activity className="h-8 w-8 mx-auto text-gray-400 mb-2" />
             <p className="text-sm text-muted-foreground">
@@ -178,7 +178,7 @@ export function TrendingHashtags({
           </div>
         </CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent style={{ minHeight: '400px' }}>
         <div className="space-y-3">
           {trendingHashtags.map((hashtag, index) => (
             <div
