@@ -1,13 +1,14 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { Header } from '@/components/header'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { SkeletonHeader, SkeletonOrderItem } from '@/components/ui/skeleton'
-import { Package, MapPin, Clock, CreditCard, Truck, CheckCircle, XCircle, AlertCircle } from 'lucide-react'
+import { Package, MapPin, Clock, CreditCard, Truck, CheckCircle, XCircle, AlertCircle, ArrowLeft } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import Link from 'next/link'
 
@@ -41,6 +42,7 @@ const statusConfig = {
 
 export default function OrdersPage() {
   const { user } = useAuth();
+  const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('all');
@@ -273,6 +275,26 @@ export default function OrdersPage() {
       <Header />
       
       <main className="flex-1 px-6 py-8 md:px-10">
+        {/* Back Button */}
+        <div className="mb-6">
+          <Button
+            variant="ghost"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (window.history.length > 1) {
+                router.back();
+              } else {
+                router.push('/marketplace');
+              }
+            }}
+            className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </Button>
+        </div>
+
         <div className="mb-8">
           <h1 className="text-3xl font-bold tracking-tight">My Orders</h1>
           <p className="text-muted-foreground">

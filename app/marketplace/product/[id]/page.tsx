@@ -861,32 +861,40 @@ export default function ProductDetailsPage({ params }: { params: Promise<{ id: s
       
       <main className="container mx-auto px-4 py-6">
         {/* Breadcrumb */}
-        <div className="flex items-center gap-2 text-sm text-gray-600 mb-6">
+        <nav className="flex items-center gap-2 text-sm text-gray-600 mb-6 relative z-50" style={{ isolation: 'isolate' }}>
           <button 
-            onClick={() => {
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
               if (window.history.length > 1) {
                 router.back()
               } else {
                 router.push('/marketplace')
               }
             }}
-            className="hover:text-blue-600 flex items-center gap-1"
+            className="hover:text-blue-600 flex items-center gap-1 cursor-pointer"
           >
             <ArrowLeft size={16} />
             Back
           </button>
-          <span>/</span>
+          <span className="pointer-events-none select-none">/</span>
           <button 
-            onClick={() => router.push('/marketplace')}
-            className="hover:text-blue-600"
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              router.push('/marketplace');
+            }}
+            className="hover:text-blue-600 cursor-pointer"
           >
             Marketplace
           </button>
-          <span>/</span>
-          <span className="text-gray-900 font-medium truncate max-w-[300px]" title={product.title}>
+          <span className="pointer-events-none select-none">/</span>
+          <span className="text-gray-900 font-medium truncate max-w-[300px] select-none pointer-events-none" title={product.title}>
             {product.title}
           </span>
-        </div>
+        </nav>
 
         <div className="grid lg:grid-cols-2 gap-8 mb-8">
           {/* Product Images */}

@@ -218,11 +218,14 @@ export default function VerificationDashboard() {
   const handleBack = () => {
     // Navigate back to appropriate dashboard based on user type
     if (user?.user_type === 'individual') {
-      router.push('/individuals/dashboard');
+      router.push('/individuals/dashboard#top');
+      setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
     } else if (user?.user_type === 'ngo') {
-      router.push('/ngos/dashboard');
+      router.push('/ngos/dashboard#top');
+      setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
     } else if (user?.user_type === 'company') {
-      router.push('/companies/dashboard');
+      router.push('/companies/dashboard#top');
+      setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
     } else {
       router.back(); // Fallback to browser back
     }
