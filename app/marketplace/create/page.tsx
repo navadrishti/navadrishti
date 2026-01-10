@@ -110,12 +110,39 @@ export default function CreateListingPage() {
         return acc;
       }, {} as Record<string, string>);
 
+      // Add brand and weight to specifications if provided
+      if (formData.brand?.trim()) {
+        specifications['Brand'] = formData.brand.trim();
+      }
+      if (formData.weight_kg) {
+        specifications['Weight'] = `${formData.weight_kg} kg`;
+      }
+
       // Build dimensions object
       const dimensions = {
         length: formData.dimensions_length ? parseFloat(formData.dimensions_length) : null,
         width: formData.dimensions_width ? parseFloat(formData.dimensions_width) : null,
         height: formData.dimensions_height ? parseFloat(formData.dimensions_height) : null
       };
+
+      // Add dimensions to specifications if provided
+      if (Object.values(dimensions).some(v => v !== null)) {
+        const dimStr = [
+          dimensions.length ? `${dimensions.length}L` : null,
+          dimensions.width ? `${dimensions.width}W` : null,
+          dimensions.height ? `${dimensions.height}H` : null
+        ].filter(Boolean).join(' x ');
+        if (dimStr) {
+          specifications['Dimensions'] = `${dimStr} cm`;
+        }
+      }
+
+      // Validate specifications are provided
+      if (Object.keys(specifications).length === 0) {
+        setError('Please add at least one product specification (brand, weight, dimensions, or custom specifications)');
+        setLoading(false);
+        return;
+      }
       
       // Validate who_can_buy is not empty
       if (whoCanBuy.length === 0) {
@@ -285,9 +312,7 @@ export default function CreateListingPage() {
 
   return (
     <ProtectedRoute 
-      userTypes={['ngo', 'company']} 
       requireVerification={true}
-      permission="canCreateMarketplaceListings"
     >
       <div className="flex min-h-screen flex-col">
         <Header />
@@ -639,7 +664,7 @@ export default function CreateListingPage() {
 
                   {/* Product Specifications Section */}
                   <div className="border-t pt-6">
-                    <h3 className="text-lg font-semibold mb-4">Product Specifications (Optional)</h3>
+                    <h3 className="text-lg font-semibold mb-4">Product Specifications *</h3>
                     
                     <div className="grid gap-4">
                       {/* Brand and Weight */}
