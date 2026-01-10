@@ -214,55 +214,63 @@ export function PostsFeed({ userId, limit = 10, refreshTrigger, showAllPosts = f
             localStorage.setItem(shareKey, 'true');
           }
           
-          const headers: { [key: string]: string } = {
-            'Content-Type': 'application/json'
-          };
-          
-          // Add auth header only if user is logged in
-          if (user && token) {
-            headers['Authorization'] = `Bearer ${token}`;
-          }
-          
-          const response = await fetch(`/api/posts/${postId}/interact`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({ action: 'share' })
-          });
+          // Wait 20 seconds before actually tracking the share
+          setTimeout(async () => {
+            try {
+              const headers: { [key: string]: string } = {
+                'Content-Type': 'application/json'
+              };
+              
+              // Add auth header only if user is logged in
+              if (user && token) {
+                headers['Authorization'] = `Bearer ${token}`;
+              }
+              
+              const response = await fetch(`/api/posts/${postId}/interact`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ action: 'share' })
+              });
 
-          if (response.ok) {
-            const result = await response.json();
-            
-            // Only update UI if share was successfully counted
-            if (result.success) {
-              setPosts(prev => prev.map(post => 
-                post.id === postId 
-                  ? {
-                      ...post,
-                      stats: {
-                        likes: result.stats.likes,
-                        comments: result.stats.comments,
-                        shares: result.stats.shares,
-                        views: result.stats.views
-                      },
-                      user_interaction: {
-                        has_liked: result.user_interaction?.has_liked || false,
-                        has_shared: result.user_interaction?.has_shared || true
-                      }
-                    }
-                  : post
-              ));
+              if (response.ok) {
+                const result = await response.json();
+                
+                // Only update UI if share was successfully counted
+                if (result.success) {
+                  setPosts(prev => prev.map(post => 
+                    post.id === postId 
+                      ? {
+                          ...post,
+                          stats: {
+                            likes: result.stats.likes,
+                            comments: result.stats.comments,
+                            shares: result.stats.shares,
+                            views: result.stats.views
+                          },
+                          user_interaction: {
+                            has_liked: result.user_interaction?.has_liked || false,
+                            has_shared: result.user_interaction?.has_shared || true
+                          }
+                        }
+                      : post
+                  ));
+                }
+              } else {
+                // If authenticated user has already shared, remove from localStorage for anonymous case
+                if (!user || !token) {
+                  localStorage.removeItem(`shared_post_${postId}`);
+                }
+              }
+            } catch (error) {
+              // Remove localStorage entry if tracking failed
+              if (!user || !token) {
+                localStorage.removeItem(`shared_post_${postId}`);
+              }
             }
-          } else {
-            // If authenticated user has already shared, remove from localStorage for anonymous case
-            if (!user || !token) {
-              localStorage.removeItem(`shared_post_${postId}`);
-            }
-          }
+          }, 20000); // 20-second delay before tracking share
         } catch (error) {
-          // Remove localStorage entry if tracking failed
-          if (!user || !token) {
-            localStorage.removeItem(`shared_post_${postId}`);
-          }
+          // Error in fallback execution
+          console.error('Share tracking error:', error);
         }
       } else {
         throw new Error('execCommand failed');
@@ -487,6 +495,9 @@ export function PostsFeed({ userId, limit = 10, refreshTrigger, showAllPosts = f
 
     // Mark as tracked in session storage immediately to prevent race conditions
     sessionStorage.setItem(sessionKey, Date.now().toString());
+
+    // Wait 20 seconds before actually tracking the view
+    await new Promise(resolve => setTimeout(resolve, 20000));
 
     try {
       const headers: Record<string, string> = {
