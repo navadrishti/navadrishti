@@ -81,3 +81,25 @@ This documentation is designed to help developers at all levels understand and c
 - **User Experience**: Intuitive interface for all user types
 - **Transparency**: Clear processes for verification and trust-building
 - **Sustainability**: Economic models that support long-term platform viability
+
+## 📝 Recent Updates
+
+### Marketplace Enhancements (January 2026)
+
+**Buyer Eligibility Control**
+- Sellers can now restrict items to specific user types (NGOs, Individuals, Companies)
+- Multi-select buyer eligibility shown as colored badges on product cards
+- API-level validation ensures only eligible users can purchase
+
+**Automated Item Lifecycle**
+- Items automatically marked as "SOLD OUT" when quantity reaches zero
+- Visual red diagonal banner overlay on sold items
+- Automatic cleanup after 1 hour using Vercel Cron jobs
+- Keeps marketplace fresh and relevant
+
+**Enhanced Purchase Flow**
+- "Buy Now" button directly adds items to cart
+- Bypasses product detail page for faster checkout
+- Real-time quantity management and stock validation
+
+See [DATABASE_SCHEMA.md](./DATABASE_SCHEMA.md#-schema-migrations--change-log) for complete migration details and [API_REFERENCE.md](./API_REFERENCE.md#-cron-jobs--scheduled-tasks) for API changes.

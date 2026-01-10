@@ -62,6 +62,7 @@ export default function CreateListingPage() {
     dimensions_height: '',
     specifications: {} as Record<string, string>
   });
+  const [whoCanBuy, setWhoCanBuy] = useState<string[]>([]);
   const [images, setImages] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [uploadedImageUrls, setUploadedImageUrls] = useState<string[]>([]);
@@ -116,6 +117,13 @@ export default function CreateListingPage() {
         height: formData.dimensions_height ? parseFloat(formData.dimensions_height) : null
       };
       
+      // Validate who_can_buy is not empty
+      if (whoCanBuy.length === 0) {
+        setError('Please select at least one buyer type who can purchase this item');
+        setLoading(false);
+        return;
+      }
+
       const response = await fetch('/api/marketplace', {
         method: 'POST',
         headers: {
@@ -131,7 +139,8 @@ export default function CreateListingPage() {
           dimensions_cm: Object.values(dimensions).some(v => v !== null) ? dimensions : null,
           specifications: Object.keys(specifications).length > 0 ? specifications : null,
           tags: formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag),
-          images: imageUrls
+          images: imageUrls,
+          who_can_buy: whoCanBuy
         })
       });
 
@@ -545,6 +554,87 @@ export default function CreateListingPage() {
                     <p className="text-sm text-muted-foreground mt-1">
                       Separate tags with commas
                     </p>
+                  </div>
+
+                  {/* Who Can Buy Section */}
+                  <div className="border-t pt-6">
+                    <div className="space-y-3">
+                      <Label className="text-base font-semibold">Who Can Buy This Item? *</Label>
+                      <p className="text-sm text-muted-foreground">
+                        Select which user types are eligible to purchase this item. This helps ensure your items reach the right beneficiaries.
+                      </p>
+                      
+                      <div className="space-y-2 pt-2">
+                        <div className="flex items-center space-x-2 p-3 rounded-md border hover:bg-accent transition-colors">
+                          <input
+                            type="checkbox"
+                            id="buy-ngo"
+                            checked={whoCanBuy.includes('ngo')}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setWhoCanBuy([...whoCanBuy, 'ngo']);
+                              } else {
+                                setWhoCanBuy(whoCanBuy.filter(t => t !== 'ngo'));
+                              }
+                            }}
+                            className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                          />
+                          <Label htmlFor="buy-ngo" className="flex items-center gap-2 cursor-pointer font-normal">
+                            <Users className="h-4 w-4 text-blue-600" />
+                            <span>NGOs</span>
+                            <span className="text-xs text-muted-foreground">(Non-profit organizations)</span>
+                          </Label>
+                        </div>
+                        
+                        <div className="flex items-center space-x-2 p-3 rounded-md border hover:bg-accent transition-colors">
+                          <input
+                            type="checkbox"
+                            id="buy-individual"
+                            checked={whoCanBuy.includes('individual')}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setWhoCanBuy([...whoCanBuy, 'individual']);
+                              } else {
+                                setWhoCanBuy(whoCanBuy.filter(t => t !== 'individual'));
+                              }
+                            }}
+                            className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                          />
+                          <Label htmlFor="buy-individual" className="flex items-center gap-2 cursor-pointer font-normal">
+                            <User className="h-4 w-4 text-green-600" />
+                            <span>Individuals</span>
+                            <span className="text-xs text-muted-foreground">(Private users)</span>
+                          </Label>
+                        </div>
+                        
+                        <div className="flex items-center space-x-2 p-3 rounded-md border hover:bg-accent transition-colors">
+                          <input
+                            type="checkbox"
+                            id="buy-company"
+                            checked={whoCanBuy.includes('company')}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setWhoCanBuy([...whoCanBuy, 'company']);
+                              } else {
+                                setWhoCanBuy(whoCanBuy.filter(t => t !== 'company'));
+                              }
+                            }}
+                            className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                          />
+                          <Label htmlFor="buy-company" className="flex items-center gap-2 cursor-pointer font-normal">
+                            <Building className="h-4 w-4 text-purple-600" />
+                            <span>Companies</span>
+                            <span className="text-xs text-muted-foreground">(Corporate buyers via CSR)</span>
+                          </Label>
+                        </div>
+                      </div>
+                      
+                      {whoCanBuy.length === 0 && (
+                        <p className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded p-2 mt-2">
+                          ⚠️ Please select at least one buyer type
+                        </p>
+                      )}
+                    </div>
                   </div>
 
                   {/* Product Specifications Section */}

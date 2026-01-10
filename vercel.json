@@ -9,6 +9,10 @@
     {
       "path": "/api/cron/hashtag-cleanup",
       "schedule": "30 18 * * *"
+    },
+    {
+      "path": "/api/cron/cleanup-sold-items",
+      "schedule": "0 * * * *"
     }
   ]
 }
