@@ -461,20 +461,26 @@ Fetch marketplace items.
 ```
 
 ### POST /api/marketplace
-Create marketplace listing.
+Create marketplace listing or purchase item.
 
 **Headers:** Authorization required
+
+#### Action: Create Listing
 
 **Request Body:**
 ```json
 {
+  "action": "create",
   "title": "Handmade Crafts",
   "description": "Beautiful handmade items by local artisans",
   "price": 25.99,
+  "quantity": 10,
   "category": "Handicrafts",
-  "condition": "new",
+  "condition_type": "new",
   "images": ["https://cloudinary.com/image1.jpg"],
-  "stock_quantity": 50,
+  "who_can_buy": ["ngo", "individual", "company"],
+  "tags": ["handmade", "crafts"],
+  "location": "Mumbai",
   "shipping_info": {
     "weight": 0.5,
     "dimensions": "10x10x5 cm",
@@ -482,6 +488,197 @@ Create marketplace listing.
   }
 }
 ```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 123,
+    "message": "Marketplace item created successfully"
+  }
+}
+```
+
+**Validation:**
+- `who_can_buy` must include at least one of: 'ngo', 'individual', 'company'
+- Defaults to all three types if not specified
+- `quantity` must be >= 1
+
+#### Action: Purchase Item
+
+**Request Body:**
+```json
+{
+  "action": "purchase",
+  "itemId": 123,
+  "quantity": 2,
+  "shippingAddress": {
+    "street": "123 Main St",
+    "city": "Mumbai",
+    "state": "Maharashtra",
+    "pincode": "400001"
+  },
+  "paymentMethod": "razorpay"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "purchaseId": 456,
+    "totalAmount": 51.98,
+    "message": "Purchase completed successfully"
+  }
+}
+```
+
+**Eligibility Check:**
+- User's `user_type` must be in item's `who_can_buy` array
+- Returns 403 if user type not eligible
+- Example error: "This item can only be purchased by: NGOs. Your account type (Individual) is not eligible."
+
+**Quantity Management:**
+- Automatically reduces item quantity by purchase amount
+- If quantity reaches 0:
+  - Status set to 'sold'
+  - `sold_at` timestamp recorded
+  - Item deleted automatically after 1 hour (via cron)
+
+### PUT /api/marketplace/:id
+Update marketplace listing.
+
+**Headers:** Authorization required  
+**Authorization:** Only item owner can update
+
+**Request Body:**
+```json
+{
+  "title": "Updated Handmade Crafts",
+  "description": "Updated description",
+  "price": 29.99,
+  "quantity": 15,
+  "category": "Handicrafts",
+  "condition_type": "like_new",
+  "images": ["https://cloudinary.com/new-image.jpg"],
+  "who_can_buy": ["ngo", "individual"],
+  "tags": ["handmade", "artisan"],
+  "status": "active"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Listing updated successfully",
+  "item_id": 123
+}
+```
+
+**Notes:**
+- All fields are optional (only updated fields need to be sent)
+- `who_can_buy` must include at least one eligible buyer type if provided
+- Returns 403 if user is not the seller
+- Returns 404 if item not found
+
+### GET /api/marketplace/product/:id
+Get detailed product information including reviews.
+
+**Headers:** Authorization optional
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 123,
+    "title": "Handmade Crafts",
+    "description": "Beautiful handmade items",
+    "price": 25.99,
+    "quantity": 10,
+    "category": "Handicrafts",
+    "condition_type": "new",
+    "images": ["https://cloudinary.com/image1.jpg"],
+    "seller": {
+      "id": 456,
+      "name": "John Doe",
+      "avatar": "https://avatar.url"
+    },
+    "rating_average": 4.5,
+    "rating_count": 10,
+    "created_at": "2024-01-01T00:00:00Z",
+    "reviews": [
+      {
+        "id": 1,
+        "rating": 5,
+        "title": "Great product!",
+        "review_text": "Really satisfied with this purchase.",
+        "verified_purchase": true,
+        "helpful_count": 5,
+        "reviewer": {
+          "id": 789,
+          "name": "Jane Smith",
+          "avatar": "https://avatar.url"
+        },
+        "created_at": "2024-01-02T00:00:00Z"
+      }
+    ]
+  }
+}
+```
+
+**Notes:**
+- Only returns published reviews
+- Reviews sorted by creation date (newest first)
+- `verified_purchase` badge shown for confirmed buyers
+
+### POST /api/marketplace/product/:id
+Submit a review for a marketplace item.
+
+**Headers:** Authorization required
+
+**Request Body:**
+```json
+{
+  "action": "review",
+  "rating": 5,
+  "title": "Great product!",
+  "review_text": "Really satisfied with this purchase. Highly recommend!"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "marketplace_item_id": 123,
+    "reviewer_id": 789,
+    "rating": 5,
+    "title": "Great product!",
+    "review_text": "Really satisfied with this purchase. Highly recommend!",
+    "verified_purchase": true,
+    "status": "published",
+    "created_at": "2024-01-02T00:00:00Z"
+  }
+}
+```
+
+**Validation:**
+- User must be authenticated
+- `rating` must be between 1 and 5
+- `review_text` is required (max 1000 chars)
+- `title` is optional (max 200 chars)
+- One review per user per item (UNIQUE constraint)
+
+**Features:**
+- Automatic verified purchase detection (checks order history)
+- Rating statistics auto-updated on item
+- Returns 409 if user already reviewed this item
 
 ## 🛍️ Orders & Cart
 
@@ -603,6 +800,63 @@ Get platform statistics.
   }
 }
 ```
+
+## ⏰ Cron Jobs & Scheduled Tasks
+
+### GET /api/cron/cleanup-sold-items
+Automatically delete marketplace items sold more than 1 hour ago.
+
+**Schedule:** Runs every hour at minute 0 (`0 * * * *`)  
+**Trigger:** Vercel Cron  
+**Headers:** `Authorization: Bearer ${CRON_SECRET}`
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Deleted 5 sold items",
+  "deletedCount": 5,
+  "deletedItems": [
+    {
+      "id": 123,
+      "title": "Vintage Camera",
+      "seller_id": 45,
+      "soldAt": "2026-01-10T10:00:00Z"
+    }
+  ]
+}
+```
+
+**Manual Trigger (POST):**
+```bash
+POST /api/cron/cleanup-sold-items
+Content-Type: application/json
+
+{
+  "secret": "${CRON_SECRET}"
+}
+```
+
+**Cleanup Logic:**
+1. Finds items where `status = 'sold'` and `sold_at < NOW() - 1 hour`
+2. Deletes matching items from database
+3. Returns count and details of deleted items
+
+**Configuration:**
+```json
+// vercel.json
+{
+  "crons": [
+    {
+      "path": "/api/cron/cleanup-sold-items",
+      "schedule": "0 * * * *"
+    }
+  ]
+}
+```
+
+**Environment Variables:**
+- `CRON_SECRET`: Secure token for authorizing cron job requests
 
 ## 🚫 Error Codes
 

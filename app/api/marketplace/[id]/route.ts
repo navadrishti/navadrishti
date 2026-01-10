@@ -40,7 +40,8 @@ export async function PUT(
       location,
       tags,
       images,
-      status
+      status,
+      who_can_buy
     } = body;
 
     // Verify the item belongs to the current user using Supabase helpers
@@ -55,7 +56,7 @@ export async function PUT(
     }
 
     // Update the marketplace item using Supabase helpers
-    const updateData = {
+    const updateData: any = {
       title: title || '',
       description: description || '',
       category: category || '',
@@ -67,6 +68,11 @@ export async function PUT(
       images: JSON.stringify(images || []),
       status: status || 'active'
     };
+    
+    // Add who_can_buy if provided (as array, not JSON string)
+    if (who_can_buy) {
+      updateData.who_can_buy = who_can_buy; // Store as array directly
+    }
 
     await db.marketplaceItems.update(itemId, updateData);
 

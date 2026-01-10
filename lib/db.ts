@@ -696,6 +696,143 @@ export const db = {
     }
   },
 
+  // Marketplace Item Reviews
+  marketplaceReviews: {
+    async create(reviewData: {
+      marketplace_item_id: number;
+      reviewer_id: number;
+      rating: number;
+      title?: string;
+      review_text: string;
+      verified_purchase?: boolean;
+      purchase_id?: number;
+    }) {
+      const { data, error } = await supabase
+        .from('marketplace_item_reviews')
+        .insert({
+          ...reviewData,
+          status: 'published',
+          created_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+
+    async getByItemId(itemId: number, status: string = 'published') {
+      const { data, error } = await supabase
+        .from('marketplace_item_reviews')
+        .select(`
+          *,
+          reviewer:users!reviewer_id(name, profile_image, user_type)
+        `)
+        .eq('marketplace_item_id', itemId)
+        .eq('status', status)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data;
+    },
+
+    async getByUserId(userId: number) {
+      const { data, error } = await supabase
+        .from('marketplace_item_reviews')
+        .select(`
+          *,
+          marketplace_item:marketplace_items(id, title, images)
+        `)
+        .eq('reviewer_id', userId)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data;
+    },
+
+    async getById(id: number) {
+      const { data, error } = await supabase
+        .from('marketplace_item_reviews')
+        .select(`
+          *,
+          reviewer:users!reviewer_id(name, profile_image),
+          marketplace_item:marketplace_items(id, title, images)
+        `)
+        .eq('id', id)
+        .single();
+      
+      if (error && error.code !== 'PGRST116') throw error;
+      return data;
+    },
+
+    async update(id: number, updates: any) {
+      const { data, error } = await supabase
+        .from('marketplace_item_reviews')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+
+    async delete(id: number) {
+      const { error } = await supabase
+        .from('marketplace_item_reviews')
+        .delete()
+        .eq('id', id);
+      
+      if (error) throw error;
+      return true;
+    },
+
+    async updateHelpfulCount(id: number, increment: boolean = true) {
+      const { data: review } = await supabase
+        .from('marketplace_item_reviews')
+        .select('helpful_count')
+        .eq('id', id)
+        .single();
+      
+      if (review) {
+        const newCount = increment ? review.helpful_count + 1 : Math.max(0, review.helpful_count - 1);
+        return this.update(id, { helpful_count: newCount });
+      }
+      return null;
+    },
+
+    async getStats(itemId: number) {
+      const { data, error } = await supabase
+        .from('marketplace_item_reviews')
+        .select('rating')
+        .eq('marketplace_item_id', itemId)
+        .eq('status', 'published');
+      
+      if (error) throw error;
+      
+      if (!data || data.length === 0) {
+        return { avgRating: 0, count: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } };
+      }
+      
+      const totalRating = data.reduce((sum, r) => sum + r.rating, 0);
+      const avgRating = parseFloat((totalRating / data.length).toFixed(2));
+      
+      const distribution = data.reduce((acc, r) => {
+        acc[r.rating] = (acc[r.rating] || 0) + 1;
+        return acc;
+      }, { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 });
+      
+      return {
+        avgRating,
+        count: data.length,
+        distribution
+      };
+    }
+  },
+
   // Service Volunteers (updated with combined methods)
   serviceVolunteers: {
     async create(applicationData: any) {

@@ -86,7 +86,7 @@ interface ProductData {
 export default function ProductDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
   const resolvedParams = use(params)
-  const { user } = useAuth()
+  const { user, token } = useAuth()
   const { addToCart } = useCart()
   const [product, setProduct] = useState<ProductData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -97,6 +97,8 @@ export default function ProductDetailsPage({ params }: { params: Promise<{ id: s
   const [addingToCart, setAddingToCart] = useState(false)
   const [isWishlisted, setIsWishlisted] = useState(false)
   const [addingToWishlist, setAddingToWishlist] = useState(false)
+  const [deletingReviewId, setDeletingReviewId] = useState<number | null>(null)
+  const [editingReviewId, setEditingReviewId] = useState<number | null>(null)
 
   useEffect(() => {
     fetchProduct()
@@ -258,14 +260,370 @@ export default function ProductDetailsPage({ params }: { params: Promise<{ id: s
     }
   }
 
+  const handleDeleteReview = async (reviewId: number) => {
+    if (!confirm('Are you sure you want to delete this review?')) {
+      return
+    }
+
+    setDeletingReviewId(reviewId)
+
+    try {
+      const response = await fetch(`/api/marketplace/product/${resolvedParams.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          action: 'delete_review',
+          reviewId
+        })
+      })
+
+      const result = await response.json()
+
+      if (response.ok) {
+        toast.success('Review deleted successfully')
+        fetchProduct()
+      } else {
+        toast.error(result.error || 'Failed to delete review')
+      }
+    } catch (error) {
+      console.error('Delete review error:', error)
+      toast.error('Failed to delete review')
+    } finally {
+      setDeletingReviewId(null)
+    }
+  }
+
+  const handleUpdateReview = async (reviewId: number, rating: number, title: string, reviewText: string, images: string[]) => {
+    try {
+      // Filter out null/empty images before sending
+      const validImages = images.filter(img => img && typeof img === 'string' && img.trim().length > 0);
+      console.log('Updating review with images:', validImages);
+      
+      const response = await fetch(`/api/marketplace/product/${resolvedParams.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          action: 'update_review',
+          reviewId,
+          rating,
+          title: title.trim() || null,
+          review_text: reviewText.trim(),
+          images: validImages
+        })
+      })
+
+      const result = await response.json()
+
+      if (response.ok) {
+        toast.success('Review updated successfully')
+        setEditingReviewId(null)
+        fetchProduct()
+      } else {
+        toast.error(result.error || 'Failed to update review')
+      }
+    } catch (error) {
+      console.error('Update review error:', error)
+      toast.error('Failed to update review')
+    }
+  }
+
+  // Edit Review Form Component
+  const EditReviewForm = ({ review, onCancel, onUpdate }: { review: any, onCancel: () => void, onUpdate: (reviewId: number, rating: number, title: string, reviewText: string, images: string[]) => void }) => {
+    const [rating, setRating] = useState(review.rating)
+    const [hoveredRating, setHoveredRating] = useState(0)
+    const [title, setTitle] = useState(review.title || '')
+    const [reviewText, setReviewText] = useState(review.review_text || '')
+    const [images, setImages] = useState<string[]>(review.images || [])
+    const [uploading, setUploading] = useState(false)
+    const [submitting, setSubmitting] = useState(false)
+    const { token } = useAuth()
+
+    console.log('EditReviewForm initialized with images:', images);
+
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files
+      if (!files || files.length === 0) {
+        console.log('EditForm: No files selected');
+        return;
+      }
+
+      console.log('EditForm: Starting upload,', files.length, 'files selected');
+
+      if (images.length + files.length > 5) {
+        toast.error('Maximum 5 images allowed per review')
+        return
+      }
+
+      setUploading(true)
+
+      try {
+        const uploadPromises = Array.from(files).map(async (file) => {
+          console.log('EditForm: Uploading', file.name, 'Size:', (file.size / 1024).toFixed(2), 'KB');
+          
+          if (file.size > 5 * 1024 * 1024) {
+            toast.error(`${file.name} is too large. Max 5MB per image.`)
+            return null
+          }
+
+          const formData = new FormData()
+          formData.append('file', file)
+
+          const response = await fetch('/api/upload', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`
+            },
+            body: formData
+          })
+
+          if (!response.ok) {
+            const error = await response.json()
+            console.error('EditForm: Upload failed for', file.name, error);
+            toast.error(error.error || 'Failed to upload image')
+            return null
+          }
+
+          const result = await response.json()
+          console.log('EditForm: Upload success for', file.name, '- Full response:', result);
+          const imageUrl = result.data?.url || result.url;
+          console.log('EditForm: Extracted URL:', imageUrl);
+          return imageUrl
+        })
+
+        const uploadedUrls = await Promise.all(uploadPromises)
+        const validUrls = uploadedUrls.filter(url => url !== null) as string[]
+        
+        console.log('EditForm: Setting images to:', [...images, ...validUrls]);
+        setImages([...images, ...validUrls])
+        toast.success(`${validUrls.length} image(s) uploaded successfully`)
+      } catch (error) {
+        console.error('Image upload error:', error)
+        toast.error('Failed to upload images')
+      } finally {
+        setUploading(false)
+      }
+    }
+
+    const removeImage = (index: number) => {
+      setImages(images.filter((_, i) => i !== index))
+    }
+
+    const handleSubmit = async (e: React.FormEvent) => {
+      e.preventDefault()
+      
+      if (rating === 0) {
+        toast.error('Please select a rating')
+        return
+      }
+
+      if (!reviewText.trim()) {
+        toast.error('Please write a review')
+        return
+      }
+
+      setSubmitting(true)
+      await onUpdate(review.id, rating, title, reviewText, images)
+      setSubmitting(false)
+    }
+
+    return (
+      <form onSubmit={handleSubmit} className="space-y-4 p-4 border rounded-lg bg-gray-50">
+        <div className="flex items-center justify-between">
+          <h4 className="font-semibold">Edit Your Review</h4>
+          <Button type="button" variant="ghost" size="sm" onClick={onCancel}>Cancel</Button>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-2">Rating *</label>
+          <div className="flex gap-1">
+            {[1, 2, 3, 4, 5].map((star) => (
+              <button
+                key={star}
+                type="button"
+                onClick={() => setRating(star)}
+                onMouseEnter={() => setHoveredRating(star)}
+                onMouseLeave={() => setHoveredRating(0)}
+                className="transition-transform hover:scale-110"
+              >
+                <Star
+                  size={32}
+                  className={`${
+                    star <= (hoveredRating || rating)
+                      ? 'fill-yellow-400 text-yellow-400'
+                      : 'text-gray-300'
+                  } transition-colors`}
+                />
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-2">Review Title (Optional)</label>
+          <Input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Summarize your review..."
+            maxLength={100}
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-2">Your Review *</label>
+          <Textarea
+            value={reviewText}
+            onChange={(e) => setReviewText(e.target.value)}
+            placeholder="Share your experience with this product..."
+            rows={4}
+            maxLength={1000}
+            required
+          />
+          <div className="text-xs text-gray-500 mt-1">
+            {reviewText.length}/1000 characters
+          </div>
+        </div>
+
+        {/* Image Upload Section */}
+        <div>
+          <label className="block text-sm font-medium mb-2">
+            Photos (Optional, max 5) - Current: {images.length}
+          </label>
+          
+          {images.length < 5 && (
+            <div className="mb-3">
+              <label 
+                className="flex items-center justify-center w-full h-24 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all"
+                onClick={() => console.log('EDIT: Upload area clicked, images:', images.length)}
+              >
+                <div className="text-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-8 w-8 text-gray-400 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <span className="text-sm text-gray-600">
+                    {uploading ? 'Uploading...' : 'Click to upload images'}
+                  </span>
+                  <span className="text-xs text-gray-500 block">PNG, JPG, WebP (max 5MB each)</span>
+                </div>
+                <input
+                  type="file"
+                  className="hidden"
+                  accept="image/*"
+                  multiple
+                  onChange={(e) => {
+                    console.log('EDIT: File input onChange triggered, files:', e.target.files?.length);
+                    handleImageUpload(e);
+                  }}
+                  disabled={uploading || images.length >= 5}
+                />
+              </label>
+            </div>
+          )}
+
+          {images.length > 0 && (
+            <div className="grid grid-cols-5 gap-2">
+              {images.map((image, index) => (
+                <div key={index} className="relative group">
+                  <img
+                    src={image}
+                    alt={`Review image ${index + 1}`}
+                    className="w-full h-20 object-cover rounded-lg border border-gray-200"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeImage(index)}
+                    className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg hover:bg-red-600"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-2">
+          <Button type="submit" disabled={submitting || uploading || rating === 0 || !reviewText.trim()}>
+            {submitting ? 'Updating...' : 'Update Review'}
+          </Button>
+          <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
+        </div>
+      </form>
+    )
+  }
+
   // Review Form Component
   const ReviewForm = ({ productId, onReviewAdded }: { productId: string, onReviewAdded: () => void }) => {
     const [rating, setRating] = useState(0)
     const [hoveredRating, setHoveredRating] = useState(0)
     const [title, setTitle] = useState('')
     const [reviewText, setReviewText] = useState('')
+    const [images, setImages] = useState<string[]>([])
+    const [uploading, setUploading] = useState(false)
     const [submitting, setSubmitting] = useState(false)
     const { token } = useAuth()
+
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files
+      if (!files || files.length === 0) return
+
+      if (images.length + files.length > 5) {
+        toast.error('Maximum 5 images allowed per review')
+        return
+      }
+
+      setUploading(true)
+
+      try {
+        const uploadPromises = Array.from(files).map(async (file) => {
+          if (file.size > 5 * 1024 * 1024) {
+            toast.error(`${file.name} is too large. Max 5MB per image.`)
+            return null
+          }
+
+          const formData = new FormData()
+          formData.append('file', file)
+
+          const response = await fetch('/api/upload', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`
+            },
+            body: formData
+          })
+
+          if (!response.ok) {
+            const error = await response.json()
+            toast.error(error.error || 'Failed to upload image')
+            return null
+          }
+
+          const result = await response.json()
+          const imageUrl = result.data?.url || result.url;
+          return imageUrl
+        })
+
+        const uploadedUrls = await Promise.all(uploadPromises)
+        const validUrls = uploadedUrls.filter(url => url !== null) as string[]
+        
+        setImages([...images, ...validUrls])
+        toast.success(`${validUrls.length} image(s) uploaded successfully`)
+      } catch (error) {
+        console.error('Image upload error:', error)
+        toast.error('Failed to upload images')
+      } finally {
+        setUploading(false)
+      }
+    }
+
+    const removeImage = (index: number) => {
+      setImages(images.filter((_, i) => i !== index))
+    }
 
     const handleSubmitReview = async (e: React.FormEvent) => {
       e.preventDefault()
@@ -282,12 +640,17 @@ export default function ProductDetailsPage({ params }: { params: Promise<{ id: s
 
       if (!token) {
         toast.error('Please log in to submit a review')
+        router.push('/login')
         return
       }
 
       setSubmitting(true)
 
       try {
+        // Filter out null/empty images before sending
+        const validImages = images.filter(img => img && typeof img === 'string' && img.trim().length > 0);
+        console.log('Submitting review with images:', validImages);
+        
         const response = await fetch(`/api/marketplace/product/${productId}`, {
           method: 'POST',
           headers: {
@@ -298,7 +661,8 @@ export default function ProductDetailsPage({ params }: { params: Promise<{ id: s
             action: 'review',
             rating,
             title: title.trim() || null,
-            review_text: reviewText.trim()
+            review_text: reviewText.trim(),
+            images: validImages
           })
         })
 
@@ -309,11 +673,20 @@ export default function ProductDetailsPage({ params }: { params: Promise<{ id: s
           setRating(0)
           setTitle('')
           setReviewText('')
+          setImages([])
           onReviewAdded()
         } else {
-          toast.error(result.error || 'Failed to submit review')
+          if (response.status === 401) {
+            toast.error('Please log in to submit a review')
+            router.push('/login')
+          } else if (response.status === 409) {
+            toast.error('You have already reviewed this item')
+          } else {
+            toast.error(result.error || 'Failed to submit review')
+          }
         }
       } catch (error) {
+        console.error('Review submission error:', error)
         toast.error('Failed to submit review')
       } finally {
         setSubmitting(false)
@@ -384,7 +757,59 @@ export default function ProductDetailsPage({ params }: { params: Promise<{ id: s
           </div>
         </div>
 
-        <Button type="submit" disabled={submitting || rating === 0 || !reviewText.trim()}>
+        {/* Image Upload Section */}
+        <div>
+          <label className="block text-sm font-medium mb-2">
+            Add Photos (Optional, max 5)
+          </label>
+          
+          {images.length < 5 && (
+            <div className="mb-3">
+              <label className="flex items-center justify-center w-full h-24 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all">
+                <div className="text-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-8 w-8 text-gray-400 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <span className="text-sm text-gray-600">
+                    {uploading ? 'Uploading...' : 'Click to upload images'}
+                  </span>
+                  <span className="text-xs text-gray-500 block">PNG, JPG, WebP (max 5MB each)</span>
+                </div>
+                <input
+                  type="file"
+                  className="hidden"
+                  accept="image/*"
+                  multiple
+                  onChange={handleImageUpload}
+                  disabled={uploading || images.length >= 5}
+                />
+              </label>
+            </div>
+          )}
+
+          {images.length > 0 && (
+            <div className="grid grid-cols-5 gap-2">
+              {images.map((image, index) => (
+                <div key={index} className="relative group">
+                  <img
+                    src={image}
+                    alt={`Review image ${index + 1}`}
+                    className="w-full h-20 object-cover rounded-lg border border-gray-200"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeImage(index)}
+                    className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg hover:bg-red-600"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <Button type="submit" disabled={submitting || uploading || rating === 0 || !reviewText.trim()}>
           {submitting ? 'Submitting...' : 'Submit Review'}
         </Button>
       </form>
@@ -1142,44 +1567,129 @@ export default function ProductDetailsPage({ params }: { params: Promise<{ id: s
                     <h3 className="text-lg font-semibold">Customer Reviews</h3>
                     {product.reviews.map((review, index) => (
                       <div key={index} className="border-b pb-4 last:border-b-0">
-                        <div className="flex items-start gap-3 mb-2">
-                          <Avatar className="h-10 w-10">
-                            <AvatarFallback className="bg-blue-500 text-white">
-                              {review.reviewer_name?.[0]?.toUpperCase() || 'A'}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <p className="font-medium text-sm">{review.reviewer_name}</p>
-                              {review.verified_purchase && (
-                                <Badge variant="secondary" className="text-xs bg-green-100 text-green-800">
-                                  <CheckCircle size={12} className="mr-1" />
-                                  Verified Purchase
-                                </Badge>
+                        {editingReviewId === review.id ? (
+                          <EditReviewForm 
+                            review={review} 
+                            onCancel={() => setEditingReviewId(null)}
+                            onUpdate={handleUpdateReview}
+                          />
+                        ) : (
+                          <div className="flex items-start gap-3 mb-2">
+                            <Avatar className="h-10 w-10">
+                              {review.reviewer_avatar && (
+                                <AvatarImage src={review.reviewer_avatar} alt={review.reviewer_name} />
+                              )}
+                              <AvatarFallback className="bg-blue-500 text-white">
+                                {review.reviewer_name?.[0]?.toUpperCase() || 'A'}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1">
+                              {/* Header with name and badges - stacks on mobile */}
+                              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <button
+                                    onClick={() => router.push(`/profile/${review.reviewer_id}`)}
+                                    className="font-medium text-sm text-blue-600 hover:text-blue-800 hover:underline transition-colors cursor-pointer"
+                                  >
+                                    {review.reviewer_name}
+                                  </button>
+                                  {review.verified_purchase && (
+                                    <Badge variant="secondary" className="text-xs bg-green-100 text-green-800">
+                                      <CheckCircle size={12} className="mr-1" />
+                                      Verified Purchase
+                                    </Badge>
+                                  )}
+                                  {review.updated_at && review.updated_at !== review.created_at && (
+                                    <Badge variant="secondary" className="text-xs bg-gray-100 text-gray-600">
+                                      Edited
+                                    </Badge>
+                                  )}
+                                </div>
+                                {user && user.id === review.reviewer_id && (
+                                  <div className="flex gap-1.5 sm:gap-2">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => setEditingReviewId(review.id)}
+                                      className="h-8 px-2.5 sm:px-3 text-xs flex items-center gap-1 sm:gap-1.5 border-blue-200 text-blue-600 hover:bg-blue-50 hover:border-blue-300 transition-all whitespace-nowrap"
+                                    >
+                                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0">
+                                        <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>
+                                        <path d="m15 5 4 4"/>
+                                      </svg>
+                                      <span className="hidden xs:inline sm:inline">Edit</span>
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => handleDeleteReview(review.id)}
+                                      disabled={deletingReviewId === review.id}
+                                      className="h-8 px-2.5 sm:px-3 text-xs flex items-center gap-1 sm:gap-1.5 border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 transition-all disabled:opacity-50 whitespace-nowrap"
+                                    >
+                                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0">
+                                        <path d="M3 6h18"/>
+                                        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>
+                                        <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+                                        <line x1="10" x2="10" y1="11" y2="17"/>
+                                        <line x1="14" x2="14" y1="11" y2="17"/>
+                                      </svg>
+                                      <span className="hidden xs:inline sm:inline">{deletingReviewId === review.id ? 'Deleting...' : 'Delete'}</span>
+                                      <span className="xs:hidden sm:hidden">{deletingReviewId === review.id ? '...' : ''}</span>
+                                    </Button>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 mb-2">
+                                <div className="flex">
+                                  {[...Array(5)].map((_, i) => (
+                                    <Star
+                                      key={i}
+                                      size={16}
+                                      className={i < review.rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}
+                                    />
+                                  ))}
+                                </div>
+                                <span className="text-xs text-gray-500">
+                                  {new Date(review.created_at).toLocaleDateString('en-US', {
+                                    year: 'numeric',
+                                    month: 'long',
+                                    day: 'numeric'
+                                  })}
+                                </span>
+                              </div>
+                              {review.title && <h4 className="font-medium mb-2">{review.title}</h4>}
+                              {review.review_text && <p className="text-gray-700 text-sm leading-relaxed">{review.review_text}</p>}
+                              
+                              {/* Review Images */}
+                              {(() => {
+                                const validImages = review.images?.filter((img: any) => img && typeof img === 'string' && img.trim().length > 0) || [];
+                                console.log('Review images data:', review.images, 'Valid images:', validImages);
+                                return validImages.length > 0;
+                              })() && (
+                                <div className="mt-3 grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                                  {review.images.filter((img: any) => img && typeof img === 'string' && img.trim().length > 0).map((image: string, imgIndex: number) => (
+                                    <div key={imgIndex} className="relative group w-full">
+                                      <img 
+                                        src={image} 
+                                        alt={`Review image ${imgIndex + 1}`}
+                                        className="w-full h-48 sm:h-56 md:h-64 object-cover rounded-lg border border-gray-200 hover:border-blue-400 hover:shadow-lg transition-all cursor-pointer"
+                                        onClick={() => window.open(image, '_blank')}
+                                        onError={(e) => {
+                                          console.error('Failed to load image:', image);
+                                          (e.target as HTMLImageElement).style.display = 'none';
+                                        }}
+                                      />
+                                      <div className="absolute inset-0 bg-black opacity-0 group-hover:opacity-10 rounded-lg transition-opacity pointer-events-none"></div>
+                                      <div className="absolute bottom-2 right-2 bg-black bg-opacity-60 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity">
+                                        Click to view full size
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
                               )}
                             </div>
-                            <div className="flex items-center gap-2 mb-2">
-                              <div className="flex">
-                                {[...Array(5)].map((_, i) => (
-                                  <Star
-                                    key={i}
-                                    size={16}
-                                    className={i < review.rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}
-                                  />
-                                ))}
-                              </div>
-                              <span className="text-xs text-gray-500">
-                                {new Date(review.created_at).toLocaleDateString('en-US', {
-                                  year: 'numeric',
-                                  month: 'long',
-                                  day: 'numeric'
-                                })}
-                              </span>
-                            </div>
-                            {review.title && <h4 className="font-medium mb-2">{review.title}</h4>}
-                            {review.review_text && <p className="text-gray-700 text-sm leading-relaxed">{review.review_text}</p>}
                           </div>
-                        </div>
+                        )}
                       </div>
                     ))}
                   </div>
