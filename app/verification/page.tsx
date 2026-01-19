@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
+import { smoothNavigate } from '@/lib/smooth-navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -218,14 +219,11 @@ export default function VerificationDashboard() {
   const handleBack = () => {
     // Navigate back to appropriate dashboard based on user type
     if (user?.user_type === 'individual') {
-      router.push('/individuals/dashboard#top');
-      setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
+      smoothNavigate(router, '/individuals/dashboard#top', { delay: 150 });
     } else if (user?.user_type === 'ngo') {
-      router.push('/ngos/dashboard#top');
-      setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
+      smoothNavigate(router, '/ngos/dashboard#top', { delay: 150 });
     } else if (user?.user_type === 'company') {
-      router.push('/companies/dashboard#top');
-      setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100);
+      smoothNavigate(router, '/companies/dashboard#top', { delay: 150 });
     } else {
       router.back(); // Fallback to browser back
     }

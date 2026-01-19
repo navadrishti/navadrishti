@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ArrowLeft, Upload, Save, Trash2, User, Building, Users } from 'lucide-react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth-context'
-import ProtectedRoute from '@/components/protected-route'
+import { ProtectedRoute } from '@/components/enhanced-protected-route'
 import { toast } from 'sonner'
 
 const categories = [

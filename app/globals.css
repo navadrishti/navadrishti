@@ -26,22 +26,81 @@ body {
   }
 }
 
-/* Add smooth transition styles */
+/* Enhanced smooth transition styles with professional easing */
 @layer utilities {
+  /* Transition utilities with different durations and easing */
   .transition-smooth {
     @apply transition-all duration-300 ease-in-out;
   }
   
+  .transition-smooth-fast {
+    @apply transition-all duration-150 ease-out;
+  }
+  
+  .transition-smooth-slow {
+    @apply transition-all duration-500 ease-in-out;
+  }
+  
+  /* Professional easing curves */
+  .ease-professional {
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .ease-bounce-in {
+    transition-timing-function: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  }
+  
+  .ease-smooth-out {
+    transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  
+  /* Hover effects with smooth transitions */
   .hover-lift {
-    @apply hover:-translate-y-1 hover:shadow-xl transition-all duration-300 ease-out;
+    @apply transition-all duration-300 ease-smooth-out;
+  }
+  
+  .hover-lift:hover {
+    @apply -translate-y-1 shadow-xl;
   }
   
   .hover-scale {
-    @apply hover:scale-[1.02] transition-all duration-300 ease-out;
+    @apply transition-all duration-300 ease-smooth-out;
   }
   
+  .hover-scale:hover {
+    @apply scale-[1.02];
+  }
+  
+  .hover-glow {
+    @apply transition-all duration-300;
+  }
+  
+  .hover-glow:hover {
+    @apply shadow-lg shadow-blue-500/20;
+  }
+  
+  /* Interactive button effects */
+  .btn-smooth {
+    @apply transition-all duration-200 ease-out;
+    @apply active:scale-95;
+  }
+  
+  /* Gradient utilities */
   .text-gradient {
     @apply bg-clip-text text-transparent bg-gradient-to-r from-udaan-navy to-udaan-blue;
+  }
+  
+  .bg-gradient-primary {
+    @apply bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500;
+  }
+  
+  /* Glass morphism effect */
+  .glass {
+    @apply bg-white/10 backdrop-blur-lg border border-white/20;
+  }
+  
+  .glass-dark {
+    @apply bg-black/10 backdrop-blur-lg border border-black/20;
   }
 }
 
@@ -103,6 +162,17 @@ body {
   }
 }
 
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @keyframes scaleIn {
   from {
     opacity: 0;
@@ -114,12 +184,37 @@ body {
   }
 }
 
+@keyframes scaleInBounce {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 @keyframes pulse {
   0%, 100% {
     opacity: 1;
   }
   50% {
     opacity: 0.7;
+  }
+}
+
+@keyframes smoothPulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.02);
   }
 }
 
@@ -366,15 +461,16 @@ body {
   }
 }
 
-/* Page transition styles */
+/* Page transition styles with enhanced animations */
 .page-transition {
   will-change: opacity, transform;
-  transition: opacity 200ms ease, transform 200ms ease;
+  animation-duration: 0.4s;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  animation-fill-mode: both;
 }
 
-.page-hidden {
-  opacity: 0;
-  transform: translateY(5px);
+.page-entering {
+  animation-name: pageEnter;
 }
 
 .page-visible {
@@ -382,10 +478,60 @@ body {
   transform: translateY(0);
 }
 
+.page-exiting {
+  animation-name: pageExit;
+  animation-duration: 0.2s;
+}
+
+@keyframes pageEnter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes pageExit {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.99);
+  }
+}
+
+/* Respect user's motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  .page-transition {
+    animation: none !important;
+    transition: none !important;
+  }
+  
+  .page-entering,
+  .page-exiting {
+    animation: none !important;
+  }
+}
+
 /* Add base transition to all interactive elements */
 @layer base {
   button, a, input, select, textarea {
-    @apply transition-smooth;
+    @apply transition-all duration-200 ease-in-out;
+  }
+  
+  /* Smooth focus styles */
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    @apply outline-none ring-2 ring-offset-2 ring-blue-500;
+    transition: all 0.2s ease-in-out;
   }
 }
 
