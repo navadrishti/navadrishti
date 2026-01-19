@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
-import { smoothNavigate } from "@/lib/smooth-navigation"
+import { smoothNavigate } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -45,79 +45,48 @@ export function Header() {
   const [isSearching, setIsSearching] = useState(false)
   const [showResults, setShowResults] = useState(false)
   const [isSearchExpanded, setIsSearchExpanded] = useState(false)
-  const [isInputFocused, setIsInputFocused] = useState(false)
-  const [showAllResults, setShowAllResults] = useState(false)
   const [openDropdown, setOpenDropdown] = useState<string | null>(null)
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
   const dropdownTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
-  // Handle dropdown hover with delay
+  useEffect(() => { setMounted(true) }, [])
+
   const handleDropdownEnter = (dropdown: string) => {
-    if (dropdownTimeoutRef.current) {
-      clearTimeout(dropdownTimeoutRef.current)
-    }
+    if (dropdownTimeoutRef.current) clearTimeout(dropdownTimeoutRef.current)
     setOpenDropdown(dropdown)
   }
 
   const handleDropdownLeave = () => {
-    dropdownTimeoutRef.current = setTimeout(() => {
-      setOpenDropdown(null)
-    }, 150)
+    dropdownTimeoutRef.current = setTimeout(() => setOpenDropdown(null), 150)
   }
 
   const handleDropdownStay = () => {
-    if (dropdownTimeoutRef.current) {
-      clearTimeout(dropdownTimeoutRef.current)
-    }
+    if (dropdownTimeoutRef.current) clearTimeout(dropdownTimeoutRef.current)
   }
   
-  // Profile search functionality
   const searchProfiles = async (query: string) => {
-    if (!query.trim()) {
-      setSearchResults([])
-      return
-    }
+    if (!query.trim()) { setSearchResults([]); return }
 
     setIsSearching(true)
     try {
-      const response = await fetch(`/api/search/profiles?q=${encodeURIComponent(query.trim())}&limit=8`)
-      if (response.ok) {
-        const data = await response.json()
-        setSearchResults(data.profiles || [])
-      } else {
-        setSearchResults([])
-      }
-    } catch (error) {
-      console.error('Profile search error:', error)
+      const res = await fetch(`/api/search/profiles?q=${encodeURIComponent(query.trim())}&limit=8`)
+      const data = await res.json()
+      setSearchResults(res.ok ? data.profiles || [] : [])
+    } catch (err) {
       setSearchResults([])
     } finally {
       setIsSearching(false)
     }
   }
 
-  // Debounced search
   const handleSearchChange = (value: string) => {
     setSearchQuery(value)
+    setShowResults(true)
     
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current)
-    }
-
-    // Show dropdown immediately when typing
-    if (isInputFocused) {
-      setShowResults(true)
-    }
-
-    searchTimeoutRef.current = setTimeout(() => {
-      searchProfiles(value)
-    }, 150) // Reduced delay from 300ms to 150ms
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
+    searchTimeoutRef.current = setTimeout(() => searchProfiles(value), 150)
   }
 
-  // Handle profile selection
   const handleProfileSelect = (profile: ProfileSearchResult) => {
     setSearchQuery('')
     setSearchResults([])
@@ -125,28 +94,22 @@ export function Header() {
     router.push(`/profile/${profile.id}`)
   }
 
-  // Clear search
   const clearSearch = () => {
     setSearchQuery('')
     setSearchResults([])
     setShowResults(false)
-    setIsSearchExpanded(false)
   }
 
-  // Get user type icon
   const getUserTypeIcon = (userType: string) => {
-    switch (userType) {
-      case 'individual': return '👤'
-      case 'ngo': return '🏢'
-      case 'company': return '🏭'
-      default: return '👤'
-    }
+    const icons = { individual: '👤', ngo: '🏢', company: '🏭' }
+    return icons[userType as keyof typeof icons] || '👤'
   }
   
   const handleLogout = async () => {
     logout()
     await smoothNavigate(router, '/home', { delay: 100 })
-  }  // Generate initials for avatar fallback
+  }
+
   const getInitials = (name: string) => {
     if (!name) return "U"
     const names = name.split(' ')
@@ -181,8 +144,10 @@ export function Header() {
         </Link>
         <div className="hidden md:flex md:flex-1 md:items-center md:justify-end md:gap-4 lg:gap-6">
           <nav className="flex items-center gap-1 lg:gap-2">
+            {mounted && (
+              <>
             {/* Company Navigation */}
-            {mounted && user?.user_type === 'company' && (
+            {user?.user_type === 'company' && (
               <>
                 {/* CSR Hub Dropdown */}
                 <div 
@@ -267,7 +232,7 @@ export function Header() {
             )}
 
             {/* NGO Navigation */}
-            {mounted && user?.user_type === 'ngo' && (
+            {user?.user_type === 'ngo' && (
               <>
                 {/* AI Tools Dropdown */}
                 <div 
@@ -386,7 +351,7 @@ export function Header() {
             )}
 
             {/* Individual Navigation */}
-            {mounted && user?.user_type === 'individual' && (
+            {user?.user_type === 'individual' && (
               <>
                 {/* Opportunities Dropdown */}
                 <div 
@@ -518,7 +483,7 @@ export function Header() {
                       <div className="text-xs text-gray-500">Shop community items</div>
                     </div>
                   </Link>
-                  {mounted && user?.user_type === 'ngo' && (
+                  {user?.user_type === 'ngo' && (
                     <Link href="/marketplace/fundraising" className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
                       <div>
                         <div className="font-medium">Fundraising</div>
@@ -526,7 +491,7 @@ export function Header() {
                       </div>
                     </Link>
                   )}
-                  {mounted && user && (
+                  {user && (
                     <>
                       <Link href={`${getDashboardLink()}?tab=marketplace&subtab=selling`} className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
                         <div>
@@ -545,6 +510,8 @@ export function Header() {
                 </div>
               )}
             </div>
+              </>
+            )}
           </nav>
           <div className="relative hidden md:block">
             <div className="relative flex items-center">
@@ -717,7 +684,8 @@ export function Header() {
                 </div>
               </div>
             )}
-          </div>          {user ? (
+          </div>          
+          {mounted && user ? (
             <>
               {/* Cart Icon with Badge - Only for logged in users */}
               <Button 
@@ -776,7 +744,7 @@ export function Header() {
                 </DropdownMenuContent>
               </DropdownMenu>
             </>
-          ) : (
+          ) : mounted ? (
             <div className="flex items-center gap-3">
               <Link href="/login">
                 <Button variant="ghost" className="flex items-center gap-2 text-white hover:text-udaan-orange hover:bg-white/10">
@@ -787,7 +755,7 @@ export function Header() {
                 <Button className="bg-udaan-orange hover:bg-udaan-orange/90 border-none text-white">Get Started</Button>
               </Link>
             </div>
-          )}
+          ) : null}
         </div>
         <div className="flex md:hidden flex-1 items-center justify-end gap-2">
           {mounted && user && (

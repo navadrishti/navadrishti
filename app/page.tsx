@@ -26,265 +26,81 @@ export default function HomePage() {
   const [statsLoading, setStatsLoading] = useState(true)
   const [statsError, setStatsError] = useState<string | null>(null)
 
-  useEffect(() => {
-    setMounted(true)
-  }, [])
+  useEffect(() => { setMounted(true) }, [])
 
-  // Fetch real-time stats
   useEffect(() => {
     const fetchStats = async () => {
       setStatsLoading(true)
       setStatsError(null)
       try {
-        const response = await fetch('/api/stats', {
-          headers: {
-            'Cache-Control': 'no-cache'
-          }
-        })
+        const res = await fetch('/api/stats', { headers: { 'Cache-Control': 'no-cache' } })
+        if (res.status === 503) { setStatsError('Database starting up'); return }
         
-        if (response.ok) {
-          const result = await response.json()
-          if (result.success) {
-            setStats({
-              activeUsers: result.stats.activeUsers || 0,
-              partnerNGOs: result.stats.partnerNGOs || 0,
-              partnerCompanies: result.stats.partnerCompanies || 0,
-              successStories: result.stats.successStories || 0
-            })
-          } else {
-            setStatsError(result.error || 'Failed to load statistics')
-          }
-        } else if (response.status === 503) {
-          setStatsError('Database is starting up')
+        const data = await res.json()
+        if (data.success) {
+          setStats({
+            activeUsers: data.stats.activeUsers || 0,
+            partnerNGOs: data.stats.partnerNGOs || 0,
+            partnerCompanies: data.stats.partnerCompanies || 0,
+            successStories: data.stats.successStories || 0
+          })
         } else {
-          setStatsError('Failed to load statistics')
+          setStatsError(data.error || 'Failed to load stats')
         }
-      } catch (error: any) {
-        console.error('Error fetching stats:', error)
-        setStatsError(error.message || 'Network error')
+      } catch (err: any) {
+        console.error('Stats error:', err)
+        setStatsError(err.message || 'Network error')
       } finally {
         setStatsLoading(false)
       }
     }
 
     fetchStats()
-    
-    // Refresh stats every 30 seconds for real-time updates, but only if no error
-    const interval = setInterval(() => {
-      if (!statsError) {
-        fetchStats()
-      }
-    }, 30000)
-    
+    const interval = setInterval(() => !statsError && fetchStats(), 30000)
     return () => clearInterval(interval)
   }, [statsError])
 
+  const photos = [
+    { id: 1, alt: "Community empowerment", col: 1, row: 1 },
+    { id: 2, alt: "Social innovation", col: 1, row: 1 },
+    { id: 3, alt: "Community empowerment through business literacy", col: 3, row: 2, center: true },
+    { id: 4, alt: "Teamwork and collaboration", col: 1, row: 1 },
+    { id: 5, alt: "Community collaboration", col: 1, row: 1 },
+    { id: 6, alt: "Economic development", col: 1, row: 1 },
+    { id: 7, alt: "Education and training", col: 1, row: 1 },
+    { id: 8, alt: "Growth and development", col: 1, row: 1 },
+    { id: 9, alt: "Leadership", col: 1, row: 1 },
+    { id: 10, alt: "Women empowerment", col: 1, row: 1 },
+    { id: 11, alt: "Social innovation", col: 1, row: 1 },
+    { id: 12, alt: "Mentorship", col: 1, row: 1 },
+    { id: 13, alt: "Business development", col: 1, row: 1 },
+    { id: 14, alt: "Sustainability", col: 1, row: 1 },
+    { id: 15, alt: "Community impact", col: 1, row: 1 }
+  ]
+
   return (
     <div className="min-h-screen bg-black">
-      {/* Photo Grid Hero Section */}
       <div className="relative min-h-screen">
-        {/* Grid Container - Fixed height to prevent glitching */}
         <div className="grid grid-cols-5 grid-rows-4 gap-1 p-2 h-screen opacity-40 will-change-auto">
-          
-          {/* Row 1 */}
-          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900">
-            <Image 
-              src="/photos/pic 1.jpeg" 
-              alt="Community empowerment"
-              fill
-              className="object-cover"
-              sizes="20vw"
-              loading="eager"
-              quality={85}
-            />
-            <div className="absolute inset-0 bg-black/5"></div>
-          </div>
-
-          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900">
-            <Image 
-              src="/photos/pic 2.jpeg" 
-              alt="Social innovation"
-              fill
-              className="object-cover"
-              sizes="20vw"
-              loading="eager"
-              quality={85}
-            />
-            <div className="absolute inset-0 bg-black/5"></div>
-          </div>
-
-          {/* Center large image - spans 3 columns, 2 rows */}
-          <div className="col-span-3 row-span-2 relative overflow-hidden rounded-2xl shadow-xl bg-gray-900">
-            <Image 
-              src="/photos/pic 3.jpeg" 
-              alt="Community empowerment through business literacy"
-              fill
-              className="object-cover"
-              sizes="60vw"
-              loading="eager"
-              quality={90}
-            />
-            <div className="absolute inset-0 bg-black/5"></div>
-          </div>
-
-          {/* Row 2 */}
-          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900">
-            <Image 
-              src="/photos/pic 4.jpeg" 
-              alt="Teamwork and collaboration"
-              fill
-              className="object-cover"
-              sizes="20vw"
-              loading="eager"
-              quality={85}
-            />
-            <div className="absolute inset-0 bg-black/5"></div>
-          </div>
-
-          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900">
-            <Image 
-              src="/photos/pic 5.jpeg" 
-              alt="Community collaboration"
-              fill
-              className="object-cover"
-              sizes="20vw"
-              loading="eager"
-              quality={85}
-            />
-            <div className="absolute inset-0 bg-black/5"></div>
-          </div>
-
-          {/* Row 3 */}
-          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900">
-            <Image 
-              src="/photos/pic 6.jpeg" 
-              alt="Economic development"
-              fill
-              className="object-cover"
-              sizes="20vw"
-              loading="eager"
-              quality={85}
-            />
-            <div className="absolute inset-0 bg-black/5"></div>
-          </div>
-
-          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900">
-            <Image 
-              src="/photos/pic 7.jpeg" 
-              alt="Education and training"
-              fill
-              className="object-cover"
-              sizes="20vw"
-              loading="eager"
-              quality={85}
-            />
-            <div className="absolute inset-0 bg-black/5"></div>
-          </div>
-
-          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900">
-            <Image 
-              src="/photos/pic 8.jpeg" 
-              alt="Growth and development"
-              fill
-              className="object-cover"
-              sizes="20vw"
-              loading="eager"
-              quality={85}
-            />
-            <div className="absolute inset-0 bg-black/5"></div>
-          </div>
-
-          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900">
-            <Image 
-              src="/photos/pic 9.jpeg" 
-              alt="Leadership"
-              fill
-              className="object-cover"
-              sizes="20vw"
-              loading="eager"
-              quality={85}
-            />
-            <div className="absolute inset-0 bg-black/5"></div>
-          </div>
-
-          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900">
-            <Image 
-              src="/photos/pic 10.jpeg" 
-              alt="Women empowerment"
-              fill
-              className="object-cover"
-              sizes="20vw"
-              loading="eager"
-              quality={85}
-            />
-            <div className="absolute inset-0 bg-black/5"></div>
-          </div>
-
-          {/* Row 4 */}
-          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900">
-            <Image 
-              src="/photos/pic 11.jpeg" 
-              alt="Social innovation"
-              fill
-              className="object-cover"
-              sizes="20vw"
-              loading="eager"
-              quality={85}
-            />
-            <div className="absolute inset-0 bg-black/5"></div>
-          </div>
-
-          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900">
-            <Image 
-              src="/photos/pic 12.jpeg" 
-              alt="Mentorship"
-              fill
-              className="object-cover"
-              sizes="20vw"
-              loading="eager"
-              quality={85}
-            />
-            <div className="absolute inset-0 bg-black/5"></div>
-          </div>
-
-          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900">
-            <Image 
-              src="/photos/pic 13.jpeg" 
-              alt="Business development"
-              fill
-              className="object-cover"
-              sizes="20vw"
-              loading="eager"
-              quality={85}
-            />
-            <div className="absolute inset-0 bg-black/5"></div>
-          </div>
-
-          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900">
-            <Image 
-              src="/photos/pic 14.jpeg" 
-              alt="Sustainability"
-              fill
-              className="object-cover"
-              sizes="20vw"
-              loading="eager"
-              quality={85}
-            />
-            <div className="absolute inset-0 bg-black/5"></div>
-          </div>
-
-          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900">
-            <Image 
-              src="/photos/pic 15.jpeg" 
-              alt="Community impact"
-              fill
-              className="object-cover"
-              sizes="20vw"
-              loading="eager"
-              quality={85}
-            />
-            <div className="absolute inset-0 bg-black/5"></div>
-          </div>
+          {photos.map((photo) => (
+            <div 
+              key={photo.id}
+              className={`relative overflow-hidden shadow-lg bg-gray-900 ${
+                photo.center ? 'col-span-3 row-span-2 rounded-2xl shadow-xl' : 'rounded-xl'
+              }`}
+            >
+              <Image 
+                src={`/photos/pic ${photo.id}.jpeg`} 
+                alt={photo.alt}
+                fill
+                className="object-cover"
+                sizes={photo.center ? "60vw" : "20vw"}
+                loading="eager"
+                quality={photo.center ? 90 : 85}
+              />
+              <div className="absolute inset-0 bg-black/5" />
+            </div>
+          ))}
         </div>
 
         {/* Enhanced Text and Button Overlay */}

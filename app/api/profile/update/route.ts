@@ -63,11 +63,10 @@ export async function POST(request: NextRequest) {
     if (pincode !== undefined) updateData.pincode = pincode;
     if (country !== undefined) updateData.country = country;
     if (phone !== undefined) updateData.phone = phone;
-    if (bio !== undefined) updateData.bio = bio;
     if (location !== undefined) updateData.location = location;
     if (timezone !== undefined) updateData.timezone = timezone;
 
-    // Handle profile_data for additional fields
+    // Handle profile_data for additional fields (including bio)
     if (profile_data && typeof profile_data === 'object') {
       // Get current profile_data first
       const { data: currentUser, error: fetchError } = await supabase

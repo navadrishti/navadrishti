@@ -1,137 +1,95 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Header } from '@/components/header'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
 import { ProductCard } from '@/components/product-card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { SkeletonCard, SkeletonHeader } from '@/components/ui/skeleton'
-import { Search, PackagePlus, Trash2, Plus, ArrowRight, ShoppingBag } from 'lucide-react'
+import { Search, PackagePlus, Plus, ArrowRight, ShoppingBag } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
 import { getMarketplaceCategoriesWithAll } from '@/lib/categories'
 
-const categories = getMarketplaceCategoriesWithAll();
+const categories = getMarketplaceCategoriesWithAll()
 
 export default function MarketplacePage() {
-  const { user } = useAuth();
-  const { toast } = useToast();
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('All Categories');
-  const [currentView, setCurrentView] = useState('all');
-  const [marketplaceItems, setMarketplaceItems] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [deleting, setDeleting] = useState<number | null>(null);
+  const { user } = useAuth()
+  const { toast } = useToast()
+  const [searchTerm, setSearchTerm] = useState('')
+  const [selectedCategory, setSelectedCategory] = useState('All Categories')
+  const [currentView, setCurrentView] = useState('all')
+  const [items, setItems] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [deleting, setDeleting] = useState<number | null>(null)
 
-  // Delete marketplace item function
-  const handleDeleteItem = async (itemId: number) => {
-    if (!user) return;
-    
-    if (!confirm('Are you sure you want to delete this marketplace item? This action cannot be undone.')) {
-      return;
-    }
+  const deleteItem = async (id: number) => {
+    if (!user || !confirm('Delete this item? This cannot be undone.')) return
 
+    setDeleting(id)
     try {
-      setDeleting(itemId);
-      const token = localStorage.getItem('token');
-      
-      const response = await fetch(`/api/marketplace/${itemId}`, {
+      const res = await fetch(`/api/marketplace/${id}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
           'Content-Type': 'application/json'
         }
-      });
-
-      const data = await response.json();
+      })
+      const data = await res.json()
 
       if (data.success) {
-        toast({
-          title: "Success",
-          description: "Marketplace item deleted successfully",
-        });
-        // Refresh the list
-        fetchMarketplaceItems();
+        toast({ title: "Success", description: "Item deleted" })
+        fetchItems()
       } else {
-        toast({
-          title: "Error",
-          description: data.error || "Failed to delete marketplace item",
-          variant: "destructive",
-        });
+        toast({ title: "Error", description: data.error || "Delete failed", variant: "destructive" })
       }
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to delete marketplace item",
-        variant: "destructive",
-      });
+    } catch {
+      toast({ title: "Error", description: "Delete failed", variant: "destructive" })
     } finally {
-      setDeleting(null);
+      setDeleting(null)
     }
   };
 
-  const fetchMarketplaceItems = useCallback(async () => {
+  const fetchItems = async () => {
+    setLoading(true)
+    setError('')
+    
+    const params = new URLSearchParams({
+      view: currentView,
+      ...(selectedCategory !== 'All Categories' && { category: selectedCategory }),
+      ...(searchTerm && { search: searchTerm }),
+      ...(user?.id && { userId: user.id.toString() })
+    })
+    
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (user && (currentView === 'nearby' || currentView === 'my-listings')) {
+      const token = localStorage.getItem('token')
+      if (token) headers['Authorization'] = `Bearer ${token}`
+    }
+    
     try {
-      setLoading(true);
-      setError('');
-      
-      const params = new URLSearchParams();
-      if (selectedCategory && selectedCategory !== 'All Categories') {
-        params.append('category', selectedCategory);
-      }
-      if (searchTerm) {
-        params.append('search', searchTerm);
-      }
-      if (user?.id) {
-        params.append('userId', user.id.toString());
-      }
-      params.append('view', currentView);
-      
-      // Prepare headers for authentication (needed for nearby view)
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      
-      // Add authorization header if user is logged in and we need location-based filtering
-      if (user && (currentView === 'nearby' || currentView === 'my-listings')) {
-        const token = localStorage.getItem('token');
-        if (token) {
-          headers['Authorization'] = `Bearer ${token}`;
-        }
-      }
-      
-      const response = await fetch(`/api/marketplace?${params.toString()}`, {
-        headers
-      });
-      const data = await response.json();
+      const res = await fetch(`/api/marketplace?${params}`, { headers })
+      const data = await res.json()
       
       if (data.success) {
-        setMarketplaceItems(data.data);
+        setItems(data.data)
       } else {
-        setError('Failed to fetch marketplace items');
+        setError('Failed to load items')
       }
     } catch (err) {
-      setError('Error fetching marketplace items');
-      console.error('Error:', err);
+      setError('Network error')
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  }, [selectedCategory, searchTerm, currentView, user?.id]);
+  }
 
-  useEffect(() => {
-    fetchMarketplaceItems();
-  }, [fetchMarketplaceItems]);
+  useEffect(() => { fetchItems() }, [selectedCategory, searchTerm, currentView, user?.id])
 
-  const handleTabChange = useCallback((value: string) => {
-    setCurrentView(value);
-  }, []);
-
-  const filteredItems = marketplaceItems;
+  const filteredItems = items
 
   if (loading) {
     return (
@@ -190,11 +148,11 @@ export default function MarketplacePage() {
         <main className="flex-1 px-6 py-8 md:px-10">
           <div className="text-center py-8">
             <p className="text-red-500 mb-4">{error}</p>
-            <Button onClick={fetchMarketplaceItems}>Try Again</Button>
+            <Button onClick={fetchItems}>Try Again</Button>
           </div>
         </main>
       </div>
-    );
+    )
   }
 
   return (
@@ -239,7 +197,7 @@ export default function MarketplacePage() {
           </div>
         )}
 
-        <Tabs value={currentView} onValueChange={handleTabChange} className="space-y-6">
+        <Tabs value={currentView} onValueChange={setCurrentView} className="space-y-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <TabsList className="grid w-full grid-cols-2 lg:w-auto">
               <TabsTrigger value="all">All Items</TabsTrigger>
@@ -289,7 +247,7 @@ export default function MarketplacePage() {
                   item={item}
                   badge={null}
                   showDeleteButton={!!(user && user.id === item.seller_id)}
-                  onDelete={() => handleDeleteItem(item.id)}
+                  onDelete={() => deleteItem(item.id)}
                   isDeleting={deleting === item.id}
                 />
               ))}
@@ -346,7 +304,7 @@ export default function MarketplacePage() {
                   item={item}
                   badge={null}
                   showDeleteButton={!!(user && user.id === item.seller_id)}
-                  onDelete={() => handleDeleteItem(item.id)}
+                  onDelete={() => deleteItem(item.id)}
                   isDeleting={deleting === item.id}
                 />
               ))}
