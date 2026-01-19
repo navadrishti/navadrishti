@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { ImageCarousel } from "@/components/ui/image-carousel"
 import { Star, Plus, Minus, MapPin, Truck, ShoppingCart, Trash2, User, Building, Users, Shield } from "lucide-react"
 import { VerificationBadge } from "./verification-badge"
-import { formatPrice } from "@/lib/currency"
+import { formatPrice } from "@/lib/utils"
 import { ProductDetails } from "./product-details"
 import { useCart } from "@/lib/cart-context"
 import { notify } from "@/lib/notifications"

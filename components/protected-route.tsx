@@ -1,15 +1,13 @@
 /**
- * Protected Route Components with Access Control
+ * Protected Route Component with Access Control
  * 
- * Exports:
- * - ProtectedRoute: Basic protection with user type restrictions
- * - EnhancedProtectedRoute: Advanced protection with permissions and verification
- * - PermissionGate: Component-level permission checking
+ * Provides route protection with user type restrictions,
+ * permissions checking, and verification requirements.
  */
 
-'use client';
+'use client'
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { smoothNavigate } from '@/lib/utils';

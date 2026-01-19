@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ArrowLeft, Upload, Plus, Users, User, Building } from 'lucide-react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth-context'
-import ProtectedRoute from '@/components/enhanced-protected-route'
+import ProtectedRoute from '@/components/protected-route'
 
 const categories = [
   'Clothing & Apparel',

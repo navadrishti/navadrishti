@@ -1,206 +1,123 @@
 'use client'
 
-import { useState, useCallback, useEffect, Suspense } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Header } from '@/components/header'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ServiceCard } from '@/components/service-card'
 import { SkeletonHeader, SkeletonServiceCard, SkeletonCTA } from '@/components/ui/skeleton'
-import { Search, MapPin, Users, Target, Clock, ArrowRight, Plus, HeartHandshake, UserRound, Building, Trash2, MoreVertical, Edit, Eye, Calendar } from 'lucide-react'
+import { Search, Target, ArrowRight, Plus, HeartHandshake } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { getServiceRequestCategoriesWithAll } from '@/lib/categories'
 
-const categories = getServiceRequestCategoriesWithAll();
+const categories = getServiceRequestCategoriesWithAll()
 
 function ServiceRequestsContent() {
-  const { user } = useAuth();
-  const { toast } = useToast();
-  const searchParams = useSearchParams();
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('All Categories');
-  const [currentView, setCurrentView] = useState('all');
+  const { user } = useAuth()
+  const { toast } = useToast()
+  const searchParams = useSearchParams()
+  const [searchTerm, setSearchTerm] = useState('')
+  const [selectedCategory, setSelectedCategory] = useState('All Categories')
+  const [currentView, setCurrentView] = useState('all')
+  const [requests, setRequests] = useState<Record<string, any[]>>({
+    all: [],
+    'my-requests': [],
+    volunteering: []
+  })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [deleting, setDeleting] = useState<number | null>(null)
   
-  // Separate state for each view to prevent data contamination
-  const [allRequests, setAllRequests] = useState<any[]>([]);
-  const [myRequests, setMyRequests] = useState<any[]>([]);
-  const [volunteeringRequests, setVolunteeringRequests] = useState<any[]>([]);
-  
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [deleting, setDeleting] = useState<number | null>(null);
-  
-  // Get current data based on view
-  const serviceRequests = currentView === 'all' ? allRequests : 
-                          currentView === 'my-requests' ? myRequests : 
-                          volunteeringRequests;
-  
-  const isNGO = user?.user_type === 'ngo';
-  const isIndividual = user?.user_type === 'individual';
-  const isCompany = user?.user_type === 'company';
-  const canVolunteer = isIndividual || isCompany; // Both individuals and companies can volunteer
+  const serviceRequests = requests[currentView] || []
+  const isNGO = user?.user_type === 'ngo'
+  const canVolunteer = user?.user_type === 'individual' || user?.user_type === 'company'
 
-  // Handle tab parameter from URL
   useEffect(() => {
-    const tabParam = searchParams.get('tab');
-    if (tabParam && (tabParam === 'volunteering' || tabParam === 'my-requests')) {
-      setCurrentView(tabParam);
-    }
-  }, [searchParams]);
+    const tab = searchParams.get('tab')
+    if (tab === 'volunteering' || tab === 'my-requests') setCurrentView(tab)
+  }, [searchParams])
 
-  // Delete service request function
-  const handleDeleteRequest = async (requestId: number) => {
-    if (!user) return;
-    
-    if (!confirm('Are you sure you want to delete this service request? This action cannot be undone.')) {
-      return;
-    }
+  const deleteRequest = async (id: number) => {
+    if (!user || !confirm('Delete this request? This cannot be undone.')) return
 
+    setDeleting(id)
     try {
-      setDeleting(requestId);
-      const token = localStorage.getItem('token');
-      
-      const response = await fetch(`/api/service-requests/${requestId}`, {
+      const res = await fetch(`/api/service-requests/${id}`, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
           'Content-Type': 'application/json'
         }
-      });
-
-      const data = await response.json();
+      })
+      const data = await res.json()
 
       if (data.success) {
-        toast({
-          title: "Success",
-          description: "Service request deleted successfully",
-        });
-        // Refresh the list
-        fetchServiceRequests();
+        toast({ title: "Success", description: "Request deleted" })
+        fetchRequests()
       } else {
-        toast({
-          title: "Error",
-          description: data.error || "Failed to delete service request",
-          variant: "destructive",
-        });
+        toast({ title: "Error", description: data.error || "Delete failed", variant: "destructive" })
       }
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to delete service request",
-        variant: "destructive",
-      });
+    } catch {
+      toast({ title: "Error", description: "Delete failed", variant: "destructive" })
     } finally {
-      setDeleting(null);
+      setDeleting(null)
     }
   };
 
-  // Fetch service requests from API
-  const fetchServiceRequests = useCallback(async () => {
+  const fetchRequests = async () => {
+    setLoading(true)
+    setError('')
+    
+    const params = new URLSearchParams({
+      view: currentView,
+      ...(selectedCategory !== 'All Categories' && { category: selectedCategory }),
+      ...(searchTerm && { search: searchTerm }),
+      ...(user?.id && { userId: user.id.toString() })
+    })
+    
+    const headers: Record<string, string> = {}
+    if (currentView !== 'all') {
+      const token = localStorage.getItem('token')
+      if (token) headers['Authorization'] = `Bearer ${token}`
+    }
+    
     try {
-      setLoading(true);
-      setError('');
-      
-      const params = new URLSearchParams();
-      if (selectedCategory !== 'All Categories') {
-        params.append('category', selectedCategory);
-      }
-      if (searchTerm) {
-        params.append('search', searchTerm);
-      }
-      if (user?.id) {
-        params.append('userId', user.id.toString());
-      }
-      params.append('view', currentView);
-      
-      console.log('Fetching service requests with view:', currentView, 'params:', params.toString());
-      
-      // Add Authorization header for authenticated views
-      const headers: any = {};
-      if (currentView === 'my-requests' || currentView === 'volunteering') {
-        const token = localStorage.getItem('token');
-        if (token) {
-          headers['Authorization'] = `Bearer ${token}`;
-        }
-      }
-      
-      const response = await fetch(`/api/service-requests?${params.toString()}`, {
-        headers
-      });
-      const data = await response.json();
-      
-      console.log('Received data for view:', currentView, 'count:', data.data?.length || 0);
+      const res = await fetch(`/api/service-requests?${params}`, { headers })
+      const data = await res.json()
       
       if (data.success) {
-        // Set data to the correct state based on current view to prevent contamination
-        switch (currentView) {
-          case 'all':
-            setAllRequests(data.data);
-            break;
-          case 'my-requests':
-            setMyRequests(data.data);
-            break;
-          case 'volunteering':
-            setVolunteeringRequests(data.data);
-            break;
-          default:
-            setAllRequests(data.data);
-        }
+        setRequests(prev => ({ ...prev, [currentView]: data.data }))
       } else {
-        setError(data.error || 'Failed to fetch service requests');
+        setError(data.error || 'Failed to load requests')
       }
     } catch (err) {
-      setError('Error fetching service requests');
-      console.error('Error:', err);
+      setError('Network error')
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  }, [selectedCategory, searchTerm, currentView, user?.id]);
+  }
 
-  // Load data on component mount and when filters change
-  useEffect(() => {
-    fetchServiceRequests();
-  }, [fetchServiceRequests]);
+  useEffect(() => { fetchRequests() }, [selectedCategory, searchTerm, currentView, user?.id])
 
-  // Auto-refresh for volunteering tab to check for status updates
   useEffect(() => {
     if (currentView === 'volunteering' && canVolunteer) {
-      const interval = setInterval(() => {
-        fetchServiceRequests();
-      }, 30000); // Refresh every 30 seconds
-
-      return () => clearInterval(interval);
+      const interval = setInterval(fetchRequests, 30000)
+      return () => clearInterval(interval)
     }
-  }, [currentView, canVolunteer, fetchServiceRequests]);
+  }, [currentView, canVolunteer])
   
-  const handleTabChange = useCallback((value: string) => {
-    setCurrentView(value);
-    
-    // Check if we already have data for this view
-    const hasDataForView = (value === 'all' && allRequests.length > 0) ||
-                          (value === 'my-requests' && myRequests.length > 0) ||
-                          (value === 'volunteering' && volunteeringRequests.length > 0);
-    
-    if (!hasDataForView) {
-      setLoading(true);
-    }
-    setError('');
-    
-    // Force immediate re-fetch when tab changes
-    setTimeout(() => {
-      fetchServiceRequests();
-    }, 10);
-  }, [fetchServiceRequests, allRequests.length, myRequests.length, volunteeringRequests.length]);
+  const handleTabChange = (value: string) => {
+    setCurrentView(value)
+    if (!requests[value]?.length) setLoading(true)
+    setError('')
+  }
 
-  // No need for client-side filtering since API handles it
-  const filteredRequests = serviceRequests;
+  const filteredRequests = serviceRequests
 
   if (error) {
     return (
@@ -209,11 +126,11 @@ function ServiceRequestsContent() {
         <main className="flex-1 px-6 py-8 md:px-10">
           <div className="text-center py-8">
             <p className="text-red-500 mb-4">{error}</p>
-            <Button onClick={fetchServiceRequests}>Try Again</Button>
+            <Button onClick={fetchRequests}>Try Again</Button>
           </div>
         </main>
       </div>
-    );
+    )
   }
 
   return (
@@ -327,7 +244,7 @@ function ServiceRequestsContent() {
                   deadline={request.deadline}
                   requirements={request.requirements}
                   type="request"
-                  onDelete={() => handleDeleteRequest(request.id)}
+                  onDelete={() => deleteRequest(request.id)}
                   isDeleting={deleting === request.id}
                   showDeleteButton={!!(user && isNGO && request.ngo_name === user?.name)}
                   isOwner={!!(user && isNGO && request.ngo_name === user?.name)}
@@ -406,7 +323,7 @@ function ServiceRequestsContent() {
                         deadline={request.deadline}
                         requirements={request.requirements}
                         type="request"
-                        onDelete={() => handleDeleteRequest(request.id)}
+                        onDelete={() => deleteRequest(request.id)}
                         isDeleting={deleting === request.id}
                         showDeleteButton={true}
                         isOwner={true}
@@ -431,7 +348,7 @@ function ServiceRequestsContent() {
                   <Button 
                     variant="outline" 
                     size="sm" 
-                    onClick={() => fetchServiceRequests()}
+                    onClick={() => fetchRequests()}
                     disabled={loading}
                     className="gap-1"
                   >
