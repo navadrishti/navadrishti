@@ -39,6 +39,7 @@ export function Header() {
   const { getCartItemCount } = useCart()
   const router = useRouter()
   const cartItemCount = getCartItemCount()
+  const [mounted, setMounted] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<ProfileSearchResult[]>([])
   const [isSearching, setIsSearching] = useState(false)
@@ -48,6 +49,10 @@ export function Header() {
   const [showAllResults, setShowAllResults] = useState(false)
   const [openDropdown, setOpenDropdown] = useState<string | null>(null)
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
   const dropdownTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   // Handle dropdown hover with delay
@@ -177,7 +182,7 @@ export function Header() {
         <div className="hidden md:flex md:flex-1 md:items-center md:justify-end md:gap-4 lg:gap-6">
           <nav className="flex items-center gap-1 lg:gap-2">
             {/* Company Navigation */}
-            {user?.user_type === 'company' && (
+            {mounted && user?.user_type === 'company' && (
               <>
                 {/* CSR Hub Dropdown */}
                 <div 
@@ -262,7 +267,7 @@ export function Header() {
             )}
 
             {/* NGO Navigation */}
-            {user?.user_type === 'ngo' && (
+            {mounted && user?.user_type === 'ngo' && (
               <>
                 {/* AI Tools Dropdown */}
                 <div 
@@ -381,7 +386,7 @@ export function Header() {
             )}
 
             {/* Individual Navigation */}
-            {user?.user_type === 'individual' && (
+            {mounted && user?.user_type === 'individual' && (
               <>
                 {/* Opportunities Dropdown */}
                 <div 
@@ -513,7 +518,7 @@ export function Header() {
                       <div className="text-xs text-gray-500">Shop community items</div>
                     </div>
                   </Link>
-                  {user?.user_type === 'ngo' && (
+                  {mounted && user?.user_type === 'ngo' && (
                     <Link href="/marketplace/fundraising" className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
                       <div>
                         <div className="font-medium">Fundraising</div>
@@ -521,7 +526,7 @@ export function Header() {
                       </div>
                     </Link>
                   )}
-                  {user && (
+                  {mounted && user && (
                     <>
                       <Link href={`${getDashboardLink()}?tab=marketplace&subtab=selling`} className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
                         <div>
@@ -785,7 +790,7 @@ export function Header() {
           )}
         </div>
         <div className="flex md:hidden flex-1 items-center justify-end gap-2">
-          {user && (
+          {mounted && user && (
             <Button 
               variant="ghost" 
               size="icon" 
@@ -971,7 +976,7 @@ export function Header() {
                   {/* Navigation */}
                   <nav className="grid gap-2 text-base font-medium mb-8">
                     {/* Company Mobile Nav */}
-                    {user?.user_type === 'company' && (
+                    {mounted && user?.user_type === 'company' && (
                       <>
                         <div className="mt-2 mb-1">
                           <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3">CSR Hub</div>
@@ -1002,7 +1007,7 @@ export function Header() {
                     )}
 
                     {/* NGO Mobile Nav */}
-                    {user?.user_type === 'ngo' && (
+                    {mounted && user?.user_type === 'ngo' && (
                       <>
                         <div className="mt-2 mb-1">
                           <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3">AI Tools</div>
@@ -1043,7 +1048,7 @@ export function Header() {
                     )}
 
                     {/* Individual Mobile Nav */}
-                    {user?.user_type === 'individual' && (
+                    {mounted && user?.user_type === 'individual' && (
                       <>
                         <div className="mt-2 mb-1">
                           <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3">Opportunities</div>
@@ -1095,12 +1100,12 @@ export function Header() {
                     <Link href="/marketplace" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
                       <span>Browse Products</span>
                     </Link>
-                    {user?.user_type === 'ngo' && (
+                    {mounted && user?.user_type === 'ngo' && (
                       <Link href="/marketplace/fundraising" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
                         <span>Fundraising</span>
                       </Link>
                     )}
-                    {user && (
+                    {mounted && user && (
                       <>
                         <Link href={`${getDashboardLink()}?tab=marketplace&subtab=selling`} className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
                           <span>My Listings</span>
@@ -1127,7 +1132,7 @@ export function Header() {
 
                   {/* User Section */}
                   <div className="border-t border-white/20 pt-6">
-                    {user ? (
+                    {mounted && user ? (
                       <div>
                         <div className="flex items-center gap-4 mb-6">
                           <Avatar className="h-12 w-12">
