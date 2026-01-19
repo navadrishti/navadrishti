@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
 import './globals.css'
 import '@/styles/colors.css'
 import { AuthProvider } from '@/lib/auth-context'
@@ -135,9 +136,11 @@ export default function RootLayout({
         <ThemeProvider>
           <AuthProvider>
             <CartProvider>
-              <PageTransition>
-                {children}
-              </PageTransition>
+              <Suspense fallback={null}>
+                <PageTransition>
+                  {children}
+                </PageTransition>
+              </Suspense>
               <Toaster 
                 position="top-right" 
                 richColors 

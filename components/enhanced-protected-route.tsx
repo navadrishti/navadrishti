@@ -48,52 +48,6 @@ function PageSkeleton() {
   );
 }
 
-interface BasicProtectedRouteProps {
-  children: React.ReactNode;
-  userTypes?: ('individual' | 'ngo' | 'company')[];
-}
-
-/**
- * Basic protected route with user type restrictions and smooth transitions
- */
-export function ProtectedRoute({ children, userTypes }: BasicProtectedRouteProps) {
-  const { user, loading } = useAuth();
-  const router = useRouter();
-  const [isRedirecting, setIsRedirecting] = useState(false);
-
-  useEffect(() => {
-    if (loading) return;
-
-    if (!user) {
-      setIsRedirecting(true);
-      const timer = setTimeout(() => {
-        smoothNavigate(router, '/login', { delay: 150 });
-      }, 150);
-      return () => clearTimeout(timer);
-    }
-
-    if (userTypes && userTypes.length > 0) {
-      if (!userTypes.includes(user.user_type)) {
-        setIsRedirecting(true);
-        const timer = setTimeout(() => {
-          smoothNavigate(router, '/', { delay: 150 });
-        }, 150);
-        return () => clearTimeout(timer);
-      }
-    }
-  }, [user, loading, router, userTypes]);
-
-  if (loading || !user || isRedirecting) {
-    return <PageSkeleton />;
-  }
-
-  if (userTypes && userTypes.length > 0 && !userTypes.includes(user.user_type)) {
-    return <PageSkeleton />;
-  }
-
-  return <>{children}</>;
-}
-
 interface PermissionGateProps {
   children: React.ReactNode;
   permission: keyof AccessPermissions;
