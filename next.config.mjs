@@ -6,6 +6,7 @@ const nextConfig = {
   },
   images: {
     unoptimized: false, // Changed to false for Vercel
+    qualities: [75, 85, 90],
     remotePatterns: [
       {
         protocol: 'https',

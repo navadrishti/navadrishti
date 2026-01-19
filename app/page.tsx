@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth-context"
 import { User, LayoutDashboard } from "lucide-react"
@@ -15,6 +16,7 @@ interface PlatformStats {
 
 export default function HomePage() {
   const { user } = useAuth()
+  const [mounted, setMounted] = useState(false)
   const [stats, setStats] = useState<PlatformStats>({
     activeUsers: 0,
     partnerNGOs: 0,
@@ -23,6 +25,10 @@ export default function HomePage() {
   })
   const [statsLoading, setStatsLoading] = useState(true)
   const [statsError, setStatsError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   // Fetch real-time stats
   useEffect(() => {
@@ -77,145 +83,205 @@ export default function HomePage() {
     <div className="min-h-screen bg-black">
       {/* Photo Grid Hero Section */}
       <div className="relative min-h-screen">
-        {/* Grid Container - Optimized layout with better coverage */}
-        <div className="grid grid-cols-5 grid-rows-4 gap-1 p-2 h-screen opacity-40">
+        {/* Grid Container - Fixed height to prevent glitching */}
+        <div className="grid grid-cols-5 grid-rows-4 gap-1 p-2 h-screen opacity-40 will-change-auto">
           
           {/* Row 1 */}
-          <div className="relative overflow-hidden rounded-xl shadow-lg">
-            <img 
+          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900 aspect-square">
+            <Image 
               src="/photos/pic 1.jpeg" 
               alt="Community empowerment"
-              className="w-full h-full object-cover"
+              fill
+              className="object-cover"
+              sizes="20vw"
+              priority
+              quality={85}
             />
             <div className="absolute inset-0 bg-black/5"></div>
           </div>
 
-          <div className="relative overflow-hidden rounded-xl shadow-lg">
-            <img 
+          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900 aspect-square">
+            <Image 
               src="/photos/pic 2.jpeg" 
               alt="Social innovation"
-              className="w-full h-full object-cover"
+              fill
+              className="object-cover"
+              sizes="20vw"
+              priority
+              quality={85}
             />
             <div className="absolute inset-0 bg-black/5"></div>
           </div>
 
           {/* Center large image - spans 3 columns, 2 rows */}
-          <div className="col-span-3 row-span-2 relative overflow-hidden rounded-2xl shadow-xl">
-            <img 
+          <div className="col-span-3 row-span-2 relative overflow-hidden rounded-2xl shadow-xl bg-gray-900">
+            <Image 
               src="/photos/pic 3.jpeg" 
               alt="Community empowerment through business literacy"
-              className="w-full h-full object-cover"
+              fill
+              className="object-cover"
+              sizes="60vw"
+              priority
+              quality={90}
             />
             <div className="absolute inset-0 bg-black/5"></div>
           </div>
 
           {/* Row 2 */}
-          <div className="relative overflow-hidden rounded-xl shadow-lg">
-            <img 
+          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900 aspect-square">
+            <Image 
               src="/photos/pic 4.jpeg" 
               alt="Teamwork and collaboration"
-              className="w-full h-full object-cover"
+              fill
+              className="object-cover"
+              sizes="20vw"
+              priority
+              quality={85}
             />
             <div className="absolute inset-0 bg-black/5"></div>
           </div>
 
-          <div className="relative overflow-hidden rounded-xl shadow-lg">
-            <img 
+          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900 aspect-square">
+            <Image 
               src="/photos/pic 5.jpeg" 
               alt="Community collaboration"
-              className="w-full h-full object-cover"
+              fill
+              className="object-cover"
+              sizes="20vw"
+              priority
+              quality={85}
             />
             <div className="absolute inset-0 bg-black/5"></div>
           </div>
 
           {/* Row 3 */}
-          <div className="relative overflow-hidden rounded-xl shadow-lg">
-            <img 
+          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900 aspect-square">
+            <Image 
               src="/photos/pic 6.jpeg" 
               alt="Economic development"
-              className="w-full h-full object-cover"
+              fill
+              className="object-cover"
+              sizes="20vw"
+              priority
+              quality={85}
             />
             <div className="absolute inset-0 bg-black/5"></div>
           </div>
 
-          <div className="relative overflow-hidden rounded-xl shadow-lg">
-            <img 
+          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900 aspect-square">
+            <Image 
               src="/photos/pic 7.jpeg" 
               alt="Education and training"
-              className="w-full h-full object-cover"
+              fill
+              className="object-cover"
+              sizes="20vw"
+              priority
+              quality={85}
             />
             <div className="absolute inset-0 bg-black/5"></div>
           </div>
 
-          <div className="relative overflow-hidden rounded-xl shadow-lg">
-            <img 
+          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900 aspect-square">
+            <Image 
               src="/photos/pic 8.jpeg" 
               alt="Growth and development"
-              className="w-full h-full object-cover"
+              fill
+              className="object-cover"
+              sizes="20vw"
+              priority
+              quality={85}
             />
             <div className="absolute inset-0 bg-black/5"></div>
           </div>
 
-          <div className="relative overflow-hidden rounded-xl shadow-lg">
-            <img 
+          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900 aspect-square">
+            <Image 
               src="/photos/pic 9.jpeg" 
               alt="Leadership"
-              className="w-full h-full object-cover"
+              fill
+              className="object-cover"
+              sizes="20vw"
+              priority
+              quality={85}
             />
             <div className="absolute inset-0 bg-black/5"></div>
           </div>
 
-          <div className="relative overflow-hidden rounded-xl shadow-lg">
-            <img 
+          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900 aspect-square">
+            <Image 
               src="/photos/pic 10.jpeg" 
               alt="Women empowerment"
-              className="w-full h-full object-cover"
+              fill
+              className="object-cover"
+              sizes="20vw"
+              priority
+              quality={85}
             />
             <div className="absolute inset-0 bg-black/5"></div>
           </div>
 
           {/* Row 4 */}
-          <div className="relative overflow-hidden rounded-xl shadow-lg">
-            <img 
+          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900 aspect-square">
+            <Image 
               src="/photos/pic 11.jpeg" 
               alt="Social innovation"
-              className="w-full h-full object-cover"
+              fill
+              className="object-cover"
+              sizes="20vw"
+              priority
+              quality={85}
             />
             <div className="absolute inset-0 bg-black/5"></div>
           </div>
 
-          <div className="relative overflow-hidden rounded-xl shadow-lg">
-            <img 
+          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900 aspect-square">
+            <Image 
               src="/photos/pic 12.jpeg" 
               alt="Mentorship"
-              className="w-full h-full object-cover"
+              fill
+              className="object-cover"
+              sizes="20vw"
+              priority
+              quality={85}
             />
             <div className="absolute inset-0 bg-black/5"></div>
           </div>
 
-          <div className="relative overflow-hidden rounded-xl shadow-lg">
-            <img 
+          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900 aspect-square">
+            <Image 
               src="/photos/pic 13.jpeg" 
               alt="Business development"
-              className="w-full h-full object-cover"
+              fill
+              className="object-cover"
+              sizes="20vw"
+              priority
+              quality={85}
             />
             <div className="absolute inset-0 bg-black/5"></div>
           </div>
 
-          <div className="relative overflow-hidden rounded-xl shadow-lg">
-            <img 
+          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900 aspect-square">
+            <Image 
               src="/photos/pic 14.jpeg" 
               alt="Sustainability"
-              className="w-full h-full object-cover"
+              fill
+              className="object-cover"
+              sizes="20vw"
+              priority
+              quality={85}
             />
             <div className="absolute inset-0 bg-black/5"></div>
           </div>
 
-          <div className="relative overflow-hidden rounded-xl shadow-lg">
-            <img 
+          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900 aspect-square">
+            <Image 
               src="/photos/pic 15.jpeg" 
               alt="Community impact"
-              className="w-full h-full object-cover"
+              fill
+              className="object-cover"
+              sizes="20vw"
+              priority
+              quality={85}
             />
             <div className="absolute inset-0 bg-black/5"></div>
           </div>
@@ -237,92 +303,92 @@ export default function HomePage() {
             {/* Real-time Stats Counter */}
             <div className="grid grid-cols-3 gap-2 sm:gap-4 md:gap-8 mb-12 px-4">
               <div className="text-center">
-                <div className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-blue-400 mb-1 sm:mb-2">
+                <div className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-blue-400 mb-1 sm:mb-2 min-h-[2rem] sm:min-h-[3rem] md:min-h-[3.5rem] lg:min-h-[4.5rem] flex items-center justify-center">
                   {statsLoading || statsError ? (
-                    <div className="relative overflow-hidden">
-                      <div className="h-8 sm:h-12 md:h-14 w-16 sm:w-24 md:w-32 mx-auto bg-blue-400/10 rounded-xl flex items-center justify-center">
+                    <div className="relative overflow-hidden w-full">
+                      <div className="h-8 sm:h-12 md:h-14 w-20 sm:w-28 md:w-36 mx-auto bg-blue-400/10 rounded-xl flex items-center justify-center">
                         {statsError ? (
-                          <span className="text-xs sm:text-sm text-amber-400">Loading</span>
+                          <span className="text-xs sm:text-sm text-amber-400">...</span>
                         ) : (
                           <div className="absolute inset-0 bg-gradient-to-r from-transparent via-blue-400/30 to-transparent animate-shimmer"></div>
                         )}
                       </div>
                     </div>
                   ) : (
-                    `${stats.activeUsers.toLocaleString()}+`
+                    <span className="transition-opacity duration-300">{`${stats.activeUsers.toLocaleString()}+`}</span>
                   )}
                 </div>
-                <div className="text-white/70 text-base sm:text-lg uppercase tracking-wide">
+                <div className="text-white/70 text-base sm:text-lg uppercase tracking-wide min-h-[1.5rem] flex items-center justify-center">
                   {statsLoading || statsError ? (
-                    <div className="relative overflow-hidden mt-1 sm:mt-2">
-                      <div className="h-3 sm:h-4 w-12 sm:w-16 md:w-20 mx-auto bg-gray-400/10 rounded-lg flex items-center justify-center">
+                    <div className="relative overflow-hidden w-full">
+                      <div className="h-4 sm:h-5 w-16 sm:w-20 md:w-24 mx-auto bg-gray-400/10 rounded-lg flex items-center justify-center">
                         {!statsError && <div className="absolute inset-0 bg-gradient-to-r from-transparent via-gray-400/30 to-transparent animate-shimmer"></div>}
                       </div>
                     </div>
                   ) : (
-                    <>
+                    <span className="transition-opacity duration-300">
                       <span className="hidden sm:inline">Active Users</span>
                       <span className="sm:hidden">Users</span>
-                    </>
+                    </span>
                   )}
                 </div>
               </div>
               <div className="text-center">
-                <div className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-purple-400 mb-1 sm:mb-2">
+                <div className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-purple-400 mb-1 sm:mb-2 min-h-[2rem] sm:min-h-[3rem] md:min-h-[3.5rem] lg:min-h-[4.5rem] flex items-center justify-center">
                   {statsLoading || statsError ? (
-                    <div className="relative overflow-hidden">
-                      <div className="h-8 sm:h-12 md:h-14 w-16 sm:w-24 md:w-32 mx-auto bg-purple-400/10 rounded-xl flex items-center justify-center">
+                    <div className="relative overflow-hidden w-full">
+                      <div className="h-8 sm:h-12 md:h-14 w-20 sm:w-28 md:w-36 mx-auto bg-purple-400/10 rounded-xl flex items-center justify-center">
                         {statsError ? (
-                          <span className="text-xs sm:text-sm text-amber-400">Wait</span>
+                          <span className="text-xs sm:text-sm text-amber-400">...</span>
                         ) : (
                           <div className="absolute inset-0 bg-gradient-to-r from-transparent via-purple-400/30 to-transparent animate-shimmer"></div>
                         )}
                       </div>
                     </div>
                   ) : (
-                    `${stats.partnerCompanies.toLocaleString()}+`
+                    <span className="transition-opacity duration-300">{`${stats.partnerCompanies.toLocaleString()}+`}</span>
                   )}
                 </div>
-                <div className="text-white/70 text-base sm:text-lg uppercase tracking-wide">
+                <div className="text-white/70 text-base sm:text-lg uppercase tracking-wide min-h-[1.5rem] flex items-center justify-center">
                   {statsLoading || statsError ? (
-                    <div className="relative overflow-hidden mt-1 sm:mt-2">
-                      <div className="h-3 sm:h-4 w-12 sm:w-16 md:w-18 mx-auto bg-gray-400/10 rounded-lg flex items-center justify-center">
+                    <div className="relative overflow-hidden w-full">
+                      <div className="h-4 sm:h-5 w-16 sm:w-20 md:w-24 mx-auto bg-gray-400/10 rounded-lg flex items-center justify-center">
                         {!statsError && <div className="absolute inset-0 bg-gradient-to-r from-transparent via-gray-400/30 to-transparent animate-shimmer"></div>}
                       </div>
                     </div>
                   ) : (
-                    "Companies"
+                    <span className="transition-opacity duration-300">Companies</span>
                   )}
                 </div>
               </div>
               <div className="text-center">
-                <div className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-teal-400 mb-1 sm:mb-2">
+                <div className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-teal-400 mb-1 sm:mb-2 min-h-[2rem] sm:min-h-[3rem] md:min-h-[3.5rem] lg:min-h-[4.5rem] flex items-center justify-center">
                   {statsLoading || statsError ? (
-                    <div className="relative overflow-hidden">
-                      <div className="h-8 sm:h-12 md:h-14 w-16 sm:w-24 md:w-32 mx-auto bg-teal-400/10 rounded-xl flex items-center justify-center">
+                    <div className="relative overflow-hidden w-full">
+                      <div className="h-8 sm:h-12 md:h-14 w-20 sm:w-28 md:w-36 mx-auto bg-teal-400/10 rounded-xl flex items-center justify-center">
                         {statsError ? (
-                          <span className="text-xs sm:text-sm text-amber-400">Soon</span>
+                          <span className="text-xs sm:text-sm text-amber-400">...</span>
                         ) : (
                           <div className="absolute inset-0 bg-gradient-to-r from-transparent via-teal-400/30 to-transparent animate-shimmer"></div>
                         )}
                       </div>
                     </div>
                   ) : (
-                    `${stats.partnerNGOs.toLocaleString()}+`
+                    <span className="transition-opacity duration-300">{`${stats.partnerNGOs.toLocaleString()}+`}</span>
                   )}
                 </div>
-                <div className="text-white/70 text-base sm:text-lg uppercase tracking-wide">
+                <div className="text-white/70 text-base sm:text-lg uppercase tracking-wide min-h-[1.5rem] flex items-center justify-center">
                   {statsLoading || statsError ? (
-                    <div className="relative overflow-hidden mt-1 sm:mt-2">
-                      <div className="h-3 sm:h-4 w-12 sm:w-16 md:w-24 mx-auto bg-gray-400/10 rounded-lg flex items-center justify-center">
+                    <div className="relative overflow-hidden w-full">
+                      <div className="h-4 sm:h-5 w-16 sm:w-20 md:w-24 mx-auto bg-gray-400/10 rounded-lg flex items-center justify-center">
                         {!statsError && <div className="absolute inset-0 bg-gradient-to-r from-transparent via-gray-400/30 to-transparent animate-shimmer"></div>}
                       </div>
                     </div>
                   ) : (
-                    <>
+                    <span className="transition-opacity duration-300">
                       <span className="hidden sm:inline">Partner NGOs</span>
                       <span className="sm:hidden">NGOs</span>
-                    </>
+                    </span>
                   )}
                 </div>
               </div>
@@ -344,7 +410,7 @@ export default function HomePage() {
                   Home
                 </div>
               </Link>
-              {user ? (
+              {mounted && user ? (
                 <Link 
                   href={`/${user.user_type}s/dashboard`}
                   className="group"
@@ -400,7 +466,7 @@ export default function HomePage() {
                   Home
                 </div>
               </Link>
-              {user ? (
+              {mounted && user ? (
                 <Link 
                   href={`/${user.user_type}s/dashboard`}
                   className="group w-full max-w-xs"
