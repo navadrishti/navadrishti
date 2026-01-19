@@ -87,27 +87,27 @@ export default function HomePage() {
         <div className="grid grid-cols-5 grid-rows-4 gap-1 p-2 h-screen opacity-40 will-change-auto">
           
           {/* Row 1 */}
-          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900 aspect-square">
+          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900">
             <Image 
               src="/photos/pic 1.jpeg" 
               alt="Community empowerment"
               fill
               className="object-cover"
               sizes="20vw"
-              priority
+              loading="eager"
               quality={85}
             />
             <div className="absolute inset-0 bg-black/5"></div>
           </div>
 
-          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900 aspect-square">
+          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900">
             <Image 
               src="/photos/pic 2.jpeg" 
               alt="Social innovation"
               fill
               className="object-cover"
               sizes="20vw"
-              priority
+              loading="eager"
               quality={85}
             />
             <div className="absolute inset-0 bg-black/5"></div>
@@ -121,166 +121,166 @@ export default function HomePage() {
               fill
               className="object-cover"
               sizes="60vw"
-              priority
+              loading="eager"
               quality={90}
             />
             <div className="absolute inset-0 bg-black/5"></div>
           </div>
 
           {/* Row 2 */}
-          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900 aspect-square">
+          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900">
             <Image 
               src="/photos/pic 4.jpeg" 
               alt="Teamwork and collaboration"
               fill
               className="object-cover"
               sizes="20vw"
-              priority
+              loading="eager"
               quality={85}
             />
             <div className="absolute inset-0 bg-black/5"></div>
           </div>
 
-          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900 aspect-square">
+          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900">
             <Image 
               src="/photos/pic 5.jpeg" 
               alt="Community collaboration"
               fill
               className="object-cover"
               sizes="20vw"
-              priority
+              loading="eager"
               quality={85}
             />
             <div className="absolute inset-0 bg-black/5"></div>
           </div>
 
           {/* Row 3 */}
-          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900 aspect-square">
+          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900">
             <Image 
               src="/photos/pic 6.jpeg" 
               alt="Economic development"
               fill
               className="object-cover"
               sizes="20vw"
-              priority
+              loading="eager"
               quality={85}
             />
             <div className="absolute inset-0 bg-black/5"></div>
           </div>
 
-          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900 aspect-square">
+          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900">
             <Image 
               src="/photos/pic 7.jpeg" 
               alt="Education and training"
               fill
               className="object-cover"
               sizes="20vw"
-              priority
+              loading="eager"
               quality={85}
             />
             <div className="absolute inset-0 bg-black/5"></div>
           </div>
 
-          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900 aspect-square">
+          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900">
             <Image 
               src="/photos/pic 8.jpeg" 
               alt="Growth and development"
               fill
               className="object-cover"
               sizes="20vw"
-              priority
+              loading="eager"
               quality={85}
             />
             <div className="absolute inset-0 bg-black/5"></div>
           </div>
 
-          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900 aspect-square">
+          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900">
             <Image 
               src="/photos/pic 9.jpeg" 
               alt="Leadership"
               fill
               className="object-cover"
               sizes="20vw"
-              priority
+              loading="eager"
               quality={85}
             />
             <div className="absolute inset-0 bg-black/5"></div>
           </div>
 
-          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900 aspect-square">
+          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900">
             <Image 
               src="/photos/pic 10.jpeg" 
               alt="Women empowerment"
               fill
               className="object-cover"
               sizes="20vw"
-              priority
+              loading="eager"
               quality={85}
             />
             <div className="absolute inset-0 bg-black/5"></div>
           </div>
 
           {/* Row 4 */}
-          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900 aspect-square">
+          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900">
             <Image 
               src="/photos/pic 11.jpeg" 
               alt="Social innovation"
               fill
               className="object-cover"
               sizes="20vw"
-              priority
+              loading="eager"
               quality={85}
             />
             <div className="absolute inset-0 bg-black/5"></div>
           </div>
 
-          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900 aspect-square">
+          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900">
             <Image 
               src="/photos/pic 12.jpeg" 
               alt="Mentorship"
               fill
               className="object-cover"
               sizes="20vw"
-              priority
+              loading="eager"
               quality={85}
             />
             <div className="absolute inset-0 bg-black/5"></div>
           </div>
 
-          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900 aspect-square">
+          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900">
             <Image 
               src="/photos/pic 13.jpeg" 
               alt="Business development"
               fill
               className="object-cover"
               sizes="20vw"
-              priority
+              loading="eager"
               quality={85}
             />
             <div className="absolute inset-0 bg-black/5"></div>
           </div>
 
-          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900 aspect-square">
+          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900">
             <Image 
               src="/photos/pic 14.jpeg" 
               alt="Sustainability"
               fill
               className="object-cover"
               sizes="20vw"
-              priority
+              loading="eager"
               quality={85}
             />
             <div className="absolute inset-0 bg-black/5"></div>
           </div>
 
-          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900 aspect-square">
+          <div className="relative overflow-hidden rounded-xl shadow-lg bg-gray-900">
             <Image 
               src="/photos/pic 15.jpeg" 
               alt="Community impact"
               fill
               className="object-cover"
               sizes="20vw"
-              priority
+              loading="eager"
               quality={85}
             />
             <div className="absolute inset-0 bg-black/5"></div>
