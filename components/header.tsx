@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
+import { smoothNavigate } from "@/lib/smooth-navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -137,9 +138,9 @@ export function Header() {
     }
   }
   
-  const handleLogout = () => {
+  const handleLogout = async () => {
     logout()
-    router.push('/home')
+    await smoothNavigate(router, '/home', { delay: 100 })
   }  // Generate initials for avatar fallback
   const getInitials = (name: string) => {
     if (!name) return "U"
