@@ -3,14 +3,14 @@
   
   <!-- Main Pages -->
   <url>
-    <loc>https://navadrishti.com</loc>
+    <loc>https://app.navadrishti.in</loc>
     <lastmod>2026-01-27</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
   
   <url>
-    <loc>https://navadrishti.com/home</loc>
+    <loc>https://app.navadrishti.in/home</loc>
     <lastmod>2026-01-27</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
@@ -18,14 +18,14 @@
   
   <!-- Authentication Pages -->
   <url>
-    <loc>https://navadrishti.com/login</loc>
+    <loc>https://app.navadrishti.in/login</loc>
     <lastmod>2026-01-27</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   
   <url>
-    <loc>https://navadrishti.com/register</loc>
+    <loc>https://app.navadrishti.in/register</loc>
     <lastmod>2026-01-27</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
@@ -33,21 +33,21 @@
   
   <!-- Registration Pages -->
   <url>
-    <loc>https://navadrishti.com/individuals/register</loc>
+    <loc>https://app.navadrishti.in/individuals/register</loc>
     <lastmod>2026-01-27</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   
   <url>
-    <loc>https://navadrishti.com/ngos/register</loc>
+    <loc>https://app.navadrishti.in/ngos/register</loc>
     <lastmod>2026-01-27</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   
   <url>
-    <loc>https://navadrishti.com/companies/register</loc>
+    <loc>https://app.navadrishti.in/companies/register</loc>
     <lastmod>2026-01-27</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
@@ -55,7 +55,7 @@
   
   <!-- Marketplace -->
   <url>
-    <loc>https://navadrishti.com/marketplace</loc>
+    <loc>https://app.navadrishti.in/marketplace</loc>
     <lastmod>2026-01-27</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
@@ -63,7 +63,7 @@
   
   <!-- NGOs -->
   <url>
-    <loc>https://navadrishti.com/ngos</loc>
+    <loc>https://app.navadrishti.in/ngos</loc>
     <lastmod>2026-01-27</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -71,14 +71,14 @@
   
   <!-- Services -->
   <url>
-    <loc>https://navadrishti.com/service-offers</loc>
+    <loc>https://app.navadrishti.in/service-offers</loc>
     <lastmod>2026-01-27</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   
   <url>
-    <loc>https://navadrishti.com/service-requests</loc>
+    <loc>https://app.navadrishti.in/service-requests</loc>
     <lastmod>2026-01-27</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
@@ -86,7 +86,7 @@
   
   <!-- CSR Campaigns -->
   <url>
-    <loc>https://navadrishti.com/csr-campaigns</loc>
+    <loc>https://app.navadrishti.in/csr-campaigns</loc>
     <lastmod>2026-01-27</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
@@ -94,7 +94,7 @@
   
   <!-- Verification -->
   <url>
-    <loc>https://navadrishti.com/verification</loc>
+    <loc>https://app.navadrishti.in/verification</loc>
     <lastmod>2026-01-27</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
