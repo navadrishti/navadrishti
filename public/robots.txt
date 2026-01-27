@@ -1,0 +1,18 @@
+# robots.txt for Navadrishti
+User-agent: *
+Allow: /
+
+# Disallow admin and API routes
+Disallow: /admin/
+Disallow: /api/
+
+# Disallow user-specific pages that require authentication
+Disallow: /cart
+Disallow: /orders/
+Disallow: /settings/
+
+# Sitemap
+Sitemap: https://navadrishti.com/sitemap.xml
+
+# LLM crawlers
+Allow: /llm.txt
