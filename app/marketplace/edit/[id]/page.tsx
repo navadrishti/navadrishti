@@ -711,7 +711,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
                         
                         {whoCanBuy.length === 0 && (
                           <p className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded p-2 mt-2">
-                            ⚠️ Please select at least one buyer type
+                            Please select at least one buyer type
                           </p>
                         )}
                       </div>
