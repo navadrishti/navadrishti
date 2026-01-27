@@ -8,7 +8,7 @@ import {
   MapPin, DollarSign, Clock, Calendar, Users, Building, User, 
   HeartHandshake, Shield, Star, Target, Info, Package 
 } from "lucide-react"
-import { formatPrice } from "@/lib/currency"
+import { formatPrice } from "@/lib/utils"
 
 interface ServiceDetailsProps {
   id: number

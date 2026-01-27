@@ -3,8 +3,12 @@
   "framework": "nextjs",
   "crons": [
     {
-      "path": "/api/cron/auto-reject-expired",
-      "schedule": "0 2 * * *"
+      "path": "/api/cron/daily-cleanup",
+      "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/cron/cleanup-sold-items",
+      "schedule": "0 0 * * *"
     }
   ]
 }

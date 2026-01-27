@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import ProtectedRoute from '@/components/protected-route';
 import { Header } from '@/components/header';
@@ -14,9 +15,14 @@ import { useToast } from '@/hooks/use-toast';
 import { VerificationBadge, VerificationDetails } from '@/components/verification-badge';
 import { SkeletonOrderItem } from '@/components/ui/skeleton';
 
-export default function NGODashboard() {
+function NGODashboardContent() {
   const { user, refreshUser } = useAuth();
   const { toast } = useToast();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const activeTab = searchParams.get('tab') || 'service-offers';
+  const marketplaceSubTab = searchParams.get('subtab') || 'selling';
+  const tabsRef = useRef<HTMLDivElement>(null);
   const [stats, setStats] = useState({
     serviceOffersPending: 0,
     serviceOffersCompleted: 0,
@@ -220,7 +226,7 @@ export default function NGODashboard() {
       if (data.success) {
         setServiceRequests(data.data || []);
         console.log('Service requests set:', data.data?.length || 0, 'items');
-        console.log('📊 Detailed service requests:', (data.data || []).map((req: any) => ({
+        console.log('Detailed service requests:', (data.data || []).map((req: any) => ({
           id: req.id,
           title: req.title,
           status: req.status,
@@ -300,6 +306,14 @@ export default function NGODashboard() {
 
     fetchAllData();
   }, [user?.id]);
+
+  useEffect(() => {
+    if ((activeTab || marketplaceSubTab) && tabsRef.current) {
+      setTimeout(() => {
+        tabsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 100)
+    }
+  }, [activeTab, marketplaceSubTab])
 
   return (
     <ProtectedRoute userTypes={['ngo']}>
@@ -519,12 +533,16 @@ export default function NGODashboard() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <Tabs defaultValue="service-offers" className="w-full">
-                  <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 h-auto">
-                    <TabsTrigger value="service-offers" className="text-xs sm:text-sm">Service Offers</TabsTrigger>
-                    <TabsTrigger value="service-requests" className="text-xs sm:text-sm">Service Requests</TabsTrigger>
-                    <TabsTrigger value="marketplace" className="text-xs sm:text-sm">Marketplace</TabsTrigger>
-                  </TabsList>
+                <div ref={tabsRef}>
+                  <Tabs value={activeTab} onValueChange={(value) => {
+                    window.history.replaceState(null, '', `/ngos/dashboard?tab=${value}`);
+                    router.replace(`/ngos/dashboard?tab=${value}`, { scroll: false });
+                  }} className="w-full">
+                    <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 h-auto">
+                      <TabsTrigger value="service-offers" className="text-xs sm:text-sm">Service Offers</TabsTrigger>
+                      <TabsTrigger value="service-requests" className="text-xs sm:text-sm">Service Requests</TabsTrigger>
+                      <TabsTrigger value="marketplace" className="text-xs sm:text-sm">Marketplace</TabsTrigger>
+                    </TabsList>
                   
                   <TabsContent value="service-offers" className="mt-4 space-y-4">
                     <div className="flex justify-between items-center">
@@ -677,7 +695,10 @@ export default function NGODashboard() {
                   </TabsContent>
                   
                   <TabsContent value="marketplace" className="mt-4 space-y-4">
-                    <Tabs defaultValue="selling" className="w-full">
+                    <Tabs value={marketplaceSubTab} onValueChange={(value) => {
+                      window.history.replaceState(null, '', `/ngos/dashboard?tab=marketplace&subtab=${value}`);
+                      router.replace(`/ngos/dashboard?tab=marketplace&subtab=${value}`, { scroll: false });
+                    }} className="w-full">
                       <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 h-auto">
                         <TabsTrigger value="selling" className="text-xs sm:text-sm">Your Listings</TabsTrigger>
                         <TabsTrigger value="purchasing" className="text-xs sm:text-sm">Purchased Items</TabsTrigger>
@@ -775,11 +796,20 @@ export default function NGODashboard() {
                     </Tabs>
                   </TabsContent>
                 </Tabs>
+                </div>
               </CardContent>
             </Card>
           </div>
         </main>
       </div>
     </ProtectedRoute>
+  );
+}
+
+export default function NGODashboard() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-background"><Header /><div className="container mx-auto px-4 py-8">Loading...</div></div>}>
+      <NGODashboardContent />
+    </Suspense>
   );
 }

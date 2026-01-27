@@ -8,7 +8,6 @@ interface RouteParams {
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { userId } = await params;
-    console.log('Profile API called with userId:', userId);
 
     // Get user profile data with location and profile image
     const { data: userResult, error: userError } = await supabase
@@ -29,11 +28,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       .eq('id', parseInt(userId))
       .single();
 
-    console.log('User query result:', userResult);
-    console.log('User query error:', userError);
-
     if (userError || !userResult) {
-      console.log('User not found, error:', userError);
       return Response.json({ 
         success: false,
         error: 'Profile not found' 
@@ -84,8 +79,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       .from('marketplace_items')
       .select('id, status, title, description, price')
       .eq('seller_id', parseInt(userId));
-
-    console.log('Listings query result:', listingsData);
 
     // Calculate statistics - filter out test/dummy data
     const realListings = listingsData?.filter(item => 
@@ -156,8 +149,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       rating_average: ratingAverage,
       rating_count: ratingCount
     };
-
-    console.log('Formatted profile response:', formattedProfile);
 
     return Response.json({
       success: true,

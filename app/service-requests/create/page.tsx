@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ArrowLeft, Calendar } from 'lucide-react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth-context'
-import ProtectedRoute from '@/components/enhanced-protected-route'
+import ProtectedRoute from '@/components/protected-route'
 
 const categories = [
   'Healthcare & Medical',

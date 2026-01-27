@@ -10,10 +10,10 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { ArrowLeft, Upload, Plus } from 'lucide-react'
+import { ArrowLeft, Upload, Plus, Users, User, Building } from 'lucide-react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth-context'
-import ProtectedRoute from '@/components/enhanced-protected-route'
+import ProtectedRoute from '@/components/protected-route'
 
 const categories = [
   'Clothing & Apparel',
@@ -62,6 +62,7 @@ export default function CreateListingPage() {
     dimensions_height: '',
     specifications: {} as Record<string, string>
   });
+  const [whoCanBuy, setWhoCanBuy] = useState<string[]>([]);
   const [images, setImages] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [uploadedImageUrls, setUploadedImageUrls] = useState<string[]>([]);
@@ -109,13 +110,47 @@ export default function CreateListingPage() {
         return acc;
       }, {} as Record<string, string>);
 
+      // Add brand and weight to specifications if provided
+      if (formData.brand?.trim()) {
+        specifications['Brand'] = formData.brand.trim();
+      }
+      if (formData.weight_kg) {
+        specifications['Weight'] = `${formData.weight_kg} kg`;
+      }
+
       // Build dimensions object
       const dimensions = {
         length: formData.dimensions_length ? parseFloat(formData.dimensions_length) : null,
         width: formData.dimensions_width ? parseFloat(formData.dimensions_width) : null,
         height: formData.dimensions_height ? parseFloat(formData.dimensions_height) : null
       };
+
+      // Add dimensions to specifications if provided
+      if (Object.values(dimensions).some(v => v !== null)) {
+        const dimStr = [
+          dimensions.length ? `${dimensions.length}L` : null,
+          dimensions.width ? `${dimensions.width}W` : null,
+          dimensions.height ? `${dimensions.height}H` : null
+        ].filter(Boolean).join(' x ');
+        if (dimStr) {
+          specifications['Dimensions'] = `${dimStr} cm`;
+        }
+      }
+
+      // Validate specifications are provided
+      if (Object.keys(specifications).length === 0) {
+        setError('Please add at least one product specification (brand, weight, dimensions, or custom specifications)');
+        setLoading(false);
+        return;
+      }
       
+      // Validate who_can_buy is not empty
+      if (whoCanBuy.length === 0) {
+        setError('Please select at least one buyer type who can purchase this item');
+        setLoading(false);
+        return;
+      }
+
       const response = await fetch('/api/marketplace', {
         method: 'POST',
         headers: {
@@ -131,7 +166,8 @@ export default function CreateListingPage() {
           dimensions_cm: Object.values(dimensions).some(v => v !== null) ? dimensions : null,
           specifications: Object.keys(specifications).length > 0 ? specifications : null,
           tags: formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag),
-          images: imageUrls
+          images: imageUrls,
+          who_can_buy: whoCanBuy
         })
       });
 
@@ -276,9 +312,7 @@ export default function CreateListingPage() {
 
   return (
     <ProtectedRoute 
-      userTypes={['ngo', 'company']} 
       requireVerification={true}
-      permission="canCreateMarketplaceListings"
     >
       <div className="flex min-h-screen flex-col">
         <Header />
@@ -314,7 +348,7 @@ export default function CreateListingPage() {
               {user && user.verification_status !== 'verified' && (
                 <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-md">
                   <div className="flex items-start gap-3">
-                    <div className="text-amber-600">⚠️</div>
+                    <div className="text-amber-600"></div>
                     <div>
                       <p className="text-amber-800 font-medium text-sm">Verification Required</p>
                       <p className="text-amber-700 text-sm mt-1">
@@ -547,9 +581,90 @@ export default function CreateListingPage() {
                     </p>
                   </div>
 
+                  {/* Who Can Buy Section */}
+                  <div className="border-t pt-6">
+                    <div className="space-y-3">
+                      <Label className="text-base font-semibold">Who Can Buy This Item? *</Label>
+                      <p className="text-sm text-muted-foreground">
+                        Select which user types are eligible to purchase this item. This helps ensure your items reach the right beneficiaries.
+                      </p>
+                      
+                      <div className="space-y-2 pt-2">
+                        <div className="flex items-center space-x-2 p-3 rounded-md border hover:bg-accent transition-colors">
+                          <input
+                            type="checkbox"
+                            id="buy-ngo"
+                            checked={whoCanBuy.includes('ngo')}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setWhoCanBuy([...whoCanBuy, 'ngo']);
+                              } else {
+                                setWhoCanBuy(whoCanBuy.filter(t => t !== 'ngo'));
+                              }
+                            }}
+                            className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                          />
+                          <Label htmlFor="buy-ngo" className="flex items-center gap-2 cursor-pointer font-normal">
+                            <Users className="h-4 w-4 text-blue-600" />
+                            <span>NGOs</span>
+                            <span className="text-xs text-muted-foreground">(Non-profit organizations)</span>
+                          </Label>
+                        </div>
+                        
+                        <div className="flex items-center space-x-2 p-3 rounded-md border hover:bg-accent transition-colors">
+                          <input
+                            type="checkbox"
+                            id="buy-individual"
+                            checked={whoCanBuy.includes('individual')}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setWhoCanBuy([...whoCanBuy, 'individual']);
+                              } else {
+                                setWhoCanBuy(whoCanBuy.filter(t => t !== 'individual'));
+                              }
+                            }}
+                            className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                          />
+                          <Label htmlFor="buy-individual" className="flex items-center gap-2 cursor-pointer font-normal">
+                            <User className="h-4 w-4 text-green-600" />
+                            <span>Individuals</span>
+                            <span className="text-xs text-muted-foreground">(Private users)</span>
+                          </Label>
+                        </div>
+                        
+                        <div className="flex items-center space-x-2 p-3 rounded-md border hover:bg-accent transition-colors">
+                          <input
+                            type="checkbox"
+                            id="buy-company"
+                            checked={whoCanBuy.includes('company')}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setWhoCanBuy([...whoCanBuy, 'company']);
+                              } else {
+                                setWhoCanBuy(whoCanBuy.filter(t => t !== 'company'));
+                              }
+                            }}
+                            className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                          />
+                          <Label htmlFor="buy-company" className="flex items-center gap-2 cursor-pointer font-normal">
+                            <Building className="h-4 w-4 text-purple-600" />
+                            <span>Companies</span>
+                            <span className="text-xs text-muted-foreground">(Corporate buyers via CSR)</span>
+                          </Label>
+                        </div>
+                      </div>
+                      
+                      {whoCanBuy.length === 0 && (
+                        <p className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded p-2 mt-2">
+                          Please select at least one buyer type
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
                   {/* Product Specifications Section */}
                   <div className="border-t pt-6">
-                    <h3 className="text-lg font-semibold mb-4">Product Specifications (Optional)</h3>
+                    <h3 className="text-lg font-semibold mb-4">Product Specifications *</h3>
                     
                     <div className="grid gap-4">
                       {/* Brand and Weight */}

@@ -24,7 +24,7 @@ export async function GET(
     // Get post preview info for rich sharing
     const shareData = {
       url: shareUrl,
-      title: `${post.author.name} shared on Udaan Collective`,
+      title: `${post.author.name} shared on Navadrishti`,
       description: post.content.length > 100 
         ? post.content.substring(0, 100) + '...' 
         : post.content,

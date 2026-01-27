@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { ArrowLeft, Upload, Save, Trash2 } from 'lucide-react'
+import { ArrowLeft, Upload, Save, Trash2, User, Building, Users } from 'lucide-react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth-context'
 import ProtectedRoute from '@/components/protected-route'
@@ -85,6 +85,7 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
     condition_type: 'new',
     status: 'active'
   })
+  const [whoCanBuy, setWhoCanBuy] = useState<string[]>([])
   const [images, setImages] = useState<File[]>([])
   const [existingImages, setExistingImages] = useState<string[]>([])
   const [imagePreviews, setImagePreviews] = useState<string[]>([])
@@ -133,6 +134,20 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
           condition_type: product.condition_type || 'new',
           status: product.status || 'active'
         })
+        
+        // Parse who_can_buy field
+        try {
+          let buyerTypes: string[] = [];
+          if (typeof product.who_can_buy === 'string') {
+            buyerTypes = JSON.parse(product.who_can_buy);
+          } else if (Array.isArray(product.who_can_buy)) {
+            buyerTypes = product.who_can_buy;
+          }
+          setWhoCanBuy(Array.isArray(buyerTypes) ? buyerTypes : []);
+        } catch (e) {
+          setWhoCanBuy([]); // Default to empty if parsing fails
+        }
+        
         setExistingImages(product.images || [])
       } else {
         setError('Listing not found')
@@ -309,6 +324,13 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
     try {
       const token = localStorage.getItem('token')
       
+      // Validate who_can_buy
+      if (whoCanBuy.length === 0) {
+        setError('Please select at least one buyer type who can purchase this item');
+        setSaving(false);
+        return;
+      }
+      
       // Combine existing and uploaded images
       const allImages = [...existingImages, ...uploadedImageUrls]
       
@@ -323,7 +345,8 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
           price: parseFloat(formData.price),
           quantity: parseInt(formData.quantity.toString()),
           tags: formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag),
-          images: allImages
+          images: allImages,
+          who_can_buy: whoCanBuy
         })
       })
 
@@ -613,6 +636,84 @@ export default function EditListingPage({ params }: { params: Promise<{ id: stri
                           onChange={handleChange}
                           placeholder="City, State"
                         />
+                      </div>
+                    </div>
+
+                    {/* Who Can Buy Section */}
+                    <div className="border-t pt-6">
+                      <div className="space-y-3">
+                        <Label className="text-base font-semibold">Who Can Buy This Item? *</Label>
+                        <p className="text-sm text-muted-foreground">
+                          Select which user types are eligible to purchase this item.
+                        </p>
+                        
+                        <div className="space-y-2 pt-2">
+                          <div className="flex items-center space-x-2 p-3 rounded-md border hover:bg-accent transition-colors">
+                            <input
+                              type="checkbox"
+                              id="edit-buy-ngo"
+                              checked={whoCanBuy.includes('ngo')}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setWhoCanBuy([...whoCanBuy, 'ngo']);
+                                } else {
+                                  setWhoCanBuy(whoCanBuy.filter(t => t !== 'ngo'));
+                                }
+                              }}
+                              className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                            />
+                            <Label htmlFor="edit-buy-ngo" className="flex items-center gap-2 cursor-pointer font-normal">
+                              <Users className="h-4 w-4 text-blue-600" />
+                              <span>NGOs</span>
+                            </Label>
+                          </div>
+                          
+                          <div className="flex items-center space-x-2 p-3 rounded-md border hover:bg-accent transition-colors">
+                            <input
+                              type="checkbox"
+                              id="edit-buy-individual"
+                              checked={whoCanBuy.includes('individual')}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setWhoCanBuy([...whoCanBuy, 'individual']);
+                                } else {
+                                  setWhoCanBuy(whoCanBuy.filter(t => t !== 'individual'));
+                                }
+                              }}
+                              className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                            />
+                            <Label htmlFor="edit-buy-individual" className="flex items-center gap-2 cursor-pointer font-normal">
+                              <User className="h-4 w-4 text-green-600" />
+                              <span>Individuals</span>
+                            </Label>
+                          </div>
+                          
+                          <div className="flex items-center space-x-2 p-3 rounded-md border hover:bg-accent transition-colors">
+                            <input
+                              type="checkbox"
+                              id="edit-buy-company"
+                              checked={whoCanBuy.includes('company')}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setWhoCanBuy([...whoCanBuy, 'company']);
+                                } else {
+                                  setWhoCanBuy(whoCanBuy.filter(t => t !== 'company'));
+                                }
+                              }}
+                              className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                            />
+                            <Label htmlFor="edit-buy-company" className="flex items-center gap-2 cursor-pointer font-normal">
+                              <Building className="h-4 w-4 text-purple-600" />
+                              <span>Companies</span>
+                            </Label>
+                          </div>
+                        </div>
+                        
+                        {whoCanBuy.length === 0 && (
+                          <p className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded p-2 mt-2">
+                            Please select at least one buyer type
+                          </p>
+                        )}
                       </div>
                     </div>
 

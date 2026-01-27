@@ -1,3 +1,13 @@
+/**
+ * Comprehensive Email Service
+ * 
+ * Provides email functionality including:
+ * - Basic email sending
+ * - Email templates (verification, password reset)
+ * - Service-specific emails (offer approval/rejection)
+ * - Order confirmation emails
+ */
+
 // Email service utility using NodeMailer
 import nodemailer from 'nodemailer';
 
@@ -18,7 +28,7 @@ const createTransporter = () => {
   return nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port: parseInt(process.env.SMTP_PORT || '587'),
-    secure: process.env.SMTP_PORT === '465', // true for 465, false for other ports
+    secure: process.env.SMTP_PORT === '465',
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
@@ -26,159 +36,320 @@ const createTransporter = () => {
   });
 };
 
-export async function sendEmail(options: EmailOptions): Promise<boolean> {
-  try {
-    const transporter = createTransporter();
-    
-    // If SMTP is not configured, log the email for development
-    if (!transporter) {
-      console.log('📧 EMAIL (SMTP NOT CONFIGURED):');
-      console.log('To:', options.to);
-      console.log('Subject:', options.subject);
-      console.log('HTML:', options.html);
-      return true;
-    }
+export async function sendEmail({ to, subject, html, text }: EmailOptions) {
+  const transporter = createTransporter();
 
-    // Send the email
-    const info = await transporter.sendMail({
-      from: `${process.env.FROM_NAME || 'Navadrishti'} <${process.env.FROM_EMAIL || process.env.SMTP_USER}>`,
-      to: options.to,
-      subject: options.subject,
-      html: options.html,
-      text: options.text || options.html.replace(/<[^>]*>/g, ''), // Strip HTML for text version
+  if (!transporter) {
+    console.warn('Email not configured. Email not sent.');
+    return { success: false, message: 'Email service not configured' };
+  }
+
+  try {
+    await transporter.sendMail({
+      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      to,
+      subject,
+      html,
+      text: text || '',
     });
 
-    console.log('📧 Email sent successfully:', info.messageId);
-    return true;
-
+    return { success: true };
   } catch (error) {
-    console.error('❌ Error sending email:', error);
-    return false;
+    console.error('Error sending email:', error);
+    return { success: false, error };
   }
 }
 
-// Email template functions
-
-export function generateEmailVerificationTemplate(verificationUrl: string, userEmail: string): string {
+export function generateEmailVerificationTemplate(verificationUrl: string, userName?: string) {
   return `
     <!DOCTYPE html>
     <html>
     <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Email Verification - Navadrishti</title>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Verify Your Email</title>
+      <style>
+        body { 
+          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+          line-height: 1.6; 
+          color: #333; 
+          background-color: #f4f4f4;
+          margin: 0;
+          padding: 0;
+        }
+        .container { 
+          max-width: 600px; 
+          margin: 30px auto; 
+          padding: 0;
+          background-color: #ffffff;
+          border-radius: 8px;
+          overflow: hidden;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: white;
+          padding: 30px;
+          text-align: center;
+        }
+        .header h1 {
+          margin: 0;
+          font-size: 24px;
+          font-weight: 600;
+        }
+        .content {
+          padding: 30px;
+        }
+        .button { 
+          display: inline-block; 
+          padding: 14px 32px; 
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: white !important; 
+          text-decoration: none; 
+          border-radius: 5px; 
+          margin: 20px 0;
+          font-weight: 600;
+          transition: transform 0.2s;
+        }
+        .button:hover {
+          transform: translateY(-2px);
+        }
+        .link-box {
+          background-color: #f8f9fa;
+          padding: 15px;
+          border-radius: 5px;
+          word-break: break-all;
+          margin: 15px 0;
+        }
+        .footer { 
+          margin-top: 30px; 
+          padding-top: 20px;
+          border-top: 1px solid #e0e0e0;
+          font-size: 13px; 
+          color: #666; 
+          text-align: center;
+        }
+        .warning {
+          background-color: #fff3cd;
+          border-left: 4px solid #ffc107;
+          padding: 12px;
+          margin: 20px 0;
+          border-radius: 4px;
+        }
+      </style>
     </head>
-    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
-            <h1 style="color: #3b82f6; margin: 0; text-align: center;">
-                🤝 Navadrishti
-            </h1>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>✓ Verify Your Email Address</h1>
         </div>
-        
-        <div style="background-color: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <h2 style="color: #1f2937; margin-top: 0;">Verify Your Email Address</h2>
-            
-            <p>Hello,</p>
-            
-            <p>Welcome to Navadrishti! Please verify your email address to complete your account setup and access all platform features.</p>
-            
-            <p>Click the button below to verify your email:</p>
-            
-            <div style="text-align: center; margin: 30px 0;">
-                <a href="${verificationUrl}" 
-                   style="background-color: #10b981; color: white; padding: 12px 24px; 
-                          text-decoration: none; border-radius: 6px; display: inline-block;
-                          font-weight: bold;">
-                    Verify Email Address
-                </a>
-            </div>
-            
-            <p>Or copy and paste this link in your browser:</p>
-            <p style="word-break: break-all; color: #666; background-color: #f3f4f6; padding: 10px; border-radius: 4px; font-family: monospace;">
-                ${verificationUrl}
+        <div class="content">
+          ${userName ? `<p>Hello <strong>${userName}</strong>,</p>` : '<p>Hello,</p>'}
+          <p>Thank you for registering with us! We're excited to have you on board.</p>
+          <p>To complete your registration and activate your account, please verify your email address by clicking the button below:</p>
+          <div style="text-align: center;">
+            <a href="${verificationUrl}" class="button">Verify Email Address</a>
+          </div>
+          <p>If the button doesn't work, you can copy and paste this link into your browser:</p>
+          <div class="link-box">
+            <a href="${verificationUrl}" style="color: #667eea;">${verificationUrl}</a>
+          </div>
+          <div class="warning">
+            <strong>⏰ Important:</strong> This verification link will expire in 24 hours for security reasons.
+          </div>
+          <p>Once verified, you'll have full access to all features of your account.</p>
+          <div class="footer">
+            <p><strong>Didn't create an account?</strong></p>
+            <p>If you didn't sign up for an account, please ignore this email or contact our support team if you have concerns.</p>
+            <p style="margin-top: 20px; color: #999;">
+              This is an automated message, please do not reply to this email.
             </p>
-            
-            <div style="background-color: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; padding: 15px; margin: 20px 0;">
-                <p style="margin: 0; color: #92400e;">
-                    <strong>Note:</strong> This verification link will expire in 24 hours for security reasons.
-                </p>
-            </div>
-            
-            <p>If you didn't create an account on Navadrishti, you can safely ignore this email.</p>
-            
-            <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
-            
-            <div style="text-align: center; color: #6b7280; font-size: 14px;">
-                <p>This email was sent from Navadrishti</p>
-                <p>© 2025 Navadrishti. All rights reserved.</p>
-            </div>
+          </div>
         </div>
+      </div>
     </body>
     </html>
   `;
 }
 
-export function generatePasswordResetEmail(resetUrl: string, userEmail: string): string {
+export function generatePasswordResetEmail(resetUrl: string, userName?: string) {
   return `
     <!DOCTYPE html>
     <html>
     <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Password Reset - Navadrishti</title>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Reset Your Password</title>
+      <style>
+        body { 
+          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+          line-height: 1.6; 
+          color: #333; 
+          background-color: #f4f4f4;
+          margin: 0;
+          padding: 0;
+        }
+        .container { 
+          max-width: 600px; 
+          margin: 30px auto; 
+          padding: 0;
+          background-color: #ffffff;
+          border-radius: 8px;
+          overflow: hidden;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header {
+          background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+          color: white;
+          padding: 30px;
+          text-align: center;
+        }
+        .header h1 {
+          margin: 0;
+          font-size: 24px;
+          font-weight: 600;
+        }
+        .content {
+          padding: 30px;
+        }
+        .button { 
+          display: inline-block; 
+          padding: 14px 32px; 
+          background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+          color: white !important; 
+          text-decoration: none; 
+          border-radius: 5px; 
+          margin: 20px 0;
+          font-weight: 600;
+          transition: transform 0.2s;
+        }
+        .button:hover {
+          transform: translateY(-2px);
+        }
+        .link-box {
+          background-color: #f8f9fa;
+          padding: 15px;
+          border-radius: 5px;
+          word-break: break-all;
+          margin: 15px 0;
+        }
+        .footer { 
+          margin-top: 30px; 
+          padding-top: 20px;
+          border-top: 1px solid #e0e0e0;
+          font-size: 13px; 
+          color: #666; 
+          text-align: center;
+        }
+        .warning {
+          background-color: #fff3cd;
+          border-left: 4px solid #ffc107;
+          padding: 12px;
+          margin: 20px 0;
+          border-radius: 4px;
+        }
+        .security-tip {
+          background-color: #e7f3ff;
+          border-left: 4px solid #2196F3;
+          padding: 12px;
+          margin: 20px 0;
+          border-radius: 4px;
+        }
+      </style>
     </head>
-    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
-            <h1 style="color: #3b82f6; margin: 0; text-align: center;">
-                🤝 Navadrishti
-            </h1>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>🔐 Password Reset Request</h1>
         </div>
-        
-        <div style="background-color: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <h2 style="color: #1f2937; margin-top: 0;">Password Reset Request</h2>
-            
-            <p>Hello,</p>
-            
-            <p>We received a request to reset your password for your Navadrishti account.</p>
-            
-            <p>Click the button below to reset your password:</p>
-            
-            <div style="text-align: center; margin: 30px 0;">
-                <a href="${resetUrl}" 
-                   style="background-color: #3b82f6; color: white; padding: 12px 24px; 
-                          text-decoration: none; border-radius: 6px; display: inline-block;
-                          font-weight: bold;">
-                    Reset Password
-                </a>
-            </div>
-            
-            <p>Or copy and paste this link in your browser:</p>
-            <p style="word-break: break-all; color: #666; background-color: #f3f4f6; padding: 10px; border-radius: 4px; font-family: monospace;">
-                ${resetUrl}
+        <div class="content">
+          ${userName ? `<p>Hello <strong>${userName}</strong>,</p>` : '<p>Hello,</p>'}
+          <p>We received a request to reset the password for your account.</p>
+          <p>If you made this request, click the button below to reset your password:</p>
+          <div style="text-align: center;">
+            <a href="${resetUrl}" class="button">Reset Password</a>
+          </div>
+          <p>If the button doesn't work, you can copy and paste this link into your browser:</p>
+          <div class="link-box">
+            <a href="${resetUrl}" style="color: #f5576c;">${resetUrl}</a>
+          </div>
+          <div class="warning">
+            <strong>⏰ Important:</strong> This password reset link will expire in 1 hour for security reasons.
+          </div>
+          <div class="security-tip">
+            <strong>🛡️ Security Tip:</strong> After resetting your password, make sure to use a strong, unique password that you don't use on other sites.
+          </div>
+          <div class="footer">
+            <p><strong>Didn't request a password reset?</strong></p>
+            <p>If you didn't make this request, please ignore this email and your password will remain unchanged. However, if you're concerned about your account security, please contact our support team immediately.</p>
+            <p style="margin-top: 20px; color: #999;">
+              This is an automated message, please do not reply to this email.
             </p>
-            
-            <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0;">
-                <p style="margin: 0;"><strong>⚠️ Important:</strong> This link will expire in 1 hour for security reasons.</p>
-            </div>
-            
-            <p>If you didn't request this password reset, please ignore this email. Your password will remain unchanged.</p>
-            
-            <p>For security reasons, we recommend:</p>
-            <ul>
-                <li>Using a strong, unique password</li>
-                <li>Not sharing your password with anyone</li>
-                <li>Logging out from shared devices</li>
-            </ul>
+          </div>
         </div>
-        
-        <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;">
-        
-        <div style="text-align: center; color: #6b7280; font-size: 14px;">
-            <p>This email was sent by Navadrishti</p>
-            <p>If you have any questions, please contact our support team.</p>
-            <p>© ${new Date().getFullYear()} Navadrishti. All rights reserved.</p>
-        </div>
+      </div>
     </body>
     </html>
   `;
 }
+
+// EmailService class for OOP-style email operations  
+class EmailService {
+  private transporter: nodemailer.Transporter | null = null;
+
+  constructor() { this.initializeTransporter(); }
+
+  private initializeTransporter() {
+    if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
+      console.warn('SMTP configuration missing.');
+      return;
+    }
+    this.transporter = nodemailer.createTransporter({
+      host: process.env.SMTP_HOST,
+      port: parseInt(process.env.SMTP_PORT || '587'),
+      secure: process.env.SMTP_PORT === '465',
+      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+    });
+  }
+
+  async sendEmail({ to, subject, html, text }: EmailOptions): Promise<{ success: boolean; error?: any }> {
+    if (!this.transporter) return { success: false, error: 'Email service not configured' };
+    try {
+      await this.transporter.sendMail({
+        from: process.env.SMTP_FROM || process.env.SMTP_USER, to, subject, html, text: text || '',
+      });
+      return { success: true };
+    } catch (error) {
+      console.error('Error sending email:', error);
+      return { success: false, error };
+    }
+  }
+
+  async sendServiceOfferRejectionEmail(email: string, offerTitle: string, rejectionReason?: string) {
+    return this.sendEmail({
+      to: email,
+      subject: `Service Offer Update: ${offerTitle}`,
+      html: `<h2>Service Offer Rejected</h2><p>Your service offer "${offerTitle}" has been rejected.</p>${rejectionReason ? `<p>Reason: ${rejectionReason}</p>` : ''}`,
+      text: `Your service offer "${offerTitle}" has been rejected.${rejectionReason ? ` Reason: ${rejectionReason}` : ''}`,
+    });
+  }
+
+  async sendServiceOfferApprovalEmail(email: string, offerTitle: string) {
+    return this.sendEmail({
+      to: email,
+      subject: `Good News: ${offerTitle} is Now Live!`,
+      html: `<h2>Service Offer Approved</h2><p>Congratulations! Your service offer "${offerTitle}" has been approved!</p>`,
+      text: `Congratulations! Your service offer "${offerTitle}" has been approved!`,
+    });
+  }
+
+  async sendOrderConfirmationEmail(email: string, orderDetails: any) {
+    return this.sendEmail({
+      to: email, subject: 'Order Confirmation',
+      html: '<h2>Order Confirmation</h2><p>Thank you for your order!</p>',
+      text: 'Thank you for your order!',
+    });
+  }
+}
+
+export const emailService = new EmailService();

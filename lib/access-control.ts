@@ -1,5 +1,5 @@
 /**
- * Access Control System for Udaan Collective Platform
+ * Access Control System for Navadrishti Platform
  * 
  * Defines permissions based on user type and verification status
  * Controls access to posts, service requests/offers, marketplace, etc.
@@ -117,6 +117,7 @@ export function getUserPermissions(user: User | null): AccessPermissions {
         canApplyToServiceOffers: isVerified,
         
         // Marketplace access for verified individuals
+        canCreateMarketplaceListings: isVerified,
         canPurchaseFromMarketplace: isVerified,
       };
       
@@ -274,7 +275,7 @@ export function canAccessRoute(userType: UserType | undefined, routePath: string
     '/companies/dashboard': ['company'],
     '/service-requests/create': ['ngo', 'company'],
     '/service-offers/create': ['ngo'],
-    '/marketplace/create': ['ngo', 'company'],
+    '/marketplace/create': ['ngo', 'company', 'individual'],
   };
   
   const allowedUserTypes = routeAccess[routePath];

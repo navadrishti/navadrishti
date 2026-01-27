@@ -11,6 +11,7 @@ import { PostCreator } from "@/components/post-creator"
 import { PostsFeed } from "@/components/posts-feed"
 import { TrendingHashtags } from "@/components/trending-hashtags"
 import { VerificationBadge } from "@/components/verification-badge"
+import { StickyFooter } from "@/components/sticky-footer"
 import { 
   MapPin,
   Building,
@@ -209,6 +210,9 @@ export default function HomePage() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Sticky Footer */}
+            <StickyFooter />
           </div>
         </div>
       </div>
