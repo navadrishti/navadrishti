@@ -205,12 +205,32 @@ export async function POST(request: NextRequest) {
         city,
         state_province,
         pincode,
-        country
+        country,
+        // Buyer eligibility
+        who_can_buy
       } = body;
 
       // Validate required fields
       if (!title || !description || !category || !price) {
         return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+      }
+
+      // Validate who_can_buy field
+      if (!who_can_buy || !Array.isArray(who_can_buy) || who_can_buy.length === 0) {
+        return NextResponse.json({ 
+          error: 'Please specify who can buy this item',
+          message: 'You must select at least one buyer type (NGO, Individual, or Company)'
+        }, { status: 400 });
+      }
+
+      // Validate who_can_buy values
+      const validBuyerTypes = ['ngo', 'individual', 'company'];
+      const invalidTypes = who_can_buy.filter((type: string) => !validBuyerTypes.includes(type));
+      if (invalidTypes.length > 0) {
+        return NextResponse.json({ 
+          error: 'Invalid buyer types',
+          message: `Invalid buyer types: ${invalidTypes.join(', ')}. Must be one of: ngo, individual, company`
+        }, { status: 400 });
       }
 
       // Debug: Log the values being inserted
@@ -252,7 +272,8 @@ export async function POST(request: NextRequest) {
         dimensions_cm: dimensions_cm ? JSON.stringify(dimensions_cm) : null,
         specifications: specifications ? JSON.stringify(specifications) : null,
         rating_average: 0.0,
-        rating_count: 0
+        rating_count: 0,
+        who_can_buy: who_can_buy || ['ngo', 'individual', 'company'] // Store as array, not JSON string
       };
 
       console.log('Final itemData to insert:', itemData);
@@ -285,6 +306,33 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Cannot purchase your own item' }, { status: 400 });
       }
 
+      // Check if buyer's user type is allowed to purchase this item
+      let allowedBuyerTypes: string[] = [];
+      try {
+        if (typeof item.who_can_buy === 'string') {
+          allowedBuyerTypes = JSON.parse(item.who_can_buy);
+        } else if (Array.isArray(item.who_can_buy)) {
+          allowedBuyerTypes = item.who_can_buy;
+        }
+      } catch (e) {
+        // If parsing fails, allow all user types (backward compatibility)
+        allowedBuyerTypes = ['ngo', 'individual', 'company'];
+      }
+
+      // Validate buyer eligibility
+      if (allowedBuyerTypes.length > 0 && !allowedBuyerTypes.includes(userType)) {
+        const buyerTypeLabels: Record<string, string> = {
+          ngo: 'NGOs',
+          individual: 'Individuals',
+          company: 'Companies'
+        };
+        const allowedLabels = allowedBuyerTypes.map(type => buyerTypeLabels[type] || type).join(', ');
+        return NextResponse.json({ 
+          error: 'Not eligible to purchase',
+          message: `This item can only be purchased by: ${allowedLabels}. Your account type (${buyerTypeLabels[userType] || userType}) is not eligible.`
+        }, { status: 403 });
+      }
+
       // Check quantity availability
       if (item.quantity < quantity) {
         return NextResponse.json({ error: 'Insufficient quantity available' }, { status: 400 });
@@ -315,10 +363,11 @@ export async function POST(request: NextRequest) {
         quantity: item.quantity - quantity
       });
 
-      // If quantity reaches 0, mark as sold
+      // If quantity reaches 0, mark as sold with timestamp
       if (item.quantity - quantity === 0) {
         await db.marketplaceItems.update(itemId, {
-          status: 'sold'
+          status: 'sold',
+          sold_at: new Date().toISOString()
         });
       }
 

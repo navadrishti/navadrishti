@@ -32,11 +32,11 @@ A comprehensive platform connecting NGOs, individuals, and companies for social 
 - **React Hook Form**: Form management with validation
 
 ### Backend & Database
-- **Development**: Supabase PostgreSQL (Free Tier)
-- **Production**: Railway MySQL (Planned)
+- **Database**: Supabase PostgreSQL
 - **Authentication**: Supabase Auth + Custom JWT
 - **File Storage**: Supabase Storage
 - **Real-time**: Supabase Realtime subscriptions
+- **API**: Next.js API Routes
 
 ### Deployment
 - **Development**: Vercel (Free Tier)

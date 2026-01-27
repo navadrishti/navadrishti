@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { Header } from '@/components/header'
 import { Button } from '@/components/ui/button'
@@ -66,22 +66,23 @@ const statusConfig = {
 };
 
 interface PageProps {
-  params: { orderNumber: string }
+  params: Promise<{ orderNumber: string }>
 }
 
 export default function OrderDetailsPage({ params }: PageProps) {
   const { user } = useAuth();
   const router = useRouter();
+  const { orderNumber } = use(params);
   const [order, setOrder] = useState<OrderDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
 
   useEffect(() => {
-    if (params.orderNumber) {
+    if (orderNumber) {
       fetchOrderDetails();
     }
-  }, [params.orderNumber]);
+  }, [orderNumber]);
 
   const fetchOrderDetails = async () => {
     try {
@@ -101,7 +102,7 @@ export default function OrderDetailsPage({ params }: PageProps) {
         throw new Error('Failed to fetch orders');
       }
 
-      const targetOrder = ordersData.orders.find((o: any) => o.order_number === params.orderNumber);
+      const targetOrder = ordersData.orders.find((o: any) => o.order_number === orderNumber);
       
       if (!targetOrder) {
         setError('Order not found');

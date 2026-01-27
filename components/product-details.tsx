@@ -90,7 +90,7 @@ export function ProductDetails({ item, onClose }: ProductDetailsProps) {
         key: orderData.order.razorpayKeyId,
         amount: Math.round(orderData.order.finalAmount * 100), // Convert to paise
         currency: 'INR',
-        name: 'Udaan Collective',
+        name: 'Navadrishti',
         description: `Purchase of ${item.title}`,
         order_id: orderData.order.razorpayOrderId,
         handler: async function (response: any) {

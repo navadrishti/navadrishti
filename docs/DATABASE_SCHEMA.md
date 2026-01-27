@@ -310,8 +310,12 @@ CREATE TABLE marketplace_items (
     tags TEXT[],
     search_keywords TEXT[],
     
-    -- Status
+    -- Buyer Eligibility
+    who_can_buy TEXT[] NOT NULL DEFAULT ARRAY['ngo', 'individual', 'company']::TEXT[], -- Which user types can purchase this item (ngo/individual/company)
+    
+    -- Status & Lifecycle
     status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'sold', 'reserved', 'inactive')),
+    sold_at TIMESTAMP, -- Timestamp when item completely sold out (quantity=0), triggers 1-hour auto-cleanup
     featured BOOLEAN DEFAULT false,
     views_count INTEGER DEFAULT 0,
     favorites_count INTEGER DEFAULT 0,
@@ -326,6 +330,7 @@ CREATE INDEX idx_marketplace_category ON marketplace_items(category);
 CREATE INDEX idx_marketplace_status ON marketplace_items(status);
 CREATE INDEX idx_marketplace_price ON marketplace_items(price);
 CREATE INDEX idx_marketplace_location ON marketplace_items(location);
+CREATE INDEX idx_marketplace_sold_at ON marketplace_items(sold_at) WHERE status = 'sold'; -- For efficient cleanup cron job
 ```
 
 ## 🔗 Relationship Tables
@@ -418,6 +423,56 @@ CREATE TABLE cart (
     
     UNIQUE(user_id, marketplace_item_id)
 );
+```
+
+### ⭐ marketplace_item_reviews
+Product reviews and ratings for marketplace items.
+
+**Note**: When a marketplace item is deleted (including auto-cleanup after sold), all associated reviews are automatically deleted via CASCADE constraint. This is intentional - reviews are tied to the product's lifecycle.
+
+```sql
+CREATE TABLE marketplace_item_reviews (
+    id SERIAL PRIMARY KEY,
+    marketplace_item_id INTEGER NOT NULL REFERENCES marketplace_items(id) ON DELETE CASCADE,
+    reviewer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    
+    -- Review Content
+    rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+    title VARCHAR(200),
+    review_text TEXT NOT NULL,
+    images JSONB DEFAULT '[]'::jsonb,
+    
+    -- Purchase Verification
+    verified_purchase BOOLEAN DEFAULT false,
+    purchase_id INTEGER REFERENCES ecommerce_order_items(id),
+    
+    -- Review Status
+    status VARCHAR(20) DEFAULT 'published' CHECK (status IN ('pending', 'published', 'flagged', 'removed')),
+    helpful_count INTEGER DEFAULT 0,
+    unhelpful_count INTEGER DEFAULT 0,
+    
+    -- Moderation
+    flagged_reason TEXT,
+    reviewed_by_admin BOOLEAN DEFAULT false,
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    -- One review per user per item
+    UNIQUE(marketplace_item_id, reviewer_id)
+);
+
+-- Indexes
+CREATE INDEX idx_reviews_item_id ON marketplace_item_reviews(marketplace_item_id);
+CREATE INDEX idx_reviews_reviewer_id ON marketplace_item_reviews(reviewer_id);
+CREATE INDEX idx_reviews_rating ON marketplace_item_reviews(rating);
+CREATE INDEX idx_reviews_status ON marketplace_item_reviews(status);
+
+-- Comments
+COMMENT ON COLUMN marketplace_item_reviews.marketplace_item_id IS 
+'Foreign key to marketplace_items with CASCADE delete - reviews are deleted when item is removed';
+COMMENT ON COLUMN marketplace_item_reviews.verified_purchase IS 
+'True if reviewer actually purchased this item through the platform';
 ```
 
 ### 📦 ecommerce_orders
@@ -606,3 +661,388 @@ CREATE POLICY users_update_own ON users
 - Daily automated backups via Supabase
 - Point-in-time recovery available
 - Cross-region replication for disaster recovery
+
+---
+
+## 📋 Schema Migrations & Change Log
+
+### Migration: Marketplace Item Eligibility & Lifecycle (2026-01-10)
+
+#### Overview
+Enhanced marketplace functionality with buyer eligibility control and automated sold item cleanup.
+
+#### Schema Changes
+
+**1. Added `who_can_buy` Column**
+```sql
+ALTER TABLE marketplace_items 
+ADD COLUMN IF NOT EXISTS who_can_buy TEXT[] NOT NULL 
+DEFAULT ARRAY['ngo', 'individual', 'company']::TEXT[];
+
+-- Add comment
+COMMENT ON COLUMN marketplace_items.who_can_buy IS 
+'Array of user types that are eligible to purchase this item. Valid values: ngo, individual, company';
+
+-- Backfill existing items
+UPDATE marketplace_items 
+SET who_can_buy = ARRAY['ngo', 'individual', 'company']::TEXT[] 
+WHERE who_can_buy IS NULL;
+```
+
+**2. Added `sold_at` Column**
+```sql
+ALTER TABLE marketplace_items 
+ADD COLUMN IF NOT EXISTS sold_at TIMESTAMP;
+
+-- Add index for efficient cleanup queries
+CREATE INDEX IF NOT EXISTS idx_marketplace_sold_at 
+ON marketplace_items(sold_at) 
+WHERE status = 'sold';
+
+-- Add comment
+COMMENT ON COLUMN marketplace_items.sold_at IS 
+'Timestamp when the item was completely sold out (quantity reached 0). Items are automatically deleted 1 hour after this timestamp via cron job.';
+
+-- Backfill existing sold items
+UPDATE marketplace_items 
+SET sold_at = updated_at 
+WHERE status = 'sold' AND sold_at IS NULL;
+```
+
+#### Feature Details
+
+**Who Can Buy (Buyer Eligibility)**
+- Sellers can restrict purchases to specific user types
+- Options: NGOs, Individuals, Companies (multi-select)
+- Enforced at API level during purchase
+- Displayed as colored badges on product cards:
+  - NGOs: Blue with heart icon
+  - Individuals: Green with user icon
+  - Companies: Purple with building icon
+- Required field in create/edit forms
+
+**Sold Items Auto-Cleanup**
+- Items marked `sold` when quantity reaches 0
+- `sold_at` timestamp recorded at sellout time
+- Visual "SOLD OUT" overlay displayed:
+  - Red diagonal banner (45° rotation)
+  - 40% black transparent overlay
+  - Disabled purchase buttons
+- Automatic deletion after 1 hour via Vercel Cron
+- Cron endpoint: `/api/cron/cleanup-sold-items`
+- Runs hourly: `"0 * * * *"`
+
+#### Queries
+
+**Find items eligible for cleanup:**
+```sql
+SELECT id, title, seller_id, sold_at
+FROM marketplace_items 
+WHERE status = 'sold' 
+  AND sold_at IS NOT NULL 
+  AND sold_at < NOW() - INTERVAL '1 hour'
+ORDER BY sold_at ASC;
+```
+
+**Check buyer eligibility:**
+```sql
+-- Check if user type can buy item
+SELECT id, title, who_can_buy
+FROM marketplace_items
+WHERE id = $1 
+  AND 'individual' = ANY(who_can_buy);
+```
+
+**Get recently sold items:**
+```sql
+SELECT id, title, price, sold_at
+FROM marketplace_items 
+WHERE status = 'sold' 
+  AND sold_at >= NOW() - INTERVAL '1 hour'
+ORDER BY sold_at DESC;
+```
+
+**Purchase flow with quantity reduction:**
+```sql
+-- Reduce quantity and mark as sold if depleted
+UPDATE marketplace_items 
+SET quantity = quantity - $purchaseQty,
+    status = CASE 
+      WHEN quantity - $purchaseQty <= 0 THEN 'sold'
+      ELSE status 
+    END,
+    sold_at = CASE 
+      WHEN quantity - $purchaseQty <= 0 THEN NOW()
+      ELSE sold_at 
+    END,
+    updated_at = NOW()
+WHERE id = $itemId 
+  AND quantity >= $purchaseQty
+RETURNING *;
+```
+
+#### API Changes
+
+**POST /api/marketplace (Create Item)**
+- New required field: `who_can_buy` (array of strings)
+- Validation: Must include at least one of ['ngo', 'individual', 'company']
+- Default: All three types if not specified
+
+**POST /api/marketplace (Purchase Item)**
+- Validates buyer's user_type against item's who_can_buy
+- Returns 403 if user type not eligible
+- Automatically reduces quantity
+- Sets sold_at timestamp when quantity reaches 0
+
+**PUT /api/marketplace/:id (Update Item)**
+- Allows updating who_can_buy field
+- Maintains existing behavior for other fields
+
+**GET /api/cron/cleanup-sold-items (Cron Job)**
+- Authorization: Bearer token (CRON_SECRET)
+- Deletes items sold more than 1 hour ago
+- Returns deleted count and item details
+- Supports both GET (Vercel Cron) and POST (manual trigger)
+
+#### Vercel Cron Configuration
+
+**File:** `vercel.json`
+```json
+{
+  "crons": [
+    {
+      "path": "/api/cron/cleanup-sold-items",
+      "schedule": "0 * * * *"
+    }
+  ]
+}
+```
+
+#### Environment Variables
+
+Required for cron job:
+```bash
+CRON_SECRET=your-secure-random-token
+```
+
+#### Frontend Changes
+
+**Product Card Component:**
+- Displays buyer eligibility badges
+- Shows "SOLD OUT" overlay for sold items
+- Validates eligibility before "Buy Now"
+- Direct add-to-cart flow (bypasses product page)
+
+**Create/Edit Listing Form:**
+- Mandatory multi-select checkboxes for who_can_buy
+- Visual warning if no buyer types selected
+- Quantity input field (default: 1)
+- Icons for each buyer type
+
+**Purchase Flow:**
+- Client-side eligibility check
+- Direct cart addition on "Buy Now"
+- Redirect to /cart after successful add
+- Error notifications for ineligible purchases
+
+#### Testing
+
+**Manual Cleanup Trigger:**
+```bash
+curl -X POST https://your-domain.com/api/cron/cleanup-sold-items \
+  -H "Content-Type: application/json" \
+  -d '{"secret": "your-cron-secret"}'
+```
+
+**Check Sold Items:**
+```bash
+curl https://your-domain.com/api/marketplace?status=sold
+```
+
+#### Rollback Plan
+
+If rollback is needed:
+```sql
+-- Remove columns (data will be lost)
+ALTER TABLE marketplace_items DROP COLUMN IF EXISTS who_can_buy;
+ALTER TABLE marketplace_items DROP COLUMN IF EXISTS sold_at;
+
+-- Drop index
+DROP INDEX IF EXISTS idx_marketplace_sold_at;
+
+-- Revert vercel.json cron configuration
+-- Delete /api/cron/cleanup-sold-items route file
+```
+
+---
+
+### Migration: Marketplace Item Reviews (2026-01-10)
+
+#### Overview
+Added product review and rating system for marketplace items. **Reviews are intentionally tied to the product lifecycle** - when an item is deleted (including auto-cleanup of sold items), all associated reviews are automatically deleted via CASCADE constraint.
+
+#### Schema Changes
+
+**Added `marketplace_item_reviews` Table**
+```sql
+CREATE TABLE marketplace_item_reviews (
+    id SERIAL PRIMARY KEY,
+    marketplace_item_id INTEGER NOT NULL REFERENCES marketplace_items(id) ON DELETE CASCADE,
+    reviewer_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    
+    -- Review Content
+    rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+    title VARCHAR(200),
+    review_text TEXT NOT NULL,
+    images JSONB DEFAULT '[]'::jsonb,
+    
+    -- Purchase Verification
+    verified_purchase BOOLEAN DEFAULT false,
+    purchase_id INTEGER REFERENCES ecommerce_order_items(id),
+    
+    -- Review Status
+    status VARCHAR(20) DEFAULT 'published' CHECK (status IN ('pending', 'published', 'flagged', 'removed')),
+    helpful_count INTEGER DEFAULT 0,
+    unhelpful_count INTEGER DEFAULT 0,
+    
+    -- Moderation
+    flagged_reason TEXT,
+    reviewed_by_admin BOOLEAN DEFAULT false,
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    -- One review per user per item
+    UNIQUE(marketplace_item_id, reviewer_id)
+);
+
+-- Indexes for performance
+CREATE INDEX idx_reviews_item_id ON marketplace_item_reviews(marketplace_item_id);
+CREATE INDEX idx_reviews_reviewer_id ON marketplace_item_reviews(reviewer_id);
+CREATE INDEX idx_reviews_rating ON marketplace_item_reviews(rating);
+CREATE INDEX idx_reviews_status ON marketplace_item_reviews(status);
+
+-- Documentation
+COMMENT ON TABLE marketplace_item_reviews IS 
+'Product reviews for marketplace items. Reviews are CASCADE deleted when item is removed.';
+
+COMMENT ON COLUMN marketplace_item_reviews.marketplace_item_id IS 
+'Foreign key to marketplace_items with ON DELETE CASCADE - reviews are deleted when item is removed';
+
+COMMENT ON COLUMN marketplace_item_reviews.verified_purchase IS 
+'True if reviewer actually purchased this item through the platform';
+
+COMMENT ON COLUMN marketplace_item_reviews.images IS
+'Array of Cloudinary image URLs uploaded with the review (max 5 images)';
+```
+
+#### Migration: Add Images Column
+If the table already exists without the images column, run:
+```sql
+ALTER TABLE marketplace_item_reviews 
+ADD COLUMN IF NOT EXISTS images JSONB DEFAULT '[]'::jsonb;
+
+COMMENT ON COLUMN marketplace_item_reviews.images IS
+'Array of Cloudinary image URLs uploaded with the review (max 5 images)';
+```
+
+#### Review Lifecycle
+
+**Intentional CASCADE Behavior:**
+- When a marketplace item is deleted (manually or via auto-cleanup), all reviews are automatically deleted
+- This is by design - reviews are contextual to the product and don't exist independently
+- Rating statistics (`rating_average`, `rating_count`) on marketplace_items are updated when reviews are added/removed
+
+**Auto-Update Rating Statistics:**
+- After each review submission, aggregate rating is recalculated
+- `marketplace_items.rating_average` and `rating_count` are updated automatically
+- Displayed on product cards and detail pages
+
+#### API Changes
+
+**POST /api/marketplace/product/:id (New Review Action)**
+- New action: `"action": "review"`
+- Required fields: `rating` (1-5), `review_text`
+- Optional field: `title`
+- Validates: User authentication, existing review check, rating range
+- Automatically checks for verified purchase status
+- Returns: Review object with verified_purchase flag
+
+**GET /api/marketplace/product/:id (Enhanced)**
+- Now fetches and returns actual reviews from database
+- Includes reviewer name and avatar
+- Only returns published reviews
+- Sorted by creation date (newest first)
+
+#### Database Helper Functions
+
+Added to [lib/db.ts](lib/db.ts):
+```typescript
+db.marketplaceReviews.create(reviewData)
+db.marketplaceReviews.getByItemId(itemId, status)
+db.marketplaceReviews.getByUserId(userId)
+db.marketplaceReviews.getById(id)
+db.marketplaceReviews.update(id, updates)
+db.marketplaceReviews.delete(id)
+db.marketplaceReviews.updateHelpfulCount(id, increment)
+db.marketplaceReviews.getStats(itemId) // Returns avg rating, count, distribution
+```
+
+#### Frontend Integration
+
+**Review Form:**
+- Star rating selector (1-5 stars)
+- Optional title field (max 200 chars)
+- Required review text (max 1000 chars)
+- Real-time character counter
+- Verified purchase badge displayed automatically
+
+**Review Display:**
+- Shows reviewer name and avatar
+- Star rating visualization
+- "Verified Purchase" badge for confirmed buyers
+- Timestamp in readable format
+- Review title and text
+
+#### Testing
+
+**Submit a Review:**
+```bash
+curl -X POST https://your-domain.com/api/marketplace/product/123 \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{
+    "action": "review",
+    "rating": 5,
+    "title": "Great product!",
+    "review_text": "Really satisfied with this purchase."
+  }'
+```
+
+**Fetch Reviews:**
+```bash
+curl https://your-domain.com/api/marketplace/product/123
+# Returns product data including reviews array
+```
+
+#### Important Notes
+
+1. **Reviews are NOT retained when items are deleted** - this is intentional CASCADE behavior
+2. One review per user per item (enforced by UNIQUE constraint)
+3. Reviews can be in different statuses: pending, published, flagged, removed
+4. Verified purchase status is automatically determined by checking order history
+5. Rating statistics are kept in sync with actual reviews
+
+#### Rollback Plan
+
+If rollback is needed:
+```sql
+-- Drop reviews table (all reviews will be lost)
+DROP TABLE IF EXISTS marketplace_item_reviews CASCADE;
+
+-- Remove rating fields from marketplace_items if desired
+ALTER TABLE marketplace_items DROP COLUMN IF EXISTS rating_average;
+ALTER TABLE marketplace_items DROP COLUMN IF EXISTS rating_count;
+```
+
+---

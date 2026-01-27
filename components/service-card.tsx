@@ -12,7 +12,7 @@ import {
   Edit, Eye, MoreVertical, Trash2, ArrowRight, User, Briefcase 
 } from "lucide-react"
 import { VerificationBadge } from "./verification-badge"
-import { formatPrice } from "@/lib/currency"
+import { formatPrice } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import Link from "next/link"

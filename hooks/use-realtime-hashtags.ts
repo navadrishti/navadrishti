@@ -41,11 +41,10 @@ export function useTrendingHashtags(limit: number = 5): UseTrendingHashtagsRetur
       setLoading(true);
       setError(null);
 
-      // Add a small delay to ensure server is ready
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Immediate fetch for faster loading
       
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout for faster responses
       
       const response = await fetch(`/api/hashtags/trending?limit=${limit}`, {
         method: 'GET',
@@ -107,11 +106,11 @@ export function useTrendingHashtags(limit: number = 5): UseTrendingHashtagsRetur
     }
   }, [limit]);
 
-  // Initial fetch with delay to ensure server is ready
+  // Initial fetch - immediate for faster loading
   useEffect(() => {
     const timer = setTimeout(() => {
       fetchTrendingHashtags();
-    }, 2000); // Wait 2 seconds before first fetch
+    }, 100); // Minimal delay to ensure component is mounted
     
     return () => clearTimeout(timer);
   }, [fetchTrendingHashtags]);

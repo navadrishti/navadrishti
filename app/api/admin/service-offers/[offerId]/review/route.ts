@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { verifyToken } from '@/lib/auth';
-import { emailService } from '@/lib/email-service';
+import { emailService } from '@/lib/email';
 
 export async function POST(
   request: NextRequest,

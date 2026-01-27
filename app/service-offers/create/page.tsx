@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge'
 import { ArrowLeft, Loader2, Plus, X, Users, MapPin, DollarSign, Clock, Briefcase } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
-import ProtectedRoute from '@/components/enhanced-protected-route'
+import ProtectedRoute from '@/components/protected-route'
 import Link from 'next/link'
 
 const categories = [

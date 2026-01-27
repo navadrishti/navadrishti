@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { ImageCarousel } from "@/components/ui/image-carousel"
 import { Star, Plus, Minus, MapPin, Truck, ShoppingCart, Trash2, User, Building, Users, Shield } from "lucide-react"
 import { VerificationBadge } from "./verification-badge"
-import { formatPrice } from "@/lib/currency"
+import { formatPrice } from "@/lib/utils"
 import { ProductDetails } from "./product-details"
 import { useCart } from "@/lib/cart-context"
 import { notify } from "@/lib/notifications"
@@ -102,11 +102,69 @@ export function ProductCard({
     }
   };
 
-    const handleBuyNow = (e: React.MouseEvent) => {
+    const handleBuyNow = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (item && isMarketplaceCard) {
-      // For Buy Now, go directly to checkout with the item
-      router.push(`/marketplace/product/${item.id}?buy=true&quantity=1`);
+    if (!item || !isMarketplaceCard) return;
+    
+    // Check buyer eligibility first
+    let allowedBuyerTypes: string[] = [];
+    try {
+      if (typeof item.who_can_buy === 'string') {
+        allowedBuyerTypes = JSON.parse(item.who_can_buy);
+      } else if (Array.isArray(item.who_can_buy)) {
+        allowedBuyerTypes = item.who_can_buy;
+      }
+    } catch (e) {
+      // If parsing fails, allow all user types
+      allowedBuyerTypes = ['ngo', 'individual', 'company'];
+    }
+
+    // Get current user from localStorage or context
+    const token = localStorage.getItem('token');
+    if (!token) {
+      notify.error('Please login to purchase items');
+      router.push('/login');
+      return;
+    }
+
+    // Decode token to get user type (basic JWT decode)
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      const userType = payload.user_type;
+
+      // Check eligibility
+      if (allowedBuyerTypes.length > 0 && !allowedBuyerTypes.includes(userType)) {
+        const buyerTypeLabels: Record<string, string> = {
+          ngo: 'NGOs',
+          individual: 'Individuals',
+          company: 'Companies'
+        };
+        const allowedLabels = allowedBuyerTypes.map(type => buyerTypeLabels[type] || type).join(', ');
+        notify.error(`This item can only be purchased by: ${allowedLabels}`);
+        return;
+      }
+    } catch (error) {
+      console.error('Error checking eligibility:', error);
+    }
+
+    // Add to cart with quantity 1 and redirect to cart
+    setAddingToCart(true);
+    try {
+      const success = await addToCart(item.id, 1);
+      
+      if (success) {
+        notify.success('Item added to cart! Redirecting to checkout...');
+        
+        // Redirect to cart page after a brief delay
+        setTimeout(() => {
+          router.push('/cart');
+        }, 500);
+      }
+    } catch (error) {
+      notify.error('Failed to add item to cart');
+      console.error('Add to cart error:', error);
+    } finally {
+      setAddingToCart(false);
     }
   };
 
@@ -225,6 +283,21 @@ export function ProductCard({
       <div className="absolute -inset-0.5 bg-gradient-to-r from-pink-500 via-purple-500 to-yellow-500 rounded-xl opacity-60 group-hover:opacity-100 transition duration-300"></div>
       
       <Card className="relative overflow-hidden group h-full flex flex-col hover:shadow-xl transition-all duration-300 border-0 shadow-md bg-white rounded-xl">
+      
+      {/* SOLD Overlay - Show when item is sold out */}
+      {(item?.status === 'sold' || item?.quantity === 0) && (
+        <div className="absolute inset-0 z-50 pointer-events-none">
+          {/* Diagonal SOLD banner */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="bg-red-600 text-white font-bold text-3xl px-20 py-2 transform rotate-[-45deg] shadow-2xl border-4 border-red-800">
+              SOLD OUT
+            </div>
+          </div>
+          {/* Semi-transparent overlay */}
+          <div className="absolute inset-0 bg-black bg-opacity-40"></div>
+        </div>
+      )}
+      
       {/* Image Section with Gallery - Clickable to product details */}
       <CardHeader className="p-0 relative cursor-pointer" onClick={handleCardClick}>
         <div className="relative h-56 overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100 rounded-t-xl">
@@ -425,6 +498,46 @@ export function ProductCard({
             </div>
           )}
           
+          {/* Who Can Buy - Buyer Eligibility Tags */}
+          {item?.who_can_buy && (() => {
+            let whoCanBuyArray: string[] = [];
+            try {
+              if (typeof item.who_can_buy === 'string') {
+                whoCanBuyArray = JSON.parse(item.who_can_buy);
+              } else if (Array.isArray(item.who_can_buy)) {
+                whoCanBuyArray = item.who_can_buy;
+              }
+            } catch (e) {
+              whoCanBuyArray = [];
+            }
+
+            const buyerTypeInfo = {
+              ngo: { icon: Users, label: 'NGOs', color: 'bg-blue-100 text-blue-700 border-blue-300' },
+              individual: { icon: User, label: 'Individuals', color: 'bg-green-100 text-green-700 border-green-300' },
+              company: { icon: Building, label: 'Companies', color: 'bg-purple-100 text-purple-700 border-purple-300' }
+            };
+
+            return whoCanBuyArray.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5 items-center">
+                <span className="text-xs text-gray-500 font-medium">Can buy:</span>
+                {whoCanBuyArray.map((type: string, index: number) => {
+                  const info = buyerTypeInfo[type as keyof typeof buyerTypeInfo];
+                  if (!info) return null;
+                  const Icon = info.icon;
+                  return (
+                    <Badge 
+                      key={index} 
+                      className={`text-xs px-2 py-0.5 flex items-center gap-1 ${info.color} border`}
+                    >
+                      <Icon size={12} />
+                      {info.label}
+                    </Badge>
+                  );
+                })}
+              </div>
+            ) : null;
+          })()}
+          
           {/* Tags */}
           {tags && tags.length > 0 && (
             <div className="flex flex-wrap gap-1">
@@ -449,21 +562,28 @@ export function ProductCard({
             variant="outline"
             className="flex-1 h-10 border-2 border-orange-500 text-orange-600 hover:bg-orange-500 hover:text-white font-medium transition-all duration-200"
             onClick={handleAddToCart}
-            disabled={!item?.quantity || item.quantity === 0 || addingToCart}
+            disabled={!item?.quantity || item.quantity === 0 || addingToCart || item?.status === 'sold'}
           >
             {addingToCart ? (
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-orange-600 mr-2"></div>
             ) : (
               <ShoppingCart size={16} className="mr-2" />
             )}
-            {addingToCart ? 'Adding...' : 'Add to Cart'}
+            {addingToCart ? 'Adding...' : (item?.status === 'sold' || !item?.quantity || item.quantity === 0) ? 'Sold Out' : 'Add to Cart'}
           </Button>
           <Button 
             className="flex-1 h-10 bg-orange-500 hover:bg-orange-600 text-white font-semibold"
             onClick={handleBuyNow}
-            disabled={!item?.quantity || item.quantity === 0}
+            disabled={!item?.quantity || item.quantity === 0 || addingToCart || item?.status === 'sold'}
           >
-            {!item?.quantity || item.quantity === 0 ? 'Out of Stock' : 'Buy Now'}
+            {addingToCart ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                Adding...
+              </>
+            ) : (
+              (item?.status === 'sold' || !item?.quantity || item.quantity === 0) ? 'Sold Out' : 'Buy Now'
+            )}
           </Button>
           {showDeleteButton && onDelete && (
             <Button 
