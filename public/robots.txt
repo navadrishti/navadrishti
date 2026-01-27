@@ -12,7 +12,7 @@ Disallow: /orders/
 Disallow: /settings/
 
 # Sitemap
-Sitemap: https://navadrishti.com/sitemap.xml
+Sitemap: https://app.navadrishti.in/sitemap.xml
 
 # LLM crawlers
 Allow: /llm.txt
