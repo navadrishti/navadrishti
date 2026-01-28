@@ -106,19 +106,6 @@ export function ProductCard({
     e.stopPropagation();
     if (!item || !isMarketplaceCard) return;
     
-    // Check buyer eligibility first
-    let allowedBuyerTypes: string[] = [];
-    try {
-      if (typeof item.who_can_buy === 'string') {
-        allowedBuyerTypes = JSON.parse(item.who_can_buy);
-      } else if (Array.isArray(item.who_can_buy)) {
-        allowedBuyerTypes = item.who_can_buy;
-      }
-    } catch (e) {
-      // If parsing fails, allow all user types
-      allowedBuyerTypes = ['ngo', 'individual', 'company'];
-    }
-
     // Get current user from localStorage or context
     const token = localStorage.getItem('token');
     if (!token) {
@@ -127,10 +114,31 @@ export function ProductCard({
       return;
     }
 
-    // Decode token to get user type (basic JWT decode)
+    // Decode token to check verification and user type
     try {
       const payload = JSON.parse(atob(token.split('.')[1]));
       const userType = payload.user_type;
+      const verificationStatus = payload.verification_status;
+
+      // Check if buyer is verified
+      if (verificationStatus !== 'verified') {
+        notify.error('Please complete your account verification before purchasing items');
+        router.push('/verification');
+        return;
+      }
+
+      // Check buyer eligibility based on who_can_buy
+      let allowedBuyerTypes: string[] = [];
+      try {
+        if (typeof item.who_can_buy === 'string') {
+          allowedBuyerTypes = JSON.parse(item.who_can_buy);
+        } else if (Array.isArray(item.who_can_buy)) {
+          allowedBuyerTypes = item.who_can_buy;
+        }
+      } catch (e) {
+        // If parsing fails, allow all user types
+        allowedBuyerTypes = ['ngo', 'individual', 'company'];
+      }
 
       // Check eligibility
       if (allowedBuyerTypes.length > 0 && !allowedBuyerTypes.includes(userType)) {
@@ -145,6 +153,8 @@ export function ProductCard({
       }
     } catch (error) {
       console.error('Error checking eligibility:', error);
+      notify.error('Error verifying account status');
+      return;
     }
 
     // Add to cart with quantity 1 and redirect to cart
@@ -672,6 +682,57 @@ export function ProductCard({
                 <Button 
                   className="flex-1 bg-blue-600 hover:bg-blue-700"
                   onClick={async () => {
+                    // Get current user from localStorage
+                    const token = localStorage.getItem('token');
+                    if (!token) {
+                      notify.error('Please login to purchase items');
+                      router.push('/login');
+                      return;
+                    }
+
+                    // Decode token to check verification and user type
+                    try {
+                      const payload = JSON.parse(atob(token.split('.')[1]));
+                      const userType = payload.user_type;
+                      const verificationStatus = payload.verification_status;
+
+                      // Check if buyer is verified
+                      if (verificationStatus !== 'verified') {
+                        notify.error('Please complete your account verification before purchasing items');
+                        router.push('/verification');
+                        return;
+                      }
+
+                      // Check buyer eligibility
+                      let allowedBuyerTypes: string[] = [];
+                      try {
+                        if (typeof item.who_can_buy === 'string') {
+                          allowedBuyerTypes = JSON.parse(item.who_can_buy);
+                        } else if (Array.isArray(item.who_can_buy)) {
+                          allowedBuyerTypes = item.who_can_buy;
+                        }
+                      } catch (e) {
+                        // If parsing fails, allow all user types
+                        allowedBuyerTypes = ['ngo', 'individual', 'company'];
+                      }
+
+                      // Check eligibility
+                      if (allowedBuyerTypes.length > 0 && !allowedBuyerTypes.includes(userType)) {
+                        const buyerTypeLabels: Record<string, string> = {
+                          ngo: 'NGOs',
+                          individual: 'Individuals',
+                          company: 'Companies'
+                        };
+                        const allowedLabels = allowedBuyerTypes.map(type => buyerTypeLabels[type] || type).join(', ');
+                        notify.error(`This item can only be purchased by: ${allowedLabels}`);
+                        return;
+                      }
+                    } catch (error) {
+                      console.error('Error checking eligibility:', error);
+                      notify.error('Error verifying account status');
+                      return;
+                    }
+
                     setAddingToCart(true);
                     const success = await addToCart(item.id, quantity);
                     if (success) {

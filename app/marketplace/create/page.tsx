@@ -198,6 +198,16 @@ export default function CreateListingPage() {
       if (data.success) {
         // Clean up image previews
         imagePreviews.forEach(preview => URL.revokeObjectURL(preview));
+      } else if (data.requiresVerification) {
+        // Handle verification requirement
+        setError(data.message || 'Account verification required');
+        setLoading(false);
+        
+        // Optionally redirect to verification page after a delay
+        setTimeout(() => {
+          router.push('/verification');
+        }, 3000);
+        return;
         router.push('/marketplace');
       } else {
         const errorMsg = data.error || data.message || 'Failed to create listing';
