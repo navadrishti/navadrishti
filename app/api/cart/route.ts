@@ -114,6 +114,16 @@ export async function POST(request: NextRequest) {
 
     const userId = payload.id;
 
+    // Check buyer verification status
+    const buyer = await db.users.findById(userId);
+    if (!buyer || buyer.verification_status !== 'verified') {
+      return Response.json({ 
+        error: 'Account verification required',
+        message: 'Please complete your account verification before purchasing items.',
+        requiresVerification: true
+      }, { status: 403 });
+    }
+
     // Validate inputs
     if (!marketplace_item_id || quantity < 1) {
       return Response.json({ error: 'Invalid marketplace_item_id or quantity' }, { status: 400 });
@@ -124,6 +134,11 @@ export async function POST(request: NextRequest) {
 
     if (!item || item.status !== 'active') {
       return Response.json({ error: 'Product not found or unavailable' }, { status: 404 });
+    }
+
+    // Check if seller is verified
+    if (item.seller && item.seller.verification_status !== 'verified') {
+      return Response.json({ error: 'This item is no longer available' }, { status: 404 });
     }
 
     if (quantity > item.quantity) {
