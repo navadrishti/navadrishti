@@ -419,8 +419,8 @@ export function Header() {
                       </Link>
                       <Link href={`/profile/${user.id}?tab=history`} className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
                         <div>
-                          <div className="font-medium">Volunteer History</div>
-                          <div className="text-xs text-gray-500">Track your contributions</div>
+                          <div className="font-medium">Recent Activity</div>
+                          <div className="text-xs text-gray-500">Track your activity</div>
                         </div>
                       </Link>
                       <Link href={`/profile/${user.id}?tab=achievements`} className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
@@ -1038,7 +1038,7 @@ export function Header() {
                           <span>Impact Profile</span>
                         </Link>
                         <Link href={`/profile/${user.id}?tab=history`} className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
-                          <span>Volunteer History</span>
+                          <span>Recent Activity</span>
                         </Link>
                         <Link href={`/profile/${user.id}?tab=achievements`} className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
                           <span>Achievements</span>
