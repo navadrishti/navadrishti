@@ -222,6 +222,74 @@ export default function HomePage() {
             {/* Recent Verifications */}
             <RecentVerifications />
             
+            {/* Achievement Badges */}
+            <div className="p-[2px] rounded-lg bg-gradient-to-br from-pink-400 via-yellow-400 to-pink-400">
+              <Card className="border-0 bg-white shadow-lg">
+                <CardContent className="p-6">
+                  <h3 className="text-lg font-semibold mb-4 text-black">
+                    Achievement Badges
+                  </h3>
+                  <div className="space-y-3 text-sm">
+                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                      <div className="flex justify-between items-center mb-1">
+                        <p className="font-semibold text-gray-900">Content Creator</p>
+                        <Badge className="bg-gradient-to-r from-pink-500 to-yellow-500 text-white text-xs border-0">5+ posts</Badge>
+                      </div>
+                      <p className="text-xs text-gray-600">Active Contributor</p>
+                    </div>
+                    
+                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                      <div className="flex justify-between items-center mb-1">
+                        <p className="font-semibold text-gray-900">Volunteer Hero</p>
+                        <Badge className="bg-gradient-to-r from-pink-500 to-yellow-500 text-white text-xs border-0">3+ services</Badge>
+                      </div>
+                      <p className="text-xs text-gray-600">Community Helper</p>
+                    </div>
+                    
+                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                      <div className="flex justify-between items-center mb-1">
+                        <p className="font-semibold text-gray-900">Marketplace Seller</p>
+                        <Badge className="bg-gradient-to-r from-pink-500 to-yellow-500 text-white text-xs border-0">5+ listings</Badge>
+                      </div>
+                      <p className="text-xs text-gray-600">Active Seller</p>
+                    </div>
+                    
+                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                      <div className="flex justify-between items-center mb-1">
+                        <p className="font-semibold text-gray-900">Frequent Buyer</p>
+                        <Badge className="bg-gradient-to-r from-pink-500 to-yellow-500 text-white text-xs border-0">5+ orders</Badge>
+                      </div>
+                      <p className="text-xs text-gray-600">Supportive Buyer</p>
+                    </div>
+                    
+                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                      <div className="flex justify-between items-center mb-1">
+                        <p className="font-semibold text-gray-900">Opportunity Creator</p>
+                        <Badge className="bg-gradient-to-r from-pink-500 to-yellow-500 text-white text-xs border-0">3+ requests</Badge>
+                      </div>
+                      <p className="text-xs text-gray-600">NGO Leader</p>
+                    </div>
+                    
+                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                      <div className="flex justify-between items-center mb-1">
+                        <p className="font-semibold text-gray-900">Service Provider</p>
+                        <Badge className="bg-gradient-to-r from-pink-500 to-yellow-500 text-white text-xs border-0">3+ offers</Badge>
+                      </div>
+                      <p className="text-xs text-gray-600">NGO Professional</p>
+                    </div>
+                    
+                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                      <div className="flex justify-between items-center mb-1">
+                        <p className="font-semibold text-gray-900">Verified Member</p>
+                        <Badge className="bg-gradient-to-r from-pink-500 to-yellow-500 text-white text-xs border-0">Verified</Badge>
+                      </div>
+                      <p className="text-xs text-gray-600">Trusted User</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+            
             {/* Footer */}
             <StickyFooter />
           </div>
