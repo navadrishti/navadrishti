@@ -133,7 +133,13 @@ export const db = {
       const { data, error } = await query.order('created_at', { ascending: false });
       
       if (error) throw error;
-      return data;
+      
+      // Filter to only show items from verified sellers
+      const verifiedItems = data?.filter(item => 
+        item.seller && item.seller.verification_status === 'verified'
+      ) || [];
+      
+      return verifiedItems;
     },
 
     async getNearbyItems(userLocation: { city?: string; state_province?: string; pincode?: string }, filters: any = {}) {
@@ -158,6 +164,9 @@ export const db = {
       // Filter nearby items based on location hierarchy (check both item location and seller location)
       const nearbyItems = allItems.filter(item => {
         if (!item.seller) return false;
+        
+        // Only show items from verified sellers
+        if (item.seller.verification_status !== 'verified') return false;
         
         const seller = item.seller;
         
