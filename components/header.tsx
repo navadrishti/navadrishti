@@ -804,10 +804,10 @@ export function Header() {
               
               <div className="flex flex-col h-full relative z-10">
                 {/* Fixed Header */}
-                <div className="flex-shrink-0 p-6 border-b border-white/10">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center font-bold text-xl text-white">
-                      <img src="/photos/logo.svg" alt="Navadrishti" className="h-36 w-36" />
+                <div className="flex-shrink-0 py-2 px-3 border-b-2 border-white/30 bg-black/20">
+                  <div className="flex items-center justify-between h-12">
+                    <div className="flex items-center font-bold text-xl text-white -my-8">
+                      <img src="/photos/logo.svg" alt="Navadrishti" className="h-32 w-32" />
                     </div>
                     
                     <SheetClose asChild>
