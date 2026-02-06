@@ -801,6 +801,69 @@ Get platform statistics.
 }
 ```
 
+### GET /api/activity-feed
+Fetch user activity feed.
+
+**Query Parameters:**
+- `userId` (required): User ID to fetch activities for
+- `limit` (number): Number of activities to return (default: 20)
+
+**Response:**
+```json
+{
+  "success": true,
+  "activities": [
+    {
+      "id": 1,
+      "user_id": 123,
+      "activity_type": "post_created",
+      "entity_type": "post",
+      "entity_id": 456,
+      "activity_data": {},
+      "visibility": "public",
+      "created_at": "2024-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+### GET /api/platform-activities
+Fetch recent platform-wide activities (last 24 hours).
+
+**Query Parameters:** None
+
+**Response:**
+```json
+{
+  "success": true,
+  "activities": [
+    {
+      "id": "listing-123",
+      "type": "listing",
+      "title": "added a new listing",
+      "user": {
+        "id": 456,
+        "name": "John Doe",
+        "profile_image": "https://example.com/image.jpg",
+        "user_type": "ngo",
+        "verification_status": "verified"
+      },
+      "timestamp": "2024-01-01T00:00:00Z",
+      "metadata": {
+        "price": 100,
+        "category": "Electronics"
+      },
+      "link": "/marketplace/product/123"
+    }
+  ]
+}
+```
+
+**Notes:**
+- Cached for 30 seconds
+- Returns activities from last 24 hours
+- Includes marketplace listings, service requests, posts, and verifications
+
 ## ⏰ Cron Jobs & Scheduled Tasks
 
 ### GET /api/cron/cleanup-sold-items
