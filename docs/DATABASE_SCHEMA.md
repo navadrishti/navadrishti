@@ -31,6 +31,22 @@ erDiagram
         timestamp created_at
     }
     
+    post_comments {
+        int id PK
+        int post_id FK
+        int author_id FK
+        text content
+        timestamp created_at
+    }
+    
+    post_reactions {
+        int id PK
+        int post_id FK
+        int user_id FK
+        varchar reaction_type
+        timestamp created_at
+    }
+    
     service_offers {
         int id PK
         int ngo_id FK
@@ -53,6 +69,22 @@ erDiagram
         timestamp created_at
     }
     
+    service_clients {
+        int id PK
+        int service_offer_id FK
+        int client_id FK
+        varchar status
+        timestamp applied_at
+    }
+    
+    service_volunteers {
+        int id PK
+        int service_request_id FK
+        int volunteer_id FK
+        varchar status
+        timestamp applied_at
+    }
+    
     marketplace_items {
         int id PK
         int seller_id FK
@@ -64,12 +96,87 @@ erDiagram
         timestamp created_at
     }
     
+    marketplace_item_reviews {
+        int id PK
+        int marketplace_item_id FK
+        int reviewer_id FK
+        int rating
+        text review_text
+        timestamp created_at
+    }
+    
+    ecommerce_orders {
+        int id PK
+        int buyer_id FK
+        int seller_id FK
+        varchar order_number
+        decimal total_amount
+        varchar status
+        timestamp created_at
+    }
+    
+    cart {
+        int id PK
+        int user_id FK
+        int marketplace_item_id FK
+        int quantity
+        timestamp created_at
+    }
+    
+    wishlist {
+        int id PK
+        int user_id FK
+        int marketplace_item_id FK
+        timestamp created_at
+    }
+    
+    ngo_verifications {
+        int id PK
+        int user_id FK
+        varchar ngo_name
+        varchar registration_number
+        varchar verification_status
+    }
+    
+    user_notifications {
+        int id PK
+        int user_id FK
+        varchar type
+        varchar title
+        boolean is_read
+        timestamp created_at
+    }
+    
+    user_connections {
+        int id PK
+        int follower_id FK
+        int following_id FK
+        varchar connection_type
+        timestamp created_at
+    }
+    
     users ||--o{ posts : creates
+    users ||--o{ post_comments : writes
+    users ||--o{ post_reactions : reacts
     users ||--o{ service_offers : offers
     users ||--o{ service_requests : requests
-    users ||--o{ marketplace_items : sells
     users ||--o{ service_clients : hires
-    service_offers ||--o{ service_clients : receives
+    users ||--o{ service_volunteers : volunteers
+    users ||--o{ marketplace_items : sells
+    users ||--o{ marketplace_item_reviews : reviews
+    users ||--o{ ecommerce_orders : buys
+    users ||--o{ cart : has_cart
+    users ||--o{ wishlist : has_wishlist
+    users ||--o{ ngo_verifications : verified_by
+    users ||--o{ user_notifications : receives
+    users ||--o{ user_connections : follows
+    posts ||--o{ post_comments : has_comments
+    posts ||--o{ post_reactions : has_reactions
+    service_offers ||--o{ service_clients : receives_applications
+    service_requests ||--o{ service_volunteers : receives_volunteers
+    marketplace_items ||--o{ marketplace_item_reviews : has_reviews
+    marketplace_items ||--o{ cart : in_carts
+    marketplace_items ||--o{ wishlist : in_wishlists
 ```
 
 ## 🗂️ Core Tables
@@ -478,11 +585,11 @@ COMMENT ON COLUMN marketplace_item_reviews.verified_purchase IS
 ### 📦 ecommerce_orders
 ```sql
 CREATE TABLE ecommerce_orders (
-    id SERIAL PRIMARY KEY,
+    id BIGSERIAL PRIMARY KEY,
     order_number VARCHAR(50) UNIQUE NOT NULL,
-    buyer_id INTEGER NOT NULL REFERENCES users(id),
-    seller_id INTEGER NOT NULL REFERENCES users(id),
-    total_amount DECIMAL(10,2) NOT NULL,
+    buyer_id BIGINT NOT NULL REFERENCES users(id),
+    seller_id BIGINT NOT NULL REFERENCES users(id),
+    total_amount NUMERIC NOT NULL,
     
     -- Address Information
     shipping_address JSONB NOT NULL,
@@ -494,8 +601,71 @@ CREATE TABLE ecommerce_orders (
     -- Additional Info
     order_notes TEXT,
     
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+```
+
+### 📝 ecommerce_order_items
+```sql
+CREATE TABLE ecommerce_order_items (
+    id BIGSERIAL PRIMARY KEY,
+    order_id BIGINT NOT NULL REFERENCES ecommerce_orders(id) ON DELETE CASCADE,
+    marketplace_item_id BIGINT NOT NULL REFERENCES marketplace_items(id),
+    quantity INTEGER NOT NULL CHECK (quantity > 0),
+    unit_price NUMERIC NOT NULL,
+    total_price NUMERIC NOT NULL,
+    item_snapshot JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+```
+
+### 💳 ecommerce_payments
+```sql
+CREATE TABLE ecommerce_payments (
+    id BIGSERIAL PRIMARY KEY,
+    order_id BIGINT NOT NULL REFERENCES ecommerce_orders(id) ON DELETE CASCADE,
+    amount NUMERIC NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed', 'refunded')),
+    payment_method VARCHAR(50),
+    razorpay_order_id VARCHAR(100),
+    razorpay_payment_id VARCHAR(100),
+    razorpay_signature VARCHAR(255),
+    captured_at TIMESTAMP WITH TIME ZONE,
+    refunded_at TIMESTAMP WITH TIME ZONE,
+    refund_amount NUMERIC,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+```
+
+### 🚚 ecommerce_shipping_details
+```sql
+CREATE TABLE ecommerce_shipping_details (
+    id BIGSERIAL PRIMARY KEY,
+    order_id BIGINT NOT NULL REFERENCES ecommerce_orders(id) ON DELETE CASCADE,
+    tracking_status VARCHAR(30) DEFAULT 'pending' CHECK (tracking_status IN ('pending', 'picked_up', 'in_transit', 'out_for_delivery', 'delivered', 'returned')),
+    courier_partner VARCHAR(100),
+    delhivery_waybill VARCHAR(100),
+    tracking_number VARCHAR(100),
+    shipped_at TIMESTAMP WITH TIME ZONE,
+    expected_delivery TIMESTAMP WITH TIME ZONE,
+    actual_delivery TIMESTAMP WITH TIME ZONE,
+    delivery_notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+```
+
+### ❤️ wishlist
+```sql
+CREATE TABLE wishlist (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    marketplace_item_id INTEGER NOT NULL REFERENCES marketplace_items(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    
+    UNIQUE(user_id, marketplace_item_id)
 );
 ```
 
@@ -517,14 +687,61 @@ CREATE TABLE post_interactions (
 ### 💬 post_comments
 ```sql
 CREATE TABLE post_comments (
-    id SERIAL PRIMARY KEY,
-    post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+    id BIGSERIAL PRIMARY KEY,
+    post_id BIGINT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
     author_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    parent_comment_id BIGINT REFERENCES post_comments(id),
     content TEXT NOT NULL,
-    parent_comment_id INTEGER REFERENCES post_comments(id), -- For nested comments
-    is_edited BOOLEAN DEFAULT false,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    media_urls JSONB,
+    mentioned_users JSONB,
+    reaction_count INTEGER DEFAULT 0,
+    reply_count INTEGER DEFAULT 0,
+    status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'deleted', 'hidden', 'flagged')),
+    is_flagged BOOLEAN DEFAULT false,
+    flagged_reason TEXT,
+    moderated_at TIMESTAMP WITH TIME ZONE,
+    moderated_by INTEGER REFERENCES users(id),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+```
+
+### ❤️ post_reactions
+```sql
+CREATE TABLE post_reactions (
+    id BIGSERIAL PRIMARY KEY,
+    post_id BIGINT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    reaction_type VARCHAR(20) DEFAULT 'like' CHECK (reaction_type IN ('like', 'love', 'care', 'haha', 'wow', 'sad', 'angry')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    
+    UNIQUE(post_id, user_id, reaction_type)
+);
+```
+
+### 💭 comment_reactions
+```sql
+CREATE TABLE comment_reactions (
+    id BIGSERIAL PRIMARY KEY,
+    comment_id BIGINT NOT NULL REFERENCES post_comments(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    reaction_type VARCHAR(20) DEFAULT 'like' CHECK (reaction_type IN ('like', 'love', 'care', 'haha', 'wow', 'sad', 'angry')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    
+    UNIQUE(comment_id, user_id, reaction_type)
+);
+```
+
+### 🔄 post_shares
+```sql
+CREATE TABLE post_shares (
+    id BIGSERIAL PRIMARY KEY,
+    post_id BIGINT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+    shared_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    share_type VARCHAR(20) DEFAULT 'repost',
+    share_message TEXT,
+    platform VARCHAR(50),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 ```
 
@@ -534,10 +751,40 @@ CREATE TABLE hashtags (
     id SERIAL PRIMARY KEY,
     tag VARCHAR(100) UNIQUE NOT NULL,
     total_mentions INTEGER DEFAULT 0,
-    trending_score DECIMAL(10,2) DEFAULT 0,
-    category VARCHAR(50),
+    weekly_mentions INTEGER DEFAULT 0,
+    daily_mentions INTEGER DEFAULT 0,
+    trending_score NUMERIC DEFAULT 0,
+    category VARCHAR(50) DEFAULT 'general',
+    is_trending BOOLEAN DEFAULT false,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    last_used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### 🏷️ hashtag_usage
+```sql
+CREATE TABLE hashtag_usage (
+    id SERIAL PRIMARY KEY,
+    hashtag_id INTEGER NOT NULL REFERENCES hashtags(id) ON DELETE CASCADE,
+    post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    usage_context VARCHAR(50) DEFAULT 'post',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### 📈 trending_topics
+```sql
+CREATE TABLE trending_topics (
+    id BIGSERIAL PRIMARY KEY,
+    topic VARCHAR(200) NOT NULL UNIQUE,
+    category VARCHAR(100),
+    mention_count INTEGER DEFAULT 1,
+    unique_users_count INTEGER DEFAULT 1,
+    trend_score NUMERIC DEFAULT 0.0,
+    last_mentioned_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 ```
 
@@ -547,17 +794,87 @@ CREATE TABLE hashtags (
 ```sql
 CREATE TABLE ngo_verifications (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    organization_name VARCHAR(255),
+    user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    ngo_name VARCHAR(255),
     registration_number VARCHAR(100),
-    registration_document TEXT, -- File URL
-    pan_number VARCHAR(10),
-    address_proof TEXT, -- File URL
-    verification_status VARCHAR(20) DEFAULT 'pending',
+    registration_type VARCHAR(100),
+    fcra_number VARCHAR(100),
+    verification_status VARCHAR(20) DEFAULT 'unverified',
     verification_date TIMESTAMP,
-    verifier_notes TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT now(),
+    updated_at TIMESTAMP DEFAULT now()
+);
+```
+
+### 🏢 company_verifications
+```sql
+CREATE TABLE company_verifications (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    company_name VARCHAR(255),
+    registration_number VARCHAR(100),
+    gst_number VARCHAR(100),
+    verification_status VARCHAR(20) DEFAULT 'unverified',
+    verification_date TIMESTAMP,
+    created_at TIMESTAMP DEFAULT now(),
+    updated_at TIMESTAMP DEFAULT now()
+);
+```
+
+### 👤 individual_verifications
+```sql
+CREATE TABLE individual_verifications (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    aadhaar_number VARCHAR(50),
+    aadhaar_verified BOOLEAN DEFAULT false,
+    aadhaar_verification_date TIMESTAMP,
+    pan_number VARCHAR(20),
+    pan_verified BOOLEAN DEFAULT false,
+    pan_verification_date TIMESTAMP,
+    verification_status VARCHAR(20) DEFAULT 'unverified',
+    verification_date TIMESTAMP,
+    created_at TIMESTAMP DEFAULT now(),
+    updated_at TIMESTAMP DEFAULT now()
+);
+```
+
+### 📧 email_verifications
+```sql
+CREATE TABLE email_verifications (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token VARCHAR(255) NOT NULL UNIQUE,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+```
+
+### 📱 phone_verifications
+```sql
+CREATE TABLE phone_verifications (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    phone VARCHAR(20) NOT NULL,
+    otp VARCHAR(10) NOT NULL,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+```
+
+### 🔐 otp_verifications
+```sql
+CREATE TABLE otp_verifications (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    contact VARCHAR(100) NOT NULL,
+    otp_code VARCHAR(10) NOT NULL,
+    verification_type VARCHAR(20) NOT NULL CHECK (verification_type IN ('email', 'phone')),
+    is_verified BOOLEAN DEFAULT false,
+    attempts INTEGER DEFAULT 0,
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT now(),
+    verified_at TIMESTAMP
 );
 ```
 
@@ -566,17 +883,247 @@ CREATE TABLE ngo_verifications (
 ### 📈 post_analytics
 ```sql
 CREATE TABLE post_analytics (
-    id SERIAL PRIMARY KEY,
-    post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+    id BIGSERIAL PRIMARY KEY,
+    post_id BIGINT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
     date DATE NOT NULL,
     views_count INTEGER DEFAULT 0,
-    likes_count INTEGER DEFAULT 0,
+    unique_viewers_count INTEGER DEFAULT 0,
+    reactions_count INTEGER DEFAULT 0,
     comments_count INTEGER DEFAULT 0,
     shares_count INTEGER DEFAULT 0,
-    engagement_rate DECIMAL(5,2) DEFAULT 0,
+    engagement_rate NUMERIC DEFAULT 0.0,
+    reach_count INTEGER DEFAULT 0,
+    impression_count INTEGER DEFAULT 0,
+    audience_breakdown JSONB,
+    geographic_breakdown JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
     
     UNIQUE(post_id, date)
 );
+```
+
+### 📊 activity_feed
+```sql
+CREATE TABLE activity_feed (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    activity_type VARCHAR(50) NOT NULL,
+    entity_type VARCHAR(50),
+    entity_id INTEGER,
+    activity_data JSON,
+    visibility VARCHAR(20) DEFAULT 'public',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indexes
+CREATE INDEX idx_activity_feed_user_id ON activity_feed(user_id);
+CREATE INDEX idx_activity_feed_created_at ON activity_feed(created_at DESC);
+CREATE INDEX idx_activity_feed_visibility ON activity_feed(visibility);
+```
+
+## 👥 User Management Tables
+
+### 🔗 user_connections
+```sql
+CREATE TABLE user_connections (
+    id BIGSERIAL PRIMARY KEY,
+    follower_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    following_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    connection_type VARCHAR(20) DEFAULT 'follow',
+    status VARCHAR(20) DEFAULT 'active',
+    relationship_note TEXT,
+    interaction_level INTEGER DEFAULT 1,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    
+    UNIQUE(follower_id, following_id)
+);
+
+-- Indexes
+CREATE INDEX idx_user_connections_follower ON user_connections(follower_id);
+CREATE INDEX idx_user_connections_following ON user_connections(following_id);
+```
+
+### 📧 user_notifications
+```sql
+CREATE TABLE user_notifications (
+    id BIGSERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    type VARCHAR(50) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    message TEXT,
+    related_user_id INTEGER REFERENCES users(id),
+    related_post_id BIGINT REFERENCES posts(id),
+    related_comment_id BIGINT REFERENCES post_comments(id),
+    is_read BOOLEAN DEFAULT false,
+    is_seen BOOLEAN DEFAULT false,
+    action_url VARCHAR(500),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    read_at TIMESTAMP WITH TIME ZONE,
+    seen_at TIMESTAMP WITH TIME ZONE
+);
+
+-- Indexes
+CREATE INDEX idx_user_notifications_user_id ON user_notifications(user_id);
+CREATE INDEX idx_user_notifications_is_read ON user_notifications(is_read);
+CREATE INDEX idx_user_notifications_created_at ON user_notifications(created_at DESC);
+```
+
+### 🔐 user_sessions
+```sql
+CREATE TABLE user_sessions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_type VARCHAR(20) NOT NULL,
+    session_data JSONB NOT NULL,
+    ip_address INET,
+    user_agent TEXT,
+    device_info JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL
+);
+
+-- Indexes
+CREATE INDEX idx_user_sessions_user_id ON user_sessions(user_id);
+CREATE INDEX idx_user_sessions_expires_at ON user_sessions(expires_at);
+```
+
+### 📍 user_addresses
+```sql
+CREATE TABLE user_addresses (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    address_line_1 TEXT NOT NULL,
+    address_line_2 TEXT,
+    city VARCHAR(100) NOT NULL,
+    state VARCHAR(100) NOT NULL,
+    pincode VARCHAR(10) NOT NULL,
+    country VARCHAR(100) DEFAULT 'India',
+    phone VARCHAR(20) NOT NULL,
+    address_type VARCHAR(20) DEFAULT 'home' CHECK (address_type IN ('home', 'work', 'other')),
+    is_default BOOLEAN DEFAULT false,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- Indexes
+CREATE INDEX idx_user_addresses_user_id ON user_addresses(user_id);
+```
+
+### 🎯 user_interests
+```sql
+CREATE TABLE user_interests (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    interest_type VARCHAR(50) NOT NULL,
+    interest_value VARCHAR(255) NOT NULL,
+    interest_score NUMERIC DEFAULT 1.0,
+    source VARCHAR(50) DEFAULT 'implicit',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indexes
+CREATE INDEX idx_user_interests_user_id ON user_interests(user_id);
+CREATE INDEX idx_user_interests_type ON user_interests(interest_type);
+```
+
+### ⚙️ user_feed_preferences
+```sql
+CREATE TABLE user_feed_preferences (
+    id BIGSERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    show_achievements BOOLEAN DEFAULT true,
+    show_opportunities BOOLEAN DEFAULT true,
+    show_updates BOOLEAN DEFAULT true,
+    show_events BOOLEAN DEFAULT true,
+    show_individual_posts BOOLEAN DEFAULT true,
+    show_ngo_posts BOOLEAN DEFAULT true,
+    show_company_posts BOOLEAN DEFAULT true,
+    auto_follow_back BOOLEAN DEFAULT false,
+    email_notifications BOOLEAN DEFAULT true,
+    push_notifications BOOLEAN DEFAULT true,
+    preferred_categories JSONB,
+    muted_keywords JSONB,
+    preferred_languages JSONB,
+    profile_visibility VARCHAR(20) DEFAULT 'public',
+    activity_visibility VARCHAR(20) DEFAULT 'public',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+```
+
+### 🔒 login_history
+```sql
+CREATE TABLE login_history (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    ip_address INET,
+    user_agent TEXT,
+    login_method VARCHAR(50) DEFAULT 'email',
+    success BOOLEAN DEFAULT true,
+    failure_reason TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- Indexes
+CREATE INDEX idx_login_history_user_id ON login_history(user_id);
+CREATE INDEX idx_login_history_created_at ON login_history(created_at DESC);
+```
+
+## 🔔 System Tables
+
+### 📢 system_notifications
+```sql
+CREATE TABLE system_notifications (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    type VARCHAR(20) DEFAULT 'info' CHECK (type IN ('info', 'warning', 'error', 'success')),
+    target_audience VARCHAR(20) DEFAULT 'all' CHECK (target_audience IN ('all', 'users', 'companies', 'ngos', 'admins')),
+    is_active BOOLEAN DEFAULT true,
+    start_date TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    end_date TIMESTAMP WITH TIME ZONE,
+    admin_user_id INTEGER,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- Indexes
+CREATE INDEX idx_system_notifications_active ON system_notifications(is_active);
+CREATE INDEX idx_system_notifications_audience ON system_notifications(target_audience);
+```
+
+### 📣 platform_announcements
+```sql
+CREATE TABLE platform_announcements (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL CHECK (type IN ('announcement', 'changelog')),
+    title TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- Indexes
+CREATE INDEX idx_platform_announcements_type ON platform_announcements(type);
+CREATE INDEX idx_platform_announcements_created_at ON platform_announcements(created_at DESC);
+```
+
+### 💡 enhanced_suggestions_cache
+```sql
+CREATE TABLE enhanced_suggestions_cache (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    suggestion_type VARCHAR(50) NOT NULL,
+    suggestion_data JSON NOT NULL,
+    generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP + INTERVAL '2 hours'),
+    cache_key VARCHAR(255)
+);
+
+-- Indexes
+CREATE INDEX idx_suggestions_cache_user_id ON enhanced_suggestions_cache(user_id);
+CREATE INDEX idx_suggestions_cache_expires_at ON enhanced_suggestions_cache(expires_at);
 ```
 
 ## 🔄 Database Functions & Triggers
