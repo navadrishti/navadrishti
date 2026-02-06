@@ -788,19 +788,19 @@ export function Header() {
                 size="icon" 
                 className="text-white hover:bg-white/10" 
               >
-                <Menu className="h-5 w-5" />
+                <Menu className="h-5 w-5 text-white" />
                 <span className="sr-only">Toggle menu</span>
               </Button>
             </SheetTrigger>
 
-            <SheetContent side="right" className="bg-gradient-to-br from-black via-gray-900 to-black border-l border-gray-800 w-full p-0">
+            <SheetContent side="right" className="bg-blue-600 border-l border-blue-700 w-full p-0 [&>button]:hidden">
               <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
               <SheetDescription className="sr-only">
                 Access navigation links, search, and user account options
               </SheetDescription>
               
               {/* Background gradient overlay */}
-              <div className="absolute inset-0 bg-gradient-to-r from-purple-600/5 via-pink-600/5 to-indigo-600/5 pointer-events-none"></div>
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 via-blue-400/10 to-blue-700/10 pointer-events-none"></div>
               
               <div className="flex flex-col h-full relative z-10">
                 {/* Fixed Header */}
@@ -947,7 +947,7 @@ export function Header() {
                     {mounted && user?.user_type === 'company' && (
                       <>
                         <div className="mt-2 mb-1">
-                          <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3">CSR Hub</div>
+                          <div className="text-xs font-bold text-yellow-300 uppercase tracking-wider px-3">CSR Hub</div>
                         </div>
                         <Link href="/companies/csr-agent" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
                           <span>AI CSR Agent</span>
@@ -963,7 +963,7 @@ export function Header() {
                         </Link>
 
                         <div className="mt-3 mb-1">
-                          <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3">Services</div>
+                          <div className="text-xs font-bold text-yellow-300 uppercase tracking-wider px-3">Services</div>
                         </div>
                         <Link href="/service-requests" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
                           <span>Service Requests</span>
@@ -978,7 +978,7 @@ export function Header() {
                     {mounted && user?.user_type === 'ngo' && (
                       <>
                         <div className="mt-2 mb-1">
-                          <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3">AI Tools</div>
+                          <div className="text-xs font-bold text-yellow-300 uppercase tracking-wider px-3">AI Tools</div>
                         </div>
                         <Link href="/ngos/ai-assistant" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
                           <span>Proposal Generator</span>
@@ -991,7 +991,7 @@ export function Header() {
                         </Link>
 
                         <div className="mt-3 mb-1">
-                          <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3">CSR & Funding</div>
+                          <div className="text-xs font-bold text-yellow-300 uppercase tracking-wider px-3">CSR & Funding</div>
                         </div>
                         <Link href="/csr-campaigns" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
                           <span>Browse CSR Campaigns</span>
@@ -1019,7 +1019,7 @@ export function Header() {
                     {mounted && user?.user_type === 'individual' && (
                       <>
                         <div className="mt-2 mb-1">
-                          <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3">Opportunities</div>
+                          <div className="text-xs font-bold text-yellow-300 uppercase tracking-wider px-3">Opportunities</div>
                         </div>
                         <Link href="/service-requests" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
                           <span>Service Requests</span>
@@ -1032,7 +1032,7 @@ export function Header() {
                         </Link>
 
                         <div className="mt-3 mb-1">
-                          <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3">My Impact</div>
+                          <div className="text-xs font-bold text-yellow-300 uppercase tracking-wider px-3">My Impact</div>
                         </div>
                         <Link href={`/profile/${user.id}`} className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
                           <span>Impact Profile</span>
@@ -1063,7 +1063,7 @@ export function Header() {
 
                     {/* Marketplace - For all users */}
                     <div className="mt-3 mb-1">
-                      <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3">Marketplace</div>
+                      <div className="text-xs font-bold text-yellow-300 uppercase tracking-wider px-3">Marketplace</div>
                     </div>
                     <Link href="/marketplace" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
                       <span>Browse Products</span>
@@ -1109,7 +1109,7 @@ export function Header() {
                           </Avatar>
                           <div className="grid gap-1">
                             <p className="text-lg font-medium text-white">{user.name}</p>
-                            <p className="text-sm text-gray-300">{user.email}</p>
+                            <p className="text-sm text-white/80">{user.email}</p>
                           </div>
                         </div>
                         

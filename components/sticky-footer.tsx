@@ -44,23 +44,18 @@ export function StickyFooter() {
   return (
     <footer 
       ref={footerRef}
-      className={`mt-8 py-4 px-6 ${
-        isSticky ? 'sticky bottom-0 bg-gray-50/95 backdrop-blur-sm shadow-lg' : 'opacity-100'
+      className={`mt-8 py-4 px-6 transition-all duration-300 ease-in-out ${
+        isSticky ? 'sticky bottom-0' : ''
       }`}
-      style={{
-        transition: 'all 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.4s ease-in-out, transform 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
-        transform: isSticky ? 'translateY(0)' : 'none',
-        willChange: 'transform, opacity',
-      }}
     >
-      <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-gray-600">
-        <a href="/about" className="hover:text-pink-600 hover:underline">About</a>
-        <a href="/accessibility" className="hover:text-pink-600 hover:underline">Accessibility</a>
-        <a href="/help" className="hover:text-pink-600 hover:underline">Help Center</a>
-        <a href="/privacy" className="hover:text-pink-600 hover:underline">Privacy & Terms</a>
-        <a href="/advertising" className="hover:text-pink-600 hover:underline">Advertising</a>
-        <a href="/contact" className="hover:text-pink-600 hover:underline">Contact</a>
-        <span className="text-gray-500">© 2026 Navadrishti</span>
+      <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-white">
+        <a href="/about" className="hover:text-yellow-300 hover:underline transition-colors">About</a>
+        <a href="/accessibility" className="hover:text-yellow-300 hover:underline transition-colors">Accessibility</a>
+        <a href="/help" className="hover:text-yellow-300 hover:underline transition-colors">Help Center</a>
+        <a href="/privacy" className="hover:text-yellow-300 hover:underline transition-colors">Privacy & Terms</a>
+        <a href="/advertising" className="hover:text-yellow-300 hover:underline transition-colors">Advertising</a>
+        <a href="/contact" className="hover:text-yellow-300 hover:underline transition-colors">Contact</a>
+        <span className="text-white/80">© 2026 Navadrishti</span>
       </div>
     </footer>
   );
