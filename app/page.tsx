@@ -70,7 +70,7 @@ export default function HomePage() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-blue-500">
       <Header />
       
       <style jsx global>{`
@@ -132,7 +132,7 @@ export default function HomePage() {
                   नवdrishti
                 </h1>
               </div>
-              <p className="text-xl text-gray-600 max-w-3xl leading-relaxed ml-5">
+              <p className="text-xl text-white max-w-3xl leading-relaxed ml-5">
                 India's comprehensive Operating System for Social Impact. Bridging 2.65 lakh active NGOs, 1000+ CSR-compliant corporates, and millions of changemakers through AI-powered verification, real-time transparency, and seamless collaboration—transforming how India allocates and monitors its ₹30,000 crore annual CSR funding for measurable community development.
               </p>
             </div>
@@ -140,13 +140,13 @@ export default function HomePage() {
             {/* Platform Announcements */}
             <PlatformAnnouncements />
             
-            <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden mb-4">
-              <div className="bg-gray-900 px-6 py-4">
+            <div className="bg-white rounded-2xl shadow-lg border-2 border-orange-500 overflow-hidden mb-4">
+              <div className="bg-white px-6 py-4 border-b border-gray-200">
                 <div className="flex items-center gap-3">
-                  <TrendingUp className="w-6 h-6 text-yellow-400" />
+                  <TrendingUp className="w-6 h-6 text-orange-500" />
                   <div>
-                    <h2 className="text-xl font-bold watery-gradient" style={{ color: 'transparent' }}>Platform Activity</h2>
-                    <p className="text-sm text-gray-400">
+                    <h2 className="text-xl font-bold text-orange-500">Platform Activity</h2>
+                    <p className="text-sm text-gray-600">
                       Recent updates and activities across the platform
                     </p>
                   </div>
