@@ -70,7 +70,7 @@ export default function HomePage() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-blue-600">
+    <div className="min-h-screen bg-gradient-to-br from-[#1a2f5f] via-[#2d5a9f] to-[#4a7aaf]">
       <Header />
       
       <style jsx global>{`
