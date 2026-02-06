@@ -153,6 +153,7 @@ function PhoneVerificationSection({ phone, onVerificationComplete }: {
 
 export default function ProfilePage() {
   const { user, updateUser, refreshUser } = useAuth();
+  const [mounted, setMounted] = useState(false);
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [verificationData, setVerificationData] = useState<any>(null);
@@ -199,6 +200,10 @@ export default function ProfilePage() {
   const [editableEmail, setEditableEmail] = useState('');
   const [editableName, setEditableName] = useState('');
   const [ngoSize, setNgoSize] = useState('');
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (user) {
@@ -584,6 +589,22 @@ export default function ProfilePage() {
       setUploading(false);
     }
   };
+
+  if (!mounted) {
+    return (
+      <div className="flex min-h-screen flex-col">
+        <Header />
+        <main className="flex-1 px-6 py-8 md:px-10">
+          <div className="max-w-4xl mx-auto">
+            <div className="mb-8">
+              <div className="h-8 bg-gray-200 animate-pulse rounded w-1/3 mb-2"></div>
+              <div className="h-4 bg-gray-200 animate-pulse rounded w-1/2"></div>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   if (!user) {
     return (
