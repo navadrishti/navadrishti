@@ -793,21 +793,21 @@ export function Header() {
               </Button>
             </SheetTrigger>
 
-            <SheetContent side="right" className="bg-gradient-to-br from-[#1a2f5f] via-[#2d5a9f] to-[#4a7aaf] border-l border-[#2d5a9f] w-full p-0 [&>button]:hidden">
+            <SheetContent side="right" className="bg-blue-600 border-l border-blue-700 w-full p-0 [&>button]:hidden">
               <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
               <SheetDescription className="sr-only">
                 Access navigation links, search, and user account options
               </SheetDescription>
               
               {/* Background gradient overlay */}
-              <div className="absolute inset-0 bg-gradient-to-r from-[#1a2f5f]/10 via-[#2d5a9f]/10 to-[#4a7aaf]/10 pointer-events-none"></div>
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 via-blue-400/10 to-blue-700/10 pointer-events-none"></div>
               
               <div className="flex flex-col h-full relative z-10">
                 {/* Fixed Header */}
-                <div className="flex-shrink-0 p-6 border-b border-white/10">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center font-bold text-xl text-white">
-                      <img src="/photos/logo.svg" alt="Navadrishti" className="h-36 w-36" />
+                <div className="flex-shrink-0 py-2 px-3 border-b-2 border-white/30 bg-black/20">
+                  <div className="flex items-center justify-between h-12">
+                    <div className="flex items-center font-bold text-xl text-white -my-8">
+                      <img src="/photos/logo.svg" alt="Navadrishti" className="h-32 w-32" />
                     </div>
                     
                     <SheetClose asChild>
