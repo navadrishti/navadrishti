@@ -51,6 +51,7 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [activities, setActivities] = useState<Activity[]>([])
   const [loading, setLoading] = useState(true)
+  const [statsLoading, setStatsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [stats, setStats] = useState({
     posts: 0,
@@ -96,6 +97,7 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
 
         setProfile(profileData.profile)
         setLoading(false) // Show profile immediately
+        setStatsLoading(true) // Stats still loading
 
         // Fetch all other data in parallel (non-blocking)
         const [
@@ -233,11 +235,13 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
         }
 
         setStats(newStats)
+        setStatsLoading(false)
 
       } catch (err: any) {
         console.error('Profile fetch error:', err)
         setError(err.message || 'Failed to load profile')
         setLoading(false)
+        setStatsLoading(false)
       } finally {
         fetchingRef.current = false
       }
@@ -280,25 +284,25 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
             <CardContent className="pt-6">
               <div className="flex flex-col md:flex-row gap-6">
                 {/* Avatar Skeleton */}
-                <div className="h-32 w-32 rounded-full bg-gray-200 animate-pulse" />
+                <div className="h-32 w-32 rounded-full bg-white animate-pulse" />
                 
                 <div className="flex-1 space-y-4">
                   {/* Name and badges skeleton */}
                   <div className="space-y-2">
-                    <div className="h-9 w-64 bg-gray-200 rounded animate-pulse" />
+                    <div className="h-9 w-64 bg-white rounded animate-pulse" />
                     <div className="flex gap-4">
-                      <div className="h-4 w-32 bg-gray-200 rounded animate-pulse" />
-                      <div className="h-4 w-40 bg-gray-200 rounded animate-pulse" />
+                      <div className="h-4 w-32 bg-white rounded animate-pulse" />
+                      <div className="h-4 w-40 bg-white rounded animate-pulse" />
                     </div>
-                    <div className="h-6 w-24 bg-gray-200 rounded-full animate-pulse" />
+                    <div className="h-6 w-24 bg-white rounded-full animate-pulse" />
                   </div>
                   
                   {/* Stats skeleton */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
                     {[1, 2, 3, 4].map((i) => (
-                      <div key={i} className="p-3 bg-gray-100 rounded-lg border border-gray-200">
-                        <div className="h-8 w-16 bg-gray-200 rounded animate-pulse mx-auto mb-2" />
-                        <div className="h-4 w-20 bg-gray-200 rounded animate-pulse mx-auto" />
+                      <div key={i} className="p-3 bg-white rounded-lg border border-gray-200">
+                        <div className="h-8 w-16 bg-white rounded animate-pulse mx-auto mb-2" />
+                        <div className="h-4 w-20 bg-white rounded animate-pulse mx-auto" />
                       </div>
                     ))}
                   </div>
@@ -311,23 +315,23 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
           <div className="space-y-6">
             <div className="flex gap-2 border-b">
               {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="h-10 w-32 bg-gray-200 rounded-t animate-pulse" />
+                <div key={i} className="h-10 w-32 bg-white rounded-t animate-pulse" />
               ))}
             </div>
             
             {/* Content skeleton */}
             <Card>
               <CardHeader>
-                <div className="h-6 w-48 bg-gray-200 rounded animate-pulse" />
+                <div className="h-6 w-48 bg-white rounded animate-pulse" />
               </CardHeader>
               <CardContent className="space-y-4">
                 {[1, 2, 3].map((i) => (
                   <div key={i} className="p-4 border rounded-lg space-y-3">
                     <div className="flex gap-4">
-                      <div className="h-12 w-12 rounded-full bg-gray-200 animate-pulse" />
+                      <div className="h-12 w-12 rounded-full bg-white animate-pulse" />
                       <div className="flex-1 space-y-2">
-                        <div className="h-4 w-3/4 bg-gray-200 rounded animate-pulse" />
-                        <div className="h-4 w-1/2 bg-gray-200 rounded animate-pulse" />
+                        <div className="h-4 w-3/4 bg-white rounded animate-pulse" />
+                        <div className="h-4 w-1/2 bg-white rounded animate-pulse" />
                       </div>
                     </div>
                   </div>
@@ -398,47 +402,60 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
                 </div>
               </div>
               
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
-                <div className="text-center p-3 bg-gray-800 rounded-lg border border-gray-700">
-                  <p className="text-2xl font-bold bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent">{stats.posts}</p>
-                  <p className="text-sm text-gray-200">Posts</p>
+              {statsLoading ? (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+                  {[1, 2, 3, 4].map((i) => (
+                    <div key={i} className="text-center p-3 bg-white rounded-lg border border-gray-300 animate-pulse">
+                      <div className="h-8 w-16 bg-gray-200 rounded mx-auto mb-2" />
+                      <div className="h-4 w-20 bg-gray-200 rounded mx-auto" />
+                    </div>
+                  ))}
                 </div>
-                <div className="text-center p-3 bg-gray-800 rounded-lg border border-gray-700">
-                  <p className="text-2xl font-bold bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent">{stats.listings}</p>
-                  <p className="text-sm text-gray-200">Listings</p>
-                </div>
-                <div className="text-center p-3 bg-gray-800 rounded-lg border border-gray-700">
-                  <p className="text-2xl font-bold bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent">{stats.orders}</p>
-                  <p className="text-sm text-gray-200">Orders</p>
-                </div>
-                <div className="text-center p-3 bg-gray-800 rounded-lg border border-gray-700">
-                  <p className="text-2xl font-bold bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent">{stats.volunteeredServices}</p>
-                  <p className="text-sm text-gray-200">Volunteered</p>
-                </div>
-              </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+                    <div className="text-center p-3 bg-white rounded-lg border border-gray-700">
+                      <p className="text-2xl font-bold text-orange-500">{stats.posts}</p>
+                      <p className="text-sm text-gray-900">Posts</p>
+                    </div>
+                    <div className="text-center p-3 bg-white rounded-lg border border-gray-700">
+                      <p className="text-2xl font-bold text-orange-500">{stats.listings}</p>
+                      <p className="text-sm text-gray-900">Listings</p>
+                    </div>
+                    <div className="text-center p-3 bg-white rounded-lg border border-gray-700">
+                      <p className="text-2xl font-bold text-orange-500">{stats.orders}</p>
+                      <p className="text-sm text-gray-900">Orders</p>
+                    </div>
+                    <div className="text-center p-3 bg-white rounded-lg border border-gray-700">
+                      <p className="text-2xl font-bold text-orange-500">{stats.volunteeredServices}</p>
+                      <p className="text-sm text-gray-900">Volunteered</p>
+                    </div>
+                  </div>
 
-              {/* Additional Stats Row for NGOs/Companies */}
-              {(stats.serviceRequests > 0 || stats.serviceOffers > 0 || stats.volunteeredServices > 0) && (
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4">
-                  {stats.serviceRequests > 0 && (
-                    <div className="text-center p-3 bg-gray-800 rounded-lg border border-gray-700">
-                      <p className="text-2xl font-bold bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent">{stats.serviceRequests}</p>
-                      <p className="text-sm text-gray-200">Service Requests</p>
+                  {/* Additional Stats Row for NGOs/Companies */}
+                  {(stats.serviceRequests > 0 || stats.serviceOffers > 0 || stats.volunteeredServices > 0) && (
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4">
+                      {stats.serviceRequests > 0 && (
+                        <div className="text-center p-3 bg-white rounded-lg border border-gray-700">
+                          <p className="text-2xl font-bold text-orange-500">{stats.serviceRequests}</p>
+                          <p className="text-sm text-gray-900">Service Requests</p>
+                        </div>
+                      )}
+                      {stats.serviceOffers > 0 && (
+                        <div className="text-center p-3 bg-white rounded-lg border border-gray-700">
+                          <p className="text-2xl font-bold text-orange-500">{stats.serviceOffers}</p>
+                          <p className="text-sm text-gray-900">Service Offers</p>
+                        </div>
+                      )}
+                      {stats.volunteeredServices > 0 && (
+                        <div className="text-center p-3 bg-white rounded-lg border border-gray-700">
+                          <p className="text-2xl font-bold text-orange-500">{stats.volunteeredServices}</p>
+                          <p className="text-sm text-gray-900">Volunteered</p>
+                        </div>
+                      )}
                     </div>
                   )}
-                  {stats.serviceOffers > 0 && (
-                    <div className="text-center p-3 bg-gray-800 rounded-lg border border-gray-700">
-                      <p className="text-2xl font-bold bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent">{stats.serviceOffers}</p>
-                      <p className="text-sm text-gray-200">Service Offers</p>
-                    </div>
-                  )}
-                  {stats.volunteeredServices > 0 && (
-                    <div className="text-center p-3 bg-gray-800 rounded-lg border border-gray-700">
-                      <p className="text-2xl font-bold bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent">{stats.volunteeredServices}</p>
-                      <p className="text-sm text-gray-200">Volunteered</p>
-                    </div>
-                  )}
-                </div>
+                </>
               )}
             </div>
           </div>
@@ -447,11 +464,11 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
 
       <div ref={tabsRef}>
         <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 gap-2 mb-8 bg-gray-100 p-2 rounded-lg h-auto">
-            <TabsTrigger value="history" className="text-xs sm:text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm text-gray-700 py-3 px-2 rounded-md">Recent Activity</TabsTrigger>
-            <TabsTrigger value="achievements" className="text-xs sm:text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm text-gray-700 py-3 px-2 rounded-md">Achievements</TabsTrigger>
-            <TabsTrigger value="impact" className="text-xs sm:text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm text-gray-700 py-3 px-2 rounded-md">Impact Metrics</TabsTrigger>
-            <TabsTrigger value="stats" className="text-xs sm:text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm text-gray-700 py-3 px-2 rounded-md">Statistics</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 gap-2 mb-8 bg-white p-2 rounded-lg h-auto">
+            <TabsTrigger value="history" className="text-xs sm:text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm text-gray-700 py-3 px-2 rounded-md border border-gray-300">Recent Activity</TabsTrigger>
+            <TabsTrigger value="achievements" className="text-xs sm:text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm text-gray-700 py-3 px-2 rounded-md border border-gray-300">Achievements</TabsTrigger>
+            <TabsTrigger value="impact" className="text-xs sm:text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm text-gray-700 py-3 px-2 rounded-md border border-gray-300">Impact Metrics</TabsTrigger>
+            <TabsTrigger value="stats" className="text-xs sm:text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm text-gray-700 py-3 px-2 rounded-md border border-gray-300">Statistics</TabsTrigger>
           </TabsList>
 
         <TabsContent value="history">
@@ -460,7 +477,21 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
               <CardTitle>Recent Activity</CardTitle>
             </CardHeader>
             <CardContent>
-              {activities.length === 0 ? (
+              {statsLoading ? (
+                <div className="space-y-4">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="p-4 border rounded-lg space-y-3 animate-pulse">
+                      <div className="flex gap-4">
+                        <div className="h-12 w-12 rounded-full bg-gray-200" />
+                        <div className="flex-1 space-y-2">
+                          <div className="h-4 w-3/4 bg-gray-200 rounded" />
+                          <div className="h-4 w-1/2 bg-gray-200 rounded" />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : activities.length === 0 ? (
                 <div className="text-center py-12 text-gray-500">
                   <Users className="h-12 w-12 mx-auto mb-3 text-gray-400" />
                   <p className="text-sm">No activity yet</p>
@@ -475,7 +506,7 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
                                 activity.activity_type.includes('service') ? Users :
                                 Award
                     
-                    const bgColor = 'bg-gradient-to-r from-pink-500 to-yellow-500'
+                    const bgColor = 'bg-orange-500'
 
                     const borderColor = 'border-gray-700'
 
@@ -502,7 +533,7 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
                     return (
                       <div 
                         key={activity.id} 
-                        className={`group flex flex-col sm:flex-row gap-4 p-4 sm:p-5 border-2 ${borderColor} rounded-xl bg-gray-800 transition-all duration-200 hover:shadow-md`}
+                        className={`group flex flex-col sm:flex-row gap-4 p-4 sm:p-5 border-2 ${borderColor} rounded-xl bg-white transition-all duration-200 hover:shadow-md`}
                       >
                         <div className="flex-shrink-0">
                           <Avatar className="h-12 w-12 border-2 border-gray-700 shadow-sm">
@@ -516,50 +547,50 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
                           <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-2">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <h4 className="font-semibold bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent break-words">{profile.name}</h4>
+                                <h4 className="font-semibold text-orange-500 break-words">{profile.name}</h4>
                                 {profile.verification_status === 'verified' && (
                                   <VerificationBadge status="verified" size="sm" showText={false} />
                                 )}
                               </div>
-                              <p className="text-sm text-gray-300 break-words">{detailedDescription}</p>
+                              <p className="text-sm text-gray-900 break-words">{detailedDescription}</p>
                             </div>
-                            <span className="text-sm text-gray-300 whitespace-nowrap self-start sm:self-auto">{formatActivityDate(activity.created_at)}</span>
+                            <span className="text-sm text-gray-600 whitespace-nowrap self-start sm:self-auto">{formatActivityDate(activity.created_at)}</span>
                           </div>
                           
                           {/* Activity Details Card */}
-                          <div className="sm:ml-0 mt-3 p-4 bg-gray-700 rounded-lg border border-gray-600">
+                          <div className="sm:ml-0 mt-3 p-4 bg-white rounded-lg border border-gray-600">
                             {activity.activity_data?.title && (
-                              <p className="text-base text-white font-semibold mb-2 break-words">{activity.activity_data.title}</p>
+                              <p className="text-base text-gray-900 font-semibold mb-2 break-words">{activity.activity_data.title}</p>
                             )}
                             {activity.activity_data?.content && (
-                              <p className="text-sm text-gray-100 mb-3 line-clamp-3 leading-relaxed break-words">{activity.activity_data.content}</p>
+                              <p className="text-sm text-gray-800 mb-3 line-clamp-3 leading-relaxed break-words">{activity.activity_data.content}</p>
                             )}
                             
                             {/* Activity metadata */}
                             <div className="flex items-center gap-2 sm:gap-3 flex-wrap mt-3">
-                              <Badge variant="secondary" className="text-xs font-medium capitalize bg-gray-600 text-gray-200">
+                              <Badge variant="secondary" className="text-xs font-medium capitalize bg-white text-gray-900">
                                 {activity.entity_type.replace(/_/g, ' ')}
                               </Badge>
-                              <span className="text-xs text-gray-300">
+                              <span className="text-xs text-gray-600">
                                 ID: #{activity.entity_id}
                               </span>
                               {activity.activity_type === 'post_created' && (
-                                <Badge variant="outline" className="text-xs border-gray-500 font-medium bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent">
+                                <Badge variant="outline" className="text-xs border-gray-500 font-medium text-orange-500">
                                   Text Post
                                 </Badge>
                               )}
                               {activity.activity_type === 'listing_created' && (
-                                <Badge variant="outline" className="text-xs border-gray-500 font-medium bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent">
+                                <Badge variant="outline" className="text-xs border-gray-500 font-medium text-orange-500">
                                   Marketplace Listing
                                 </Badge>
                               )}
                               {activity.activity_type === 'order_placed' && (
-                                <Badge variant="outline" className="text-xs border-gray-500 font-medium bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent">
+                                <Badge variant="outline" className="text-xs border-gray-500 font-medium text-orange-500">
                                   Purchase Order
                                 </Badge>
                               )}
                               {activity.activity_type === 'service_request_created' && (
-                                <Badge variant="outline" className="text-xs border-gray-500 font-medium bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent">
+                                <Badge variant="outline" className="text-xs border-gray-500 font-medium text-orange-500">
                                   Service Request
                                 </Badge>
                               )}
@@ -583,14 +614,28 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
               </CardTitle>
             </CardHeader>
             <CardContent>
+              {statsLoading ? (
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="p-4 border-2 border-gray-300 rounded-xl bg-white animate-pulse">
+                      <div className="flex flex-col items-center text-center space-y-3">
+                        <div className="h-6 w-32 bg-gray-200 rounded" />
+                        <div className="h-4 w-40 bg-gray-200 rounded" />
+                        <div className="h-6 w-24 bg-gray-200 rounded-full" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+              <>
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {/* Achievement Cards */}
                 {stats.posts >= 5 && (
-                  <div className="p-4 border-2 border-gray-700 rounded-xl bg-gray-800 hover:shadow-lg transition-shadow">
+                  <div className="p-4 border-2 border-gray-700 rounded-xl bg-white hover:shadow-lg transition-shadow">
                     <div className="flex flex-col items-center text-center">
-                      <h3 className="font-bold bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent mb-1">Content Creator</h3>
-                      <p className="text-sm text-gray-300 mb-2">Created {stats.posts} posts</p>
-                      <Badge variant="secondary" className="bg-gradient-to-r from-pink-500 to-yellow-500 text-white border-0">
+                      <h3 className="font-bold text-orange-500 mb-1">Content Creator</h3>
+                      <p className="text-sm text-gray-900 mb-2">Created {stats.posts} posts</p>
+                      <Badge variant="secondary" className="bg-orange-500 text-white border-0">
                         Active Contributor
                       </Badge>
                     </div>
@@ -598,11 +643,11 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
                 )}
 
                 {stats.volunteeredServices >= 3 && (
-                  <div className="p-4 border-2 border-gray-700 rounded-xl bg-gray-800 hover:shadow-lg transition-shadow">
+                  <div className="p-4 border-2 border-gray-700 rounded-xl bg-white hover:shadow-lg transition-shadow">
                     <div className="flex flex-col items-center text-center">
-                      <h3 className="font-bold bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent mb-1">Volunteer Hero</h3>
-                      <p className="text-sm text-gray-300 mb-2">Volunteered for {stats.volunteeredServices} services</p>
-                      <Badge variant="secondary" className="bg-gradient-to-r from-pink-500 to-yellow-500 text-white border-0">
+                      <h3 className="font-bold text-orange-500 mb-1">Volunteer Hero</h3>
+                      <p className="text-sm text-gray-900 mb-2">Volunteered for {stats.volunteeredServices} services</p>
+                      <Badge variant="secondary" className="bg-orange-500 text-white border-0">
                         Community Helper
                       </Badge>
                     </div>
@@ -610,11 +655,11 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
                 )}
 
                 {stats.listings >= 5 && (
-                  <div className="p-4 border-2 border-gray-700 rounded-xl bg-gray-800 hover:shadow-lg transition-shadow">
+                  <div className="p-4 border-2 border-gray-700 rounded-xl bg-white hover:shadow-lg transition-shadow">
                     <div className="flex flex-col items-center text-center">
-                      <h3 className="font-bold bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent mb-1">Marketplace Seller</h3>
-                      <p className="text-sm text-gray-300 mb-2">Listed {stats.listings} items</p>
-                      <Badge variant="secondary" className="bg-gradient-to-r from-pink-500 to-yellow-500 text-white border-0">
+                      <h3 className="font-bold text-orange-500 mb-1">Marketplace Seller</h3>
+                      <p className="text-sm text-gray-900 mb-2">Listed {stats.listings} items</p>
+                      <Badge variant="secondary" className="bg-orange-500 text-white border-0">
                         Active Seller
                       </Badge>
                     </div>
@@ -622,11 +667,11 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
                 )}
 
                 {stats.orders >= 5 && (
-                  <div className="p-4 border-2 border-gray-700 rounded-xl bg-gray-800 hover:shadow-lg transition-shadow">
+                  <div className="p-4 border-2 border-gray-700 rounded-xl bg-white hover:shadow-lg transition-shadow">
                     <div className="flex flex-col items-center text-center">
-                      <h3 className="font-bold bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent mb-1">Frequent Buyer</h3>
-                      <p className="text-sm text-gray-300 mb-2">Placed {stats.orders} orders</p>
-                      <Badge variant="secondary" className="bg-gradient-to-r from-pink-500 to-yellow-500 text-white border-0">
+                      <h3 className="font-bold text-orange-500 mb-1">Frequent Buyer</h3>
+                      <p className="text-sm text-gray-900 mb-2">Placed {stats.orders} orders</p>
+                      <Badge variant="secondary" className="bg-orange-500 text-white border-0">
                         Supportive Buyer
                       </Badge>
                     </div>
@@ -634,11 +679,11 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
                 )}
 
                 {stats.serviceRequests >= 3 && (
-                  <div className="p-4 border-2 border-gray-700 rounded-xl bg-gray-800 hover:shadow-lg transition-shadow">
+                  <div className="p-4 border-2 border-gray-700 rounded-xl bg-white hover:shadow-lg transition-shadow">
                     <div className="flex flex-col items-center text-center">
-                      <h3 className="font-bold bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent mb-1">Opportunity Creator</h3>
-                      <p className="text-sm text-gray-300 mb-2">Created {stats.serviceRequests} service requests</p>
-                      <Badge variant="secondary" className="bg-gradient-to-r from-pink-500 to-yellow-500 text-white border-0">
+                      <h3 className="font-bold text-orange-500 mb-1">Opportunity Creator</h3>
+                      <p className="text-sm text-gray-900 mb-2">Created {stats.serviceRequests} service requests</p>
+                      <Badge variant="secondary" className="bg-orange-500 text-white border-0">
                         NGO Leader
                       </Badge>
                     </div>
@@ -646,11 +691,11 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
                 )}
 
                 {stats.serviceOffers >= 3 && (
-                  <div className="p-4 border-2 border-gray-700 rounded-xl bg-gray-800 hover:shadow-lg transition-shadow">
+                  <div className="p-4 border-2 border-gray-700 rounded-xl bg-white hover:shadow-lg transition-shadow">
                     <div className="flex flex-col items-center text-center">
-                      <h3 className="font-bold bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent mb-1">Service Provider</h3>
-                      <p className="text-sm text-gray-300 mb-2">Offered {stats.serviceOffers} professional services</p>
-                      <Badge variant="secondary" className="bg-gradient-to-r from-pink-500 to-yellow-500 text-white border-0">
+                      <h3 className="font-bold text-orange-500 mb-1">Service Provider</h3>
+                      <p className="text-sm text-gray-900 mb-2">Offered {stats.serviceOffers} professional services</p>
+                      <Badge variant="secondary" className="bg-orange-500 text-white border-0">
                         NGO Professional
                       </Badge>
                     </div>
@@ -658,11 +703,11 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
                 )}
 
                 {profile.verification_status === 'verified' && (
-                  <div className="p-4 border-2 border-gray-700 rounded-xl bg-gray-800 hover:shadow-lg transition-shadow">
+                  <div className="p-4 border-2 border-gray-700 rounded-xl bg-white hover:shadow-lg transition-shadow">
                     <div className="flex flex-col items-center text-center">
-                      <h3 className="font-bold bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent mb-1">Verified Member</h3>
-                      <p className="text-sm text-gray-300 mb-2">Successfully verified account</p>
-                      <Badge variant="secondary" className="bg-gradient-to-r from-pink-500 to-yellow-500 text-white border-0">
+                      <h3 className="font-bold text-orange-500 mb-1">Verified Member</h3>
+                      <p className="text-sm text-gray-900 mb-2">Successfully verified account</p>
+                      <Badge variant="secondary" className="bg-orange-500 text-white border-0">
                         Trusted User
                       </Badge>
                     </div>
@@ -680,6 +725,8 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
                   <p className="text-xs mt-2 text-gray-400">Start contributing to earn badges and milestones</p>
                 </div>
               )}
+              </>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -694,126 +741,151 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
               </CardTitle>
             </CardHeader>
             <CardContent>
+              {statsLoading ? (
+                <div className="space-y-6">
+                  <div className="p-6 bg-white rounded-xl border-2 border-gray-300 animate-pulse">
+                    <div className="text-center space-y-3">
+                      <div className="h-4 w-32 bg-gray-200 rounded mx-auto" />
+                      <div className="h-16 w-24 bg-gray-200 rounded mx-auto" />
+                      <div className="h-3 w-48 bg-gray-200 rounded mx-auto" />
+                    </div>
+                  </div>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    {[1, 2, 3, 4, 5, 6].map((i) => (
+                      <div key={i} className="p-4 bg-white rounded-lg border border-gray-300 animate-pulse">
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="h-4 w-32 bg-gray-200 rounded" />
+                            <div className="h-8 w-16 bg-gray-200 rounded" />
+                          </div>
+                          <div className="h-2 bg-gray-200 rounded-full" />
+                          <div className="h-3 w-24 bg-gray-200 rounded" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
               <div className="space-y-6">
                 {/* Overall Impact Score */}
-                <div className="p-6 bg-gradient-to-r from-gray-800 to-gray-900 rounded-xl border-2 border-gray-700">
+                <div className="p-6 bg-white rounded-xl border-2 border-gray-700">
                   <div className="text-center">
-                    <h3 className="text-sm font-medium text-gray-400 mb-2">Overall Impact Score</h3>
-                    <p className="text-5xl font-bold bg-gradient-to-r from-pink-400 via-yellow-400 to-pink-400 bg-clip-text text-transparent mb-2">
+                    <h3 className="text-sm font-medium text-gray-700 mb-2">Overall Impact Score</h3>
+                    <p className="text-5xl font-bold text-orange-500 mb-2">
                       {(stats.posts * 1) + (stats.volunteeredServices * 10) + (stats.serviceRequests * 5) + (stats.serviceOffers * 8) + (stats.listings * 1) + (stats.orders * 2)}
                     </p>
-                    <p className="text-sm text-gray-500">Points earned from all activities</p>
+                    <p className="text-sm text-gray-600">Points earned from all activities</p>
                   </div>
                 </div>
 
                 {/* Detailed Impact Breakdown */}
                 <div className="grid md:grid-cols-2 gap-4">
-                  <div className="p-4 bg-gray-800 rounded-lg border border-gray-700">
+                  <div className="p-4 bg-white rounded-lg border border-gray-700">
                     <div className="flex items-center justify-between mb-3">
-                      <span className="font-medium text-gray-300">Social Engagement</span>
-                      <span className="text-2xl font-bold bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent">{stats.posts * 1}</span>
+                      <span className="font-medium text-gray-900">Social Engagement</span>
+                      <span className="text-2xl font-bold text-orange-500">{stats.posts * 1}</span>
                     </div>
-                    <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+                    <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
                       <div 
-                        className="h-full bg-gradient-to-r from-pink-500 to-yellow-500 rounded-full transition-all" 
+                        className="h-full bg-orange-500 rounded-full transition-all" 
                         style={{ width: `${Math.min((stats.posts / 100) * 100, 100)}%` }}
                       />
                     </div>
-                    <p className="text-xs text-gray-500 mt-2">{stats.posts} posts × 1 point</p>
+                    <p className="text-xs text-gray-600 mt-2">{stats.posts} posts × 1 point</p>
                   </div>
 
-                  <div className="p-4 bg-gray-800 rounded-lg border border-gray-700">
+                  <div className="p-4 bg-white rounded-lg border border-gray-700">
                     <div className="flex items-center justify-between mb-3">
-                      <span className="font-medium text-gray-300">Volunteer Impact</span>
-                      <span className="text-2xl font-bold bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent">{stats.volunteeredServices * 10}</span>
+                      <span className="font-medium text-gray-900">Volunteer Impact</span>
+                      <span className="text-2xl font-bold text-orange-500">{stats.volunteeredServices * 10}</span>
                     </div>
-                    <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+                    <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
                       <div 
-                        className="h-full bg-gradient-to-r from-pink-500 to-yellow-500 rounded-full transition-all" 
+                        className="h-full bg-orange-500 rounded-full transition-all" 
                         style={{ width: `${Math.min((stats.volunteeredServices / 10) * 100, 100)}%` }}
                       />
                     </div>
-                    <p className="text-xs text-gray-500 mt-2">{stats.volunteeredServices} services × 10 points</p>
+                    <p className="text-xs text-gray-600 mt-2">{stats.volunteeredServices} services × 10 points</p>
                   </div>
 
-                  <div className="p-4 bg-gray-800 rounded-lg border border-gray-700">
+                  <div className="p-4 bg-white rounded-lg border border-gray-700">
                     <div className="flex items-center justify-between mb-3">
-                      <span className="font-medium text-gray-300">Service Requests</span>
-                      <span className="text-2xl font-bold bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent">{stats.serviceRequests * 5}</span>
+                      <span className="font-medium text-gray-900">Service Requests</span>
+                      <span className="text-2xl font-bold text-orange-500">{stats.serviceRequests * 5}</span>
                     </div>
-                    <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+                    <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
                       <div 
-                        className="h-full bg-gradient-to-r from-pink-500 to-yellow-500 rounded-full transition-all" 
+                        className="h-full bg-orange-500 rounded-full transition-all" 
                         style={{ width: `${Math.min((stats.serviceRequests / 10) * 100, 100)}%` }}
                       />
                     </div>
-                    <p className="text-xs text-gray-500 mt-2">{stats.serviceRequests} requests × 5 points</p>
+                    <p className="text-xs text-gray-600 mt-2">{stats.serviceRequests} requests × 5 points</p>
                   </div>
 
-                  <div className="p-4 bg-gray-800 rounded-lg border border-gray-700">
+                  <div className="p-4 bg-white rounded-lg border border-gray-700">
                     <div className="flex items-center justify-between mb-3">
-                      <span className="font-medium text-gray-300">Service Offers</span>
-                      <span className="text-2xl font-bold bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent">{stats.serviceOffers * 8}</span>
+                      <span className="font-medium text-gray-900">Service Offers</span>
+                      <span className="text-2xl font-bold text-orange-500">{stats.serviceOffers * 8}</span>
                     </div>
-                    <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+                    <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
                       <div 
-                        className="h-full bg-gradient-to-r from-pink-500 to-yellow-500 rounded-full transition-all" 
+                        className="h-full bg-orange-500 rounded-full transition-all" 
                         style={{ width: `${Math.min((stats.serviceOffers / 10) * 100, 100)}%` }}
                       />
                     </div>
-                    <p className="text-xs text-gray-500 mt-2">{stats.serviceOffers} offers × 8 points</p>
+                    <p className="text-xs text-gray-600 mt-2">{stats.serviceOffers} offers × 8 points</p>
                   </div>
 
-                  <div className="p-4 bg-gray-800 rounded-lg border border-gray-700">
+                  <div className="p-4 bg-white rounded-lg border border-gray-700">
                     <div className="flex items-center justify-between mb-3">
-                      <span className="font-medium text-gray-300">Marketplace Activity</span>
-                      <span className="text-2xl font-bold bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent">{stats.listings * 1}</span>
+                      <span className="font-medium text-gray-900">Marketplace Activity</span>
+                      <span className="text-2xl font-bold text-orange-500">{stats.listings * 1}</span>
                     </div>
-                    <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+                    <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
                       <div 
-                        className="h-full bg-gradient-to-r from-pink-500 to-yellow-500 rounded-full transition-all" 
+                        className="h-full bg-orange-500 rounded-full transition-all" 
                         style={{ width: `${Math.min((stats.listings / 100) * 100, 100)}%` }}
                       />
                     </div>
-                    <p className="text-xs text-gray-500 mt-2">{stats.listings} listings × 1 point</p>
+                    <p className="text-xs text-gray-600 mt-2">{stats.listings} listings × 1 point</p>
                   </div>
 
-                  <div className="p-4 bg-gray-800 rounded-lg border border-gray-700">
+                  <div className="p-4 bg-white rounded-lg border border-gray-700">
                     <div className="flex items-center justify-between mb-3">
-                      <span className="font-medium text-gray-300">Community Support</span>
-                      <span className="text-2xl font-bold bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent">{stats.orders * 2}</span>
+                      <span className="font-medium text-gray-900">Community Support</span>
+                      <span className="text-2xl font-bold text-orange-500">{stats.orders * 2}</span>
                     </div>
-                    <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+                    <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
                       <div 
-                        className="h-full bg-gradient-to-r from-pink-500 to-yellow-500 rounded-full transition-all" 
+                        className="h-full bg-orange-500 rounded-full transition-all" 
                         style={{ width: `${Math.min((stats.orders / 50) * 100, 100)}%` }}
                       />
                     </div>
-                    <p className="text-xs text-gray-500 mt-2">{stats.orders} orders × 2 points</p>
+                    <p className="text-xs text-gray-600 mt-2">{stats.orders} orders × 2 points</p>
                   </div>
                 </div>
 
                 {/* Impact Summary */}
-                <div className="p-4 bg-gray-800 rounded-lg border border-gray-700">
-                  <h4 className="font-medium bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent mb-3">Your Impact Summary</h4>
-                  <div className="space-y-2 text-sm text-gray-400">
+                <div className="p-4 bg-white rounded-lg border border-gray-700">
+                  <h4 className="font-medium text-orange-500 mb-3">Your Impact Summary</h4>
+                  <div className="space-y-2 text-sm text-gray-700">
                     {stats.posts > 0 && (
-                      <p>✓ Shared <span className="font-semibold bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent">{stats.posts}</span> posts to engage the community</p>
+                      <p>✓ Shared <span className="font-semibold text-orange-500">{stats.posts}</span> posts to engage the community</p>
                     )}
                     {stats.volunteeredServices > 0 && (
-                      <p>✓ Volunteered for <span className="font-semibold bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent">{stats.volunteeredServices}</span> service opportunities</p>
+                      <p>✓ Volunteered for <span className="font-semibold text-orange-500">{stats.volunteeredServices}</span> service opportunities</p>
                     )}
                     {stats.serviceRequests > 0 && (
-                      <p>✓ Created <span className="font-semibold bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent">{stats.serviceRequests}</span> opportunities for volunteers</p>
+                      <p>✓ Created <span className="font-semibold text-orange-500">{stats.serviceRequests}</span> opportunities for volunteers</p>
                     )}
                     {stats.serviceOffers > 0 && (
-                      <p>✓ Offered <span className="font-semibold bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent">{stats.serviceOffers}</span> professional services</p>
+                      <p>✓ Offered <span className="font-semibold text-orange-500">{stats.serviceOffers}</span> professional services</p>
                     )}
                     {stats.listings > 0 && (
-                      <p>✓ Listed <span className="font-semibold bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent">{stats.listings}</span> items in the marketplace</p>
+                      <p>✓ Listed <span className="font-semibold text-orange-500">{stats.listings}</span> items in the marketplace</p>
                     )}
                     {stats.orders > 0 && (
-                      <p>✓ Supported the community with <span className="font-semibold bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent">{stats.orders}</span> purchases</p>
+                      <p>✓ Supported the community with <span className="font-semibold text-orange-500">{stats.orders}</span> purchases</p>
                     )}
                     {stats.posts === 0 && stats.volunteeredServices === 0 && stats.serviceRequests === 0 && 
                      stats.serviceOffers === 0 && stats.listings === 0 && stats.orders === 0 && (
@@ -822,11 +894,46 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
                   </div>
                 </div>
               </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
 
         <TabsContent value="stats">
+          {statsLoading ? (
+            <div className="grid md:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Platform Engagement</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-6 animate-pulse">
+                    {[1, 2, 3, 4].map((i) => (
+                      <div key={i} className="flex items-center justify-between py-2 border-b border-gray-300">
+                        <div className="h-4 w-32 bg-gray-200 rounded" />
+                        <div className="h-8 w-16 bg-gray-200 rounded" />
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Profile Information</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4 animate-pulse">
+                    {[1, 2, 3, 4].map((i) => (
+                      <div key={i} className="space-y-2">
+                        <div className="h-3 w-24 bg-gray-200 rounded" />
+                        <div className="h-4 w-40 bg-gray-200 rounded" />
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          ) : (
           <div className="grid md:grid-cols-2 gap-6">
             <Card>
               <CardHeader>
@@ -836,32 +943,32 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
                 <div className="space-y-6">
                   <div className="flex items-center justify-between py-2 border-b border-gray-700">
                     <span className="text-gray-900">Posts Created</span>
-                    <span className="text-2xl font-bold bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent">{stats.posts}</span>
+                    <span className="text-2xl font-bold text-orange-500">{stats.posts}</span>
                   </div>
                   <div className="flex items-center justify-between py-2 border-b border-gray-700">
                     <span className="text-gray-900">Marketplace Listings</span>
-                    <span className="text-2xl font-bold bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent">{stats.listings}</span>
+                    <span className="text-2xl font-bold text-orange-500">{stats.listings}</span>
                   </div>
                   <div className="flex items-center justify-between py-2 border-b border-gray-700">
                     <span className="text-gray-900">Orders Placed</span>
-                    <span className="text-2xl font-bold bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent">{stats.orders}</span>
+                    <span className="text-2xl font-bold text-orange-500">{stats.orders}</span>
                   </div>
                   {stats.serviceRequests > 0 && (
                     <div className="flex items-center justify-between py-2 border-b border-gray-700">
                       <span className="text-gray-900">Service Requests</span>
-                      <span className="text-2xl font-bold bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent">{stats.serviceRequests}</span>
+                      <span className="text-2xl font-bold text-orange-500">{stats.serviceRequests}</span>
                     </div>
                   )}
                   {stats.serviceOffers > 0 && (
                     <div className="flex items-center justify-between py-2 border-b border-gray-700">
                       <span className="text-gray-900">Service Offers</span>
-                      <span className="text-2xl font-bold bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent">{stats.serviceOffers}</span>
+                      <span className="text-2xl font-bold text-orange-500">{stats.serviceOffers}</span>
                     </div>
                   )}
                   {stats.volunteeredServices > 0 && (
                     <div className="flex items-center justify-between py-2 border-b border-gray-700">
                       <span className="text-gray-900">Volunteered Services</span>
-                      <span className="text-2xl font-bold bg-gradient-to-r from-pink-400 to-yellow-400 bg-clip-text text-transparent">{stats.volunteeredServices}</span>
+                      <span className="text-2xl font-bold text-orange-500">{stats.volunteeredServices}</span>
                     </div>
                   )}
                 </div>
@@ -911,6 +1018,7 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
               </CardContent>
             </Card>
           </div>
+          )}
         </TabsContent>
       </Tabs>
       </div>
