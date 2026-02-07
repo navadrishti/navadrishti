@@ -71,6 +71,12 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
     setActiveTab(value)
   }
 
+  // Update active tab when URL changes
+  useEffect(() => {
+    const tabFromUrl = searchParams.get('tab') || 'history'
+    setActiveTab(tabFromUrl)
+  }, [searchParams])
+
   useEffect(() => {
     const fetchProfileData = async () => {
       if (fetchingRef.current) return
