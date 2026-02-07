@@ -62,7 +62,7 @@ function NavigationProgress() {
 
   return (
     <div 
-      className="fixed top-0 left-0 right-0 z-[9999] h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 shadow-lg shadow-purple-500/50"
+      className="fixed top-0 left-0 right-0 z-[9999] h-1 bg-gradient-to-r from-yellow-500 via-orange-500 to-orange-600 shadow-lg shadow-orange-500/50"
       style={{ 
         width: `${progress}%`,
         opacity: progress === 100 ? 0 : 1,
