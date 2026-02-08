@@ -63,7 +63,7 @@ export function ProfileCard({
   return (
     <Card className="overflow-hidden group">
       <CardHeader className="p-0">
-        <div className="h-24 bg-gradient-to-r from-blue-500 to-purple-600 relative">
+        <div className="h-24 bg-blue-600 relative">
           <div className="absolute inset-0 bg-white/10 backdrop-blur-[2px] transition-all duration-500 group-hover:backdrop-blur-none"></div>
           {badge}
         </div>

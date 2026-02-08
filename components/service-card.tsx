@@ -243,133 +243,230 @@ export function ServiceCard({
   const canHireServices = isIndividual || isCompany;
 
   return (
-    <div className="relative group h-full">
-      {/* Colorful border only */}
-      <div className="absolute -inset-0.5 bg-gradient-to-r from-pink-500 via-purple-500 to-yellow-500 rounded-xl opacity-60 group-hover:opacity-100 transition duration-300"></div>
-      
-      {/* Compact card */}
-      <div className="relative bg-white rounded-xl p-5 h-full flex flex-col shadow-sm border border-gray-100">
-        {/* Header with category and priority/status */}
-        <div className="flex items-center justify-between mb-4">
-          <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200 px-3 py-1">
+    <Card className="h-full flex flex-col hover:shadow-xl transition-all duration-300 border-2 border-gray-200 hover:border-blue-500">
+      <CardHeader className="space-y-3 pb-4">
+        {/* Category and Priority/Status */}
+        <div className="flex items-center justify-between gap-2">
+          <Badge variant="secondary" className="text-xs font-medium px-3 py-1.5">
             {category}
           </Badge>
           
           {type === 'request' && (urgency_level || priority) && (
             <Badge 
-              className={`text-xs font-semibold px-3 py-1 ${
-                (urgency_level || priority) === 'urgent' || (urgency_level || priority) === 'critical' || (urgency_level || priority) === 'high' 
-                  ? 'bg-red-100 text-red-700 border-red-200' 
-                  : (urgency_level || priority) === 'medium' 
-                    ? 'bg-orange-100 text-orange-700 border-orange-200' 
-                    : 'bg-green-100 text-green-700 border-green-200'
+              className={`text-xs font-bold px-3 py-1.5 ${
+                (urgency_level || priority)?.toLowerCase() === 'urgent' || 
+                (urgency_level || priority)?.toLowerCase() === 'critical' || 
+                (urgency_level || priority)?.toLowerCase() === 'high' 
+                  ? 'bg-red-500 text-white' 
+                  : (urgency_level || priority)?.toLowerCase() === 'medium' 
+                    ? 'bg-orange-500 text-white' 
+                    : 'bg-green-500 text-white'
               }`}
             >
               {(urgency_level || priority)?.toUpperCase()}
             </Badge>
           )}
+          
+          {type === 'offer' && employment_type && (
+            <Badge variant="outline" className="text-xs font-medium px-3 py-1.5 capitalize">
+              {employment_type.replace('_', ' ')}
+            </Badge>
+          )}
         </div>
 
-        {/* Title Block */}
-        <div className="bg-gray-50 rounded-lg p-4 mb-3 border border-gray-200">
-          <h3 className="font-bold text-lg text-gray-900 line-clamp-2 leading-tight cursor-pointer hover:text-blue-600 transition-colors" onClick={handleCardClick}>
-            {title}
-          </h3>
-        </div>
+        {/* Title */}
+        <h3 
+          className="font-bold text-xl text-gray-900 line-clamp-2 leading-tight cursor-pointer hover:text-blue-600 transition-colors" 
+          onClick={handleCardClick}
+        >
+          {title}
+        </h3>
 
-        {/* Description Block */}
-        <div className="bg-gray-50 rounded-lg p-3 mb-3 border border-gray-200">
-          <p className="text-gray-600 text-sm leading-relaxed line-clamp-3">
-            {description}
-          </p>
-        </div>
-
-        {/* Organization Block */}
-        <div className="bg-white rounded-lg p-3 mb-3 border border-gray-300">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full flex items-center justify-center bg-blue-600 text-white font-bold text-sm flex-shrink-0">
-              {getInitials(ngo_name)}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <p className="font-semibold text-gray-900 text-sm truncate">{ngo_name}</p>
-                {verified && (
-                  <VerificationBadge status="verified" size="sm" showText={false} />
-                )}
-              </div>
-              <p className="text-xs text-gray-600">
-                {type === 'request' ? 'Requesting Help' : 'Service Provider'}
-              </p>
-            </div>
+        {/* Organization Info */}
+        <div className="flex items-center gap-3 pt-2">
+          <div className="w-10 h-10 rounded-full flex items-center justify-center bg-blue-600 text-white font-bold text-sm flex-shrink-0 shadow-md">
+            {getInitials(ngo_name)}
           </div>
-        </div>
-
-        {/* Info Grid Block */}
-        <div className="bg-gray-50 rounded-lg p-3 mb-3 border border-gray-200">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <p className="text-xs text-gray-500 mb-1 flex items-center gap-1">
-                <Calendar size={12} />
-                Posted
-              </p>
-              <p className="text-sm font-semibold text-gray-900">{formatDate(created_at)}</p>
-            </div>
-            
-            {location && (
-              <div>
-                <p className="text-xs text-gray-500 mb-1 flex items-center gap-1">
-                  <MapPin size={12} />
-                  Location
-                </p>
-                <p className="text-sm font-semibold text-gray-900 truncate">{location}</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Quantity/Requirements Block - if exists */}
-        {type === 'request' && volunteers_needed && (
-          <div className="bg-gray-50 rounded-lg p-3 mb-3 border border-gray-200">
+          <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <Users size={16} className="text-gray-700" />
-              <p className="text-sm font-semibold text-gray-900">
-                {volunteers_needed} volunteers needed
+              <p className="font-semibold text-gray-900 text-sm truncate">{ngo_name}</p>
+              {verified && (
+                <VerificationBadge status="verified" size="sm" showText={false} />
+              )}
+            </div>
+            <p className="text-xs text-gray-500">
+              {type === 'request' ? 'Requesting Help' : 'Service Provider'}
+            </p>
+          </div>
+        </div>
+      </CardHeader>
+
+      <CardContent className="space-y-4 flex-1 pb-4">
+        {/* Description */}
+        <p className="text-gray-700 text-sm leading-relaxed line-clamp-3">
+          {description}
+        </p>
+
+        {/* Key Information Grid */}
+        <div className="grid grid-cols-2 gap-3 pt-2">
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5 text-gray-500">
+              <Calendar size={14} />
+              <span className="text-xs font-medium">Posted</span>
+            </div>
+            <p className="text-sm font-semibold text-gray-900">{formatDate(created_at)}</p>
+          </div>
+          
+          {location && (
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5 text-gray-500">
+                <MapPin size={14} />
+                <span className="text-xs font-medium">Location</span>
+              </div>
+              <p className="text-sm font-semibold text-gray-900 truncate">{location}</p>
+            </div>
+          )}
+
+          {/* Service Request Specific Fields */}
+          {type === 'request' && volunteers_needed && (
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5 text-gray-500">
+                <Users size={14} />
+                <span className="text-xs font-medium">Volunteers</span>
+              </div>
+              <p className="text-sm font-semibold text-gray-900">{volunteers_needed} needed</p>
+            </div>
+          )}
+
+          {type === 'request' && timeline && (
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5 text-gray-500">
+                <Clock size={14} />
+                <span className="text-xs font-medium">Timeline</span>
+              </div>
+              <p className="text-sm font-semibold text-gray-900 truncate">{timeline}</p>
+            </div>
+          )}
+
+          {/* Service Offer Specific Fields */}
+          {type === 'offer' && wage_info && (wage_info.min_amount || wage_info.max_amount) && (
+            <div className="space-y-1 col-span-2">
+              <div className="flex items-center gap-1.5 text-gray-500">
+                <DollarSign size={14} />
+                <span className="text-xs font-medium">Pricing</span>
+              </div>
+              <p className="text-sm font-bold text-green-700">
+                ₹{wage_info.min_amount ? Number(wage_info.min_amount).toLocaleString() : ''}
+                {wage_info.min_amount && wage_info.max_amount && ' - '}
+                {wage_info.max_amount ? `₹${Number(wage_info.max_amount).toLocaleString()}` : ''}
+                {wage_info.payment_frequency && (
+                  <span className="text-xs font-normal text-gray-600 ml-1">
+                    /{wage_info.payment_frequency}
+                  </span>
+                )}
+                {wage_info.negotiable && (
+                  <Badge variant="outline" className="ml-2 text-xs">Negotiable</Badge>
+                )}
               </p>
+            </div>
+          )}
+        </div>
+
+        {/* Skills for Service Offers */}
+        {type === 'offer' && skills_required && skills_required.length > 0 && (
+          <div className="space-y-2 pt-2">
+            <p className="text-xs font-medium text-gray-500 flex items-center gap-1.5">
+              <Briefcase size={14} />
+              Skills Offered
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {skills_required.slice(0, 4).map((skill, idx) => (
+                <Badge key={idx} variant="outline" className="text-xs">
+                  {skill}
+                </Badge>
+              ))}
+              {skills_required.length > 4 && (
+                <Badge variant="outline" className="text-xs">
+                  +{skills_required.length - 4} more
+                </Badge>
+              )}
             </div>
           </div>
         )}
 
-        {/* Action Button */}
-        <div className="mt-auto">
-          <Link href={`/${type === 'request' ? 'service-requests' : 'service-offers'}/${id}`} className="block">
-            <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 transition-colors rounded-lg">
-              View Details
-              <ArrowRight size={16} className="ml-2" />
-            </Button>
-          </Link>
-
-          {/* Delete button for owners */}
-          {showDeleteButton && onDelete && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete();
-              }}
-              disabled={isDeleting}
-              className="w-full mt-2 border-red-300 text-red-600 hover:bg-red-50 text-sm font-medium"
-            >
-              {isDeleting ? (
-                <div className="h-3 w-3 animate-spin rounded-full border-2 border-red-600 border-t-transparent mr-2" />
-              ) : (
-                <Trash2 size={14} className="mr-2" />
+        {/* Benefits for Service Offers */}
+        {type === 'offer' && benefits && benefits.length > 0 && (
+          <div className="space-y-2 pt-2">
+            <p className="text-xs font-medium text-gray-500 flex items-center gap-1.5">
+              <Star size={14} />
+              Benefits
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {benefits.slice(0, 3).map((benefit, idx) => (
+                <Badge key={idx} variant="secondary" className="text-xs">
+                  {benefit}
+                </Badge>
+              ))}
+              {benefits.length > 3 && (
+                <Badge variant="secondary" className="text-xs">
+                  +{benefits.length - 3} more
+                </Badge>
               )}
-              Delete Request
-            </Button>
-          )}
-        </div>
-      </div>
-    </div>
+            </div>
+          </div>
+        )}
+
+        {/* Volunteer Application Status */}
+        {volunteer_application && (
+          <div className="pt-2">
+            <Badge 
+              className={`w-full justify-center py-2 ${
+                volunteer_application.status === 'accepted' ? 'bg-green-100 text-green-800 border-green-200' :
+                volunteer_application.status === 'rejected' ? 'bg-red-100 text-red-800 border-red-200' :
+                'bg-yellow-100 text-yellow-800 border-yellow-200'
+              }`}
+            >
+              Application {volunteer_application.status}
+            </Badge>
+          </div>
+        )}
+      </CardContent>
+
+      <CardFooter className="pt-0 pb-5 flex-col gap-2">
+        {/* Action Button */}
+        <Link href={`/${type === 'request' ? 'service-requests' : 'service-offers'}/${id}`} className="w-full">
+          <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 transition-all shadow-md hover:shadow-lg">
+            View Full Details
+            <ArrowRight size={16} className="ml-2" />
+          </Button>
+        </Link>
+
+        {/* Delete button for owners */}
+        {showDeleteButton && onDelete && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+            disabled={isDeleting}
+            className="w-full border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 font-medium transition-colors"
+          >
+            {isDeleting ? (
+              <>
+                <div className="h-3 w-3 animate-spin rounded-full border-2 border-red-600 border-t-transparent mr-2" />
+                Deleting...
+              </>
+            ) : (
+              <>
+                <Trash2 size={14} className="mr-2" />
+                Delete {type === 'request' ? 'Request' : 'Offer'}
+              </>
+            )}
+          </Button>
+        )}
+      </CardFooter>
+    </Card>
   );
 }
