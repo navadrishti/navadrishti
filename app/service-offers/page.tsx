@@ -180,28 +180,26 @@ export default function ServiceOffersPage() {
         {loading ? (
           user && isNGO && <SkeletonCTA />
         ) : user && isNGO && (
-          <div className="mb-8 p-8 bg-gradient-to-br from-gray-900 via-gray-800 to-black rounded-2xl border border-gray-700 shadow-2xl relative overflow-hidden">
-            {/* Background gradient overlay */}
-            <div className="absolute inset-0 bg-gradient-to-r from-blue-600/10 via-purple-600/10 to-green-600/10 pointer-events-none"></div>
+          <div className="mb-8 p-8 bg-white rounded-2xl border-2 border-black shadow-2xl relative overflow-hidden">
             
             <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
               <div className="text-center md:text-left">
-                <h2 className="text-2xl font-bold text-white mb-3">
+                <h2 className="text-2xl font-bold text-black mb-3">
                   Have Services to Offer?
                 </h2>
-                <p className="text-gray-300 text-base max-w-md">
+                <p className="text-gray-700 text-base max-w-md font-medium">
                   List your services and connect with individuals and companies who need them
                 </p>
               </div>
               <div className="flex flex-col sm:flex-row gap-4">
                 <Link href="/service-offers/track">
-                  <button className="gradient-border-btn shadow-xl text-white transition-all duration-300 px-8 py-4 h-auto font-medium text-base">
+                  <button className="bg-white border-2 border-black shadow-xl text-black hover:bg-gray-50 transition-all duration-300 px-8 py-4 h-auto font-medium text-base rounded-lg flex items-center">
                     <Clock size={20} className="mr-3" />
                     Track My Offers
                   </button>
                 </Link>
                 <Link href="/service-offers/create">
-                  <button className="gradient-border-btn shadow-xl text-white transition-all duration-300 px-8 py-4 h-auto font-medium text-base">
+                  <button className="bg-white border-2 border-black shadow-xl text-black hover:bg-gray-50 transition-all duration-300 px-8 py-4 h-auto font-medium text-base rounded-lg flex items-center">
                     <Plus size={20} className="mr-3" />
                     Create Service Offer
                     <ArrowRight size={16} className="ml-3" />

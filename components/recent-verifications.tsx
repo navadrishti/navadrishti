@@ -47,8 +47,7 @@ export function RecentVerifications() {
 
   if (loading) {
     return (
-      <div className="p-[2px] rounded-lg bg-gradient-to-br from-yellow-400 via-orange-500 to-pink-600">
-      <Card className="border-0 bg-white">
+      <Card className="border-2 border-gray-200 bg-white shadow-sm">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-black">
             Recent Verifications
@@ -68,13 +67,11 @@ export function RecentVerifications() {
           </div>
         </CardContent>
       </Card>
-      </div>
     );
   }
 
   return (
-    <div className="p-[2px] rounded-lg bg-gradient-to-br from-yellow-400 via-orange-500 to-pink-600">
-    <Card className="border-0 bg-white">
+    <Card className="border-2 border-gray-200 bg-white">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-black">
           Recent Verifications
@@ -119,6 +116,5 @@ export function RecentVerifications() {
         </div>
       </CardContent>
     </Card>
-    </div>
   );
 }

@@ -31,6 +31,7 @@ interface UserStats {
 
 export default function HomePage() {
   const { user, token } = useAuth()
+  const [mounted, setMounted] = useState(false)
   const [suggestionsLoading, setSuggestionsLoading] = useState(true)
   const [suggestionsError, setSuggestionsError] = useState<string | null>(null)
   const [userStats, setUserStats] = useState<UserStats>({ posts: 0, followers: 0, following: 0, impactScore: 0 })
@@ -109,6 +110,10 @@ export default function HomePage() {
   }
 
   useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  useEffect(() => {
     fetchSuggestedUsers()
   }, [user])
 
@@ -130,7 +135,7 @@ export default function HomePage() {
           <div className="lg:col-span-2">
             
             {/* Create Post - Only show for authenticated users */}
-            {user && <PostCreator onPostCreated={handlePostCreated} className="mb-6" />}
+            {mounted && user && <PostCreator onPostCreated={handlePostCreated} className="mb-6" />}
 
             {/* Posts Feed */}
             <PostsFeed refreshTrigger={refreshTrigger} />

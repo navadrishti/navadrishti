@@ -276,7 +276,7 @@ export function ProductCard({
         
         <CardFooter className="border-t border-opacity-20 p-4 mt-auto">
           <Button 
-            className="w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 transition-all duration-500 ease-in-out hover:shadow-lg"
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold transition-all duration-300 hover:shadow-lg"
             onClick={onViewDetails}
           >
             Add to Cart
@@ -288,11 +288,7 @@ export function ProductCard({
 
   // Enhanced marketplace card
   return (
-    <div className="relative group h-full">
-      {/* Colorful border only */}
-      <div className="absolute -inset-0.5 bg-gradient-to-r from-pink-500 via-purple-500 to-yellow-500 rounded-xl opacity-60 group-hover:opacity-100 transition duration-300"></div>
-      
-      <Card className="relative overflow-hidden group h-full flex flex-col hover:shadow-xl transition-all duration-300 border-0 shadow-md bg-white rounded-xl">
+    <Card className="relative overflow-hidden group h-full flex flex-col hover:shadow-xl transition-all duration-300 border-2 border-gray-200 hover:border-blue-500 shadow-md bg-white rounded-xl">
       
       {/* SOLD Overlay - Show when item is sold out */}
       {(item?.status === 'sold' || item?.quantity === 0) && (
@@ -310,7 +306,7 @@ export function ProductCard({
       
       {/* Image Section with Gallery - Clickable to product details */}
       <CardHeader className="p-0 relative cursor-pointer" onClick={handleCardClick}>
-        <div className="relative h-56 overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100 rounded-t-xl">
+        <div className="relative h-56 overflow-hidden bg-gray-100 rounded-t-xl">
           {(() => {
             // Safely parse images - handle both string and array formats
             // Support Cloudinary URLs stored in the database
@@ -756,7 +752,6 @@ export function ProductCard({
         </Dialog>
       )}
     </Card>
-    </div>
   )
 }
 
