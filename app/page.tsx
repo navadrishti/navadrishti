@@ -127,7 +127,7 @@ export default function HomePage() {
             {/* Header */}
             <div className="mb-6">
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-2 h-12 bg-gradient-to-b from-yellow-400 via-orange-500 to-pink-600 rounded-full"></div>
+                <div className="w-2 h-12 bg-blue-600 rounded-full"></div>
                 <h1 className="text-5xl md:text-6xl font-bold tracking-tight watery-gradient" style={{ color: 'transparent' }}>
                   नवdrishti
                 </h1>
@@ -160,8 +160,7 @@ export default function HomePage() {
           {/* Right Sidebar */}
           <div className="lg:col-span-1 space-y-6">
             {/* Quick Stats */}
-            <div className="p-[2px] rounded-lg bg-gradient-to-br from-yellow-400 via-orange-500 to-pink-600">
-            <Card className="border-0 bg-white shadow-lg">
+            <Card className="border-2 border-gray-200 bg-white shadow-lg">
               <CardContent className="p-6">
                 <h3 className="text-lg font-semibold mb-4 text-black">Platform Statistics</h3>
               <div className="space-y-4">
@@ -211,7 +210,6 @@ export default function HomePage() {
                 </div>
               </CardContent>
             </Card>
-            </div>
             
             {/* Leaderboard */}
             <Leaderboard />
@@ -223,8 +221,7 @@ export default function HomePage() {
             <RecentVerifications />
             
             {/* Achievement Badges */}
-            <div className="p-[2px] rounded-lg bg-gradient-to-br from-pink-400 via-yellow-400 to-pink-400">
-              <Card className="border-0 bg-white shadow-lg">
+            <Card className="border-2 border-gray-200 bg-white shadow-lg">
                 <CardContent className="p-6">
                   <h3 className="text-lg font-semibold mb-4 text-black">
                     Achievement Badges
@@ -233,7 +230,7 @@ export default function HomePage() {
                     <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
                       <div className="flex justify-between items-center mb-1">
                         <p className="font-semibold text-gray-900">Content Creator</p>
-                        <Badge className="bg-gradient-to-r from-pink-500 to-yellow-500 text-white text-xs border-0">5+ posts</Badge>
+                        <Badge className="bg-blue-600 text-white text-xs border-0">5+ posts</Badge>
                       </div>
                       <p className="text-xs text-gray-600">Active Contributor</p>
                     </div>
@@ -241,7 +238,7 @@ export default function HomePage() {
                     <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
                       <div className="flex justify-between items-center mb-1">
                         <p className="font-semibold text-gray-900">Volunteer Hero</p>
-                        <Badge className="bg-gradient-to-r from-pink-500 to-yellow-500 text-white text-xs border-0">3+ services</Badge>
+                        <Badge className="bg-green-600 text-white text-xs border-0">3+ services</Badge>
                       </div>
                       <p className="text-xs text-gray-600">Community Helper</p>
                     </div>
@@ -249,7 +246,7 @@ export default function HomePage() {
                     <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
                       <div className="flex justify-between items-center mb-1">
                         <p className="font-semibold text-gray-900">Marketplace Seller</p>
-                        <Badge className="bg-gradient-to-r from-pink-500 to-yellow-500 text-white text-xs border-0">5+ listings</Badge>
+                        <Badge className="bg-purple-600 text-white text-xs border-0">5+ listings</Badge>
                       </div>
                       <p className="text-xs text-gray-600">Active Seller</p>
                     </div>
@@ -257,7 +254,7 @@ export default function HomePage() {
                     <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
                       <div className="flex justify-between items-center mb-1">
                         <p className="font-semibold text-gray-900">Frequent Buyer</p>
-                        <Badge className="bg-gradient-to-r from-pink-500 to-yellow-500 text-white text-xs border-0">5+ orders</Badge>
+                        <Badge className="bg-indigo-600 text-white text-xs border-0">5+ orders</Badge>
                       </div>
                       <p className="text-xs text-gray-600">Supportive Buyer</p>
                     </div>
@@ -265,7 +262,7 @@ export default function HomePage() {
                     <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
                       <div className="flex justify-between items-center mb-1">
                         <p className="font-semibold text-gray-900">Opportunity Creator</p>
-                        <Badge className="bg-gradient-to-r from-pink-500 to-yellow-500 text-white text-xs border-0">3+ requests</Badge>
+                        <Badge className="bg-orange-600 text-white text-xs border-0">3+ requests</Badge>
                       </div>
                       <p className="text-xs text-gray-600">NGO Leader</p>
                     </div>
@@ -273,7 +270,7 @@ export default function HomePage() {
                     <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
                       <div className="flex justify-between items-center mb-1">
                         <p className="font-semibold text-gray-900">Service Provider</p>
-                        <Badge className="bg-gradient-to-r from-pink-500 to-yellow-500 text-white text-xs border-0">3+ offers</Badge>
+                        <Badge className="bg-teal-600 text-white text-xs border-0">3+ offers</Badge>
                       </div>
                       <p className="text-xs text-gray-600">NGO Professional</p>
                     </div>
@@ -281,14 +278,13 @@ export default function HomePage() {
                     <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
                       <div className="flex justify-between items-center mb-1">
                         <p className="font-semibold text-gray-900">Verified Member</p>
-                        <Badge className="bg-gradient-to-r from-pink-500 to-yellow-500 text-white text-xs border-0">Verified</Badge>
+                        <Badge className="bg-green-700 text-white text-xs border-0">Verified</Badge>
                       </div>
                       <p className="text-xs text-gray-600">Trusted User</p>
                     </div>
                   </div>
                 </CardContent>
               </Card>
-            </div>
             
             {/* Footer */}
             <StickyFooter />

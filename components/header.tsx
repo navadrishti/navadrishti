@@ -519,20 +519,14 @@ export function Header() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="relative rounded-lg !p-2 !w-10 !h-10"
-                  style={{
-                    border: '1px solid',
-                    borderImage: 'linear-gradient(137.48deg, #ffdb3b 10%, #fe53bb 45%, #8f51ea 67%, #0044ff 87%) 1',
-                    borderImageSlice: 1,
-                    background: 'transparent'
-                  }}
+                  className="relative rounded-lg !p-2 !w-10 !h-10 border-2 border-white"
                   onClick={() => setIsSearchExpanded(true)}
                 >
                   <Search className="h-5 w-5 text-white" />
                 </Button>
               ) : (
                 <div className="relative flex items-center z-50">
-                  <div className="relative p-[2px] bg-gradient-to-r from-yellow-300 via-pink-500 to-blue-500 rounded-lg">
+                  <div className="relative border-2 border-gray-300 rounded-lg">
                     <div className="relative bg-white rounded-lg">
                       <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-600 pointer-events-none z-10" />
                       <Input
@@ -591,8 +585,7 @@ export function Header() {
                 data-search-dropdown="true"
                 onMouseDown={(e) => e.preventDefault()} // Prevent input blur when clicking dropdown
               >
-                <div className="w-64 md:w-80 lg:w-96 p-0 border-0">
-                  <div className="relative p-[2px] bg-gradient-to-r from-yellow-300 via-pink-500 to-blue-500 rounded-lg">
+                <div className="w-64 md:w-80 lg:w-96 p-0 border-2 border-gray-200">
                     <div className="bg-white rounded-lg overflow-hidden">
                       <Command>
                         <CommandList className={showAllResults ? "max-h-80 overflow-y-auto" : ""}>
@@ -630,11 +623,9 @@ export function Header() {
                                           )}
                                         </div>
                                         <div className="flex items-center gap-2 mt-1">
-                                          <div className="relative p-[1px] bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500 rounded-full">
-                                            <Badge variant="secondary" className="text-xs capitalize bg-white text-gray-800 border-0 rounded-full px-2 py-1">
-                                              {profile.user_type}
-                                            </Badge>
-                                          </div>
+                                          <Badge variant="secondary" className="text-xs capitalize text-gray-800 border-gray-300 rounded-full px-2 py-1">
+                                            {profile.user_type}
+                                          </Badge>
                                           {profile.location && (
                                             <span className="text-xs text-muted-foreground truncate">{profile.location}</span>
                                           )}
@@ -682,7 +673,6 @@ export function Header() {
                     </div>
                   </div>
                 </div>
-              </div>
             )}
           </div>          
           {mounted && user ? (
@@ -691,13 +681,7 @@ export function Header() {
               <Button 
                 variant="ghost" 
                 size="icon" 
-                className="relative rounded-lg !p-2 !w-10 !h-10"
-                style={{
-                  border: '1px solid',
-                  borderImage: 'linear-gradient(137.48deg, #ffdb3b 10%, #fe53bb 45%, #8f51ea 67%, #0044ff 87%) 1',
-                  borderImageSlice: 1,
-                  background: 'transparent'
-                }}
+                className="relative rounded-lg !p-2 !w-10 !h-10 border-2 border-white"
                 onClick={() => router.push('/cart')}
               >
                 <ShoppingCart className="h-5 w-5 text-white" />
@@ -762,13 +746,7 @@ export function Header() {
             <Button 
               variant="ghost" 
               size="icon" 
-              className="relative rounded-lg !p-2 !w-10 !h-10"
-              style={{
-                border: '1px solid',
-                borderImage: 'linear-gradient(137.48deg, #ffdb3b 10%, #fe53bb 45%, #8f51ea 67%, #0044ff 87%) 1',
-                borderImageSlice: 1,
-                background: 'transparent'
-              }}
+              className="relative rounded-lg !p-2 !w-10 !h-10 border-2 border-white"
               onClick={() => router.push('/cart')}
             >
               <ShoppingCart className="h-5 w-5 text-white" />
@@ -799,9 +777,6 @@ export function Header() {
                 Access navigation links, search, and user account options
               </SheetDescription>
               
-              {/* Background gradient overlay */}
-              <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 via-blue-400/10 to-blue-700/10 pointer-events-none"></div>
-              
               <div className="flex flex-col h-full relative z-10">
                 {/* Fixed Header */}
                 <div className="flex-shrink-0 py-2 px-3 border-b-2 border-white/30 bg-black/20">
@@ -827,8 +802,7 @@ export function Header() {
                 <div className="flex-1 overflow-y-auto p-6">
                   {/* Profile Search */}
                   <div className="mb-6">
-                    <div className="relative p-[2px] bg-gradient-to-r from-yellow-300 via-pink-500 to-blue-500 rounded-lg">
-                      <div className="relative bg-white rounded-lg">
+                      <div className="relative bg-white rounded-lg border-2 border-gray-200">
                         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-600" />
                         <Input
                           type="text"
@@ -852,8 +826,7 @@ export function Header() {
                     
                     {/* Mobile Search Results - Only show when there's a search query or results */}
                     {(searchQuery.length >= 1 || isSearching) && (
-                      <div className="mt-3">
-                        <div className="relative p-[2px] bg-gradient-to-r from-yellow-300 via-pink-500 to-blue-500 rounded-lg">
+                      <div className="mt-3 border-2 border-gray-200 rounded-lg">
                           <div className="bg-white rounded-lg overflow-hidden">
                             <Command>
                               <CommandList className={showAllResults ? "max-h-80 overflow-y-auto" : ""}>
@@ -891,11 +864,9 @@ export function Header() {
                                                 )}
                                               </div>
                                               <div className="flex items-center gap-2 mt-1">
-                                                <div className="relative p-[1px] bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500 rounded-full">
-                                                  <Badge variant="secondary" className="text-xs capitalize bg-white text-gray-800 border-0 rounded-full px-2 py-1">
+                                                  <Badge variant="secondary" className="text-xs capitalize bg-blue-100 text-blue-800 border border-blue-300 rounded-full px-2 py-1">
                                                     {profile.user_type}
                                                   </Badge>
-                                                </div>
                                                 {profile.location && (
                                                   <span className="text-xs text-muted-foreground truncate">{profile.location}</span>
                                                 )}
@@ -937,10 +908,7 @@ export function Header() {
                             </Command>
                           </div>
                         </div>
-                      </div>
                     )}
-                  </div>
-
                   {/* Navigation */}
                   <nav className="grid gap-2 text-base font-medium mb-8">
                     {/* Company Mobile Nav */}

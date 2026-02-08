@@ -33,21 +33,16 @@ function SkeletonCard() {
 // Skeleton for service cards
 function SkeletonServiceCard() {
   return (
-    <div className="relative group h-full">
-      {/* Colorful border skeleton */}
-      <div className="absolute -inset-0.5 bg-gradient-to-r from-pink-500 via-purple-500 to-yellow-500 rounded-xl opacity-30"></div>
-      
-      {/* Compact card skeleton */}
-      <div className="relative bg-white rounded-xl p-4 h-full flex flex-col shadow-sm border border-gray-100 space-y-3">
-        {/* Header with category and badge */}
-        <div className="flex items-center justify-between">
-          <Skeleton className="h-6 w-16 rounded-full" />
-          <Skeleton className="h-6 w-20 rounded-full" />
-        </div>
+    <div className="relative bg-white rounded-xl border-2 border-gray-200 p-4 h-full flex flex-col shadow-sm space-y-3">      
+      {/* Header with category and badge */}
+      <div className="flex items-center justify-between">
+        <Skeleton className="h-6 w-16 rounded-full" />
+        <Skeleton className="h-6 w-20 rounded-full" />
+      </div>
 
-        {/* Title in highlighted box */}
-        <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-          <Skeleton className="h-5 w-3/4 rounded-md" />
+      {/* Title in highlighted box */}
+      <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+        <Skeleton className="h-5 w-3/4 rounded-md" />
         </div>
 
         {/* Description skeleton */}
@@ -84,7 +79,6 @@ function SkeletonServiceCard() {
           <Skeleton className="h-10 w-full rounded-md" />
         </div>
       </div>
-    </div>
   )
 }
 
@@ -308,18 +302,16 @@ function SkeletonGrid({ items = 4 }: { items?: number }) {
 // CTA Skeleton
 function SkeletonCTA() {
   return (
-    <div className="mb-8 p-8 bg-gradient-to-br from-gray-900 via-gray-800 to-black rounded-2xl border border-gray-700 shadow-2xl relative overflow-hidden">
-      {/* Background gradient overlay */}
-      <div className="absolute inset-0 bg-gradient-to-r from-blue-600/10 via-purple-600/10 to-green-600/10 pointer-events-none"></div>
+    <div className="mb-8 p-8 bg-white rounded-2xl border-2 border-black shadow-2xl relative overflow-hidden">
       
       <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
         <div className="text-center md:text-left">
-          <Skeleton className="h-8 w-48 mb-3 bg-gray-600" />
-          <Skeleton className="h-4 w-80 bg-gray-700" />
+          <Skeleton className="h-8 w-48 mb-3 bg-gray-200" />
+          <Skeleton className="h-4 w-80 bg-gray-200" />
         </div>
         <div className="flex flex-col sm:flex-row gap-4">
-          <Skeleton className="h-12 w-40 rounded-lg bg-gray-600" />
-          <Skeleton className="h-12 w-48 rounded-lg bg-gray-600" />
+          <Skeleton className="h-12 w-40 rounded-lg bg-gray-200" />
+          <Skeleton className="h-12 w-48 rounded-lg bg-gray-200" />
         </div>
       </div>
     </div>

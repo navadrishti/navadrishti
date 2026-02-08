@@ -56,7 +56,7 @@ export function PlatformAnnouncements() {
   return (
     <div className="space-y-3 mb-6">
       {visibleAnnouncements.map((announcement) => (
-        <Card key={announcement.id} className="bg-gradient-to-r from-orange-50 to-yellow-50 border-orange-200">
+        <Card key={announcement.id} className="bg-orange-50 border-orange-200">
           <CardContent className="p-4">
             <div className="flex items-start gap-3">
               <Megaphone className="w-5 h-5 text-orange-600 mt-0.5 flex-shrink-0" />
