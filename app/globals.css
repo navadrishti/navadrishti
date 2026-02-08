@@ -87,11 +87,12 @@ body {
   
   /* Gradient utilities */
   .text-gradient {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-udaan-navy to-udaan-blue;
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(to right, #1e40af, #2563eb);
   }
   
   .bg-gradient-primary {
-    @apply bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500;
+    @apply bg-blue-600;
   }
   
   /* Glass morphism effect */
@@ -805,30 +806,23 @@ body {
   }
 }
 
-/* Gradient button for home and dashboard */
+/* Professional button for home and dashboard */
 .gradient-btn {
-  background: linear-gradient(
-    137.48deg,
-    #ffdb3b 10%,
-    #fe53bb 45%,
-    #8f51ea 67%,
-    #0044ff 87%
-  );
-  background-size: 300% 300%;
-  animation: gradient_301 5s ease infinite;
+  background: #2563eb;
   border: none;
-  transition: 0.5s;
+  transition: all 0.3s ease;
   position: relative;
   overflow: hidden;
   color: white;
 }
 
 .gradient-btn:hover {
-  transform: scale(1.02);
-  box-shadow: 0 8px 32px rgba(255, 219, 59, 0.3);
+  background: #1d4ed8;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
 }
 
-/* Gradient border-only button */
+/* Professional button styling */
 .gradient-border-btn {
   display: flex !important;
   justify-content: center !important;
@@ -838,20 +832,12 @@ body {
   overflow: hidden !important;
   height: auto !important;
   padding: 1.25rem 2.5rem !important;
-  background: transparent !important;
-  border: 2px solid;
-  border-image: linear-gradient(
-    137.48deg,
-    #ffdb3b 10%,
-    #fe53bb 45%,
-    #8f51ea 67%,
-    #0044ff 87%
-  ) 1;
-  border-image-slice: 1;
+  background: white !important;
+  border: 2px solid #000 !important;
   border-radius: 0.5rem !important;
-  transition: 0.5s !important;
+  transition: all 0.3s ease !important;
   position: relative;
-  color: white !important;
+  color: #000 !important;
   font-family: inherit;
   font-size: 1.125rem !important;
   font-weight: 500 !important;
@@ -860,8 +846,9 @@ body {
 }
 
 .gradient-border-btn:hover {
-  transform: scale(1.02) !important;
-  box-shadow: 0 8px 32px rgba(255, 219, 59, 0.2) !important;
+  background: #f3f4f6 !important;
+  transform: translateY(-2px) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
 }
 
 @keyframes pulse_3011 {

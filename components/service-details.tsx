@@ -206,8 +206,8 @@ export function ServiceDetails({
             <div className="flex items-start gap-3">
               <div className={`flex h-12 w-12 items-center justify-center rounded-xl shadow-md ${
                 type === 'request' 
-                  ? 'bg-gradient-to-br from-blue-500 to-blue-600' 
-                  : 'bg-gradient-to-br from-green-500 to-green-600'
+                  ? 'bg-blue-600' 
+                  : 'bg-green-600'
               }`}>
                 {type === 'request' ? (
                   <HeartHandshake size={20} className="text-white" />
@@ -429,8 +429,8 @@ export function ServiceDetails({
             <div className="flex items-center gap-3">
               <div className={`flex h-12 w-12 items-center justify-center rounded-full shadow-md ${
                 type === 'request' 
-                  ? 'bg-gradient-to-br from-blue-500 to-blue-600' 
-                  : 'bg-gradient-to-br from-green-500 to-green-600'
+                  ? 'bg-blue-600' 
+                  : 'bg-green-600'
               }`}>
                 {getProviderIcon(providerType)}
               </div>
