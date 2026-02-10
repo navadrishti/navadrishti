@@ -150,6 +150,11 @@ export function Header() {
           <nav className="flex items-center gap-1 lg:gap-2">
             {mounted && (
               <>
+            {/* Home Link - For all users */}
+            <Link href="/home" className="px-3 py-2 text-sm font-medium text-white hover:text-udaan-orange transition-colors">
+              Home
+            </Link>
+
             {/* Company Navigation */}
             {user?.user_type === 'company' && (
               <>
@@ -915,6 +920,11 @@ export function Header() {
                     )}
                   {/* Navigation */}
                   <nav className="grid gap-2 text-base font-medium mb-8">
+                    {/* Home Link - For all users */}
+                    <Link href="/home" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
+                      <span>Home</span>
+                    </Link>
+
                     {/* Company Mobile Nav */}
                     {mounted && user?.user_type === 'company' && (
                       <>
