@@ -47,7 +47,7 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
-      <Card className="w-full max-w-md shadow-xl transition-all duration-300 hover:shadow-2xl animate-fadeIn">
+      <Card className="w-full max-w-md shadow-xl transition-all duration-300 hover:shadow-2xl">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-center">Sign In</CardTitle>
           <CardDescription className="text-center">
@@ -58,7 +58,7 @@ export default function LoginPage() {
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
             {error && (
-              <Alert variant="destructive" className="animate-fadeIn">
+              <Alert variant="destructive">
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
