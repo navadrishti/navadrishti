@@ -143,16 +143,16 @@ export function Header() {
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-udaan-navy text-white">
       <div className="udaan-container flex h-16 items-center px-4 md:px-6">
-        <Link href="/home" className="flex items-center font-bold text-xl">
+        <Link href="/" className="flex items-center font-bold text-xl">
           <img src="/photos/logo.svg" alt="Navadrishti" className="h-36 w-36" />
         </Link>
         <div className="hidden md:flex md:flex-1 md:items-center md:justify-end md:gap-4 lg:gap-6">
           <nav className="flex items-center gap-1 lg:gap-2">
             {mounted && (
               <>
-            {/* Home Link - For all users */}
+            {/* Feed Link - For all users */}
             <Link href="/home" className="px-3 py-2 text-sm font-medium text-white hover:text-udaan-orange transition-colors">
-              Home
+              Feed
             </Link>
 
             {/* Company Navigation */}
@@ -920,9 +920,9 @@ export function Header() {
                     )}
                   {/* Navigation */}
                   <nav className="grid gap-2 text-base font-medium mb-8">
-                    {/* Home Link - For all users */}
+                    {/* Feed Link - For all users */}
                     <Link href="/home" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
-                      <span>Home</span>
+                      <span>Feed</span>
                     </Link>
 
                     {/* Company Mobile Nav */}
