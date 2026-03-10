@@ -75,6 +75,7 @@ interface ProductData {
   seller_state_province?: string  
   seller_pincode?: string
   seller_verification_status?: string
+  who_can_buy?: string[] | string
   avg_rating: number
   review_count: number
   total_sold: number
@@ -174,8 +175,70 @@ export default function ProductDetailsPage({ params }: { params: Promise<{ id: s
     setQuantity(prev => Math.max(1, Math.min(prev + change, product?.quantity || 1)))
   }
 
+  const checkBuyerEligibility = (): boolean => {
+    if (!product) return false
+
+    // Check if user is logged in and get token
+    const token = localStorage.getItem('token')
+    if (!token) {
+      toast.error('Please login to purchase items')
+      router.push('/login')
+      return false
+    }
+
+    // Decode token to check verification status and user type
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]))
+      const verificationStatus = payload.verification_status
+      const userType = payload.user_type
+
+      // Check if buyer is verified
+      if (verificationStatus !== 'verified') {
+        toast.error('Please complete your account verification before purchasing items')
+        router.push('/verification')
+        return false
+      }
+
+      // Parse who_can_buy array
+      let allowedBuyerTypes: string[] = []
+      try {
+        if (typeof product.who_can_buy === 'string') {
+          allowedBuyerTypes = JSON.parse(product.who_can_buy)
+        } else if (Array.isArray(product.who_can_buy)) {
+          allowedBuyerTypes = product.who_can_buy
+        }
+      } catch (e) {
+        // If parsing fails, allow all user types
+        allowedBuyerTypes = ['ngo', 'individual', 'company']
+      }
+
+      // Check eligibility based on user type
+      if (allowedBuyerTypes.length > 0 && !allowedBuyerTypes.includes(userType)) {
+        const buyerTypeLabels: Record<string, string> = {
+          ngo: 'NGOs',
+          individual: 'Individuals',
+          company: 'Companies'
+        }
+        const allowedLabels = allowedBuyerTypes.map(type => buyerTypeLabels[type] || type).join(', ')
+        toast.error(`This item can only be purchased by: ${allowedLabels}`)
+        return false
+      }
+    } catch (error) {
+      console.error('Error checking eligibility:', error)
+      toast.error('Error verifying buyer eligibility')
+      return false
+    }
+
+    return true
+  }
+
   const handleAddToCart = async () => {
     if (!product) return
+    
+    // Check buyer eligibility first
+    if (!checkBuyerEligibility()) {
+      return
+    }
     
     setAddingToCart(true)
     const success = await addToCart(product.id, quantity)
@@ -187,6 +250,11 @@ export default function ProductDetailsPage({ params }: { params: Promise<{ id: s
 
   const handleBuyNow = async () => {
     if (!product) return
+    
+    // Check buyer eligibility first
+    if (!checkBuyerEligibility()) {
+      return
+    }
     
     // Add item to cart first, then navigate to checkout
     setAddingToCart(true)

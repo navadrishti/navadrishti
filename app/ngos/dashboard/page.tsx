@@ -226,7 +226,7 @@ function NGODashboardContent() {
       if (data.success) {
         setServiceRequests(data.data || []);
         console.log('Service requests set:', data.data?.length || 0, 'items');
-        console.log('📊 Detailed service requests:', (data.data || []).map((req: any) => ({
+        console.log('Detailed service requests:', (data.data || []).map((req: any) => ({
           id: req.id,
           title: req.title,
           status: req.status,

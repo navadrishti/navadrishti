@@ -1,3 +1,13 @@
+/**
+ * Comprehensive Email Service
+ * 
+ * Provides email functionality including:
+ * - Basic email sending
+ * - Email templates (verification, password reset)
+ * - Service-specific emails (offer approval/rejection)
+ * - Order confirmation emails
+ */
+
 // Email service utility using NodeMailer
 import nodemailer from 'nodemailer';
 
@@ -282,3 +292,64 @@ export function generatePasswordResetEmail(resetUrl: string, userName?: string) 
     </html>
   `;
 }
+
+// EmailService class for OOP-style email operations  
+class EmailService {
+  private transporter: nodemailer.Transporter | null = null;
+
+  constructor() { this.initializeTransporter(); }
+
+  private initializeTransporter() {
+    if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
+      console.warn('SMTP configuration missing.');
+      return;
+    }
+    this.transporter = nodemailer.createTransporter({
+      host: process.env.SMTP_HOST,
+      port: parseInt(process.env.SMTP_PORT || '587'),
+      secure: process.env.SMTP_PORT === '465',
+      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+    });
+  }
+
+  async sendEmail({ to, subject, html, text }: EmailOptions): Promise<{ success: boolean; error?: any }> {
+    if (!this.transporter) return { success: false, error: 'Email service not configured' };
+    try {
+      await this.transporter.sendMail({
+        from: process.env.SMTP_FROM || process.env.SMTP_USER, to, subject, html, text: text || '',
+      });
+      return { success: true };
+    } catch (error) {
+      console.error('Error sending email:', error);
+      return { success: false, error };
+    }
+  }
+
+  async sendServiceOfferRejectionEmail(email: string, offerTitle: string, rejectionReason?: string) {
+    return this.sendEmail({
+      to: email,
+      subject: `Service Offer Update: ${offerTitle}`,
+      html: `<h2>Service Offer Rejected</h2><p>Your service offer "${offerTitle}" has been rejected.</p>${rejectionReason ? `<p>Reason: ${rejectionReason}</p>` : ''}`,
+      text: `Your service offer "${offerTitle}" has been rejected.${rejectionReason ? ` Reason: ${rejectionReason}` : ''}`,
+    });
+  }
+
+  async sendServiceOfferApprovalEmail(email: string, offerTitle: string) {
+    return this.sendEmail({
+      to: email,
+      subject: `Good News: ${offerTitle} is Now Live!`,
+      html: `<h2>Service Offer Approved</h2><p>Congratulations! Your service offer "${offerTitle}" has been approved!</p>`,
+      text: `Congratulations! Your service offer "${offerTitle}" has been approved!`,
+    });
+  }
+
+  async sendOrderConfirmationEmail(email: string, orderDetails: any) {
+    return this.sendEmail({
+      to: email, subject: 'Order Confirmation',
+      html: '<h2>Order Confirmation</h2><p>Thank you for your order!</p>',
+      text: 'Thank you for your order!',
+    });
+  }
+}
+
+export const emailService = new EmailService();

@@ -1,8 +1,18 @@
+/**
+ * Protected Route Components with Access Control
+ * 
+ * Exports:
+ * - ProtectedRoute: Basic protection with user type restrictions
+ * - EnhancedProtectedRoute: Advanced protection with permissions and verification
+ * - PermissionGate: Component-level permission checking
+ */
+
 'use client';
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
+import { smoothNavigate } from '@/lib/utils';
 import { 
   getUserPermissions, 
   hasPermission, 
@@ -16,6 +26,27 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Shield, AlertTriangle, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
+
+// Shared skeleton loader component
+function PageSkeleton() {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-8 animate-fadeIn">
+      <div className="max-w-7xl mx-auto space-y-6">
+        <div className="h-16 bg-white dark:bg-slate-800 rounded-lg shadow-sm animate-pulse" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="md:col-span-2 space-y-4">
+            <div className="h-64 bg-white dark:bg-slate-800 rounded-lg shadow-sm animate-pulse" />
+            <div className="h-48 bg-white dark:bg-slate-800 rounded-lg shadow-sm animate-pulse" />
+          </div>
+          <div className="space-y-4">
+            <div className="h-32 bg-white dark:bg-slate-800 rounded-lg shadow-sm animate-pulse" />
+            <div className="h-32 bg-white dark:bg-slate-800 rounded-lg shadow-sm animate-pulse" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface PermissionGateProps {
   children: React.ReactNode;
@@ -86,7 +117,7 @@ export default function ProtectedRoute({
 
     // If no user is logged in, redirect to login
     if (!user) {
-      router.push('/login');
+      smoothNavigate(router, '/login', { delay: 150 });
       return;
     }
 
@@ -95,14 +126,14 @@ export default function ProtectedRoute({
       if (!userTypes.includes(user.user_type)) {
         // Redirect to appropriate dashboard for user type
         const redirectPath = getRedirectPathForUserType(user.user_type);
-        router.push(redirectPath);
+        smoothNavigate(router, redirectPath, { delay: 150 });
         return;
       }
     }
 
     // Check verification requirements
     if (requireVerification && user.verification_status !== 'verified') {
-      router.push('/verification');
+      smoothNavigate(router, '/verification', { delay: 150 });
       return;
     }
 
@@ -116,16 +147,28 @@ export default function ProtectedRoute({
     const currentPath = window.location.pathname;
     if (!canAccessRoute(user.user_type, currentPath)) {
       const redirectPath = getRedirectPathForUserType(user.user_type);
-      router.push(redirectPath);
+      smoothNavigate(router, redirectPath, { delay: 150 });
       return;
     }
   }, [user, loading, router, userTypes, requireVerification, permission, mounted]);
 
-  // Show loading state
+  // Show loading state with skeleton
   if (!mounted || loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="animate-spin h-12 w-12 rounded-full border-4 border-primary border-t-transparent"></div>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-8 animate-fadeIn">
+        <div className="max-w-7xl mx-auto space-y-6">
+          <div className="h-16 bg-white dark:bg-slate-800 rounded-lg shadow-sm animate-pulse" />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="md:col-span-2 space-y-4">
+              <div className="h-64 bg-white dark:bg-slate-800 rounded-lg shadow-sm animate-pulse" />
+              <div className="h-48 bg-white dark:bg-slate-800 rounded-lg shadow-sm animate-pulse" />
+            </div>
+            <div className="space-y-4">
+              <div className="h-32 bg-white dark:bg-slate-800 rounded-lg shadow-sm animate-pulse" />
+              <div className="h-32 bg-white dark:bg-slate-800 rounded-lg shadow-sm animate-pulse" />
+            </div>
+          </div>
+        </div>
       </div>
     );
   }

@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { ArrowLeft, MapPin, Users, Clock, Target, Calendar, User, Building, MessageSquare, CheckCircle, XCircle, Loader2, DollarSign, AlertTriangle } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
-import { formatPrice } from '@/lib/currency'
+import { formatPrice } from '@/lib/utils'
 import { Header } from '@/components/header'
 import { ServiceDetails } from '@/components/service-details'
 import { SkeletonHeader, SkeletonAvatarText, SkeletonTextLines, SkeletonBigBox } from '@/components/ui/skeleton'
@@ -363,7 +363,7 @@ export default function ServiceOfferDetailPage() {
                     
                     <div className="p-4 bg-amber-50 border border-amber-200 rounded-md">
                       <div className="flex items-start gap-3">
-                        <div className="text-amber-600">⚠️</div>
+                        <div className="text-amber-600"></div>
                         <div>
                           <p className="text-amber-800 font-medium text-sm">Verification Required</p>
                           <p className="text-amber-700 text-sm mt-1">

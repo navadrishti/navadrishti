@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ArrowLeft, Upload, Plus, Users, User, Building } from 'lucide-react'
 import Link from 'next/link'
 import { useAuth } from '@/lib/auth-context'
-import ProtectedRoute from '@/components/enhanced-protected-route'
+import ProtectedRoute from '@/components/protected-route'
 
 const categories = [
   'Clothing & Apparel',
@@ -198,6 +198,16 @@ export default function CreateListingPage() {
       if (data.success) {
         // Clean up image previews
         imagePreviews.forEach(preview => URL.revokeObjectURL(preview));
+      } else if (data.requiresVerification) {
+        // Handle verification requirement
+        setError(data.message || 'Account verification required');
+        setLoading(false);
+        
+        // Optionally redirect to verification page after a delay
+        setTimeout(() => {
+          router.push('/verification');
+        }, 3000);
+        return;
         router.push('/marketplace');
       } else {
         const errorMsg = data.error || data.message || 'Failed to create listing';
@@ -348,7 +358,7 @@ export default function CreateListingPage() {
               {user && user.verification_status !== 'verified' && (
                 <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-md">
                   <div className="flex items-start gap-3">
-                    <div className="text-amber-600">⚠️</div>
+                    <div className="text-amber-600"></div>
                     <div>
                       <p className="text-amber-800 font-medium text-sm">Verification Required</p>
                       <p className="text-amber-700 text-sm mt-1">
@@ -656,7 +666,7 @@ export default function CreateListingPage() {
                       
                       {whoCanBuy.length === 0 && (
                         <p className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded p-2 mt-2">
-                          ⚠️ Please select at least one buyer type
+                          Please select at least one buyer type
                         </p>
                       )}
                     </div>
