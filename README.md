@@ -2,7 +2,7 @@
 
 A comprehensive platform connecting NGOs, individuals, and companies for social impact through service requests, service offerings, and a collaborative marketplace.
 
-## 🌟 Features
+## Features
 
 ### For NGOs
 - **Service Requests**: Post volunteer opportunities and assistance needs
@@ -22,7 +22,7 @@ A comprehensive platform connecting NGOs, individuals, and companies for social 
 - **Real-time Updates**: Live notifications and status tracking
 - **Mobile Responsive**: Seamless experience across all devices
 
-## 🛠️ Technology Stack
+## Technology Stack
 
 ### Frontend
 - **Next.js 15**: React-based framework with App Router
@@ -44,7 +44,7 @@ A comprehensive platform connecting NGOs, individuals, and companies for social 
 - **CI/CD**: GitHub Actions with Vercel integration
 - **Domain**: Custom domain with HTTPS
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 - Node.js 18+ 
@@ -70,7 +70,7 @@ npm run dev
 
 Visit `http://localhost:3000` to see the application.
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 Navadrishti/
@@ -88,7 +88,7 @@ Navadrishti/
 └── styles/               # Global styles
 ```
 
-## 🔐 Environment Variables
+## Environment Variables
 
 Create a `.env.local` file with the following variables:
 
@@ -108,7 +108,7 @@ JWT_SECRET=your_jwt_secret
 JWT_EXPIRES_IN=7d
 ```
 
-## 🗄️ Database Schema
+## Database Schema
 
 The application uses a PostgreSQL database with the following main tables:
 
@@ -120,7 +120,7 @@ The application uses a PostgreSQL database with the following main tables:
 - **marketplace_items**: Community marketplace listings
 - **marketplace_transactions**: Purchase and sale records
 
-## 🔄 API Documentation
+## API Documentation
 
 ### Authentication Endpoints
 - `POST /api/auth/register` - User registration
@@ -142,7 +142,7 @@ The application uses a PostgreSQL database with the following main tables:
 - `PUT /api/marketplace/[id]` - Update listing
 - `DELETE /api/marketplace/[id]` - Delete listing
 
-## 🧪 Testing
+## Testing
 
 ```bash
 # Run tests
@@ -155,7 +155,7 @@ npm run test:watch
 npm run test:coverage
 ```
 
-## 🤝 Contributing
+## Contributing
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
@@ -163,17 +163,17 @@ npm run test:coverage
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-## 📝 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - **NGO Community**: For inspiring the vision of digital social impact
 - **Open Source**: Built on the shoulders of amazing open source projects
 - **Contributors**: Everyone who helps make this platform better
 
-## 📞 Support
+## Support
 
 - **GitHub Issues**: Report bugs and request features
 - **Documentation**: Check the `/docs` folder for detailed guides
@@ -181,6 +181,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-**Building bridges between compassion and action** 🌉
-
-Made with ❤️ for social impact
+**Building bridges between compassion and action**

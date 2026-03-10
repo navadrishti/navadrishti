@@ -348,10 +348,17 @@ export default function AdminPage() {
       <div className="mb-8 flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
-          <p className="text-gray-600 mt-2">Manage service offers and system settings</p>
-          <p className="text-xs text-orange-600 mt-1">⚠️ Session expires in 30 minutes. You'll need to login again.</p>
+          <p className="text-gray-600 mt-2">Manage service offers, announcements, and system settings</p>
+          <p className="text-xs text-orange-600 mt-1">Session expires in 30 minutes. You'll need to login again.</p>
         </div>
         <div className="flex gap-3">
+          <Button
+            onClick={() => router.push('/admin/announcements')}
+            variant="outline"
+            className="border-orange-200 text-orange-700 hover:bg-orange-50"
+          >
+            Manage Announcements
+          </Button>
           <Button
             onClick={autoRejectExpiredOffers}
             disabled={autoRejectingExpired}

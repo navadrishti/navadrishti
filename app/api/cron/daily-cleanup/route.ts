@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { emailService } from '@/lib/email-service';
+import { emailService } from '@/lib/email';
 
 /**
  * Combined Daily Cleanup Cron Job

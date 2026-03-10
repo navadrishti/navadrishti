@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { smoothNavigate } from '@/lib/utils';
 import { Header } from '@/components/header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -64,9 +65,9 @@ function VerifyEmailContent() {
         setStatus('success');
         setMessage('Email verified successfully! You can now access all platform features.');
         
-        // Redirect to dashboard after 3 seconds
+        // Redirect to dashboard after 3 seconds with smooth transition
         setTimeout(() => {
-          router.push('/profile');
+          smoothNavigate(router, '/profile', { delay: 200 });
         }, 3000);
       } else {
         setStatus('error');

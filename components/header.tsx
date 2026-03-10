@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
+import { smoothNavigate } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -38,109 +39,81 @@ export function Header() {
   const { getCartItemCount } = useCart()
   const router = useRouter()
   const cartItemCount = getCartItemCount()
+  const [mounted, setMounted] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<ProfileSearchResult[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [showResults, setShowResults] = useState(false)
   const [isSearchExpanded, setIsSearchExpanded] = useState(false)
-  const [isInputFocused, setIsInputFocused] = useState(false)
   const [showAllResults, setShowAllResults] = useState(false)
+  const [isInputFocused, setIsInputFocused] = useState(false)
   const [openDropdown, setOpenDropdown] = useState<string | null>(null)
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const dropdownTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
-  // Handle dropdown hover with delay
+  useEffect(() => { setMounted(true) }, [])
+
   const handleDropdownEnter = (dropdown: string) => {
-    if (dropdownTimeoutRef.current) {
-      clearTimeout(dropdownTimeoutRef.current)
-    }
+    if (dropdownTimeoutRef.current) clearTimeout(dropdownTimeoutRef.current)
     setOpenDropdown(dropdown)
   }
 
   const handleDropdownLeave = () => {
-    dropdownTimeoutRef.current = setTimeout(() => {
-      setOpenDropdown(null)
-    }, 150)
+    dropdownTimeoutRef.current = setTimeout(() => setOpenDropdown(null), 150)
   }
 
   const handleDropdownStay = () => {
-    if (dropdownTimeoutRef.current) {
-      clearTimeout(dropdownTimeoutRef.current)
-    }
+    if (dropdownTimeoutRef.current) clearTimeout(dropdownTimeoutRef.current)
   }
   
-  // Profile search functionality
   const searchProfiles = async (query: string) => {
-    if (!query.trim()) {
-      setSearchResults([])
-      return
-    }
+    if (!query.trim()) { setSearchResults([]); return }
 
     setIsSearching(true)
     try {
-      const response = await fetch(`/api/search/profiles?q=${encodeURIComponent(query.trim())}&limit=8`)
-      if (response.ok) {
-        const data = await response.json()
-        setSearchResults(data.profiles || [])
-      } else {
-        setSearchResults([])
-      }
-    } catch (error) {
-      console.error('Profile search error:', error)
+      const res = await fetch(`/api/search/profiles?q=${encodeURIComponent(query.trim())}&limit=8`)
+      const data = await res.json()
+      setSearchResults(res.ok ? data.profiles || [] : [])
+    } catch (err) {
       setSearchResults([])
     } finally {
       setIsSearching(false)
     }
   }
 
-  // Debounced search
   const handleSearchChange = (value: string) => {
     setSearchQuery(value)
+    setShowResults(true)
     
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current)
-    }
-
-    // Show dropdown immediately when typing
-    if (isInputFocused) {
-      setShowResults(true)
-    }
-
-    searchTimeoutRef.current = setTimeout(() => {
-      searchProfiles(value)
-    }, 150) // Reduced delay from 300ms to 150ms
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current)
+    searchTimeoutRef.current = setTimeout(() => searchProfiles(value), 150)
   }
 
-  // Handle profile selection
   const handleProfileSelect = (profile: ProfileSearchResult) => {
     setSearchQuery('')
     setSearchResults([])
     setShowResults(false)
+    setShowAllResults(false)
     router.push(`/profile/${profile.id}`)
   }
 
-  // Clear search
   const clearSearch = () => {
     setSearchQuery('')
     setSearchResults([])
     setShowResults(false)
-    setIsSearchExpanded(false)
+    setShowAllResults(false)
   }
 
-  // Get user type icon
   const getUserTypeIcon = (userType: string) => {
-    switch (userType) {
-      case 'individual': return '👤'
-      case 'ngo': return '🏢'
-      case 'company': return '🏭'
-      default: return '👤'
-    }
+    const icons = { individual: '👤', ngo: '🏢', company: '🏭' }
+    return icons[userType as keyof typeof icons] || '👤'
   }
   
-  const handleLogout = () => {
+  const handleLogout = async () => {
     logout()
-    router.push('/home')
-  }  // Generate initials for avatar fallback
+    await smoothNavigate(router, '/home', { delay: 100 })
+  }
+
   const getInitials = (name: string) => {
     if (!name) return "U"
     const names = name.split(' ')
@@ -175,6 +148,13 @@ export function Header() {
         </Link>
         <div className="hidden md:flex md:flex-1 md:items-center md:justify-end md:gap-4 lg:gap-6">
           <nav className="flex items-center gap-1 lg:gap-2">
+            {mounted && (
+              <>
+            {/* Feed Link - For all users */}
+            <Link href="/home" className="px-3 py-2 text-sm font-medium text-white hover:text-udaan-orange transition-colors">
+              Feed
+            </Link>
+
             {/* Company Navigation */}
             {user?.user_type === 'company' && (
               <>
@@ -448,8 +428,8 @@ export function Header() {
                       </Link>
                       <Link href={`/profile/${user.id}?tab=history`} className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
                         <div>
-                          <div className="font-medium">Volunteer History</div>
-                          <div className="text-xs text-gray-500">Track your contributions</div>
+                          <div className="font-medium">Recent Activity</div>
+                          <div className="text-xs text-gray-500">Track your activity</div>
                         </div>
                       </Link>
                       <Link href={`/profile/${user.id}?tab=achievements`} className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
@@ -539,6 +519,8 @@ export function Header() {
                 </div>
               )}
             </div>
+              </>
+            )}
           </nav>
           <div className="relative hidden md:block">
             <div className="relative flex items-center">
@@ -546,26 +528,20 @@ export function Header() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="relative rounded-lg !p-2 !w-10 !h-10"
-                  style={{
-                    border: '1px solid',
-                    borderImage: 'linear-gradient(137.48deg, #ffdb3b 10%, #fe53bb 45%, #8f51ea 67%, #0044ff 87%) 1',
-                    borderImageSlice: 1,
-                    background: 'transparent'
-                  }}
+                  className="relative rounded-lg !p-2 !w-10 !h-10 border-2 border-white hover:bg-white/10"
                   onClick={() => setIsSearchExpanded(true)}
                 >
                   <Search className="h-5 w-5 text-white" />
                 </Button>
               ) : (
                 <div className="relative flex items-center z-50">
-                  <div className="relative p-[2px] bg-gradient-to-r from-yellow-300 via-pink-500 to-blue-500 rounded-lg">
-                    <div className="relative bg-white rounded-lg">
+                  <div className="relative border-2 border-gray-300 rounded-lg overflow-hidden">
+                    <div className="relative bg-white">
                       <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-600 pointer-events-none z-10" />
                       <Input
                         type="text"
                         placeholder="Search people, NGOs, companies..."
-                        className="w-64 md:w-80 lg:w-96 rounded-lg bg-white border-0 pl-8 pr-12 text-black placeholder:text-gray-500 focus:ring-0 relative z-20"
+                        className="w-64 md:w-80 lg:w-96 bg-white border-0 pl-8 pr-12 text-black placeholder:text-gray-500 focus:ring-0 relative z-20"
                         value={searchQuery}
                         onChange={(e) => handleSearchChange(e.target.value)}
                         onFocus={() => {
@@ -614,13 +590,12 @@ export function Header() {
             {/* Search Results Popover */}
             {showResults && isSearchExpanded && (
               <div 
-                className="absolute top-full left-0 mt-2 z-50" 
+                className="absolute top-full left-0 mt-1 z-50" 
                 data-search-dropdown="true"
                 onMouseDown={(e) => e.preventDefault()} // Prevent input blur when clicking dropdown
               >
-                <div className="w-64 md:w-80 lg:w-96 p-0 border-0">
-                  <div className="relative p-[2px] bg-gradient-to-r from-yellow-300 via-pink-500 to-blue-500 rounded-lg">
-                    <div className="bg-white rounded-lg overflow-hidden">
+                <div className="w-64 md:w-80 lg:w-96 p-0 border-2 border-gray-300 rounded-lg shadow-lg overflow-hidden">
+                    <div className="bg-white">
                       <Command>
                         <CommandList className={showAllResults ? "max-h-80 overflow-y-auto" : ""}>
                           {isSearching ? (
@@ -657,11 +632,9 @@ export function Header() {
                                           )}
                                         </div>
                                         <div className="flex items-center gap-2 mt-1">
-                                          <div className="relative p-[1px] bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500 rounded-full">
-                                            <Badge variant="secondary" className="text-xs capitalize bg-white text-gray-800 border-0 rounded-full px-2 py-1">
-                                              {profile.user_type}
-                                            </Badge>
-                                          </div>
+                                          <Badge variant="secondary" className="text-xs capitalize text-gray-800 border-gray-300 rounded-full px-2 py-1">
+                                            {profile.user_type}
+                                          </Badge>
                                           {profile.location && (
                                             <span className="text-xs text-muted-foreground truncate">{profile.location}</span>
                                           )}
@@ -709,21 +682,15 @@ export function Header() {
                     </div>
                   </div>
                 </div>
-              </div>
             )}
-          </div>          {user ? (
+          </div>          
+          {mounted && user ? (
             <>
               {/* Cart Icon with Badge - Only for logged in users */}
               <Button 
                 variant="ghost" 
                 size="icon" 
-                className="relative rounded-lg !p-2 !w-10 !h-10"
-                style={{
-                  border: '1px solid',
-                  borderImage: 'linear-gradient(137.48deg, #ffdb3b 10%, #fe53bb 45%, #8f51ea 67%, #0044ff 87%) 1',
-                  borderImageSlice: 1,
-                  background: 'transparent'
-                }}
+                className="relative rounded-lg !p-2 !w-10 !h-10 border-2 border-white hover:bg-white/10"
                 onClick={() => router.push('/cart')}
               >
                 <ShoppingCart className="h-5 w-5 text-white" />
@@ -770,7 +737,7 @@ export function Header() {
                 </DropdownMenuContent>
               </DropdownMenu>
             </>
-          ) : (
+          ) : mounted ? (
             <div className="flex items-center gap-3">
               <Link href="/login">
                 <Button variant="ghost" className="flex items-center gap-2 text-white hover:text-udaan-orange hover:bg-white/10">
@@ -781,20 +748,14 @@ export function Header() {
                 <Button className="bg-udaan-orange hover:bg-udaan-orange/90 border-none text-white">Get Started</Button>
               </Link>
             </div>
-          )}
+          ) : null}
         </div>
         <div className="flex md:hidden flex-1 items-center justify-end gap-2">
-          {user && (
+          {mounted && user && (
             <Button 
               variant="ghost" 
               size="icon" 
-              className="relative rounded-lg !p-2 !w-10 !h-10"
-              style={{
-                border: '1px solid',
-                borderImage: 'linear-gradient(137.48deg, #ffdb3b 10%, #fe53bb 45%, #8f51ea 67%, #0044ff 87%) 1',
-                borderImageSlice: 1,
-                background: 'transparent'
-              }}
+              className="relative rounded-lg !p-2 !w-10 !h-10 border-2 border-white hover:bg-white/10"
               onClick={() => router.push('/cart')}
             >
               <ShoppingCart className="h-5 w-5 text-white" />
@@ -814,26 +775,23 @@ export function Header() {
                 size="icon" 
                 className="text-white hover:bg-white/10" 
               >
-                <Menu className="h-5 w-5" />
+                <Menu className="h-5 w-5 text-white" />
                 <span className="sr-only">Toggle menu</span>
               </Button>
             </SheetTrigger>
 
-            <SheetContent side="right" className="bg-gradient-to-br from-black via-gray-900 to-black border-l border-gray-800 w-full p-0">
+            <SheetContent side="right" className="bg-blue-600 border-l border-blue-700 w-full p-0 [&>button]:hidden">
               <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
               <SheetDescription className="sr-only">
                 Access navigation links, search, and user account options
               </SheetDescription>
               
-              {/* Background gradient overlay */}
-              <div className="absolute inset-0 bg-gradient-to-r from-purple-600/5 via-pink-600/5 to-indigo-600/5 pointer-events-none"></div>
-              
               <div className="flex flex-col h-full relative z-10">
                 {/* Fixed Header */}
-                <div className="flex-shrink-0 p-6 border-b border-white/10">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center font-bold text-xl text-white">
-                      <img src="/photos/logo.svg" alt="Navadrishti" className="h-36 w-36" />
+                <div className="flex-shrink-0 py-2 px-3 border-b-2 border-white/30 bg-black/20">
+                  <div className="flex items-center justify-between h-12">
+                    <div className="flex items-center font-bold text-xl text-white -my-8">
+                      <img src="/photos/logo.svg" alt="Navadrishti" className="h-32 w-32" />
                     </div>
                     
                     <SheetClose asChild>
@@ -853,13 +811,12 @@ export function Header() {
                 <div className="flex-1 overflow-y-auto p-6">
                   {/* Profile Search */}
                   <div className="mb-6">
-                    <div className="relative p-[2px] bg-gradient-to-r from-yellow-300 via-pink-500 to-blue-500 rounded-lg">
-                      <div className="relative bg-white rounded-lg">
+                      <div className="relative bg-white rounded-lg border-2 border-gray-200 overflow-hidden">
                         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-600" />
                         <Input
                           type="text"
                           placeholder="Search people, NGOs, companies..."
-                          className="w-full rounded-lg bg-white border-0 pl-8 pr-10 text-black placeholder:text-gray-500 focus:ring-0"
+                          className="w-full bg-white border-0 pl-8 pr-10 text-black placeholder:text-gray-500 focus:ring-0"
                           value={searchQuery}
                           onChange={(e) => handleSearchChange(e.target.value)}
                         />
@@ -878,9 +835,8 @@ export function Header() {
                     
                     {/* Mobile Search Results - Only show when there's a search query or results */}
                     {(searchQuery.length >= 1 || isSearching) && (
-                      <div className="mt-3">
-                        <div className="relative p-[2px] bg-gradient-to-r from-yellow-300 via-pink-500 to-blue-500 rounded-lg">
-                          <div className="bg-white rounded-lg overflow-hidden">
+                      <div className="mt-3 border-2 border-gray-200 rounded-lg overflow-hidden">
+                          <div className="bg-white">
                             <Command>
                               <CommandList className={showAllResults ? "max-h-80 overflow-y-auto" : ""}>
                                 {isSearching ? (
@@ -917,11 +873,9 @@ export function Header() {
                                                 )}
                                               </div>
                                               <div className="flex items-center gap-2 mt-1">
-                                                <div className="relative p-[1px] bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500 rounded-full">
-                                                  <Badge variant="secondary" className="text-xs capitalize bg-white text-gray-800 border-0 rounded-full px-2 py-1">
+                                                  <Badge variant="secondary" className="text-xs capitalize bg-blue-100 text-blue-800 border border-blue-300 rounded-full px-2 py-1">
                                                     {profile.user_type}
                                                   </Badge>
-                                                </div>
                                                 {profile.location && (
                                                   <span className="text-xs text-muted-foreground truncate">{profile.location}</span>
                                                 )}
@@ -963,17 +917,19 @@ export function Header() {
                             </Command>
                           </div>
                         </div>
-                      </div>
                     )}
-                  </div>
-
                   {/* Navigation */}
                   <nav className="grid gap-2 text-base font-medium mb-8">
+                    {/* Feed Link - For all users */}
+                    <Link href="/home" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
+                      <span>Feed</span>
+                    </Link>
+
                     {/* Company Mobile Nav */}
-                    {user?.user_type === 'company' && (
+                    {mounted && user?.user_type === 'company' && (
                       <>
                         <div className="mt-2 mb-1">
-                          <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3">CSR Hub</div>
+                          <div className="text-xs font-bold text-yellow-300 uppercase tracking-wider px-3">CSR Hub</div>
                         </div>
                         <Link href="/companies/csr-agent" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
                           <span>AI CSR Agent</span>
@@ -989,7 +945,7 @@ export function Header() {
                         </Link>
 
                         <div className="mt-3 mb-1">
-                          <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3">Services</div>
+                          <div className="text-xs font-bold text-yellow-300 uppercase tracking-wider px-3">Services</div>
                         </div>
                         <Link href="/service-requests" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
                           <span>Service Requests</span>
@@ -1001,10 +957,10 @@ export function Header() {
                     )}
 
                     {/* NGO Mobile Nav */}
-                    {user?.user_type === 'ngo' && (
+                    {mounted && user?.user_type === 'ngo' && (
                       <>
                         <div className="mt-2 mb-1">
-                          <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3">AI Tools</div>
+                          <div className="text-xs font-bold text-yellow-300 uppercase tracking-wider px-3">AI Tools</div>
                         </div>
                         <Link href="/ngos/ai-assistant" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
                           <span>Proposal Generator</span>
@@ -1017,7 +973,7 @@ export function Header() {
                         </Link>
 
                         <div className="mt-3 mb-1">
-                          <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3">CSR & Funding</div>
+                          <div className="text-xs font-bold text-yellow-300 uppercase tracking-wider px-3">CSR & Funding</div>
                         </div>
                         <Link href="/csr-campaigns" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
                           <span>Browse CSR Campaigns</span>
@@ -1042,10 +998,10 @@ export function Header() {
                     )}
 
                     {/* Individual Mobile Nav */}
-                    {user?.user_type === 'individual' && (
+                    {mounted && user?.user_type === 'individual' && (
                       <>
                         <div className="mt-2 mb-1">
-                          <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3">Opportunities</div>
+                          <div className="text-xs font-bold text-yellow-300 uppercase tracking-wider px-3">Opportunities</div>
                         </div>
                         <Link href="/service-requests" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
                           <span>Service Requests</span>
@@ -1058,13 +1014,13 @@ export function Header() {
                         </Link>
 
                         <div className="mt-3 mb-1">
-                          <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3">My Impact</div>
+                          <div className="text-xs font-bold text-yellow-300 uppercase tracking-wider px-3">My Impact</div>
                         </div>
                         <Link href={`/profile/${user.id}`} className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
                           <span>Impact Profile</span>
                         </Link>
                         <Link href={`/profile/${user.id}?tab=history`} className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
-                          <span>Volunteer History</span>
+                          <span>Recent Activity</span>
                         </Link>
                         <Link href={`/profile/${user.id}?tab=achievements`} className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
                           <span>Achievements</span>
@@ -1089,17 +1045,17 @@ export function Header() {
 
                     {/* Marketplace - For all users */}
                     <div className="mt-3 mb-1">
-                      <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3">Marketplace</div>
+                      <div className="text-xs font-bold text-yellow-300 uppercase tracking-wider px-3">Marketplace</div>
                     </div>
                     <Link href="/marketplace" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
                       <span>Browse Products</span>
                     </Link>
-                    {user?.user_type === 'ngo' && (
+                    {mounted && user?.user_type === 'ngo' && (
                       <Link href="/marketplace/fundraising" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
                         <span>Fundraising</span>
                       </Link>
                     )}
-                    {user && (
+                    {mounted && user && (
                       <>
                         <Link href={`${getDashboardLink()}?tab=marketplace&subtab=selling`} className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
                           <span>My Listings</span>
@@ -1126,7 +1082,7 @@ export function Header() {
 
                   {/* User Section */}
                   <div className="border-t border-white/20 pt-6">
-                    {user ? (
+                    {mounted && user ? (
                       <div>
                         <div className="flex items-center gap-4 mb-6">
                           <Avatar className="h-12 w-12">
@@ -1135,7 +1091,7 @@ export function Header() {
                           </Avatar>
                           <div className="grid gap-1">
                             <p className="text-lg font-medium text-white">{user.name}</p>
-                            <p className="text-sm text-gray-300">{user.email}</p>
+                            <p className="text-sm text-white/80">{user.email}</p>
                           </div>
                         </div>
                         

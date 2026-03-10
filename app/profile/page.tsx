@@ -153,6 +153,7 @@ function PhoneVerificationSection({ phone, onVerificationComplete }: {
 
 export default function ProfilePage() {
   const { user, updateUser, refreshUser } = useAuth();
+  const [mounted, setMounted] = useState(false);
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [verificationData, setVerificationData] = useState<any>(null);
@@ -199,6 +200,10 @@ export default function ProfilePage() {
   const [editableEmail, setEditableEmail] = useState('');
   const [editableName, setEditableName] = useState('');
   const [ngoSize, setNgoSize] = useState('');
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (user) {
@@ -360,8 +365,14 @@ export default function ProfilePage() {
     try {
       setLoading(true);
       
+      if (!user?.id) {
+        toast.error('User not authenticated');
+        setLoading(false);
+        return;
+      }
+      
       const profileData: any = {
-        userId: user?.id,
+        userId: user.id,
       };
       
       // Include profile image URL if available
@@ -377,10 +388,12 @@ export default function ProfilePage() {
       if (pincode !== undefined) profileData.pincode = pincode;
       if (country !== undefined) profileData.country = country;
       if (phone !== undefined) profileData.phone = phone;
-      if (bio !== undefined) profileData.bio = bio;
       
       // User type specific fields
       const profileDataFields: any = {};
+      
+      // Bio goes in profile_data for all user types
+      if (bio !== undefined) profileDataFields.bio = bio;
       
       if (user?.user_type === 'individual') {
         if (age) profileDataFields.age = parseInt(age);
@@ -413,15 +426,22 @@ export default function ProfilePage() {
         body: JSON.stringify(profileData),
       });
 
+      let data;
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        throw new Error(`Server error: ${response.status}`);
+      }
+
       if (!response.ok) {
-        throw new Error('Failed to update profile');
+        throw new Error(data.error || 'Failed to update profile');
       }
 
       await fetchProfile();
       toast.success('Profile saved successfully!');
     } catch (error) {
-      console.error('Error saving profile:', error);
-      toast.error('Failed to save profile. Please try again.');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to save profile. Please try again.';
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -569,6 +589,22 @@ export default function ProfilePage() {
       setUploading(false);
     }
   };
+
+  if (!mounted) {
+    return (
+      <div className="flex min-h-screen flex-col">
+        <Header />
+        <main className="flex-1 px-6 py-8 md:px-10">
+          <div className="max-w-4xl mx-auto">
+            <div className="mb-8">
+              <div className="h-8 bg-gray-200 animate-pulse rounded w-1/3 mb-2"></div>
+              <div className="h-4 bg-gray-200 animate-pulse rounded w-1/2"></div>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   if (!user) {
     return (

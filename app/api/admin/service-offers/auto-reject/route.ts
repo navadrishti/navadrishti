@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { emailService } from '@/lib/email-service';
+import { emailService } from '@/lib/email';
 
 // Auto-reject service offers that have been pending for more than 5 days
 export async function POST(request: NextRequest) {
