@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { ImageCarousel } from "@/components/ui/image-carousel"
 import { Star, Plus, Minus, MapPin, Truck, ShoppingCart, Trash2, User, Building, Users, Shield } from "lucide-react"
 import { VerificationBadge } from "./verification-badge"
-import { formatPrice } from "@/lib/currency"
+import { formatPrice } from "@/lib/utils"
 import { ProductDetails } from "./product-details"
 import { useCart } from "@/lib/cart-context"
 import { notify } from "@/lib/notifications"
@@ -106,19 +106,6 @@ export function ProductCard({
     e.stopPropagation();
     if (!item || !isMarketplaceCard) return;
     
-    // Check buyer eligibility first
-    let allowedBuyerTypes: string[] = [];
-    try {
-      if (typeof item.who_can_buy === 'string') {
-        allowedBuyerTypes = JSON.parse(item.who_can_buy);
-      } else if (Array.isArray(item.who_can_buy)) {
-        allowedBuyerTypes = item.who_can_buy;
-      }
-    } catch (e) {
-      // If parsing fails, allow all user types
-      allowedBuyerTypes = ['ngo', 'individual', 'company'];
-    }
-
     // Get current user from localStorage or context
     const token = localStorage.getItem('token');
     if (!token) {
@@ -127,10 +114,31 @@ export function ProductCard({
       return;
     }
 
-    // Decode token to get user type (basic JWT decode)
+    // Decode token to check verification and user type
     try {
       const payload = JSON.parse(atob(token.split('.')[1]));
       const userType = payload.user_type;
+      const verificationStatus = payload.verification_status;
+
+      // Check if buyer is verified
+      if (verificationStatus !== 'verified') {
+        notify.error('Please complete your account verification before purchasing items');
+        router.push('/verification');
+        return;
+      }
+
+      // Check buyer eligibility based on who_can_buy
+      let allowedBuyerTypes: string[] = [];
+      try {
+        if (typeof item.who_can_buy === 'string') {
+          allowedBuyerTypes = JSON.parse(item.who_can_buy);
+        } else if (Array.isArray(item.who_can_buy)) {
+          allowedBuyerTypes = item.who_can_buy;
+        }
+      } catch (e) {
+        // If parsing fails, allow all user types
+        allowedBuyerTypes = ['ngo', 'individual', 'company'];
+      }
 
       // Check eligibility
       if (allowedBuyerTypes.length > 0 && !allowedBuyerTypes.includes(userType)) {
@@ -145,6 +153,8 @@ export function ProductCard({
       }
     } catch (error) {
       console.error('Error checking eligibility:', error);
+      notify.error('Error verifying account status');
+      return;
     }
 
     // Add to cart with quantity 1 and redirect to cart
@@ -266,7 +276,7 @@ export function ProductCard({
         
         <CardFooter className="border-t border-opacity-20 p-4 mt-auto">
           <Button 
-            className="w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 transition-all duration-500 ease-in-out hover:shadow-lg"
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold transition-all duration-300 hover:shadow-lg"
             onClick={onViewDetails}
           >
             Add to Cart
@@ -278,11 +288,7 @@ export function ProductCard({
 
   // Enhanced marketplace card
   return (
-    <div className="relative group h-full">
-      {/* Colorful border only */}
-      <div className="absolute -inset-0.5 bg-gradient-to-r from-pink-500 via-purple-500 to-yellow-500 rounded-xl opacity-60 group-hover:opacity-100 transition duration-300"></div>
-      
-      <Card className="relative overflow-hidden group h-full flex flex-col hover:shadow-xl transition-all duration-300 border-0 shadow-md bg-white rounded-xl">
+    <Card className="relative overflow-hidden group h-full flex flex-col hover:shadow-xl transition-all duration-300 border-2 border-gray-200 hover:border-blue-500 shadow-md bg-white rounded-xl">
       
       {/* SOLD Overlay - Show when item is sold out */}
       {(item?.status === 'sold' || item?.quantity === 0) && (
@@ -300,7 +306,7 @@ export function ProductCard({
       
       {/* Image Section with Gallery - Clickable to product details */}
       <CardHeader className="p-0 relative cursor-pointer" onClick={handleCardClick}>
-        <div className="relative h-56 overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100 rounded-t-xl">
+        <div className="relative h-56 overflow-hidden bg-gray-100 rounded-t-xl">
           {(() => {
             // Safely parse images - handle both string and array formats
             // Support Cloudinary URLs stored in the database
@@ -672,6 +678,57 @@ export function ProductCard({
                 <Button 
                   className="flex-1 bg-blue-600 hover:bg-blue-700"
                   onClick={async () => {
+                    // Get current user from localStorage
+                    const token = localStorage.getItem('token');
+                    if (!token) {
+                      notify.error('Please login to purchase items');
+                      router.push('/login');
+                      return;
+                    }
+
+                    // Decode token to check verification and user type
+                    try {
+                      const payload = JSON.parse(atob(token.split('.')[1]));
+                      const userType = payload.user_type;
+                      const verificationStatus = payload.verification_status;
+
+                      // Check if buyer is verified
+                      if (verificationStatus !== 'verified') {
+                        notify.error('Please complete your account verification before purchasing items');
+                        router.push('/verification');
+                        return;
+                      }
+
+                      // Check buyer eligibility
+                      let allowedBuyerTypes: string[] = [];
+                      try {
+                        if (typeof item.who_can_buy === 'string') {
+                          allowedBuyerTypes = JSON.parse(item.who_can_buy);
+                        } else if (Array.isArray(item.who_can_buy)) {
+                          allowedBuyerTypes = item.who_can_buy;
+                        }
+                      } catch (e) {
+                        // If parsing fails, allow all user types
+                        allowedBuyerTypes = ['ngo', 'individual', 'company'];
+                      }
+
+                      // Check eligibility
+                      if (allowedBuyerTypes.length > 0 && !allowedBuyerTypes.includes(userType)) {
+                        const buyerTypeLabels: Record<string, string> = {
+                          ngo: 'NGOs',
+                          individual: 'Individuals',
+                          company: 'Companies'
+                        };
+                        const allowedLabels = allowedBuyerTypes.map(type => buyerTypeLabels[type] || type).join(', ');
+                        notify.error(`This item can only be purchased by: ${allowedLabels}`);
+                        return;
+                      }
+                    } catch (error) {
+                      console.error('Error checking eligibility:', error);
+                      notify.error('Error verifying account status');
+                      return;
+                    }
+
                     setAddingToCart(true);
                     const success = await addToCart(item.id, quantity);
                     if (success) {
@@ -695,7 +752,6 @@ export function ProductCard({
         </Dialog>
       )}
     </Card>
-    </div>
   )
 }
 

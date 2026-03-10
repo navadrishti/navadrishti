@@ -386,7 +386,7 @@ export default function ServiceRequestDetailPage() {
                     
                     <div className="p-4 bg-amber-50 border border-amber-200 rounded-md">
                       <div className="flex items-start gap-3">
-                        <div className="text-amber-600">⚠️</div>
+                        <div className="text-amber-600"></div>
                         <div>
                           <p className="text-amber-800 font-medium text-sm">Verification Required</p>
                           <p className="text-amber-700 text-sm mt-1">
