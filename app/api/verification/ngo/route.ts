@@ -9,6 +9,11 @@ function isValidGSTNumber(gstNumber: string): boolean {
   return gstRegex.test(gstNumber);
 }
 
+function isValidPANNumber(panNumber: string): boolean {
+  const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
+  return panRegex.test(panNumber);
+}
+
 export async function POST(req: NextRequest) {
   try {
     const authHeader = req.headers.get('authorization');
@@ -168,9 +173,8 @@ async function verifyGST(userId: number, gstNumber: string) {
 }
 
 async function verifyNGOPAN(userId: number, panNumber: string) {
-  // Validate PAN number format (using DigiLocker service validation)
-  const digiLockerService = new (require('@/lib/digilocker').DigiLockerService)();
-  if (!digiLockerService.validatePANNumber(panNumber)) {
+  // Validate PAN number format
+  if (!isValidPANNumber(panNumber)) {
     return NextResponse.json({ error: 'Invalid PAN number format' }, { status: 400 });
   }
 

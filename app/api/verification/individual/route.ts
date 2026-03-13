@@ -129,8 +129,7 @@ async function verifyAadhaar(userId: number, aadhaarNumber: string) {
     return NextResponse.json({ error: 'Invalid Aadhaar number format' }, { status: 400 });
   }
 
-  // In a real implementation, you would use the DigiLocker token to fetch data
-  // For now, we'll simulate the verification process
+  // Manual verification flow: record provided details and mark submitted checks
   
   const verification = await db.individualVerifications.findByUserId(userId);
   
