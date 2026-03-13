@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { smoothNavigate } from '@/lib/utils';
@@ -9,230 +9,333 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { 
-  Shield, 
-  CheckCircle, 
-  Clock, 
-  AlertTriangle, 
-  FileText, 
-  Building, 
-  User,
-  ExternalLink,
-  ArrowLeft
-} from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { ArrowLeft, AlertTriangle, CheckCircle, FileText, Shield, Upload, User } from 'lucide-react';
 
-interface VerificationStatus {
-  verified: boolean;
-  status: 'unverified' | 'pending' | 'verified' | 'rejected';
-  verifiedAt?: string;
-  level?: 'basic' | 'intermediate' | 'advanced';
+type VerificationCategory = 'individual' | 'ngo' | 'company';
+type Step = 1 | 2;
+type IndividualIdType = 'aadhaar' | 'pan' | 'voter-id' | 'driving-license';
+type NgoRegistrationType = 'Trust' | 'Society' | 'Section 8';
+
+type DocumentKey =
+  | 'individualOptionalId'
+  | 'ngoRegistrationCertificate'
+  | 'ngoPanCard'
+  | 'ngoAddressProof'
+  | 'ngoTrustOrMoaAoa'
+  | 'ngoFcraPhoto'
+  | 'companyIncorporationCertificate'
+  | 'companyPanCard'
+  | 'companyGstCertificate'
+  | 'companyAddressProof'
+  | 'companyBoardResolution';
+
+const documentLabels: Record<DocumentKey, string> = {
+  individualOptionalId: 'Optional ID Upload (Aadhaar / PAN / Voter ID / Driving License)',
+  ngoRegistrationCertificate: 'Registration Certificate (Trust / Society / Section 8)',
+  ngoPanCard: 'PAN Card of NGO',
+  ngoAddressProof: 'Address Proof (utility bill / rent agreement / bank letter)',
+  ngoTrustOrMoaAoa: 'Trust Deed / MOA / AOA',
+  ngoFcraPhoto: 'FCRA Registration Document Photo',
+  companyIncorporationCertificate: 'Certificate of Incorporation',
+  companyPanCard: 'PAN Card of Company',
+  companyGstCertificate: 'GST Certificate (if applicable)',
+  companyAddressProof: 'Company Address Proof',
+  companyBoardResolution: 'Board Resolution (optional for large CSR projects)'
+};
+
+interface VerificationFormData {
+  entityName: string;
+  contactNumber: string;
+  email: string;
+  category: VerificationCategory;
+  panNumber: string;
+  registrationNumber: string;
+  ngoRegistrationType: NgoRegistrationType;
+  ngoFcraRegistrationNumber: string;
+  ngoFcraExpiryDate: string;
+  ngoAssociationNumber: string;
+  companyCinNumber: string;
+  companyGstApplicable: boolean;
+  individualIdType: IndividualIdType;
 }
 
-interface IndividualVerification extends VerificationStatus {
-  aadhaarVerified: boolean;
-  panVerified: boolean;
-}
+const allDocumentKeys: DocumentKey[] = [
+  'individualOptionalId',
+  'ngoRegistrationCertificate',
+  'ngoPanCard',
+  'ngoAddressProof',
+  'ngoTrustOrMoaAoa',
+  'ngoFcraPhoto',
+  'companyIncorporationCertificate',
+  'companyPanCard',
+  'companyGstCertificate',
+  'companyAddressProof',
+  'companyBoardResolution'
+];
 
-interface NGOVerification extends VerificationStatus {
-  gstVerified: boolean;
-  panVerified: boolean;
-  organizationName?: string;
-  registrationNumber?: string;
-  registrationType?: string;
-}
-
-interface CompanyVerification extends VerificationStatus {
-  gstVerified: boolean;
-  panVerified: boolean;
-  companyName?: string;
-  cinNumber?: string;
-  companyType?: string;
-}
-
-export default function VerificationDashboard() {
-  const { user } = useAuth();
+export default function VerificationPage() {
   const router = useRouter();
-  const [verificationData, setVerificationData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+  const { user } = useAuth();
+
+  const [currentStep, setCurrentStep] = useState<Step>(1);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  // Form states for different user types
-  const [individualForm, setIndividualForm] = useState({
-    aadhaarNumber: '',
-    panNumber: ''
-  });
+  const category: VerificationCategory = user?.user_type === 'ngo' ? 'ngo' : user?.user_type === 'company' ? 'company' : 'individual';
 
-  const [ngoForm, setNgoForm] = useState({
-    organizationName: '',
-    gstNumber: '',
+  const [formData, setFormData] = useState<VerificationFormData>({
+    entityName: user?.name || '',
+    contactNumber: user?.phone || '',
+    email: user?.email || '',
+    category,
     panNumber: '',
     registrationNumber: '',
-    registrationType: 'Trust'
+    ngoRegistrationType: 'Trust',
+    ngoFcraRegistrationNumber: '',
+    ngoFcraExpiryDate: '',
+    ngoAssociationNumber: '',
+    companyCinNumber: '',
+    companyGstApplicable: false,
+    individualIdType: 'aadhaar'
   });
 
-  const [companyForm, setCompanyForm] = useState({
-    companyName: '',
-    gstNumber: '',
-    panNumber: '',
-    cinNumber: '',
-    companyType: 'Private Limited'
-  });
+  const [documentFiles, setDocumentFiles] = useState<Record<DocumentKey, File | null>>(
+    allDocumentKeys.reduce((acc, key) => {
+      acc[key] = null;
+      return acc;
+    }, {} as Record<DocumentKey, File | null>)
+  );
 
-  useEffect(() => {
-    if (user) {
-      fetchVerificationStatus();
+  const [uploadedUrls, setUploadedUrls] = useState<Record<DocumentKey, string>>(
+    allDocumentKeys.reduce((acc, key) => {
+      acc[key] = '';
+      return acc;
+    }, {} as Record<DocumentKey, string>)
+  );
+
+  const requiredDocs = useMemo(() => {
+    if (formData.category === 'individual') {
+      return [] as DocumentKey[];
     }
-  }, [user]);
 
-  const fetchVerificationStatus = async () => {
+    if (formData.category === 'ngo') {
+      return [
+        'ngoRegistrationCertificate',
+        'ngoPanCard',
+        'ngoAddressProof',
+        'ngoTrustOrMoaAoa',
+        'ngoFcraPhoto'
+      ] as DocumentKey[];
+    }
+
+    return [
+      'companyIncorporationCertificate',
+      'companyPanCard',
+      'companyAddressProof',
+      ...(formData.companyGstApplicable ? (['companyGstCertificate'] as DocumentKey[]) : [])
+    ] as DocumentKey[];
+  }, [formData.category, formData.companyGstApplicable]);
+
+  const visibleDocs = useMemo(() => {
+    if (formData.category === 'individual') {
+      return ['individualOptionalId'] as DocumentKey[];
+    }
+
+    if (formData.category === 'ngo') {
+      return [
+        'ngoRegistrationCertificate',
+        'ngoPanCard',
+        'ngoAddressProof',
+        'ngoTrustOrMoaAoa',
+        'ngoFcraPhoto'
+      ] as DocumentKey[];
+    }
+
+    return [
+      'companyIncorporationCertificate',
+      'companyPanCard',
+      'companyAddressProof',
+      ...(formData.companyGstApplicable ? (['companyGstCertificate'] as DocumentKey[]) : []),
+      'companyBoardResolution'
+    ] as DocumentKey[];
+  }, [formData.category, formData.companyGstApplicable]);
+
+  const handleBack = () => {
+    if (user?.user_type === 'individual') {
+      smoothNavigate(router, '/individuals/dashboard#top', { delay: 150 });
+      return;
+    }
+
+    if (user?.user_type === 'ngo') {
+      smoothNavigate(router, '/ngos/dashboard#top', { delay: 150 });
+      return;
+    }
+
+    if (user?.user_type === 'company') {
+      smoothNavigate(router, '/companies/dashboard#top', { delay: 150 });
+      return;
+    }
+
+    router.back();
+  };
+
+  const validateStepOne = () => {
+    if (!formData.entityName || !formData.contactNumber || !formData.email) {
+      setError('Please fill name, contact number, and email.');
+      return false;
+    }
+
+    if (formData.category === 'individual') {
+      if (!user?.email_verified) {
+        setError('Email verification is mandatory for individual verification. Please verify your email first.');
+        return false;
+      }
+      return true;
+    }
+
+    if (formData.category === 'ngo') {
+      if (
+        !formData.panNumber ||
+        !formData.registrationNumber ||
+        !formData.ngoFcraRegistrationNumber ||
+        !formData.ngoFcraExpiryDate ||
+        !formData.ngoAssociationNumber
+      ) {
+        setError('Please fill all NGO manual fields including FCRA registration number, expiry date, and association number.');
+        return false;
+      }
+      return true;
+    }
+
+    if (!formData.panNumber || !formData.registrationNumber) {
+      setError('Please fill company registration number and PAN number.');
+      return false;
+    }
+
+    return true;
+  };
+
+  const validateStepTwo = () => {
+    const missing = requiredDocs.find((key) => !documentFiles[key]);
+    if (missing) {
+      setError(`Please upload ${documentLabels[missing]}.`);
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleFileChange = (key: DocumentKey, fileList: FileList | null) => {
+    setError(null);
+    if (!fileList || fileList.length === 0) {
+      return;
+    }
+
+    const selectedFile = fileList[0];
+    setDocumentFiles((prev) => ({ ...prev, [key]: selectedFile }));
+  };
+
+  const uploadSingleFile = async (file: File, key: DocumentKey) => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      throw new Error('Authentication required. Please log in again.');
+    }
+
+    const body = new FormData();
+    body.append('file', file);
+    body.append('documentKey', key);
+    body.append('category', formData.category);
+
+    const response = await fetch('/api/verification/upload', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body
+    });
+
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.details || result.error || 'Failed to upload one or more documents');
+    }
+
+    return result.data?.url as string;
+  };
+
+  const submitVerification = async () => {
     try {
       setLoading(true);
+      setError(null);
+      setSuccess(null);
+
+      if (!validateStepOne() || !validateStepTwo()) {
+        return;
+      }
+
+      const uploaded = { ...uploadedUrls };
+      for (const key of visibleDocs) {
+        const file = documentFiles[key];
+        if (!file) continue;
+        uploaded[key] = await uploadSingleFile(file, key);
+      }
+      setUploadedUrls(uploaded);
+
       const token = localStorage.getItem('token');
-      const response = await fetch(`/api/verification/${user?.user_type}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
+      if (!token || !user?.user_type) {
+        throw new Error('Authentication required. Please log in again.');
+      }
+
+      const verificationEndpoint = `/api/verification/${user.user_type}`;
+
+      const submittedDocuments = visibleDocs.reduce((acc, key) => {
+        if (uploaded[key]) {
+          acc[key] = uploaded[key];
         }
+        return acc;
+      }, {} as Record<string, string>);
+
+      const initiatePayload: Record<string, any> = {
+        action: 'initiate',
+        documents: submittedDocuments,
+      };
+      if (user.user_type === 'ngo') {
+        initiatePayload.organizationName = formData.entityName;
+        initiatePayload.registrationNumber = formData.registrationNumber;
+        initiatePayload.registrationType = formData.ngoRegistrationType;
+      } else if (user.user_type === 'company') {
+        initiatePayload.companyName = formData.entityName;
+        initiatePayload.cinNumber = formData.companyCinNumber || formData.registrationNumber;
+        initiatePayload.companyType = 'Registered Company';
+      } else {
+        initiatePayload.documentType = formData.individualIdType === 'pan' ? 'pan' : 'aadhaar';
+      }
+
+      const initiateResponse = await fetch(verificationEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(initiatePayload)
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        setVerificationData(data);
-      } else {
-        setError('Failed to fetch verification status');
+      const initiateResult = await initiateResponse.json();
+      if (!initiateResponse.ok) {
+        throw new Error(initiateResult.error || 'Failed to initiate verification');
       }
-    } catch (err) {
-      setError('An error occurred while fetching verification status');
+
+      setSuccess('Verification details submitted successfully. Documents uploaded as per your verification type.');
+    } catch (submissionError: any) {
+      setError(submissionError?.message || 'Failed to submit verification details. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const initiateVerification = async () => {
-    try {
-      setSubmitting(true);
-      setError(null);
-      const token = localStorage.getItem('token');
-
-      let payload: any = { action: 'initiate' };
-
-      if (user?.user_type === 'individual') {
-        // Individual verification doesn't need additional data for initiation
-      } else if (user?.user_type === 'ngo') {
-        payload = {
-          ...payload,
-          organizationName: ngoForm.organizationName,
-          registrationNumber: ngoForm.registrationNumber,
-          registrationType: ngoForm.registrationType
-        };
-      } else if (user?.user_type === 'company') {
-        payload = {
-          ...payload,
-          companyName: companyForm.companyName,
-          cinNumber: companyForm.cinNumber,
-          companyType: companyForm.companyType
-        };
-      }
-
-      const response = await fetch(`/api/verification/${user?.user_type}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(payload)
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        if (data.authUrl) {
-          // Open verification URL in new window
-          window.open(data.authUrl, '_blank');
-          setSuccess('Please complete verification in the opened window');
-        } else {
-          setSuccess(data.message);
-        }
-        setTimeout(fetchVerificationStatus, 2000);
-      } else {
-        setError(data.error || 'Verification initiation failed');
-      }
-    } catch (err) {
-      setError('An error occurred during verification initiation');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const verifyDocument = async (documentType: string, documentNumber: string) => {
-    try {
-      setSubmitting(true);
-      setError(null);
-      const token = localStorage.getItem('token');
-
-      const payload = {
-        action: `verify-${documentType}`,
-        [`${documentType}Number`]: documentNumber
-      };
-
-      const response = await fetch(`/api/verification/${user?.user_type}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(payload)
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        setSuccess(data.message);
-        setTimeout(fetchVerificationStatus, 1000);
-      } else {
-        setError(data.error || 'Document verification failed');
-      }
-    } catch (err) {
-      setError('An error occurred during document verification');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'verified':
-        return <Badge className="bg-green-500"><CheckCircle className="w-3 h-3 mr-1" />Verified</Badge>;
-      case 'pending':
-        return <Badge variant="outline"><Clock className="w-3 h-3 mr-1" />Pending</Badge>;
-      case 'rejected':
-        return <Badge variant="destructive"><AlertTriangle className="w-3 h-3 mr-1" />Rejected</Badge>;
-      default:
-        return <Badge variant="secondary">Unverified</Badge>;
-    }
-  };
-
-  const handleBack = () => {
-    // Navigate back to appropriate dashboard based on user type
-    if (user?.user_type === 'individual') {
-      smoothNavigate(router, '/individuals/dashboard#top', { delay: 150 });
-    } else if (user?.user_type === 'ngo') {
-      smoothNavigate(router, '/ngos/dashboard#top', { delay: 150 });
-    } else if (user?.user_type === 'company') {
-      smoothNavigate(router, '/companies/dashboard#top', { delay: 150 });
-    } else {
-      router.back(); // Fallback to browser back
-    }
-  };
-
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-6">
-      {/* Back Button */}
-      <div className="flex items-center gap-2 mb-4">
+      <div className="flex items-center gap-2">
         <Button
           variant="ghost"
           onClick={handleBack}
@@ -243,18 +346,25 @@ export default function VerificationDashboard() {
         </Button>
       </div>
 
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex items-center gap-3">
         <Shield className="h-8 w-8 text-udaan-orange" />
         <div>
-          <h1 className="text-3xl font-bold">Verification Dashboard</h1>
-          <p className="text-gray-600">Verify your identity, phone, and email to access all platform features including placing orders, messaging, and more.</p>
-          {verificationData?.status !== 'verified' && (
-            <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-md text-yellow-800">
-              <strong>Why verify?</strong> Verification helps keep the platform safe and unlocks all features. Please complete verification using DigiLocker, Aadhaar, PAN, and phone OTP.
-            </div>
-          )}
+          <h1 className="text-3xl font-bold">Verification</h1>
+          <p className="text-gray-600">Complete both pages to submit your verification request.</p>
         </div>
       </div>
+
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex items-center justify-between">
+            <Badge variant={currentStep === 1 ? 'default' : 'outline'}>Page 1: Add Details</Badge>
+            <Badge variant={currentStep === 2 ? 'default' : 'outline'}>Page 2: Upload Documents</Badge>
+          </div>
+          <p className="text-sm text-gray-600 mt-3 capitalize">
+            Verification type: <span className="font-medium">{formData.category}</span>
+          </p>
+        </CardContent>
+      </Card>
 
       {error && (
         <Alert variant="destructive">
@@ -270,531 +380,278 @@ export default function VerificationDashboard() {
         </Alert>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <User className="h-5 w-5" />
-            Verification Status
-          </CardTitle>
-          <CardDescription>
-            Current verification level: {verificationData?.level || 'Basic'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-4">
-            <div className="text-lg font-medium">Overall Status:</div>
-            {getStatusBadge(verificationData?.status || 'unverified')}
-            {verificationData?.verifiedAt && (
-              <div className="text-sm text-gray-500">
-                Verified on {new Date(verificationData.verifiedAt).toLocaleDateString()}
+      {currentStep === 1 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <User className="h-5 w-5" />
+              Add Details
+            </CardTitle>
+            <CardDescription>
+              Fill all required details for your verification type.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="entityName">Name (Person / Company / NGO)</Label>
+                <Input
+                  id="entityName"
+                  value={formData.entityName}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, entityName: e.target.value }))}
+                  placeholder="Enter name"
+                />
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="contactNumber">Contact Number</Label>
+                <Input
+                  id="contactNumber"
+                  value={formData.contactNumber}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, contactNumber: e.target.value }))}
+                  placeholder="Enter contact number"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                value={formData.email}
+                onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
+                placeholder="Enter email"
+              />
+            </div>
+
+            {formData.category === 'individual' && (
+              <>
+                <div className="rounded-md border p-3 bg-gray-50 text-sm text-gray-700 space-y-1">
+                  <p>
+                    Email verification: <span className="font-medium">{user?.email_verified ? 'Verified' : 'Not Verified (mandatory)'}</span>
+                  </p>
+                  <p>
+                    Phone OTP verification: <span className="font-medium">{user?.phone_verified ? 'Verified' : 'Not Verified (optional / recommended)'}</span>
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Optional ID Type (for high-trust roles)</Label>
+                  <Select
+                    value={formData.individualIdType}
+                    onValueChange={(value) =>
+                      setFormData((prev) => ({ ...prev, individualIdType: value as IndividualIdType }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select optional ID type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="aadhaar">Aadhaar</SelectItem>
+                      <SelectItem value="pan">PAN</SelectItem>
+                      <SelectItem value="voter-id">Voter ID</SelectItem>
+                      <SelectItem value="driving-license">Driving License</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
             )}
-          </div>
-        </CardContent>
-      </Card>
 
-      <Tabs defaultValue="documents" className="w-full">
-        <TabsList>
-          <TabsTrigger value="documents">Document Verification</TabsTrigger>
-          <TabsTrigger value="status">Verification Details</TabsTrigger>
-        </TabsList>
+            {formData.category === 'ngo' && (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Registration Type</Label>
+                    <Select
+                      value={formData.ngoRegistrationType}
+                      onValueChange={(value) =>
+                        setFormData((prev) => ({ ...prev, ngoRegistrationType: value as NgoRegistrationType }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select registration type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Trust">Trust</SelectItem>
+                        <SelectItem value="Society">Society</SelectItem>
+                        <SelectItem value="Section 8">Section 8</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="ngoRegistrationNumber">Registration Certificate Number</Label>
+                    <Input
+                      id="ngoRegistrationNumber"
+                      value={formData.registrationNumber}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, registrationNumber: e.target.value }))}
+                      placeholder="Enter registration certificate number"
+                    />
+                  </div>
+                </div>
 
-        <TabsContent value="documents" className="space-y-6">
-          {user?.user_type === 'individual' && (
-            <IndividualVerificationForm
-              verificationData={verificationData}
-              form={individualForm}
-              setForm={setIndividualForm}
-              onVerifyDocument={verifyDocument}
-              onInitiate={initiateVerification}
-              submitting={submitting}
-            />
-          )}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="ngoPanNumber">PAN Number</Label>
+                    <Input
+                      id="ngoPanNumber"
+                      value={formData.panNumber}
+                      maxLength={10}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, panNumber: e.target.value.toUpperCase() }))}
+                      placeholder="ABCDE1234F"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="ngoFcraRegistrationNumber">FCRA Registration Number</Label>
+                    <Input
+                      id="ngoFcraRegistrationNumber"
+                      value={formData.ngoFcraRegistrationNumber}
+                      onChange={(e) =>
+                        setFormData((prev) => ({ ...prev, ngoFcraRegistrationNumber: e.target.value }))
+                      }
+                      placeholder="Enter FCRA registration number"
+                    />
+                  </div>
+                </div>
 
-          {user?.user_type === 'ngo' && (
-            <NGOVerificationForm
-              verificationData={verificationData}
-              form={ngoForm}
-              setForm={setNgoForm}
-              onVerifyDocument={verifyDocument}
-              onInitiate={initiateVerification}
-              submitting={submitting}
-            />
-          )}
-
-          {user?.user_type === 'company' && (
-            <CompanyVerificationForm
-              verificationData={verificationData}
-              form={companyForm}
-              setForm={setCompanyForm}
-              onVerifyDocument={verifyDocument}
-              onInitiate={initiateVerification}
-              submitting={submitting}
-            />
-          )}
-        </TabsContent>
-
-        <TabsContent value="status">
-          <VerificationStatusDetails verificationData={verificationData} userType={user?.user_type} />
-        </TabsContent>
-      </Tabs>
-    </div>
-  );
-}
-
-// Individual verification form component
-function IndividualVerificationForm({ verificationData, form, setForm, onVerifyDocument, onInitiate, submitting }: any) {
-  return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Aadhaar Verification</CardTitle>
-          <CardDescription>Verify your identity using Aadhaar card</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>Status: {verificationData?.aadhaarVerified ? 
-              <Badge className="bg-green-500">Verified</Badge> : 
-              <Badge variant="outline">Not Verified</Badge>
-            }</div>
-            {!verificationData?.aadhaarVerified && (
-              <Button onClick={onInitiate} disabled={submitting}>
-                <ExternalLink className="w-4 h-4 mr-2" />
-                Verify with DigiLocker
-              </Button>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="ngoFcraExpiryDate">FCRA Expiry Date</Label>
+                    <Input
+                      id="ngoFcraExpiryDate"
+                      type="date"
+                      value={formData.ngoFcraExpiryDate}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, ngoFcraExpiryDate: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="ngoAssociationNumber">Association Number</Label>
+                    <Input
+                      id="ngoAssociationNumber"
+                      value={formData.ngoAssociationNumber}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, ngoAssociationNumber: e.target.value }))}
+                      placeholder="Enter association number"
+                    />
+                  </div>
+                </div>
+              </>
             )}
-          </div>
-          
-          <div className="space-y-2">
-            <Label htmlFor="aadhaar">Aadhaar Number (Alternative)</Label>
-            <div className="flex gap-2">
-              <Input
-                id="aadhaar"
-                placeholder="XXXX XXXX XXXX"
-                value={form.aadhaarNumber}
-                onChange={(e) => setForm({...form, aadhaarNumber: e.target.value})}
-                maxLength={12}
-              />
+
+            {formData.category === 'company' && (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="companyRegistrationNumber">Registration / Incorporation Number</Label>
+                    <Input
+                      id="companyRegistrationNumber"
+                      value={formData.registrationNumber}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, registrationNumber: e.target.value }))}
+                      placeholder="Enter registration number"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="companyPanNumber">PAN Number</Label>
+                    <Input
+                      id="companyPanNumber"
+                      value={formData.panNumber}
+                      maxLength={10}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, panNumber: e.target.value.toUpperCase() }))}
+                      placeholder="ABCDE1234F"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="companyCinNumber">CIN Number (Optional / Advanced)</Label>
+                    <Input
+                      id="companyCinNumber"
+                      value={formData.companyCinNumber}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, companyCinNumber: e.target.value.toUpperCase() }))}
+                      placeholder="L99999MH2020PTC123456"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="companyGstApplicable">GST Applicable</Label>
+                    <div className="h-10 flex items-center gap-2 px-3 border rounded-md">
+                      <Input
+                        id="companyGstApplicable"
+                        type="checkbox"
+                        checked={formData.companyGstApplicable}
+                        onChange={(e) =>
+                          setFormData((prev) => ({ ...prev, companyGstApplicable: e.target.checked }))
+                        }
+                        className="w-4 h-4"
+                      />
+                      <span className="text-sm text-gray-700">Upload GST Certificate if applicable</span>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            <div className="flex justify-end">
               <Button
-                variant="outline"
-                onClick={() => onVerifyDocument('aadhaar', form.aadhaarNumber)}
-                disabled={submitting || !form.aadhaarNumber}
+                onClick={() => {
+                  setError(null);
+                  if (validateStepOne()) {
+                    setCurrentStep(2);
+                  }
+                }}
               >
-                Verify
+                Continue to Uploads
               </Button>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>PAN Verification</CardTitle>
-          <CardDescription>Verify your PAN card</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>Status: {verificationData?.panVerified ? 
-              <Badge className="bg-green-500">Verified</Badge> : 
-              <Badge variant="outline">Not Verified</Badge>
-            }</div>
-          </div>
-          
-          <div className="space-y-2">
-            <Label htmlFor="pan">PAN Number</Label>
-            <div className="flex gap-2">
-              <Input
-                id="pan"
-                placeholder="ABCDE1234F"
-                value={form.panNumber}
-                onChange={(e) => setForm({...form, panNumber: e.target.value.toUpperCase()})}
-                maxLength={10}
-              />
-              <Button
-                variant="outline"
-                onClick={() => onVerifyDocument('pan', form.panNumber)}
-                disabled={submitting || !form.panNumber}
-              >
-                Verify
+      {currentStep === 2 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Upload className="h-5 w-5" />
+              Upload Documents
+            </CardTitle>
+            <CardDescription>
+              Upload required documents based on your verification type.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {visibleDocs.map((docKey) => (
+              <div key={docKey} className="space-y-2">
+                <Label htmlFor={docKey}>
+                  {documentLabels[docKey]}
+                  {requiredDocs.includes(docKey) ? ' *' : ' (Optional)'}
+                </Label>
+                <Input
+                  id={docKey}
+                  type="file"
+                  accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                  onChange={(e) => handleFileChange(docKey, e.target.files)}
+                />
+                {documentFiles[docKey] && (
+                  <p className="text-sm text-gray-600 flex items-center gap-2">
+                    <FileText className="w-4 h-4" />
+                    {documentFiles[docKey]?.name}
+                  </p>
+                )}
+                {!!uploadedUrls[docKey] && (
+                  <p className="text-xs text-green-600">Uploaded successfully</p>
+                )}
+              </div>
+            ))}
+
+            <div className="flex items-center justify-between pt-2">
+              <Button variant="outline" onClick={() => setCurrentStep(1)} disabled={loading}>
+                Back to Details
+              </Button>
+              <Button onClick={submitVerification} disabled={loading}>
+                {loading ? 'Submitting...' : 'Submit Verification'}
               </Button>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
     </div>
-  );
-}
-
-// NGO verification form component
-function NGOVerificationForm({ verificationData, form, setForm, onVerifyDocument, onInitiate, submitting }: any) {
-  return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Organization Details</CardTitle>
-          <CardDescription>Provide your NGO registration details</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="orgName">Organization Name</Label>
-              <Input
-                id="orgName"
-                value={form.organizationName}
-                onChange={(e) => setForm({...form, organizationName: e.target.value})}
-                placeholder="Enter organization name"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="regNumber">Registration Number</Label>
-              <Input
-                id="regNumber"
-                value={form.registrationNumber}
-                onChange={(e) => setForm({...form, registrationNumber: e.target.value})}
-                placeholder="Enter registration number"
-              />
-            </div>
-          </div>
-          
-          <div className="space-y-2">
-            <Label htmlFor="regType">Registration Type</Label>
-            <Select value={form.registrationType} onValueChange={(value) => setForm({...form, registrationType: value})}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Trust">Trust</SelectItem>
-                <SelectItem value="Society">Society</SelectItem>
-                <SelectItem value="Section8">Section 8 Company</SelectItem>
-                <SelectItem value="12A">12A Registration</SelectItem>
-                <SelectItem value="80G">80G Registration</SelectItem>
-                <SelectItem value="FCRA">FCRA Registration</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <Button onClick={onInitiate} disabled={submitting}>
-            <ExternalLink className="w-4 h-4 mr-2" />
-            Start Verification with EntityLocker
-          </Button>
-        </CardContent>
-      </Card>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>GST Verification</CardTitle>
-            <CardDescription>Verify your GST registration</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>Status: {verificationData?.gstVerified ? 
-              <Badge className="bg-green-500">Verified</Badge> : 
-              <Badge variant="outline">Not Verified</Badge>
-            }</div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="gst">GST Number</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="gst"
-                  placeholder="22AAAAA0000A1Z5"
-                  value={form.gstNumber}
-                  onChange={(e) => setForm({...form, gstNumber: e.target.value.toUpperCase()})}
-                  maxLength={15}
-                />
-                <Button
-                  variant="outline"
-                  onClick={() => onVerifyDocument('gst', form.gstNumber)}
-                  disabled={submitting || !form.gstNumber}
-                >
-                  Verify
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>PAN Verification</CardTitle>
-            <CardDescription>Verify your organization's PAN</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>Status: {verificationData?.panVerified ? 
-              <Badge className="bg-green-500">Verified</Badge> : 
-              <Badge variant="outline">Not Verified</Badge>
-            }</div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="pan">PAN Number</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="pan"
-                  placeholder="ABCDE1234F"
-                  value={form.panNumber}
-                  onChange={(e) => setForm({...form, panNumber: e.target.value.toUpperCase()})}
-                  maxLength={10}
-                />
-                <Button
-                  variant="outline"
-                  onClick={() => onVerifyDocument('pan', form.panNumber)}
-                  disabled={submitting || !form.panNumber}
-                >
-                  Verify
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
-}
-
-// Company verification form component
-function CompanyVerificationForm({ verificationData, form, setForm, onVerifyDocument, onInitiate, submitting }: any) {
-  return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Company Details</CardTitle>
-          <CardDescription>Provide your company registration details</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="companyName">Company Name</Label>
-              <Input
-                id="companyName"
-                value={form.companyName}
-                onChange={(e) => setForm({...form, companyName: e.target.value})}
-                placeholder="Enter company name"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="cin">CIN Number</Label>
-              <Input
-                id="cin"
-                value={form.cinNumber}
-                onChange={(e) => setForm({...form, cinNumber: e.target.value.toUpperCase()})}
-                placeholder="L99999MH2020PTC123456"
-                maxLength={21}
-              />
-            </div>
-          </div>
-          
-          <div className="space-y-2">
-            <Label htmlFor="companyType">Company Type</Label>
-            <Select value={form.companyType} onValueChange={(value) => setForm({...form, companyType: value})}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Private Limited">Private Limited</SelectItem>
-                <SelectItem value="Public Limited">Public Limited</SelectItem>
-                <SelectItem value="LLP">Limited Liability Partnership</SelectItem>
-                <SelectItem value="Partnership">Partnership</SelectItem>
-                <SelectItem value="Proprietorship">Proprietorship</SelectItem>
-                <SelectItem value="OPC">One Person Company</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <Button onClick={onInitiate} disabled={submitting}>
-            <ExternalLink className="w-4 h-4 mr-2" />
-            Start Verification with EntityLocker
-          </Button>
-        </CardContent>
-      </Card>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>GST Verification</CardTitle>
-            <CardDescription>Verify your company's GST registration</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>Status: {verificationData?.gstVerified ? 
-              <Badge className="bg-green-500">Verified</Badge> : 
-              <Badge variant="outline">Not Verified</Badge>
-            }</div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="gst">GST Number</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="gst"
-                  placeholder="22AAAAA0000A1Z5"
-                  value={form.gstNumber}
-                  onChange={(e) => setForm({...form, gstNumber: e.target.value.toUpperCase()})}
-                  maxLength={15}
-                />
-                <Button
-                  variant="outline"
-                  onClick={() => onVerifyDocument('gst', form.gstNumber)}
-                  disabled={submitting || !form.gstNumber}
-                >
-                  Verify
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>PAN Verification</CardTitle>
-            <CardDescription>Verify your company's PAN</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>Status: {verificationData?.panVerified ? 
-              <Badge className="bg-green-500">Verified</Badge> : 
-              <Badge variant="outline">Not Verified</Badge>
-            }</div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="pan">PAN Number</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="pan"
-                  placeholder="ABCDE1234F"
-                  value={form.panNumber}
-                  onChange={(e) => setForm({...form, panNumber: e.target.value.toUpperCase()})}
-                  maxLength={10}
-                />
-                <Button
-                  variant="outline"
-                  onClick={() => onVerifyDocument('pan', form.panNumber)}
-                  disabled={submitting || !form.panNumber}
-                >
-                  Verify
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
-}
-
-// Verification status details component
-function VerificationStatusDetails({ verificationData, userType }: any) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <FileText className="h-5 w-5" />
-          Verification Details
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <h4 className="font-medium">Account Type</h4>
-              <p className="text-sm text-gray-600 capitalize">{userType}</p>
-            </div>
-            <div>
-              <h4 className="font-medium">Verification Level</h4>
-              <p className="text-sm text-gray-600 capitalize">{verificationData?.level || 'Basic'}</p>
-            </div>
-            <div>
-              <h4 className="font-medium">Status</h4>
-              <p className="text-sm text-gray-600 capitalize">{verificationData?.status || 'Unverified'}</p>
-            </div>
-          </div>
-
-          {verificationData?.verifiedAt && (
-            <div>
-              <h4 className="font-medium">Verified Date</h4>
-              <p className="text-sm text-gray-600">
-                {new Date(verificationData.verifiedAt).toLocaleDateString('en-IN', {
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit'
-                })}
-              </p>
-            </div>
-          )}
-
-          {userType === 'individual' && (
-            <div className="space-y-2">
-              <h4 className="font-medium">Document Status</h4>
-              <div className="flex gap-4">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm">Aadhaar:</span>
-                  {verificationData?.aadhaarVerified ? 
-                    <CheckCircle className="h-4 w-4 text-green-500" /> : 
-                    <Clock className="h-4 w-4 text-gray-400" />
-                  }
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm">PAN:</span>
-                  {verificationData?.panVerified ? 
-                    <CheckCircle className="h-4 w-4 text-green-500" /> : 
-                    <Clock className="h-4 w-4 text-gray-400" />
-                  }
-                </div>
-              </div>
-            </div>
-          )}
-
-          {(userType === 'ngo' || userType === 'company') && (
-            <div className="space-y-2">
-              <h4 className="font-medium">Document Status</h4>
-              <div className="flex gap-4">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm">GST:</span>
-                  {verificationData?.gstVerified ? 
-                    <CheckCircle className="h-4 w-4 text-green-500" /> : 
-                    <Clock className="h-4 w-4 text-gray-400" />
-                  }
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm">PAN:</span>
-                  {verificationData?.panVerified ? 
-                    <CheckCircle className="h-4 w-4 text-green-500" /> : 
-                    <Clock className="h-4 w-4 text-gray-400" />
-                  }
-                </div>
-              </div>
-            </div>
-          )}
-
-          {userType === 'ngo' && verificationData?.organizationName && (
-            <div>
-              <h4 className="font-medium">Organization Details</h4>
-              <div className="text-sm text-gray-600 space-y-1">
-                <p>Name: {verificationData.organizationName}</p>
-                {verificationData.registrationNumber && (
-                  <p>Registration: {verificationData.registrationNumber}</p>
-                )}
-                {verificationData.registrationType && (
-                  <p>Type: {verificationData.registrationType}</p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {userType === 'company' && verificationData?.companyName && (
-            <div>
-              <h4 className="font-medium">Company Details</h4>
-              <div className="text-sm text-gray-600 space-y-1">
-                <p>Name: {verificationData.companyName}</p>
-                {verificationData.cinNumber && (
-                  <p>CIN: {verificationData.cinNumber}</p>
-                )}
-                {verificationData.companyType && (
-                  <p>Type: {verificationData.companyType}</p>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      </CardContent>
-    </Card>
   );
 }
