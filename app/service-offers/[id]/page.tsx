@@ -64,6 +64,7 @@ export default function ServiceOfferDetailPage() {
 
   const offerId = params.id as string
   const isAuthenticated = !!(user && token)
+  const canApplyToOffer = user?.user_type === 'individual'
 
   useEffect(() => {
     if (offerId) {
@@ -105,8 +106,7 @@ export default function ServiceOfferDetailPage() {
       const response = await fetch(`/api/service-offers/${offerId}/clients?userId=${user?.id}`)
       if (response.ok) {
         const data = await response.json()
-        const existingApplication = data.find((app: ClientApplication) => app.client_id === user?.id)
-        setUserApplication(existingApplication || null)
+        setUserApplication(data || null)
       }
     } catch (error) {
       console.error('Error checking application:', error)
@@ -124,10 +124,10 @@ export default function ServiceOfferDetailPage() {
       return
     }
 
-    if (user.user_type === 'ngo') {
+    if (user.user_type !== 'individual') {
       toast({
         title: "Invalid User Type",
-        description: "NGOs cannot apply to service offers",
+        description: "Only individuals can apply to service offers",
         variant: "destructive"
       })
       return
@@ -333,23 +333,23 @@ export default function ServiceOfferDetailPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <MessageSquare className="h-5 w-5" />
-                  Hire This Service
+                  Apply for This Offer
                 </CardTitle>
               </CardHeader>
               
               <CardContent>
                 {!isAuthenticated ? (
                   <div className="text-center space-y-4">
-                    <p className="text-muted-foreground">You need to be logged in to hire this service.</p>
+                    <p className="text-muted-foreground">You need to be logged in to apply for this service offer.</p>
                     <Button asChild className="w-full">
                       <Link href="/login">Log In</Link>
                     </Button>
                   </div>
-                ) : user?.user_type === 'ngo' ? (
+                ) : !canApplyToOffer ? (
                   <Alert>
                     <XCircle className="h-4 w-4" />
                     <AlertDescription>
-                      NGOs cannot hire services from other NGOs. Only individuals and companies can hire services.
+                      Only individuals can apply to service offers.
                     </AlertDescription>
                   </Alert>
                 ) : user && user.verification_status !== 'verified' ? (
@@ -367,7 +367,7 @@ export default function ServiceOfferDetailPage() {
                         <div>
                           <p className="text-amber-800 font-medium text-sm">Verification Required</p>
                           <p className="text-amber-700 text-sm mt-1">
-                            You need to complete {user?.user_type === 'individual' ? 'identity verification (Aadhaar & PAN)' : 'organization verification'} before you can hire services.
+                            You need to complete identity verification (Aadhaar & PAN) before you can apply to service offers.
                             <Link href="/verification" className="underline font-medium ml-1 hover:text-amber-900">
                               Complete verification now
                             </Link>
@@ -408,21 +408,15 @@ export default function ServiceOfferDetailPage() {
                 ) : (
                   <div className="space-y-4">
                     <div className="flex items-center gap-2 p-2 bg-muted rounded">
-                      {user?.user_type === 'individual' ? (
-                        <User className="h-4 w-4" />
-                      ) : (
-                        <Building className="h-4 w-4" />
-                      )}
-                      <span className="text-sm">
-                        Hiring as {user?.user_type === 'individual' ? 'Individual' : 'Company'}
-                      </span>
+                      <User className="h-4 w-4" />
+                      <span className="text-sm">Applying as Individual</span>
                     </div>
                     
                     <div className="space-y-2">
                       <Label htmlFor="message">Application Message *</Label>
                       <Textarea
                         id="message"
-                        placeholder="Tell the NGO why you want to hire this service and any specific requirements..."
+                        placeholder="Tell the NGO why you are a good fit for this service opportunity..."
                         value={applicationMessage}
                         onChange={(e) => setApplicationMessage(e.target.value)}
                         rows={4}
@@ -441,7 +435,7 @@ export default function ServiceOfferDetailPage() {
                         step="0.01"
                       />
                       <p className="text-xs text-muted-foreground">
-                        Leave empty to use the default price of {formatPrice(offer.price_amount)}
+                        Leave empty to use the listed price of {formatPrice(offer.price_amount)}
                       </p>
                     </div>
                     

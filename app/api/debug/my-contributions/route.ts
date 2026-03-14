@@ -34,32 +34,30 @@ export async function GET(request: Request) {
       .select('*', { count: 'exact' })
       .eq('author_id', userId)
 
-    // Count marketplace listings
-    const { data: listings, count: listingsCount } = await supabase
-      .from('marketplace_listings')
-      .select('*', { count: 'exact' })
-      .eq('seller_id', userId)
-
     // Count service requests
-    const { data: requests, count: requestsCount } = await supabase
+    const { count: requestsCount } = await supabase
       .from('service_requests')
       .select('*', { count: 'exact' })
-      .eq('requester_id', userId)
+      .or(`ngo_id.eq.${userId},company_id.eq.${userId}`)
 
     // Count service offers
-    const { data: offers, count: offersCount } = await supabase
+    const { count: offersCount } = await supabase
       .from('service_offers')
       .select('*', { count: 'exact' })
-      .eq('provider_id', userId)
+      .eq('ngo_id', userId)
 
-    // Count orders
-    const { data: orders, count: ordersCount } = await supabase
-      .from('orders')
+    // Count volunteer and client participation
+    const { count: volunteerCount } = await supabase
+      .from('service_volunteers')
       .select('*', { count: 'exact' })
-      .eq('user_id', userId)
-      .eq('status', 'delivered')
+      .eq('volunteer_id', userId)
 
-    const total = (postsCount || 0) + (listingsCount || 0) + (requestsCount || 0) + (offersCount || 0) + (ordersCount || 0)
+    const { count: clientCount } = await supabase
+      .from('service_clients')
+      .select('*', { count: 'exact' })
+      .eq('client_id', userId)
+
+    const total = (postsCount || 0) + (requestsCount || 0) + (offersCount || 0) + (volunteerCount || 0) + (clientCount || 0)
 
     return NextResponse.json({
       userId: userId,
@@ -67,10 +65,10 @@ export async function GET(request: Request) {
       userEmail: userInfo?.email,
       contributions: {
         posts: postsCount,
-        listings: listingsCount,
         requests: requestsCount,
         offers: offersCount,
-        orders: ordersCount,
+        volunteered: volunteerCount,
+        clientProjects: clientCount,
         total
       },
       recentPosts: posts?.slice(0, 5).map((p: any) => ({

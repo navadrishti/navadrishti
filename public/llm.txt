@@ -1,11 +1,10 @@
 # Navadrishti - Social Impact Platform
 
 ## About
-Navadrishti is a comprehensive social impact platform connecting individuals, NGOs, and companies to drive positive change. We facilitate CSR initiatives, marketplace transactions, service offerings, and community engagement.
+Navadrishti is a comprehensive social impact platform connecting individuals, NGOs, and companies to drive positive change. We facilitate CSR initiatives, service offerings, volunteering, verification, and community engagement.
 
 ## Key Features
 - Social feed for impact stories and updates
-- Marketplace for products from NGOs and social enterprises
 - Service requests and offers for community support
 - CSR campaign management for companies
 - Volunteer opportunities and tracking
@@ -14,12 +13,11 @@ Navadrishti is a comprehensive social impact platform connecting individuals, NG
 ## Platform Structure
 - User types: Individuals, NGOs, Companies
 - Verification status: Verified organizations with badges
-- Activity tracking: Posts, listings, orders, service requests
+- Activity tracking: Posts, volunteering, service requests, and service offers
 - Leaderboard: Top contributors and impact makers
 
 ## Main Pages
 - Home: Social feed and community updates
-- Marketplace: Browse and purchase social impact products
 - NGOs: Discover verified NGOs and their work
 - Service Offers: Find services offered by community members
 - Service Requests: Request help from the community

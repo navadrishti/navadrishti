@@ -1,6 +1,6 @@
 # Navadrishti
 
-A comprehensive platform connecting NGOs, individuals, and companies for social impact through service requests, service offerings, and a collaborative marketplace.
+A comprehensive platform connecting NGOs, individuals, and companies for social impact through service requests, service offerings, and community collaboration.
 
 ## Features
 
@@ -13,7 +13,6 @@ A comprehensive platform connecting NGOs, individuals, and companies for social 
 ### For Individuals & Companies
 - **Volunteer Opportunities**: Browse and apply for NGO service requests
 - **Professional Services**: Hire NGO services for specialized needs
-- **Marketplace**: Buy and sell products within the community
 - **Impact Tracking**: Monitor contributions and community involvement
 
 ### For Everyone
@@ -77,7 +76,6 @@ Navadrishti/
 ├── app/                    # Next.js App Router
 │   ├── api/               # API routes
 │   ├── (auth)/            # Authentication pages
-│   ├── marketplace/       # Marketplace features
 │   ├── service-requests/  # Service request management
 │   ├── service-offers/    # Service offer management
 │   └── layout.tsx         # Root layout
@@ -117,8 +115,6 @@ The application uses a PostgreSQL database with the following main tables:
 - **service_offers**: NGO professional service offerings
 - **service_volunteers**: Volunteer application tracking
 - **service_hires**: Service hire request tracking
-- **marketplace_items**: Community marketplace listings
-- **marketplace_transactions**: Purchase and sale records
 
 ## API Documentation
 
@@ -135,12 +131,10 @@ The application uses a PostgreSQL database with the following main tables:
 - `PUT /api/service-requests/[id]` - Update service request
 - `DELETE /api/service-requests/[id]` - Delete service request
 
-### Marketplace
-- `GET /api/marketplace` - List marketplace items
-- `POST /api/marketplace` - Create marketplace listing
-- `GET /api/marketplace/[id]` - Get item details
-- `PUT /api/marketplace/[id]` - Update listing
-- `DELETE /api/marketplace/[id]` - Delete listing
+### Social & Platform APIs
+- `GET /api/posts` - List community posts
+- `GET /api/stats` - Fetch platform statistics
+- `GET /api/platform-activities` - Fetch recent platform activity
 
 ## Testing
 

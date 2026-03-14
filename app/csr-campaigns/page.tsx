@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Search, MapPin, Calendar, Users, TrendingUp, Filter } from "lucide-react"
+import { useAuth } from "@/lib/auth-context"
 
 interface Campaign {
   id: string
@@ -21,8 +22,11 @@ interface Campaign {
 }
 
 export default function CSRCampaignsPage() {
+  const { user } = useAuth()
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("all")
+
+  const isIndividual = user?.user_type === 'individual'
 
   const campaigns: Campaign[] = [
     {
@@ -99,7 +103,8 @@ export default function CSRCampaignsPage() {
     const matchesSearch = campaign.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          campaign.company.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesCategory = selectedCategory === 'all' || campaign.category === selectedCategory
-    return matchesSearch && matchesCategory
+    const matchesStatus = !isIndividual || campaign.status === 'ongoing'
+    return matchesSearch && matchesCategory && matchesStatus
   })
 
   const getStatusColor = (status: string) => {
@@ -117,7 +122,11 @@ export default function CSRCampaignsPage() {
       <div className="container mx-auto px-4 py-8">
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-udaan-navy mb-2">CSR Campaigns</h1>
-          <p className="text-gray-600">Discover and participate in corporate social responsibility initiatives</p>
+          <p className="text-gray-600">
+            {isIndividual
+              ? 'Browse ongoing CSR campaigns you can actively join as a volunteer'
+              : 'Discover and participate in corporate social responsibility initiatives'}
+          </p>
         </div>
 
       <div className="grid md:grid-cols-4 gap-6 mb-8">
@@ -228,7 +237,7 @@ export default function CSRCampaignsPage() {
               </div>
 
               <Button className="w-full bg-udaan-orange hover:bg-udaan-orange/90">
-                {campaign.status === 'open' ? 'Apply Now' : 'View Details'}
+                {isIndividual ? 'Volunteer Now' : campaign.status === 'open' ? 'Apply Now' : 'View Details'}
               </Button>
             </CardContent>
           </Card>

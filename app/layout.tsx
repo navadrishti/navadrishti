@@ -3,7 +3,6 @@ import { Suspense } from 'react'
 import './globals.css'
 import '@/styles/colors.css'
 import { AuthProvider } from '@/lib/auth-context'
-import { CartProvider } from '@/lib/cart-context'
 import { ThemeProvider } from '@/components/theme-provider'
 import { PageTransition } from '@/components/page-transition'
 import { Toaster } from 'sonner'
@@ -138,20 +137,18 @@ export default function RootLayout({
       <body className="min-h-screen bg-background text-foreground">
         <ThemeProvider>
           <AuthProvider>
-            <CartProvider>
-              <Suspense fallback={null}>
-                <PageTransition>
-                  {children}
-                </PageTransition>
-              </Suspense>
-              <Toaster 
-                position="top-right" 
-                richColors 
-                closeButton 
-                duration={4000}
-                theme="system"
-              />
-            </CartProvider>
+            <Suspense fallback={null}>
+              <PageTransition>
+                {children}
+              </PageTransition>
+            </Suspense>
+            <Toaster 
+              position="top-right" 
+              richColors 
+              closeButton 
+              duration={4000}
+              theme="system"
+            />
           </AuthProvider>
         </ThemeProvider>
         <Analytics />
