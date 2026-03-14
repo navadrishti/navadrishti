@@ -550,81 +550,11 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
               </Card>
             )}
 
-            {/* Proof of Work Section - Common for all user types */}
-            {((profile.profile_data?.proof_of_work && profile.profile_data.proof_of_work.length > 0) || 
-              (profile.profile_data?.work_photos && profile.profile_data.work_photos.length > 0)) && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Award className="h-5 w-5" />
-                    {profile.user_type === 'individual' ? 'Proof of Work' : 
-                     profile.user_type === 'company' ? 'Company Portfolio' : 
-                     'Projects & Campaigns'}
-                  </CardTitle>
-                  <CardDescription>
-                    {profile.user_type === 'individual' ? 'Documents and images showcasing work and achievements' :
-                     profile.user_type === 'company' ? 'Company projects and portfolio items' :
-                     'NGO projects, campaigns, and impact documentation'}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {(profile.profile_data?.proof_of_work || profile.profile_data?.work_photos || []).map((url: string, index: number) => {
-                      const isPDF = url.toLowerCase().endsWith('.pdf');
-                      const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(url);
-                      
-                      return (
-                        <div key={index} className="group relative border-2 border-gray-300 rounded-lg overflow-hidden hover:shadow-lg transition-all">
-                          {isImage ? (
-                            <a href={url} target="_blank" rel="noopener noreferrer" className="block">
-                              <img 
-                                src={url} 
-                                alt={`${profile.user_type === 'individual' ? 'Proof of work' : 
-                                       profile.user_type === 'company' ? 'Portfolio item' : 
-                                       'Project'} ${index + 1}`}
-                                className="w-full h-48 object-cover"
-                              />
-                              <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all flex items-center justify-center">
-                                <ExternalLink className="h-8 w-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
-                              </div>
-                            </a>
-                          ) : isPDF ? (
-                            <a 
-                              href={url} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="flex flex-col items-center justify-center h-48 bg-gray-100 hover:bg-gray-200 transition-colors"
-                            >
-                              <FileText className="h-16 w-16 text-gray-500 mb-2" />
-                              <span className="text-sm text-gray-700 font-medium">PDF Document {index + 1}</span>
-                              <span className="text-xs text-gray-500 mt-1">Click to view</span>
-                            </a>
-                          ) : (
-                            <a 
-                              href={url} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="flex flex-col items-center justify-center h-48 bg-gray-100 hover:bg-gray-200 transition-colors"
-                            >
-                              <Download className="h-16 w-16 text-gray-500 mb-2" />
-                              <span className="text-sm text-gray-700 font-medium">Document {index + 1}</span>
-                              <span className="text-xs text-gray-500 mt-1">Click to download</span>
-                            </a>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
             {/* Empty State */}
             {!profile.profile_data?.bio && 
              (profile.user_type === 'company' ? (!profile.profile_data?.industry && !profile.profile_data?.company_size && !profile.profile_data?.company_website) : true) &&
              (profile.user_type === 'ngo' ? (!profile.profile_data?.registration_number && !profile.profile_data?.founded_year && !profile.profile_data?.focus_areas && !profile.profile_data?.organization_website && !profile.profile_data?.ngo_size) : true) &&
-             (!profile.profile_data?.proof_of_work || profile.profile_data.proof_of_work.length === 0) && 
-             (!profile.profile_data?.work_photos || profile.profile_data.work_photos.length === 0) && (
+             true && (
               <Card>
                 <CardContent className="pt-6 text-center py-12">
                   <Users className="h-12 w-12 mx-auto mb-3 text-gray-400" />
