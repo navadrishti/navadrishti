@@ -5,10 +5,6 @@
     {
       "path": "/api/cron/daily-cleanup",
       "schedule": "0 12 * * *"
-    },
-    {
-      "path": "/api/cron/cleanup-sold-items",
-      "schedule": "0 0 * * *"
     }
   ]
 }

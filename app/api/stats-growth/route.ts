@@ -6,7 +6,6 @@ export const revalidate = 0
 
 export async function GET() {
   try {
-    // Get user growth over last 7 days
     const sevenDaysAgo = new Date()
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
 
@@ -20,21 +19,21 @@ export async function GET() {
       .select('created_at')
       .gte('created_at', sevenDaysAgo.toISOString())
 
-    const { data: recentListings, error: listingsError } = await supabase
-      .from('marketplace_items')
+    const { data: recentServiceRequests } = await supabase
+      .from('service_requests')
       .select('created_at')
       .gte('created_at', sevenDaysAgo.toISOString())
 
-    const { data: recentOrders, error: ordersError } = await supabase
-      .from('ecommerce_orders')
+    const { data: recentServiceOffers } = await supabase
+      .from('service_offers')
       .select('created_at')
       .gte('created_at', sevenDaysAgo.toISOString())
 
     const growth = {
       newPosts: recentPosts?.length || 0,
       newUsers: recentUsers?.length || 0,
-      newListings: recentListings?.length || 0,
-      newOrders: recentOrders?.length || 0,
+      newServiceRequests: recentServiceRequests?.length || 0,
+      newServiceOffers: recentServiceOffers?.length || 0,
       period: '7 days'
     }
 

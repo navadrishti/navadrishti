@@ -2,13 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { TrendingUp, Users, Package, ShoppingCart } from 'lucide-react';
 
 interface StatsGrowth {
   newPosts: number;
   newUsers: number;
-  newListings: number;
-  newOrders: number;
+  newServiceRequests: number;
+  newServiceOffers: number;
   period: string;
 }
 
@@ -64,7 +63,7 @@ export function StatsGrowth() {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {growth.newUsers === 0 && growth.newListings === 0 && growth.newOrders === 0 && growth.newPosts === 0 ? (
+        {growth.newUsers === 0 && growth.newServiceRequests === 0 && growth.newServiceOffers === 0 && growth.newPosts === 0 ? (
           <p className="text-sm text-gray-500 text-left py-4">No recent activity in the last 7 days</p>
         ) : (
           <div className="space-y-3">
@@ -84,16 +83,16 @@ export function StatsGrowth() {
             
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="text-sm text-black">New Listings</span>
+                <span className="text-sm text-black">New Service Requests</span>
               </div>
-              <span className="text-lg font-bold text-black">+{growth.newListings}</span>
+              <span className="text-lg font-bold text-black">+{growth.newServiceRequests}</span>
             </div>
             
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="text-sm text-black">New Orders</span>
+                <span className="text-sm text-black">New Service Offers</span>
               </div>
-              <span className="text-lg font-bold text-black">+{growth.newOrders}</span>
+              <span className="text-lg font-bold text-black">+{growth.newServiceOffers}</span>
             </div>
           </div>
         )}
