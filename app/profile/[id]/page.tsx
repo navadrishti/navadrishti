@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation"
 import { Header } from "@/components/header"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Calendar, MapPin, Award, TrendingUp, Heart, Users, Target, Trophy, Loader2, FileText, Briefcase, Download, ExternalLink } from "lucide-react"
@@ -455,43 +455,6 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
             {/* Individual-specific sections */}
             {profile.user_type === 'individual' && (
               <>
-                {/* Experience Section - Individuals only */}
-                {profile.profile_data?.experience && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <Briefcase className="h-5 w-5" />
-                        Experience
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-gray-700 whitespace-pre-wrap">{profile.profile_data.experience}</p>
-                    </CardContent>
-                  </Card>
-                )}
-
-                {/* Resume Section - Individuals only */}
-                {profile.profile_data?.resume_url && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <FileText className="h-5 w-5" />
-                        Resume / CV
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <a 
-                        href={profile.profile_data.resume_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 px-4 py-3 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
-                      >
-                        <Download className="h-5 w-5" />
-                        Download Resume
-                      </a>
-                    </CardContent>
-                  </Card>
-                )}
               </>
             )}
 
@@ -658,7 +621,6 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
 
             {/* Empty State */}
             {!profile.profile_data?.bio && 
-             (profile.user_type === 'individual' ? (!profile.profile_data?.experience && !profile.profile_data?.resume_url) : true) &&
              (profile.user_type === 'company' ? (!profile.profile_data?.industry && !profile.profile_data?.company_size && !profile.profile_data?.company_website) : true) &&
              (profile.user_type === 'ngo' ? (!profile.profile_data?.registration_number && !profile.profile_data?.founded_year && !profile.profile_data?.focus_areas && !profile.profile_data?.organization_website && !profile.profile_data?.ngo_size) : true) &&
              (!profile.profile_data?.proof_of_work || profile.profile_data.proof_of_work.length === 0) && 
