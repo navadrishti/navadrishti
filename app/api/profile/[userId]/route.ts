@@ -107,8 +107,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       interests: [],
       website: null,
       portfolio: [],
-      experience: null,
-      // Include profile_data which contains bio, experience, proof_of_work, resume_url, etc.
+      // Include profile_data for structured profile attributes.
       profile_data: userResult.profile_data || {},
       verification_status: verificationStatus,
       verification_details: verificationDetails

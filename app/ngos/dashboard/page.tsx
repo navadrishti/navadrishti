@@ -9,10 +9,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Clock, CheckCircle, AlertTriangle, HeartHandshake, Trash2, Plus, Building, TicketCheck } from 'lucide-react';
+import { Clock, CheckCircle, AlertTriangle, HeartHandshake, Trash2, Plus, Building, TicketCheck, MailCheck, Phone, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
-import { VerificationBadge, VerificationDetails } from '@/components/verification-badge';
 import { SkeletonOrderItem } from '@/components/ui/skeleton';
 
 function NGODashboardContent() {
@@ -22,27 +21,12 @@ function NGODashboardContent() {
   const searchParams = useSearchParams();
   const activeTab = searchParams.get('tab') || 'service-offers';
   const tabsRef = useRef<HTMLDivElement>(null);
-  const [stats, setStats] = useState({
-    serviceOffersPending: 0,
-    serviceOffersCompleted: 0,
-    serviceRequestsPending: 0,
-    serviceRequestsCompleted: 0, // Add this field
-    serviceRequestsAccepted: 0
-  });
 
   // State for real service data
   const [serviceOffers, setServiceOffers] = useState<any[]>([]);
   const [serviceRequests, setServiceRequests] = useState<any[]>([]);
   const [loadingData, setLoadingData] = useState(true);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
   const [deletingRequest, setDeletingRequest] = useState<number | null>(null);
-
-  // Helper function to ensure numbers are valid
-  const safeNumber = (value: any, defaultValue: number = 0): number => {
-    const num = Number(value);
-    return isNaN(num) ? defaultValue : num;
-  };
 
   // Handle service request deletion
   const handleDeleteRequest = async (requestId: number, requestTitle: string) => {
@@ -88,47 +72,6 @@ function NGODashboardContent() {
       setDeletingRequest(null);
     }
   };
-
-  // Fetch real data from API
-  useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        setLoading(true);
-        const token = localStorage.getItem('token');
-        if (!token) return;
-
-        const response = await fetch('/api/dashboard/stats', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-
-        const data = await response.json();
-        if (data.success) {
-          // Ensure all stats are valid numbers
-          const sanitizedStats = {
-            serviceOffersPending: safeNumber(data.data?.serviceOffersPending),
-            serviceOffersCompleted: safeNumber(data.data?.serviceOffersCompleted),
-            serviceRequestsPending: safeNumber(data.data?.serviceRequestsPending),
-            serviceRequestsCompleted: safeNumber(data.data?.serviceRequestsCompleted), // Add this field
-            serviceRequestsAccepted: safeNumber(data.data?.serviceRequestsAccepted)
-          };
-          setStats(sanitizedStats);
-        } else {
-          setError('Failed to fetch dashboard statistics');
-        }
-      } catch (err) {
-        setError('Error fetching dashboard statistics');
-        console.error('Error:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (user) {
-      fetchStats();
-    }
-  }, [user?.id]);
 
   // Fetch real service offers data
   const fetchServiceOffers = async () => {
@@ -236,6 +179,12 @@ function NGODashboardContent() {
     }
   }, [activeTab])
 
+  const allVerified = Boolean(
+    user?.email_verified &&
+    user?.phone_verified &&
+    user?.verification_status === 'verified'
+  );
+
   return (
     <ProtectedRoute userTypes={['ngo']}>
       <div className="flex min-h-screen flex-col">
@@ -245,80 +194,11 @@ function NGODashboardContent() {
             {/* Dashboard Header */}
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
               <div>
-                <h1 className="text-3xl font-bold tracking-tight">NGO Dashboard</h1>
+                <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
                 <p className="text-gray-500 mt-1">
                   Manage your NGO profile, service offers, and service requests
                 </p>
               </div>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Link href="/service-offers/track">
-                  <Button variant="outline" className="flex items-center gap-2 w-full sm:w-auto text-sm">
-                    <Clock className="h-4 w-4" />
-                    <span className="hidden sm:inline">Track Service Offers</span>
-                    <span className="sm:hidden">Track Offers</span>
-                  </Button>
-                </Link>
-                <Link href="/service-offers/create">
-                  <Button variant="outline" className="flex items-center gap-2 w-full sm:w-auto text-sm">
-                    <HeartHandshake className="h-4 w-4" />
-                    <span className="hidden sm:inline">New Service Offer</span>
-                    <span className="sm:hidden">New Offer</span>
-                  </Button>
-                </Link>
-                <Link href="/service-requests/create">
-                  <Button className="flex items-center gap-2 w-full sm:w-auto text-sm">
-                    <TicketCheck className="h-4 w-4" />
-                    <span className="hidden sm:inline">New Service Request</span>
-                    <span className="sm:hidden">New Request</span>
-                  </Button>
-                </Link>
-              </div>
-            </div>
-
-            {/* Stats Cards */}
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <CardTitle className="text-sm font-medium">Service Offers</CardTitle>
-                  <HeartHandshake className="h-4 w-4 text-blue-600" />
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-col">
-                    <div className="text-2xl font-bold">{safeNumber(stats.serviceOffersPending) + safeNumber(stats.serviceOffersCompleted)}</div>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Badge variant="outline" className="text-amber-600 border-amber-600">
-                        <Clock className="h-3 w-3 mr-1" />
-                        {safeNumber(stats.serviceOffersPending)} Pending
-                      </Badge>
-                      <Badge variant="outline" className="text-green-600 border-green-600">
-                        <CheckCircle className="h-3 w-3 mr-1" />
-                        {safeNumber(stats.serviceOffersCompleted)} Completed
-                      </Badge>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <CardTitle className="text-sm font-medium">Service Requests</CardTitle>
-                  <TicketCheck className="h-4 w-4 text-purple-600" />
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-col">
-                    <div className="text-2xl font-bold">{safeNumber(stats.serviceRequestsPending) + safeNumber(stats.serviceRequestsCompleted || 0)}</div>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Badge variant="outline" className="text-amber-600 border-amber-600">
-                        <AlertTriangle className="h-3 w-3 mr-1" />
-                        {safeNumber(stats.serviceRequestsPending)} Pending
-                      </Badge>
-                      <Badge variant="outline" className="text-green-600 border-green-600">
-                        <CheckCircle className="h-3 w-3 mr-1" />
-                        {safeNumber(stats.serviceRequestsCompleted || 0)} Completed
-                      </Badge>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
             </div>
 
             {/* NGO Profile Section */}
@@ -346,34 +226,21 @@ function NGODashboardContent() {
                   </div>
                   <div className="w-full md:w-3/4 space-y-4">
                     <div>
-                      <h3 className="text-lg font-semibold">{user?.name || 'Your NGO Name'}</h3>
+                      <h3 className="text-lg font-semibold flex items-center gap-2">
+                        <span>{user?.name || 'Your NGO Name'}</span>
+                        {allVerified ? (
+                          <ShieldCheck className="h-4 w-4 text-green-600" />
+                        ) : (
+                          <>
+                            {user?.email_verified && <MailCheck className="h-4 w-4 text-green-600" />}
+                            {user?.phone_verified && <Phone className="h-4 w-4 text-green-600" />}
+                            {user?.verification_status === 'verified' && <ShieldCheck className="h-4 w-4 text-green-600" />}
+                          </>
+                        )}
+                      </h3>
                       <p className="text-sm text-gray-500">{user?.email || 'ngo@example.org'}</p>
                     </div>
                     <div className="space-y-4">
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <h4 className="font-medium">Verification Status</h4>
-                          <VerificationBadge 
-                            status={user?.verification_status || 'unverified'} 
-                            size="sm"
-                            showText={false}
-                          />
-                        </div>
-                        {user?.verification_details && (
-                          <VerificationDetails 
-                            userType="ngo"
-                            verificationDetails={user.verification_details}
-                            className="bg-gray-50 p-3 rounded-lg"
-                          />
-                        )}
-                        {user?.verification_status !== 'verified' && (
-                          <div className="flex gap-2">
-                            <Button size="sm" variant="outline" asChild>
-                              <Link href="/verification">Complete Verification</Link>
-                            </Button>
-                          </div>
-                        )}
-                      </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                           <p className="text-sm font-medium text-gray-500">Location</p>
@@ -381,14 +248,7 @@ function NGODashboardContent() {
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-500">Phone</p>
-                          <div className="flex items-center gap-2">
-                            <span>{user?.phone || 'Phone not set'}</span>
-                            <VerificationBadge 
-                              status={user?.phone_verified ? 'verified' : 'unverified'} 
-                              size="sm"
-                              showText={false}
-                            />
-                          </div>
+                          <span>{user?.phone || 'Phone not set'}</span>
                         </div>
                         <div>
                           <p className="text-sm font-medium text-gray-500">Founded Year</p>

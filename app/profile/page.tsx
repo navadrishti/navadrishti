@@ -16,141 +16,6 @@ import Link from 'next/link'
 import { toast } from 'sonner'
 import { VerificationBadge, VerificationDetails } from '@/components/verification-badge'
 
-// Phone Verification Component
-function PhoneVerificationSection({ phone, onVerificationComplete }: { 
-  phone: string, 
-  onVerificationComplete: () => void 
-}) {
-  const [otp, setOtp] = useState('');
-  const [otpSent, setOtpSent] = useState(false);
-  const [sendingOtp, setSendingOtp] = useState(false);
-  const [verifyingOtp, setVerifyingOtp] = useState(false);
-
-  const sendOtp = async () => {
-    try {
-      setSendingOtp(true);
-      const token = localStorage.getItem('token');
-      const response = await fetch('/api/auth/send-phone-otp', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ phone })
-      });
-
-      const data = await response.json();
-      if (response.ok) {
-        setOtpSent(true);
-        if (data.otp) {
-          // Development mode - show OTP
-          toast.success(`SMS service not configured. OTP: ${data.otp}`);
-          console.log('Development OTP:', data.otp);
-        } else {
-          // Production mode - OTP sent via SMS
-          toast.success('OTP sent to your phone!');
-        }
-      } else {
-        toast.error(data.error || 'Failed to send OTP');
-      }
-    } catch (error) {
-      toast.error('Failed to send OTP');
-    } finally {
-      setSendingOtp(false);
-    }
-  };
-
-  const verifyOtp = async () => {
-    if (!otp.trim()) {
-      toast.error('Please enter the OTP');
-      return;
-    }
-
-    try {
-      setVerifyingOtp(true);
-      const token = localStorage.getItem('token');
-      const response = await fetch('/api/auth/verify-phone', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ phone, otp })
-      });
-
-      const data = await response.json();
-      if (response.ok) {
-        toast.success('Phone verified successfully!');
-        setOtpSent(false);
-        setOtp('');
-        onVerificationComplete();
-      } else {
-        toast.error(data.error || 'Invalid OTP');
-      }
-    } catch (error) {
-      toast.error('Failed to verify OTP');
-    } finally {
-      setVerifyingOtp(false);
-    }
-  };
-
-  return (
-    <div className="space-y-2">
-      {!otpSent ? (
-        <Button 
-          variant="outline" 
-          size="sm" 
-          className="w-full"
-          onClick={sendOtp}
-          disabled={sendingOtp}
-        >
-          {sendingOtp ? 'Sending...' : 'Send Phone Verification'}
-        </Button>
-      ) : (
-        <div className="space-y-2">
-          <Input
-            type="text"
-            placeholder="Enter 6-digit OTP"
-            value={otp}
-            onChange={(e) => setOtp(e.target.value)}
-            maxLength={6}
-            className="text-center text-lg tracking-widest"
-          />
-          <div className="flex gap-2">
-            <Button 
-              size="sm" 
-              onClick={verifyOtp}
-              disabled={verifyingOtp}
-              className="flex-1"
-            >
-              {verifyingOtp ? 'Verifying...' : 'Verify OTP'}
-            </Button>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => {
-                setOtpSent(false);
-                setOtp('');
-              }}
-            >
-              Cancel
-            </Button>
-          </div>
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={sendOtp}
-            disabled={sendingOtp}
-            className="w-full text-xs"
-          >
-            {sendingOtp ? 'Resending...' : 'Resend OTP'}
-          </Button>
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function ProfilePage() {
   const { user, updateUser, refreshUser } = useAuth();
   const [mounted, setMounted] = useState(false);
@@ -176,11 +41,8 @@ export default function ProfilePage() {
   const [bio, setBio] = useState('');
   
   // Individual-specific fields
-  const [experience, setExperience] = useState('');
   const [proofOfWork, setProofOfWork] = useState<File[]>([]);
-  const [resume, setResume] = useState<File | null>(null);
   const [proofOfWorkUrls, setProofOfWorkUrls] = useState<string[]>([]);
-  const [resumeUrl, setResumeUrl] = useState('');
   
   // Organization details for NGOs
   const [registrationNumber, setRegistrationNumber] = useState('');
@@ -240,9 +102,7 @@ export default function ProfilePage() {
         phone: freshUser?.phone || '',
         address: '',
         proof_of_work: freshUser?.proof_of_work || [],
-        resume_url: freshUser?.resume_url || '',
         portfolio: freshUser?.portfolio || [],
-        experience: freshUser?.experience || '',
         website: freshUser?.website || ''
       });
       
@@ -256,9 +116,7 @@ export default function ProfilePage() {
       
       // Load additional profile fields from profile_data or direct fields
       const userProfile = freshUser?.profile_data || {};
-      setExperience(userProfile.experience || freshUser?.experience || '');
       setProofOfWorkUrls(userProfile.work_photos || userProfile.proof_of_work || freshUser?.proof_of_work || []);
-      setResumeUrl(userProfile.resume_url || freshUser?.resume_url || '');
       setRegistrationNumber(userProfile.registration_number || '');
       setFoundedYear(userProfile.founded_year || '');
       setFocusAreas(userProfile.focus_areas || '');
@@ -398,7 +256,6 @@ export default function ProfilePage() {
       if (user?.user_type === 'individual') {
         if (age) profileDataFields.age = parseInt(age);
         if (proofOfWorkUrls.length > 0) profileDataFields.work_photos = proofOfWorkUrls;
-        if (resumeUrl) profileDataFields.resume_url = resumeUrl;
       } else if (user?.user_type === 'company') {
         if (industry) profileDataFields.industry = industry;
         if (companySize) profileDataFields.company_size = companySize;
@@ -486,32 +343,6 @@ export default function ProfilePage() {
         }
       }
 
-      // Upload resume if provided
-      let newResumeUrl = resumeUrl;
-      if (resume) {
-        const formData = new FormData();
-        formData.append('file', resume);
-        
-        const response = await fetch('/api/upload', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`
-          },
-          body: formData,
-        });
-        
-        if (response.ok) {
-          const result = await response.json();
-          newResumeUrl = result.data.url;
-          // Update local state immediately after successful upload
-          setResumeUrl(newResumeUrl);
-        } else {
-          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-          console.error('Resume upload error:', errorData);
-          throw new Error(errorData.error || 'Failed to upload resume');
-        }
-      }
-
       // Combine existing and new proof of work URLs
       const allProofOfWorkUrls = [...proofOfWorkUrls, ...uploadedPhotos];
 
@@ -521,9 +352,6 @@ export default function ProfilePage() {
       // Always include proof_of_work (even if empty array)
       profileData.proof_of_work = allProofOfWorkUrls;
       
-      // Always include resume_url (even if empty string for clearing)
-      profileData.resume_url = newResumeUrl || '';
-
       console.log('Sending profile data:', profileData);
       console.log('Token exists:', !!token);
       console.log('Token preview:', token?.substring(0, 20) + '...');
@@ -570,16 +398,12 @@ export default function ProfilePage() {
       toast.success('Proof of work updated successfully!');
 
       // Update local state with saved data
-      if (responseData.user?.profile_data?.resume_url) {
-        setResumeUrl(responseData.user.profile_data.resume_url);
-      }
       if (responseData.user?.profile_data?.proof_of_work) {
         setProofOfWorkUrls(responseData.user.profile_data.proof_of_work);
       }
 
       // Reset form state and refresh profile
       setProofOfWork([]);
-      setResume(null);
       await fetchProfile();
 
     } catch (error) {
@@ -921,13 +745,13 @@ export default function ProfilePage() {
                 </CardContent>
               </Card>
 
-              {/* Individual-specific Experience & Proof of Work */}
+              {/* Individual-specific proof of work */}
               {user?.user_type === 'individual' && (
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <Award className="h-5 w-5" />
-                      Experience & Proof of Work
+                      Proof of Work
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
@@ -964,55 +788,9 @@ export default function ProfilePage() {
                           </div>
                         )}
                         
-                        {/* Download current resume if exists */}
-                        {resumeUrl && (
-                          <div className="mb-4">
-                            <p className="text-sm text-gray-600 mb-2">Current Resume:</p>
-                            <button
-                              onClick={async () => {
-                                try {
-                                  // Fetch the file and create blob for proper download
-                                  const response = await fetch(resumeUrl);
-                                  const blob = await response.blob();
-                                  
-                                  // Determine file extension from content type or URL
-                                  let extension = '.pdf';
-                                  const contentType = response.headers.get('content-type');
-                                  if (contentType?.includes('pdf')) extension = '.pdf';
-                                  else if (contentType?.includes('msword') || contentType?.includes('wordprocessingml')) extension = '.doc';
-                                  else if (resumeUrl.toLowerCase().includes('.doc')) extension = '.doc';
-                                  else if (resumeUrl.toLowerCase().includes('.docx')) extension = '.docx';
-                                  
-                                  // Create download link with proper filename and extension
-                                  const url = window.URL.createObjectURL(blob);
-                                  const link = document.createElement('a');
-                                  link.href = url;
-                                  link.download = `resume-${user?.name?.replace(/[^a-zA-Z0-9]/g, '-') || 'user'}${extension}`;
-                                  document.body.appendChild(link);
-                                  link.click();
-                                  
-                                  // Cleanup
-                                  document.body.removeChild(link);
-                                  window.URL.revokeObjectURL(url);
-                                } catch (error) {
-                                  console.error('Download failed:', error);
-                                  // Fallback to simple download
-                                  window.open(resumeUrl, '_blank');
-                                }
-                              }}
-                              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors duration-200 shadow-sm hover:shadow-md"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                              </svg>
-                              Download Resume
-                            </button>
-                          </div>
-                        )}
-
-                        {/* New work photos and resume upload */}
+                        {/* New work photos upload */}
                         <div>
-                          <p className="text-sm font-medium mb-2">Add new work photos and resume:</p>
+                          <p className="text-sm font-medium mb-2">Add new work photos:</p>
                           <div className="space-y-3">
                             <div>
                               <label className="text-xs text-gray-600 mb-1 block">Work Photos:</label>
@@ -1027,25 +805,7 @@ export default function ProfilePage() {
                                 className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100"
                               />
                             </div>
-                            <div>
-                              <label className="text-xs text-gray-600 mb-1 block">Resume:</label>
-                              <input
-                                type="file"
-                                accept=".pdf,.doc,.docx"
-                                onChange={(e) => {
-                                  const file = e.target.files?.[0] || null;
-                                  setResume(file);
-                                }}
-                                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                              />
-                            </div>
                           </div>
-                          
-                          
-                          {/* Preview of selected resume */}
-                          {resume && (
-                            <p className="text-sm text-blue-600 mt-2">✓ New resume selected: {resume.name}</p>
-                          )}
 
                           {/* Preview of new files */}
                           {proofOfWork.length > 0 && (
@@ -1100,51 +860,64 @@ export default function ProfilePage() {
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">Document Status</span>
-                      <VerificationBadge 
-                        status={user?.verification_status || 'unverified'} 
-                        size="md"
-                      />
-                    </div>
-                    
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">Email Verification</span>
-                      <VerificationBadge 
-                        status={user?.email_verified ? 'verified' : 'unverified'} 
-                        size="sm"
-                      />
-                    </div>
-                    
-                    {user?.phone && !user?.phone_verified && (
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium">Phone Verification</span>
-                          <VerificationBadge 
-                            status={user?.phone_verified ? 'verified' : 'unverified'} 
-                            size="sm"
-                          />
-                        </div>
-                        <PhoneVerificationSection 
-                          phone={user.phone} 
-                          onVerificationComplete={() => {
-                            refreshUser();
-                            fetchVerificationStatus();
-                          }} 
+                    <div className="rounded-lg border p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">Mobile Number Verification</span>
+                        <VerificationBadge
+                          status={user?.phone_verified ? 'verified' : 'unverified'}
+                          size="sm"
+                          showText={false}
                         />
                       </div>
-                    )}
-                    
-                    {(!user?.verification_status || user?.verification_status === 'unverified') && (
-                      <div className="pt-4 border-t">
+                      <p className="text-xs text-muted-foreground">
+                        {user?.phone ? `Phone: ${user.phone}` : 'Add a phone number in your profile settings.'}
+                      </p>
+                      {!user?.phone_verified && (
+                        <Button type="button" variant="outline" size="sm" className="w-full" disabled>
+                          Verify Mobile (UI Only)
+                        </Button>
+                      )}
+                    </div>
+
+                    <div className="rounded-lg border p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">Email Verification</span>
+                        <VerificationBadge
+                          status={user?.email_verified ? 'verified' : 'unverified'}
+                          size="sm"
+                          showText={false}
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Email: {user?.email || 'No email found'}
+                      </p>
+                      {!user?.email_verified && (
+                        <Button type="button" variant="outline" size="sm" className="w-full" disabled>
+                          Verify Email (UI Only)
+                        </Button>
+                      )}
+                    </div>
+
+                    <div className="rounded-lg border p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">Document Verification</span>
+                        <VerificationBadge
+                          status={user?.verification_status || 'unverified'}
+                          size="sm"
+                          showText={false}
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Complete identity verification from the verification dashboard.
+                      </p>
+                      {user?.verification_status !== 'verified' && (
                         <Link href={`/verification?userType=${user?.user_type}`} className="block">
-                          <Button variant="default" size="sm" className="w-full">
-                            <Shield className="h-4 w-4 mr-2" />
-                            Get Verified
+                          <Button type="button" variant="default" size="sm" className="w-full">
+                            Open Verification Dashboard
                           </Button>
                         </Link>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 </CardContent>
               </Card>
