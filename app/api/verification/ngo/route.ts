@@ -1,11 +1,18 @@
-// API endpoint for NGO verification using EntityLocker
+// API endpoint for NGO verification (manual document-first flow)
 import { NextRequest, NextResponse } from 'next/server';
-import { EntityLockerService } from '@/lib/entitylocker';
 import { supabase } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 
-const entityLocker = new EntityLockerService();
+function isValidGSTNumber(gstNumber: string): boolean {
+  const gstRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+  return gstRegex.test(gstNumber);
+}
+
+function isValidPANNumber(panNumber: string): boolean {
+  const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
+  return panRegex.test(panNumber);
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -26,7 +33,7 @@ export async function POST(req: NextRequest) {
     // Verify user is an NGO
     const { data: user, error: userError } = await supabase
       .from('users')
-      .select('user_type')
+      .select('user_type, profile_data')
       .eq('id', userId)
       .single();
 
@@ -34,11 +41,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Only NGOs can use this verification method' }, { status: 403 });
     }
 
-    const { action, organizationName, gstNumber, panNumber, registrationNumber, registrationType } = await req.json();
+    const { action, organizationName, gstNumber, panNumber, registrationNumber, registrationType, documents } = await req.json();
 
     switch (action) {
       case 'initiate':
-        return await initiateNGOVerification(userId, organizationName, registrationNumber, registrationType);
+        return await initiateNGOVerification(userId, organizationName, registrationNumber, registrationType, user?.profile_data, documents);
       
       case 'verify-gst':
         return await verifyGST(userId, gstNumber);
@@ -62,20 +69,11 @@ async function initiateNGOVerification(
   userId: number, 
   organizationName: string, 
   registrationNumber: string, 
-  registrationType: string
+  registrationType: string,
+  profileData?: any,
+  documents?: Record<string, string>
 ) {
-  // Check if EntityLocker service is available
-  if (!entityLocker.isAvailable()) {
-    return NextResponse.json({
-      error: 'EntityLocker verification service is not configured. Please contact administrator.',
-      code: 'SERVICE_NOT_CONFIGURED'
-    }, { status: 503 });
-  }
-
   try {
-    // Generate EntityLocker authorization URL
-    const authUrl = entityLocker.generateAuthUrl(userId, 'ngo');
-    
     // Create or update verification record using Supabase
     const { data: existingVerification } = await supabase
       .from('ngo_verifications')
@@ -104,13 +102,38 @@ async function initiateNGOVerification(
         .eq('user_id', userId);
     }
 
+    const existingProfileData = (profileData && typeof profileData === 'object') ? profileData : {};
+    const existingVerificationDocs = (existingProfileData.verification_documents && typeof existingProfileData.verification_documents === 'object')
+      ? existingProfileData.verification_documents
+      : {};
+
+    await supabase
+      .from('users')
+      .update({
+        profile_data: {
+          ...existingProfileData,
+          verification_documents: {
+            ...existingVerificationDocs,
+            ngo: {
+              ...(existingVerificationDocs.ngo || {}),
+              documents: documents || {},
+              submitted_at: new Date().toISOString(),
+              status: 'pending'
+            }
+          }
+        },
+        verification_status: 'pending'
+      })
+      .eq('id', userId);
+
     return NextResponse.json({
       success: true,
-      authUrl,
-      message: 'Please complete verification on EntityLocker'
+      authUrl: null,
+      mode: 'manual',
+      message: 'Verification initiated in manual mode. Your uploaded documents will be reviewed by admin.'
     });
   } catch (error: any) {
-    console.error('EntityLocker initiation error:', error);
+    console.error('NGO verification initiation error:', error);
     return NextResponse.json({
       error: error.message || 'Failed to initiate verification',
       code: 'INITIATION_FAILED'
@@ -120,12 +143,9 @@ async function initiateNGOVerification(
 
 async function verifyGST(userId: number, gstNumber: string) {
   // Validate GST number format
-  if (!entityLocker.validateGSTNumber(gstNumber)) {
+  if (!isValidGSTNumber(gstNumber)) {
     return NextResponse.json({ error: 'Invalid GST number format' }, { status: 400 });
   }
-
-  // In a real implementation, you would use the EntityLocker token to fetch data
-  // For now, we'll simulate the verification process
   
   // First get current verification status to check if PAN is verified
   const { data: currentVerification } = await supabase
@@ -153,9 +173,8 @@ async function verifyGST(userId: number, gstNumber: string) {
 }
 
 async function verifyNGOPAN(userId: number, panNumber: string) {
-  // Validate PAN number format (using DigiLocker service validation)
-  const digiLockerService = new (require('@/lib/digilocker').DigiLockerService)();
-  if (!digiLockerService.validatePANNumber(panNumber)) {
+  // Validate PAN number format
+  if (!isValidPANNumber(panNumber)) {
     return NextResponse.json({ error: 'Invalid PAN number format' }, { status: 400 });
   }
 
