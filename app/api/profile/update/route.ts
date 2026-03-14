@@ -20,7 +20,6 @@ const updateProfileSchema = z.object({
   bio: z.string().optional(),
   location: z.string().optional(),
   timezone: z.string().optional(),
-  proof_of_work: z.array(z.string()).optional(),
   skills: z.string().optional(),
   interests: z.string().optional()
 });
@@ -161,21 +160,6 @@ export async function PUT(request: NextRequest) {
     
     const updateData = validationResult.data;
     
-    // Custom validation for proof_of_work - all URLs must be valid
-    if (updateData.proof_of_work && Array.isArray(updateData.proof_of_work)) {
-      for (const url of updateData.proof_of_work) {
-        if (url && url.trim() !== '') {
-          try {
-            new URL(url);
-          } catch {
-            return NextResponse.json({ 
-              error: `Invalid proof of work URL: ${url}` 
-            }, { status: 400 });
-          }
-        }
-      }
-    }
-    
     // Remove undefined values
     const cleanUpdateData = Object.fromEntries(
       Object.entries(updateData).filter(([_, value]) => value !== undefined)
@@ -223,14 +207,13 @@ export async function PUT(request: NextRequest) {
 
 
     // Separate profile_data fields from direct user fields
-    const { proof_of_work, skills, interests, ...directUserFields } = cleanUpdateData;
+    const { skills, interests, ...directUserFields } = cleanUpdateData;
     
     // Prepare profile_data update
     const currentProfileData = currentUser?.profile_data || {};
     const updatedProfileData = { ...currentProfileData };
     
     // Only update profile_data fields that were provided
-    if (proof_of_work !== undefined) updatedProfileData.proof_of_work = proof_of_work;
     if (skills !== undefined) updatedProfileData.skills = skills;
     if (interests !== undefined) updatedProfileData.interests = interests;
     
@@ -272,7 +255,6 @@ export async function PUT(request: NextRequest) {
     
     const formattedUser = {
       ...user,
-      proof_of_work: profileData.proof_of_work || [],
       skills: profileData.skills || '',
       interests: profileData.interests || ''
     };

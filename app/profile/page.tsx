@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { useAuth } from '@/lib/auth-context'
-import { UserCheck, Shield, Settings, User, Award } from 'lucide-react'
+import { Shield, Settings, User } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { VerificationBadge, VerificationDetails } from '@/components/verification-badge'
@@ -28,7 +28,6 @@ export default function ProfilePage() {
   const [uploadingProfileImage, setUploadingProfileImage] = useState(false);
   const [projectPhotos, setProjectPhotos] = useState<File[]>([]);
   const [projectPhotoUrls, setProjectPhotoUrls] = useState<string[]>([]);
-  const [uploading, setUploading] = useState(false);
   const [portfolioDescription, setPortfolioDescription] = useState('');
   const [certifications, setCertifications] = useState('');
   
@@ -39,10 +38,6 @@ export default function ProfilePage() {
   const [country, setCountry] = useState('India');
   const [phone, setPhone] = useState('');
   const [bio, setBio] = useState('');
-  
-  // Individual-specific fields
-  const [proofOfWork, setProofOfWork] = useState<File[]>([]);
-  const [proofOfWorkUrls, setProofOfWorkUrls] = useState<string[]>([]);
   
   // Organization details for NGOs
   const [registrationNumber, setRegistrationNumber] = useState('');
@@ -101,7 +96,6 @@ export default function ProfilePage() {
         bio: freshUser?.bio || '',
         phone: freshUser?.phone || '',
         address: '',
-        proof_of_work: freshUser?.proof_of_work || [],
         portfolio: freshUser?.portfolio || [],
         website: freshUser?.website || ''
       });
@@ -116,7 +110,6 @@ export default function ProfilePage() {
       
       // Load additional profile fields from profile_data or direct fields
       const userProfile = freshUser?.profile_data || {};
-      setProofOfWorkUrls(userProfile.work_photos || userProfile.proof_of_work || freshUser?.proof_of_work || []);
       setRegistrationNumber(userProfile.registration_number || '');
       setFoundedYear(userProfile.founded_year || '');
       setFocusAreas(userProfile.focus_areas || '');
@@ -255,7 +248,6 @@ export default function ProfilePage() {
       
       if (user?.user_type === 'individual') {
         if (age) profileDataFields.age = parseInt(age);
-        if (proofOfWorkUrls.length > 0) profileDataFields.work_photos = proofOfWorkUrls;
       } else if (user?.user_type === 'company') {
         if (industry) profileDataFields.industry = industry;
         if (companySize) profileDataFields.company_size = companySize;
@@ -301,116 +293,6 @@ export default function ProfilePage() {
       toast.error(errorMessage);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleSaveProofOfWork = async () => {
-    try {
-      setUploading(true);
-      
-      if (!user?.id) {
-        toast.error('User not authenticated');
-        return;
-      }
-
-      const token = localStorage.getItem('token');
-      if (!token) {
-        toast.error('Authentication required');
-        return;
-      }
-
-      // Upload new proof of work photos
-      const uploadedPhotos = [];
-      for (const file of proofOfWork) {
-        const formData = new FormData();
-        formData.append('file', file);
-        
-        const response = await fetch('/api/upload', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`
-          },
-          body: formData,
-        });
-        
-        if (response.ok) {
-          const result = await response.json();
-          uploadedPhotos.push(result.data.url);
-        } else {
-          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-          console.error('Upload error response:', errorData);
-          throw new Error(errorData.error || 'Failed to upload proof of work photo');
-        }
-      }
-
-      // Combine existing and new proof of work URLs
-      const allProofOfWorkUrls = [...proofOfWorkUrls, ...uploadedPhotos];
-
-      // Update user profile with new proof of work
-      const profileData: any = {};
-      
-      // Always include proof_of_work (even if empty array)
-      profileData.proof_of_work = allProofOfWorkUrls;
-      
-      console.log('Sending profile data:', profileData);
-      console.log('Token exists:', !!token);
-      console.log('Token preview:', token?.substring(0, 20) + '...');
-
-      const url = '/api/profile/update';
-      console.log('Making request to:', url);
-
-      const response = await fetch(url, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(profileData),
-      });
-      
-      console.log('Response received:', {
-        status: response.status,
-        statusText: response.statusText,
-        ok: response.ok
-      });
-
-      if (!response.ok) {
-        console.error('Response status:', response.status);
-        console.error('Response headers:', Object.fromEntries(response.headers.entries()));
-        
-        const responseText = await response.text();
-        console.error('Response text:', responseText);
-        
-        let errorData;
-        try {
-          errorData = JSON.parse(responseText);
-        } catch {
-          errorData = { error: responseText || 'Unknown error' };
-        }
-        
-        console.error('API Error Response:', errorData);
-        throw new Error(errorData.error || `Failed to update proof of work: ${response.status}`);
-      }
-
-      // Get the response data to update local state
-      const responseData = await response.json();
-      
-      toast.success('Proof of work updated successfully!');
-
-      // Update local state with saved data
-      if (responseData.user?.profile_data?.proof_of_work) {
-        setProofOfWorkUrls(responseData.user.profile_data.proof_of_work);
-      }
-
-      // Reset form state and refresh profile
-      setProofOfWork([]);
-      await fetchProfile();
-
-    } catch (error) {
-      console.error('Error updating proof of work:', error);
-      toast.error('Failed to update proof of work. Please try again.');
-    } finally {
-      setUploading(false);
     }
   };
 
@@ -745,109 +627,6 @@ export default function ProfilePage() {
                 </CardContent>
               </Card>
 
-              {/* Individual-specific proof of work */}
-              {user?.user_type === 'individual' && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Award className="h-5 w-5" />
-                      Proof of Work
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div>
-                      <div className="space-y-4">
-                        {/* Current work photos display */}
-                        {proofOfWorkUrls.length > 0 && (
-                          <div>
-                            <p className="text-sm text-gray-600 mb-3">Current work photos:</p>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                              {proofOfWorkUrls.map((url, index) => (
-                                <div key={index} className="relative group">
-                                  <img
-                                    src={url}
-                                    alt={`Work sample ${index + 1}`}
-                                    className="w-full h-24 object-cover rounded-lg border-2 border-gray-200"
-                                  />
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const newUrls = proofOfWorkUrls.filter((_, i) => i !== index);
-                                      setProofOfWorkUrls(newUrls);
-                                    }}
-                                    className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 shadow-md"
-                                  >
-                                    <span className="text-sm font-medium leading-none">×</span>
-                                  </button>
-                                  <div className="absolute bottom-1 left-1 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
-                                    {index + 1}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        
-                        {/* New work photos upload */}
-                        <div>
-                          <p className="text-sm font-medium mb-2">Add new work photos:</p>
-                          <div className="space-y-3">
-                            <div>
-                              <label className="text-xs text-gray-600 mb-1 block">Work Photos:</label>
-                              <input
-                                type="file"
-                                accept="image/*"
-                                multiple
-                                onChange={(e) => {
-                                  const files = Array.from(e.target.files || []);
-                                  setProofOfWork(files);
-                                }}
-                                className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100"
-                              />
-                            </div>
-                          </div>
-
-                          {/* Preview of new files */}
-                          {proofOfWork.length > 0 && (
-                            <div className="mt-3">
-                              <p className="text-sm text-green-600 mb-2">✓ {proofOfWork.length} new photo{proofOfWork.length > 1 ? 's' : ''} selected</p>
-                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                                {proofOfWork.map((file, index) => (
-                                  <div key={index} className="relative group">
-                                    <img
-                                      src={URL.createObjectURL(file)}
-                                      alt={`New work photo ${index + 1}`}
-                                      className="w-full h-24 object-cover rounded-lg border-2 border-green-200"
-                                    />
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        const newFiles = proofOfWork.filter((_, i) => i !== index);
-                                        setProofOfWork(newFiles);
-                                      }}
-                                      className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                                    >
-                                      <span className="text-xs">×</span>
-                                    </button>
-                                    <div className="absolute bottom-1 left-1 bg-green-600 bg-opacity-75 text-white text-xs px-2 py-1 rounded">
-                                      New
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    
-                    <Button onClick={handleSaveProofOfWork} disabled={uploading}>
-                      {uploading ? 'Uploading...' : 'Save Proof of Work'}
-                    </Button>
-                  </CardContent>
-                </Card>
-              )}
             </div>
 
             <div className="space-y-6">
