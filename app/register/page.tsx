@@ -10,8 +10,8 @@ export default function RegisterPage() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
       <Card className="w-full max-w-md shadow-xl transition-all duration-300 hover:shadow-2xl">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold text-center animate-fadeIn">Create an Account</CardTitle>
-          <CardDescription className="text-center animate-fadeIn">
+          <CardTitle className="text-2xl font-bold text-center">Create an Account</CardTitle>
+          <CardDescription className="text-center">
             Choose how you would like to join our platform
           </CardDescription>
         </CardHeader>
