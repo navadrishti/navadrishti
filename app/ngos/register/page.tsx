@@ -12,7 +12,6 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Building2, Mail, Phone, MapPin, Users } from 'lucide-react'
 import { toast } from 'sonner'
-import { Textarea } from '@/components/ui/textarea'
 
 export default function NGORegister() {
   const [formData, setFormData] = useState({
@@ -26,10 +25,8 @@ export default function NGORegister() {
     state: '',
     pincode: '',
     country: 'India',
-    description: '',
-    mission: '',
     founded: '',
-    registrationNumber: ''
+    sector: ''
   })
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
 
@@ -162,10 +159,8 @@ export default function NGORegister() {
         profile_data: {
           ngo_name: formData.ngoName,
           ngo_size: formData.ngoSize,
-          description: formData.description,
-          mission: formData.mission,
           founded: formData.founded,
-          registration_number: formData.registrationNumber
+          sector: formData.sector
         }
       }
       
@@ -307,30 +302,6 @@ export default function NGORegister() {
               </h3>
               
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="description">NGO Description</Label>
-                  <Textarea
-                    id="description"
-                    name="description"
-                    value={formData.description}
-                    onChange={handleChange}
-                    placeholder="Brief description of your NGO's work and objectives"
-                    rows={3}
-                  />
-                </div>
-                
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="mission">Mission Statement</Label>
-                  <Textarea
-                    id="mission"
-                    name="mission"
-                    value={formData.mission}
-                    onChange={handleChange}
-                    placeholder="Your NGO's mission and goals"
-                    rows={2}
-                  />
-                </div>
-                
                 <div className="space-y-2">
                   <Label htmlFor="founded">Year Founded</Label>
                   <Input
@@ -346,13 +317,13 @@ export default function NGORegister() {
                 </div>
                 
                 <div className="space-y-2">
-                  <Label htmlFor="registrationNumber">Registration Number (Optional)</Label>
+                  <Label htmlFor="sector">Sector</Label>
                   <Input
-                    id="registrationNumber"
-                    name="registrationNumber"
-                    value={formData.registrationNumber}
+                    id="sector"
+                    name="sector"
+                    value={formData.sector}
                     onChange={handleChange}
-                    placeholder="NGO registration number"
+                    placeholder="Education, Healthcare, Environment, etc."
                   />
                 </div>
               </div>
@@ -391,7 +362,7 @@ export default function NGORegister() {
                 </div>
                 
                 <div className="space-y-2">
-                  <Label htmlFor="pincode">Pincode (Optional)</Label>
+                  <Label htmlFor="pincode">Pincode</Label>
                   <Input
                     id="pincode"
                     name="pincode"

@@ -35,8 +35,7 @@ export default function ServiceOffersPage() {
   
   const isNGO = user?.user_type === 'ngo';
   const isIndividual = user?.user_type === 'individual';
-  const isCompany = user?.user_type === 'company';
-  const canHireServices = isIndividual || isCompany; // Both individuals and companies can hire services
+  const canHireServices = isIndividual;
 
   // Delete service offer function
   const handleDeleteOffer = async (offerId: number) => {

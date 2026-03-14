@@ -1,14 +1,13 @@
 "use client"
 
 import { use, useEffect, useRef, useState } from "react"
-import { useSearchParams } from "next/navigation"
 import { Header } from "@/components/header"
+import { PostsFeed } from "@/components/posts-feed"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
-import { Calendar, MapPin, Award, TrendingUp, Heart, Users, Target, Trophy, Loader2, FileText, Briefcase, Download, ExternalLink } from "lucide-react"
+import { Calendar, MapPin, Award, TrendingUp, Heart, Users, Target, Trophy, Loader2, FileText, Briefcase, Download, ExternalLink, MailCheck, Phone, ShieldCheck } from "lucide-react"
 import { VerificationBadge } from "@/components/verification-badge"
 import { useAuth } from "@/lib/auth-context"
 
@@ -18,37 +17,29 @@ interface ImpactProfileProps {
   }>
 }
 
-interface Activity {
-  id: number
-  activity_type: string
-  entity_type: string
-  entity_id: number
-  activity_data: any
-  created_at: string
-}
-
 interface UserProfile {
   id: number
   name: string
   email: string
+  email_verified?: boolean
+  phone_verified?: boolean
   user_type: string
   location: string
   profile_image: string
   city: string
   created_at: string
   verification_status?: string
+  profile_data?: {
+    bio?: string
+  }
 }
 
 export default function ImpactProfilePage({ params }: ImpactProfileProps) {
   const { id } = use(params)
-  const searchParams = useSearchParams()
   const { token } = useAuth()
-  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'profile')
-  const tabsRef = useRef<HTMLDivElement>(null)
   const fetchingRef = useRef(false)
-  
+
   const [profile, setProfile] = useState<UserProfile | null>(null)
-  const [activities, setActivities] = useState<Activity[]>([])
   const [loading, setLoading] = useState(true)
   const [statsLoading, setStatsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -64,20 +55,10 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
     following: 0
   })
 
-  const handleTabChange = (value: string) => {
-    setActiveTab(value)
-  }
-
-  // Update active tab when URL changes
-  useEffect(() => {
-    const tabFromUrl = searchParams.get('tab') || 'profile'
-    setActiveTab(tabFromUrl)
-  }, [searchParams])
-
   useEffect(() => {
     const fetchProfileData = async () => {
       if (fetchingRef.current) return
-      
+
       try {
         fetchingRef.current = true
         setLoading(true)
@@ -99,8 +80,8 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
         }
 
         setProfile(profileData.profile)
-        setLoading(false) // Show profile immediately
-        setStatsLoading(true) // Stats still loading
+        setLoading(false)
+        setStatsLoading(true)
 
         // Fetch all other data in parallel (non-blocking)
         const [
@@ -108,15 +89,13 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
           requestsRes,
           offersRes,
           volunteerRes,
-          clientsRes,
-          activitiesRes
+          clientsRes
         ] = await Promise.allSettled([
           fetch(`/api/posts?userId=${id}&limit=100`, { headers }),
           fetch(`/api/service-requests?userId=${id}`, { headers }),
           fetch(`/api/service-offers?ngoId=${id}`, { headers }),
           fetch(`/api/service-volunteers?volunteerId=${id}`, { headers }),
-          fetch(`/api/service-clients?clientId=${id}`, { headers }),
-          fetch(`/api/activity-feed?userId=${id}&limit=20`, { headers })
+          fetch(`/api/service-clients?clientId=${id}`, { headers })
         ])
 
         // Parse JSON responses once and store them
@@ -125,7 +104,6 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
         let offersData: any = null
         let volunteerData: any = null
         let clientsData: any = null
-        let activitiesData: any = null
 
         if (postsRes.status === 'fulfilled' && postsRes.value.ok) {
           postsData = await postsRes.value.json()
@@ -142,49 +120,7 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
         if (clientsRes.status === 'fulfilled' && clientsRes.value.ok) {
           clientsData = await clientsRes.value.json()
         }
-        if (activitiesRes.status === 'fulfilled' && activitiesRes.value.ok) {
-          activitiesData = await activitiesRes.value.json()
-        }
 
-        // Process activities using stored data
-        let allActivities: Activity[] = []
-        
-        // Process posts
-        if (postsData) {
-          const postActivities = (postsData.data || []).map((post: any) => ({
-            id: `post-${post.id}`,
-            activity_type: 'post_created',
-            entity_type: 'post',
-            entity_id: post.id,
-            activity_data: { content: post.content?.substring(0, 100) },
-            created_at: post.created_at
-          }))
-          allActivities = [...allActivities, ...postActivities]
-        }
-
-        // Process service requests
-        if (requestsData) {
-          const requestActivities = (requestsData.requests || []).map((req: any) => ({
-            id: `request-${req.id}`,
-            activity_type: 'service_request_created',
-            entity_type: 'service_request',
-            entity_id: req.id,
-            activity_data: { title: req.title },
-            created_at: req.created_at
-          }))
-          allActivities = [...allActivities, ...requestActivities]
-        }
-
-        // Process activity feed
-        if (activitiesData && activitiesData.success && activitiesData.activities) {
-          allActivities = [...allActivities, ...activitiesData.activities]
-        }
-
-        // Sort and set activities
-        allActivities.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-        setActivities(allActivities.slice(0, 20))
-
-        // Calculate stats from stored parsed data
         const newStats = {
           posts: postsData?.data?.length || 0,
           serviceRequests: requestsData?.requests?.length || 0,
@@ -215,14 +151,6 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
     }
   }, [id])
 
-  useEffect(() => {
-    if (searchParams.get('tab') && tabsRef.current) {
-      setTimeout(() => {
-        tabsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }, 100)
-    }
-  }, [searchParams])
-
   const getInitials = (name: string) => {
     if (!name) return "U"
     return name.split(' ').map(n => n[0]).join('').toUpperCase()
@@ -233,10 +161,11 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
     return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
   }
 
-  const formatActivityDate = (dateString: string) => {
-    const date = new Date(dateString)
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-  }
+  const allVerified = Boolean(
+    profile?.email_verified &&
+    profile?.phone_verified &&
+    profile?.verification_status === 'verified'
+  )
 
   if (loading) {
     return (
@@ -345,8 +274,14 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
                     <h1 className="text-3xl font-bold text-gray-900">
                       {profile.name}
                     </h1>
-                    {profile.verification_status === 'verified' && (
-                      <VerificationBadge status="verified" size="md" showText={false} />
+                    {allVerified ? (
+                      <ShieldCheck className="h-5 w-5 text-green-600" />
+                    ) : (
+                      <>
+                        {profile.email_verified && <MailCheck className="h-5 w-5 text-green-600" />}
+                        {profile.phone_verified && <Phone className="h-5 w-5 text-green-600" />}
+                        {profile.verification_status === 'verified' && <ShieldCheck className="h-5 w-5 text-green-600" />}
+                      </>
                     )}
                   </div>
                   <div className="flex items-center gap-4 text-gray-600 text-sm mb-2">
@@ -356,12 +291,18 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
                         {profile.city || profile.location}
                       </span>
                     )}
-                    <span className="flex items-center gap-1">
+                    <span className="flex items-center gap-2">
                       <Calendar className="h-4 w-4" />
                       Joined {formatDate(profile.created_at)}
+                      <Badge variant="outline" className="capitalize">{profile.user_type}</Badge>
                     </span>
                   </div>
-                  <Badge variant="outline" className="capitalize">{profile.user_type}</Badge>
+                  {profile.profile_data?.bio && (
+                    <div className="mt-4">
+                      <p className="text-sm font-medium text-gray-500 mb-1">About</p>
+                      <p className="text-gray-700 whitespace-pre-wrap">{profile.profile_data.bio}</p>
+                    </div>
+                  )}
                 </div>
               </div>
               
@@ -425,275 +366,19 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
         </CardContent>
       </Card>
 
-      <div ref={tabsRef}>
-        <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 gap-2 mb-8 bg-white p-2 rounded-lg h-auto">
-            <TabsTrigger value="profile" className="text-xs sm:text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm text-gray-700 py-3 px-2 rounded-md border border-gray-300">Profile</TabsTrigger>
-            <TabsTrigger value="history" className="text-xs sm:text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm text-gray-700 py-3 px-2 rounded-md border border-gray-300">Recent Activity</TabsTrigger>
-            <TabsTrigger value="achievements" className="text-xs sm:text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm text-gray-700 py-3 px-2 rounded-md border border-gray-300">Achievements</TabsTrigger>
-            <TabsTrigger value="impact" className="text-xs sm:text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm text-gray-700 py-3 px-2 rounded-md border border-gray-300">Impact Metrics</TabsTrigger>
-            <TabsTrigger value="stats" className="text-xs sm:text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm text-gray-700 py-3 px-2 rounded-md border border-gray-300">Statistics</TabsTrigger>
-          </TabsList>
-
-        <TabsContent value="profile">
-          <div className="space-y-6">
-            {/* Bio Section - Common for all user types */}
-            {profile.profile_data?.bio && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <FileText className="h-5 w-5" />
-                    About
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-gray-700 whitespace-pre-wrap">{profile.profile_data.bio}</p>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Individual-specific sections */}
-            {profile.user_type === 'individual' && (
-              <>
-              </>
-            )}
-
-            {/* Company-specific sections */}
-            {profile.user_type === 'company' && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Briefcase className="h-5 w-5" />
-                    Company Information
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {profile.profile_data?.industry && (
-                    <div>
-                      <p className="text-sm text-gray-500 mb-1">Industry</p>
-                      <p className="font-medium text-gray-900">{profile.profile_data.industry}</p>
-                    </div>
-                  )}
-                  {profile.profile_data?.company_size && (
-                    <div>
-                      <p className="text-sm text-gray-500 mb-1">Company Size</p>
-                      <p className="font-medium text-gray-900">{profile.profile_data.company_size}</p>
-                    </div>
-                  )}
-                  {profile.profile_data?.company_website && (
-                    <div>
-                      <p className="text-sm text-gray-500 mb-1">Website</p>
-                      <a 
-                        href={profile.profile_data.company_website}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-orange-500 hover:text-orange-600 flex items-center gap-1"
-                      >
-                        {profile.profile_data.company_website}
-                        <ExternalLink className="h-4 w-4" />
-                      </a>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-
-            {/* NGO-specific sections */}
-            {profile.user_type === 'ngo' && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Award className="h-5 w-5" />
-                    Organization Information
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {profile.profile_data?.registration_number && (
-                    <div>
-                      <p className="text-sm text-gray-500 mb-1">Registration Number</p>
-                      <p className="font-medium text-gray-900">{profile.profile_data.registration_number}</p>
-                    </div>
-                  )}
-                  {profile.profile_data?.founded_year && (
-                    <div>
-                      <p className="text-sm text-gray-500 mb-1">Founded Year</p>
-                      <p className="font-medium text-gray-900">{profile.profile_data.founded_year}</p>
-                    </div>
-                  )}
-                  {profile.profile_data?.ngo_size && (
-                    <div>
-                      <p className="text-sm text-gray-500 mb-1">Organization Size</p>
-                      <p className="font-medium text-gray-900">{profile.profile_data.ngo_size}</p>
-                    </div>
-                  )}
-                  {profile.profile_data?.focus_areas && (
-                    <div>
-                      <p className="text-sm text-gray-500 mb-1">Focus Areas</p>
-                      <p className="font-medium text-gray-900 whitespace-pre-wrap">{profile.profile_data.focus_areas}</p>
-                    </div>
-                  )}
-                  {profile.profile_data?.organization_website && (
-                    <div>
-                      <p className="text-sm text-gray-500 mb-1">Website</p>
-                      <a 
-                        href={profile.profile_data.organization_website}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-orange-500 hover:text-orange-600 flex items-center gap-1"
-                      >
-                        {profile.profile_data.organization_website}
-                        <ExternalLink className="h-4 w-4" />
-                      </a>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Empty State */}
-            {!profile.profile_data?.bio && 
-             (profile.user_type === 'company' ? (!profile.profile_data?.industry && !profile.profile_data?.company_size && !profile.profile_data?.company_website) : true) &&
-             (profile.user_type === 'ngo' ? (!profile.profile_data?.registration_number && !profile.profile_data?.founded_year && !profile.profile_data?.focus_areas && !profile.profile_data?.organization_website && !profile.profile_data?.ngo_size) : true) &&
-             true && (
-              <Card>
-                <CardContent className="pt-6 text-center py-12">
-                  <Users className="h-12 w-12 mx-auto mb-3 text-gray-400" />
-                  <p className="text-gray-500">No profile information available yet</p>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="history">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="lg:col-span-7">
           <Card>
             <CardHeader>
-              <CardTitle>Recent Activity</CardTitle>
+              <CardTitle>Posts</CardTitle>
             </CardHeader>
-            <CardContent>
-              {statsLoading ? (
-                <div className="space-y-4">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="p-4 border rounded-lg space-y-3 animate-pulse">
-                      <div className="flex gap-4">
-                        <div className="h-12 w-12 rounded-full bg-gray-200" />
-                        <div className="flex-1 space-y-2">
-                          <div className="h-4 w-3/4 bg-gray-200 rounded" />
-                          <div className="h-4 w-1/2 bg-gray-200 rounded" />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : activities.length === 0 ? (
-                <div className="text-center py-12 text-gray-500">
-                  <Users className="h-12 w-12 mx-auto mb-3 text-gray-400" />
-                  <p className="text-sm">No activity yet</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {activities.map((activity) => {
-                    const activityType = activity.activity_type.replace(/_/g, ' ')
-                    const icon = activity.activity_type.includes('post') ? Heart :
-                                activity.activity_type.includes('listing') ? Target :
-                                activity.activity_type.includes('order') ? Trophy :
-                                activity.activity_type.includes('service') ? Users :
-                                Award
-                    
-                    const bgColor = 'bg-orange-500'
-
-                    const borderColor = 'border-gray-700'
-
-                    const hoverBgColor = 'hover:bg-gray-800'
-
-                    const IconComponent = icon
-
-                    // Generate detailed description based on activity type
-                    let detailedDescription = ''
-                    if (activity.activity_type === 'post_created') {
-                      detailedDescription = 'Created a new post on the platform'
-                    } else if (activity.activity_type === 'service_request_created') {
-                      detailedDescription = 'Created a new service request'
-                    } else if (activity.activity_type === 'service_offer_created') {
-                      detailedDescription = 'Published a new service offer'
-                    } else if (activity.activity_type === 'profile_update') {
-                      detailedDescription = 'Updated profile information'
-                    } else {
-                      detailedDescription = 'Performed an activity on the platform'
-                    }
-
-                    return (
-                      <div 
-                        key={activity.id} 
-                        className={`group flex flex-col sm:flex-row gap-4 p-4 sm:p-5 border-2 ${borderColor} rounded-xl bg-white transition-all duration-200 hover:shadow-md`}
-                      >
-                        <div className="flex-shrink-0">
-                          <Avatar className="h-12 w-12 border-2 border-gray-700 shadow-sm">
-                            <AvatarImage src={profile.profile_image} />
-                            <AvatarFallback className={`${bgColor} text-white font-semibold`}>
-                              {getInitials(profile.name)}
-                            </AvatarFallback>
-                          </Avatar>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-2">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <h4 className="font-semibold text-orange-500 break-words">{profile.name}</h4>
-                                {profile.verification_status === 'verified' && (
-                                  <VerificationBadge status="verified" size="sm" showText={false} />
-                                )}
-                              </div>
-                              <p className="text-sm text-gray-900 break-words">{detailedDescription}</p>
-                            </div>
-                            <span className="text-sm text-gray-600 whitespace-nowrap self-start sm:self-auto">{formatActivityDate(activity.created_at)}</span>
-                          </div>
-                          
-                          {/* Activity Details Card */}
-                          <div className="sm:ml-0 mt-3 p-4 bg-white rounded-lg border border-gray-600">
-                            {activity.activity_data?.title && (
-                              <p className="text-base text-gray-900 font-semibold mb-2 break-words">{activity.activity_data.title}</p>
-                            )}
-                            {activity.activity_data?.content && (
-                              <p className="text-sm text-gray-800 mb-3 line-clamp-3 leading-relaxed break-words">{activity.activity_data.content}</p>
-                            )}
-                            
-                            {/* Activity metadata */}
-                            <div className="flex items-center gap-2 sm:gap-3 flex-wrap mt-3">
-                              <Badge variant="secondary" className="text-xs font-medium capitalize bg-white text-gray-900">
-                                {activity.entity_type.replace(/_/g, ' ')}
-                              </Badge>
-                              <span className="text-xs text-gray-600">
-                                ID: #{activity.entity_id}
-                              </span>
-                              {activity.activity_type === 'post_created' && (
-                                <Badge variant="outline" className="text-xs border-gray-500 font-medium text-orange-500">
-                                  Text Post
-                                </Badge>
-                              )}
-                              {activity.activity_type === 'service_request_created' && (
-                                <Badge variant="outline" className="text-xs border-gray-500 font-medium text-orange-500">
-                                  Service Request
-                                </Badge>
-                              )}
-                              {activity.activity_type === 'service_offer_created' && (
-                                <Badge variant="outline" className="text-xs border-gray-500 font-medium text-orange-500">
-                                  Service Offer
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
+            <CardContent className="max-h-[70vh] overflow-y-auto pr-2">
+              <PostsFeed userId={profile.id} showAllPosts={true} limit={20} showPostedDate={true} />
             </CardContent>
           </Card>
-        </TabsContent>
+        </div>
 
-        <TabsContent value="achievements">
+        <div className="lg:col-span-5 space-y-6">
           <Card>
             <CardHeader>
               <CardTitle>
@@ -816,9 +501,7 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
               )}
             </CardContent>
           </Card>
-        </TabsContent>
 
-        <TabsContent value="impact">
           <Card>
             <CardHeader>
               <CardTitle>
@@ -940,7 +623,7 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
 
                 {/* Impact Summary */}
                 <div className="p-4 bg-white rounded-lg border border-gray-700">
-                  <h4 className="font-medium text-orange-500 mb-3">Your Impact Summary</h4>
+                  <h4 className="font-medium text-orange-500 mb-3">Impact Summary</h4>
                   <div className="space-y-2 text-sm text-gray-700">
                     {stats.posts > 0 && (
                       <p>✓ Shared <span className="font-semibold text-orange-500">{stats.posts}</span> posts to engage the community</p>
@@ -967,9 +650,7 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
               )}
             </CardContent>
           </Card>
-        </TabsContent>
 
-        <TabsContent value="stats">
           {statsLoading ? (
             <div className="grid md:grid-cols-2 gap-6">
               <Card>
@@ -1068,16 +749,11 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
                   <div>
                     <p className="text-sm text-gray-500 mb-1">Verification Status</p>
                     <div className="flex items-center gap-2">
-                      {profile.verification_status && profile.verification_status !== 'unverified' ? (
-                        <VerificationBadge 
-                          status={profile.verification_status as any} 
-                          size="sm" 
-                        />
-                      ) : (
-                        <Badge variant="outline" className="text-gray-600">
-                          Unverified
-                        </Badge>
-                      )}
+                      <VerificationBadge 
+                        status={(profile.verification_status || 'unverified') as any} 
+                        size="sm"
+                        showText={false}
+                      />
                     </div>
                   </div>
                 </div>
@@ -1085,8 +761,7 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
             </Card>
           </div>
           )}
-        </TabsContent>
-      </Tabs>
+        </div>
       </div>
     </div>
     </>

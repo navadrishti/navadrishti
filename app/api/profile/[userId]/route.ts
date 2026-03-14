@@ -23,6 +23,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         state_province,
         pincode,
         country,
+        email_verified,
+        phone_verified,
         profile_data,
         created_at
       `)

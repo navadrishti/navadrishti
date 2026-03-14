@@ -40,7 +40,7 @@ export default function ProfilePage() {
   const [bio, setBio] = useState('');
   
   // Organization details for NGOs
-  const [registrationNumber, setRegistrationNumber] = useState('');
+  const [sector, setSector] = useState('');
   const [foundedYear, setFoundedYear] = useState('');
   const [focusAreas, setFocusAreas] = useState('');
   const [organizationWebsite, setOrganizationWebsite] = useState('');
@@ -110,7 +110,7 @@ export default function ProfilePage() {
       
       // Load additional profile fields from profile_data or direct fields
       const userProfile = freshUser?.profile_data || {};
-      setRegistrationNumber(userProfile.registration_number || '');
+      setSector(userProfile.sector || '');
       setFoundedYear(userProfile.founded_year || '');
       setFocusAreas(userProfile.focus_areas || '');
       setOrganizationWebsite(userProfile.organization_website || '');
@@ -256,7 +256,7 @@ export default function ProfilePage() {
       } else if (user?.user_type === 'ngo') {
         if (ngoSize) profileDataFields.ngo_size = ngoSize;
         if (organizationWebsite) profileDataFields.organization_website = organizationWebsite;
-        if (registrationNumber) profileDataFields.registration_number = registrationNumber;
+        if (sector) profileDataFields.sector = sector;
         if (foundedYear) profileDataFields.founded_year = parseInt(foundedYear);
         if (focusAreas) profileDataFields.focus_areas = focusAreas;
         profileDataFields.ngo_name = editableName || user?.name;
@@ -590,11 +590,11 @@ export default function ProfilePage() {
                       
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                          <Label>Registration Number</Label>
+                          <Label>Sector</Label>
                           <Input 
-                            placeholder="NGO Registration Number"
-                            value={registrationNumber}
-                            onChange={(e) => setRegistrationNumber(e.target.value)}
+                            placeholder="Education, Healthcare, Environment, etc."
+                            value={sector}
+                            onChange={(e) => setSector(e.target.value)}
                           />
                         </div>
                         
