@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -8,20 +8,55 @@ import { Loader2 } from 'lucide-react';
 
 export default function CALayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const isLoginRoute = pathname === '/ca/login';
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [caUser, setCaUser] = useState({
+    username: 'CA User',
+    icai_membership_number: '123456'
+  });
 
   useEffect(() => {
-    // Check if CA is logged in
-    const caToken = localStorage.getItem('ca_token');
-    
-    if (!caToken) {
-      router.push('/ca/login');
-    } else {
-      setIsAuthenticated(true);
+    if (isLoginRoute) {
       setIsLoading(false);
+      return;
     }
-  }, [router]);
+
+    const verifyCAAuth = async () => {
+      try {
+        const response = await fetch('/api/ca/verify', {
+          method: 'GET',
+          credentials: 'include'
+        });
+
+        if (!response.ok) {
+          setIsAuthenticated(false);
+          router.push('/ca/login');
+          return;
+        }
+
+        const data = await response.json();
+        setCaUser({
+          username: data?.ca?.username || 'CA User',
+          icai_membership_number: data?.ca?.icai_membership_number || '123456'
+        });
+        setIsAuthenticated(true);
+      } catch (error) {
+        setIsAuthenticated(false);
+        router.push('/ca/login');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    verifyCAAuth();
+  }, [isLoginRoute, router]);
+
+  // Keep login page public while all other CA routes stay protected
+  if (isLoginRoute) {
+    return <>{children}</>;
+  }
 
   // Show loading while checking authentication
   if (isLoading) {
@@ -40,10 +75,18 @@ export default function CALayout({ children }: { children: React.ReactNode }) {
     return null;
   }
 
-  const handleLogout = () => {
-    localStorage.removeItem('ca_token');
-    localStorage.removeItem('ca_user');
-    router.push('/ca/login');
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/ca/logout', {
+        method: 'POST',
+        credentials: 'include'
+      });
+    } catch (error) {
+      // Ignore logout API failures and redirect to login.
+    } finally {
+      setIsAuthenticated(false);
+      router.push('/ca/login');
+    }
   };
 
   return (
@@ -77,8 +120,8 @@ export default function CALayout({ children }: { children: React.ReactNode }) {
             {/* User Info & Logout */}
             <div className="flex items-center space-x-4">
               <div className="text-right hidden sm:block">
-                <p className="text-sm font-medium text-white">CA Demo User</p>
-                <p className="text-xs text-blue-100">ICAI: 123456</p>
+                <p className="text-sm font-medium text-white">{caUser.username}</p>
+                <p className="text-xs text-blue-100">ICAI: {caUser.icai_membership_number}</p>
               </div>
               <Button variant="outline" size="sm" onClick={handleLogout} className="bg-orange-500 text-white border-orange-500 hover:bg-orange-600 hover:border-orange-600 hover:text-white hover:shadow-lg hover:shadow-orange-500/50">
                 Logout
