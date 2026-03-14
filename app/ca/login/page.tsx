@@ -8,10 +8,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Shield, Loader2, AlertCircle } from 'lucide-react';
+import { toast } from 'sonner';
 
 export default function CALoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -19,12 +20,25 @@ export default function CALoginPage() {
 
   // Redirect if already logged in
   useEffect(() => {
-    const caToken = localStorage.getItem('ca_token');
-    if (caToken) {
-      router.push('/ca');
-    } else {
+    const checkCAAuth = async () => {
+      try {
+        const response = await fetch('/api/ca/verify', {
+          method: 'GET',
+          credentials: 'include'
+        });
+
+        if (response.ok) {
+          router.push('/ca');
+          return;
+        }
+      } catch (err) {
+        // Ignore verification failures and keep user on login page.
+      }
+
       setCheckingAuth(false);
-    }
+    };
+
+    checkCAAuth();
   }, [router]);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -33,36 +47,31 @@ export default function CALoginPage() {
     setLoading(true);
 
     try {
-      // TODO: Replace with actual CA authentication API
-      // const response = await fetch('/api/ca/auth/login', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ email, password })
-      // });
-      // const data = await response.json();
+      const response = await fetch('/api/ca/auth', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({ username, password })
+      });
 
-      // Mock authentication for development
-      setTimeout(() => {
-        if (email && password) {
-          // Store mock token
-          localStorage.setItem('ca_token', 'mock-ca-token-' + Date.now());
-          localStorage.setItem('ca_user', JSON.stringify({
-            id: 'CA-001',
-            name: 'CA Demo User',
-            email: email,
-            icai_membership_number: '123456'
-          }));
-          
-          // Redirect to dashboard
-          router.push('/ca');
-        } else {
-          setError('Please enter both email and password');
-          setLoading(false);
-        }
-      }, 1000);
+      const data = await response.json();
 
+      if (response.ok) {
+        toast.success('CA login successful');
+        setUsername('');
+        setPassword('');
+        setError('');
+        router.push('/ca');
+      } else {
+        setError(data.error || 'Login failed');
+        toast.error(data.error || 'Login failed');
+      }
     } catch (err) {
-      setError('Login failed. Please try again.');
+      setError('Network error. Please try again.');
+      toast.error('Network error. Please try again.');
+    } finally {
       setLoading(false);
     }
   };
@@ -109,13 +118,13 @@ export default function CALoginPage() {
               )}
 
               <div className="space-y-2">
-                <Label htmlFor="email">Email Address</Label>
+                <Label htmlFor="username">CA ID</Label>
                 <Input
-                  id="email"
-                  type="email"
-                  placeholder="ca@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  id="username"
+                  type="text"
+                  placeholder="Enter CA ID"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
                   required
                   disabled={loading}
                 />
@@ -137,7 +146,7 @@ export default function CALoginPage() {
               <Button 
                 type="submit" 
                 className="w-full" 
-                disabled={loading}
+                disabled={loading || !username || !password}
               >
                 {loading ? (
                   <>
@@ -163,7 +172,7 @@ export default function CALoginPage() {
         <Card className="mt-4 bg-blue-50 border-blue-200">
           <CardContent className="pt-4">
             <p className="text-sm text-blue-900 text-center">
-              <strong>Development Mode:</strong> Use any email and password to login
+              <strong>Configuration:</strong> Use CA ID/password from env (CA_USERNAME and CA_PASSWORD)
             </p>
           </CardContent>
         </Card>
