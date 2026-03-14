@@ -1,11 +1,23 @@
-// API endpoint for Company verification using EntityLocker
+// API endpoint for Company verification (manual document-first flow)
 import { NextRequest, NextResponse } from 'next/server';
-import { EntityLockerService } from '@/lib/entitylocker';
 import { db, supabase } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 
-const entityLocker = new EntityLockerService();
+function isValidGSTNumber(gstNumber: string): boolean {
+  const gstRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+  return gstRegex.test(gstNumber);
+}
+
+function isValidCINNumber(cinNumber: string): boolean {
+  const cinRegex = /^[LU][0-9]{5}[A-Z]{2}[0-9]{4}[A-Z]{3}[0-9]{6}$/;
+  return cinRegex.test(cinNumber);
+}
+
+function isValidPANNumber(panNumber: string): boolean {
+  const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
+  return panRegex.test(panNumber);
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -30,11 +42,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Only companies can use this verification method' }, { status: 403 });
     }
 
-    const { action, companyName, gstNumber, panNumber, cinNumber, companyType } = await req.json();
+    const { action, companyName, gstNumber, panNumber, cinNumber, companyType, documents } = await req.json();
 
     switch (action) {
       case 'initiate':
-        return await initiateCompanyVerification(userId, companyName, cinNumber, companyType);
+        return await initiateCompanyVerification(userId, companyName, cinNumber, companyType, user?.profile_data, documents);
       
       case 'verify-gst':
         return await verifyGST(userId, gstNumber);
@@ -61,20 +73,11 @@ async function initiateCompanyVerification(
   userId: number, 
   companyName: string, 
   cinNumber: string, 
-  companyType: string
+  companyType: string,
+  profileData?: any,
+  documents?: Record<string, string>
 ) {
-  // Check if EntityLocker service is available
-  if (!entityLocker.isAvailable()) {
-    return NextResponse.json({
-      error: 'EntityLocker verification service is not configured. Please contact administrator.',
-      code: 'SERVICE_NOT_CONFIGURED'
-    }, { status: 503 });
-  }
-
   try {
-    // Generate EntityLocker authorization URL
-    const authUrl = entityLocker.generateAuthUrl(userId, 'company');
-    
     // Create or update verification record
     const { data: existingVerification } = await supabase
       .from('company_verifications')
@@ -103,13 +106,35 @@ async function initiateCompanyVerification(
         .eq('user_id', userId);
     }
 
+    const existingProfileData = (profileData && typeof profileData === 'object') ? profileData : {};
+    const existingVerificationDocs = (existingProfileData.verification_documents && typeof existingProfileData.verification_documents === 'object')
+      ? existingProfileData.verification_documents
+      : {};
+
+    await db.users.update(userId, {
+      profile_data: {
+        ...existingProfileData,
+        verification_documents: {
+          ...existingVerificationDocs,
+          company: {
+            ...(existingVerificationDocs.company || {}),
+            documents: documents || {},
+            submitted_at: new Date().toISOString(),
+            status: 'pending'
+          }
+        }
+      },
+      verification_status: 'pending'
+    });
+
     return NextResponse.json({
       success: true,
-      authUrl,
-      message: 'Please complete verification on EntityLocker'
+      authUrl: null,
+      mode: 'manual',
+      message: 'Verification initiated in manual mode. Your uploaded documents will be reviewed by admin.'
     });
   } catch (error: any) {
-    console.error('EntityLocker initiation error:', error);
+    console.error('Company verification initiation error:', error);
     return NextResponse.json({
       error: error.message || 'Failed to initiate verification',
       code: 'INITIATION_FAILED'
@@ -119,7 +144,7 @@ async function initiateCompanyVerification(
 
 async function verifyGST(userId: number, gstNumber: string) {
   // Validate GST number format
-  if (!entityLocker.validateGSTNumber(gstNumber)) {
+  if (!isValidGSTNumber(gstNumber)) {
     return NextResponse.json({ error: 'Invalid GST number format' }, { status: 400 });
   }
 
@@ -143,8 +168,7 @@ async function verifyGST(userId: number, gstNumber: string) {
 
 async function verifyCompanyPAN(userId: number, panNumber: string) {
   // Validate PAN number format
-  const digiLockerService = new (require('@/lib/digilocker').DigiLockerService)();
-  if (!digiLockerService.validatePANNumber(panNumber)) {
+  if (!isValidPANNumber(panNumber)) {
     return NextResponse.json({ error: 'Invalid PAN number format' }, { status: 400 });
   }
 
@@ -168,7 +192,7 @@ async function verifyCompanyPAN(userId: number, panNumber: string) {
 
 async function verifyCIN(userId: number, cinNumber: string) {
   // Validate CIN number format
-  if (!entityLocker.validateCINNumber(cinNumber)) {
+  if (!isValidCINNumber(cinNumber)) {
     return NextResponse.json({ error: 'Invalid CIN number format' }, { status: 400 });
   }
 

@@ -62,6 +62,7 @@ export default function ServiceRequestDetailPage() {
 
   const requestId = params.id as string
   const isAuthenticated = !!(user && token)
+  const canVolunteer = user?.user_type === 'individual'
 
   useEffect(() => {
     if (requestId) {
@@ -130,10 +131,10 @@ export default function ServiceRequestDetailPage() {
       return
     }
 
-    if (user.user_type === 'ngo') {
+    if (user.user_type !== 'individual') {
       toast({
         title: "Invalid User Type",
-        description: "NGOs cannot apply to service requests",
+        description: "Only individuals can volunteer for service requests",
         variant: "destructive"
       })
       return
@@ -368,11 +369,11 @@ export default function ServiceRequestDetailPage() {
                       <Link href="/login">Log In</Link>
                     </Button>
                   </div>
-                ) : user?.user_type === 'ngo' ? (
+                ) : !canVolunteer ? (
                   <Alert>
                     <XCircle className="h-4 w-4" />
                     <AlertDescription>
-                      NGOs cannot apply to service requests. Only individuals and companies can volunteer.
+                      Only individuals can volunteer for service requests.
                     </AlertDescription>
                   </Alert>
                 ) : user && user.verification_status !== 'verified' ? (
@@ -390,7 +391,7 @@ export default function ServiceRequestDetailPage() {
                         <div>
                           <p className="text-amber-800 font-medium text-sm">Verification Required</p>
                           <p className="text-amber-700 text-sm mt-1">
-                            You need to complete {user?.user_type === 'individual' ? 'identity verification (Aadhaar & PAN)' : 'organization verification'} before you can apply for volunteer opportunities.
+                            You need to complete identity verification (Aadhaar & PAN) before you can apply for volunteer opportunities.
                             <Link href="/verification" className="underline font-medium ml-1 hover:text-amber-900">
                               Complete verification now
                             </Link>

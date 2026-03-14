@@ -7,8 +7,6 @@ Disallow: /admin/
 Disallow: /api/
 
 # Disallow user-specific pages that require authentication
-Disallow: /cart
-Disallow: /orders/
 Disallow: /settings/
 
 # Sitemap

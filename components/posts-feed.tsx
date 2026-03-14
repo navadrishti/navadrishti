@@ -74,9 +74,10 @@ interface PostsFeedProps {
   limit?: number;
   refreshTrigger?: number;
   showAllPosts?: boolean;
+  showPostedDate?: boolean;
 }
 
-export function PostsFeed({ userId, limit = 10, refreshTrigger, showAllPosts = false }: PostsFeedProps) {
+export function PostsFeed({ userId, limit = 10, refreshTrigger, showAllPosts = false, showPostedDate = false }: PostsFeedProps) {
   const { user, token } = useAuth();
   
   // Generate initials for avatar fallback
@@ -823,6 +824,7 @@ export function PostsFeed({ userId, limit = 10, refreshTrigger, showAllPosts = f
             postIndex={index}
             onInteraction={handleInteraction}
             onView={trackPostView}
+            showPostedDate={showPostedDate}
             currentUserId={user?.id}
             isAuthenticated={!!user && !!token}
             showComments={expandedComments.has(post.id)}
@@ -887,6 +889,7 @@ interface PostCardProps {
   postIndex: number;
   onInteraction: (postId: number, type: 'like' | 'share' | 'view' | 'comment') => void;
   onView: (postId: number) => void;
+  showPostedDate?: boolean;
   currentUserId?: number;
   isAuthenticated?: boolean;
   showComments?: boolean;
@@ -910,6 +913,7 @@ function PostCard({
   postIndex,
   onInteraction,
   onView,
+  showPostedDate = false,
   currentUserId, 
   isAuthenticated,
   showComments = false,
@@ -956,6 +960,27 @@ function PostCard({
       }
       return part;
     });
+  };
+
+  const formatPostTimestamp = (dateString: string) => {
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) {
+        return 'just now';
+      }
+
+      if (showPostedDate) {
+        return date.toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+        });
+      }
+
+      return `${formatDistanceToNow(date)} ago`;
+    } catch (error) {
+      return 'just now';
+    }
   };
 
   // Track view when post comes into view
@@ -1028,19 +1053,7 @@ function PostCard({
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <span className="capitalize">{post.user.user_type}</span>
                 <span>•</span>
-                <span>
-                  {(() => {
-                    try {
-                      const date = new Date(post.created_at);
-                      if (isNaN(date.getTime())) {
-                        return 'just now';
-                      }
-                      return formatDistanceToNow(date) + ' ago';
-                    } catch (error) {
-                      return 'just now';
-                    }
-                  })()} 
-                </span>
+                <span>{formatPostTimestamp(post.created_at)}</span>
               </div>
             </div>
           </Link>

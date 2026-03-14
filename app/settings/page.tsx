@@ -59,9 +59,7 @@ function DeleteAccountDialog({ open, onOpenChange, onConfirm, loading, error }: 
                   <h4 className="font-semibold text-destructive">Warning: This will permanently delete:</h4>
                   <ul className="text-sm text-muted-foreground space-y-1">
                     <li>• Your account and profile information</li>
-                    <li>• All your marketplace listings and orders</li>
                     <li>• Your service requests and applications</li>
-                    <li>• Your cart items and wishlist</li>
                     <li>• All verification records</li>
                   </ul>
                 </div>

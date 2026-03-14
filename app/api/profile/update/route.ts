@@ -20,9 +20,6 @@ const updateProfileSchema = z.object({
   bio: z.string().optional(),
   location: z.string().optional(),
   timezone: z.string().optional(),
-  experience: z.string().optional(),
-  proof_of_work: z.array(z.string()).optional(),
-  resume_url: z.string().optional(),
   skills: z.string().optional(),
   interests: z.string().optional()
 });
@@ -163,32 +160,6 @@ export async function PUT(request: NextRequest) {
     
     const updateData = validationResult.data;
     
-    // Custom validation for resume_url - must be valid URL if not empty
-    if (updateData.resume_url && updateData.resume_url.trim() !== '') {
-      try {
-        new URL(updateData.resume_url);
-      } catch {
-        return NextResponse.json({ 
-          error: 'Resume URL must be a valid URL' 
-        }, { status: 400 });
-      }
-    }
-    
-    // Custom validation for proof_of_work - all URLs must be valid
-    if (updateData.proof_of_work && Array.isArray(updateData.proof_of_work)) {
-      for (const url of updateData.proof_of_work) {
-        if (url && url.trim() !== '') {
-          try {
-            new URL(url);
-          } catch {
-            return NextResponse.json({ 
-              error: `Invalid proof of work URL: ${url}` 
-            }, { status: 400 });
-          }
-        }
-      }
-    }
-    
     // Remove undefined values
     const cleanUpdateData = Object.fromEntries(
       Object.entries(updateData).filter(([_, value]) => value !== undefined)
@@ -236,18 +207,15 @@ export async function PUT(request: NextRequest) {
 
 
     // Separate profile_data fields from direct user fields
-    const { proof_of_work, resume_url, skills, interests, experience, ...directUserFields } = cleanUpdateData;
+    const { skills, interests, ...directUserFields } = cleanUpdateData;
     
     // Prepare profile_data update
     const currentProfileData = currentUser?.profile_data || {};
     const updatedProfileData = { ...currentProfileData };
     
     // Only update profile_data fields that were provided
-    if (proof_of_work !== undefined) updatedProfileData.proof_of_work = proof_of_work;
-    if (resume_url !== undefined) updatedProfileData.resume_url = resume_url;
     if (skills !== undefined) updatedProfileData.skills = skills;
     if (interests !== undefined) updatedProfileData.interests = interests;
-    if (experience !== undefined) updatedProfileData.experience = experience;
     
     // Prepare final update data
     const finalUpdateData = {
@@ -287,11 +255,8 @@ export async function PUT(request: NextRequest) {
     
     const formattedUser = {
       ...user,
-      proof_of_work: profileData.proof_of_work || [],
-      resume_url: profileData.resume_url || '',
       skills: profileData.skills || '',
-      interests: profileData.interests || '',
-      experience: profileData.experience || ''
+      interests: profileData.interests || ''
     };
 
     return NextResponse.json({ 

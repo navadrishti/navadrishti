@@ -37,3 +37,11 @@ reference/
 
 # ignore folder
 .ignore/
+ocr-service/logs/
+ocr-service/outputs/
+ocr-service/__pycache__/
+ocr-service/ocr/__pycache__/
+ocr-service/engine/__pycache__/
+ocr-service/validation/__pycache__/
+ocr-service/validation/images/
+ocr-service/validation/accuracy_report.json

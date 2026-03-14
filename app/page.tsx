@@ -245,18 +245,18 @@ export default function HomePage() {
                     
                     <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
                       <div className="flex justify-between items-center mb-1">
-                        <p className="font-semibold text-gray-900">Marketplace Seller</p>
-                        <Badge className="bg-purple-600 text-white text-xs border-0">5+ listings</Badge>
+                        <p className="font-semibold text-gray-900">Campaign Builder</p>
+                        <Badge className="bg-purple-600 text-white text-xs border-0">3+ campaigns</Badge>
                       </div>
-                      <p className="text-xs text-gray-600">Active Seller</p>
+                      <p className="text-xs text-gray-600">Community mobilizer</p>
                     </div>
                     
                     <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
                       <div className="flex justify-between items-center mb-1">
-                        <p className="font-semibold text-gray-900">Frequent Buyer</p>
-                        <Badge className="bg-indigo-600 text-white text-xs border-0">5+ orders</Badge>
+                        <p className="font-semibold text-gray-900">Reliable Collaborator</p>
+                        <Badge className="bg-indigo-600 text-white text-xs border-0">5+ engagements</Badge>
                       </div>
-                      <p className="text-xs text-gray-600">Supportive Buyer</p>
+                      <p className="text-xs text-gray-600">Consistent contributor</p>
                     </div>
                     
                     <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">

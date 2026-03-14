@@ -1,0 +1,8 @@
+paddlepaddle==2.6.2
+paddleocr==2.7.3
+opencv-python
+numpy<2.0
+python-dateutil
+requests
+sentence-transformers
+Pillow

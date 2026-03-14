@@ -167,7 +167,6 @@ IMAGE_FORMAT=auto                 # Auto-optimize format
 # Storage Folders
 CLOUDINARY_FOLDER_POSTS=navdrishti/posts
 CLOUDINARY_FOLDER_PROFILES=navdrishti/profiles
-CLOUDINARY_FOLDER_MARKETPLACE=navdrishti/marketplace
 CLOUDINARY_FOLDER_DOCUMENTS=navdrishti/documents
 ```
 
@@ -228,31 +227,6 @@ PHONE_VERIFICATION_REQUIRED=false # Require phone verification
 SMS_VERIFICATION_TEMPLATE=Your Navdrishti verification code is: {code}
 ```
 
-### 💳 Payment Configuration
-
-```env
-# ===========================================
-# PAYMENT GATEWAY (RAZORPAY)
-# ===========================================
-
-# Razorpay Settings (Required for marketplace)
-RAZORPAY_KEY_ID=rzp_test_1234567890  # Test key for development
-RAZORPAY_KEY_SECRET=your_razorpay_secret
-RAZORPAY_WEBHOOK_SECRET=your_webhook_secret
-
-# Payment Settings
-DEFAULT_CURRENCY=INR              # Default currency code
-MIN_ORDER_AMOUNT=100             # Minimum order amount (in paise for INR)
-MAX_ORDER_AMOUNT=10000000        # Maximum order amount
-PAYMENT_TIMEOUT=900              # Payment timeout in seconds (15 min)
-
-# Razorpay Features
-RAZORPAY_ENABLE_UPI=true         # Enable UPI payments
-RAZORPAY_ENABLE_NETBANKING=true  # Enable net banking
-RAZORPAY_ENABLE_WALLETS=true     # Enable wallet payments
-RAZORPAY_ENABLE_CARDS=true       # Enable card payments
-```
-
 ### 📊 Analytics & Monitoring
 
 ```env
@@ -294,7 +268,6 @@ NEXT_PUBLIC_VERSION=1.0.0
 NEXT_PUBLIC_COMMIT_SHA=abc123def456
 
 # Feature Flags
-NEXT_PUBLIC_ENABLE_MARKETPLACE=true
 NEXT_PUBLIC_ENABLE_SERVICE_OFFERS=true
 NEXT_PUBLIC_ENABLE_SOCIAL_FEED=true
 NEXT_PUBLIC_ENABLE_ADMIN_PANEL=true
@@ -338,7 +311,6 @@ CACHE_DURATION_SECONDS=3600      # 1 hour
 3. **Third-party Services**
    - Create Cloudinary account for image storage
    - Set up email service (Gmail/SendGrid)
-   - Configure payment gateway (Razorpay)
 
 4. **Environment Configuration**
    ```bash

@@ -201,7 +201,314 @@ POST /api/admin/verifications/{id}/review
 }
 ```
 
+## 🧾 CA (Chartered Accountant) Verification Console
+
+### Overview
+
+The CA Console is a specialized interface for empanelled Chartered Accountants to provide professional verification services for NGOs and Companies. This adds an additional layer of trust and compliance to the platform's verification process.
+
+**Access:** `/ca` (Chartered Accountants only)  
+**Design:** Blue and orange theme with clean, icon-free interface optimized for professional workflow
+
+### CA Verification Workflow
+
+```mermaid
+graph TD
+    A[Admin Approves Documents] --> B[Case Assigned to CA]
+    B --> C[CA Reviews in Dashboard]
+    C --> D{CA Decision}
+    D -->|Approve| E[Generate UDIN Certificate]
+    D -->|Reject| F[Send Back with Reason]
+    D -->|Clarification| G[Request More Info]
+    E --> H[Mark as CA Verified]
+    F --> I[Entity Resubmits]
+    G --> I
+    H --> J[Final Verification Complete]
+```
+
+### CA Dashboard Features
+
+#### 1. **Dashboard** (`/ca`)
+Shows pending cases requiring CA review:
+- **Stats Cards**: Total assigned, pending review, under review, completed today
+- **Pending Cases List**: All cases awaiting CA action
+- **Status Indicators**: New assignment, in review, clarification needed
+- **Priority Badges**: Urgent, high, medium, low
+- **Skeleton Loaders**: Smooth loading experience
+
+```javascript
+// Dashboard Stats
+{
+  total_assigned: 24,
+  pending_review: 8,
+  under_review: 3,
+  completed_today: 2,
+  avg_review_time_hours: 18.5,
+  pending_urgent: 1
+}
+```
+
+#### 2. **History Page** (`/ca/cases`)
+Shows completed verifications only:
+- **Completed Cases**: All approved/rejected cases
+- **Filters**: Status, priority, entity type, search
+- **Read-only Access**: View case details without review panel
+- **Final Status Display**: Shows only approved or rejected status
+
+#### 3. **Case Detail Page** (`/ca/cases/[id]`)
+Detailed case review interface:
+- **Entity Information**: Name, type, registration details
+- **Document Viewer**: View uploaded PDFs/images with zoom/download
+- **OCR Results**: Extracted text and structured data
+- **Validation Flags**: Format checks, name matching, expiry validation
+- **CA Review Panel**: Approve/reject/clarification actions (pending cases only)
+- **Conditional Display**: Review panel hidden for completed cases
+
+### CA Verification Types
+
+#### Verification Case Statuses
+- `assigned_to_ca` - New case assigned to CA
+- `under_ca_review` - CA is actively reviewing
+- `clarification_needed` - CA requested additional information
+- `ca_approved` - CA approved with UDIN certificate
+- `ca_rejected` - CA rejected verification
+
+### CA Actions
+
+#### 1. Approve Verification
+```javascript
+POST /api/ca/cases/{id}/approve
+{
+  "udin": "20241234567890123456", // Unique Document Identification Number
+  "notes": "All documents verified and compliant",
+  "certificate_validity_days": 365
+}
+
+Response: {
+  "success": true,
+  "certificate_id": "CERT-2024-001",
+  "signed_certificate_url": "https://cloudinary.com/certificates/cert-001.pdf"
+}
+```
+
+**UDIN (Unique Document Identification Number)**:
+- Required for all CA-signed certifications
+- 20-digit alphanumeric identifier
+- Validated against ICAI database
+- Provides legal authenticity
+
+#### 2. Reject Verification  
+```javascript
+POST /api/ca/cases/{id}/reject
+{
+  "rejection_reason": "Document mismatch",
+  "detailed_notes": "PAN card name doesn't match registration certificate",
+  "allow_resubmission": true
+}
+```
+
+**Common Rejection Reasons**:
+- Document mismatch or inconsistencies
+- Expired or invalid documents
+- Unclear or tampered documents
+- Non-compliance with legal requirements
+- Missing mandatory information
+
+#### 3. Request Clarification
+```javascript
+POST /api/ca/cases/{id}/clarification
+{
+  "clarification_type": "document_quality|additional_document|information_mismatch",
+  "specific_requirements": [
+    "Please provide clear scan of PAN card",
+    "Submit updated address proof (within 3 months)"
+  ],
+  "deadline_days": 7
+}
+```
+
+### TypeScript Types
+
+Complete type definitions in `lib/types/verification.ts`:
+
+```typescript
+// Main verification case
+interface VerificationCase {
+  id: string;
+  entity_name: string;
+  entity_type: 'ngo' | 'company';
+  status: VerificationStatus;
+  priority: 'urgent' | 'high' | 'medium' | 'low';
+  assigned_ca_id: string;
+  documents: VerificationDocument[];
+  ocr_results: OCRResult[];
+  created_at: string;
+  updated_at: string;
+}
+
+// CA-signed certification
+interface CACertification {
+  id: string;
+  case_id: string;
+  ca_id: string;
+  udin: string;
+  certificate_url: string;
+  validity_start: string;
+  validity_end: string;
+  digital_signature: string;
+  issued_at: string;
+}
+
+// OCR extraction results
+interface OCRResult {
+  document_id: string;
+  extracted_text: string;
+  structured_data: Record<string, any>;
+  confidence_score: number;
+  validation_flags: {
+    format_valid: boolean;
+    name_match: boolean;
+    expiry_check: boolean;
+    mandatory_fields_present: boolean;
+  };
+}
+```
+
+### CA Authentication & Authorization
+
+```javascript
+// CA Login (Currently Mock)
+POST /api/ca/auth/login
+{
+  "email": "ca@example.com",
+  "password": "secure_password",
+  "icai_membership_number": "123456"
+}
+
+Response: {
+  "token": "jwt_token_here",
+  "ca_user": {
+    "id": "CA-001",
+    "name": "CA Name",
+    "email": "ca@example.com",
+    "icai_number": "123456",
+    "empanelment_status": "active"
+  }
+}
+```
+
+**Security Requirements** (To be implemented):
+- JWT with CA-specific claims
+- Verify ICAI membership number
+- Check empanelment status
+- Rate limiting on API endpoints
+- Audit logging for all actions
+- IP-based access restrictions
+
+### CA Console File Structure
+
+```
+app/
+  ca/
+    layout.tsx           # Blue header with orange logout button
+    page.tsx            # Dashboard (pending cases only)
+    login/page.tsx      # CA authentication
+    cases/
+      page.tsx          # History (completed cases only)
+      [id]/page.tsx     # Case detail with conditional review panel
+
+  api/ca/
+    dashboard/route.ts         # Dashboard stats and cases
+    cases/
+      route.ts                 # Cases list API
+      [id]/
+        route.ts               # Case detail API
+        approve/route.ts       # Approval action
+        reject/route.ts        # Rejection action
+        clarification/route.ts # Clarification request
+
+lib/types/verification.ts     # Complete type definitions
+components/ui/skeleton.tsx    # Skeleton loader component
+```
+
+### CA Performance Metrics
+
+```sql
+-- CA productivity dashboard
+SELECT 
+  ca_id,
+  COUNT(*) as total_cases_reviewed,
+  COUNT(CASE WHEN status = 'ca_approved' THEN 1 END) as approved_count,
+  COUNT(CASE WHEN status = 'ca_rejected' THEN 1 END) as rejected_count,
+  AVG(EXTRACT(EPOCH FROM (completed_at - assigned_at))/3600) as avg_review_hours,
+  COUNT(CASE WHEN priority = 'urgent' AND completed_at <= deadline THEN 1 END) as urgent_on_time
+FROM verification_cases
+WHERE assigned_ca_id IS NOT NULL
+  AND completed_at IS NOT NULL
+GROUP BY ca_id;
+```
+
+### Integration Checklist
+
+When integrating with production backend:
+
+**1. Database Schema**
+- Create `ca_users` table for CA authentication
+- Create `ca_certifications` table for UDIN certificates
+- Create `verification_audit_log` for audit trail
+- Add CA-specific columns to `verification_cases`
+
+**2. Authentication**
+- Replace mock login with ICAI verification
+- Implement JWT with CA claims
+- Add empanelment status checks
+- Set up session management
+
+**3. OCR Integration**
+- Connect to OCR microservice
+- Process documents asynchronously
+- Store results in database
+- Update validation flags
+
+**4. Document Security**
+- Use signed, time-limited URLs
+- Log all document access
+- Encrypt documents at rest
+- Implement access controls
+
+**5. Notifications**
+- Email notifications for case assignments
+- SMS alerts for urgent cases  
+- Status update notifications to entities
+- Certificate delivery emails
+
+### Current Implementation Status
+
+**✅ Completed:**
+- Full UI/UX with blue/orange theme
+- TypeScript type definitions
+- Mock API endpoints
+- Skeleton loaders for smooth UX
+- Separated Dashboard and History views
+- Conditional review panel
+- Icon-free, content-focused design
+- Status-based rendering
+
+**🔄 Mock Data (To Replace):**
+- Dashboard: 5 pending cases (VC-2026-001 to 005)
+- History: 6 completed cases (VC-2026-006 to 011)
+- CA authentication bypassed
+- Sample documents use placeholders
+- No actual database operations
+
+**🚀 Ready for Integration:**
+- API endpoint structure defined
+- TypeScript interfaces complete
+- UI ready for real data
+- Workflow tested with mock data
+
 ## 🔄 Verification Status Management
+
 
 ### Status Definitions
 - **unverified**: Initial state after signup
@@ -304,7 +611,7 @@ Great news! Your {user_type} account has been successfully verified.
 What's Next:
 - Access all platform features
 - Create service offers/requests
-- Join the community marketplace
+- Join the verified community network
 - Build your organization profile
 
 Get Started: [Login to Dashboard]

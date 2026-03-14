@@ -66,15 +66,15 @@ export async function GET(request: NextRequest) {
       verificationData.individual = {
         aadhaarVerified: data.aadhaar_verified,
         panVerified: data.pan_verified,
-        verified: data.verified,
-        status: data.status,
-        verifiedAt: data.verified_at
+        verified: data.verification_status === 'verified',
+        status: data.verification_status,
+        verifiedAt: data.verification_date
       };
       
-      if (data.verified) {
+      if (data.verification_status === 'verified') {
         verificationData.overall.verified = true;
-        verificationData.overall.status = data.status;
-        verificationData.overall.verifiedAt = data.verified_at;
+        verificationData.overall.status = data.verification_status;
+        verificationData.overall.verifiedAt = data.verification_date;
         verificationData.overall.level = (data.aadhaar_verified && data.pan_verified) ? 'advanced' : 'intermediate';
       }
     }
@@ -83,20 +83,20 @@ export async function GET(request: NextRequest) {
     if (ngoResult.status === 'fulfilled' && ngoResult.value.data) {
       const data = ngoResult.value.data as any;
       verificationData.ngo = {
-        organizationName: data.organization_name,
+        organizationName: data.ngo_name,
         registrationNumber: data.registration_number,
         registrationType: data.registration_type,
         gstVerified: data.gst_verified,
         panVerified: data.pan_verified,
-        verified: data.verified,
-        status: data.status,
-        verifiedAt: data.verified_at
+        verified: data.verification_status === 'verified',
+        status: data.verification_status,
+        verifiedAt: data.verification_date
       };
       
-      if (data.verified) {
+      if (data.verification_status === 'verified') {
         verificationData.overall.verified = true;
-        verificationData.overall.status = data.status;
-        verificationData.overall.verifiedAt = data.verified_at;
+        verificationData.overall.status = data.verification_status;
+        verificationData.overall.verifiedAt = data.verification_date;
         verificationData.overall.level = (data.gst_verified && data.pan_verified) ? 'advanced' : 'intermediate';
       }
     }
@@ -110,15 +110,15 @@ export async function GET(request: NextRequest) {
         companyType: data.company_type,
         gstVerified: data.gst_verified,
         panVerified: data.pan_verified,
-        verified: data.verified,
-        status: data.status,
-        verifiedAt: data.verified_at
+        verified: data.verification_status === 'verified',
+        status: data.verification_status,
+        verifiedAt: data.verification_date
       };
       
-      if (data.verified) {
+      if (data.verification_status === 'verified') {
         verificationData.overall.verified = true;
-        verificationData.overall.status = data.status;
-        verificationData.overall.verifiedAt = data.verified_at;
+        verificationData.overall.status = data.verification_status;
+        verificationData.overall.verifiedAt = data.verification_date;
         verificationData.overall.level = (data.gst_verified && data.pan_verified) ? 'advanced' : 'intermediate';
       }
     }

@@ -112,6 +112,8 @@ SESSION_SECRET=production_session_secret_32_chars
 
 # Services
 CLOUDINARY_CLOUD_NAME=production_cloud_name
+
+# Optional future donations
 RAZORPAY_KEY_ID=rzp_live_production_key
 ```
 

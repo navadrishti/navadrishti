@@ -74,10 +74,10 @@ export function checkApiPermission(
       break;
 
     case 'canCreateServiceRequests':
-      if (user.user_type === 'individual') {
+      if (user.user_type !== 'ngo') {
         return {
           hasPermission: false,
-          errorMessage: 'Only NGOs and companies can create service requests',
+          errorMessage: 'Only NGOs can create service requests',
           statusCode: 403
         };
       }
@@ -141,33 +141,6 @@ export function checkApiPermission(
       }
       break;
 
-    case 'canCreateMarketplaceListings':
-      if (user.user_type === 'individual') {
-        return {
-          hasPermission: false,
-          errorMessage: 'Only NGOs and companies can create marketplace listings',
-          statusCode: 403
-        };
-      }
-      if (!isVerified) {
-        return {
-          hasPermission: false,
-          errorMessage: 'Organization verification required',
-          statusCode: 403
-        };
-      }
-      break;
-
-    case 'canPurchaseFromMarketplace':
-      if (!isVerified) {
-        return {
-          hasPermission: false,
-          errorMessage: 'Account verification required for purchases',
-          statusCode: 403
-        };
-      }
-      break;
-
     default:
       // For any other permissions, just check if user is authenticated
       break;
@@ -212,7 +185,7 @@ export const protectedRoutes: Record<string, {
 
   // Service routes
   '/service-requests/create': { 
-    userTypes: ['ngo', 'company'], 
+    userTypes: ['ngo'], 
     requireVerification: true,
     permission: 'canCreateServiceRequests'
   },
@@ -220,13 +193,6 @@ export const protectedRoutes: Record<string, {
     userTypes: ['ngo'], 
     requireVerification: true,
     permission: 'canCreateServiceOffers'
-  },
-
-  // Marketplace routes
-  '/marketplace/create': { 
-    userTypes: ['ngo', 'company'], 
-    requireVerification: true,
-    permission: 'canCreateMarketplaceListings'
   },
 
   // Profile and verification
