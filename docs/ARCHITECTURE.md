@@ -30,9 +30,9 @@ Navdrishti follows a modern full-stack architecture built on Next.js with a Post
 │   │   ├── auth/          # Authentication APIs
 │   │   ├── posts/         # Social feed APIs
 │   │   ├── service-*      # Service-related APIs
-│   │   ├── marketplace/   # E-commerce APIs
+│   │   ├── dashboard/     # Dashboard and stats APIs
 │   │   └── admin/         # Admin APIs
-│   ├── marketplace/       # Marketplace pages
+│   ├── ca/                # CA verification console
 │   ├── service-offers/    # Service offers pages
 │   ├── service-requests/  # Service requests pages
 │   └── [user-pages]/     # User-facing pages
@@ -92,11 +92,11 @@ Navdrishti follows a modern full-stack architecture built on Next.js with a Post
 - **Interaction System**: Likes, comments, shares, reactions
 - **Real-time Features**: Live updates and notifications
 
-#### Marketplace
-- **Product Management**: Listing creation and management
-- **Cart System**: Shopping cart and wishlist
-- **Order Processing**: Payment integration and fulfillment
-- **Shipping Integration**: Delivery tracking and management
+#### Verification & Compliance
+- **CA Console**: Chartered Accountant review workflow for NGO and company verification
+- **Document Review**: Structured case handling with uploaded evidence
+- **Audit Trail**: Verification decisions and case lifecycle tracking
+- **Status Management**: Assignment, review, clarification, approval, and rejection flows
 
 ## 🗄️ Database Design
 
@@ -105,8 +105,8 @@ Navdrishti follows a modern full-stack architecture built on Next.js with a Post
 - **posts**: Social feed content
 - **service_requests**: NGO assistance requests
 - **service_offers**: NGO service offerings
-- **marketplace_items**: Product listings
-- **orders**: Transaction records
+- **service_volunteers**: Volunteer applications and progress
+- **service_clients**: Client engagements for offered services
 
 ### Relationship Patterns
 - **One-to-Many**: User → Posts, NGO → Service Offers
@@ -146,7 +146,6 @@ Navdrishti follows a modern full-stack architecture built on Next.js with a Post
 ### External Services
 - **Supabase**: Primary database and real-time features
 - **Cloudinary**: Image/video storage and optimization
-- **Razorpay**: Payment processing
 - **Email Service**: Transactional email delivery
 - **SMS Gateway**: OTP and notifications
 

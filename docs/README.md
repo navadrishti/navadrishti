@@ -1,6 +1,6 @@
 # Navdrishti - Project Documentation
 
-**Navdrishti** is a comprehensive social impact platform that connects NGOs, individuals, and companies to facilitate meaningful community engagement through service requests, professional services, and marketplace transactions.
+**Navdrishti** is a comprehensive social impact platform that connects NGOs, individuals, and companies to facilitate meaningful community engagement through service requests, professional services, and verified collaboration.
 
 ## 🌟 Platform Overview
 
@@ -10,14 +10,13 @@ Navdrishti serves as a bridge between those who need help and those who can prov
 - **Service Requests**: NGOs post volunteer opportunities and community projects
 - **Service Offers**: NGOs showcase professional services to get hired
 - **Social Feed**: Community engagement through posts, likes, and interactions
-- **Marketplace**: Buy/sell platform for community commerce
 - **Multi-tier Authentication**: Separate user types with role-based permissions
 - **Real-time Notifications**: Keep users engaged with activity updates
 - **Admin Dashboard**: Content moderation and platform management
 
 ### User Types
 1. **NGOs** - Create service requests, offer professional services, manage projects
-2. **Individuals** - Volunteer for causes, hire NGO services, participate in marketplace
+2. **Individuals** - Volunteer for causes, hire NGO services, and contribute to campaigns
 3. **Companies** - Partner with NGOs, hire services, support community initiatives
 4. **Admins** - Platform moderation, user verification, content management
 
@@ -29,7 +28,7 @@ Navdrishti serves as a bridge between those who need help and those who can prov
 | [API_REFERENCE.md](./API_REFERENCE.md) | Complete API documentation with endpoints and examples |
 | [DATABASE_SCHEMA.md](./DATABASE_SCHEMA.md) | Database tables, relationships, and data models |
 | [ENVIRONMENT.md](./ENVIRONMENT.md) | Environment variables, configuration, and setup |
-| [VERIFICATION_FLOW.md](./VERIFICATION_FLOW.md) | User verification process and compliance |
+| [VERIFICATION_FLOW.md](./VERIFICATION_FLOW.md) | User verification process, compliance, and CA Console |
 | [DEPLOYMENT.md](./DEPLOYMENT.md) | Deployment guides for development and production |
 
 ## 🚀 Quick Start
@@ -61,7 +60,6 @@ Navdrishti serves as a bridge between those who need help and those who can prov
 - **Authentication**: JWT + Custom Auth System
 - **Styling**: Tailwind CSS + Radix UI
 - **File Storage**: Cloudinary
-- **Payments**: Razorpay Integration
 - **Email**: Nodemailer
 - **Deployment**: Vercel-ready
 
@@ -84,22 +82,14 @@ This documentation is designed to help developers at all levels understand and c
 
 ## 📝 Recent Updates
 
-### Marketplace Enhancements (January 2026)
+### Platform Verification & Service Improvements (January 2026)
 
-**Buyer Eligibility Control**
-- Sellers can now restrict items to specific user types (NGOs, Individuals, Companies)
-- Multi-select buyer eligibility shown as colored badges on product cards
-- API-level validation ensures only eligible users can purchase
+**CA Verification Console**
+- Added a dedicated CA review workflow for NGO and company verification
+- Introduced status-based case management and audit-friendly review flows
 
-**Automated Item Lifecycle**
-- Items automatically marked as "SOLD OUT" when quantity reaches zero
-- Visual red diagonal banner overlay on sold items
-- Automatic cleanup after 1 hour using Vercel Cron jobs
-- Keeps marketplace fresh and relevant
+**Service-First Experience**
+- Simplified dashboards around service requests, offers, volunteering, and client work
+- Expanded impact tracking around collaboration instead of transactional activity
 
-**Enhanced Purchase Flow**
-- "Buy Now" button directly adds items to cart
-- Bypasses product detail page for faster checkout
-- Real-time quantity management and stock validation
-
-See [DATABASE_SCHEMA.md](./DATABASE_SCHEMA.md#-schema-migrations--change-log) for complete migration details and [API_REFERENCE.md](./API_REFERENCE.md#-cron-jobs--scheduled-tasks) for API changes.
+See [VERIFICATION_FLOW.md](./VERIFICATION_FLOW.md) for the CA workflow and [ARCHITECTURE.md](./ARCHITECTURE.md) for current platform structure.

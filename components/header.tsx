@@ -20,8 +20,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Award, Bell, Menu, Search, ShoppingBag, ShoppingCart, X, GraduationCap, Briefcase, Building, LogIn, MessageSquare } from "lucide-react"
-import { useCart } from "@/lib/cart-context"
+import { Award, Bell, Menu, Search, ShoppingBag, X, GraduationCap, Briefcase, Building, LogIn, MessageSquare } from "lucide-react"
 import { VerificationBadge } from "@/components/verification-badge"
 
 interface ProfileSearchResult {
@@ -36,9 +35,7 @@ interface ProfileSearchResult {
 
 export function Header() {
   const { user, logout, refreshUser } = useAuth()
-  const { getCartItemCount } = useCart()
   const router = useRouter()
-  const cartItemCount = getCartItemCount()
   const [mounted, setMounted] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<ProfileSearchResult[]>([])
@@ -313,10 +310,10 @@ export function Header() {
                           <div className="text-xs text-gray-500">Report progress</div>
                         </div>
                       </Link>
-                      <Link href="/marketplace/fundraising" className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
+                      <Link href="/csr-campaigns" className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
                         <div>
                           <div className="font-medium">Fundraising Campaigns</div>
-                          <div className="text-xs text-gray-500">Create fundraisers</div>
+                          <div className="text-xs text-gray-500">Browse active campaigns</div>
                         </div>
                       </Link>
                     </div>
@@ -462,63 +459,6 @@ export function Header() {
               </>
             )}
 
-            {/* Marketplace Dropdown - For all users */}
-            <div 
-              className="relative"
-              onMouseEnter={() => handleDropdownEnter('marketplace')}
-              onMouseLeave={handleDropdownLeave}
-            >
-              <button 
-                onClick={(e) => {
-                  e.preventDefault();
-                  router.push('/marketplace');
-                }}
-                className="px-3 py-2 text-sm font-medium text-white hover:text-udaan-orange transition-colors flex items-center gap-1"
-              >
-                Marketplace
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-              {openDropdown === 'marketplace' && (
-                <div 
-                  className="absolute top-full left-0 mt-1 w-56 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50"
-                  onMouseEnter={handleDropdownStay}
-                  onMouseLeave={handleDropdownLeave}
-                >
-                  <Link href="/marketplace" className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
-                    <div>
-                      <div className="font-medium">Browse Products</div>
-                      <div className="text-xs text-gray-500">Shop community items</div>
-                    </div>
-                  </Link>
-                  {user?.user_type === 'ngo' && (
-                    <Link href="/marketplace/fundraising" className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
-                      <div>
-                        <div className="font-medium">Fundraising</div>
-                        <div className="text-xs text-gray-500">Create campaigns</div>
-                      </div>
-                    </Link>
-                  )}
-                  {user && (
-                    <>
-                      <Link href={`${getDashboardLink()}?tab=marketplace&subtab=selling`} className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
-                        <div>
-                          <div className="font-medium">My Listings</div>
-                          <div className="text-xs text-gray-500">Manage your items</div>
-                        </div>
-                      </Link>
-                      <Link href="/orders" className="block px-4 py-2.5 text-sm text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-pink-50 hover:text-udaan-orange transition-colors">
-                        <div>
-                          <div className="font-medium">My Orders</div>
-                          <div className="text-xs text-gray-500">Track purchases</div>
-                        </div>
-                      </Link>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
               </>
             )}
           </nav>
@@ -686,21 +626,6 @@ export function Header() {
           </div>          
           {mounted && user ? (
             <>
-              {/* Cart Icon with Badge - Only for logged in users */}
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="relative rounded-lg !p-2 !w-10 !h-10 border-2 border-white hover:bg-white/10"
-                onClick={() => router.push('/cart')}
-              >
-                <ShoppingCart className="h-5 w-5 text-white" />
-                {cartItemCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-udaan-orange text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-medium">
-                    {cartItemCount > 99 ? '99+' : cartItemCount}
-                  </span>
-                )}
-              </Button>
-              
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" className="rounded-full">
@@ -751,22 +676,6 @@ export function Header() {
           ) : null}
         </div>
         <div className="flex md:hidden flex-1 items-center justify-end gap-2">
-          {mounted && user && (
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              className="relative rounded-lg !p-2 !w-10 !h-10 border-2 border-white hover:bg-white/10"
-              onClick={() => router.push('/cart')}
-            >
-              <ShoppingCart className="h-5 w-5 text-white" />
-              {cartItemCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-udaan-orange text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-medium">
-                  {cartItemCount > 99 ? '99+' : cartItemCount}
-                </span>
-              )}
-            </Button>
-          )}
-          
           {/* Mobile Menu Sheet */}
           <Sheet>
             <SheetTrigger asChild>
@@ -981,7 +890,7 @@ export function Header() {
                         <Link href="/ngos/campaign-updates" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
                           <span>Campaign Updates</span>
                         </Link>
-                        <Link href="/marketplace/fundraising" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
+                        <Link href="/csr-campaigns" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
                           <span>Fundraising Campaigns</span>
                         </Link>
 
@@ -1042,42 +951,6 @@ export function Header() {
                         </Link>
                       </>
                     )}
-
-                    {/* Marketplace - For all users */}
-                    <div className="mt-3 mb-1">
-                      <div className="text-xs font-bold text-yellow-300 uppercase tracking-wider px-3">Marketplace</div>
-                    </div>
-                    <Link href="/marketplace" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
-                      <span>Browse Products</span>
-                    </Link>
-                    {mounted && user?.user_type === 'ngo' && (
-                      <Link href="/marketplace/fundraising" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
-                        <span>Fundraising</span>
-                      </Link>
-                    )}
-                    {mounted && user && (
-                      <>
-                        <Link href={`${getDashboardLink()}?tab=marketplace&subtab=selling`} className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
-                          <span>My Listings</span>
-                        </Link>
-                        <Link href="/orders" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
-                          <span>My Orders</span>
-                        </Link>
-                      </>
-                    )}
-
-                    <Link 
-                      href="/cart" 
-                      className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors duration-300"
-                    >
-                      <ShoppingCart className="h-5 w-5" />
-                      <span>Cart</span>
-                      {cartItemCount > 0 && (
-                        <span className="bg-udaan-orange text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-medium ml-auto">
-                          {cartItemCount > 99 ? '99+' : cartItemCount}
-                        </span>
-                      )}
-                    </Link>
                   </nav>
 
                   {/* User Section */}

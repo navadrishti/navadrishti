@@ -9,56 +9,6 @@ export async function GET() {
     const activities = [];
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-    // Fetch recent marketplace listings (last 24 hours)
-    try {
-      const { data: listings } = await supabase
-        .from('marketplace_listings')
-        .select(`
-          id,
-          name,
-          description,
-          price,
-          category,
-          created_at,
-          seller:users!seller_id (
-            id,
-            name,
-            profile_image,
-            user_type,
-            verification_status
-          )
-        `)
-        .gte('created_at', twentyFourHoursAgo)
-        .order('created_at', { ascending: false })
-        .limit(3);
-
-      if (listings) {
-        for (const listing of listings) {
-          const seller = Array.isArray(listing.seller) ? listing.seller[0] : listing.seller;
-          activities.push({
-            id: `listing-${listing.id}`,
-            type: 'listing',
-            title: `added a new listing`,
-            user: seller ? {
-              id: seller.id,
-              name: seller.name,
-              profile_image: seller.profile_image,
-              user_type: seller.user_type,
-              verification_status: seller.verification_status
-            } : null,
-            timestamp: listing.created_at,
-            metadata: {
-              price: listing.price,
-              category: listing.category
-            },
-            link: `/marketplace/product/${listing.id}`
-          });
-        }
-      }
-    } catch (err) {
-      console.error('Error fetching listings:', err);
-    }
-
     // Fetch recent service requests (last 24 hours)
     try {
       const { data: serviceRequests } = await supabase
@@ -186,55 +136,6 @@ export async function GET() {
       }
     } catch (err) {
       console.error('Error fetching users:', err);
-    }
-
-    // Fetch recent completed orders (last 24 hours)
-    try {
-      const { data: orders } = await supabase
-        .from('orders')
-        .select(`
-          id,
-          order_number,
-          total_amount,
-          created_at,
-          updated_at,
-          buyer:users!user_id (
-            id,
-            name,
-            profile_image,
-            user_type,
-            verification_status
-          )
-        `)
-        .eq('status', 'delivered')
-        .gte('updated_at', twentyFourHoursAgo)
-        .order('updated_at', { ascending: false })
-        .limit(2);
-      
-      if (orders) {
-        for (const order of orders) {
-          const buyer = Array.isArray(order.buyer) ? order.buyer[0] : order.buyer;
-          activities.push({
-            id: `order-${order.id}`,
-            type: 'order',
-            title: `completed an order`,
-            user: buyer ? {
-              id: buyer.id,
-              name: buyer.name,
-              profile_image: buyer.profile_image,
-              user_type: buyer.user_type,
-              verification_status: buyer.verification_status
-            } : null,
-            timestamp: order.created_at,
-            metadata: {
-              price: order.total_amount
-            },
-            link: `/orders/${order.order_number}`
-          });
-        }
-      }
-    } catch (err) {
-      console.error('Error fetching orders:', err);
     }
 
     // Fetch recent posts (last 24 hours)

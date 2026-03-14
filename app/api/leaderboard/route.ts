@@ -33,13 +33,6 @@ export async function GET() {
             .eq('author_id', user.id)
           totalContributions += postsCount || 0
 
-          // Count marketplace listings
-          const { count: listingsCount } = await supabase
-            .from('marketplace_items')
-            .select('*', { count: 'exact', head: true })
-            .eq('seller_id', user.id)
-          totalContributions += listingsCount || 0
-
           // Count service requests
           const { count: requestsCount } = await supabase
             .from('service_requests')
@@ -53,14 +46,6 @@ export async function GET() {
             .select('*', { count: 'exact', head: true })
             .eq('ngo_id', user.id)
           totalContributions += offersCount || 0
-
-          // Count completed orders
-          const { count: ordersCount } = await supabase
-            .from('ecommerce_orders')
-            .select('*', { count: 'exact', head: true })
-            .eq('buyer_id', user.id)
-            .eq('status', 'delivered')
-          totalContributions += ordersCount || 0
         } catch (error) {
           // Silently ignore errors for optional tables
         }
