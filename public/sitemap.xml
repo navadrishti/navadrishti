@@ -53,14 +53,6 @@
     <priority>0.7</priority>
   </url>
   
-  <!-- Marketplace -->
-  <url>
-    <loc>https://app.navadrishti.in/marketplace</loc>
-    <lastmod>2026-01-27</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  
   <!-- NGOs -->
   <url>
     <loc>https://app.navadrishti.in/ngos</loc>

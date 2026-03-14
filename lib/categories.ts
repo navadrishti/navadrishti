@@ -37,30 +37,6 @@ export const SERVICE_OFFER_CATEGORIES = [
   'Awareness & Advocacy Campaigns'
 ];
 
-export const MARKETPLACE_CATEGORIES = [
-  'Clothing & Apparel',
-  'Books & Stationery',
-  'Electronics & Devices',
-  'Furniture',
-  'Toys & Kids Items',
-  'Medical Supplies',
-  'Groceries & Essentials',
-  'Home & Kitchen Items',
-  'Sports Equipment',
-  'Beauty & Personal Care',
-  'Arts & Crafts',
-  'Tools & Hardware',
-  'Bicycles & Vehicles',
-  'Pet Supplies',
-  'Handmade NGO Products',
-  'Upcycled Products',
-  'Sustainable Goods',
-  'Local Community Listings',
-  'Free Giveaways',
-  'Donation Items'
-];
-
 // Helper functions to get categories with "All Categories" option for filtering
 export const getServiceRequestCategoriesWithAll = () => ['All Categories', ...SERVICE_REQUEST_CATEGORIES];
 export const getServiceOfferCategoriesWithAll = () => ['All Categories', ...SERVICE_OFFER_CATEGORIES];
-export const getMarketplaceCategoriesWithAll = () => ['All Categories', ...MARKETPLACE_CATEGORIES];

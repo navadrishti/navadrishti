@@ -12,7 +12,7 @@ function Skeleton({
   )
 }
 
-// Skeleton for product/marketplace cards
+// Skeleton for generic card layouts
 function SkeletonCard() {
   return (
     <div className="rounded-lg border p-4 space-y-4">

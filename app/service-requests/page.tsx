@@ -35,7 +35,7 @@ function ServiceRequestsContent() {
   
   const serviceRequests = requests[currentView] || []
   const isNGO = user?.user_type === 'ngo'
-  const canVolunteer = user?.user_type === 'individual' || user?.user_type === 'company'
+  const canVolunteer = user?.user_type === 'individual'
 
   useEffect(() => {
     const tab = searchParams.get('tab')
