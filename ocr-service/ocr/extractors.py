@@ -1,320 +1,258 @@
+# ─────────────────────────────────────────────
+# ocr/extractors.py
+# one extractor class per document type
+# each takes raw OCR full_text string
+# and returns a structured fields dict
+#
+# document types:
+#   pan
+#   registration_certificate
+#   fcra
+#   audit_report
+#   trust_deed
+#   incorporation_document
+# ─────────────────────────────────────────────
+
 import re
-from dataclasses import dataclass, asdict, field
-from typing import Optional
 
 
-class BaseExtractor:
+class PANExtractor:
 
-    def _lines(self, text):
-        return [l.strip() for l in text.split("\n") if l.strip()]
+    def extract(self, text: str) -> dict:
+        lines = [l.strip() for l in text.splitlines() if l.strip()]
 
-    def _after_colon(self, line):
-        parts = line.split(":", 1)
-        return parts[1].strip() if len(parts) > 1 and parts[1].strip() else None
+        return {
+            "document_type": "PAN",
+            "pan_number":    self._pan_number(text),
+            "name":          self._name(lines),
+            "fathers_name":  self._fathers_name(lines),
+            "dob_or_doi":    self._date(text),
+            "pan_type":      self._pan_type(text),
+        }
 
-    def _find_pan(self, text):
+    def _pan_number(self, text):
         m = re.search(r"\b([A-Z]{5}[0-9]{4}[A-Z])\b", text)
         return m.group(1) if m else None
 
-    def _find_date(self, text):
+    def _date(self, text):
         m = re.search(r"\b(\d{2}[\/\-\.]\d{2}[\/\-\.]\d{4})\b", text)
         return m.group(1) if m else None
 
-    def _clean_name(self, name):
-        return re.sub(r"[^A-Za-z\s\.\-]", "", name).strip().title()
+    def _pan_type(self, text):
+        pan = re.search(r"\b([A-Z]{5}[0-9]{4}[A-Z])\b", text)
+        if pan:
+            letter = pan.group(1)[3]
+            return {
+                "P": "individual", "C": "company",
+                "H": "huf",        "F": "firm",
+                "T": "trust",      "B": "body_of_individuals",
+            }.get(letter, "other")
+        return None
 
-    def to_dict(self, obj):
-        return {k: v for k, v in asdict(obj).items()}
-
-
-@dataclass
-class RegistrationCertData:
-    document_type:       str           = "REGISTRATION_CERTIFICATE"
-    organisation_name:   Optional[str] = None
-    registration_number: Optional[str] = None
-    registration_date:   Optional[str] = None
-    issuing_authority:   Optional[str] = None
-    registered_address:  Optional[str] = None
-    valid_until:         Optional[str] = None
-
-
-class RegistrationCertExtractor(BaseExtractor):
-
-    def extract(self, text):
-        data       = RegistrationCertData()
-        lines      = self._lines(text)
-        addr_lines = []
-        collecting = False
-
+    def _name(self, lines):
+        # strategy 1: look for label
+        for i, line in enumerate(lines):
+            if re.search(r"^name\s*[:\-]?\s*$", line, re.IGNORECASE):
+                if i + 1 < len(lines):
+                    return lines[i + 1].title()
+        # strategy 2: position-based — first clean non-header line
+        skip = {"income tax department", "government of india", "permanent account number", "signature"}
+        pan  = re.compile(r"[A-Z]{5}[0-9]{4}[A-Z]")
+        date = re.compile(r"\d{2}[\/\-\.]\d{2}[\/\-\.]\d{4}")
+        candidates = []
         for line in lines:
-            ll = line.lower()
+            cl = line.strip()
+            if not cl: continue
+            if cl.lower() in skip: continue
+            if pan.search(cl): continue
+            if date.search(cl): continue
+            if re.search(r"(father|name|birth|date|sign)", cl, re.IGNORECASE): continue
+            if re.match(r"^[A-Za-z\s\.]+$", cl) and len(cl) > 3:
+                candidates.append(cl.title())
+        return candidates[0] if candidates else None
 
-            if re.search(r"(organisation|organization|company|trust|society)\s*(name)?\s*[:\-]", line, re.I):
-                val = self._after_colon(line)
-                if val and not data.organisation_name:
-                    data.organisation_name = self._clean_name(val)
-
-            if re.search(r"reg(istration)?\s*(no|number|#)\s*[:\-]", line, re.I):
-                val = self._after_colon(line)
-                if val and not data.registration_number:
-                    data.registration_number = val.strip()
-
-            cin = re.search(r"\b([LU]\d{5}[A-Z]{2}\d{4}[A-Z]{3}\d{6})\b", line)
-            if cin and not data.registration_number:
-                data.registration_number = cin.group(1)
-
-            if re.search(r"(registration|incorporation|established)\s*date\s*[:\-]", line, re.I):
-                if not data.registration_date:
-                    data.registration_date = self._find_date(line)
-
-            if re.search(r"(valid|validity|expiry|expires?)\s*(until|upto|date)?\s*[:\-]", line, re.I):
-                if not data.valid_until:
-                    data.valid_until = self._find_date(line)
-
-            if re.search(r"(issued?\s*by|authority|registrar)\s*[:\-]", line, re.I):
-                val = self._after_colon(line)
-                if val and not data.issuing_authority:
-                    data.issuing_authority = val.strip()
-
-            if re.search(r"(registered\s*)?(office\s*|address)\s*[:\-]", line, re.I):
-                val = self._after_colon(line)
-                if val:
-                    addr_lines.append(val)
-                collecting = True
-                continue
-
-            if collecting:
-                if re.search(r"\w+\s*[:\-]", line):
-                    collecting = False
-                else:
-                    addr_lines.append(line)
-
-        if addr_lines:
-            data.registered_address = " ".join(addr_lines)
-
-        return self.to_dict(data)
-
-
-@dataclass
-class PANData:
-    document_type: str           = "PAN"
-    name:          Optional[str] = None
-    fathers_name:  Optional[str] = None
-    dob_or_doi:    Optional[str] = None
-    pan_number:    Optional[str] = None
-    pan_type:      Optional[str] = None
-
-
-class PANExtractor(BaseExtractor):
-
-    def extract(self, text):
-        data  = PANData()
-        lines = self._lines(text)
-
+    def _fathers_name(self, lines):
+        for i, line in enumerate(lines):
+            if re.search(r"father", line, re.IGNORECASE):
+                if i + 1 < len(lines):
+                    return lines[i + 1].title()
+        candidates = []
+        skip = {"income tax department", "government of india", "signature"}
+        pan  = re.compile(r"[A-Z]{5}[0-9]{4}[A-Z]")
+        date = re.compile(r"\d{2}[\/\-\.]\d{2}[\/\-\.]\d{4}")
         for line in lines:
-            pan = self._find_pan(line)
-            if pan and not data.pan_number:
-                data.pan_number = pan
-                type_map = {"P": "individual", "C": "company", "F": "firm", "T": "trust"}
-                data.pan_type = type_map.get(pan[3], "other")
-
-            if re.search(r"(birth|dob|incorporation|doi)", line, re.I) and not data.dob_or_doi:
-                data.dob_or_doi = self._find_date(line)
-
-            if not data.dob_or_doi:
-                date = self._find_date(line)
-                if date:
-                    data.dob_or_doi = date
-
-        for line in lines:
-            ll = line.lower()
-            if re.search(r"\bname\s*[:\-]", line, re.I) and not data.name:
-                val = self._after_colon(line)
-                if val:
-                    data.name = self._clean_name(val)
-            if re.search(r"father", ll) and not data.fathers_name:
-                val = self._after_colon(line)
-                if val:
-                    data.fathers_name = self._clean_name(val)
-
-        if not data.name:
-            content_lines = []
-            for line in lines:
-                if not re.match(r"^[A-Za-z\s]+$", line):
-                    continue
-                if re.search(r"income tax|government|signature|department|permanent account", line, re.I):
-                    continue
-                if re.search(r"[A-Z]{5}[0-9]{4}[A-Z]", line):
-                    continue
-                content_lines.append(line.strip())
-
-            if len(content_lines) >= 1:
-                data.name = self._clean_name(content_lines[0])
-            if len(content_lines) >= 2 and not data.fathers_name:
-                data.fathers_name = self._clean_name(content_lines[1])
-
-        return self.to_dict(data)
+            cl = line.strip()
+            if not cl: continue
+            if cl.lower() in skip: continue
+            if pan.search(cl): continue
+            if date.search(cl): continue
+            if re.search(r"(father|name|birth|date|sign)", cl, re.IGNORECASE): continue
+            if re.match(r"^[A-Za-z\s\.]+$", cl) and len(cl) > 3:
+                candidates.append(cl.title())
+        return candidates[1] if len(candidates) > 1 else None
 
 
-@dataclass
-class FCRAData:
-    document_type:      str           = "FCRA_CERTIFICATE"
-    organisation_name:  Optional[str] = None
-    fcra_number:        Optional[str] = None
-    registration_date:  Optional[str] = None
-    valid_until:        Optional[str] = None
-    pan:                Optional[str] = None
-    address:            Optional[str] = None
+class RegistrationCertificateExtractor:
+
+    def extract(self, text: str) -> dict:
+        return {
+            "document_type":       "REGISTRATION_CERTIFICATE",
+            "organisation_name":   self._org_name(text),
+            "registration_number": self._reg_number(text),
+            "registration_date":   self._reg_date(text),
+            "valid_until":         self._valid_until(text),
+            "issuing_authority":   self._issuing_authority(text),
+        }
+
+    def _org_name(self, text):
+        m = re.search(r"(?:name\s*(?:of\s*(?:the\s*)?(?:organisation|society|trust|ngo))?)\s*[:\-]?\s*([A-Z][A-Z\s&\.\-]+)", text, re.IGNORECASE)
+        if m: return m.group(1).strip().title()
+        m = re.search(r"([A-Z][A-Z\s]+(?:FOUNDATION|TRUST|SOCIETY|NGO|CHARITABLE|WELFARE|SANSTHAN))", text)
+        return m.group(1).strip().title() if m else None
+
+    def _reg_number(self, text):
+        m = re.search(r"(?:registration\s*(?:no|number|#)?\s*[:\-]?\s*)([A-Z0-9\/\-]{5,})", text, re.IGNORECASE)
+        return m.group(1).strip() if m else None
+
+    def _reg_date(self, text):
+        m = re.search(r"(?:registration\s*date|registered\s*on|date\s*of\s*registration)\s*[:\-]?\s*(\d{2}[\/\-\.]\d{2}[\/\-\.]\d{4})", text, re.IGNORECASE)
+        return m.group(1) if m else None
+
+    def _valid_until(self, text):
+        m = re.search(r"(?:valid\s*(?:upto|until|till)|expiry\s*date|expires\s*on)\s*[:\-]?\s*(\d{2}[\/\-\.]\d{2}[\/\-\.]\d{4})", text, re.IGNORECASE)
+        return m.group(1) if m else None
+
+    def _issuing_authority(self, text):
+        m = re.search(r"(?:issued\s*by|registrar\s*of|issuing\s*authority)\s*[:\-]?\s*([A-Za-z\s,]+)", text, re.IGNORECASE)
+        return m.group(1).strip().title() if m else None
 
 
-class FCRAExtractor(BaseExtractor):
+class FCRAExtractor:
 
-    def extract(self, text):
-        data  = FCRAData()
-        lines = self._lines(text)
+    def extract(self, text: str) -> dict:
+        return {
+            "document_type":    "FCRA",
+            "organisation_name": self._org_name(text),
+            "fcra_number":       self._fcra_number(text),
+            "registration_date": self._date(text, "registration"),
+            "valid_until":       self._date(text, "valid"),
+            "pan":               self._pan(text),
+        }
 
-        for line in lines:
-            ll = line.lower()
+    def _org_name(self, text):
+        m = re.search(r"(?:name\s*(?:of\s*(?:the\s*)?(?:organisation|association|body))?)\s*[:\-]?\s*([A-Z][A-Z\s&\.\-]+)", text, re.IGNORECASE)
+        if m: return m.group(1).strip().title()
+        m = re.search(r"([A-Z][A-Z\s]+(?:FOUNDATION|TRUST|SOCIETY|NGO|CHARITABLE|WELFARE))", text)
+        return m.group(1).strip().title() if m else None
 
-            if re.search(r"(organisation|association|trust|society)\s*(name)?\s*[:\-]", line, re.I):
-                val = self._after_colon(line)
-                if val and not data.organisation_name:
-                    data.organisation_name = self._clean_name(val)
+    def _fcra_number(self, text):
+        m = re.search(r"(?:fcra\s*(?:no|number|registration\s*no)?\s*[:\-]?\s*)(\d{9})", text, re.IGNORECASE)
+        return m.group(1) if m else None
 
-            if re.search(r"fcra\s*(no|number|reg)\s*[:\-]", ll):
-                val = self._after_colon(line)
-                if val and not data.fcra_number:
-                    data.fcra_number = re.sub(r"[^\d]", "", val)
+    def _date(self, text, kind):
+        if kind == "registration":
+            m = re.search(r"(?:date\s*of\s*registration|registered\s*on)\s*[:\-]?\s*(\d{2}[\/\-\.]\d{2}[\/\-\.]\d{4})", text, re.IGNORECASE)
+        else:
+            m = re.search(r"(?:valid\s*(?:upto|until|till)|expiry|expires)\s*[:\-]?\s*(\d{2}[\/\-\.]\d{2}[\/\-\.]\d{4})", text, re.IGNORECASE)
+        return m.group(1) if m else None
 
-            m = re.search(r"\b(\d{9})\b", line)
-            if m and not data.fcra_number:
-                data.fcra_number = m.group(1)
-
-            date = self._find_date(line)
-            if date:
-                if re.search(r"(registration|granted|issued?)\s*(date|on)", ll):
-                    data.registration_date = date
-                elif re.search(r"(valid|expiry|renewal)\s*(until|upto|date)", ll):
-                    data.valid_until = date
-
-            pan = self._find_pan(line)
-            if pan and not data.pan:
-                data.pan = pan
-
-            if re.search(r"(registered\s*)?address\s*[:\-]", ll) and not data.address:
-                data.address = self._after_colon(line)
-
-        return self.to_dict(data)
+    def _pan(self, text):
+        m = re.search(r"\b([A-Z]{5}[0-9]{4}[A-Z])\b", text)
+        return m.group(1) if m else None
 
 
-@dataclass
-class AuditReportData:
-    document_type:       str           = "AUDIT_REPORT"
-    organisation_name:   Optional[str] = None
-    pan:                 Optional[str] = None
-    financial_year:      Optional[str] = None
-    audit_date:          Optional[str] = None
-    auditor_name:        Optional[str] = None
-    auditor_reg_number:  Optional[str] = None
+class AuditReportExtractor:
+
+    def extract(self, text: str) -> dict:
+        return {
+            "document_type":      "AUDIT_REPORT",
+            "organisation_name":  self._org_name(text),
+            "pan":                self._pan(text),
+            "financial_year":     self._financial_year(text),
+            "auditor_name":       self._auditor_name(text),
+            "auditor_reg_number": self._auditor_reg(text),
+        }
+
+    def _org_name(self, text):
+        m = re.search(r"(?:name\s*of\s*(?:the\s*)?(?:organisation|trust|society|company|ngo))\s*[:\-]?\s*([A-Z][A-Z\s&\.\-]+)", text, re.IGNORECASE)
+        if m: return m.group(1).strip().title()
+        m = re.search(r"([A-Z][A-Z\s]+(?:FOUNDATION|TRUST|SOCIETY|NGO|CHARITABLE))", text)
+        return m.group(1).strip().title() if m else None
+
+    def _pan(self, text):
+        m = re.search(r"\b([A-Z]{5}[0-9]{4}[A-Z])\b", text)
+        return m.group(1) if m else None
+
+    def _financial_year(self, text):
+        m = re.search(r"(20\d{2}\s*[\-\/]\s*\d{2,4})", text)
+        return m.group(1).replace(" ", "") if m else None
+
+    def _auditor_name(self, text):
+        m = re.search(r"(?:ca\.?|chartered\s*accountant)\s+([A-Za-z\s\.]+)", text, re.IGNORECASE)
+        if m: return "CA " + m.group(1).strip().title()
+        m = re.search(r"(?:auditor(?:\'s)?\s*(?:name)?)\s*[:\-]?\s*([A-Za-z\s\.]+)", text, re.IGNORECASE)
+        return m.group(1).strip().title() if m else None
+
+    def _auditor_reg(self, text):
+        m = re.search(r"(?:membership\s*(?:no|number)|registration\s*(?:no|number)|m\.?\s*no)\s*[:\-]?\s*(\d{5,7})", text, re.IGNORECASE)
+        return m.group(1) if m else None
 
 
-class AuditReportExtractor(BaseExtractor):
+class TrustDeedExtractor:
 
-    def extract(self, text):
-        data  = AuditReportData()
-        lines = self._lines(text)
+    def extract(self, text: str) -> dict:
+        return {
+            "document_type":       "TRUST_DEED",
+            "organisation_name":   self._org_name(text),
+            "formation_date":      self._formation_date(text),
+            "registered_address":  self._address(text),
+            "registration_number": self._reg_number(text),
+        }
 
-        for line in lines:
-            ll = line.lower()
+    def _org_name(self, text):
+        m = re.search(r"(?:name\s*of\s*(?:the\s*)?trust)\s*[:\-]?\s*([A-Z][A-Z\s&\.\-]+)", text, re.IGNORECASE)
+        if m: return m.group(1).strip().title()
+        m = re.search(r"([A-Z][A-Z\s]+(?:FOUNDATION|TRUST|SOCIETY|CHARITABLE))", text)
+        return m.group(1).strip().title() if m else None
 
-            if re.search(r"(name\s*of\s*(the\s*)?(trust|society|company|organisation|ngo))\s*[:\-]", line, re.I):
-                val = self._after_colon(line)
-                if val and not data.organisation_name:
-                    data.organisation_name = self._clean_name(val)
+    def _formation_date(self, text):
+        m = re.search(r"(?:formation\s*date|formed\s*on|established\s*on|date\s*of\s*formation)\s*[:\-]?\s*(\d{2}[\/\-\.]\d{2}[\/\-\.]\d{4})", text, re.IGNORECASE)
+        return m.group(1) if m else None
 
-            pan = self._find_pan(line)
-            if pan and not data.pan:
-                data.pan = pan
+    def _address(self, text):
+        m = re.search(r"(?:registered\s*address|address)\s*[:\-]?\s*([A-Za-z0-9\s,\.\-\/]+(?:bangalore|mumbai|delhi|chennai|hyderabad|kolkata|pune|[a-z]+\s*\d{6}))", text, re.IGNORECASE)
+        return m.group(1).strip().title() if m else None
 
-            fy = re.search(r"\b(20\d{2}[\-\/]2?\d{2})\b", line)
-            if fy and not data.financial_year:
-                data.financial_year = fy.group(1)
-
-            if re.search(r"(audit|report)\s*(date|dated)\s*[:\-]", ll) and not data.audit_date:
-                data.audit_date = self._find_date(line)
-
-            if re.search(r"(auditor|chartered\s*accountant|ca)\s*(name)?\s*[:\-]", line, re.I) and not data.auditor_name:
-                val = self._after_colon(line)
-                if val:
-                    data.auditor_name = self._clean_name(val)
-
-            if re.search(r"(membership|reg(istration)?)\s*(no|number)\s*[:\-]", ll) and not data.auditor_reg_number:
-                val = self._after_colon(line)
-                if val:
-                    data.auditor_reg_number = re.sub(r"[^\d]", "", val)
-
-        return self.to_dict(data)
+    def _reg_number(self, text):
+        m = re.search(r"(?:registration\s*(?:no|number|#)?\s*[:\-]?\s*)([A-Z0-9\/\-]{5,})", text, re.IGNORECASE)
+        return m.group(1).strip() if m else None
 
 
-@dataclass
-class TrustDeedData:
-    document_type:       str           = "TRUST_DEED_OR_INCORPORATION"
-    organisation_name:   Optional[str] = None
-    formation_date:      Optional[str] = None
-    registered_address:  Optional[str] = None
-    trustee_names:       list          = field(default_factory=list)
-    registration_number: Optional[str] = None
+class IncorporationDocumentExtractor(TrustDeedExtractor):
+    """same structure as trust deed — inherits all methods"""
+
+    def extract(self, text: str) -> dict:
+        result                  = super().extract(text)
+        result["document_type"] = "INCORPORATION_DOCUMENT"
+        return result
 
 
-class TrustDeedExtractor(BaseExtractor):
-
-    def extract(self, text):
-        data     = TrustDeedData()
-        lines    = self._lines(text)
-        trustees = []
-
-        for line in lines:
-            ll = line.lower()
-
-            if re.search(r"(name\s*of\s*(the\s*)?(trust|society|company))\s*[:\-]", line, re.I):
-                val = self._after_colon(line)
-                if val and not data.organisation_name:
-                    data.organisation_name = self._clean_name(val)
-
-            if re.search(r"(formation|establishment|execution|incorporation)\s*(date|dated)\s*[:\-]", line, re.I):
-                if not data.formation_date:
-                    data.formation_date = self._find_date(line)
-
-            if re.search(r"reg(istration)?\s*(no|number)\s*[:\-]", line, re.I):
-                val = self._after_colon(line)
-                if val and not data.registration_number:
-                    data.registration_number = val.strip()
-
-            if re.search(r"(trustee|settler|founder|director)\s*[:\-]?\s*\d*", line, re.I):
-                val = self._after_colon(line)
-                if val:
-                    name = self._clean_name(val)
-                    if name and len(name) > 3:
-                        trustees.append(name)
-
-            if re.search(r"(registered\s*)?address\s*[:\-]", ll) and not data.registered_address:
-                data.registered_address = self._after_colon(line)
-
-        data.trustee_names = list(set(trustees))
-        return self.to_dict(data)
-
+# ─────────────────────────────────────────────
+# registry
+# ─────────────────────────────────────────────
 
 EXTRACTORS = {
-    "registration_certificate": RegistrationCertExtractor(),
     "pan":                      PANExtractor(),
+    "registration_certificate": RegistrationCertificateExtractor(),
     "fcra":                     FCRAExtractor(),
     "audit_report":             AuditReportExtractor(),
     "trust_deed":               TrustDeedExtractor(),
-    "incorporation_document":   TrustDeedExtractor(),
+    "incorporation_document":   IncorporationDocumentExtractor(),
 }
 
-def get_extractor(doc_type):
-    extractor = EXTRACTORS.get(doc_type.lower())
+
+def get_extractor(doc_type: str):
+    extractor = EXTRACTORS.get(doc_type)
     if not extractor:
-        raise ValueError(f"Unknown doc_type: '{doc_type}'. Valid: {list(EXTRACTORS.keys())}")
+        raise ValueError(f"no extractor for doc_type '{doc_type}'. valid: {list(EXTRACTORS.keys())}")
     return extractor
