@@ -17,69 +17,17 @@ async function deleteUserData(userId: number, userEmail: string) {
   try {
     console.log(`🗑️ Starting data deletion for user ${userId} (${userEmail})`);
     
-    // Delete user's orders and related data
-    const orders = await db.orders.getAll({ buyer_id: userId });
-    for (const order of orders) {
-      // Delete order items first
-      await supabase
-        .from('ecommerce_order_items')
-        .delete()
-        .eq('order_id', order.id);
-      
-      // Delete payments
-      await supabase
-        .from('ecommerce_payments')
-        .delete()
-        .eq('order_id', order.id);
-      
-      // Delete shipping details
-      await supabase
-        .from('ecommerce_shipping_details')
-        .delete()
-        .eq('order_id', order.id);
-    }
-    
-    // Delete orders
-    await supabase
-      .from('ecommerce_orders')
-      .delete()
-      .eq('buyer_id', userId);
-    
-    // Delete seller orders
-    await supabase
-      .from('ecommerce_orders')
-      .delete()
-      .eq('seller_id', userId);
-    
-    // Delete cart items
-    await supabase
-      .from('cart')
-      .delete()
-      .eq('user_id', userId);
-    
-    // Delete wishlist items
-    await supabase
-      .from('wishlist')
-      .delete()
-      .eq('user_id', userId);
-    
     // Delete user addresses
     await supabase
       .from('user_addresses')
       .delete()
       .eq('user_id', userId);
     
-    // Delete marketplace items created by user
-    await supabase
-      .from('marketplace_items')
-      .delete()
-      .eq('seller_id', userId);
-    
     // Delete service requests created by user (NGOs)
     const serviceRequests = await supabase
       .from('service_requests')
       .select('id')
-      .eq('ngo_id', userId);
+      .or(`ngo_id.eq.${userId},company_id.eq.${userId}`);
     
     if (serviceRequests.data && serviceRequests.data.length > 0) {
       const requestIds = serviceRequests.data.map((req: any) => req.id);
@@ -94,7 +42,7 @@ async function deleteUserData(userId: number, userEmail: string) {
       await supabase
         .from('service_requests')
         .delete()
-        .eq('ngo_id', userId);
+        .or(`ngo_id.eq.${userId},company_id.eq.${userId}`);
     }
     
     // Delete service offers created by user (NGOs)
@@ -146,17 +94,6 @@ async function deleteUserData(userId: number, userEmail: string) {
       .from('company_verifications')
       .delete()
       .eq('user_id', userId);
-    
-    // Delete any purchases
-    await supabase
-      .from('marketplace_purchases')
-      .delete()
-      .eq('buyer_id', userId);
-    
-    await supabase
-      .from('marketplace_purchases')
-      .delete()
-      .eq('seller_id', userId);
     
     console.log(`✅ Successfully deleted all related data for user ${userId}`);
     

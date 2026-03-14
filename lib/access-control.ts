@@ -2,7 +2,7 @@
  * Access Control System for Navadrishti Platform
  * 
  * Defines permissions based on user type and verification status
- * Controls access to posts, service requests/offers, marketplace, etc.
+ * Controls access to posts, service requests/offers, messaging, and dashboards.
  */
 
 export type UserType = 'individual' | 'ngo' | 'company';
@@ -27,11 +27,6 @@ export interface AccessPermissions {
   canApplyToServiceRequests: boolean;
   canCreateServiceOffers: boolean;
   canApplyToServiceOffers: boolean;
-  
-  // Marketplace
-  canAccessMarketplace: boolean;
-  canCreateMarketplaceListings: boolean;
-  canPurchaseFromMarketplace: boolean;
   
   // Communication
   canSendMessages: boolean;
@@ -59,9 +54,6 @@ export function getUserPermissions(user: User | null): AccessPermissions {
       canApplyToServiceRequests: false,
       canCreateServiceOffers: false,
       canApplyToServiceOffers: false,
-      canAccessMarketplace: false,
-      canCreateMarketplaceListings: false,
-      canPurchaseFromMarketplace: false,
       canSendMessages: false,
       canReceiveMessages: false,
       canViewFullProfiles: false,
@@ -88,11 +80,6 @@ export function getUserPermissions(user: User | null): AccessPermissions {
     canCreateServiceOffers: false,
     canApplyToServiceOffers: false,
     
-    // Marketplace permissions  
-    canAccessMarketplace: true, // Can browse but not buy/sell
-    canCreateMarketplaceListings: false,
-    canPurchaseFromMarketplace: false,
-    
     // Communication
     canSendMessages: hasBasicVerification,
     canReceiveMessages: true,
@@ -110,43 +97,22 @@ export function getUserPermissions(user: User | null): AccessPermissions {
     case 'individual':
       return {
         ...basePermissions,
-        // Individuals can apply to service requests only when verified
         canApplyToServiceRequests: isVerified,
-        
-        // Individuals can apply to service offers only when verified
         canApplyToServiceOffers: isVerified,
-        
-        // Marketplace access for verified individuals
-        canCreateMarketplaceListings: isVerified,
-        canPurchaseFromMarketplace: isVerified,
       };
       
     case 'ngo':
       return {
         ...basePermissions,
-        // NGOs can create service requests when verified
         canCreateServiceRequests: isVerified,
-        
-        // NGOs can create service offers when verified
         canCreateServiceOffers: isVerified,
-        
-        // NGOs can create marketplace listings when verified (for organizational needs)
-        canCreateMarketplaceListings: isVerified,
-        canPurchaseFromMarketplace: isVerified,
       };
       
     case 'company':
       return {
         ...basePermissions,
-        // Companies can volunteer for service requests but cannot create them
         canApplyToServiceRequests: isVerified,
-        
-        // Companies can apply to service offers when verified
         canApplyToServiceOffers: isVerified,
-        
-        // Companies can create marketplace listings when verified
-        canCreateMarketplaceListings: isVerified,
-        canPurchaseFromMarketplace: isVerified,
       };
       
     default:
@@ -226,19 +192,6 @@ export function getPermissionErrorMessage(permission: keyof AccessPermissions, u
       }
       return "You don't have permission to apply to service offers.";
         
-    case 'canCreateMarketplaceListings':
-      if (user.user_type === 'individual') {
-        return "Only verified NGOs and companies can create marketplace listings.";
-      }
-      return !isVerified 
-        ? "Please complete your verification to create marketplace listings."
-        : "You don't have permission to create marketplace listings.";
-        
-    case 'canPurchaseFromMarketplace':
-      return !isVerified 
-        ? "Please complete your verification to make purchases from the marketplace."
-        : "You don't have permission to make purchases.";
-        
     default:
       return !isVerified 
         ? "Please complete your verification to access this feature."
@@ -275,7 +228,6 @@ export function canAccessRoute(userType: UserType | undefined, routePath: string
     '/companies/dashboard': ['company'],
     '/service-requests/create': ['ngo', 'company'],
     '/service-offers/create': ['ngo'],
-    '/marketplace/create': ['ngo', 'company', 'individual'],
   };
   
   const allowedUserTypes = routeAccess[routePath];

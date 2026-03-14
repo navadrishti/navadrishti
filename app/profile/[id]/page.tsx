@@ -1,14 +1,14 @@
 "use client"
 
 import { use, useEffect, useRef, useState } from "react"
-import { useSearchParams, useRouter } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import { Header } from "@/components/header"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
-import { Calendar, MapPin, Award, TrendingUp, Heart, Users, Target, Trophy, Loader2 } from "lucide-react"
+import { Calendar, MapPin, Award, TrendingUp, Heart, Users, Target, Trophy, Loader2, FileText, Briefcase, Download, ExternalLink } from "lucide-react"
 import { VerificationBadge } from "@/components/verification-badge"
 import { useAuth } from "@/lib/auth-context"
 
@@ -42,9 +42,8 @@ interface UserProfile {
 export default function ImpactProfilePage({ params }: ImpactProfileProps) {
   const { id } = use(params)
   const searchParams = useSearchParams()
-  const router = useRouter()
   const { token } = useAuth()
-  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'history')
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'profile')
   const tabsRef = useRef<HTMLDivElement>(null)
   const fetchingRef = useRef(false)
   
@@ -55,8 +54,6 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
   const [error, setError] = useState<string | null>(null)
   const [stats, setStats] = useState({
     posts: 0,
-    listings: 0,
-    orders: 0,
     serviceRequests: 0,
     serviceOffers: 0,
     volunteeredServices: 0,
@@ -73,7 +70,7 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
 
   // Update active tab when URL changes
   useEffect(() => {
-    const tabFromUrl = searchParams.get('tab') || 'history'
+    const tabFromUrl = searchParams.get('tab') || 'profile'
     setActiveTab(tabFromUrl)
   }, [searchParams])
 
@@ -108,8 +105,6 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
         // Fetch all other data in parallel (non-blocking)
         const [
           postsRes,
-          itemsRes,
-          ordersRes,
           requestsRes,
           offersRes,
           volunteerRes,
@@ -117,8 +112,6 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
           activitiesRes
         ] = await Promise.allSettled([
           fetch(`/api/posts?userId=${id}&limit=100`, { headers }),
-          fetch(`/api/marketplace?sellerId=${id}`, { headers }),
-          fetch(`/api/orders?userId=${id}`, { headers }),
           fetch(`/api/service-requests?userId=${id}`, { headers }),
           fetch(`/api/service-offers?ngoId=${id}`, { headers }),
           fetch(`/api/service-volunteers?volunteerId=${id}`, { headers }),
@@ -128,8 +121,6 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
 
         // Parse JSON responses once and store them
         let postsData: any = null
-        let itemsData: any = null
-        let ordersData: any = null
         let requestsData: any = null
         let offersData: any = null
         let volunteerData: any = null
@@ -138,12 +129,6 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
 
         if (postsRes.status === 'fulfilled' && postsRes.value.ok) {
           postsData = await postsRes.value.json()
-        }
-        if (itemsRes.status === 'fulfilled' && itemsRes.value.ok) {
-          itemsData = await itemsRes.value.json()
-        }
-        if (ordersRes.status === 'fulfilled' && ordersRes.value.ok) {
-          ordersData = await ordersRes.value.json()
         }
         if (requestsRes.status === 'fulfilled' && requestsRes.value.ok) {
           requestsData = await requestsRes.value.json()
@@ -177,32 +162,6 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
           allActivities = [...allActivities, ...postActivities]
         }
 
-        // Process marketplace items
-        if (itemsData) {
-          const itemActivities = (itemsData.items || []).map((item: any) => ({
-            id: `listing-${item.id}`,
-            activity_type: 'listing_created',
-            entity_type: 'marketplace_item',
-            entity_id: item.id,
-            activity_data: { title: item.title },
-            created_at: item.created_at
-          }))
-          allActivities = [...allActivities, ...itemActivities]
-        }
-
-        // Process orders
-        if (ordersData) {
-          const orderActivities = (ordersData.orders || []).map((order: any) => ({
-            id: `order-${order.id}`,
-            activity_type: 'order_placed',
-            entity_type: 'order',
-            entity_id: order.id,
-            activity_data: { order_number: order.order_number },
-            created_at: order.created_at
-          }))
-          allActivities = [...allActivities, ...orderActivities]
-        }
-
         // Process service requests
         if (requestsData) {
           const requestActivities = (requestsData.requests || []).map((req: any) => ({
@@ -228,8 +187,6 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
         // Calculate stats from stored parsed data
         const newStats = {
           posts: postsData?.data?.length || 0,
-          listings: itemsData?.items?.length || 0,
-          orders: ordersData?.orders?.length || 0,
           serviceRequests: requestsData?.requests?.length || 0,
           serviceOffers: offersData?.offers?.length || offersData?.data?.length || 0,
           volunteeredServices: volunteerData?.volunteers?.length || volunteerData?.data?.length || 0,
@@ -425,12 +382,12 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
                       <p className="text-sm text-gray-900">Posts</p>
                     </div>
                     <div className="text-center p-3 bg-white rounded-lg border border-gray-700">
-                      <p className="text-2xl font-bold text-orange-500">{stats.listings}</p>
-                      <p className="text-sm text-gray-900">Listings</p>
+                      <p className="text-2xl font-bold text-orange-500">{stats.serviceRequests}</p>
+                      <p className="text-sm text-gray-900">Service Requests</p>
                     </div>
                     <div className="text-center p-3 bg-white rounded-lg border border-gray-700">
-                      <p className="text-2xl font-bold text-orange-500">{stats.orders}</p>
-                      <p className="text-sm text-gray-900">Orders</p>
+                      <p className="text-2xl font-bold text-orange-500">{stats.serviceOffers}</p>
+                      <p className="text-sm text-gray-900">Service Offers</p>
                     </div>
                     <div className="text-center p-3 bg-white rounded-lg border border-gray-700">
                       <p className="text-2xl font-bold text-orange-500">{stats.volunteeredServices}</p>
@@ -470,12 +427,251 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
 
       <div ref={tabsRef}>
         <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 gap-2 mb-8 bg-white p-2 rounded-lg h-auto">
+          <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 gap-2 mb-8 bg-white p-2 rounded-lg h-auto">
+            <TabsTrigger value="profile" className="text-xs sm:text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm text-gray-700 py-3 px-2 rounded-md border border-gray-300">Profile</TabsTrigger>
             <TabsTrigger value="history" className="text-xs sm:text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm text-gray-700 py-3 px-2 rounded-md border border-gray-300">Recent Activity</TabsTrigger>
             <TabsTrigger value="achievements" className="text-xs sm:text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm text-gray-700 py-3 px-2 rounded-md border border-gray-300">Achievements</TabsTrigger>
             <TabsTrigger value="impact" className="text-xs sm:text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm text-gray-700 py-3 px-2 rounded-md border border-gray-300">Impact Metrics</TabsTrigger>
             <TabsTrigger value="stats" className="text-xs sm:text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-sm text-gray-700 py-3 px-2 rounded-md border border-gray-300">Statistics</TabsTrigger>
           </TabsList>
+
+        <TabsContent value="profile">
+          <div className="space-y-6">
+            {/* Bio Section - Common for all user types */}
+            {profile.profile_data?.bio && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    About
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-gray-700 whitespace-pre-wrap">{profile.profile_data.bio}</p>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Individual-specific sections */}
+            {profile.user_type === 'individual' && (
+              <>
+                {/* Experience Section - Individuals only */}
+                {profile.profile_data?.experience && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Briefcase className="h-5 w-5" />
+                        Experience
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-gray-700 whitespace-pre-wrap">{profile.profile_data.experience}</p>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Resume Section - Individuals only */}
+                {profile.profile_data?.resume_url && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <FileText className="h-5 w-5" />
+                        Resume / CV
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <a 
+                        href={profile.profile_data.resume_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 px-4 py-3 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
+                      >
+                        <Download className="h-5 w-5" />
+                        Download Resume
+                      </a>
+                    </CardContent>
+                  </Card>
+                )}
+              </>
+            )}
+
+            {/* Company-specific sections */}
+            {profile.user_type === 'company' && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Briefcase className="h-5 w-5" />
+                    Company Information
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {profile.profile_data?.industry && (
+                    <div>
+                      <p className="text-sm text-gray-500 mb-1">Industry</p>
+                      <p className="font-medium text-gray-900">{profile.profile_data.industry}</p>
+                    </div>
+                  )}
+                  {profile.profile_data?.company_size && (
+                    <div>
+                      <p className="text-sm text-gray-500 mb-1">Company Size</p>
+                      <p className="font-medium text-gray-900">{profile.profile_data.company_size}</p>
+                    </div>
+                  )}
+                  {profile.profile_data?.company_website && (
+                    <div>
+                      <p className="text-sm text-gray-500 mb-1">Website</p>
+                      <a 
+                        href={profile.profile_data.company_website}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-orange-500 hover:text-orange-600 flex items-center gap-1"
+                      >
+                        {profile.profile_data.company_website}
+                        <ExternalLink className="h-4 w-4" />
+                      </a>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* NGO-specific sections */}
+            {profile.user_type === 'ngo' && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Award className="h-5 w-5" />
+                    Organization Information
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {profile.profile_data?.registration_number && (
+                    <div>
+                      <p className="text-sm text-gray-500 mb-1">Registration Number</p>
+                      <p className="font-medium text-gray-900">{profile.profile_data.registration_number}</p>
+                    </div>
+                  )}
+                  {profile.profile_data?.founded_year && (
+                    <div>
+                      <p className="text-sm text-gray-500 mb-1">Founded Year</p>
+                      <p className="font-medium text-gray-900">{profile.profile_data.founded_year}</p>
+                    </div>
+                  )}
+                  {profile.profile_data?.ngo_size && (
+                    <div>
+                      <p className="text-sm text-gray-500 mb-1">Organization Size</p>
+                      <p className="font-medium text-gray-900">{profile.profile_data.ngo_size}</p>
+                    </div>
+                  )}
+                  {profile.profile_data?.focus_areas && (
+                    <div>
+                      <p className="text-sm text-gray-500 mb-1">Focus Areas</p>
+                      <p className="font-medium text-gray-900 whitespace-pre-wrap">{profile.profile_data.focus_areas}</p>
+                    </div>
+                  )}
+                  {profile.profile_data?.organization_website && (
+                    <div>
+                      <p className="text-sm text-gray-500 mb-1">Website</p>
+                      <a 
+                        href={profile.profile_data.organization_website}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-orange-500 hover:text-orange-600 flex items-center gap-1"
+                      >
+                        {profile.profile_data.organization_website}
+                        <ExternalLink className="h-4 w-4" />
+                      </a>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Proof of Work Section - Common for all user types */}
+            {((profile.profile_data?.proof_of_work && profile.profile_data.proof_of_work.length > 0) || 
+              (profile.profile_data?.work_photos && profile.profile_data.work_photos.length > 0)) && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Award className="h-5 w-5" />
+                    {profile.user_type === 'individual' ? 'Proof of Work' : 
+                     profile.user_type === 'company' ? 'Company Portfolio' : 
+                     'Projects & Campaigns'}
+                  </CardTitle>
+                  <CardDescription>
+                    {profile.user_type === 'individual' ? 'Documents and images showcasing work and achievements' :
+                     profile.user_type === 'company' ? 'Company projects and portfolio items' :
+                     'NGO projects, campaigns, and impact documentation'}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {(profile.profile_data?.proof_of_work || profile.profile_data?.work_photos || []).map((url: string, index: number) => {
+                      const isPDF = url.toLowerCase().endsWith('.pdf');
+                      const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(url);
+                      
+                      return (
+                        <div key={index} className="group relative border-2 border-gray-300 rounded-lg overflow-hidden hover:shadow-lg transition-all">
+                          {isImage ? (
+                            <a href={url} target="_blank" rel="noopener noreferrer" className="block">
+                              <img 
+                                src={url} 
+                                alt={`${profile.user_type === 'individual' ? 'Proof of work' : 
+                                       profile.user_type === 'company' ? 'Portfolio item' : 
+                                       'Project'} ${index + 1}`}
+                                className="w-full h-48 object-cover"
+                              />
+                              <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 transition-all flex items-center justify-center">
+                                <ExternalLink className="h-8 w-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                              </div>
+                            </a>
+                          ) : isPDF ? (
+                            <a 
+                              href={url} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="flex flex-col items-center justify-center h-48 bg-gray-100 hover:bg-gray-200 transition-colors"
+                            >
+                              <FileText className="h-16 w-16 text-gray-500 mb-2" />
+                              <span className="text-sm text-gray-700 font-medium">PDF Document {index + 1}</span>
+                              <span className="text-xs text-gray-500 mt-1">Click to view</span>
+                            </a>
+                          ) : (
+                            <a 
+                              href={url} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="flex flex-col items-center justify-center h-48 bg-gray-100 hover:bg-gray-200 transition-colors"
+                            >
+                              <Download className="h-16 w-16 text-gray-500 mb-2" />
+                              <span className="text-sm text-gray-700 font-medium">Document {index + 1}</span>
+                              <span className="text-xs text-gray-500 mt-1">Click to download</span>
+                            </a>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Empty State */}
+            {!profile.profile_data?.bio && 
+             (profile.user_type === 'individual' ? (!profile.profile_data?.experience && !profile.profile_data?.resume_url) : true) &&
+             (profile.user_type === 'company' ? (!profile.profile_data?.industry && !profile.profile_data?.company_size && !profile.profile_data?.company_website) : true) &&
+             (profile.user_type === 'ngo' ? (!profile.profile_data?.registration_number && !profile.profile_data?.founded_year && !profile.profile_data?.focus_areas && !profile.profile_data?.organization_website && !profile.profile_data?.ngo_size) : true) &&
+             (!profile.profile_data?.proof_of_work || profile.profile_data.proof_of_work.length === 0) && 
+             (!profile.profile_data?.work_photos || profile.profile_data.work_photos.length === 0) && (
+              <Card>
+                <CardContent className="pt-6 text-center py-12">
+                  <Users className="h-12 w-12 mx-auto mb-3 text-gray-400" />
+                  <p className="text-gray-500">No profile information available yet</p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </TabsContent>
 
         <TabsContent value="history">
           <Card>
@@ -524,12 +720,10 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
                     let detailedDescription = ''
                     if (activity.activity_type === 'post_created') {
                       detailedDescription = 'Created a new post on the platform'
-                    } else if (activity.activity_type === 'listing_created') {
-                      detailedDescription = 'Listed a new product in the marketplace'
-                    } else if (activity.activity_type === 'order_placed') {
-                      detailedDescription = 'Placed an order for a marketplace item'
                     } else if (activity.activity_type === 'service_request_created') {
                       detailedDescription = 'Created a new service request'
+                    } else if (activity.activity_type === 'service_offer_created') {
+                      detailedDescription = 'Published a new service offer'
                     } else if (activity.activity_type === 'profile_update') {
                       detailedDescription = 'Updated profile information'
                     } else {
@@ -585,19 +779,14 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
                                   Text Post
                                 </Badge>
                               )}
-                              {activity.activity_type === 'listing_created' && (
-                                <Badge variant="outline" className="text-xs border-gray-500 font-medium text-orange-500">
-                                  Marketplace Listing
-                                </Badge>
-                              )}
-                              {activity.activity_type === 'order_placed' && (
-                                <Badge variant="outline" className="text-xs border-gray-500 font-medium text-orange-500">
-                                  Purchase Order
-                                </Badge>
-                              )}
                               {activity.activity_type === 'service_request_created' && (
                                 <Badge variant="outline" className="text-xs border-gray-500 font-medium text-orange-500">
                                   Service Request
+                                </Badge>
+                              )}
+                              {activity.activity_type === 'service_offer_created' && (
+                                <Badge variant="outline" className="text-xs border-gray-500 font-medium text-orange-500">
+                                  Service Offer
                                 </Badge>
                               )}
                             </div>
@@ -660,25 +849,25 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
                   </div>
                 )}
 
-                {stats.listings >= 5 && (
+                {stats.serviceRequests >= 5 && (
                   <div className="p-4 border-2 border-gray-700 rounded-xl bg-white hover:shadow-lg transition-shadow">
                     <div className="flex flex-col items-center text-center">
-                      <h3 className="font-bold text-orange-500 mb-1">Marketplace Seller</h3>
-                      <p className="text-sm text-gray-900 mb-2">Listed {stats.listings} items</p>
+                      <h3 className="font-bold text-orange-500 mb-1">Opportunity Builder</h3>
+                      <p className="text-sm text-gray-900 mb-2">Created {stats.serviceRequests} service requests</p>
                       <Badge variant="secondary" className="bg-orange-500 text-white border-0">
-                        Active Seller
+                        Community Organizer
                       </Badge>
                     </div>
                   </div>
                 )}
 
-                {stats.orders >= 5 && (
+                {stats.clientProjects >= 5 && (
                   <div className="p-4 border-2 border-gray-700 rounded-xl bg-white hover:shadow-lg transition-shadow">
                     <div className="flex flex-col items-center text-center">
-                      <h3 className="font-bold text-orange-500 mb-1">Frequent Buyer</h3>
-                      <p className="text-sm text-gray-900 mb-2">Placed {stats.orders} orders</p>
+                      <h3 className="font-bold text-orange-500 mb-1">Reliable Collaborator</h3>
+                      <p className="text-sm text-gray-900 mb-2">Joined {stats.clientProjects} service projects</p>
                       <Badge variant="secondary" className="bg-orange-500 text-white border-0">
-                        Supportive Buyer
+                        Trusted Participant
                       </Badge>
                     </div>
                   </div>
@@ -722,8 +911,8 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
               </div>
 
               {/* No achievements message */}
-              {stats.posts < 5 && stats.volunteeredServices < 3 && stats.listings < 5 && 
-               stats.orders < 5 && stats.serviceRequests < 3 && stats.serviceOffers < 3 && 
+              {stats.posts < 5 && stats.volunteeredServices < 3 && stats.clientProjects < 5 && 
+               stats.serviceRequests < 3 && stats.serviceOffers < 3 && 
                profile.verification_status !== 'verified' && (
                 <div className="text-center py-12 text-gray-500">
                   <Trophy className="h-12 w-12 mx-auto mb-3 text-gray-400" />
@@ -778,7 +967,7 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
                   <div className="text-center">
                     <h3 className="text-sm font-medium text-gray-700 mb-2">Overall Impact Score</h3>
                     <p className="text-5xl font-bold text-orange-500 mb-2">
-                      {(stats.posts * 1) + (stats.volunteeredServices * 10) + (stats.serviceRequests * 5) + (stats.serviceOffers * 8) + (stats.listings * 1) + (stats.orders * 2)}
+                      {(stats.posts * 1) + (stats.volunteeredServices * 10) + (stats.serviceRequests * 5) + (stats.serviceOffers * 8) + (stats.clientProjects * 4)}
                     </p>
                     <p className="text-sm text-gray-600">Points earned from all activities</p>
                   </div>
@@ -844,30 +1033,16 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
 
                   <div className="p-4 bg-white rounded-lg border border-gray-700">
                     <div className="flex items-center justify-between mb-3">
-                      <span className="font-medium text-gray-900">Marketplace Activity</span>
-                      <span className="text-2xl font-bold text-orange-500">{stats.listings * 1}</span>
+                      <span className="font-medium text-gray-900">Project Participation</span>
+                      <span className="text-2xl font-bold text-orange-500">{stats.clientProjects * 4}</span>
                     </div>
                     <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
                       <div 
                         className="h-full bg-orange-500 rounded-full transition-all" 
-                        style={{ width: `${Math.min((stats.listings / 100) * 100, 100)}%` }}
+                        style={{ width: `${Math.min((stats.clientProjects / 10) * 100, 100)}%` }}
                       />
                     </div>
-                    <p className="text-xs text-gray-600 mt-2">{stats.listings} listings × 1 point</p>
-                  </div>
-
-                  <div className="p-4 bg-white rounded-lg border border-gray-700">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="font-medium text-gray-900">Community Support</span>
-                      <span className="text-2xl font-bold text-orange-500">{stats.orders * 2}</span>
-                    </div>
-                    <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-orange-500 rounded-full transition-all" 
-                        style={{ width: `${Math.min((stats.orders / 50) * 100, 100)}%` }}
-                      />
-                    </div>
-                    <p className="text-xs text-gray-600 mt-2">{stats.orders} orders × 2 points</p>
+                    <p className="text-xs text-gray-600 mt-2">{stats.clientProjects} projects × 4 points</p>
                   </div>
                 </div>
 
@@ -887,14 +1062,11 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
                     {stats.serviceOffers > 0 && (
                       <p>✓ Offered <span className="font-semibold text-orange-500">{stats.serviceOffers}</span> professional services</p>
                     )}
-                    {stats.listings > 0 && (
-                      <p>✓ Listed <span className="font-semibold text-orange-500">{stats.listings}</span> items in the marketplace</p>
-                    )}
-                    {stats.orders > 0 && (
-                      <p>✓ Supported the community with <span className="font-semibold text-orange-500">{stats.orders}</span> purchases</p>
+                    {stats.clientProjects > 0 && (
+                      <p>✓ Participated in <span className="font-semibold text-orange-500">{stats.clientProjects}</span> service projects</p>
                     )}
                     {stats.posts === 0 && stats.volunteeredServices === 0 && stats.serviceRequests === 0 && 
-                     stats.serviceOffers === 0 && stats.listings === 0 && stats.orders === 0 && (
+                     stats.serviceOffers === 0 && stats.clientProjects === 0 && (
                       <p className="text-gray-500 italic">No impact activities yet. Start contributing to see your impact grow!</p>
                     )}
                   </div>
@@ -952,12 +1124,8 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
                     <span className="text-2xl font-bold text-orange-500">{stats.posts}</span>
                   </div>
                   <div className="flex items-center justify-between py-2 border-b border-gray-700">
-                    <span className="text-gray-900">Marketplace Listings</span>
-                    <span className="text-2xl font-bold text-orange-500">{stats.listings}</span>
-                  </div>
-                  <div className="flex items-center justify-between py-2 border-b border-gray-700">
-                    <span className="text-gray-900">Orders Placed</span>
-                    <span className="text-2xl font-bold text-orange-500">{stats.orders}</span>
+                    <span className="text-gray-900">Service Projects Joined</span>
+                    <span className="text-2xl font-bold text-orange-500">{stats.clientProjects}</span>
                   </div>
                   {stats.serviceRequests > 0 && (
                     <div className="flex items-center justify-between py-2 border-b border-gray-700">

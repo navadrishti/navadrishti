@@ -23,6 +23,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         state_province,
         pincode,
         country,
+        profile_data,
         created_at
       `)
       .eq('id', parseInt(userId))
@@ -74,41 +75,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       }
     }
 
-    // Get user's marketplace statistics - only count real/meaningful listings
-    const { data: listingsData, error: listingsError } = await supabase
-      .from('marketplace_items')
-      .select('id, status, title, description, price')
-      .eq('seller_id', parseInt(userId));
-
-    // Calculate statistics - filter out test/dummy data
-    const realListings = listingsData?.filter(item => 
-      item.title && 
-      item.description && 
-      item.price > 0 &&
-      !item.title.toLowerCase().includes('test') &&
-      !item.title.toLowerCase().includes('sample') &&
-      !item.description.toLowerCase().includes('test')
-    ) || [];
-
-    const totalListings = realListings.length;
-    const totalSold = realListings.filter(item => item.status === 'sold').length;
-
-    // Get ratings data (if you have a ratings system)
-    // For now, we'll set default values
-    const ratingAverage = 0;
-    const ratingCount = 0;
-
-    // Safe JSON parse function
-    const safeJsonParse = (jsonString: any, defaultValue: any) => {
-      try {
-        if (!jsonString) return defaultValue;
-        if (typeof jsonString === 'object') return jsonString;
-        return JSON.parse(jsonString);
-      } catch (e) {
-        return defaultValue;
-      }
-    };
-
     // Helper function to detect fake/mock location data
     const isFakeLocation = (location: string): boolean => {
       if (!location) return false;
@@ -142,12 +108,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       website: null,
       portfolio: [],
       experience: null,
+      // Include profile_data which contains bio, experience, proof_of_work, resume_url, etc.
+      profile_data: userResult.profile_data || {},
       verification_status: verificationStatus,
-      verification_details: verificationDetails,
-      total_listings: totalListings,
-      total_sold: totalSold,
-      rating_average: ratingAverage,
-      rating_count: ratingCount
+      verification_details: verificationDetails
     };
 
     return Response.json({
