@@ -1,11 +1,16 @@
-// API endpoint for individual verification using DigiLocker
+// API endpoint for individual verification (manual document-first flow)
 import { NextRequest, NextResponse } from 'next/server';
-import { DigiLockerService } from '@/lib/digilocker';
 import { db } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 
-const digiLocker = new DigiLockerService();
+function isValidAadhaarNumber(aadhaarNumber: string): boolean {
+  return /^\d{12}$/.test(aadhaarNumber);
+}
+
+function isValidPANNumber(panNumber: string): boolean {
+  return /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(panNumber);
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -35,11 +40,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Only individuals can use this verification method' }, { status: 403 });
     }
 
-    const { action, documentType, aadhaarNumber, panNumber } = await req.json();
+    const { action, documentType, aadhaarNumber, panNumber, documents } = await req.json();
 
     switch (action) {
       case 'initiate':
-        return await initiateVerification(userId, documentType);
+        return await initiateVerification(userId, documentType, documents);
       
       case 'verify-aadhaar':
         return await verifyAadhaar(userId, aadhaarNumber);
@@ -59,19 +64,8 @@ export async function POST(req: NextRequest) {
   }
 }
 
-async function initiateVerification(userId: number, documentType: 'aadhaar' | 'pan') {
-  // Check if DigiLocker service is available
-  if (!digiLocker.isAvailable()) {
-    return NextResponse.json({
-      error: 'DigiLocker verification service is not configured. Please contact administrator.',
-      code: 'SERVICE_NOT_CONFIGURED'
-    }, { status: 503 });
-  }
-
+async function initiateVerification(userId: number, documentType: 'aadhaar' | 'pan', documents?: Record<string, string>) {
   try {
-    // Generate DigiLocker authorization URL
-    const authUrl = digiLocker.generateAuthUrl(userId, documentType);
-    
     // Create or update verification record
     const existingVerification = await db.individualVerifications.findByUserId(userId);
 
@@ -80,15 +74,48 @@ async function initiateVerification(userId: number, documentType: 'aadhaar' | 'p
         user_id: userId,
         verification_status: 'pending'
       });
+    } else {
+      await db.individualVerifications.update(userId, {
+        verification_status: 'pending',
+        updated_at: new Date().toISOString()
+      });
+    }
+
+    const user = await db.users.findById(userId);
+    if (user) {
+      const existingProfileData = (user.profile_data && typeof user.profile_data === 'object') ? user.profile_data : {};
+      const existingVerificationDocs = (existingProfileData.verification_documents && typeof existingProfileData.verification_documents === 'object')
+        ? existingProfileData.verification_documents
+        : {};
+
+      const nextProfileData = {
+        ...existingProfileData,
+        verification_documents: {
+          ...existingVerificationDocs,
+          individual: {
+            ...(existingVerificationDocs.individual || {}),
+            documents: documents || {},
+            submitted_at: new Date().toISOString(),
+            status: 'pending'
+          }
+        }
+      };
+
+      await db.users.update(userId, {
+        profile_data: nextProfileData,
+        verification_status: 'pending'
+      });
     }
 
     return NextResponse.json({
       success: true,
-      authUrl,
-      message: 'Please complete verification on DigiLocker'
+      authUrl: null,
+      mode: 'manual',
+      message: 'Verification initiated in manual mode. Your uploaded documents will be reviewed by admin.',
+      documentType
     });
   } catch (error: any) {
-    console.error('DigiLocker initiation error:', error);
+    console.error('Individual verification initiation error:', error);
     return NextResponse.json({
       error: error.message || 'Failed to initiate verification',
       code: 'INITIATION_FAILED'
@@ -98,12 +125,11 @@ async function initiateVerification(userId: number, documentType: 'aadhaar' | 'p
 
 async function verifyAadhaar(userId: number, aadhaarNumber: string) {
   // Validate Aadhaar number format
-  if (!digiLocker.validateAadhaarNumber(aadhaarNumber)) {
+  if (!isValidAadhaarNumber(aadhaarNumber)) {
     return NextResponse.json({ error: 'Invalid Aadhaar number format' }, { status: 400 });
   }
 
-  // In a real implementation, you would use the DigiLocker token to fetch data
-  // For now, we'll simulate the verification process
+  // Manual verification flow: record provided details and mark submitted checks
   
   const verification = await db.individualVerifications.findByUserId(userId);
   
@@ -127,7 +153,7 @@ async function verifyAadhaar(userId: number, aadhaarNumber: string) {
 
 async function verifyPAN(userId: number, panNumber: string) {
   // Validate PAN number format
-  if (!digiLocker.validatePANNumber(panNumber)) {
+  if (!isValidPANNumber(panNumber)) {
     return NextResponse.json({ error: 'Invalid PAN number format' }, { status: 400 });
   }
 
