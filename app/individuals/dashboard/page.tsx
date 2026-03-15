@@ -98,10 +98,14 @@ function IndividualDashboardContent() {
                           <span>{user?.phone || 'Phone not set'}</span>
                         </div>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-1 gap-4 mt-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                         <div>
-                          <p className="text-sm font-medium text-gray-500">Joined</p>
-                          <p>{(user as any)?.created_at ? new Date((user as any).created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long' }) : 'Join date not available'}</p>
+                          <p className="text-sm font-medium text-gray-500">Age</p>
+                          <p>{(user as any)?.profile_data?.age || (user as any)?.profile?.age || 'Age not set'}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-500">Pincode</p>
+                          <p>{user?.pincode || 'Pincode not set'}</p>
                         </div>
                       </div>
                     </div>
