@@ -71,9 +71,9 @@ export async function POST(req: NextRequest) {
       name,
       user_type,
       email_verified: true,
-      phone_verified: true,
+      phone_verified: false,
       email_verified_at: new Date().toISOString(),
-      phone_verified_at: new Date().toISOString(),
+      phone_verified_at: null,
       phone,
       city,
       state_province,
@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
       user_type,
       verification_status: 'unverified' as const,
       email_verified: true,
-      phone_verified: true
+      phone_verified: false
     };
     
     const token = generateToken(user);
@@ -107,7 +107,7 @@ export async function POST(req: NextRequest) {
         user_type,
         verification_status: 'unverified',
         email_verified: true,
-        phone_verified: true,
+        phone_verified: false,
         profile_data: newUser.profile_data || {}
       },
       token
