@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Building, Mail, Phone, Globe, MapPin, Users, Briefcase } from "lucide-react"
 import { toast } from 'sonner'
+import { useOtpSender } from '@/hooks/use-otp-sender'
 
 export default function CompanyRegistration() {
   const [formData, setFormData] = useState({
@@ -33,12 +34,20 @@ export default function CompanyRegistration() {
     registrationNumber: ''
   })
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
+  const { otpSending, otpSent, otpCooldown, otpVerifying, otpVerified, handleSendEmailOtp, handleVerifyEmailOtp, handleSendPhoneOtp, resetEmailOtpState } = useOtpSender(setFormErrors)
+  const [otpInput, setOtpInput] = useState({ email: '', phone: '' })
 
   const { signup, error, loading, clearError } = useAuth()
   const router = useRouter()
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
+
+    if (name === 'email' && value !== formData.email) {
+      resetEmailOtpState()
+      setOtpInput(prev => ({ ...prev, email: '' }))
+    }
+
     setFormData(prev => ({ ...prev, [name]: value }))
     
     // Clear error for this field when user starts typing
@@ -148,6 +157,23 @@ export default function CompanyRegistration() {
     // Validate form
     if (!validateForm()) {
       return
+    }
+
+    if (!otpSent.email) {
+      setFormErrors(prev => ({ ...prev, emailOtp: 'Please send email OTP first' }))
+      return
+    }
+
+    if (!otpVerified.email && !otpInput.email.trim()) {
+      setFormErrors(prev => ({ ...prev, emailOtp: 'Please enter email OTP' }))
+      return
+    }
+
+    if (!otpVerified.email) {
+      const emailOtpVerified = await handleVerifyEmailOtp(formData.email, otpInput.email)
+      if (!emailOtpVerified) {
+        return
+      }
     }
     
     try {
@@ -291,28 +317,96 @@ export default function CompanyRegistration() {
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    name="email"
-                    type="email"
-                    value={formData.email}
-                    onChange={handleChange}
-                    placeholder="company@example.com"
-                  />
+                  <div className="flex gap-2">
+                    <Input
+                      id="email"
+                      name="email"
+                      type="email"
+                      value={formData.email}
+                      onChange={handleChange}
+                      placeholder="company@example.com"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => handleSendEmailOtp(formData.email)}
+                      disabled={otpSending.email || otpCooldown.email > 0}
+                    >
+                      {otpSending.email ? 'Sending...' : otpCooldown.email > 0 ? `Resend in ${otpCooldown.email}s` : 'Send OTP'}
+                    </Button>
+                  </div>
                   {formErrors.email && <p className="text-sm text-red-500">{formErrors.email}</p>}
+                  {otpSent.email && <p className="text-sm text-green-600">OTP sent to your email</p>}
+                  {otpSent.email && (
+                    <div className="space-y-2">
+                      <Label htmlFor="emailOtp">Email OTP</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="emailOtp"
+                          name="emailOtp"
+                          value={otpInput.email}
+                          onChange={(e) => {
+                            const value = e.target.value
+                            setOtpInput(prev => ({ ...prev, email: value }))
+                            if (formErrors.emailOtp) {
+                              setFormErrors(prev => {
+                                const nextErrors = { ...prev }
+                                delete nextErrors.emailOtp
+                                return nextErrors
+                              })
+                            }
+                          }}
+                          placeholder="Enter email OTP"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => handleVerifyEmailOtp(formData.email, otpInput.email)}
+                          disabled={otpVerifying.email}
+                        >
+                          {otpVerifying.email ? 'Verifying...' : 'Verify OTP'}
+                        </Button>
+                      </div>
+                      {formErrors.emailOtp && <p className="text-sm text-red-500">{formErrors.emailOtp}</p>}
+                      {otpVerified.email && <p className="text-sm text-green-600">Email OTP verified</p>}
+                    </div>
+                  )}
                 </div>
                 
                 <div className="space-y-2">
                   <Label htmlFor="phone">Phone Number</Label>
-                  <Input
-                    id="phone"
-                    name="phone"
-                    type="tel"
-                    value={formData.phone}
-                    onChange={handleChange}
-                    placeholder="+91 9876543210"
-                  />
+                  <div className="flex gap-2">
+                    <Input
+                      id="phone"
+                      name="phone"
+                      type="tel"
+                      value={formData.phone}
+                      onChange={handleChange}
+                      placeholder="+91 9876543210"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => handleSendPhoneOtp(formData.phone)}
+                      disabled={otpSending.phone || otpCooldown.phone > 0}
+                    >
+                      {otpSending.phone ? 'Sending...' : otpCooldown.phone > 0 ? `Resend in ${otpCooldown.phone}s` : 'Send OTP'}
+                    </Button>
+                  </div>
                   {formErrors.phone && <p className="text-sm text-red-500">{formErrors.phone}</p>}
+                  {otpSent.phone && <p className="text-sm text-green-600">OTP sent to your phone</p>}
+                  {otpSent.phone && (
+                    <div className="space-y-2">
+                      <Label htmlFor="phoneOtp">Phone OTP</Label>
+                      <Input
+                        id="phoneOtp"
+                        name="phoneOtp"
+                        value={otpInput.phone}
+                        onChange={(e) => setOtpInput(prev => ({ ...prev, phone: e.target.value }))}
+                        placeholder="Enter phone OTP"
+                      />
+                    </div>
+                  )}
                 </div>
                 
                 <div className="space-y-2">
@@ -452,7 +546,7 @@ export default function CompanyRegistration() {
             
 
             <div className="flex flex-col space-y-4">
-              <Button type="submit" className="w-full" disabled={loading}>
+              <Button type="submit" className="w-full" disabled={loading || !otpVerified.email}>
                 {loading ? 'Creating Account...' : 'Create Company Account'}
               </Button>
               
