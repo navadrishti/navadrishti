@@ -17,6 +17,26 @@ const signupSchema = z.object({
   profile_data: z.record(z.any()).optional()
 });
 
+const getFriendlySignupError = (error: unknown): string => {
+  const message = typeof error === 'string'
+    ? error
+    : error instanceof Error
+      ? error.message
+      : '';
+
+  const lowerMessage = message.toLowerCase();
+
+  if (lowerMessage.includes('duplicate') || lowerMessage.includes('already exists')) {
+    return 'An account with this email already exists. Please log in or use a different email.';
+  }
+
+  if (lowerMessage.includes('network') || lowerMessage.includes('fetch')) {
+    return 'We could not complete registration due to a network issue. Please try again.';
+  }
+
+  return 'We could not create your account right now. Please try again in a moment.';
+};
+
 export async function POST(req: NextRequest) {
   try {
     // Parse and validate request body
@@ -24,7 +44,12 @@ export async function POST(req: NextRequest) {
     const validationResult = signupSchema.safeParse(body);
     
     if (!validationResult.success) {
-      return NextResponse.json({ error: validationResult.error.errors }, { status: 400 });
+      const firstIssue = validationResult.error.issues[0];
+      const validationMessage = firstIssue?.message || 'Please check your details and try again.';
+      return NextResponse.json({
+        error: validationMessage,
+        code: 'VALIDATION_ERROR'
+      }, { status: 400 });
     }
     
     const { email, password, name, user_type, phone, city, state_province, pincode, country, profile_data } = validationResult.data;
@@ -90,11 +115,11 @@ export async function POST(req: NextRequest) {
     
   } catch (error: any) {
     console.error('Signup error:', error);
-    // Provide more specific error message when possible
-    const errorMessage = error.message || 'Something went wrong during signup';
+
+    const errorMessage = getFriendlySignupError(error);
     return NextResponse.json({ 
       error: errorMessage,
-      details: process.env.NODE_ENV === 'development' ? error.toString() : undefined
+      code: 'SIGNUP_FAILED'
     }, { status: 500 });
   }
 }

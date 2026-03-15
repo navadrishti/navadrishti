@@ -200,14 +200,11 @@ export default function CompanyRegistration() {
       
       // Call signup function from auth context
       await signup(userData)
-      
-      // If signup is successful, redirect to dashboard
-      if (!error) {
-        toast.success('Company account created successfully!');
-        router.push('/companies/dashboard');
-      }
-    } catch (uploadError) {
-      toast.error('Failed to create account. Please try again.');
+
+      toast.success('Company account created successfully!');
+      router.push('/companies/dashboard');
+    } catch {
+      // Error state and user notification are handled in auth context
     }
   }
 
@@ -359,9 +356,9 @@ export default function CompanyRegistration() {
                           type="button"
                           variant="outline"
                           onClick={() => handleVerifyEmailOtp(formData.email, otpInput.email)}
-                          disabled={otpVerifying.email}
+                          disabled={otpVerifying.email || otpVerified.email}
                         >
-                          {otpVerifying.email ? 'Verifying...' : 'Verify OTP'}
+                          {otpVerifying.email ? 'Verifying...' : otpVerified.email ? 'Verified' : 'Verify OTP'}
                         </Button>
                       </div>
                       {formErrors.emailOtp && <p className="text-sm text-red-500">{formErrors.emailOtp}</p>}
