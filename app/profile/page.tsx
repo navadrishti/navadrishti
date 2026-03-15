@@ -42,13 +42,11 @@ export default function ProfilePage() {
   // Organization details for NGOs
   const [sector, setSector] = useState('');
   const [foundedYear, setFoundedYear] = useState('');
-  const [focusAreas, setFocusAreas] = useState('');
-  const [organizationWebsite, setOrganizationWebsite] = useState('');
+  const [website, setWebsite] = useState('');
   
   // Company details for companies
   const [industry, setIndustry] = useState('');
   const [companySize, setCompanySize] = useState('');
-  const [companyWebsite, setCompanyWebsite] = useState('');
   
   // Individual specific fields
   const [age, setAge] = useState('');
@@ -111,12 +109,10 @@ export default function ProfilePage() {
       // Load additional profile fields from profile_data or direct fields
       const userProfile = freshUser?.profile_data || {};
       setSector(userProfile.sector || '');
-      setFoundedYear(userProfile.founded_year || '');
-      setFocusAreas(userProfile.focus_areas || '');
-      setOrganizationWebsite(userProfile.organization_website || '');
+      setFoundedYear(userProfile.founded || userProfile.founded_year || '');
+      setWebsite(userProfile.website || userProfile.company_website || userProfile.organization_website || '');
       setIndustry(userProfile.industry || '');
       setCompanySize(userProfile.company_size || '');
-      setCompanyWebsite(userProfile.company_website || '');
       setAge(userProfile.age || '');
       setNgoSize(userProfile.ngo_size || '');
       
@@ -251,14 +247,14 @@ export default function ProfilePage() {
       } else if (user?.user_type === 'company') {
         if (industry) profileDataFields.industry = industry;
         if (companySize) profileDataFields.company_size = companySize;
-        if (companyWebsite) profileDataFields.company_website = companyWebsite;
+        if (website) profileDataFields.website = website;
+        if (sector) profileDataFields.sector = sector;
+        if (foundedYear) profileDataFields.founded = parseInt(foundedYear);
         profileDataFields.company_name = editableName || user?.name;
       } else if (user?.user_type === 'ngo') {
         if (ngoSize) profileDataFields.ngo_size = ngoSize;
-        if (organizationWebsite) profileDataFields.organization_website = organizationWebsite;
         if (sector) profileDataFields.sector = sector;
-        if (foundedYear) profileDataFields.founded_year = parseInt(foundedYear);
-        if (focusAreas) profileDataFields.focus_areas = focusAreas;
+        if (foundedYear) profileDataFields.founded = parseInt(foundedYear);
         profileDataFields.ngo_name = editableName || user?.name;
       }
       
@@ -543,13 +539,35 @@ export default function ProfilePage() {
                         </div>
                       </div>
                       
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <Label>Website</Label>
+                          <Input 
+                            type="url"
+                            placeholder="https://www.yourcompany.com"
+                            value={website}
+                            onChange={(e) => setWebsite(e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <Label>Sector</Label>
+                          <Input 
+                            placeholder="e.g., CSR, Education, Healthcare"
+                            value={sector}
+                            onChange={(e) => setSector(e.target.value)}
+                          />
+                        </div>
+                      </div>
+
                       <div>
-                        <Label>Company Website</Label>
+                        <Label>Founded Year</Label>
                         <Input 
-                          type="url"
-                          placeholder="https://www.yourcompany.com"
-                          value={companyWebsite}
-                          onChange={(e) => setCompanyWebsite(e.target.value)}
+                          type="number"
+                          min="1800"
+                          max={new Date().getFullYear()}
+                          placeholder="e.g., 2010"
+                          value={foundedYear}
+                          onChange={(e) => setFoundedYear(e.target.value)}
                         />
                       </div>
                     </>
@@ -588,34 +606,12 @@ export default function ProfilePage() {
                         </div>
                       </div>
                       
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <Label>Sector</Label>
-                          <Input 
-                            placeholder="Education, Healthcare, Environment, etc."
-                            value={sector}
-                            onChange={(e) => setSector(e.target.value)}
-                          />
-                        </div>
-                        
-                        <div>
-                          <Label>Organization Website</Label>
-                          <Input 
-                            type="url"
-                            placeholder="https://www.yourngo.org"
-                            value={organizationWebsite}
-                            onChange={(e) => setOrganizationWebsite(e.target.value)}
-                          />
-                        </div>
-                      </div>
-                      
                       <div>
-                        <Label>Focus Areas</Label>
-                        <Textarea 
-                          placeholder="What areas does your NGO focus on? (e.g., Education, Healthcare, Environment)"
-                          rows={3}
-                          value={focusAreas}
-                          onChange={(e) => setFocusAreas(e.target.value)}
+                        <Label>Sector</Label>
+                        <Input 
+                          placeholder="Education, Healthcare, Environment, etc."
+                          value={sector}
+                          onChange={(e) => setSector(e.target.value)}
                         />
                       </div>
                     </>
@@ -639,7 +635,7 @@ export default function ProfilePage() {
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="space-y-4">
-                    {/* <div className="rounded-lg border p-4 space-y-3">
+                    <div className="rounded-lg border p-4 space-y-3">
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium">Mobile Number Verification</span>
                         <VerificationBadge
@@ -652,11 +648,9 @@ export default function ProfilePage() {
                         {user?.phone ? `Phone: ${user.phone}` : 'Add a phone number in your profile settings.'}
                       </p>
                       {!user?.phone_verified && (
-                        <Link href={`/verify-mobile`} className="block">
-                          <Button type="button" variant="outline" size="sm" className="w-full">
-                            Verify Mobile Number
-                          </Button>
-                        </Link>
+                        <Button type="button" variant="outline" size="sm" className="w-full" disabled>
+                          Verify Mobile Number
+                        </Button>
                       )}
                     </div>
 
@@ -677,7 +671,7 @@ export default function ProfilePage() {
                           Verify Email (UI Only)
                         </Button>
                       )}
-                    </div> */}
+                    </div>
 
                     <div className="rounded-lg border p-4 space-y-3">
                       <div className="flex items-center justify-between">
