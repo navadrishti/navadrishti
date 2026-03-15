@@ -131,9 +131,10 @@ export function useOtpSender(setFormErrors: Dispatch<SetStateAction<FormErrors>>
       });
 
       if (error) {
+        const otpErrorMessage = (error.message || 'Invalid email OTP').replace(/\btoken\b/gi, 'OTP');
         setOtpVerified(prev => ({ ...prev, email: false }));
-        setFormErrors(prev => ({ ...prev, emailOtp: error.message || 'Invalid email OTP' }));
-        toast.error(error.message || 'Invalid email OTP');
+        setFormErrors(prev => ({ ...prev, emailOtp: otpErrorMessage }));
+        toast.error(otpErrorMessage);
         return false;
       }
 

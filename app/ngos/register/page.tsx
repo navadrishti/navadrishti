@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Building2, Mail, Phone, MapPin, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { Textarea } from '@/components/ui/textarea'
+import { useOtpSender } from '@/hooks/use-otp-sender'
 
 export default function NGORegister() {
   const [formData, setFormData] = useState({
@@ -192,14 +193,11 @@ export default function NGORegister() {
       
       // Call signup function from auth context
       await signup(userData)
-      
-      // If signup is successful, redirect to dashboard
-      if (!error) {
-        toast.success('NGO account created successfully!');
-        router.push('/ngos/dashboard');
-      }
-    } catch (uploadError) {
-      toast.error('Failed to create account. Please try again.');
+
+      toast.success('NGO account created successfully!');
+      router.push('/ngos/dashboard');
+    } catch {
+      // Error state and user notification are handled in auth context
     }
   }
 

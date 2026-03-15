@@ -160,14 +160,11 @@ export default function IndividualRegister() {
       
       // Call signup function from auth context
       await signup(userData);
-      
-      // If signup is successful, redirect to dashboard
-      if (!error) {
-        toast.success('Account created successfully!');
-        router.push('/individuals/dashboard');
-      }
-    } catch (uploadError) {
-      toast.error('Failed to create account. Please try again.');
+
+      toast.success('Account created successfully!');
+      router.push('/individuals/dashboard');
+    } catch {
+      // Error state and user notification are handled in auth context
     }
   };
 
