@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Building, Mail, Phone, Globe, MapPin, Users, Briefcase } from "lucide-react"
@@ -29,9 +28,8 @@ export default function CompanyRegistration() {
     state: '',
     pincode: '',
     country: 'India',
-    description: '',
     founded: '',
-    registrationNumber: ''
+    sector: ''
   })
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
   const { otpSending, otpSent, otpCooldown, otpVerifying, otpVerified, handleSendEmailOtp, handleVerifyEmailOtp, handleSendPhoneOtp, resetEmailOtpState } = useOtpSender(setFormErrors)
@@ -195,9 +193,8 @@ export default function CompanyRegistration() {
           industry: formData.industry,
           company_size: formData.companySize,
           website: formData.website,
-          description: formData.description,
           founded: formData.founded,
-          registration_number: formData.registrationNumber
+          sector: formData.sector
         }
       }
       
@@ -295,7 +292,7 @@ export default function CompanyRegistration() {
               </div>
               
               <div className="space-y-2">
-                <Label htmlFor="website">Website (Optional)</Label>
+                <Label htmlFor="website">Website</Label>
                 <Input
                   id="website"
                   name="website"
@@ -443,18 +440,6 @@ export default function CompanyRegistration() {
               </h3>
               
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="description">Company Description</Label>
-                  <Textarea
-                    id="description"
-                    name="description"
-                    value={formData.description}
-                    onChange={handleChange}
-                    placeholder="Brief description of your company's business and services"
-                    rows={3}
-                  />
-                </div>
-                
                 <div className="space-y-2">
                   <Label htmlFor="founded">Year Founded</Label>
                   <Input
@@ -470,13 +455,13 @@ export default function CompanyRegistration() {
                 </div>
                 
                 <div className="space-y-2">
-                  <Label htmlFor="registrationNumber">Registration Number (Optional)</Label>
+                  <Label htmlFor="sector">Sector</Label>
                   <Input
-                    id="registrationNumber"
-                    name="registrationNumber"
-                    value={formData.registrationNumber}
+                    id="sector"
+                    name="sector"
+                    value={formData.sector}
                     onChange={handleChange}
-                    placeholder="Company registration number"
+                    placeholder="IT, Finance, Manufacturing, etc."
                   />
                 </div>
               </div>
@@ -515,7 +500,7 @@ export default function CompanyRegistration() {
                 </div>
                 
                 <div className="space-y-2">
-                  <Label htmlFor="pincode">Pincode (Optional)</Label>
+                  <Label htmlFor="pincode">Pincode</Label>
                   <Input
                     id="pincode"
                     name="pincode"

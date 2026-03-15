@@ -370,7 +370,7 @@ export default function IndividualRegister() {
                 </div>
                 
                 <div className="space-y-2">
-                  <Label htmlFor="pincode">Pincode (Optional)</Label>
+                  <Label htmlFor="pincode">Pincode</Label>
                   <Input
                     id="pincode"
                     name="pincode"

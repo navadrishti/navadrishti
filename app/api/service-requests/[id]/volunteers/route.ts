@@ -93,36 +93,24 @@ export async function POST(
 
     const requestId = parseInt(id);
 
-    // Check user verification status before allowing volunteer application
+    // Only individuals can volunteer for service requests
     const user = await db.users.findById(volunteer_id);
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Verification requirements based on user type
-    if (user.user_type === 'individual') {
-      // For individuals, require at least basic verification (email + identity)
-      if (user.verification_status !== 'verified') {
-        return NextResponse.json({ 
-          error: 'Account verification required', 
-          message: 'Please complete your identity verification (Aadhaar & PAN) before applying for volunteer opportunities.',
-          requiresVerification: true
-        }, { status: 403 });
-      }
-    } else if (user.user_type === 'company') {
-      // For companies, require organization verification
-      if (user.verification_status !== 'verified') {
-        return NextResponse.json({ 
-          error: 'Organization verification required', 
-          message: 'Please complete your organization verification before applying for volunteer opportunities.',
-          requiresVerification: true
-        }, { status: 403 });
-      }
-    } else if (user.user_type === 'ngo') {
-      // NGOs cannot apply for volunteer opportunities (they create service requests)
+    if (user.user_type !== 'individual') {
       return NextResponse.json({ 
         error: 'Invalid user type', 
-        message: 'NGOs cannot apply for volunteer opportunities. Only individuals and companies can volunteer.',
+        message: 'Only individuals can volunteer for service requests.',
+      }, { status: 403 });
+    }
+
+    if (user.verification_status !== 'verified') {
+      return NextResponse.json({ 
+        error: 'Account verification required', 
+        message: 'Please complete your identity verification (Aadhaar & PAN) before applying for volunteer opportunities.',
+        requiresVerification: true
       }, { status: 403 });
     }
 

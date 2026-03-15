@@ -111,8 +111,6 @@ export function getUserPermissions(user: User | null): AccessPermissions {
     case 'company':
       return {
         ...basePermissions,
-        canApplyToServiceRequests: isVerified,
-        canApplyToServiceOffers: isVerified,
       };
       
     default:
@@ -146,7 +144,7 @@ export function getPermissionErrorMessage(permission: keyof AccessPermissions, u
         
     case 'canCreateServiceRequests':
       if (user.user_type !== 'ngo') {
-        return "Only NGOs can create service requests. Individuals and companies can volunteer for existing requests.";
+        return "Only NGOs can create service requests.";
       }
       return !isVerified 
         ? "Please complete your NGO verification to create service requests."
@@ -154,7 +152,7 @@ export function getPermissionErrorMessage(permission: keyof AccessPermissions, u
         
     case 'canApplyToServiceRequests':
       if (user.user_type === 'ngo') {
-        return "NGOs create service requests, they cannot apply to them. Only individuals and companies can volunteer.";
+        return "NGOs create service requests, they cannot apply to them.";
       }
       if (user.user_type === 'individual') {
         return !isVerified 
@@ -162,9 +160,7 @@ export function getPermissionErrorMessage(permission: keyof AccessPermissions, u
           : "You don't have permission to apply to service requests.";
       }
       if (user.user_type === 'company') {
-        return !isVerified 
-          ? "Please complete your organization verification to volunteer for service requests."
-          : "You don't have permission to volunteer for service requests.";
+        return "Companies cannot volunteer for service requests.";
       }
       return "You don't have permission to apply to service requests.";
         
@@ -178,7 +174,7 @@ export function getPermissionErrorMessage(permission: keyof AccessPermissions, u
         
     case 'canApplyToServiceOffers':
       if (user.user_type === 'ngo') {
-        return "NGOs create service offers, they cannot apply to them. Only individuals and companies can apply.";
+        return "NGOs create service offers, they cannot apply to them.";
       }
       if (user.user_type === 'individual') {
         return !isVerified 
@@ -186,9 +182,7 @@ export function getPermissionErrorMessage(permission: keyof AccessPermissions, u
           : "You don't have permission to apply to service offers.";
       }
       if (user.user_type === 'company') {
-        return !isVerified 
-          ? "Please complete your organization verification to apply for service offers."
-          : "You don't have permission to apply to service offers.";
+        return "Companies cannot apply to service offers.";
       }
       return "You don't have permission to apply to service offers.";
         
@@ -226,7 +220,7 @@ export function canAccessRoute(userType: UserType | undefined, routePath: string
     '/individuals/dashboard': ['individual'],
     '/ngos/dashboard': ['ngo'],
     '/companies/dashboard': ['company'],
-    '/service-requests/create': ['ngo', 'company'],
+    '/service-requests/create': ['ngo'],
     '/service-offers/create': ['ngo'],
   };
   
