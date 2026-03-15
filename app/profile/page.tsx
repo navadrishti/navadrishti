@@ -639,7 +639,7 @@ export default function ProfilePage() {
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="space-y-4">
-                    <div className="rounded-lg border p-4 space-y-3">
+                    {/* <div className="rounded-lg border p-4 space-y-3">
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium">Mobile Number Verification</span>
                         <VerificationBadge
@@ -652,9 +652,11 @@ export default function ProfilePage() {
                         {user?.phone ? `Phone: ${user.phone}` : 'Add a phone number in your profile settings.'}
                       </p>
                       {!user?.phone_verified && (
-                        <Button type="button" variant="outline" size="sm" className="w-full" disabled>
-                          Verify Mobile (UI Only)
-                        </Button>
+                        <Link href={`/verify-mobile`} className="block">
+                          <Button type="button" variant="outline" size="sm" className="w-full">
+                            Verify Mobile Number
+                          </Button>
+                        </Link>
                       )}
                     </div>
 
@@ -675,7 +677,7 @@ export default function ProfilePage() {
                           Verify Email (UI Only)
                         </Button>
                       )}
-                    </div>
+                    </div> */}
 
                     <div className="rounded-lg border p-4 space-y-3">
                       <div className="flex items-center justify-between">
