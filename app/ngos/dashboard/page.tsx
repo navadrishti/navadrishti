@@ -251,28 +251,22 @@ function NGODashboardContent() {
                           <span>{user?.phone || 'Phone not set'}</span>
                         </div>
                         <div>
-                          <p className="text-sm font-medium text-gray-500">Founded Year</p>
-                          <p>{(user as any)?.profile_data?.founded_year || (user as any)?.profile?.founded_year || 'Founded year not set'}</p>
+                          <p className="text-sm font-medium text-gray-500">NGO Size</p>
+                          <p>{(user as any)?.profile_data?.ngo_size || (user as any)?.profile?.ngo_size || 'NGO size not set'}</p>
                         </div>
                         <div>
-                          <p className="text-sm font-medium text-gray-500">Registration Number</p>
-                          <p>{(user as any)?.profile_data?.registration_number || (user as any)?.profile?.registration_number || 'Registration not set'}</p>
+                          <p className="text-sm font-medium text-gray-500">Sector</p>
+                          <p>{(user as any)?.profile_data?.sector || (user as any)?.profile?.sector || 'Sector not set'}</p>
                         </div>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                         <div>
-                          <p className="text-sm font-medium text-gray-500">Focus Areas</p>
-                          <p>{(user as any)?.profile_data?.focus_areas || (user as any)?.profile?.focus_areas || 'Focus areas not set'}</p>
+                          <p className="text-sm font-medium text-gray-500">Founded Year</p>
+                          <p>{(user as any)?.profile_data?.founded || (user as any)?.profile?.founded || 'Founded year not set'}</p>
                         </div>
                         <div>
-                          <p className="text-sm font-medium text-gray-500">Website</p>
-                          <p>{(user as any)?.profile_data?.organization_website || (user as any)?.profile?.organization_website || 'Website not set'}</p>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 mt-4">
-                        <div>
-                          <p className="text-sm font-medium text-gray-500">Bio</p>
-                          <p>{user?.bio || 'Bio not set'}</p>
+                          <p className="text-sm font-medium text-gray-500">Pincode</p>
+                          <p>{user?.pincode || 'Pincode not set'}</p>
                         </div>
                       </div>
                     </div>

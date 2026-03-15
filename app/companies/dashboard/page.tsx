@@ -109,12 +109,22 @@ function CompanyDashboardContent() {
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                         <div>
-                          <p className="text-sm font-medium text-gray-500">Bio</p>
-                          <p>{user?.bio || 'Bio not set'}</p>
+                          <p className="text-sm font-medium text-gray-500">Website</p>
+                          <p>{(user as any)?.profile_data?.website || (user as any)?.profile?.website || 'Website not set'}</p>
                         </div>
                         <div>
-                          <p className="text-sm font-medium text-gray-500">Website</p>
-                          <p>{(user as any)?.profile_data?.company_website || (user as any)?.profile?.company_website || 'Website not set'}</p>
+                          <p className="text-sm font-medium text-gray-500">Sector</p>
+                          <p>{(user as any)?.profile_data?.sector || (user as any)?.profile?.sector || 'Sector not set'}</p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                        <div>
+                          <p className="text-sm font-medium text-gray-500">Founded Year</p>
+                          <p>{(user as any)?.profile_data?.founded || (user as any)?.profile?.founded || 'Founded year not set'}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-500">Pincode</p>
+                          <p>{user?.pincode || 'Pincode not set'}</p>
                         </div>
                       </div>
                     </div>
