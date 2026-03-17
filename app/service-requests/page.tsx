@@ -27,7 +27,7 @@ function ServiceRequestsContent() {
   const [requests, setRequests] = useState<Record<string, any[]>>({
     all: [],
     'my-requests': [],
-    volunteering: []
+    'my-responses': []
   })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -35,11 +35,22 @@ function ServiceRequestsContent() {
   
   const serviceRequests = requests[currentView] || []
   const isNGO = user?.user_type === 'ngo'
-  const canVolunteer = user?.user_type === 'individual'
+  const canVolunteer = user?.user_type === 'individual' || user?.user_type === 'company'
 
   useEffect(() => {
     const tab = searchParams.get('tab')
-    if (tab === 'volunteering' || tab === 'my-requests') setCurrentView(tab)
+    const view = searchParams.get('view')
+    const candidate = tab || view
+    if (!candidate) return
+
+    if (candidate === 'my-requests') {
+      setCurrentView('my-requests')
+      return
+    }
+
+    if (candidate === 'my-responses' || candidate === 'volunteering') {
+      setCurrentView('my-responses')
+    }
   }, [searchParams])
 
   const deleteRequest = async (id: number) => {
@@ -105,7 +116,7 @@ function ServiceRequestsContent() {
   useEffect(() => { fetchRequests() }, [selectedCategory, searchTerm, currentView, user?.id])
 
   useEffect(() => {
-    if (currentView === 'volunteering' && canVolunteer) {
+    if (currentView === 'my-responses' && canVolunteer) {
       const interval = setInterval(fetchRequests, 30000)
       return () => clearInterval(interval)
     }
@@ -140,9 +151,9 @@ function ServiceRequestsContent() {
       <main className="flex-1 px-6 py-8 md:px-10">
         <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Service Requests</h1>
+            <h1 className="text-3xl font-bold tracking-tight">NGO Requests</h1>
             <p className="text-muted-foreground">
-              NGOs seeking assistance, volunteers, and resources
+              Structured needs from NGOs seeking measurable execution support
             </p>
           </div>
         </div>
@@ -156,16 +167,16 @@ function ServiceRequestsContent() {
             <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
               <div className="text-center md:text-left">
                 <h2 className="text-2xl font-bold text-black mb-3">
-                  Need Help with a Project?
+                  Need Execution Support?
                 </h2>
                 <p className="text-gray-700 text-base max-w-md font-medium">
-                  Create a service request and connect with skilled volunteers in your community
+                  Create a structured need and connect with verified response partners
                 </p>
               </div>
               <Link href="/service-requests/create">
                 <button className="bg-white border-2 border-black shadow-xl text-black hover:bg-gray-50 transition-all duration-300 px-8 py-4 h-auto font-medium text-base rounded-lg flex items-center">
                   <Plus size={20} className="mr-3" />
-                  Create Service Request
+                  Create Need
                   <ArrowRight size={16} className="ml-3" />
                 </button>
               </Link>
@@ -175,9 +186,9 @@ function ServiceRequestsContent() {
         
         <Tabs value={currentView} className="mb-8" onValueChange={handleTabChange}>
           <TabsList className="mb-6 inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground">
-            <TabsTrigger value="all" className="min-w-[100px] whitespace-nowrap">All Requests</TabsTrigger>
-            {user && isNGO && <TabsTrigger value="my-requests" className="min-w-[100px] whitespace-nowrap">My Requests</TabsTrigger>}
-            {user && canVolunteer && <TabsTrigger value="volunteering" className="min-w-[100px] whitespace-nowrap">My Volunteering</TabsTrigger>}
+            <TabsTrigger value="all" className="min-w-[100px] whitespace-nowrap">All Needs</TabsTrigger>
+            {user && isNGO && <TabsTrigger value="my-requests" className="min-w-[100px] whitespace-nowrap">My Needs</TabsTrigger>}
+            {user && canVolunteer && <TabsTrigger value="my-responses" className="min-w-[100px] whitespace-nowrap">My Responses</TabsTrigger>}
           </TabsList>
           
           <div className="mb-6 grid gap-6 md:grid-cols-2">
@@ -185,7 +196,7 @@ function ServiceRequestsContent() {
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 type="search"
-                placeholder="Search requests..."
+                placeholder="Search needs..."
                 className="pl-8"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -241,6 +252,7 @@ function ServiceRequestsContent() {
                   timeline={request.timeline}
                   deadline={request.deadline}
                   requirements={request.requirements}
+                  impact_score={request.impact_score}
                   type="request"
                   onDelete={() => deleteRequest(request.id)}
                   isDeleting={deleting === request.id}
@@ -255,9 +267,9 @@ function ServiceRequestsContent() {
                   <div className="mb-4 rounded-full bg-muted p-3">
                     <Search size={24} className="text-muted-foreground" />
                   </div>
-                  <h3 className="mb-1 text-lg font-semibold">No requests found</h3>
+                  <h3 className="mb-1 text-lg font-semibold">No needs found</h3>
                   <p className="mb-4 text-muted-foreground">
-                    No service requests match your current search or filters.
+                    No NGO requests match your current search or filters.
                   </p>
                   <Button variant="outline" onClick={() => {
                     setSearchTerm('');
@@ -285,14 +297,14 @@ function ServiceRequestsContent() {
                     <div className="mb-4 rounded-full bg-muted p-3">
                       <Target size={24} className="text-muted-foreground" />
                     </div>
-                    <h3 className="mb-1 text-lg font-semibold">No requests posted yet</h3>
+                    <h3 className="mb-1 text-lg font-semibold">No needs posted yet</h3>
                     <p className="mb-4 text-muted-foreground">
-                      You haven't posted any service requests yet.
+                      You haven't posted any NGO requests yet.
                     </p>
                     <Link href="/service-requests/create">
                       <Button>
                         <Plus size={16} className="mr-2" />
-                        Post New Request
+                        Create New Need
                       </Button>
                     </Link>
                   </div>
@@ -320,6 +332,7 @@ function ServiceRequestsContent() {
                         timeline={request.timeline}
                         deadline={request.deadline}
                         requirements={request.requirements}
+                        impact_score={request.impact_score}
                         type="request"
                         onDelete={() => deleteRequest(request.id)}
                         isDeleting={deleting === request.id}
@@ -335,13 +348,13 @@ function ServiceRequestsContent() {
             </div>
           </TabsContent>
           
-          <TabsContent value="volunteering" className="mt-0">
+          <TabsContent value="my-responses" className="mt-0">
             <div className="min-h-[400px]">
-              {/* Refresh button for volunteering tab */}
+              {/* Refresh button for response tab */}
               {canVolunteer && (
                 <div className="mb-4 flex justify-between items-center">
                   <p className="text-sm text-muted-foreground">
-                    Your volunteer applications and their current status
+                    Your responses to NGO requests and their current status
                   </p>
                   <Button 
                     variant="outline" 
@@ -369,13 +382,13 @@ function ServiceRequestsContent() {
                   <div className="mb-4 rounded-full bg-muted p-3">
                     <HeartHandshake size={24} className="text-muted-foreground" />
                   </div>
-                  <h3 className="mb-1 text-lg font-semibold">No volunteering activities yet</h3>
+                  <h3 className="mb-1 text-lg font-semibold">No responses yet</h3>
                   <p className="mb-4 text-muted-foreground">
-                    You haven't volunteered for any service requests yet.
+                    You haven't responded to any NGO requests yet.
                   </p>
                   <Link href="/service-requests">
                     <Button variant="outline">
-                      Browse Requests
+                      Browse Needs
                     </Button>
                   </Link>
                 </div>
@@ -403,6 +416,7 @@ function ServiceRequestsContent() {
                       timeline={request.timeline}
                       deadline={request.deadline}
                       requirements={request.requirements}
+                      impact_score={request.impact_score}
                       type="request"
                       volunteer_application={request.volunteer_application}
                       showDeleteButton={false}

@@ -47,12 +47,7 @@ export async function GET(
 
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
-    const { id: ngoUserId, user_type: userType } = decoded;
-
-    // Only NGOs can view clients for their offers
-    if (userType !== 'ngo') {
-      return NextResponse.json({ error: 'Only NGOs can view applicants' }, { status: 403 });
-    }
+    const { id: ngoUserId } = decoded;
 
     // First, verify that this offer belongs to the authenticated NGO
     const offer = await db.serviceOffers.getById(offerId);
@@ -73,7 +68,7 @@ export async function GET(
         client:users!client_id(name, email)
       `)
       .eq('service_offer_id', offerId)
-      .order('created_at', { ascending: false });
+      .order('applied_at', { ascending: false });
 
     return NextResponse.json({
       success: true,
@@ -109,25 +104,34 @@ export async function POST(
 
     const offerId = parseInt(id);
 
-    // Only individuals can apply for service offers
+    // Verified participants can respond to capability offers
     const user = await db.users.findById(client_id);
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    if (user.user_type !== 'individual') {
+    if (!['individual', 'company', 'ngo'].includes(user.user_type)) {
       return NextResponse.json({ 
         error: 'Invalid user type', 
-        message: 'Only individuals can apply to service offers.',
+        message: 'Only verified participants can respond to capability offers.',
       }, { status: 403 });
     }
 
     if (user.verification_status !== 'verified') {
       return NextResponse.json({ 
         error: 'Account verification required', 
-        message: 'Please complete your identity verification (Aadhaar & PAN) before applying to service offers.',
+        message: 'Please complete verification before responding to capability offers.',
         requiresVerification: true
       }, { status: 403 });
+    }
+
+    // Prevent self-response to own capability offer
+    const offer = await db.serviceOffers.getById(offerId);
+    if (offer && offer.ngo_id === client_id) {
+      return NextResponse.json(
+        { error: 'You cannot respond to your own capability offer' },
+        { status: 400 }
+      );
     }
 
     // Check if the client has already applied
@@ -151,12 +155,12 @@ export async function POST(
       .insert({
         service_offer_id: offerId,
         client_id: client_id,
-        client_type: client_type,
         message: message,
         start_date: start_date || null,
         end_date: end_date || null,
-        amount_paid: proposed_amount || 0,
-        status: 'pending'
+        proposed_amount: proposed_amount || null,
+        status: 'pending',
+        response_meta: client_type ? { client_type } : {}
       })
       .select(`
         *,

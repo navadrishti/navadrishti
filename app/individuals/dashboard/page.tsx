@@ -48,8 +48,10 @@ function IndividualDashboardContent() {
               </div>
             </div>
 
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
             {/* Individual Profile Section */}
-            <Card>
+            <div className="lg:col-span-4">
+            <Card className="lg:sticky lg:top-20 lg:max-h-[calc(100vh-5rem)] lg:overflow-y-auto">
               <CardHeader>
                 <CardTitle>Individual Profile</CardTitle>
                 <CardDescription>
@@ -57,9 +59,9 @@ function IndividualDashboardContent() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                <div className="flex flex-col md:flex-row gap-6">
-                  <div className="w-full md:w-1/4">
-                    <div className="aspect-square rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden">
+                <div className="flex flex-col gap-6">
+                  <div className="w-full">
+                    <div className="h-28 w-28 md:h-32 md:w-32 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden mx-auto">
                       {user?.profile_image ? (
                         <img 
                           src={user.profile_image} 
@@ -71,7 +73,7 @@ function IndividualDashboardContent() {
                       )}
                     </div>
                   </div>
-                  <div className="w-full md:w-3/4 space-y-4">
+                  <div className="w-full space-y-4">
                     <div>
                       <h3 className="text-lg font-semibold flex items-center gap-2">
                         <span>{user?.name || 'Your Name'}</span>
@@ -116,8 +118,10 @@ function IndividualDashboardContent() {
                 </div>
               </CardContent>
             </Card>
+            </div>
 
             {/* Activity & Engagements */}
+            <div className="lg:col-span-8">
             <Card>
               <CardHeader>
                 <CardTitle>Activities & Engagements</CardTitle>
@@ -167,6 +171,8 @@ function IndividualDashboardContent() {
                 </div>
               </CardContent>
             </Card>
+            </div>
+            </div>
           </div>
         </main>
       </div>

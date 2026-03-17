@@ -31,6 +31,18 @@ interface ServiceDetailsProps {
   price_description?: string
   status?: string
   contact_info?: string
+  wage_info?: {
+    min_amount?: number
+    max_amount?: number
+    currency?: string
+    payment_frequency?: string
+    negotiable?: boolean
+    offer_type?: string
+    capacity_limit?: string
+    coverage_area?: string
+    category_focus?: string
+    validity_period?: string
+  }
   
   // Service Request specific props
   urgency_level?: 'low' | 'medium' | 'high' | 'critical'
@@ -62,6 +74,7 @@ export function ServiceDetails({
   price_description,
   status,
   contact_info,
+  wage_info,
   urgency_level,
   priority,
   volunteers_needed,
@@ -129,6 +142,17 @@ export function ServiceDetails({
   };
 
   const requirementsData = parseRequirements(requirements);
+  const requestType = requirementsData?.request_type || category;
+  const beneficiaryCount = Number(requirementsData?.beneficiary_count || 0);
+  const estimatedBudget = requirementsData?.estimated_budget || requirementsData?.budget;
+  const impactDescription = requirementsData?.impact_description;
+  const evidenceRequired = requirementsData?.evidence_required;
+  const completionProofType = requirementsData?.completion_proof_type;
+  const offerType = (type === 'offer' ? (wage_info as any)?.offer_type : null) || category;
+  const capacityLimit = (wage_info as any)?.capacity_limit;
+  const coverageArea = (wage_info as any)?.coverage_area;
+  const categoryFocus = (wage_info as any)?.category_focus;
+  const validityPeriod = (wage_info as any)?.validity_period;
 
   const getProviderIcon = (type: string) => {
     switch (type) {
@@ -264,9 +288,9 @@ export function ServiceDetails({
                 <div className="bg-blue-50 rounded-lg p-4">
                   <div className="flex items-center gap-2 mb-2">
                     <Target size={16} className="text-blue-600" />
-                    <span className="text-sm font-medium text-blue-700">Category</span>
+                    <span className="text-sm font-medium text-blue-700">{type === 'request' ? 'Request Type' : 'Capability Type'}</span>
                   </div>
-                  <p className="font-semibold text-blue-800">{category}</p>
+                  <p className="font-semibold text-blue-800">{type === 'request' ? requestType : offerType}</p>
                 </div>
                 
                 {/* Location */}
@@ -303,24 +327,44 @@ export function ServiceDetails({
                 )}
                 
                 {/* Service Request - Budget */}
-                {type === 'request' && requirementsData?.budget && (
+                {type === 'request' && estimatedBudget && (
                   <div className="bg-green-50 rounded-lg p-4">
                     <div className="flex items-center gap-2 mb-2">
                       <DollarSign size={16} className="text-green-600" />
-                      <span className="text-sm font-medium text-green-700">Budget</span>
+                      <span className="text-sm font-medium text-green-700">Estimated Budget</span>
                     </div>
-                    <p className="font-semibold text-green-800">{requirementsData.budget}</p>
+                    <p className="font-semibold text-green-800">{estimatedBudget}</p>
                   </div>
                 )}
                 
-                {/* Service Request - Volunteers Needed */}
-                {type === 'request' && volunteers_needed && (
+                {/* Service Request - Beneficiary Count */}
+                {type === 'request' && beneficiaryCount > 0 && (
                   <div className="bg-indigo-50 rounded-lg p-4">
                     <div className="flex items-center gap-2 mb-2">
                       <Users size={16} className="text-indigo-600" />
-                      <span className="text-sm font-medium text-indigo-700">Volunteers Needed</span>
+                      <span className="text-sm font-medium text-indigo-700">Beneficiaries</span>
                     </div>
-                    <p className="font-semibold text-indigo-800">{volunteers_needed}</p>
+                    <p className="font-semibold text-indigo-800">{beneficiaryCount}</p>
+                  </div>
+                )}
+
+                {type === 'offer' && capacityLimit && (
+                  <div className="bg-indigo-50 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Target size={16} className="text-indigo-600" />
+                      <span className="text-sm font-medium text-indigo-700">Capacity Limit</span>
+                    </div>
+                    <p className="font-semibold text-indigo-800">{capacityLimit}</p>
+                  </div>
+                )}
+
+                {type === 'offer' && coverageArea && (
+                  <div className="bg-purple-50 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <MapPin size={16} className="text-purple-600" />
+                      <span className="text-sm font-medium text-purple-700">Coverage Area</span>
+                    </div>
+                    <p className="font-semibold text-purple-800">{coverageArea}</p>
                   </div>
                 )}
                 
@@ -344,7 +388,7 @@ export function ServiceDetails({
             </div>
 
             {/* Additional Information */}
-            {((type === 'offer' && price_description) || (type === 'request' && timeline) || contact_info) && (
+            {((type === 'offer' && (price_description || categoryFocus || validityPeriod)) || (type === 'request' && (timeline || impactDescription || evidenceRequired || completionProofType)) || contact_info) && (
               <div>
                 <h3 className="font-semibold mb-3">Additional Information</h3>
                 <div className="space-y-3">
@@ -359,6 +403,41 @@ export function ServiceDetails({
                     <div>
                       <h4 className="font-medium mb-2 text-gray-900">Timeline</h4>
                       <p className="text-muted-foreground bg-gray-50 rounded-lg p-3">{timeline}</p>
+                    </div>
+                  )}
+
+                  {type === 'request' && impactDescription && (
+                    <div>
+                      <h4 className="font-medium mb-2 text-gray-900">Impact Description</h4>
+                      <p className="text-muted-foreground bg-gray-50 rounded-lg p-3">{impactDescription}</p>
+                    </div>
+                  )}
+
+                  {type === 'request' && evidenceRequired && (
+                    <div>
+                      <h4 className="font-medium mb-2 text-gray-900">Evidence Required</h4>
+                      <p className="text-muted-foreground bg-gray-50 rounded-lg p-3">{String(evidenceRequired).replaceAll('_', ' ')}</p>
+                    </div>
+                  )}
+
+                  {type === 'request' && completionProofType && (
+                    <div>
+                      <h4 className="font-medium mb-2 text-gray-900">Completion Proof Type</h4>
+                      <p className="text-muted-foreground bg-gray-50 rounded-lg p-3">{String(completionProofType).replaceAll('_', ' ')}</p>
+                    </div>
+                  )}
+
+                  {type === 'offer' && categoryFocus && (
+                    <div>
+                      <h4 className="font-medium mb-2 text-gray-900">Category Focus</h4>
+                      <p className="text-muted-foreground bg-gray-50 rounded-lg p-3">{categoryFocus}</p>
+                    </div>
+                  )}
+
+                  {type === 'offer' && validityPeriod && (
+                    <div>
+                      <h4 className="font-medium mb-2 text-gray-900">Validity Period</h4>
+                      <p className="text-muted-foreground bg-gray-50 rounded-lg p-3">{String(validityPeriod).replaceAll('_', ' ')}</p>
                     </div>
                   )}
                   

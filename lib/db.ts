@@ -120,7 +120,7 @@ export const db = {
         const [usersResult, volunteersResult] = await Promise.all([
           supabase
             .from('users')
-            .select('id, name, email, user_type')
+            .select('id, name, email, user_type, verification_status')
             .in('id', requesterIds),
           supabase
             .from('service_volunteers')
@@ -164,7 +164,7 @@ export const db = {
       if (data && data.ngo_id) {
         const { data: requester } = await supabase
           .from('users')
-          .select('id, name, email, user_type, location')
+          .select('id, name, email, user_type, location, verification_status')
           .eq('id', data.ngo_id)
           .single();
         
@@ -246,7 +246,7 @@ export const db = {
     async getAll(filters: any = {}) {
       let query = supabase.from('service_offers').select(`
         *,
-        ngo:users!ngo_id(name, email, user_type)
+        ngo:users!ngo_id(name, email, user_type, verification_status)
       `);
       
       if (filters.category) {
@@ -294,7 +294,7 @@ export const db = {
         .from('service_offers')
         .select(`
           *,
-          ngo:users!ngo_id(name, email, user_type, location)
+          ngo:users!ngo_id(name, email, user_type, location, verification_status)
         `)
         .eq('id', id)
         .single();
@@ -422,12 +422,91 @@ export const db = {
   // Service Volunteers (updated with combined methods)
   serviceVolunteers: {
     async create(applicationData: any) {
+      const payload = {
+        ...applicationData,
+        application_message: applicationData.application_message ?? applicationData.message ?? '',
+        responder_type: applicationData.responder_type ?? applicationData.volunteer_type ?? null,
+        updated_at: applicationData.updated_at ?? new Date().toISOString()
+      };
+
+      if ('message' in payload) {
+        delete payload.message;
+      }
+
+      if ('volunteer_type' in payload) {
+        delete payload.volunteer_type;
+      }
+
       const { data, error } = await supabase
         .from('service_volunteers')
-        .insert(applicationData)
+        .insert(payload)
         .select()
         .single();
       
+      if (error) throw error;
+      return data;
+    },
+
+    async findExisting(serviceRequestId: number, volunteerId: number) {
+      const { data, error } = await supabase
+        .from('service_volunteers')
+        .select('*')
+        .eq('service_request_id', serviceRequestId)
+        .eq('volunteer_id', volunteerId)
+        .maybeSingle();
+
+      if (error && error.code !== 'PGRST116') throw error;
+      return data;
+    },
+
+    async getByVolunteerId(volunteerId: number) {
+      const { data, error } = await supabase
+        .from('service_volunteers')
+        .select('*')
+        .eq('volunteer_id', volunteerId)
+        .order('applied_at', { ascending: false });
+
+      if (error) throw error;
+      return data || [];
+    },
+
+    async getByRequestId(serviceRequestId: number) {
+      const { data, error } = await supabase
+        .from('service_volunteers')
+        .select(`
+          *,
+          volunteer:users!volunteer_id(id, name, email, user_type, location, verification_status, profile_image)
+        `)
+        .eq('service_request_id', serviceRequestId)
+        .order('applied_at', { ascending: false });
+
+      if (error) throw error;
+      return data || [];
+    },
+
+    async getUserApplication(serviceRequestId: number, volunteerId: number) {
+      const { data, error } = await supabase
+        .from('service_volunteers')
+        .select('*')
+        .eq('service_request_id', serviceRequestId)
+        .eq('volunteer_id', volunteerId)
+        .maybeSingle();
+
+      if (error && error.code !== 'PGRST116') throw error;
+      return data;
+    },
+
+    async updateStatus(id: number, status: string) {
+      const { data, error } = await supabase
+        .from('service_volunteers')
+        .update({
+          status,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
       if (error) throw error;
       return data;
     }

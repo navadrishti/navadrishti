@@ -98,6 +98,33 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
+  const hydrateUserFromServer = async (authToken: string, fallbackUser?: User | null) => {
+    try {
+      const response = await fetch('/api/auth/me', {
+        headers: {
+          'Authorization': `Bearer ${authToken}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setUser(data.user);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        return data.user as User;
+      }
+    } catch (err) {
+      console.error('User hydration error:', err);
+    }
+
+    if (fallbackUser) {
+      setUser(fallbackUser);
+      localStorage.setItem('user', JSON.stringify(fallbackUser));
+      return fallbackUser;
+    }
+
+    return null;
+  };
+
   // Load user from localStorage on initial render
   useEffect(() => {
     try {
@@ -216,9 +243,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
       
       // Save token and user to state and localStorage
       setToken(data.token);
-      setUser(data.user);
       localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user));
+
+      await hydrateUserFromServer(data.token, data.user);
       
       notify.success(`Welcome back, ${data.user.name}!`);
     } catch (error: any) {
@@ -257,9 +284,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
       
       // Save token and user to state and localStorage
       setToken(data.token);
-      setUser(data.user);
       localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user));
+
+      await hydrateUserFromServer(data.token, data.user);
       
       notify.success(`Welcome to Navadrishti, ${data.user.name}!`);
     } catch (error: any) {

@@ -41,7 +41,7 @@ interface ServiceOffer {
 interface ClientApplication {
   id: number
   client_id: number
-  client_type: 'individual' | 'company'
+  client_type: 'individual' | 'company' | 'ngo'
   message: string
   status: 'pending' | 'accepted' | 'rejected' | 'active' | 'completed' | 'cancelled'
   created_at: string
@@ -64,7 +64,7 @@ export default function ServiceOfferDetailPage() {
 
   const offerId = params.id as string
   const isAuthenticated = !!(user && token)
-  const canApplyToOffer = user?.user_type === 'individual'
+  const canApplyToOffer = !!user && user.id !== offer?.ngo_id
 
   useEffect(() => {
     if (offerId) {
@@ -124,10 +124,10 @@ export default function ServiceOfferDetailPage() {
       return
     }
 
-    if (user.user_type !== 'individual') {
+    if (offer && user.id === offer.ngo_id) {
       toast({
-        title: "Invalid User Type",
-        description: "Only individuals can apply to service offers",
+        title: "Not Allowed",
+        description: "You cannot respond to your own capability offer",
         variant: "destructive"
       })
       return
@@ -323,6 +323,7 @@ export default function ServiceOfferDetailPage() {
               price_description={offer.price_description}
               status={offer.status}
               contact_info={offer.contact_info}
+              wage_info={(offer as any).wage_info}
               type="offer"
             />
           </div>
@@ -333,14 +334,14 @@ export default function ServiceOfferDetailPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <MessageSquare className="h-5 w-5" />
-                  Apply for This Offer
+                  Respond to This Capability
                 </CardTitle>
               </CardHeader>
               
               <CardContent>
                 {!isAuthenticated ? (
                   <div className="text-center space-y-4">
-                    <p className="text-muted-foreground">You need to be logged in to apply for this service offer.</p>
+                    <p className="text-muted-foreground">You need to be logged in to respond to this capability offer.</p>
                     <Button asChild className="w-full">
                       <Link href="/login">Log In</Link>
                     </Button>
@@ -349,7 +350,7 @@ export default function ServiceOfferDetailPage() {
                   <Alert>
                     <XCircle className="h-4 w-4" />
                     <AlertDescription>
-                      Only individuals can apply to service offers.
+                      Offer owners cannot respond to their own capability listing.
                     </AlertDescription>
                   </Alert>
                 ) : user && user.verification_status !== 'verified' ? (
@@ -409,7 +410,7 @@ export default function ServiceOfferDetailPage() {
                   <div className="space-y-4">
                     <div className="flex items-center gap-2 p-2 bg-muted rounded">
                       <User className="h-4 w-4" />
-                      <span className="text-sm">Applying as Individual</span>
+                      <span className="text-sm">Responding as {user?.user_type}</span>
                     </div>
                     
                     <div className="space-y-2">

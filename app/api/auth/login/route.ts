@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { comparePassword, generateToken } from '@/lib/auth';
+import { isCompanyCAUser } from '@/lib/company-ca-visibility';
 
 // Validation schema for login
 const loginSchema = z.object({
@@ -28,6 +29,13 @@ export async function POST(req: NextRequest) {
       // No user found with this email
       console.log(`Login attempt failed: No user found with email ${email}`);
       return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
+    }
+
+    if (await isCompanyCAUser(user.id)) {
+      return NextResponse.json(
+        { error: 'This account is restricted to the Company CA panel. Use /companies/ca/login.' },
+        { status: 403 }
+      );
     }
     
     // Verify password

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
+import { getCompanyCAUserIdSet } from '@/lib/company-ca-visibility';
 
 // Add cache control header
 export const revalidate = 300; // Cache for 5 minutes
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest) {
       Promise.all([
         supabase
           .from('users')
-          .select('user_type', { count: 'exact' }),
+          .select('id, user_type'),
         supabase
           .from('service_requests')
           .select('*', { count: 'exact', head: true })
@@ -25,7 +26,7 @@ export async function GET(request: NextRequest) {
       timeoutPromise
     ]) as any;
 
-    const { data: allUsers, count: totalUsers, error: usersError } = usersResult;
+    const { data: allUsers, error: usersError } = usersResult;
     const { count: serviceRequestsCount, error: requestsError } = requestsResult;
 
     if (usersError) {
@@ -37,15 +38,18 @@ export async function GET(request: NextRequest) {
       console.warn('Service requests error:', requestsError);
     }
 
+    const companyCAIds = await getCompanyCAUserIdSet((allUsers ?? []).map((user: any) => Number(user.id)));
+    const visibleUsers = (allUsers ?? []).filter((user: any) => !companyCAIds.has(Number(user.id)));
+
     // Process user data locally for better performance
-    const userCounts = allUsers?.reduce((acc: any, user: any) => {
+    const userCounts = visibleUsers.reduce((acc: any, user: any) => {
       if (user.user_type === 'ngo') acc.ngos = (acc.ngos || 0) + 1;
       if (user.user_type === 'company') acc.companies = (acc.companies || 0) + 1;
       if (user.user_type === 'individual') acc.individuals = (acc.individuals || 0) + 1;
       return acc;
-    }, { ngos: 0, companies: 0, individuals: 0 }) || { ngos: 0, companies: 0, individuals: 0 };
+    }, { ngos: 0, companies: 0, individuals: 0 });
 
-    const total = Number(totalUsers) || 0;
+    const total = visibleUsers.length;
     const totalNGOs = userCounts.ngos;
     const totalCompanies = userCounts.companies;
     const totalServiceRequests = Number(serviceRequestsCount) || 0;

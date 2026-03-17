@@ -47,15 +47,15 @@ export async function GET(
       return NextResponse.json({ error: 'You can only view hires for your own offers' }, { status: 403 });
     }
 
-    // Fetch hires for this offer
+    // Fetch hires (accepted/active clients) for this offer
     const { data: hires, error } = await supabase
-      .from('service_hires')
+      .from('service_clients')
       .select(`
         *,
         client:users!client_id(name, email)
       `)
       .eq('service_offer_id', offerId)
-      .order('created_at', { ascending: false });
+      .order('applied_at', { ascending: false });
 
     if (error) {
       throw error;

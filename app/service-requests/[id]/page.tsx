@@ -62,7 +62,7 @@ export default function ServiceRequestDetailPage() {
 
   const requestId = params.id as string
   const isAuthenticated = !!(user && token)
-  const canVolunteer = user?.user_type === 'individual'
+  const canVolunteer = user?.user_type === 'individual' || user?.user_type === 'company'
 
   useEffect(() => {
     if (requestId) {
@@ -131,10 +131,10 @@ export default function ServiceRequestDetailPage() {
       return
     }
 
-    if (user.user_type !== 'individual') {
+    if (user.user_type === 'ngo') {
       toast({
         title: "Invalid User Type",
-        description: "Only individuals can volunteer for service requests",
+        description: "NGOs create requests. Individuals and companies can respond.",
         variant: "destructive"
       })
       return
@@ -357,14 +357,14 @@ export default function ServiceRequestDetailPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <MessageSquare className="h-5 w-5" />
-                  Apply for This Request
+                  Respond to This Need
                 </CardTitle>
               </CardHeader>
               
               <CardContent>
                 {!isAuthenticated ? (
                   <div className="text-center space-y-4">
-                    <p className="text-muted-foreground">You need to be logged in to apply for this service request.</p>
+                    <p className="text-muted-foreground">You need to be logged in to respond to this request.</p>
                     <Button asChild className="w-full">
                       <Link href="/login">Log In</Link>
                     </Button>
@@ -373,7 +373,7 @@ export default function ServiceRequestDetailPage() {
                   <Alert>
                     <XCircle className="h-4 w-4" />
                     <AlertDescription>
-                      Only individuals can volunteer for service requests.
+                      NGOs create requests. Verified individuals and companies can respond.
                     </AlertDescription>
                   </Alert>
                 ) : user && user.verification_status !== 'verified' ? (

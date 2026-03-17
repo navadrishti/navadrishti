@@ -28,7 +28,16 @@ export async function GET(
     }
 
     // Return the service offer data (publicly accessible)
-    return NextResponse.json(serviceOffer);
+    const wageInfo = serviceOffer.wage_info || {};
+    return NextResponse.json({
+      ...serviceOffer,
+      ngo_name: serviceOffer.ngo?.name || serviceOffer.ngo_name,
+      offer_type: wageInfo.offer_type || serviceOffer.category,
+      capacity_limit: wageInfo.capacity_limit || null,
+      coverage_area: wageInfo.coverage_area || serviceOffer.location || null,
+      category_focus: wageInfo.category_focus || null,
+      validity_period: wageInfo.validity_period || null
+    });
 
   } catch (error) {
     console.error('Error fetching service offer:', error);
@@ -57,11 +66,6 @@ export async function PUT(
     const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
     const { id: userId, user_type: userType } = decoded;
 
-    // Only NGOs can update service offers
-    if (userType !== 'ngo') {
-      return NextResponse.json({ error: 'Only NGOs can update service offers' }, { status: 403 });
-    }
-
     const offerId = parseInt(id);
     const body = await request.json();
 
@@ -69,16 +73,23 @@ export async function PUT(
       title, 
       description, 
       category,
+      offer_type,
       location,
       pricing,
       priceType,
       availability,
       deliveryTime,
-      contactInfo
+      contactInfo,
+      capacity_limit,
+      coverage_area,
+      category_focus,
+      validity_period
     } = body;
 
     // Validate required fields
-    if (!title || !description || !category) {
+    const normalizedOfferType = offer_type || category;
+
+    if (!title || !description || !normalizedOfferType) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
@@ -95,6 +106,11 @@ export async function PUT(
 
     // Prepare requirements JSON
     const requirementsData = {
+      offer_type: normalizedOfferType,
+      capacity_limit: capacity_limit || 'Not specified',
+      coverage_area: coverage_area || location || 'Unspecified',
+      category_focus: category_focus || '',
+      validity_period: validity_period || '90_days',
       availability: availability || 'Available',
       deliveryTime: deliveryTime || 'Not specified',
       contactInfo: contactInfo || 'email'
@@ -104,11 +120,11 @@ export async function PUT(
     const updateData = {
       title,
       description,
-      category,
+      category: normalizedOfferType,
       location,
       price_type: priceType || 'free',
       price_amount: pricing || 0,
-      requirements: JSON.stringify(requirementsData),
+      wage_info: requirementsData,
       updated_at: new Date().toISOString()
     };
 
@@ -146,11 +162,6 @@ export async function DELETE(
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
     const { id: userId, user_type: userType } = decoded;
-
-    // Only NGOs can delete service offers
-    if (userType !== 'ngo') {
-      return NextResponse.json({ error: 'Only NGOs can delete service offers' }, { status: 403 });
-    }
 
     const offerId = parseInt(id);
 

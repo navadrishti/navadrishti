@@ -217,8 +217,22 @@ export default function HomePage() {
             </Card>
 
             {/* Sticky Footer */}
-            <StickyFooter />
+            <StickyFooter
+              textClassName="text-black"
+              mutedTextClassName="text-black/80"
+              linkClassName="hover:text-black hover:underline transition-colors"
+              disableSticky
+            />
           </div>
+        </div>
+
+        <div className="mt-6 lg:hidden">
+          <StickyFooter
+            textClassName="text-black"
+            mutedTextClassName="text-black/80"
+            linkClassName="hover:text-black hover:underline transition-colors"
+            disableSticky
+          />
         </div>
       </div>
     </div>

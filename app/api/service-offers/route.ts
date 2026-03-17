@@ -9,7 +9,15 @@ interface JWTPayload {
   user_type: string;
   email: string;
   name: string;
+  verification_status?: string;
 }
+
+const OFFER_TYPES = [
+  'Funding Capacity',
+  'Material Supply',
+  'Skill / Expertise',
+  'Execution Capability'
+];
 
 // GET - Fetch service offers with enhanced filtering
 export async function GET(request: NextRequest) {
@@ -17,7 +25,8 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const category = searchParams.get('category');
     const search = searchParams.get('search');
-    const view = searchParams.get('view');
+    const rawView = searchParams.get('view');
+    const view = rawView === 'hired' ? 'my-responses' : rawView;
     const location = searchParams.get('location');
     const min_wage = searchParams.get('min_wage');
     const max_wage = searchParams.get('max_wage');
@@ -26,22 +35,36 @@ export async function GET(request: NextRequest) {
 
     // For my-offers view, authenticate user
     let authenticatedUserId = null;
-    if (view === 'my-offers') {
+    if (view === 'my-offers' || view === 'my-responses') {
       const authHeader = request.headers.get('authorization');
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return NextResponse.json({ error: 'Authentication required for my-offers' }, { status: 401 });
+        return NextResponse.json({ error: 'Authentication required for this view' }, { status: 401 });
       }
 
       const token = authHeader.substring(7);
       try {
         const payload = jwt.verify(token, JWT_SECRET) as JWTPayload;
         authenticatedUserId = payload.id;
-        
-        if (payload.user_type !== 'ngo') {
-          return NextResponse.json({ success: true, data: [] });
-        }
       } catch {
         return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+      }
+    }
+
+    let responseOfferIds: number[] | null = null;
+    if (view === 'my-responses' && authenticatedUserId) {
+      const { data: serviceClients, error: serviceClientsError } = await supabase
+        .from('service_clients')
+        .select('service_offer_id')
+        .eq('client_id', authenticatedUserId);
+
+      if (serviceClientsError) {
+        console.error('Error fetching responded offers:', serviceClientsError);
+        return NextResponse.json({ error: 'Failed to fetch responded offers' }, { status: 500 });
+      }
+
+      responseOfferIds = [...new Set((serviceClients || []).map((row: any) => row.service_offer_id))];
+      if (responseOfferIds.length === 0) {
+        return NextResponse.json({ success: true, data: [] });
       }
     }
 
@@ -66,12 +89,14 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false });
 
     // For public view, only show approved offers
-    if (view !== 'my-offers') {
+    if (view === 'all' || !view) {
       query = query.or('admin_status.eq.approved,admin_status.is.null')
               .eq('status', 'active');
-    } else {
+    } else if (view === 'my-offers') {
       // For my-offers view, show all offers by the user
       query = query.eq('status', 'active');
+    } else if (view === 'my-responses') {
+      query = query.in('id', responseOfferIds || []);
     }
 
     // Apply filters
@@ -132,6 +157,19 @@ export async function GET(request: NextRequest) {
         offer.experience_requirements?.level === experience_level
       );
     }
+
+    filteredOffers = filteredOffers.map((offer: any) => {
+      const wageInfo = offer.wage_info || {};
+      return {
+        ...offer,
+        ngo_name: offer.ngo?.name || offer.ngo_name,
+        offer_type: wageInfo.offer_type || offer.category,
+        capacity_limit: wageInfo.capacity_limit || null,
+        coverage_area: wageInfo.coverage_area || offer.location || null,
+        category_focus: wageInfo.category_focus || null,
+        validity_period: wageInfo.validity_period || null
+      };
+    });
 
     // Get hire counts and application counts for each offer
     if (filteredOffers && filteredOffers.length > 0) {
@@ -198,14 +236,14 @@ export async function POST(request: NextRequest) {
     console.log('User type:', userType);
     console.log('Verification status from token:', verification_status);
 
-    // Only verified NGOs can create service offers
-    if (userType !== 'ngo') {
-      return NextResponse.json({ error: 'Only verified NGOs can create service offers' }, { status: 403 });
+    // Verified participants can create capability offers
+    if (!['ngo', 'company', 'individual'].includes(userType)) {
+      return NextResponse.json({ error: 'Only verified participants can create capability offers' }, { status: 403 });
     }
 
     if (verification_status !== 'verified') {
       return NextResponse.json({ 
-        error: 'You need to complete verification before creating service offers.',
+        error: 'You need to complete verification before creating capability offers.',
         requiresVerification: true,
         debug: {
           tokenVerificationStatus: verification_status,
@@ -218,7 +256,7 @@ export async function POST(request: NextRequest) {
     console.log('Enhanced service offer data received');
 
     // Validate required fields
-    const requiredFields = ['title', 'description', 'category'];
+    const requiredFields = ['title', 'description'];
     for (const field of requiredFields) {
       if (!body[field]) {
         return NextResponse.json(
@@ -228,28 +266,50 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const normalizedOfferType = body.offer_type || body.category;
+    if (!normalizedOfferType || !OFFER_TYPES.includes(normalizedOfferType)) {
+      return NextResponse.json(
+        { error: 'offer_type is required and must be one of Funding Capacity, Material Supply, Skill / Expertise, Execution Capability.' },
+        { status: 400 }
+      );
+    }
+
+    if (!body.capacity_limit || !String(body.capacity_limit).trim()) {
+      return NextResponse.json(
+        { error: 'capacity_limit is required for capability offers.' },
+        { status: 400 }
+      );
+    }
+
     // Prepare enhanced offer data
     const offerData = {
       ngo_id: userId,
       title: body.title,
       description: body.description,
-      category: body.category,
+      category: normalizedOfferType,
       location: body.location,
       city: body.city,
       state_province: body.state_province,
       pincode: body.pincode,
-      wage_info: body.wage_info, // { min_amount, max_amount, currency, payment_frequency, negotiable }
-      experience_requirements: body.experience_requirements, // { level, years_required, specific_skills, certifications }
-      skills_required: body.skills_required, // Array of required skills
-      employment_type: body.employment_type, // 'full_time', 'part_time', 'contract', 'internship', 'volunteer'
-      duration: body.duration, // { type: 'fixed'|'ongoing', duration_months }
-      working_hours: body.working_hours, // { hours_per_week, flexible, schedule_details }
-      benefits: body.benefits, // Array of benefits offered
-      images: body.images, // Array of image URLs
-      tags: body.tags, // Array of tags
+      wage_info: {
+        ...(body.wage_info || {}),
+        offer_type: normalizedOfferType,
+        capacity_limit: String(body.capacity_limit || '').trim(),
+        coverage_area: body.coverage_area || body.location || 'Unspecified',
+        category_focus: body.category_focus || '',
+        validity_period: body.validity_period || '90_days'
+      },
+      experience_requirements: body.experience_requirements || null,
+      skills_required: body.skills_required || [],
+      employment_type: body.employment_type || null,
+      duration: body.duration || null,
+      working_hours: body.working_hours || null,
+      benefits: body.benefits || [],
+      images: body.images || [],
+      tags: body.tags || [],
       application_deadline: body.application_deadline,
       start_date: body.start_date,
-      contact_preferences: body.contact_preferences, // { email, phone, whatsapp }
+      contact_preferences: body.contact_preferences || null,
       status: 'active', // Set as active but pending admin approval
       admin_status: 'pending', // New offers require admin approval
       admin_reviewed_at: null,
@@ -258,7 +318,7 @@ export async function POST(request: NextRequest) {
       // Legacy compatibility fields
       price_type: body.wage_info?.negotiable ? 'negotiable' : 'fixed',
       price_amount: body.wage_info?.min_amount || 0,
-      price_description: body.wage_info?.payment_frequency || 'monthly'
+      price_description: body.wage_info?.payment_frequency || 'capacity_based'
     };
 
     console.log('Inserting enhanced offer data:', { ...offerData, wage_info: '...', experience_requirements: '...' });
@@ -298,7 +358,7 @@ export async function POST(request: NextRequest) {
       success: true,
       data: {
         id: offer.id,
-        message: 'Service offer created successfully and submitted for approval'
+        message: 'Capability offer created successfully and submitted for approval'
       }
     }, { status: 201 });
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
+import { getCompanyCAUserIdSet } from '@/lib/company-ca-visibility';
 
 export async function GET(request: NextRequest) {
   try {
@@ -28,11 +29,14 @@ export async function GET(request: NextRequest) {
       throw new Error('Database connection failed');
     }
 
+    const companyCAIds = await getCompanyCAUserIdSet((data ?? []).map((user: any) => Number(user.id)));
+    const visibleUsers = (data ?? []).filter((user: any) => !companyCAIds.has(Number(user.id)));
+
     // Transform the data to include role
-    const users = data?.map(user => ({
+    const users = visibleUsers.map((user: any) => ({
       ...user,
       role: getUserRole(user.user_type)
-    })) || [];
+    }));
 
     return NextResponse.json({
       success: true,

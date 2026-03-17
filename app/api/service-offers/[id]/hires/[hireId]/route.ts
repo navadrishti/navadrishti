@@ -56,9 +56,9 @@ export async function PUT(
       return NextResponse.json({ error: 'You can only update hires for your own offers' }, { status: 403 });
     }
 
-    // Check if hire exists for this offer
+    // Check if client record exists for this offer
     const { data: hire } = await supabase
-      .from('service_hires')
+      .from('service_clients')
       .select('id')
       .eq('id', hId)
       .eq('service_offer_id', offerId)
@@ -68,21 +68,21 @@ export async function PUT(
       return NextResponse.json({ error: 'Hire not found for this offer' }, { status: 404 });
     }
 
-    // Update hire status
+    // Update client/hire status
     const updateData: any = {
       status: status,
       updated_at: new Date().toISOString()
     };
 
     if (status === 'active') {
-      updateData.start_date = new Date().toISOString();
+      updateData.start_date = new Date().toISOString().split('T')[0];
     }
     if (status === 'completed') {
-      updateData.end_date = new Date().toISOString();
+      updateData.end_date = new Date().toISOString().split('T')[0];
     }
 
     await supabase
-      .from('service_hires')
+      .from('service_clients')
       .update(updateData)
       .eq('id', hId)
       .eq('service_offer_id', offerId);
