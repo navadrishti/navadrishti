@@ -105,10 +105,17 @@ export async function POST(req: NextRequest) {
         email,
         name,
         user_type,
+        phone: newUser.phone || '',
+        city: newUser.city || '',
+        state_province: newUser.state_province || '',
+        pincode: newUser.pincode || '',
+        country: newUser.country || '',
         verification_status: 'unverified',
         email_verified: true,
         phone_verified: false,
-        profile_data: newUser.profile_data || {}
+        profile_data: newUser.profile_data || {},
+        profile: newUser.profile_data || {},
+        created_at: newUser.created_at
       },
       token
     }, { status: 201 });

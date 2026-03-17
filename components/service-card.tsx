@@ -40,6 +40,7 @@ interface ServiceCardProps {
   timeline?: string
   deadline?: string
   requirements?: string | object
+  impact_score?: number
   
   // Service Offer specific props
   price_amount?: number
@@ -52,6 +53,11 @@ interface ServiceCardProps {
     currency?: string
     payment_frequency?: string
     negotiable?: boolean
+    offer_type?: string
+    capacity_limit?: string
+    coverage_area?: string
+    category_focus?: string
+    validity_period?: string
   }
   employment_type?: string
   experience_requirements?: {
@@ -125,6 +131,7 @@ export function ServiceCard({
   timeline,
   deadline,
   requirements,
+  impact_score,
   price_amount,
   price_type,
   price_description,
@@ -234,6 +241,13 @@ export function ServiceCard({
   };
 
   const requirementsData = parseRequirements(requirements);
+  const requestType = requirementsData?.request_type || category;
+  const beneficiaryCount = Number(requirementsData?.beneficiary_count || 0);
+  const estimatedBudget = requirementsData?.estimated_budget || requirementsData?.budget;
+  const impactScore = Number(impact_score || requirementsData?.impact_score || 0);
+  const offerType = wage_info?.offer_type || category;
+  const capacityLimit = wage_info?.capacity_limit;
+  const coverageArea = wage_info?.coverage_area;
   
   // Check if user types can interact
   const isNGO = user?.user_type === 'ngo';
@@ -267,9 +281,9 @@ export function ServiceCard({
             </Badge>
           )}
           
-          {type === 'offer' && employment_type && (
+          {type === 'offer' && (offerType || employment_type) && (
             <Badge variant="outline" className="text-xs font-medium px-3 py-1.5 capitalize">
-              {employment_type.replace('_', ' ')}
+              {(offerType || employment_type || '').replace('_', ' ')}
             </Badge>
           )}
         </div>
@@ -328,27 +342,57 @@ export function ServiceCard({
           )}
 
           {/* Service Request Specific Fields */}
-          {type === 'request' && volunteers_needed && (
+          {type === 'request' && beneficiaryCount > 0 && (
             <div className="space-y-1">
               <div className="flex items-center gap-1.5 text-gray-500">
                 <Users size={14} />
-                <span className="text-xs font-medium">Volunteers</span>
+                <span className="text-xs font-medium">Beneficiaries</span>
               </div>
-              <p className="text-sm font-semibold text-gray-900">{volunteers_needed} needed</p>
+              <p className="text-sm font-semibold text-gray-900">{beneficiaryCount}</p>
             </div>
           )}
 
-          {type === 'request' && timeline && (
+          {type === 'request' && estimatedBudget && (
             <div className="space-y-1">
               <div className="flex items-center gap-1.5 text-gray-500">
-                <Clock size={14} />
-                <span className="text-xs font-medium">Timeline</span>
+                <DollarSign size={14} />
+                <span className="text-xs font-medium">Budget</span>
               </div>
-              <p className="text-sm font-semibold text-gray-900 truncate">{timeline}</p>
+              <p className="text-sm font-semibold text-gray-900 truncate">{estimatedBudget}</p>
+            </div>
+          )}
+
+          {type === 'request' && impactScore > 0 && (
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5 text-gray-500">
+                <Target size={14} />
+                <span className="text-xs font-medium">Impact Score</span>
+              </div>
+              <p className="text-sm font-semibold text-gray-900">{impactScore}/100</p>
             </div>
           )}
 
           {/* Service Offer Specific Fields */}
+          {type === 'offer' && capacityLimit && (
+            <div className="space-y-1 col-span-2">
+              <div className="flex items-center gap-1.5 text-gray-500">
+                <Target size={14} />
+                <span className="text-xs font-medium">Capacity Limit</span>
+              </div>
+              <p className="text-sm font-bold text-blue-700">{capacityLimit}</p>
+            </div>
+          )}
+
+          {type === 'offer' && coverageArea && (
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5 text-gray-500">
+                <MapPin size={14} />
+                <span className="text-xs font-medium">Coverage</span>
+              </div>
+              <p className="text-sm font-semibold text-gray-900 truncate">{coverageArea}</p>
+            </div>
+          )}
+
           {type === 'offer' && wage_info && (wage_info.min_amount || wage_info.max_amount) && (
             <div className="space-y-1 col-span-2">
               <div className="flex items-center gap-1.5 text-gray-500">

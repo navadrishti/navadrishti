@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { supabase } from '@/lib/db';
+import { isCompanyCAUser } from '@/lib/company-ca-visibility';
 
 interface RouteParams {
   params: Promise<{ userId: string }>
@@ -8,6 +9,21 @@ interface RouteParams {
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { userId } = await params;
+    const parsedUserId = Number.parseInt(userId, 10);
+
+    if (Number.isNaN(parsedUserId)) {
+      return Response.json({
+        success: false,
+        error: 'Profile not found'
+      }, { status: 404 });
+    }
+
+    if (await isCompanyCAUser(parsedUserId)) {
+      return Response.json({
+        success: false,
+        error: 'Profile not found'
+      }, { status: 404 });
+    }
 
     // Get user profile data with location and profile image
     const { data: userResult, error: userError } = await supabase
@@ -28,7 +44,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         profile_data,
         created_at
       `)
-      .eq('id', parseInt(userId))
+      .eq('id', parsedUserId)
       .single();
 
     if (userError || !userResult) {
@@ -46,7 +62,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       const { data: verification } = await supabase
         .from('individual_verifications')
         .select('verification_status, aadhaar_verified, pan_verified, verification_date, aadhaar_number, pan_number, aadhaar_verification_date, pan_verification_date')
-        .eq('user_id', parseInt(userId))
+        .eq('user_id', parsedUserId)
         .single();
       
       if (verification) {
@@ -57,7 +73,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       const { data: verification } = await supabase
         .from('company_verifications')
         .select('verification_status, company_name, verification_date, registration_number, gst_number')
-        .eq('user_id', parseInt(userId))
+        .eq('user_id', parsedUserId)
         .single();
       
       if (verification) {
@@ -68,7 +84,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       const { data: verification } = await supabase
         .from('ngo_verifications')
         .select('verification_status, ngo_name, verification_date, registration_number, registration_type, fcra_number')
-        .eq('user_id', parseInt(userId))
+        .eq('user_id', parsedUserId)
         .single();
       
       if (verification) {

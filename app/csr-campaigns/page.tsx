@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Header } from "@/components/header"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -21,83 +21,72 @@ interface Campaign {
   description: string
 }
 
+interface CampaignApiItem {
+  id: string
+  title: string | null
+  description: string | null
+  cause: string
+  region: string
+  timeline: number | null
+  company_id: number | null
+  created_at: string
+}
+
 export default function CSRCampaignsPage() {
   const { user } = useAuth()
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("all")
+  const [campaigns, setCampaigns] = useState<Campaign[]>([])
+  const [loading, setLoading] = useState(true)
 
   const isIndividual = user?.user_type === 'individual'
 
-  const campaigns: Campaign[] = [
-    {
-      id: '1',
-      title: 'Education Empowerment Program',
-      company: 'TechCorp India',
-      category: 'Education',
-      location: 'Bangalore, Karnataka',
-      duration: '6 months',
-      volunteers: 50,
-      status: 'open',
-      description: 'Help underprivileged students gain access to quality education through mentorship and resources.'
-    },
-    {
-      id: '2',
-      title: 'Healthcare for Rural Communities',
-      company: 'HealthPlus Foundation',
-      category: 'Healthcare',
-      location: 'Mumbai, Maharashtra',
-      duration: '3 months',
-      volunteers: 30,
-      status: 'ongoing',
-      description: 'Organize health camps and provide medical support to rural communities in Maharashtra.'
-    },
-    {
-      id: '3',
-      title: 'Clean River Initiative',
-      company: 'EcoTech Solutions',
-      category: 'Environment',
-      location: 'Delhi NCR',
-      duration: '4 months',
-      volunteers: 100,
-      status: 'open',
-      description: 'Join us in cleaning and maintaining the Yamuna river ecosystem through community action.'
-    },
-    {
-      id: '4',
-      title: 'Women Skill Development',
-      company: 'Empower India Ltd',
-      category: 'Women Empowerment',
-      location: 'Pune, Maharashtra',
-      duration: '12 months',
-      volunteers: 25,
-      status: 'open',
-      description: 'Training and skill development program for women in rural areas to enhance employability.'
-    },
-    {
-      id: '5',
-      title: 'Child Nutrition Program',
-      company: 'FoodCare Foundation',
-      category: 'Child Welfare',
-      location: 'Chennai, Tamil Nadu',
-      duration: '6 months',
-      volunteers: 40,
-      status: 'ongoing',
-      description: 'Provide nutritious meals and nutritional education to children in underserved communities.'
-    },
-    {
-      id: '6',
-      title: 'Digital Literacy Drive',
-      company: 'InfoSys Foundation',
-      category: 'Education',
-      location: 'Hyderabad, Telangana',
-      duration: '8 months',
-      volunteers: 60,
-      status: 'open',
-      description: 'Teach basic computer skills and digital literacy to youth in rural and semi-urban areas.'
-    },
-  ]
+  useEffect(() => {
+    const loadCampaigns = async () => {
+      setLoading(true)
 
-  const categories = ['all', 'Education', 'Healthcare', 'Environment', 'Women Empowerment', 'Child Welfare']
+      try {
+        const response = await fetch('/api/campaigns')
+        const payload = await response.json()
+
+        if (!response.ok || !payload?.success) {
+          setCampaigns([])
+          return
+        }
+
+        const rows = Array.isArray(payload.data) ? (payload.data as CampaignApiItem[]) : []
+
+        const normalized = rows.map((item) => ({
+          id: item.id,
+          title: item.title || item.cause,
+          company: item.company_id ? `Company #${item.company_id}` : 'Company',
+          category: item.cause,
+          location: item.region,
+          duration: item.timeline ? `${item.timeline} months` : 'Flexible timeline',
+          volunteers: 0,
+          status: 'open' as const,
+          description: item.description || 'No campaign description provided yet.'
+        }))
+
+        setCampaigns(normalized)
+      } catch (error) {
+        console.error('Failed to load campaigns:', error)
+        setCampaigns([])
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadCampaigns()
+  }, [])
+
+  const categories = useMemo(() => {
+    const dynamic = new Set(campaigns.map((campaign) => campaign.category).filter(Boolean))
+    return ['all', ...Array.from(dynamic)]
+  }, [campaigns])
+
+  const activeCampaignCount = campaigns.filter((campaign) => campaign.status !== 'completed').length
+  const companiesCount = new Set(campaigns.map((campaign) => campaign.company)).size
 
   const filteredCampaigns = campaigns.filter(campaign => {
     const matchesSearch = campaign.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -137,7 +126,7 @@ export default function CSRCampaignsPage() {
           <CardContent>
             <div className="flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-udaan-orange" />
-              <span className="text-3xl font-bold text-udaan-navy">12</span>
+              <span className="text-3xl font-bold text-udaan-navy">{activeCampaignCount}</span>
             </div>
           </CardContent>
         </Card>
@@ -148,7 +137,7 @@ export default function CSRCampaignsPage() {
           <CardContent>
             <div className="flex items-center gap-2">
               <Users className="h-5 w-5 text-green-600" />
-              <span className="text-3xl font-bold text-green-600">305</span>
+              <span className="text-3xl font-bold text-green-600">{campaigns.length}</span>
             </div>
           </CardContent>
         </Card>
@@ -159,7 +148,7 @@ export default function CSRCampaignsPage() {
           <CardContent>
             <div className="flex items-center gap-2">
               <Calendar className="h-5 w-5 text-blue-600" />
-              <span className="text-3xl font-bold text-blue-600">8</span>
+              <span className="text-3xl font-bold text-blue-600">{companiesCount}</span>
             </div>
           </CardContent>
         </Card>
@@ -170,7 +159,9 @@ export default function CSRCampaignsPage() {
           <CardContent>
             <div className="flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-purple-600" />
-              <span className="text-3xl font-bold text-purple-600">85%</span>
+              <span className="text-3xl font-bold text-purple-600">
+                {campaigns.length > 0 ? `${Math.round((activeCampaignCount / campaigns.length) * 100)}%` : '0%'}
+              </span>
             </div>
           </CardContent>
         </Card>
@@ -205,6 +196,9 @@ export default function CSRCampaignsPage() {
         </CardContent>
       </Card>
 
+      {loading ? (
+        <div className="rounded-md border p-8 text-center text-gray-600">Loading campaigns...</div>
+      ) : (
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredCampaigns.map(campaign => (
           <Card key={campaign.id} className="hover:shadow-lg transition-shadow">
@@ -243,6 +237,7 @@ export default function CSRCampaignsPage() {
           </Card>
         ))}
       </div>
+      )}
 
       {filteredCampaigns.length === 0 && (
         <div className="text-center py-12">

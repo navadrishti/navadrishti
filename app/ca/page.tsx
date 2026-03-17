@@ -5,13 +5,42 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import Link from 'next/link';
-import type { CADashboardStats, VerificationCaseListItem } from '@/lib/types/verification';
+
+interface CADashboardData {
+  stats: {
+    total_projects: number;
+    pending_evidence_reviews: number;
+    pending_payment_confirmations: number;
+    payments_confirmed_today: number;
+    total_confirmed_funds: number;
+    overall_progress_percentage: number;
+  };
+  pendingEvidenceQueue: Array<{
+    milestone_id: string;
+    milestone_title: string;
+    project_id: string;
+    project_title: string;
+    due_date: string | null;
+    amount: number;
+    milestone_order: number;
+    updated_at: string;
+  }>;
+  pendingPayments: Array<{
+    payment_id: string;
+    payment_reference: string;
+    amount: number;
+    project_id: string;
+    project_title: string;
+    milestone_id: string;
+    created_at: string;
+  }>;
+}
 
 export default function CADashboard() {
-  const [stats, setStats] = useState<CADashboardStats | null>(null);
-  const [recentCases, setRecentCases] = useState<VerificationCaseListItem[]>([]);
+  const [dashboardData, setDashboardData] = useState<CADashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [actionLoadingKey, setActionLoadingKey] = useState<string | null>(null);
+  const [message, setMessage] = useState<string>('');
 
   useEffect(() => {
     fetchDashboardData();
@@ -20,79 +49,17 @@ export default function CADashboard() {
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      
-      // TODO: Replace with actual API call
-      // const response = await fetch('/api/ca/dashboard', {
-      //   headers: { Authorization: `Bearer ${localStorage.getItem('ca_token')}` }
-      // });
-      // const data = await response.json();
-      
-      // Mock data for now
-      setTimeout(() => {
-        setStats({
-          total_assigned: 24,
-          pending_review: 8,
-          under_review: 3,
-          completed_today: 2,
-          avg_review_time_hours: 18.5,
-          pending_urgent: 1
-        });
-        
-        setRecentCases([
-          {
-            id: 'VC-2026-001',
-            entity_name: 'Green Earth Foundation',
-            entity_type: 'ngo',
-            status: 'assigned_to_ca',
-            priority: 'urgent',
-            submitted_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-            assigned_at: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(),
-            days_pending: 2
-          },
-          {
-            id: 'VC-2026-002',
-            entity_name: 'Tech Solutions Pvt Ltd',
-            entity_type: 'company',
-            status: 'under_ca_review',
-            priority: 'high',
-            submitted_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-            assigned_at: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
-            days_pending: 5
-          },
-          {
-            id: 'VC-2026-003',
-            entity_name: 'Hope for Children Trust',
-            entity_type: 'ngo',
-            status: 'assigned_to_ca',
-            priority: 'medium',
-            submitted_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-            assigned_at: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
-            days_pending: 3
-          },
-          {
-            id: 'VC-2026-004',
-            entity_name: 'Education For All Society',
-            entity_type: 'ngo',
-            status: 'clarification_needed',
-            priority: 'low',
-            submitted_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-            assigned_at: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
-            days_pending: 7
-          },
-          {
-            id: 'VC-2026-005',
-            entity_name: 'InnovateCorp India Ltd',
-            entity_type: 'company',
-            status: 'assigned_to_ca',
-            priority: 'high',
-            submitted_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-            assigned_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-            days_pending: 1
-          }
-        ]);
-        
-        setLoading(false);
-      }, 500);
+      const response = await fetch('/api/ca/dashboard', {
+        credentials: 'include'
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.error || 'Failed to load CA dashboard');
+      }
+
+      setDashboardData(data);
+      setLoading(false);
       
     } catch (error) {
       console.error('Failed to fetch dashboard data:', error);
@@ -100,30 +67,69 @@ export default function CADashboard() {
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    const statusConfig = {
-      assigned_to_ca: { label: 'New Assignment', variant: 'default' as const, color: 'bg-blue-100 text-blue-800' },
-      under_ca_review: { label: 'In Review', variant: 'secondary' as const, color: 'bg-yellow-100 text-yellow-800' },
-      clarification_needed: { label: 'Clarification Needed', variant: 'outline' as const, color: 'bg-orange-100 text-orange-800' },
-      ca_approved: { label: 'Approved', variant: 'default' as const, color: 'bg-green-100 text-green-800' },
-      ca_rejected: { label: 'Rejected', variant: 'destructive' as const, color: 'bg-red-100 text-red-800' }
-    };
-    
-    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.assigned_to_ca;
-    return <Badge className={config.color}>{config.label}</Badge>;
+  const reviewEvidence = async (milestoneId: string, decision: 'approved' | 'rejected') => {
+    const comments = window.prompt(`Enter comments for ${decision}:`) || '';
+    const loadingKey = `review-${milestoneId}-${decision}`;
+    setActionLoadingKey(loadingKey);
+    setMessage('');
+
+    try {
+      const response = await fetch(`/api/milestones/${milestoneId}/review`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ decision, comments })
+      });
+
+      const payload = await response.json();
+      if (!response.ok || !payload?.success) {
+        setMessage(payload?.error || 'Failed to submit review decision.');
+        return;
+      }
+
+      setMessage(`Evidence ${decision} successfully.`);
+      await fetchDashboardData();
+    } catch {
+      setMessage('Failed to submit review decision.');
+    } finally {
+      setActionLoadingKey(null);
+    }
   };
 
-  const getPriorityBadge = (priority: string) => {
-    const priorityConfig = {
-      urgent: { label: 'Urgent', color: 'bg-red-100 text-red-800' },
-      high: { label: 'High', color: 'bg-orange-100 text-orange-800' },
-      medium: { label: 'Medium', color: 'bg-blue-100 text-blue-800' },
-      low: { label: 'Low', color: 'bg-gray-100 text-gray-800' }
-    };
-    
-    const config = priorityConfig[priority as keyof typeof priorityConfig] || priorityConfig.medium;
-    
-    return <Badge className={config.color}>{config.label}</Badge>;
+  const confirmPayment = async (milestoneId: string, paymentReference: string, amount: number) => {
+    const loadingKey = `payment-${milestoneId}`;
+    setActionLoadingKey(loadingKey);
+    setMessage('');
+
+    try {
+      const response = await fetch(`/api/milestones/${milestoneId}/payment`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          payment_reference: paymentReference,
+          amount,
+          payment_status: 'confirmed'
+        })
+      });
+
+      const payload = await response.json();
+      if (!response.ok || !payload?.success) {
+        setMessage(payload?.error || 'Failed to confirm payment.');
+        return;
+      }
+
+      setMessage('Payment confirmed successfully.');
+      await fetchDashboardData();
+    } catch {
+      setMessage('Failed to confirm payment.');
+    } finally {
+      setActionLoadingKey(null);
+    }
   };
 
   if (loading) {
@@ -190,105 +196,158 @@ export default function CADashboard() {
     <div className="space-y-8">
       {/* Welcome Section */}
       <div>
-        <h1 className="text-3xl font-bold text-blue-900">Verification Dashboard</h1>
-        <p className="mt-2 text-blue-700">Review and approve pending verification cases assigned to you</p>
+        <h1 className="text-3xl font-bold text-blue-900">CA Evidence Control Dashboard</h1>
+        <p className="mt-2 text-blue-700">Approve milestone evidence, verify payments, and maintain audit integrity</p>
       </div>
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* Total Assigned */}
+        {/* Total Projects */}
         <Card className="bg-white border-blue-200">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-blue-600">Total Assigned</CardTitle>
+            <CardTitle className="text-sm font-medium text-blue-600">Total Projects</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-blue-900">{stats?.total_assigned || 0}</div>
-            <p className="text-xs text-blue-500 mt-1">All time cases</p>
+            <div className="text-3xl font-bold text-blue-900">{dashboardData?.stats.total_projects || 0}</div>
+            <p className="text-xs text-blue-500 mt-1">Projects under CA governance</p>
           </CardContent>
         </Card>
 
-        {/* Pending Review */}
+        {/* Pending Evidence */}
         <Card className="bg-white border-orange-200">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-orange-600">Pending Review</CardTitle>
+            <CardTitle className="text-sm font-medium text-orange-600">Pending Evidence</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-orange-600">{stats?.pending_review || 0}</div>
-            <p className="text-xs text-orange-500 mt-1">
-              {stats?.pending_urgent ? `${stats.pending_urgent} urgent` : 'No urgent cases'}
-            </p>
+            <div className="text-3xl font-bold text-orange-600">{dashboardData?.stats.pending_evidence_reviews || 0}</div>
+            <p className="text-xs text-orange-500 mt-1">Milestones waiting for CA decision</p>
           </CardContent>
         </Card>
 
-        {/* Under Review */}
+        {/* Pending Payments */}
         <Card className="bg-white border-blue-200">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-blue-600">Under Review</CardTitle>
+            <CardTitle className="text-sm font-medium text-blue-600">Pending Payments</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-blue-600">{stats?.under_review || 0}</div>
-            <p className="text-xs text-blue-500 mt-1">Currently reviewing</p>
+            <div className="text-3xl font-bold text-blue-600">{dashboardData?.stats.pending_payment_confirmations || 0}</div>
+            <p className="text-xs text-blue-500 mt-1">Payment confirmations awaiting CA signoff</p>
           </CardContent>
         </Card>
 
-        {/* Completed Today */}
+        {/* Confirmed Funds */}
         <Card className="bg-white border-green-200">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-green-600">Completed Today</CardTitle>
+            <CardTitle className="text-sm font-medium text-green-600">Confirmed Funds</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-green-600">{stats?.completed_today || 0}</div>
+            <div className="text-3xl font-bold text-green-600">Rs {dashboardData?.stats.total_confirmed_funds || 0}</div>
             <p className="text-xs text-green-500 mt-1">
-              Avg: {stats?.avg_review_time_hours.toFixed(1)}h per case
+              {dashboardData?.stats.payments_confirmed_today || 0} confirmed today
             </p>
           </CardContent>
         </Card>
       </div>
 
-      {/* All Pending Cases */}
+      {message ? (
+        <p className="text-sm text-blue-700">{message}</p>
+      ) : null}
+
+      {/* Pending Evidence Queue */}
       <Card className="bg-white border-blue-200">
         <CardHeader>
-          <CardTitle className="text-blue-900">All Pending Cases</CardTitle>
-          <CardDescription className="text-blue-600">Cases requiring your review and action</CardDescription>
+          <CardTitle className="text-blue-900">Pending Evidence Queue</CardTitle>
+          <CardDescription className="text-blue-600">Only CA can approve/reject milestone evidence</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {recentCases.map((case_) => (
+            {(dashboardData?.pendingEvidenceQueue || []).map((item) => (
               <div 
-                key={case_.id} 
+                key={item.milestone_id} 
                 className="border border-blue-200 rounded-lg p-4 hover:border-orange-400 hover:shadow-md transition-all bg-blue-50"
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center space-x-3 mb-2">
-                      <h3 className="font-semibold text-blue-900">{case_.entity_name}</h3>
+                      <h3 className="font-semibold text-blue-900">{item.project_title}</h3>
                       <Badge variant="outline" className="text-xs">
-                        {case_.entity_type.toUpperCase()}
+                        M{item.milestone_order}
                       </Badge>
-                      {getPriorityBadge(case_.priority)}
+                      <Badge className="bg-orange-100 text-orange-800">Awaiting Review</Badge>
                     </div>
                     
                     <div className="flex items-center space-x-4 text-sm text-blue-700">
-                      <span>Case ID: #{case_.id}</span>
+                      <span>{item.milestone_title}</span>
                       <span>•</span>
-                      <span>Submitted {case_.days_pending} days ago</span>
+                      <span>Due: {item.due_date || 'N/A'}</span>
                       <span>•</span>
-                      {getStatusBadge(case_.status)}
+                      <span>Amount: Rs {item.amount || 0}</span>
                     </div>
                   </div>
-                  
-                  <Link href={`/ca/cases/${case_.id}`}>
-                    <Button size="sm" className="bg-orange-500 hover:bg-orange-600 text-white">
-                      Review
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      className="bg-green-600 hover:bg-green-700 text-white"
+                      onClick={() => reviewEvidence(item.milestone_id, 'approved')}
+                      disabled={actionLoadingKey === `review-${item.milestone_id}-approved`}
+                    >
+                      {actionLoadingKey === `review-${item.milestone_id}-approved` ? 'Approving...' : 'Approve'}
                     </Button>
-                  </Link>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => reviewEvidence(item.milestone_id, 'rejected')}
+                      disabled={actionLoadingKey === `review-${item.milestone_id}-rejected`}
+                    >
+                      {actionLoadingKey === `review-${item.milestone_id}-rejected` ? 'Rejecting...' : 'Reject'}
+                    </Button>
+                  </div>
                 </div>
               </div>
             ))}
 
-            {recentCases.length === 0 && (
+            {(dashboardData?.pendingEvidenceQueue || []).length === 0 && (
               <div className="text-center py-8 text-blue-500">
-                <p>No pending cases at the moment</p>
+                <p>No pending evidence reviews at the moment</p>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Pending Payment Queue */}
+      <Card className="bg-white border-blue-200">
+        <CardHeader>
+          <CardTitle className="text-blue-900">Pending Payment Confirmations</CardTitle>
+          <CardDescription className="text-blue-600">Only CA can verify transfer and receiving records</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {(dashboardData?.pendingPayments || []).map((payment) => (
+              <div key={payment.payment_id} className="rounded-md border bg-blue-50 p-4">
+                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="font-medium text-blue-900">{payment.project_title}</p>
+                    <p className="text-sm text-blue-700">Ref: {payment.payment_reference}</p>
+                  </div>
+                  <Badge className="bg-blue-100 text-blue-800 w-fit">Pending CA Confirmation</Badge>
+                </div>
+                <p className="mt-2 text-sm text-blue-700">Amount: Rs {payment.amount || 0}</p>
+                <div className="mt-3">
+                  <Button
+                    size="sm"
+                    onClick={() => confirmPayment(payment.milestone_id, payment.payment_reference, payment.amount)}
+                    disabled={actionLoadingKey === `payment-${payment.milestone_id}`}
+                  >
+                    {actionLoadingKey === `payment-${payment.milestone_id}` ? 'Confirming...' : 'Confirm Payment'}
+                  </Button>
+                </div>
+              </div>
+            ))}
+
+            {(dashboardData?.pendingPayments || []).length === 0 && (
+              <div className="text-center py-6 text-blue-500">
+                <p>No pending payment confirmations</p>
               </div>
             )}
           </div>

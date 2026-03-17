@@ -11,6 +11,18 @@ interface JWTPayload {
   name: string;
 }
 
+function safeParseJson(value: unknown): Record<string, any> {
+  if (!value) return {};
+  if (typeof value === 'object') return value as Record<string, any>;
+  if (typeof value !== 'string') return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 // GET - Fetch single service request
 export async function GET(
   request: NextRequest,
@@ -35,6 +47,15 @@ export async function GET(
     if (serviceRequest.requester) {
       serviceRequest.ngo_name = serviceRequest.requester.name;
     }
+
+    const requirements = safeParseJson(serviceRequest.requirements);
+    // Prefer direct DB columns, fall back to requirements JSON for legacy rows
+    serviceRequest.request_type = serviceRequest.request_type || requirements.request_type || serviceRequest.category || 'Skill / Service Need';
+    serviceRequest.estimated_budget = serviceRequest.estimated_budget != null ? String(serviceRequest.estimated_budget) : (requirements.estimated_budget || requirements.budget || 'Not specified');
+    serviceRequest.beneficiary_count = serviceRequest.beneficiary_count != null ? Number(serviceRequest.beneficiary_count) : Number(requirements.beneficiary_count || 0);
+    serviceRequest.impact_description = serviceRequest.impact_description || requirements.impact_description || '';
+    serviceRequest.evidence_required = serviceRequest.evidence_required || requirements.evidence_required || 'basic_media';
+    serviceRequest.completion_proof_type = serviceRequest.completion_proof_type || requirements.completion_proof_type || 'images';
 
     // Return the service request data (publicly accessible)
     return NextResponse.json({
@@ -84,17 +105,33 @@ export async function PUT(
       title, 
       description, 
       category,
+      request_type,
       location,
       urgency,
       timeline,
       budget,
-      contactInfo
+      contactInfo,
+      estimated_budget,
+      beneficiary_count,
+      impact_description,
+      evidence_required,
+      completion_proof_type
     } = body;
 
     // Validate required fields
-    if (!title || !description || !category) {
+    if (!title || !description || !(request_type || category)) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
+
+    if (!impact_description || !String(impact_description).trim()) {
+      return NextResponse.json({ error: 'impact_description is required' }, { status: 400 });
+    }
+
+    if (!beneficiary_count || Number(beneficiary_count) <= 0) {
+      return NextResponse.json({ error: 'beneficiary_count must be greater than 0' }, { status: 400 });
+    }
+
+    const normalizedRequestType = request_type || category;
 
     // First, verify that this request belongs to the authenticated NGO
     const existingRequest = await db.serviceRequests.getById(requestId);
@@ -118,7 +155,13 @@ export async function PUT(
 
     // Prepare requirements JSON
     const requirementsData = {
-      budget: budget || 'Not specified',
+      request_type: normalizedRequestType,
+      estimated_budget: estimated_budget || budget || 'Not specified',
+      beneficiary_count: Number(beneficiary_count || 0),
+      impact_description: String(impact_description || '').trim(),
+      evidence_required: evidence_required || 'basic_media',
+      completion_proof_type: completion_proof_type || 'images',
+      budget: budget || estimated_budget || 'Not specified',
       contactInfo: contactInfo || 'Not specified',
       timeline: timeline || 'Not specified'
     };
@@ -127,11 +170,20 @@ export async function PUT(
     const updateData = {
       title,
       description,
-      category,
+      category: normalizedRequestType,
       location,
       urgency_level: mappedUrgency,
       requirements: JSON.stringify(requirementsData),
-      updated_at: new Date().toISOString()
+      updated_at: new Date().toISOString(),
+      // Direct schema columns
+      request_type: normalizedRequestType,
+      estimated_budget: parseFloat(String(estimated_budget || budget || '')) || null,
+      beneficiary_count: Number(beneficiary_count || 0),
+      impact_description: String(impact_description || '').trim(),
+      evidence_required: evidence_required || 'basic_media',
+      completion_proof_type: completion_proof_type || 'images',
+      timeline: timeline || null,
+      contact_info: contactInfo || null
     };
 
     await db.serviceRequests.update(requestId, updateData);

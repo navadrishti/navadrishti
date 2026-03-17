@@ -83,14 +83,14 @@ export function StatsGrowth() {
             
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="text-sm text-black">New Service Requests</span>
+                <span className="text-sm text-black">New NGO Requests</span>
               </div>
               <span className="text-lg font-bold text-black">+{growth.newServiceRequests}</span>
             </div>
             
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="text-sm text-black">New Service Offers</span>
+                <span className="text-sm text-black">New Capability Offers</span>
               </div>
               <span className="text-lg font-bold text-black">+{growth.newServiceOffers}</span>
             </div>

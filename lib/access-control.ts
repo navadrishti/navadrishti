@@ -98,6 +98,7 @@ export function getUserPermissions(user: User | null): AccessPermissions {
       return {
         ...basePermissions,
         canApplyToServiceRequests: isVerified,
+        canCreateServiceOffers: isVerified,
         canApplyToServiceOffers: isVerified,
       };
       
@@ -106,11 +107,14 @@ export function getUserPermissions(user: User | null): AccessPermissions {
         ...basePermissions,
         canCreateServiceRequests: isVerified,
         canCreateServiceOffers: isVerified,
+        canApplyToServiceOffers: isVerified,
       };
       
     case 'company':
       return {
         ...basePermissions,
+        canCreateServiceOffers: isVerified,
+        canApplyToServiceOffers: isVerified,
       };
       
     default:
@@ -165,24 +169,28 @@ export function getPermissionErrorMessage(permission: keyof AccessPermissions, u
       return "You don't have permission to apply to service requests.";
         
     case 'canCreateServiceOffers':
-      if (user.user_type !== 'ngo') {
-        return "Only verified NGOs can create service offers.";
+      if (!['ngo', 'company', 'individual'].includes(user.user_type)) {
+        return "Only verified participants can create capability offers.";
       }
       return !isVerified 
-        ? "Please complete your NGO verification to create service offers."
+        ? "Please complete verification to create capability offers."
         : "You don't have permission to create service offers.";
         
     case 'canApplyToServiceOffers':
-      if (user.user_type === 'ngo') {
-        return "NGOs create service offers, they cannot apply to them.";
-      }
       if (user.user_type === 'individual') {
         return !isVerified 
-          ? "Please complete your identity verification to apply for service offers."
+          ? "Please complete your identity verification to respond to capability offers."
           : "You don't have permission to apply to service offers.";
       }
       if (user.user_type === 'company') {
-        return "Companies cannot apply to service offers.";
+        return !isVerified
+          ? "Please complete company verification to respond to capability offers."
+          : "You don't have permission to apply to service offers.";
+      }
+      if (user.user_type === 'ngo') {
+        return !isVerified
+          ? "Please complete NGO verification to respond to capability offers."
+          : "You don't have permission to apply to service offers.";
       }
       return "You don't have permission to apply to service offers.";
         
@@ -221,7 +229,7 @@ export function canAccessRoute(userType: UserType | undefined, routePath: string
     '/ngos/dashboard': ['ngo'],
     '/companies/dashboard': ['company'],
     '/service-requests/create': ['ngo'],
-    '/service-offers/create': ['ngo'],
+    '/service-offers/create': ['ngo', 'company', 'individual'],
   };
   
   const allowedUserTypes = routeAccess[routePath];

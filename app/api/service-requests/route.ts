@@ -9,6 +9,54 @@ interface JWTPayload {
   user_type: string;
   email: string;
   name: string;
+  verification_status?: string;
+}
+
+const REQUEST_TYPES = [
+  'Financial Need',
+  'Material Need',
+  'Skill / Service Need',
+  'Infrastructure Project'
+];
+
+function safeParseJson(value: unknown): Record<string, any> {
+  if (!value) return {};
+  if (typeof value === 'object') return value as Record<string, any>;
+  if (typeof value !== 'string') return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function computeImpactScore(request: any): number {
+  const urgencyWeight: Record<string, number> = {
+    low: 10,
+    medium: 20,
+    high: 30,
+    critical: 40
+  };
+
+  const beneficiaryCount = Number(request.beneficiary_count || 0);
+  const beneficiaryScore = Math.min(40, Math.floor(beneficiaryCount / 10) * 4);
+  const urgencyScore = urgencyWeight[String(request.urgency_level || 'medium')] || 20;
+  const verificationScore = request.requester?.verification_status === 'verified' ? 20 : 10;
+
+  return Math.max(0, Math.min(100, beneficiaryScore + urgencyScore + verificationScore));
+}
+
+function computeProofStrength(request: any): number {
+  let score = 0;
+  const images = Array.isArray(request.images) ? request.images : [];
+  const requirements = safeParseJson(request.requirements);
+
+  if (images.length > 0) score += Math.min(30, images.length * 10);
+  if (requirements.evidence_required) score += 35;
+  if (requirements.completion_proof_type) score += 35;
+
+  return Math.max(0, Math.min(100, score));
 }
 
 // GET - Fetch service requests (public endpoint - no auth required for viewing)
@@ -19,11 +67,12 @@ export async function GET(request: NextRequest) {
     const category = searchParams.get('category');
     const search = searchParams.get('search');
     const userId = searchParams.get('userId');
-    const view = searchParams.get('view'); // 'all', 'my-requests', 'volunteering'
+    const rawView = searchParams.get('view'); // 'all', 'my-requests', 'my-responses' (legacy: 'volunteering')
+    const view = rawView === 'volunteering' ? 'my-responses' : rawView;
 
     // For my-requests view, authenticate user
     let authenticatedUserId = null;
-    if (view === 'my-requests' || view === 'volunteering') {
+    if (view === 'my-requests' || view === 'my-responses') {
       const authHeader = request.headers.get('authorization');
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
         return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
@@ -42,7 +91,7 @@ export async function GET(request: NextRequest) {
               data: [] // Return empty array for non-NGOs
             });
           }
-        } else if (view === 'volunteering') {
+        } else if (view === 'my-responses') {
           // Only individuals and companies can volunteer
           if (payload.user_type === 'ngo') {
             return NextResponse.json({ 
@@ -66,7 +115,7 @@ export async function GET(request: NextRequest) {
     }
     
     let serviceRequests;
-    if (view === 'volunteering' && authenticatedUserId) {
+    if (view === 'my-responses' && authenticatedUserId) {
       // For volunteering view, get service requests where user has applied
       const volunteerApplications = await db.serviceVolunteers.getByVolunteerId(authenticatedUserId);
       const requestIds = volunteerApplications.map(app => app.service_request_id);
@@ -125,6 +174,19 @@ export async function GET(request: NextRequest) {
       if (request.requester) {
         request.ngo_name = request.requester.name;
       }
+
+      const requirementsObj = safeParseJson(request.requirements);
+      // Prefer direct DB columns, fall back to requirements JSON for legacy rows
+      request.request_type = request.request_type || requirementsObj.request_type || request.category || 'Skill / Service Need';
+      request.estimated_budget = request.estimated_budget != null ? String(request.estimated_budget) : (requirementsObj.estimated_budget || requirementsObj.budget || 'Not specified');
+      request.beneficiary_count = request.beneficiary_count != null ? Number(request.beneficiary_count) : Number(requirementsObj.beneficiary_count || 0);
+      request.impact_description = request.impact_description || requirementsObj.impact_description || '';
+      request.evidence_required = request.evidence_required || requirementsObj.evidence_required || 'basic_media';
+      request.completion_proof_type = request.completion_proof_type || requirementsObj.completion_proof_type || 'images';
+      request.trust_badge_weight = request.requester?.verification_status === 'verified' ? 1.0 : 0.6;
+      request.impact_score = computeImpactScore(request);
+      request.proof_strength = computeProofStrength(request);
+      request.completion_rate = request.status === 'completed' ? 100 : 0;
       
       // Handle old concatenated description format
       if (request.description && (request.description.includes('Budget:') || request.description.includes('Requirements:'))) {
@@ -142,6 +204,7 @@ export async function GET(request: NextRequest) {
         try {
           const existingRequirements = request.requirements ? JSON.parse(request.requirements) : {};
           request.requirements = JSON.stringify({
+            ...existingRequirements,
             budget: budgetMatch ? budgetMatch[1].trim() : null,
             contactInfo: contactMatch ? contactMatch[1].trim() : null,
             timeline: timelineMatch ? timelineMatch[1].trim() : null
@@ -274,16 +337,44 @@ export async function POST(request: NextRequest) {
         title, 
         description, 
         category,
+        request_type,
         location,
         urgency,
         timeline,
         budget,
-        contactInfo
+        contactInfo,
+        estimated_budget,
+        beneficiary_count,
+        impact_description,
+        evidence_required,
+        completion_proof_type
       } = body;
 
       // Validate required fields
-      if (!title || !description || !category) {
+      if (!title || !description || !(request_type || category)) {
         return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+      }
+
+      if (!impact_description || !String(impact_description).trim()) {
+        return NextResponse.json(
+          { error: 'impact_description is required (What changes?)' },
+          { status: 400 }
+        );
+      }
+
+      if (!beneficiary_count || Number(beneficiary_count) <= 0) {
+        return NextResponse.json(
+          { error: 'beneficiary_count must be greater than 0 (How many benefit?)' },
+          { status: 400 }
+        );
+      }
+
+      const normalizedRequestType = request_type || category;
+      if (!REQUEST_TYPES.includes(normalizedRequestType)) {
+        return NextResponse.json(
+          { error: 'Invalid request_type. Use one of Financial Need, Material Need, Skill / Service Need, Infrastructure Project.' },
+          { status: 400 }
+        );
       }
 
       // Map urgency to database enum values
@@ -297,7 +388,13 @@ export async function POST(request: NextRequest) {
 
       // Prepare requirements JSON
       const requirementsData = {
-        budget: budget || 'Not specified',
+        request_type: normalizedRequestType,
+        estimated_budget: estimated_budget || budget || 'Not specified',
+        beneficiary_count: Number(beneficiary_count || 0),
+        impact_description: String(impact_description || '').trim(),
+        evidence_required: evidence_required || 'basic_media',
+        completion_proof_type: completion_proof_type || 'images',
+        budget: budget || estimated_budget || 'Not specified',
         contactInfo: contactInfo || 'Not specified',
         timeline: timeline || 'Not specified'
       };
@@ -307,13 +404,22 @@ export async function POST(request: NextRequest) {
         ngo_id: userId,
         title: title,
         description: description,
-        category: category,
+        category: normalizedRequestType,
         location: location,
         urgency_level: mappedUrgency,
         volunteers_needed: 1, // default volunteers_needed
         tags: JSON.stringify([]), // empty tags array
         requirements: JSON.stringify(requirementsData),
-        status: 'active'
+        status: 'active',
+        // Direct schema columns
+        request_type: normalizedRequestType,
+        estimated_budget: parseFloat(String(estimated_budget || budget || '')) || null,
+        beneficiary_count: Number(beneficiary_count || 0),
+        impact_description: String(impact_description || '').trim(),
+        evidence_required: evidence_required || 'basic_media',
+        completion_proof_type: completion_proof_type || 'images',
+        timeline: timeline || null,
+        contact_info: contactInfo || null
       };
 
       const result = await db.serviceRequests.create(requestData);

@@ -2,61 +2,88 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-export function StickyFooter() {
+interface StickyFooterProps {
+  className?: string;
+  textClassName?: string;
+  linkClassName?: string;
+  mutedTextClassName?: string;
+  disableSticky?: boolean;
+}
+
+export function StickyFooter({
+  className = '',
+  textClassName = 'text-white',
+  linkClassName = 'hover:text-yellow-300 hover:underline transition-colors',
+  mutedTextClassName = 'text-white/80',
+  disableSticky = false
+}: StickyFooterProps) {
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const footerRef = useRef<HTMLElement>(null);
   const [isSticky, setIsSticky] = useState(false);
-  const originalTopRef = useRef<number | null>(null);
+  const [footerMetrics, setFooterMetrics] = useState({ left: 0, width: 0, height: 0 });
 
   useEffect(() => {
-    const handleScroll = () => {
-      if (!footerRef.current) return;
+    const updateMetrics = () => {
+      if (disableSticky || !wrapperRef.current || !footerRef.current) return;
 
+      const wrapperRect = wrapperRef.current.getBoundingClientRect();
       const footerRect = footerRef.current.getBoundingClientRect();
-      const windowHeight = window.innerHeight;
-      const scrollY = window.scrollY;
 
-      // Store original position when footer first appears
-      if (originalTopRef.current === null && footerRect.top <= windowHeight) {
-        originalTopRef.current = scrollY + footerRect.top;
-      }
-
-      // Check if we should stick
-      if (originalTopRef.current !== null) {
-        const footerOriginalTop = originalTopRef.current;
-        const shouldStick = scrollY + windowHeight >= footerOriginalTop;
-
-        if (shouldStick) {
-          setIsSticky(true);
-        } else {
-          // Scrolled back up past original position
-          setIsSticky(false);
-          originalTopRef.current = null; // Reset for next time
-        }
-      }
+      setFooterMetrics({
+        left: wrapperRect.left,
+        width: wrapperRect.width,
+        height: footerRect.height
+      });
     };
 
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    handleScroll(); // Check initial position
+    const handleScroll = () => {
+      if (disableSticky || !wrapperRef.current || !footerRef.current) return;
 
-    return () => window.removeEventListener('scroll', handleScroll);
+      const wrapperRect = wrapperRef.current.getBoundingClientRect();
+      const shouldStick = wrapperRect.top <= window.innerHeight;
+
+      setIsSticky(shouldStick);
+      updateMetrics();
+    };
+
+    if (!disableSticky) {
+      updateMetrics();
+      window.addEventListener('scroll', handleScroll, { passive: true });
+      window.addEventListener('resize', updateMetrics);
+      handleScroll();
+    }
+
+    return () => {
+      if (!disableSticky) {
+        window.removeEventListener('scroll', handleScroll);
+        window.removeEventListener('resize', updateMetrics);
+      }
+    };
   }, []);
 
   return (
-    <footer 
-      ref={footerRef}
-      className={`mt-8 py-4 px-6 transition-all duration-300 ease-in-out ${
-        isSticky ? 'sticky bottom-0' : ''
-      }`}
+    <div
+      ref={wrapperRef}
+      className="mt-8"
+      style={!disableSticky && isSticky ? { minHeight: `${footerMetrics.height}px` } : undefined}
     >
-      <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-white">
-        <a href="/about" className="hover:text-yellow-300 hover:underline transition-colors">About</a>
-        <a href="/accessibility" className="hover:text-yellow-300 hover:underline transition-colors">Accessibility</a>
-        <a href="/help" className="hover:text-yellow-300 hover:underline transition-colors">Help Center</a>
-        <a href="/privacy" className="hover:text-yellow-300 hover:underline transition-colors">Privacy & Terms</a>
-        <a href="/advertising" className="hover:text-yellow-300 hover:underline transition-colors">Advertising</a>
-        <a href="/contact" className="hover:text-yellow-300 hover:underline transition-colors">Contact</a>
-        <span className="text-white/80">© 2026 Navadrishti</span>
-      </div>
-    </footer>
+      <footer
+        ref={footerRef}
+        className={`py-4 px-6 transition-all duration-300 ease-in-out ${className} ${
+          !disableSticky && isSticky ? 'fixed bottom-0 z-40' : ''
+        }`}
+        style={!disableSticky && isSticky ? { left: footerMetrics.left, width: footerMetrics.width } : undefined}
+      >
+        <div className={`flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs ${textClassName}`}>
+          <a href="/about" className={linkClassName}>About</a>
+          <a href="/accessibility" className={linkClassName}>Accessibility</a>
+          <a href="/help" className={linkClassName}>Help Center</a>
+          <a href="/privacy" className={linkClassName}>Privacy & Terms</a>
+          <a href="/advertising" className={linkClassName}>Advertising</a>
+          <a href="/contact" className={linkClassName}>Contact</a>
+          <span className={mutedTextClassName}>© 2026 Navadrishti</span>
+        </div>
+      </footer>
+    </div>
   );
 }

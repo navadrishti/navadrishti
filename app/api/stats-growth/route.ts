@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { supabase } from "@/lib/db"
+import { getCompanyCAUserIdSet } from "@/lib/company-ca-visibility"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -16,8 +17,11 @@ export async function GET() {
 
     const { data: recentUsers, error: usersError } = await supabase
       .from('users')
-      .select('created_at')
+      .select('id, created_at')
       .gte('created_at', sevenDaysAgo.toISOString())
+
+    const companyCAIds = await getCompanyCAUserIdSet((recentUsers ?? []).map((user: any) => Number(user.id)))
+    const visibleRecentUsers = (recentUsers ?? []).filter((user: any) => !companyCAIds.has(Number(user.id)))
 
     const { data: recentServiceRequests } = await supabase
       .from('service_requests')
@@ -31,7 +35,7 @@ export async function GET() {
 
     const growth = {
       newPosts: recentPosts?.length || 0,
-      newUsers: recentUsers?.length || 0,
+      newUsers: visibleRecentUsers.length,
       newServiceRequests: recentServiceRequests?.length || 0,
       newServiceOffers: recentServiceOffers?.length || 0,
       period: '7 days'

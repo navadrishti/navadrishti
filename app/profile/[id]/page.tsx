@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { Calendar, MapPin, Award, TrendingUp, Heart, Users, Target, Trophy, Loader2, FileText, Briefcase, Download, ExternalLink, MailCheck, Phone, ShieldCheck } from "lucide-react"
 import { VerificationBadge } from "@/components/verification-badge"
 import { useAuth } from "@/lib/auth-context"
+import { useIsMobile } from "@/hooks/use-mobile"
 
 interface ImpactProfileProps {
   params: Promise<{
@@ -38,6 +39,7 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
   const { id } = use(params)
   const { token } = useAuth()
   const fetchingRef = useRef(false)
+  const isMobile = useIsMobile()
 
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
@@ -54,6 +56,8 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
     followers: 0,
     following: 0
   })
+  const [showAllProfilePosts, setShowAllProfilePosts] = useState(false)
+  const [showAllAchievements, setShowAllAchievements] = useState(false)
 
   useEffect(() => {
     const fetchProfileData = async () => {
@@ -166,6 +170,70 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
     profile?.phone_verified &&
     profile?.verification_status === 'verified'
   )
+
+  const achievementBadges = [
+    ...(stats.posts >= 5
+      ? [{
+          id: 'content-creator',
+          title: 'Content Creator',
+          description: `Created ${stats.posts} posts`,
+          label: 'Active Contributor'
+        }]
+      : []),
+    ...(stats.volunteeredServices >= 3
+      ? [{
+          id: 'volunteer-hero',
+          title: 'Volunteer Hero',
+          description: `Volunteered for ${stats.volunteeredServices} services`,
+          label: 'Community Helper'
+        }]
+      : []),
+    ...(stats.serviceRequests >= 5
+      ? [{
+          id: 'opportunity-builder',
+          title: 'Opportunity Builder',
+          description: `Created ${stats.serviceRequests} service requests`,
+          label: 'Community Organizer'
+        }]
+      : []),
+    ...(stats.clientProjects >= 5
+      ? [{
+          id: 'reliable-collaborator',
+          title: 'Reliable Collaborator',
+          description: `Joined ${stats.clientProjects} service projects`,
+          label: 'Trusted Participant'
+        }]
+      : []),
+    ...(stats.serviceRequests >= 3
+      ? [{
+          id: 'opportunity-creator',
+          title: 'Opportunity Creator',
+          description: `Created ${stats.serviceRequests} service requests`,
+          label: 'NGO Leader'
+        }]
+      : []),
+    ...(stats.serviceOffers >= 3
+      ? [{
+          id: 'service-provider',
+          title: 'Service Provider',
+          description: `Offered ${stats.serviceOffers} professional services`,
+          label: 'NGO Professional'
+        }]
+      : []),
+    ...(profile?.verification_status === 'verified'
+      ? [{
+          id: 'verified-member',
+          title: 'Verified Member',
+          description: 'Successfully verified account',
+          label: 'Trusted User'
+        }]
+      : []),
+  ]
+
+  const visibleAchievements = showAllAchievements ? achievementBadges : achievementBadges.slice(0, 3)
+
+  const previewPostLimit = isMobile ? 3 : 6
+  const profilePostsLimit = showAllProfilePosts ? 20 : previewPostLimit
 
   if (loading) {
     return (
@@ -370,10 +438,30 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
         <div className="lg:col-span-7">
           <Card>
             <CardHeader>
-              <CardTitle>Posts</CardTitle>
+              <CardTitle>
+                {showAllProfilePosts ? 'All Posts' : 'Recent Posts'}
+              </CardTitle>
             </CardHeader>
-            <CardContent className="max-h-[70vh] overflow-y-auto pr-2">
-              <PostsFeed userId={profile.id} showAllPosts={true} limit={20} showPostedDate={true} />
+            <CardContent>
+              <div className="max-h-[70vh] overflow-y-auto pr-2 [scrollbar-gutter:stable]">
+              <PostsFeed
+                userId={profile.id}
+                showAllPosts={showAllProfilePosts}
+                limit={profilePostsLimit}
+                showPostedDate={true}
+              />
+              </div>
+              {!statsLoading && stats.posts > previewPostLimit && (
+                <div className="mt-4 flex justify-center">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowAllProfilePosts((prev) => !prev)}
+                  >
+                    {showAllProfilePosts ? 'Show Less' : 'View All'}
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -381,9 +469,67 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
         <div className="lg:col-span-5 space-y-6">
           <Card>
             <CardHeader>
+              <CardTitle>Profile Information</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {statsLoading ? (
+                <div className="space-y-4 animate-pulse">
+                  {[1, 2, 3, 4].map((i) => (
+                    <div key={i} className="space-y-2">
+                      <div className="h-3 w-24 bg-gray-200 rounded" />
+                      <div className="h-4 w-40 bg-gray-200 rounded" />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-sm text-gray-500 mb-1">User Type</p>
+                    <p className="font-medium capitalize">{profile.user_type}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500 mb-1">Email</p>
+                    <p className="font-medium">{profile.email}</p>
+                  </div>
+                  {(profile.city || profile.location) && (
+                    <div>
+                      <p className="text-sm text-gray-500 mb-1">Location</p>
+                      <p className="font-medium">{profile.city || profile.location}</p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-sm text-gray-500 mb-1">Member Since</p>
+                    <p className="font-medium">{formatDate(profile.created_at)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500 mb-1">Verification Status</p>
+                    <div className="flex items-center gap-2">
+                      <VerificationBadge
+                        status={(profile.verification_status || 'unverified') as any}
+                        size="sm"
+                        showText={false}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
               <CardTitle>
                 Achievements & Badges
               </CardTitle>
+              {!statsLoading && achievementBadges.length > 3 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowAllAchievements((prev) => !prev)}
+                >
+                  {showAllAchievements ? 'Show Less' : 'View All'}
+                </Button>
+              )}
             </CardHeader>
             <CardContent>
               {statsLoading ? (
@@ -401,96 +547,21 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
               ) : (
               <>
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {/* Achievement Cards */}
-                {stats.posts >= 5 && (
-                  <div className="p-4 border-2 border-gray-700 rounded-xl bg-white hover:shadow-lg transition-shadow">
+                {visibleAchievements.map((badge) => (
+                  <div key={badge.id} className="p-4 border-2 border-gray-700 rounded-xl bg-white hover:shadow-lg transition-shadow">
                     <div className="flex flex-col items-center text-center">
-                      <h3 className="font-bold text-orange-500 mb-1">Content Creator</h3>
-                      <p className="text-sm text-gray-900 mb-2">Created {stats.posts} posts</p>
+                      <h3 className="font-bold text-orange-500 mb-1">{badge.title}</h3>
+                      <p className="text-sm text-gray-900 mb-2">{badge.description}</p>
                       <Badge variant="secondary" className="bg-orange-500 text-white border-0">
-                        Active Contributor
+                        {badge.label}
                       </Badge>
                     </div>
                   </div>
-                )}
-
-                {stats.volunteeredServices >= 3 && (
-                  <div className="p-4 border-2 border-gray-700 rounded-xl bg-white hover:shadow-lg transition-shadow">
-                    <div className="flex flex-col items-center text-center">
-                      <h3 className="font-bold text-orange-500 mb-1">Volunteer Hero</h3>
-                      <p className="text-sm text-gray-900 mb-2">Volunteered for {stats.volunteeredServices} services</p>
-                      <Badge variant="secondary" className="bg-orange-500 text-white border-0">
-                        Community Helper
-                      </Badge>
-                    </div>
-                  </div>
-                )}
-
-                {stats.serviceRequests >= 5 && (
-                  <div className="p-4 border-2 border-gray-700 rounded-xl bg-white hover:shadow-lg transition-shadow">
-                    <div className="flex flex-col items-center text-center">
-                      <h3 className="font-bold text-orange-500 mb-1">Opportunity Builder</h3>
-                      <p className="text-sm text-gray-900 mb-2">Created {stats.serviceRequests} service requests</p>
-                      <Badge variant="secondary" className="bg-orange-500 text-white border-0">
-                        Community Organizer
-                      </Badge>
-                    </div>
-                  </div>
-                )}
-
-                {stats.clientProjects >= 5 && (
-                  <div className="p-4 border-2 border-gray-700 rounded-xl bg-white hover:shadow-lg transition-shadow">
-                    <div className="flex flex-col items-center text-center">
-                      <h3 className="font-bold text-orange-500 mb-1">Reliable Collaborator</h3>
-                      <p className="text-sm text-gray-900 mb-2">Joined {stats.clientProjects} service projects</p>
-                      <Badge variant="secondary" className="bg-orange-500 text-white border-0">
-                        Trusted Participant
-                      </Badge>
-                    </div>
-                  </div>
-                )}
-
-                {stats.serviceRequests >= 3 && (
-                  <div className="p-4 border-2 border-gray-700 rounded-xl bg-white hover:shadow-lg transition-shadow">
-                    <div className="flex flex-col items-center text-center">
-                      <h3 className="font-bold text-orange-500 mb-1">Opportunity Creator</h3>
-                      <p className="text-sm text-gray-900 mb-2">Created {stats.serviceRequests} service requests</p>
-                      <Badge variant="secondary" className="bg-orange-500 text-white border-0">
-                        NGO Leader
-                      </Badge>
-                    </div>
-                  </div>
-                )}
-
-                {stats.serviceOffers >= 3 && (
-                  <div className="p-4 border-2 border-gray-700 rounded-xl bg-white hover:shadow-lg transition-shadow">
-                    <div className="flex flex-col items-center text-center">
-                      <h3 className="font-bold text-orange-500 mb-1">Service Provider</h3>
-                      <p className="text-sm text-gray-900 mb-2">Offered {stats.serviceOffers} professional services</p>
-                      <Badge variant="secondary" className="bg-orange-500 text-white border-0">
-                        NGO Professional
-                      </Badge>
-                    </div>
-                  </div>
-                )}
-
-                {profile.verification_status === 'verified' && (
-                  <div className="p-4 border-2 border-gray-700 rounded-xl bg-white hover:shadow-lg transition-shadow">
-                    <div className="flex flex-col items-center text-center">
-                      <h3 className="font-bold text-orange-500 mb-1">Verified Member</h3>
-                      <p className="text-sm text-gray-900 mb-2">Successfully verified account</p>
-                      <Badge variant="secondary" className="bg-orange-500 text-white border-0">
-                        Trusted User
-                      </Badge>
-                    </div>
-                  </div>
-                )}
+                ))}
               </div>
 
               {/* No achievements message */}
-              {stats.posts < 5 && stats.volunteeredServices < 3 && stats.clientProjects < 5 && 
-               stats.serviceRequests < 3 && stats.serviceOffers < 3 && 
-               profile.verification_status !== 'verified' && (
+              {achievementBadges.length === 0 && (
                 <div className="text-center py-12 text-gray-500">
                   <Trophy className="h-12 w-12 mx-auto mb-3 text-gray-400" />
                   <p className="text-sm">No achievements earned yet</p>
@@ -650,117 +721,6 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
               )}
             </CardContent>
           </Card>
-
-          {statsLoading ? (
-            <div className="grid md:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Platform Engagement</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-6 animate-pulse">
-                    {[1, 2, 3, 4].map((i) => (
-                      <div key={i} className="flex items-center justify-between py-2 border-b border-gray-300">
-                        <div className="h-4 w-32 bg-gray-200 rounded" />
-                        <div className="h-8 w-16 bg-gray-200 rounded" />
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle>Profile Information</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4 animate-pulse">
-                    {[1, 2, 3, 4].map((i) => (
-                      <div key={i} className="space-y-2">
-                        <div className="h-3 w-24 bg-gray-200 rounded" />
-                        <div className="h-4 w-40 bg-gray-200 rounded" />
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          ) : (
-          <div className="grid md:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Platform Engagement</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-6">
-                  <div className="flex items-center justify-between py-2 border-b border-gray-700">
-                    <span className="text-gray-900">Posts Created</span>
-                    <span className="text-2xl font-bold text-orange-500">{stats.posts}</span>
-                  </div>
-                  <div className="flex items-center justify-between py-2 border-b border-gray-700">
-                    <span className="text-gray-900">Service Projects Joined</span>
-                    <span className="text-2xl font-bold text-orange-500">{stats.clientProjects}</span>
-                  </div>
-                  {stats.serviceRequests > 0 && (
-                    <div className="flex items-center justify-between py-2 border-b border-gray-700">
-                      <span className="text-gray-900">Service Requests</span>
-                      <span className="text-2xl font-bold text-orange-500">{stats.serviceRequests}</span>
-                    </div>
-                  )}
-                  {stats.serviceOffers > 0 && (
-                    <div className="flex items-center justify-between py-2 border-b border-gray-700">
-                      <span className="text-gray-900">Service Offers</span>
-                      <span className="text-2xl font-bold text-orange-500">{stats.serviceOffers}</span>
-                    </div>
-                  )}
-                  {stats.volunteeredServices > 0 && (
-                    <div className="flex items-center justify-between py-2 border-b border-gray-700">
-                      <span className="text-gray-900">Volunteered Services</span>
-                      <span className="text-2xl font-bold text-orange-500">{stats.volunteeredServices}</span>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Profile Information</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-sm text-gray-500 mb-1">User Type</p>
-                    <p className="font-medium capitalize">{profile.user_type}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500 mb-1">Email</p>
-                    <p className="font-medium">{profile.email}</p>
-                  </div>
-                  {(profile.city || profile.location) && (
-                    <div>
-                      <p className="text-sm text-gray-500 mb-1">Location</p>
-                      <p className="font-medium">{profile.city || profile.location}</p>
-                    </div>
-                  )}
-                  <div>
-                    <p className="text-sm text-gray-500 mb-1">Member Since</p>
-                    <p className="font-medium">{formatDate(profile.created_at)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500 mb-1">Verification Status</p>
-                    <div className="flex items-center gap-2">
-                      <VerificationBadge 
-                        status={(profile.verification_status || 'unverified') as any} 
-                        size="sm"
-                        showText={false}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-          )}
         </div>
       </div>
     </div>
