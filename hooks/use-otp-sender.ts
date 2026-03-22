@@ -73,20 +73,30 @@ export function useOtpSender(setFormErrors: Dispatch<SetStateAction<FormErrors>>
 
     try {
       setOtpSending(prev => ({ ...prev, email: true }));
+
+      const prepareResponse = await fetch('/api/auth/prepare-email-otp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ email })
+      });
+
+      const prepareData = await prepareResponse.json();
+      if (!prepareResponse.ok) {
+        toast.error(prepareData.error || 'Failed to prepare email OTP');
+        return;
+      }
+
       const supabase = createClient();
-      const { error } =await supabase.auth.signInWithOtp({
+      const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          shouldCreateUser: true,
-          emailRedirectTo: undefined
+          shouldCreateUser: false
         }
       });
 
       if (error) {
-        if (error.message?.toLowerCase().includes('error sending confirmation email')) {
-          toast.error('Supabase could not send email. Check Supabase Auth SMTP settings (Brevo host/user/pass + verified sender).');
-          return;
-        }
         toast.error(error.message || 'Failed to send email OTP');
         return;
       }
@@ -124,14 +134,39 @@ export function useOtpSender(setFormErrors: Dispatch<SetStateAction<FormErrors>>
     try {
       setOtpVerifying(prev => ({ ...prev, email: true }));
       const supabase = createClient();
-      const { error } = await supabase.auth.verifyOtp({
-        email,
-        token: otp,
-        type: 'email'
-      });
+      const otpTypes: Array<'email' | 'signup'> = ['email', 'signup'];
+      let verificationError: Error | null = null;
 
-      if (error) {
-        const otpErrorMessage = (error.message || 'Invalid email OTP').replace(/\btoken\b/gi, 'OTP');
+      for (const otpType of otpTypes) {
+        const { error } = await supabase.auth.verifyOtp({
+          email,
+          token: otp,
+          type: otpType
+        });
+
+        if (!error) {
+          verificationError = null;
+          break;
+        }
+
+        verificationError = error;
+
+        const normalizedMessage = (error.message || '').toLowerCase();
+        const shouldTryFallback =
+          otpType === 'email' &&
+          (normalizedMessage.includes('invalid') ||
+            normalizedMessage.includes('expired') ||
+            normalizedMessage.includes('token') ||
+            normalizedMessage.includes('otp') ||
+            normalizedMessage.includes('email link'));
+
+        if (!shouldTryFallback) {
+          break;
+        }
+      }
+
+      if (verificationError) {
+        const otpErrorMessage = (verificationError.message || 'Invalid email OTP').replace(/\btoken\b/gi, 'OTP');
         setOtpVerified(prev => ({ ...prev, email: false }));
         setFormErrors(prev => ({ ...prev, emailOtp: otpErrorMessage }));
         toast.error(otpErrorMessage);
