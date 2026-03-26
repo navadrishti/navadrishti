@@ -144,10 +144,28 @@ export default function RootLayout({
             </Suspense>
             <Toaster 
               position="top-right" 
-              richColors 
+              richColors={false}
               closeButton 
-              duration={4000}
+              expand
+              visibleToasts={6}
+              duration={5000}
               theme="system"
+              toastOptions={{
+                duration: 5000,
+                classNames: {
+                  toast: 'nd-toast',
+                  title: 'nd-toast-title',
+                  description: 'nd-toast-description',
+                  closeButton: 'nd-toast-close',
+                  actionButton: 'nd-toast-action',
+                  cancelButton: 'nd-toast-cancel',
+                  success: 'nd-toast-success',
+                  error: 'nd-toast-error',
+                  warning: 'nd-toast-warning',
+                  info: 'nd-toast-info',
+                  loading: 'nd-toast-loading'
+                }
+              }}
             />
           </AuthProvider>
         </ThemeProvider>

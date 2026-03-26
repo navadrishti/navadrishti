@@ -135,7 +135,7 @@ export default function NGONetworkPage() {
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <Link
                               href={`/profile/${ngo.id}`}
-                              className="font-semibold text-gray-900 leading-tight truncate hover:text-udaan-orange transition-colors"
+                              className="font-semibold text-gray-900 leading-tight truncate hover:text-blue-600 transition-colors"
                             >
                               {ngo.name}
                             </Link>

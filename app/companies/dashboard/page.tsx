@@ -3,10 +3,11 @@
 import { useEffect, useRef, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Building, CheckCircle, HandHeart, HeartHandshake, MailCheck, Phone, ShieldCheck, TicketCheck } from 'lucide-react';
+import { Building, CheckCircle, HandHeart, HeartHandshake, MailCheck, Phone, TicketCheck } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import ProtectedRoute from '@/components/protected-route';
 import { Header } from '@/components/header';
+import { VerificationBadge } from '@/components/verification-badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -261,12 +262,12 @@ function CompanyDashboardContent() {
                       <h3 className="text-lg font-semibold flex items-center gap-2">
                         <span>{user?.name || 'TechCorp Solutions'}</span>
                         {allVerified ? (
-                          <ShieldCheck className="h-4 w-4 text-green-600" />
+                          <VerificationBadge status="verified" size="sm" showText={false} />
                         ) : (
                           <>
                             {user?.email_verified && <MailCheck className="h-4 w-4 text-green-600" />}
                             {user?.phone_verified && <Phone className="h-4 w-4 text-green-600" />}
-                            {user?.verification_status === 'verified' && <ShieldCheck className="h-4 w-4 text-green-600" />}
+                            <VerificationBadge status={user?.verification_status || 'unverified'} size="sm" showText={false} />
                           </>
                         )}
                       </h3>

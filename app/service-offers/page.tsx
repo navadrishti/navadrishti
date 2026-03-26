@@ -25,6 +25,7 @@ export default function ServiceOffersPage() {
   const { user } = useAuth();
   const searchParams = useSearchParams();
   const { toast } = useToast();
+  const [mounted, setMounted] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All Categories');
   const [locationFilter, setLocationFilter] = useState('');
@@ -35,8 +36,12 @@ export default function ServiceOffersPage() {
   const [error, setError] = useState('');
   const [deleting, setDeleting] = useState<number | null>(null);
   
-  const canCreateOffers = !!user && ['ngo', 'company', 'individual'].includes(user.user_type);
+  const canCreateOffers = mounted && !!user && ['ngo', 'company', 'individual'].includes(user.user_type);
   const canRespondToOffers = !!user && ['ngo', 'company', 'individual'].includes(user.user_type);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     const rawView = searchParams.get('view') || searchParams.get('tab');
@@ -206,12 +211,6 @@ export default function ServiceOffersPage() {
                 </p>
               </div>
               <div className="flex flex-col sm:flex-row gap-4">
-                <Link href="/service-offers/track">
-                  <button className="bg-white border-2 border-black shadow-xl text-black hover:bg-gray-50 transition-all duration-300 px-8 py-4 h-auto font-medium text-base rounded-lg flex items-center">
-                    <Clock size={20} className="mr-3" />
-                    Track My Offers
-                  </button>
-                </Link>
                 <Link href="/service-offers/create">
                   <button className="bg-white border-2 border-black shadow-xl text-black hover:bg-gray-50 transition-all duration-300 px-8 py-4 h-auto font-medium text-base rounded-lg flex items-center">
                     <Plus size={20} className="mr-3" />
@@ -227,8 +226,8 @@ export default function ServiceOffersPage() {
         <Tabs value={currentView} className="mb-8" onValueChange={handleTabChange}>
           <TabsList className="mb-6">
             <TabsTrigger value="all">All Capabilities</TabsTrigger>
-            {user && <TabsTrigger value="my-offers">My Capabilities</TabsTrigger>}
-            {canRespondToOffers && <TabsTrigger value="my-responses">My Responses</TabsTrigger>}
+            {mounted && user && <TabsTrigger value="my-offers">My Capabilities</TabsTrigger>}
+            {mounted && canRespondToOffers && <TabsTrigger value="my-responses">My Applications</TabsTrigger>}
           </TabsList>
           
           <div className="mb-6 grid gap-6 md:grid-cols-2">
@@ -340,12 +339,6 @@ export default function ServiceOffersPage() {
                       You haven't posted any capability offers yet.
                     </p>
                     <div className="flex flex-col sm:flex-row gap-3">
-                      <Link href="/service-offers/track">
-                        <Button variant="outline">
-                          <Clock size={16} className="mr-2" />
-                          Track My Offers
-                        </Button>
-                      </Link>
                       <Link href="/service-offers/create">
                         <Button>
                           <Plus size={16} className="mr-2" />
@@ -405,9 +398,9 @@ export default function ServiceOffersPage() {
                   <div className="mb-4 rounded-full bg-muted p-3">
                     <Target size={24} className="text-muted-foreground" />
                   </div>
-                <h3 className="mb-1 text-lg font-semibold">No responses yet</h3>
+                <h3 className="mb-1 text-lg font-semibold">No applications yet</h3>
                 <p className="mb-4 text-muted-foreground">
-                  You haven't responded to any capability offers yet.
+                  You haven't applied to any capability offers yet.
                 </p>
                 <Link href="/service-offers">
                   <Button variant="outline">

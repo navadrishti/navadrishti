@@ -9,7 +9,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ServiceCard } from '@/components/service-card'
-import { SkeletonHeader, SkeletonServiceCard, SkeletonCTA } from '@/components/ui/skeleton'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
 import { Search, Target, ArrowRight, Plus, HeartHandshake } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
@@ -17,10 +18,72 @@ import { getServiceRequestCategoriesWithAll } from '@/lib/categories'
 
 const categories = getServiceRequestCategoriesWithAll()
 
+function ServiceRequestCardSkeleton() {
+  return (
+    <Card className="h-full flex flex-col border-2 border-gray-200">
+      <CardHeader className="space-y-3 pb-4">
+        <div className="flex items-center justify-between gap-2">
+          <Skeleton className="h-7 w-24 rounded-full" />
+          <Skeleton className="h-7 w-20 rounded-full" />
+        </div>
+
+        <div className="space-y-2">
+          <Skeleton className="h-7 w-[90%]" />
+          <Skeleton className="h-7 w-[72%]" />
+        </div>
+
+        <div className="flex items-center gap-3 pt-2">
+          <Skeleton className="h-10 w-10 rounded-full" />
+          <div className="flex-1 space-y-2">
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className="h-3 w-24" />
+          </div>
+        </div>
+      </CardHeader>
+
+      <CardContent className="space-y-4 flex-1 pb-4">
+        <div className="space-y-2">
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-[94%]" />
+          <Skeleton className="h-4 w-[82%]" />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 pt-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="space-y-1">
+              <Skeleton className="h-3 w-20" />
+              <Skeleton className="h-4 w-16" />
+            </div>
+          ))}
+        </div>
+      </CardContent>
+
+      <CardFooter className="mt-auto pt-2">
+        <Skeleton className="h-10 w-full" />
+      </CardFooter>
+    </Card>
+  )
+}
+
+function ServiceRequestCtaSkeleton() {
+  return (
+    <div className="mb-8 p-8 bg-white rounded-2xl border-2 border-black shadow-2xl relative overflow-hidden">
+      <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
+        <div className="text-center md:text-left">
+          <Skeleton className="h-8 w-72 mb-3" />
+          <Skeleton className="h-5 w-full max-w-md" />
+        </div>
+        <Skeleton className="h-[58px] w-[210px] rounded-lg" />
+      </div>
+    </div>
+  )
+}
+
 function ServiceRequestsContent() {
-  const { user } = useAuth()
+  const { user, loading: authLoading } = useAuth()
   const { toast } = useToast()
   const searchParams = useSearchParams()
+  const [mounted, setMounted] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('All Categories')
   const [currentView, setCurrentView] = useState('all')
@@ -32,10 +95,17 @@ function ServiceRequestsContent() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [deleting, setDeleting] = useState<number | null>(null)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
   
   const serviceRequests = requests[currentView] || []
-  const isNGO = user?.user_type === 'ngo'
-  const canVolunteer = user?.user_type === 'individual' || user?.user_type === 'company'
+  const authReady = mounted && !authLoading
+  const isNGO = authReady && user?.user_type === 'ngo'
+  const canVolunteer = authReady && (user?.user_type === 'individual' || user?.user_type === 'company')
+  const showMyNeedsTab = isNGO
+  const showMyResponsesTab = canVolunteer
 
   useEffect(() => {
     const tab = searchParams.get('tab')
@@ -52,6 +122,19 @@ function ServiceRequestsContent() {
       setCurrentView('my-responses')
     }
   }, [searchParams])
+
+  useEffect(() => {
+    if (!authReady) return
+
+    if (currentView === 'my-requests' && !showMyNeedsTab) {
+      setCurrentView('all')
+      return
+    }
+
+    if (currentView === 'my-responses' && !showMyResponsesTab) {
+      setCurrentView('all')
+    }
+  }, [authReady, currentView, showMyNeedsTab, showMyResponsesTab])
 
   const deleteRequest = async (id: number) => {
     if (!user || !confirm('Delete this request? This cannot be undone.')) return
@@ -129,6 +212,10 @@ function ServiceRequestsContent() {
   }
 
   const filteredRequests = serviceRequests
+  const hasAcceptedApplicant = (request: any) => {
+    const count = Number(request?.accepted_volunteers_count ?? request?.volunteers_count ?? 0)
+    return Number.isFinite(count) && count > 0
+  }
 
   if (error) {
     return (
@@ -160,7 +247,7 @@ function ServiceRequestsContent() {
 
         {/* Create Service Request CTA */}
         {loading ? (
-          user && isNGO && <SkeletonCTA />
+          user && isNGO && <ServiceRequestCtaSkeleton />
         ) : user && isNGO && (
           <div className="mb-8 p-8 bg-white rounded-2xl border-2 border-black shadow-2xl relative overflow-hidden">
             
@@ -187,8 +274,16 @@ function ServiceRequestsContent() {
         <Tabs value={currentView} className="mb-8" onValueChange={handleTabChange}>
           <TabsList className="mb-6 inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground">
             <TabsTrigger value="all" className="min-w-[100px] whitespace-nowrap">All Needs</TabsTrigger>
-            {user && isNGO && <TabsTrigger value="my-requests" className="min-w-[100px] whitespace-nowrap">My Needs</TabsTrigger>}
-            {user && canVolunteer && <TabsTrigger value="my-responses" className="min-w-[100px] whitespace-nowrap">My Responses</TabsTrigger>}
+            {showMyNeedsTab && (
+              <TabsTrigger value="my-requests" className="min-w-[100px] whitespace-nowrap">
+                My Needs
+              </TabsTrigger>
+            )}
+            {showMyResponsesTab && (
+              <TabsTrigger value="my-responses" className="min-w-[100px] whitespace-nowrap">
+                My Applications
+              </TabsTrigger>
+            )}
           </TabsList>
           
           <div className="mb-6 grid gap-6 md:grid-cols-2">
@@ -225,7 +320,7 @@ function ServiceRequestsContent() {
               {loading ? (
                 <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
                   {Array.from({ length: 6 }).map((_, i) => (
-                    <SkeletonServiceCard key={i} />
+                    <ServiceRequestCardSkeleton key={i} />
                   ))}
                 </div>
               ) : filteredRequests.length > 0 ? (
@@ -256,7 +351,7 @@ function ServiceRequestsContent() {
                   type="request"
                   onDelete={() => deleteRequest(request.id)}
                   isDeleting={deleting === request.id}
-                  showDeleteButton={!!(user && isNGO && request.ngo_name === user?.name)}
+                  showDeleteButton={!!(user && isNGO && request.ngo_name === user?.name && !hasAcceptedApplicant(request))}
                   isOwner={!!(user && isNGO && request.ngo_name === user?.name)}
                   canInteract={true}
                 />
@@ -289,7 +384,7 @@ function ServiceRequestsContent() {
                   {loading ? (
                     <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
                       {Array.from({ length: 6 }).map((_, i) => (
-                        <SkeletonServiceCard key={i} />
+                        <ServiceRequestCardSkeleton key={i} />
                       ))}
                     </div>
                   ) : filteredRequests.length === 0 ? (
@@ -336,7 +431,7 @@ function ServiceRequestsContent() {
                         type="request"
                         onDelete={() => deleteRequest(request.id)}
                         isDeleting={deleting === request.id}
-                        showDeleteButton={true}
+                        showDeleteButton={!hasAcceptedApplicant(request)}
                         isOwner={true}
                         canInteract={true}
                       />
@@ -354,7 +449,7 @@ function ServiceRequestsContent() {
               {canVolunteer && (
                 <div className="mb-4 flex justify-between items-center">
                   <p className="text-sm text-muted-foreground">
-                    Your responses to NGO requests and their current status
+                    Your applications to NGO requests and their current status
                   </p>
                   <Button 
                     variant="outline" 
@@ -374,7 +469,7 @@ function ServiceRequestsContent() {
               {canVolunteer && loading ? (
                 <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
                   {Array.from({ length: 6 }).map((_, i) => (
-                    <SkeletonServiceCard key={i} />
+                    <ServiceRequestCardSkeleton key={i} />
                   ))}
                 </div>
               ) : canVolunteer && filteredRequests.length === 0 ? (
@@ -382,9 +477,9 @@ function ServiceRequestsContent() {
                   <div className="mb-4 rounded-full bg-muted p-3">
                     <HeartHandshake size={24} className="text-muted-foreground" />
                   </div>
-                  <h3 className="mb-1 text-lg font-semibold">No responses yet</h3>
+                  <h3 className="mb-1 text-lg font-semibold">No applications yet</h3>
                   <p className="mb-4 text-muted-foreground">
-                    You haven't responded to any NGO requests yet.
+                    You haven't applied to any NGO requests yet.
                   </p>
                   <Link href="/service-requests">
                     <Button variant="outline">
@@ -437,16 +532,35 @@ function ServiceRequestsContent() {
 export default function ServiceRequestsPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-gray-50">
+      <div className="flex min-h-screen flex-col">
         <Header />
-        <div className="container mx-auto px-4 py-8">
-          <SkeletonHeader />
-          <div className="mt-8 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <SkeletonServiceCard key={i} />
-            ))}
+        <main className="flex-1 px-6 py-8 md:px-10">
+          <div className="mb-8 flex flex-col gap-3">
+            <Skeleton className="h-9 w-64" />
+            <Skeleton className="h-5 w-full max-w-xl" />
           </div>
-        </div>
+
+          <ServiceRequestCtaSkeleton />
+
+          <div className="mb-8">
+            <div className="mb-6 inline-flex h-10 items-center gap-2 rounded-md bg-muted p-1">
+              <Skeleton className="h-8 w-24" />
+              <Skeleton className="h-8 w-24" />
+              <Skeleton className="h-8 w-28" />
+            </div>
+
+            <div className="mb-6 grid gap-6 md:grid-cols-2">
+              <Skeleton className="h-10" />
+              <Skeleton className="h-10" />
+            </div>
+
+            <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <ServiceRequestCardSkeleton key={i} />
+              ))}
+            </div>
+          </div>
+        </main>
       </div>
     }>
       <ServiceRequestsContent />

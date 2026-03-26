@@ -7,7 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
-import { Heart, MessageCircle, Share2, Eye, Loader2 } from 'lucide-react'
+import { ArrowLeft, Heart, MessageCircle, Share2, Eye, Loader2 } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { VerificationBadge } from '@/components/verification-badge'
 
@@ -187,19 +187,24 @@ export default function PostPage({ params }: PostPageProps) {
       <div className="min-h-screen bg-gray-50">
         <header className="border-b bg-white">
           <div className="container mx-auto px-4 py-4">
-            <Link 
-              href="/home" 
-              className="text-sm font-medium text-gray-600 hover:text-gray-900"
+            <button
+              type="button"
+              onClick={() => router.back()}
+              className="inline-flex items-center text-sm font-medium text-gray-600 hover:text-gray-900"
             >
-              ← Back to Feed
-            </Link>
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back
+            </button>
           </div>
         </header>
         <main className="container mx-auto px-4 py-8 max-w-2xl">
           <Card>
             <CardContent className="pt-6 text-center py-12">
               <p className="text-red-600 mb-4">{error || 'Post not found'}</p>
-              <Button onClick={() => router.back()}>Go Back</Button>
+              <Button onClick={() => router.back()} className="hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0">
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back
+              </Button>
             </CardContent>
           </Card>
         </main>
@@ -215,12 +220,14 @@ export default function PostPage({ params }: PostPageProps) {
       <header className="border-b bg-white">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center space-x-4">
-            <Link 
-              href="/home" 
-              className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
+            <button
+              type="button"
+              onClick={() => router.back()}
+              className="inline-flex items-center text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
             >
-              ← Back to Feed
-            </Link>
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back
+            </button>
             <h1 className="text-lg font-semibold">Post Details</h1>
           </div>
         </div>

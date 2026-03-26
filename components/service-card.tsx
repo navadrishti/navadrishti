@@ -7,7 +7,7 @@ import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ImageCarousel } from "@/components/ui/image-carousel"
 import { 
-  Star, MapPin, Calendar, Target, Clock, DollarSign, 
+  Star, MapPin, Calendar, Target, Clock, IndianRupee, 
   HeartHandshake, UserRound, Building, Users, Shield, 
   Edit, Eye, MoreVertical, Trash2, ArrowRight, User, Briefcase 
 } from "lucide-react"
@@ -80,6 +80,9 @@ interface ServiceCardProps {
   volunteer_application?: {
     status: string
     applied_at: string
+    response_meta?: {
+      ngo_decision_comment?: string | null
+    }
   }
 }
 
@@ -242,12 +245,40 @@ export function ServiceCard({
 
   const requirementsData = parseRequirements(requirements);
   const requestType = requirementsData?.request_type || category;
+  const isFinancialNeed = type === 'request' && String(requestType || '').toLowerCase().includes('financial');
   const beneficiaryCount = Number(requirementsData?.beneficiary_count || 0);
   const estimatedBudget = requirementsData?.estimated_budget || requirementsData?.budget;
+  const fundingTargetInr = isFinancialNeed ? Number(String(requirementsData?.funding_target_inr || estimatedBudget || '').replace(/[^\d.-]/g, '')) : 0;
+  const fundsRaisedInr = isFinancialNeed ? Number(String(requirementsData?.funds_raised_inr || 0).replace(/[^\d.-]/g, '')) : 0;
+  const fundingProgress = isFinancialNeed && Number.isFinite(fundingTargetInr) && fundingTargetInr > 0
+    ? Math.min(100, Math.round((Math.max(fundsRaisedInr, 0) / fundingTargetInr) * 100))
+    : 0;
+  const requestDeadline = timeline || deadline || requirementsData?.timeline;
+  const formattedRequestDeadline = String(requestDeadline || '').trim().toLowerCase() === 'anytime'
+    ? 'Anytime (No expiry)'
+    : requestDeadline;
   const impactScore = Number(impact_score || requirementsData?.impact_score || 0);
   const offerType = wage_info?.offer_type || category;
   const capacityLimit = wage_info?.capacity_limit;
   const coverageArea = wage_info?.coverage_area;
+
+  const formatInrValue = (value: unknown): string => {
+    if (value === null || value === undefined) return '';
+    const text = String(value).trim();
+    if (!text) return '';
+
+    // Keep existing labels like "Under INR 25,000" as-is.
+    if (/inr|₹/i.test(text)) return text;
+
+    // For numeric-like values, render with INR symbol and grouping.
+    const numericText = text.replace(/,/g, '');
+    const amount = Number(numericText);
+    if (Number.isFinite(amount)) {
+      return `₹${amount.toLocaleString('en-IN')}`;
+    }
+
+    return text;
+  };
   
   // Check if user types can interact
   const isNGO = user?.user_type === 'ngo';
@@ -321,6 +352,23 @@ export function ServiceCard({
           {description}
         </p>
 
+        {isFinancialNeed && Number.isFinite(fundingTargetInr) && fundingTargetInr > 0 && (
+          <div className="space-y-3 rounded-lg border p-4">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-semibold">Funding Progress</p>
+              <Badge className={status === 'completed' ? 'bg-green-100 text-green-800 border-green-200' : 'bg-blue-100 text-blue-800 border-blue-200'}>
+                {status === 'completed' ? 'Fulfilled' : `${fundingProgress}% Funded`}
+              </Badge>
+            </div>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
+              <div className="h-full bg-emerald-500" style={{ width: `${fundingProgress}%` }} />
+            </div>
+            <div className="text-xs text-gray-600">
+              INR {Math.max(fundsRaisedInr, 0).toLocaleString('en-IN')} raised of INR {fundingTargetInr.toLocaleString('en-IN')}
+            </div>
+          </div>
+        )}
+
         {/* Key Information Grid */}
         <div className="grid grid-cols-2 gap-3 pt-2">
           <div className="space-y-1">
@@ -355,10 +403,20 @@ export function ServiceCard({
           {type === 'request' && estimatedBudget && (
             <div className="space-y-1">
               <div className="flex items-center gap-1.5 text-gray-500">
-                <DollarSign size={14} />
+                <IndianRupee size={14} />
                 <span className="text-xs font-medium">Budget</span>
               </div>
-              <p className="text-sm font-semibold text-gray-900 truncate">{estimatedBudget}</p>
+              <p className="text-sm font-semibold text-gray-900 truncate">{formatInrValue(estimatedBudget)}</p>
+            </div>
+          )}
+
+          {type === 'request' && formattedRequestDeadline && (
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5 text-gray-500">
+                <Clock size={14} />
+                <span className="text-xs font-medium">Deadline</span>
+              </div>
+              <p className="text-sm font-semibold text-gray-900 truncate">{String(formattedRequestDeadline)}</p>
             </div>
           )}
 
@@ -396,7 +454,7 @@ export function ServiceCard({
           {type === 'offer' && wage_info && (wage_info.min_amount || wage_info.max_amount) && (
             <div className="space-y-1 col-span-2">
               <div className="flex items-center gap-1.5 text-gray-500">
-                <DollarSign size={14} />
+                <IndianRupee size={14} />
                 <span className="text-xs font-medium">Pricing</span>
               </div>
               <p className="text-sm font-bold text-green-700">
@@ -472,6 +530,12 @@ export function ServiceCard({
             >
               Application {volunteer_application.status}
             </Badge>
+            {volunteer_application.status === 'rejected' && volunteer_application.response_meta?.ngo_decision_comment && (
+              <div className="mt-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800 whitespace-pre-wrap">
+                <p className="font-semibold">Reason from NGO</p>
+                <p>{volunteer_application.response_meta.ngo_decision_comment}</p>
+              </div>
+            )}
           </div>
         )}
       </CardContent>
@@ -484,6 +548,15 @@ export function ServiceCard({
             <ArrowRight size={16} className="ml-2" />
           </Button>
         </Link>
+
+        {type === 'request' && isOwner && showDeleteButton && (
+          <Link href={`/service-requests/edit/${id}`} className="w-full">
+            <Button variant="outline" className="w-full font-medium">
+              <Edit size={14} className="mr-2" />
+              Edit Request
+            </Button>
+          </Link>
+        )}
 
         {/* Delete button for owners */}
         {showDeleteButton && onDelete && (

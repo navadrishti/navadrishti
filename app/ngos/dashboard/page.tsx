@@ -5,11 +5,12 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import ProtectedRoute from '@/components/protected-route';
 import { Header } from '@/components/header';
+import { VerificationBadge } from '@/components/verification-badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Clock, CheckCircle, AlertTriangle, HeartHandshake, Trash2, Plus, Building, TicketCheck, MailCheck, Phone, ShieldCheck } from 'lucide-react';
+import { Clock, CheckCircle, AlertTriangle, HeartHandshake, Trash2, Plus, Building, TicketCheck, MailCheck, Phone } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 import { SkeletonOrderItem } from '@/components/ui/skeleton';
@@ -290,12 +291,12 @@ function NGODashboardContent() {
                       <h3 className="text-lg font-semibold flex items-center gap-2">
                         <span>{user?.name || 'Your NGO Name'}</span>
                         {allVerified ? (
-                          <ShieldCheck className="h-4 w-4 text-green-600" />
+                          <VerificationBadge status="verified" size="sm" showText={false} />
                         ) : (
                           <>
                             {user?.email_verified && <MailCheck className="h-4 w-4 text-green-600" />}
                             {user?.phone_verified && <Phone className="h-4 w-4 text-green-600" />}
-                            {user?.verification_status === 'verified' && <ShieldCheck className="h-4 w-4 text-green-600" />}
+                            <VerificationBadge status={user?.verification_status || 'unverified'} size="sm" showText={false} />
                           </>
                         )}
                       </h3>
@@ -438,7 +439,7 @@ function NGODashboardContent() {
                       </Link>
                     </div>
                     <div className="rounded-md border">
-                      <div className="grid grid-cols-1 md:grid-cols-5 p-4 text-sm font-medium text-gray-500 border-b">
+                      <div className="grid grid-cols-1 md:grid-cols-[2fr_1.3fr_1fr_1fr_2.1fr] p-4 text-sm font-medium text-gray-500 border-b gap-3">
                         <div>Request</div>
                         <div>Category</div>
                         <div>Status</div>
@@ -460,9 +461,9 @@ function NGODashboardContent() {
                           </div>
                         ) : (
                           serviceRequests.map((request) => (
-                            <div key={request.id} className="grid grid-cols-1 md:grid-cols-5 p-4 text-sm items-center">
-                              <div className="font-medium">{request.title}</div>
-                              <div>{request.category}</div>
+                            <div key={request.id} className="grid grid-cols-1 md:grid-cols-[2fr_1.3fr_1fr_1fr_2.1fr] p-4 text-sm items-center gap-3">
+                              <div className="font-medium break-words">{request.title}</div>
+                              <div className="break-words">{request.category}</div>
                               <div>
                                 <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
                                   request.status === 'active' 
@@ -479,8 +480,8 @@ function NGODashboardContent() {
                                    request.status?.charAt(0).toUpperCase() + request.status?.slice(1) || 'Unknown'}
                                 </span>
                               </div>
-                              <div>{request.volunteers_count || 0} volunteers</div>
-                              <div className="flex justify-end gap-2">
+                              <div className="whitespace-nowrap">{request.volunteers_count || 0} volunteers</div>
+                              <div className="flex flex-wrap justify-end gap-2">
                                 <Link href={`/service-requests/${request.id}`}>
                                   <Button variant="ghost" size="sm">View</Button>
                                 </Link>

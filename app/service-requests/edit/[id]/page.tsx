@@ -24,9 +24,6 @@ const urgencyLevels = [
   { value: 'critical', label: 'Critical' }
 ]
 
-const evidenceRequiredOptions = ['basic_media', 'geo_tagged_photos', 'invoices_and_media', 'third_party_validation']
-const completionProofTypes = ['images', 'documents', 'milestone_report', 'audit_packet']
-
 export default function EditServiceRequestPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params)
   const router = useRouter()
@@ -47,8 +44,6 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
     estimated_budget: '',
     beneficiary_count: '1',
     impact_description: '',
-    evidence_required: 'basic_media',
-    completion_proof_type: 'images',
     contactInfo: 'email'
   })
 
@@ -95,13 +90,11 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
           category: req.category || '',
           location: req.location || '',
           urgency: req.urgency_level || 'medium',
-          timeline: requirements.timeline || '',
+          timeline: requirements.timeline || req.timeline || '',
           budget: requirements.budget || 'Not specified',
           estimated_budget: requirements.estimated_budget || '',
           beneficiary_count: String(requirements.beneficiary_count || 1),
           impact_description: requirements.impact_description || '',
-          evidence_required: requirements.evidence_required || 'basic_media',
-          completion_proof_type: requirements.completion_proof_type || 'images',
           contactInfo: requirements.contactInfo || 'email'
         })
       } catch {
@@ -179,10 +172,10 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
 
       <div className="container mx-auto px-4 py-8">
         <div className="mb-6">
-          <Link href="/service-requests?view=my-requests" className="inline-flex items-center text-blue-600 hover:text-blue-800">
+          <Button variant="ghost" onClick={() => router.back()} className="px-0 text-blue-600 hover:text-blue-800 hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0">
             <ArrowLeft size={20} className="mr-2" />
-            Back to My Requests
-          </Link>
+            Back
+          </Button>
         </div>
 
         <div className="max-w-2xl mx-auto">
@@ -272,38 +265,20 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="evidence_required">Evidence Required</Label>
-                    <Select value={formData.evidence_required} onValueChange={(value) => handleInput('evidence_required', value)}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {evidenceRequiredOptions.map((option) => (
-                          <SelectItem key={option} value={option}>
-                            {option.replaceAll('_', ' ')}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                <div>
+                  <Label htmlFor="timeline">Timeline / Deadline</Label>
+                  <div className="mt-2 flex gap-2">
+                    <Input
+                      id="timeline"
+                      value={formData.timeline}
+                      onChange={(e) => handleInput('timeline', e.target.value)}
+                      placeholder="e.g., 4 weeks"
+                    />
+                    <Button type="button" variant="outline" onClick={() => handleInput('timeline', 'Anytime')}>
+                      Anytime
+                    </Button>
                   </div>
-
-                  <div>
-                    <Label htmlFor="completion_proof_type">Completion Proof Type</Label>
-                    <Select value={formData.completion_proof_type} onValueChange={(value) => handleInput('completion_proof_type', value)}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {completionProofTypes.map((option) => (
-                          <SelectItem key={option} value={option}>
-                            {option.replaceAll('_', ' ')}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">Selecting Anytime means this request has no expiry.</p>
                 </div>
 
                 <div className="flex gap-4 pt-4">

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Image from 'next/image';
 
 interface StickyFooterProps {
   className?: string;
@@ -81,7 +82,17 @@ export function StickyFooter({
           <a href="/privacy" className={linkClassName}>Privacy & Terms</a>
           <a href="/advertising" className={linkClassName}>Advertising</a>
           <a href="/contact" className={linkClassName}>Contact</a>
-          <span className={mutedTextClassName}>© 2026 Navadrishti</span>
+          <span className={`inline-flex items-center gap-2 ${mutedTextClassName}`}>
+            © 2026
+            <Image
+              src="/photos/small-logo.svg"
+              alt="Navadrishti logo"
+              width={14}
+              height={14}
+              className="h-3.5 w-3.5"
+            />
+            Navadrishti
+          </span>
         </div>
       </footer>
     </div>

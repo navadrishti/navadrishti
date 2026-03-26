@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+import { VerificationBadge } from '@/components/verification-badge';
 import Link from 'next/link';
 import type { VerificationCaseListItem } from '@/lib/types/verification';
 
@@ -311,7 +312,9 @@ export default function CACasesPage() {
                   <div className="text-right">
                     <div className="text-sm">
                       {case_.status === 'ca_approved' ? (
-                        <div className="text-green-600 font-semibold text-lg">✓ Verified</div>
+                        <div className="flex justify-end">
+                          <VerificationBadge status="verified" size="sm" showText={true} />
+                        </div>
                       ) : (
                         <div className="text-orange-600 font-semibold text-lg">✗ Rejected</div>
                       )}

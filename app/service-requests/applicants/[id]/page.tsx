@@ -221,9 +221,10 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
         <div className="container mx-auto px-4 py-8">
           <div className="text-center">
             <h1 className="text-2xl font-bold mb-4">Request Not Found</h1>
-            <Link href="/service-requests">
-              <Button>Back to Requests</Button>
-            </Link>
+            <Button onClick={() => router.back()} className="hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back
+            </Button>
           </div>
         </div>
       </div>
@@ -241,10 +242,10 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
       
       <div className="container mx-auto px-4 py-8">
         <div className="mb-6">
-          <Link href="/service-requests?view=my-requests" className="inline-flex items-center text-blue-600 hover:text-blue-800">
+          <Button variant="ghost" onClick={() => router.back()} className="px-0 text-blue-600 hover:text-blue-800 hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0">
             <ArrowLeft size={20} className="mr-2" />
-            Back to My Requests
-          </Link>
+            Back
+          </Button>
         </div>
 
         {/* Request Details Card */}

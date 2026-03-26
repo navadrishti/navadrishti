@@ -123,10 +123,10 @@ export default function CreateServiceOfferPage() {
 
         <div className="max-w-3xl mx-auto p-6">
           <div className="mb-8">
-            <Link href="/service-offers" className="inline-flex items-center text-blue-600 hover:text-blue-700 mb-4">
+            <Button variant="ghost" onClick={() => router.back()} className="mb-4 px-0 text-blue-600 hover:text-blue-700 hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0">
               <ArrowLeft size={18} className="mr-2" />
-              Back to Capability Offers
-            </Link>
+              Back
+            </Button>
             <h1 className="text-3xl font-bold text-gray-900">Create Capability Offer</h1>
             <p className="text-gray-600 mt-2">Publish what you can fund, supply, execute, or support.</p>
           </div>

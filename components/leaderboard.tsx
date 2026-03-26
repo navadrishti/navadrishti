@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -97,7 +98,11 @@ export function Leaderboard() {
             <p className="text-sm text-gray-500 text-center py-4">No contributors yet. Be the first to contribute!</p>
           ) : (
             contributors.map((contributor, index) => (
-            <div key={contributor.id} className="flex items-center gap-3">
+            <Link
+              key={contributor.id}
+              href={`/profile/${contributor.id}`}
+              className="group flex items-center gap-3 transition-colors"
+            >
               <div className="flex-shrink-0 w-8 text-center">
                 <span className="text-sm font-semibold text-gray-500">#{index + 1}</span>
               </div>
@@ -108,14 +113,14 @@ export function Leaderboard() {
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-black truncate">
+                <p className="text-sm font-medium text-black truncate transition-colors group-hover:text-blue-600">
                   {contributor.name}
                 </p>
                 <p className="text-xs text-gray-600">
                   {contributor.contributions} {contributor.contributions === 1 ? 'contribution' : 'contributions'}
                 </p>
               </div>
-            </div>
+            </Link>
           )))}
         </div>
       </CardContent>

@@ -11,10 +11,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { useAuth } from '@/lib/auth-context'
+import { useOtpSender } from '@/hooks/use-otp-sender'
 import { Shield, Settings, User } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { VerificationBadge, VerificationDetails } from '@/components/verification-badge'
+
+type FormErrors = Record<string, string>;
 
 export default function ProfilePage() {
   const { user, updateUser, refreshUser } = useAuth();
@@ -55,6 +58,12 @@ export default function ProfilePage() {
   const [editableEmail, setEditableEmail] = useState('');
   const [editableName, setEditableName] = useState('');
   const [ngoSize, setNgoSize] = useState('');
+  const [formErrors, setFormErrors] = useState<FormErrors>({});
+  const [otpInput, setOtpInput] = useState({ email: '', phone: '' });
+  const { otpSending, otpSent, otpCooldown, otpVerifying, otpVerified, handleSendEmailOtp, handleVerifyEmailOtp, handleSendPhoneOtp, resetEmailOtpState } = useOtpSender(setFormErrors);
+  const resolvedEmailVerified = typeof profile?.email_verified === 'boolean' ? profile.email_verified : !!user?.email_verified;
+  const resolvedPhoneVerified = typeof profile?.phone_verified === 'boolean' ? profile.phone_verified : !!user?.phone_verified;
+  const resolvedVerificationStatus = profile?.verification_status || user?.verification_status || 'unverified';
 
   useEffect(() => {
     setMounted(true);
@@ -66,6 +75,11 @@ export default function ProfilePage() {
       fetchVerificationStatus();
     }
   }, [user]);
+
+  useEffect(() => {
+    resetEmailOtpState();
+    setOtpInput((prev) => ({ ...prev, email: '' }));
+  }, [editableEmail, resetEmailOtpState]);
 
   const fetchProfile = async () => {
     try {
@@ -639,18 +653,42 @@ export default function ProfilePage() {
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium">Mobile Number Verification</span>
                         <VerificationBadge
-                          status={user?.phone_verified ? 'verified' : 'unverified'}
+                          status={resolvedPhoneVerified ? 'verified' : 'unverified'}
                           size="sm"
                           showText={false}
                         />
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        {user?.phone ? `Phone: ${user.phone}` : 'Add a phone number in your profile settings.'}
+                        {(phone || user?.phone) ? `Phone: ${phone || user?.phone}` : 'Add a phone number in your profile settings.'}
                       </p>
-                      {!user?.phone_verified && (
-                        <Button type="button" variant="outline" size="sm" className="w-full" disabled>
-                          Verify Mobile Number
-                        </Button>
+                      {!resolvedPhoneVerified && (
+                        <>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="w-full"
+                            disabled
+                          >
+                            Verify Mobile Number
+                          </Button>
+                          {formErrors.phone && <p className="text-sm text-red-500">{formErrors.phone}</p>}
+                          {otpSent.phone && <p className="text-sm text-green-600">OTP sent to your phone</p>}
+                          {otpSent.phone && (
+                            <div className="space-y-2">
+                              <Label htmlFor="profilePhoneOtp">Phone OTP</Label>
+                              <Input
+                                id="profilePhoneOtp"
+                                value={otpInput.phone}
+                                onChange={(e) => setOtpInput((prev) => ({ ...prev, phone: e.target.value }))}
+                                placeholder="Enter OTP"
+                              />
+                              <p className="text-xs text-muted-foreground">
+                                Phone OTP verification API is pending. OTP send flow is active.
+                              </p>
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
 
@@ -658,18 +696,102 @@ export default function ProfilePage() {
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium">Email Verification</span>
                         <VerificationBadge
-                          status={user?.email_verified ? 'verified' : 'unverified'}
+                          status={resolvedEmailVerified ? 'verified' : 'unverified'}
                           size="sm"
                           showText={false}
                         />
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        Email: {user?.email || 'No email found'}
+                        Email: {editableEmail || user?.email || 'No email found'}
                       </p>
-                      {!user?.email_verified && (
-                        <Button type="button" variant="outline" size="sm" className="w-full" disabled>
-                          Verify Email (UI Only)
-                        </Button>
+                      {!resolvedEmailVerified && (
+                        <>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="w-full"
+                            onClick={() => handleSendEmailOtp(editableEmail || user?.email || '')}
+                            disabled={otpSending.email || otpCooldown.email > 0}
+                          >
+                            {otpSending.email
+                              ? 'Sending...'
+                              : otpCooldown.email > 0
+                                ? `Resend in ${otpCooldown.email}s`
+                                : otpSent.email
+                                  ? 'Resend OTP'
+                                  : 'Verify Email'}
+                          </Button>
+                          {formErrors.email && <p className="text-sm text-red-500">{formErrors.email}</p>}
+                          {otpSent.email && <p className="text-sm text-green-600">OTP sent to your email</p>}
+                          {otpSent.email && (
+                            <div className="space-y-2">
+                              <Label htmlFor="profileEmailOtp">Email OTP</Label>
+                              <div className="flex gap-2">
+                                <Input
+                                  id="profileEmailOtp"
+                                  value={otpInput.email}
+                                  onChange={(e) => {
+                                    const value = e.target.value;
+                                    setOtpInput((prev) => ({ ...prev, email: value }));
+                                    if (formErrors.emailOtp) {
+                                      setFormErrors((prev) => {
+                                        const nextErrors = { ...prev };
+                                        delete nextErrors.emailOtp;
+                                        return nextErrors;
+                                      });
+                                    }
+                                  }}
+                                  placeholder="Enter OTP"
+                                />
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  onClick={async () => {
+                                    const verified = await handleVerifyEmailOtp(editableEmail || user?.email || '', otpInput.email);
+                                    if (verified) {
+                                      const verifiedAt = new Date().toISOString();
+                                      const persistResponse = await fetch('/api/profile/update', {
+                                        method: 'POST',
+                                        headers: {
+                                          'Content-Type': 'application/json'
+                                        },
+                                        body: JSON.stringify({
+                                          userId: user?.id,
+                                          email_verified: true,
+                                          email_verified_at: verifiedAt
+                                        })
+                                      });
+
+                                      if (!persistResponse.ok) {
+                                        toast.error('Email OTP verified but failed to persist status. Please refresh and try again.');
+                                        return;
+                                      }
+
+                                      updateUser({
+                                        email: editableEmail || user?.email,
+                                        email_verified: true,
+                                        email_verified_at: verifiedAt
+                                      });
+                                      setProfile((prev: any) => ({
+                                        ...(prev || {}),
+                                        email_verified: true,
+                                        email_verified_at: verifiedAt
+                                      }));
+                                      await fetchProfile();
+                                      toast.success('Email verified successfully.');
+                                    }
+                                  }}
+                                  disabled={otpVerifying.email}
+                                >
+                                  {otpVerifying.email ? 'Verifying...' : 'Verify OTP'}
+                                </Button>
+                              </div>
+                              {formErrors.emailOtp && <p className="text-sm text-red-500">{formErrors.emailOtp}</p>}
+                              {otpVerified.email && <p className="text-sm text-green-600">Email OTP verified</p>}
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
 
@@ -677,7 +799,7 @@ export default function ProfilePage() {
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium">Document Verification</span>
                         <VerificationBadge
-                          status={user?.verification_status || 'unverified'}
+                          status={resolvedVerificationStatus}
                           size="sm"
                           showText={false}
                         />
@@ -685,7 +807,7 @@ export default function ProfilePage() {
                       <p className="text-xs text-muted-foreground">
                         Complete identity verification from the verification dashboard.
                       </p>
-                      {user?.verification_status !== 'verified' && (
+                      {resolvedVerificationStatus !== 'verified' && (
                         <Link href={`/verification?userType=${user?.user_type}`} className="block">
                           <Button type="button" variant="default" size="sm" className="w-full">
                             Open Verification Dashboard

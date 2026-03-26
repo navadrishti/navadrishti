@@ -37,7 +37,7 @@ export async function PUT(
     const requestId = parseInt(id);
     const volId = parseInt(volunteerId);
     const body = await request.json();
-    const { status } = body;
+    const { status, decisionComment } = body;
 
     // Validate status
     const validStatuses = ['pending', 'accepted', 'rejected', 'active', 'completed', 'cancelled'];
@@ -68,8 +68,37 @@ export async function PUT(
       return NextResponse.json({ error: 'Volunteer not found for this request' }, { status: 404 });
     }
 
-    // Update volunteer status using Supabase helper
-    const updatedVolunteer = await db.serviceVolunteers.updateStatus(volId, status);
+    const commentText = typeof decisionComment === 'string' ? decisionComment.trim() : '';
+    if (commentText.length > 500) {
+      return NextResponse.json({ error: 'Decision comment must be 500 characters or fewer' }, { status: 400 });
+    }
+
+    const existingMeta =
+      volunteerApplication.response_meta && typeof volunteerApplication.response_meta === 'object'
+        ? volunteerApplication.response_meta
+        : {};
+
+    const nextMeta = {
+      ...existingMeta,
+      ngo_decision_comment: status === 'rejected' ? commentText : null,
+      ngo_decision_at: new Date().toISOString()
+    };
+
+    const { data: updatedVolunteer, error: updateError } = await supabase
+      .from('service_volunteers')
+      .update({
+        status,
+        response_meta: nextMeta,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', volId)
+      .eq('service_request_id', requestId)
+      .select('*')
+      .single();
+
+    if (updateError || !updatedVolunteer) {
+      return NextResponse.json({ error: 'Failed to update volunteer status' }, { status: 500 });
+    }
 
     return NextResponse.json({
       success: true,

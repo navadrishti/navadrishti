@@ -27,15 +27,6 @@ const budgetRanges = [
   'Negotiable'
 ]
 
-const evidenceRequiredOptions = [
-  'basic_media',
-  'geo_tagged_photos',
-  'invoices_and_media',
-  'third_party_validation'
-]
-
-const completionProofTypes = ['images', 'documents', 'milestone_report', 'audit_packet']
-
 export default function CreateServiceRequestPage() {
   const router = useRouter()
   const { user } = useAuth()
@@ -53,8 +44,6 @@ export default function CreateServiceRequestPage() {
     estimated_budget: '',
     beneficiary_count: '',
     impact_description: '',
-    evidence_required: 'basic_media',
-    completion_proof_type: 'images',
     contactInfo: ''
   })
 
@@ -119,13 +108,13 @@ export default function CreateServiceRequestPage() {
 
         <main className="flex-1 px-6 py-8 md:px-10">
           <div className="mb-8">
-            <Link href="/service-requests" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-4">
-              <ArrowLeft size={16} />
-              Back to NGO Requests
-            </Link>
+            <Button variant="ghost" onClick={() => router.back()} className="mb-4 px-0 text-sm text-muted-foreground hover:text-foreground hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0">
+              <ArrowLeft size={16} className="mr-2" />
+              Back
+            </Button>
 
             <h1 className="text-3xl font-bold tracking-tight">Create NGO Request</h1>
-            <p className="text-muted-foreground">Define a measurable need with evidence and closure requirements.</p>
+            <p className="text-muted-foreground">Define a measurable need with clear beneficiary and impact outcomes.</p>
           </div>
 
           <div className="max-w-3xl mx-auto">
@@ -257,43 +246,21 @@ export default function CreateServiceRequestPage() {
                       />
                     </div>
 
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div>
-                        <Label htmlFor="evidence_required">Evidence Required</Label>
-                        <Select value={formData.evidence_required} onValueChange={(value) => handleSelect('evidence_required', value)}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select evidence type" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {evidenceRequiredOptions.map((option) => (
-                              <SelectItem key={option} value={option}>
-                                {option.replaceAll('_', ' ')}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div>
-                        <Label htmlFor="completion_proof_type">Completion Proof Type</Label>
-                        <Select value={formData.completion_proof_type} onValueChange={(value) => handleSelect('completion_proof_type', value)}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select proof type" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {completionProofTypes.map((option) => (
-                              <SelectItem key={option} value={option}>
-                                {option.replaceAll('_', ' ')}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
                     <div>
                       <Label htmlFor="timeline">Timeline / Deadline</Label>
-                      <Input id="timeline" name="timeline" value={formData.timeline} onChange={handleInput} placeholder="e.g., 4 weeks" />
+                      <div className="mt-2 flex gap-2">
+                        <Input
+                          id="timeline"
+                          name="timeline"
+                          value={formData.timeline}
+                          onChange={handleInput}
+                          placeholder="e.g., 4 weeks"
+                        />
+                        <Button type="button" variant="outline" onClick={() => handleSelect('timeline', 'Anytime')}>
+                          Anytime
+                        </Button>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">Selecting Anytime means this request has no expiry.</p>
                     </div>
 
                     <div>

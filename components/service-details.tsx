@@ -4,9 +4,10 @@ import React from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ImageCarousel } from "@/components/ui/image-carousel"
+import { VerificationBadge } from "@/components/verification-badge"
 import { 
-  MapPin, DollarSign, Clock, Calendar, Users, Building, User, 
-  HeartHandshake, Shield, Star, Target, Info, Package 
+  MapPin, IndianRupee, Clock, Calendar, Users, Building, User, 
+  HeartHandshake, Star, Target, Info, Package 
 } from "lucide-react"
 import { formatPrice } from "@/lib/utils"
 
@@ -51,6 +52,23 @@ interface ServiceDetailsProps {
   timeline?: string
   deadline?: string
   requirements?: string | object
+  requester_profile?: {
+    id?: number
+    name?: string
+    email?: string
+    user_type?: string
+    location?: string
+    city?: string
+    state_province?: string
+    country?: string
+    phone?: string
+    pincode?: string
+    ngo_size?: string
+    profile_image?: string
+    profile_data?: Record<string, any>
+    industry?: string
+    verification_status?: string
+  }
   
   type: 'request' | 'offer'
 }
@@ -81,6 +99,7 @@ export function ServiceDetails({
   timeline,
   deadline,
   requirements,
+  requester_profile,
   type
 }: ServiceDetailsProps) {
 
@@ -145,14 +164,54 @@ export function ServiceDetails({
   const requestType = requirementsData?.request_type || category;
   const beneficiaryCount = Number(requirementsData?.beneficiary_count || 0);
   const estimatedBudget = requirementsData?.estimated_budget || requirementsData?.budget;
+  const requestDeadline = deadline || timeline || requirementsData?.timeline;
   const impactDescription = requirementsData?.impact_description;
-  const evidenceRequired = requirementsData?.evidence_required;
-  const completionProofType = requirementsData?.completion_proof_type;
   const offerType = (type === 'offer' ? (wage_info as any)?.offer_type : null) || category;
   const capacityLimit = (wage_info as any)?.capacity_limit;
   const coverageArea = (wage_info as any)?.coverage_area;
   const categoryFocus = (wage_info as any)?.category_focus;
   const validityPeriod = (wage_info as any)?.validity_period;
+  const providerLabel = providerType === 'ngo' ? 'Non-Profit Organization' : providerType;
+  const requesterProfileData = requester_profile?.profile_data || {};
+  const requesterEmail = requester_profile?.email || 'Email not set';
+  const requesterPhone = requester_profile?.phone || 'Phone not set';
+  const requesterImage = requester_profile?.profile_image;
+  const requesterPincode = requester_profile?.pincode || 'Pincode not set';
+  const requesterSector = String(
+    requesterProfileData.sector || requester_profile?.industry || 'Sector not set'
+  );
+  const requesterFounded = String(
+    requesterProfileData.founded || requesterProfileData.founded_year || 'Founded year not set'
+  );
+  const requesterOrgSize = String(
+    requester_profile?.ngo_size || requesterProfileData.ngo_size || requesterProfileData.organization_size || 'NGO size not set'
+  );
+  const requesterLocation = requester_profile?.city && requester_profile?.state_province
+    ? `${requester_profile.city}, ${requester_profile.state_province}${requester_profile.country ? `, ${requester_profile.country}` : ''}`
+    : requester_profile?.location || location || 'Location not set';
+  const formattedCreatedDate = new Date(created_at).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+  const requestExtraRequirements = type === 'request' && requirementsData && typeof requirementsData === 'object'
+    ? Object.entries(requirementsData).filter(([key, value]) => {
+        const normalized = key.toLowerCase();
+        return (
+          ![
+            'budget',
+            'estimated_budget',
+            'beneficiary_count',
+            'impact_description',
+            'timeline',
+            'request_type',
+            'contactinfo',
+            'evidence_required',
+            'completion_proof_type'
+          ].includes(normalized) && Boolean(value)
+        );
+      })
+    : [];
 
   const getProviderIcon = (type: string) => {
     switch (type) {
@@ -178,6 +237,249 @@ export function ServiceDetails({
         return 'text-blue-600 bg-blue-50 border-blue-200';
     }
   };
+
+  if (type === 'request') {
+    return (
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
+        <div className="lg:col-span-2 space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                {getProviderIcon(providerType)}
+                Requesting Organization
+              </CardTitle>
+            </CardHeader>
+
+            <CardContent className="space-y-4">
+              <div className="h-28 w-28 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden mx-auto">
+                {requesterImage ? (
+                  <img src={requesterImage} alt={ngo_name} className="w-full h-full object-cover" />
+                ) : (
+                  <Building className="h-12 w-12 text-gray-400" />
+                )}
+              </div>
+
+              <div>
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <span>{ngo_name}</span>
+                  <VerificationBadge status={verified ? 'verified' : 'unverified'} size="sm" showText={false} />
+                </h3>
+                <p className="text-sm text-gray-500">{requesterEmail}</p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 text-sm">
+                <div>
+                  <p className="font-medium text-gray-500">Location</p>
+                  <p>{requesterLocation}</p>
+                </div>
+
+                <div>
+                  <p className="font-medium text-gray-500">Phone</p>
+                  <p>{requesterPhone}</p>
+                </div>
+
+                <div>
+                  <p className="font-medium text-gray-500">NGO Size</p>
+                  <p>{requesterOrgSize}</p>
+                </div>
+
+                <div>
+                  <p className="font-medium text-gray-500">Sector</p>
+                  <p>{requesterSector}</p>
+                </div>
+
+                <div>
+                  <p className="font-medium text-gray-500">Founded Year</p>
+                  <p>{requesterFounded}</p>
+                </div>
+
+                <div>
+                  <p className="font-medium text-gray-500">Pincode</p>
+                  <p>{requesterPincode}</p>
+                </div>
+              </div>
+
+              <div className="bg-gray-50 rounded-lg p-3 space-y-2">
+                <p className="text-sm text-gray-600">
+                  <strong>Posted:</strong> {formattedCreatedDate}
+                </p>
+                <p className="text-sm text-gray-600">
+                  <strong>Type:</strong> {providerLabel}
+                </p>
+                {contact_info && (
+                  <p className="text-sm text-gray-600 break-words">
+                    <strong>Contact:</strong> {contact_info}
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="lg:col-span-3 space-y-6">
+          {imageArray.length > 0 && (
+            <Card>
+              <CardContent className="p-0">
+                <div className="aspect-video overflow-hidden rounded-t-lg">
+                  <ImageCarousel
+                    images={imageArray}
+                    alt={title}
+                    className="h-full w-full"
+                    showThumbnails={true}
+                    autoplay={false}
+                    showImageCount={true}
+                    enableKeyboardNav={true}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          <Card>
+            <CardHeader>
+              <div className="flex items-start gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl shadow-md bg-blue-600">
+                  <HeartHandshake size={20} className="text-white" />
+                </div>
+
+                <div className="flex-1">
+                  <CardTitle className="text-2xl mb-2">{title}</CardTitle>
+                  <CardDescription className="text-base">Need Description</CardDescription>
+                </div>
+
+                {(urgency_level || priority) && (
+                  <Badge className={`${getPriorityColor(urgency_level || priority)} font-semibold`}>
+                    {(urgency_level || priority || 'normal').toUpperCase()} PRIORITY
+                  </Badge>
+                )}
+              </div>
+            </CardHeader>
+
+            <CardContent>
+              <div className="bg-gray-50 rounded-lg p-4">
+                <p className="text-gray-700 leading-relaxed">{description}</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Package size={18} className="text-blue-500" />
+                Complete Request Information
+              </CardTitle>
+            </CardHeader>
+
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-blue-50 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Target size={16} className="text-blue-600" />
+                    <span className="text-sm font-medium text-blue-700">Request Type</span>
+                  </div>
+                  <p className="font-semibold text-blue-800">{requestType}</p>
+                </div>
+
+                <div className="bg-violet-50 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Info size={16} className="text-violet-600" />
+                    <span className="text-sm font-medium text-violet-700">Category</span>
+                  </div>
+                  <p className="font-semibold text-violet-800">{category}</p>
+                </div>
+
+                {location && (
+                  <div className="bg-purple-50 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <MapPin size={16} className="text-purple-600" />
+                      <span className="text-sm font-medium text-purple-700">Location</span>
+                    </div>
+                    <p className="font-semibold text-purple-800">{location}</p>
+                  </div>
+                )}
+
+                {requestDeadline && String(requestDeadline) !== 'Not specified' && (
+                  <div className="bg-orange-50 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Calendar size={16} className="text-orange-600" />
+                      <span className="text-sm font-medium text-orange-700">Deadline</span>
+                    </div>
+                    <p className="font-semibold text-orange-800">{String(requestDeadline)}</p>
+                  </div>
+                )}
+
+                {estimatedBudget && (
+                  <div className="bg-green-50 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <IndianRupee size={16} className="text-green-600" />
+                      <span className="text-sm font-medium text-green-700">Estimated Budget</span>
+                    </div>
+                    <p className="font-semibold text-green-800">{estimatedBudget}</p>
+                  </div>
+                )}
+
+                {beneficiaryCount > 0 && (
+                  <div className="bg-indigo-50 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Users size={16} className="text-indigo-600" />
+                      <span className="text-sm font-medium text-indigo-700">Beneficiaries</span>
+                    </div>
+                    <p className="font-semibold text-indigo-800">{beneficiaryCount}</p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {impactDescription && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Impact Description</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground bg-gray-50 rounded-lg p-3">{impactDescription}</p>
+              </CardContent>
+            </Card>
+          )}
+
+          {tagArray.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Required Skills</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-2">
+                  {tagArray.map((tag, index) => (
+                    <Badge key={index} variant="secondary" className="bg-purple-100 text-purple-700 border-purple-200 hover:bg-purple-200">
+                      {tag}
+                    </Badge>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {requestExtraRequirements.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Additional Requirements</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                  {requestExtraRequirements.map(([key, value]) => (
+                    <div key={key}>
+                      <span className="font-medium text-gray-700 capitalize">{key.replace('_', ' ')}:</span>
+                      <span className="text-gray-600 ml-2">{String(value)}</span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -251,7 +553,7 @@ export function ServiceDetails({
                 {type === 'offer' && price_amount ? (
                   <>
                     <div className="text-2xl font-bold text-green-600 flex items-center">
-                      <DollarSign className="h-5 w-5" />
+                      <IndianRupee className="h-5 w-5" />
                       {formatPrice(price_amount)}
                     </div>
                     <div className="text-sm text-muted-foreground">{price_type} pricing</div>
@@ -316,13 +618,13 @@ export function ServiceDetails({
                 )}
                 
                 {/* Service Request - Deadline */}
-                {type === 'request' && deadline && !String(deadline).includes('T') && !String(deadline).includes('Z') && (
+                {type === 'request' && requestDeadline && String(requestDeadline) !== 'Not specified' && (
                   <div className="bg-orange-50 rounded-lg p-4">
                     <div className="flex items-center gap-2 mb-2">
                       <Calendar size={16} className="text-orange-600" />
                       <span className="text-sm font-medium text-orange-700">Deadline</span>
                     </div>
-                    <p className="font-semibold text-orange-800">{deadline}</p>
+                    <p className="font-semibold text-orange-800">{String(requestDeadline)}</p>
                   </div>
                 )}
                 
@@ -330,7 +632,7 @@ export function ServiceDetails({
                 {type === 'request' && estimatedBudget && (
                   <div className="bg-green-50 rounded-lg p-4">
                     <div className="flex items-center gap-2 mb-2">
-                      <DollarSign size={16} className="text-green-600" />
+                      <IndianRupee size={16} className="text-green-600" />
                       <span className="text-sm font-medium text-green-700">Estimated Budget</span>
                     </div>
                     <p className="font-semibold text-green-800">{estimatedBudget}</p>
@@ -388,7 +690,7 @@ export function ServiceDetails({
             </div>
 
             {/* Additional Information */}
-            {((type === 'offer' && (price_description || categoryFocus || validityPeriod)) || (type === 'request' && (timeline || impactDescription || evidenceRequired || completionProofType)) || contact_info) && (
+            {((type === 'offer' && (price_description || categoryFocus || validityPeriod)) || (type === 'request' && (timeline || impactDescription)) || contact_info) && (
               <div>
                 <h3 className="font-semibold mb-3">Additional Information</h3>
                 <div className="space-y-3">
@@ -410,20 +712,6 @@ export function ServiceDetails({
                     <div>
                       <h4 className="font-medium mb-2 text-gray-900">Impact Description</h4>
                       <p className="text-muted-foreground bg-gray-50 rounded-lg p-3">{impactDescription}</p>
-                    </div>
-                  )}
-
-                  {type === 'request' && evidenceRequired && (
-                    <div>
-                      <h4 className="font-medium mb-2 text-gray-900">Evidence Required</h4>
-                      <p className="text-muted-foreground bg-gray-50 rounded-lg p-3">{String(evidenceRequired).replaceAll('_', ' ')}</p>
-                    </div>
-                  )}
-
-                  {type === 'request' && completionProofType && (
-                    <div>
-                      <h4 className="font-medium mb-2 text-gray-900">Completion Proof Type</h4>
-                      <p className="text-muted-foreground bg-gray-50 rounded-lg p-3">{String(completionProofType).replaceAll('_', ' ')}</p>
                     </div>
                   )}
 
@@ -477,7 +765,7 @@ export function ServiceDetails({
                 <h3 className="font-semibold mb-3">Requirements</h3>
                 <div className="bg-gray-50 rounded-lg p-4 space-y-3">
                   {Object.entries(requirementsData).filter(([key, value]) => 
-                    key !== 'budget' && value
+                    key !== 'budget' && key !== 'evidence_required' && key !== 'completion_proof_type' && value
                   ).map(([key, value]) => (
                     <div key={key}>
                       <span className="font-medium text-gray-700 capitalize">
@@ -523,8 +811,8 @@ export function ServiceDetails({
             
             {verified && (
               <div className="flex items-center gap-2 bg-green-50 rounded-lg p-3">
-                <Shield size={16} className="text-green-600" />
-                <span className="text-sm font-medium text-green-700">Verified Organization</span>
+                <VerificationBadge status="verified" size="sm" showText={false} />
+                <span className="text-sm font-medium text-green-700">Verified</span>
               </div>
             )}
             

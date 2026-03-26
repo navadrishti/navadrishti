@@ -295,10 +295,10 @@ export default function ServiceOfferDetailPage() {
       
       <div className="container mx-auto px-4 py-8">
         <div className="mb-6">
-          <Link href="/service-offers" className="inline-flex items-center text-blue-600 hover:text-blue-800">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Service Offers
-          </Link>
+          <Button variant="ghost" onClick={() => router.back()} className="px-0 text-blue-600 hover:text-blue-800 hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back
+          </Button>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

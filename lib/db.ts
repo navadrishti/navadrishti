@@ -164,7 +164,7 @@ export const db = {
       if (data && data.ngo_id) {
         const { data: requester } = await supabase
           .from('users')
-          .select('id, name, email, user_type, location, verification_status')
+          .select('id, name, email, user_type, location, city, state_province, country, phone, pincode, ngo_size, profile_image, profile_data, industry, verification_status')
           .eq('id', data.ngo_id)
           .single();
         

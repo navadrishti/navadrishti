@@ -478,16 +478,14 @@ export function Header() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-64">
                   <DropdownMenuLabel>{user.name}</DropdownMenuLabel>
-                  <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
-                    {user.email} • {user.user_type.charAt(0).toUpperCase() + user.user_type.slice(1)}
-                  </DropdownMenuLabel>
-                  <div className="px-2 py-1">
+                  <DropdownMenuLabel className="text-xs text-muted-foreground font-normal flex items-center gap-1.5">
+                    <span>{user.email} • {user.user_type.charAt(0).toUpperCase() + user.user_type.slice(1)}</span>
                     <VerificationBadge 
                       status={user.verification_status || 'unverified'} 
                       size="sm" 
                       showText={false}
                     />
-                  </div>
+                  </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <Link href="/profile">
                     <DropdownMenuItem>Profile</DropdownMenuItem>

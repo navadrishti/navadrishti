@@ -50,11 +50,8 @@ function computeImpactScore(request: any): number {
 function computeProofStrength(request: any): number {
   let score = 0;
   const images = Array.isArray(request.images) ? request.images : [];
-  const requirements = safeParseJson(request.requirements);
 
   if (images.length > 0) score += Math.min(30, images.length * 10);
-  if (requirements.evidence_required) score += 35;
-  if (requirements.completion_proof_type) score += 35;
 
   return Math.max(0, Math.min(100, score));
 }
@@ -181,8 +178,6 @@ export async function GET(request: NextRequest) {
       request.estimated_budget = request.estimated_budget != null ? String(request.estimated_budget) : (requirementsObj.estimated_budget || requirementsObj.budget || 'Not specified');
       request.beneficiary_count = request.beneficiary_count != null ? Number(request.beneficiary_count) : Number(requirementsObj.beneficiary_count || 0);
       request.impact_description = request.impact_description || requirementsObj.impact_description || '';
-      request.evidence_required = request.evidence_required || requirementsObj.evidence_required || 'basic_media';
-      request.completion_proof_type = request.completion_proof_type || requirementsObj.completion_proof_type || 'images';
       request.trust_badge_weight = request.requester?.verification_status === 'verified' ? 1.0 : 0.6;
       request.impact_score = computeImpactScore(request);
       request.proof_strength = computeProofStrength(request);
@@ -345,9 +340,7 @@ export async function POST(request: NextRequest) {
         contactInfo,
         estimated_budget,
         beneficiary_count,
-        impact_description,
-        evidence_required,
-        completion_proof_type
+        impact_description
       } = body;
 
       // Validate required fields
@@ -377,6 +370,11 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      const trimmedTimeline = typeof timeline === 'string' ? timeline.trim() : '';
+      const isAnytimeTimeline = trimmedTimeline.toLowerCase() === 'anytime';
+      const storedTimeline = trimmedTimeline && !isAnytimeTimeline ? trimmedTimeline : null;
+      const timelineLabel = isAnytimeTimeline ? 'Anytime' : (trimmedTimeline || 'Not specified');
+
       // Map urgency to database enum values
       const urgencyMap: { [key: string]: string } = {
         'Low': 'low',
@@ -392,11 +390,9 @@ export async function POST(request: NextRequest) {
         estimated_budget: estimated_budget || budget || 'Not specified',
         beneficiary_count: Number(beneficiary_count || 0),
         impact_description: String(impact_description || '').trim(),
-        evidence_required: evidence_required || 'basic_media',
-        completion_proof_type: completion_proof_type || 'images',
         budget: budget || estimated_budget || 'Not specified',
         contactInfo: contactInfo || 'Not specified',
-        timeline: timeline || 'Not specified'
+        timeline: timelineLabel
       };
 
       // Insert new service request using Supabase helpers
@@ -416,9 +412,7 @@ export async function POST(request: NextRequest) {
         estimated_budget: parseFloat(String(estimated_budget || budget || '')) || null,
         beneficiary_count: Number(beneficiary_count || 0),
         impact_description: String(impact_description || '').trim(),
-        evidence_required: evidence_required || 'basic_media',
-        completion_proof_type: completion_proof_type || 'images',
-        timeline: timeline || null,
+        timeline: storedTimeline,
         contact_info: contactInfo || null
       };
 

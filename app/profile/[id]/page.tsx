@@ -7,7 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Calendar, MapPin, Award, TrendingUp, Heart, Users, Target, Trophy, Loader2, FileText, Briefcase, Download, ExternalLink, MailCheck, Phone, ShieldCheck } from "lucide-react"
+import { ArrowLeft, Calendar, MapPin, Award, TrendingUp, Heart, Users, Target, Trophy, Loader2, FileText, Briefcase, Download, ExternalLink, MailCheck, Phone } from "lucide-react"
 import { VerificationBadge } from "@/components/verification-badge"
 import { useAuth } from "@/lib/auth-context"
 import { useIsMobile } from "@/hooks/use-mobile"
@@ -312,7 +312,10 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
           <Card>
             <CardContent className="pt-6 text-center py-12">
               <p className="text-red-600 mb-4">{error || 'Profile not found'}</p>
-              <Button onClick={() => window.history.back()}>Go Back</Button>
+              <Button onClick={() => window.history.back()} className="hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0">
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back
+              </Button>
             </CardContent>
           </Card>
         </div>
@@ -343,12 +346,12 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
                       {profile.name}
                     </h1>
                     {allVerified ? (
-                      <ShieldCheck className="h-5 w-5 text-green-600" />
+                      <VerificationBadge status="verified" size="sm" showText={false} />
                     ) : (
                       <>
                         {profile.email_verified && <MailCheck className="h-5 w-5 text-green-600" />}
                         {profile.phone_verified && <Phone className="h-5 w-5 text-green-600" />}
-                        {profile.verification_status === 'verified' && <ShieldCheck className="h-5 w-5 text-green-600" />}
+                        <VerificationBadge status={profile.verification_status || 'unverified'} size="sm" showText={false} />
                       </>
                     )}
                   </div>

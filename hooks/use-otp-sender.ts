@@ -1,4 +1,4 @@
-import { useState, Dispatch, SetStateAction, useEffect } from 'react';
+import { useState, Dispatch, SetStateAction, useEffect, useCallback } from 'react';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase';
 
@@ -41,7 +41,7 @@ export function useOtpSender(setFormErrors: Dispatch<SetStateAction<FormErrors>>
     setOtpCooldown(prev => ({ ...prev, [channel]: OTP_RESEND_COOLDOWN_SECONDS }));
   };
 
-  const resetEmailOtpState = () => {
+  const resetEmailOtpState = useCallback(() => {
     setOtpSent(prev => ({ ...prev, email: false }));
     setOtpVerified(prev => ({ ...prev, email: false }));
     setOtpSending(prev => ({ ...prev, email: false }));
@@ -51,7 +51,7 @@ export function useOtpSender(setFormErrors: Dispatch<SetStateAction<FormErrors>>
       delete nextErrors.emailOtp;
       return nextErrors;
     });
-  };
+  }, [setFormErrors]);
 
   const handleSendEmailOtp = async (emailInput: string) => {
     const email = emailInput.trim();

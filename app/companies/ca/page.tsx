@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { ArrowLeft } from 'lucide-react';
 
 export default function CompanyCAPanelPage() {
   const router = useRouter();
@@ -266,9 +267,10 @@ export default function CompanyCAPanelPage() {
             <p className="text-sm text-slate-600">Scoped evidence and payment approval workspace</p>
           </div>
           <div className="flex items-center gap-2">
-            <Link href="/companies/dashboard?tab=company-ca">
-              <Button variant="outline">Back to Company Dashboard</Button>
-            </Link>
+            <Button variant="outline" onClick={() => router.back()} className="hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back
+            </Button>
             <Button onClick={logout}>Logout</Button>
           </div>
         </div>

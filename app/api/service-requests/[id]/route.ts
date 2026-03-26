@@ -54,8 +54,6 @@ export async function GET(
     serviceRequest.estimated_budget = serviceRequest.estimated_budget != null ? String(serviceRequest.estimated_budget) : (requirements.estimated_budget || requirements.budget || 'Not specified');
     serviceRequest.beneficiary_count = serviceRequest.beneficiary_count != null ? Number(serviceRequest.beneficiary_count) : Number(requirements.beneficiary_count || 0);
     serviceRequest.impact_description = serviceRequest.impact_description || requirements.impact_description || '';
-    serviceRequest.evidence_required = serviceRequest.evidence_required || requirements.evidence_required || 'basic_media';
-    serviceRequest.completion_proof_type = serviceRequest.completion_proof_type || requirements.completion_proof_type || 'images';
 
     // Return the service request data (publicly accessible)
     return NextResponse.json({
@@ -113,9 +111,7 @@ export async function PUT(
       contactInfo,
       estimated_budget,
       beneficiary_count,
-      impact_description,
-      evidence_required,
-      completion_proof_type
+      impact_description
     } = body;
 
     // Validate required fields
@@ -132,6 +128,11 @@ export async function PUT(
     }
 
     const normalizedRequestType = request_type || category;
+
+    const trimmedTimeline = typeof timeline === 'string' ? timeline.trim() : '';
+    const isAnytimeTimeline = trimmedTimeline.toLowerCase() === 'anytime';
+    const storedTimeline = trimmedTimeline && !isAnytimeTimeline ? trimmedTimeline : null;
+    const timelineLabel = isAnytimeTimeline ? 'Anytime' : (trimmedTimeline || 'Not specified');
 
     // First, verify that this request belongs to the authenticated NGO
     const existingRequest = await db.serviceRequests.getById(requestId);
@@ -159,11 +160,9 @@ export async function PUT(
       estimated_budget: estimated_budget || budget || 'Not specified',
       beneficiary_count: Number(beneficiary_count || 0),
       impact_description: String(impact_description || '').trim(),
-      evidence_required: evidence_required || 'basic_media',
-      completion_proof_type: completion_proof_type || 'images',
       budget: budget || estimated_budget || 'Not specified',
       contactInfo: contactInfo || 'Not specified',
-      timeline: timeline || 'Not specified'
+      timeline: timelineLabel
     };
 
     // Update the service request using Supabase helper
@@ -180,9 +179,7 @@ export async function PUT(
       estimated_budget: parseFloat(String(estimated_budget || budget || '')) || null,
       beneficiary_count: Number(beneficiary_count || 0),
       impact_description: String(impact_description || '').trim(),
-      evidence_required: evidence_required || 'basic_media',
-      completion_proof_type: completion_proof_type || 'images',
-      timeline: timeline || null,
+      timeline: storedTimeline,
       contact_info: contactInfo || null
     };
 
@@ -237,6 +234,18 @@ export async function DELETE(
 
     if (existingRequest.requester_id !== userId) {
       return NextResponse.json({ error: 'You can only delete your own service requests' }, { status: 403 });
+    }
+
+    const applicants = await db.serviceVolunteers.getByRequestId(requestId);
+    const hasAcceptedApplicant = (applicants || []).some((applicant: any) =>
+      ['accepted', 'active', 'completed'].includes(String(applicant.status || '').toLowerCase())
+    );
+
+    if (hasAcceptedApplicant) {
+      return NextResponse.json(
+        { error: 'Cannot delete request after accepting an applicant' },
+        { status: 400 }
+      );
     }
 
     // Delete the service request (which will also delete related volunteers)
