@@ -39,7 +39,7 @@ export async function GET(
       return NextResponse.json(userApplication || null);
     }
     
-    // Get JWT token from Authorization header for NGO requests
+    // Get JWT token from Authorization header for owner requests
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
@@ -47,16 +47,16 @@ export async function GET(
 
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
-    const { id: ngoUserId } = decoded;
+    const { id: ownerUserId } = decoded;
 
-    // First, verify that this offer belongs to the authenticated NGO
+    // First, verify that this offer belongs to the authenticated owner
     const offer = await db.serviceOffers.getById(offerId);
 
     if (!offer) {
       return NextResponse.json({ error: 'Service offer not found' }, { status: 404 });
     }
 
-    if (offer.ngo_id !== ngoUserId) {
+    if (offer.ngo_id !== ownerUserId) {
       return NextResponse.json({ error: 'You can only view applicants for your own offers' }, { status: 403 });
     }
 

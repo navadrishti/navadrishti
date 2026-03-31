@@ -81,7 +81,7 @@ Register a new user account.
 }
 ```
 
-### POST /api/auth/signin
+### POST /api/auth/login
 Authenticate existing user.
 
 **Request Body:**
@@ -107,51 +107,29 @@ Authenticate existing user.
 }
 ```
 
-### POST /api/auth/verify-token
-Validate JWT token and get user info.
+### GET /api/auth/me
+Get the currently authenticated user profile from the token.
 
 **Headers:** Authorization required
 
 **Response:**
 ```json
 {
-  "valid": true,
   "user": {
     "id": 1,
     "name": "John Doe",
     "email": "john@example.com",
-    "user_type": "individual"
+    "user_type": "individual",
+    "verification_status": "verified",
+    "profile_image": "https://example.com/image.jpg"
   }
 }
 ```
 
 ## 👥 User Management
 
-### GET /api/users/profile
-Get current user profile.
-
-**Headers:** Authorization required
-
-**Response:**
-```json
-{
-  "success": true,
-  "user": {
-    "id": 1,
-    "name": "John Doe",
-    "email": "john@example.com",
-    "user_type": "individual",
-    "profile_image": "https://example.com/image.jpg",
-    "bio": "User bio",
-    "location": "City, State",
-    "verification_status": "verified",
-    "created_at": "2024-01-01T00:00:00Z"
-  }
-}
-```
-
-### PUT /api/users/profile
-Update user profile.
+### PUT /api/profile/update
+Update current user profile.
 
 **Headers:** Authorization required
 
@@ -160,8 +138,37 @@ Update user profile.
 {
   "name": "Updated Name",
   "bio": "Updated bio",
-  "location": "New City, State",
-  "profile_image": "https://cloudinary.com/image.jpg"
+  "profileImageUrl": "https://cloudinary.com/image.jpg",
+  "city": "New City",
+  "state_province": "State",
+  "pincode": "123456",
+  "country": "Country",
+  "skills": "React, Node.js",
+  "interests": "Community development"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Profile updated successfully",
+  "user": {}
+}
+```
+
+### POST /api/profile/update
+Legacy profile update endpoint retained for compatibility.
+
+**Headers:** Optional Authorization (endpoint accepts `userId` in body)
+
+**Request Body:**
+```json
+{
+  "userId": 1,
+  "name": "Updated Name",
+  "bio": "Updated bio",
+  "location": "New City, State"
 }
 ```
 
@@ -229,7 +236,7 @@ Create a new post.
 }
 ```
 
-### POST /api/posts/{id}/interact
+### POST /api/posts/{postId}/interact
 Interact with a post (like, share, view).
 
 **Headers:** Authorization required
@@ -249,11 +256,11 @@ Fetch service offers.
 **Query Parameters:**
 - `category` (string): Filter by category
 - `location` (string): Filter by location
-- `employment_type` (string): Filter by employment type
+- `offer_type` (string): `financial`, `material`, `service`, `infrastructure`
 - `search` (string): Search term
-- `view` (string): "all", "my-offers", "public"
+- `view` (string): `all`, `my-offers`, `my-responses` (also accepts `hired` as alias for `my-responses`)
 
-**Headers:** Authorization required for "my-offers" view
+**Headers:** Authorization required for `my-offers` and `my-responses`
 
 **Response:**
 ```json
@@ -262,32 +269,33 @@ Fetch service offers.
   "data": [
     {
       "id": 1,
-      "title": "Web Development Services",
-      "description": "Professional web development for NGOs",
-      "category": "Technology",
+      "title": "CSR Field Team Deployment",
+      "description": "Rapid field deployment support for short-term projects",
+      "category": "Execution Capability",
+      "offer_type": "infrastructure",
+      "transaction_type": "rent",
+      "rent_per_day": 15000,
+      "scope": "On-ground project execution",
+      "capacity": "2 teams",
+      "budget_range": "INR 3L - 8L",
+      "provider_name": "Tech for Good NGO",
+      "provider_type": "ngo",
       "ngo": {
         "id": 5,
         "name": "Tech for Good NGO",
         "email": "info@techforgood.org",
-        "verified": true,
+        "user_type": "ngo",
+        "verification_status": "verified",
         "profile_image": "https://example.com/logo.jpg"
       },
-      "location": {
-        "state": "California",
-        "city": "San Francisco",
-        "area": "Downtown"
-      },
-      "wage_info": {
-        "type": "hourly",
-        "min_amount": 50,
-        "max_amount": 100,
-        "currency": "USD"
-      },
-      "employment_type": "contract",
-      "duration": "3-6 months",
-      "experience_requirements": "3+ years in web development",
-      "skills_required": ["JavaScript", "React", "Node.js"],
+      "location": "Bengaluru",
+      "price_type": "fixed",
+      "price_amount": 15000,
+      "price_description": "Rent: INR 15,000 per day",
+      "status": "active",
       "admin_status": "approved",
+      "applications_count": 4,
+      "hires_count": 1,
       "created_at": "2024-01-01T00:00:00Z"
     }
   ]
@@ -295,44 +303,30 @@ Fetch service offers.
 ```
 
 ### POST /api/service-offers
-Create a new service offer (NGOs only).
+Create a new capability offer (verified NGO, individual, or company).
 
-**Headers:** Authorization required (NGO user type)
+**Headers:** Authorization required (verified NGO/individual/company user type)
 
 **Request Body:**
 ```json
 {
-  "title": "Web Development Services",
-  "description": "Professional web development for organizations",
-  "category": "Technology",
-  "location": {
-    "state": "California",
-    "city": "San Francisco",
-    "area": "Downtown"
-  },
-  "wage_info": {
-    "type": "hourly",
-    "min_amount": 50,
-    "max_amount": 100,
-    "currency": "USD"
-  },
-  "employment_type": "contract",
-  "duration": {
-    "type": "fixed",
-    "duration_months": "6"
-  },
-  "experience_requirements": {
-    "level": "Advanced expertise with multiple certifications"
-  },
-  "skills_required": ["JavaScript", "React", "Node.js"],
-  "benefits": ["Flexible Hours", "Remote Work"],
-  "application_deadline": "2024-06-01",
-  "contact_preferences": {
-    "email": true,
-    "phone": false
-  }
+  "title": "Emergency Material Logistics",
+  "description": "Large-volume material transport and last-mile delivery",
+  "offer_type": "material",
+  "transaction_type": "sell",
+  "sell_amount": 250000,
+  "item": "Relief kits",
+  "quantity": 1200,
+  "delivery_scope": "Karnataka and Telangana",
+  "location": "Bengaluru"
 }
 ```
+
+**Required rules:**
+- `offer_type` must be one of `financial`, `material`, `service`, `infrastructure`
+- `transaction_type` must be one of `sell`, `rent`, `volunteer`
+- Offer-specific fields are validated based on `offer_type`
+- Pricing fields are validated based on `transaction_type`
 
 ### GET /api/service-offers/{id}
 Get specific service offer details.
@@ -340,38 +334,43 @@ Get specific service offer details.
 **Response:**
 ```json
 {
-  "success": true,
-  "data": {
-    "id": 1,
-    "title": "Web Development Services",
-    "description": "Detailed description...",
-    "ngo": {
-      "id": 5,
-      "name": "Tech for Good NGO",
-      "profile_image": "https://example.com/logo.jpg",
-      "verified": true
-    },
-    "application_count": 12,
-    "hire_count": 3,
-    "status": "active"
-  }
+  "id": 1,
+  "title": "Emergency Material Logistics",
+  "description": "Detailed description...",
+  "offer_type": "material",
+  "transaction_type": "sell",
+  "item": "Relief kits",
+  "quantity": 1200,
+  "delivery_scope": "Karnataka and Telangana",
+  "provider_name": "Tech for Good NGO",
+  "provider_type": "ngo",
+  "status": "active"
 }
 ```
 
 ### POST /api/service-offers/{id}/clients
-Apply for a service offer (hire the NGO).
+Apply for a service offer (hire the provider).
 
-**Headers:** Authorization required
+**Headers:** No authorization header required in current implementation.
 
 **Request Body:**
 ```json
 {
+  "client_id": 42,
+  "client_type": "company",
   "message": "We would like to hire your services for our project",
   "proposed_amount": 5000,
   "start_date": "2024-02-01",
   "end_date": "2024-05-01"
 }
 ```
+
+**Rules:**
+- `client_id`, `client_type`, and `message` are required
+- `client_type` is recorded in `response_meta`
+- Allowed applicant user types: `individual`, `company`, `ngo`
+- Applicant must be `verified`
+- Users cannot apply to their own offer
 
 ## 🙋 Service Requests
 
@@ -492,7 +491,7 @@ Get all service offers for admin review.
 }
 ```
 
-### POST /api/admin/service-offers/{id}/review
+### POST /api/admin/service-offers/{offerId}/review
 Review and approve/reject service offer.
 
 **Headers:** Admin authentication required

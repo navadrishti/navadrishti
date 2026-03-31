@@ -24,7 +24,21 @@ interface ServiceOffer {
   title: string
   description: string
   category: string
+  offer_type?: 'financial' | 'material' | 'service' | 'infrastructure' | string
   location: string
+  city?: string
+  state_province?: string
+  pincode?: string
+  amount?: number
+  location_scope?: string
+  conditions?: string
+  item?: string
+  quantity?: number
+  delivery_scope?: string
+  skill?: string
+  capacity?: number
+  duration?: string
+  scope?: string
   images?: string[]
   tags?: string[]
   price_amount: number
@@ -33,6 +47,8 @@ interface ServiceOffer {
   contact_info: string
   ngo_name: string
   ngo_id: number
+  provider_name?: string
+  provider_type?: 'ngo' | 'company' | 'individual' | string
   status: 'active' | 'paused' | 'completed' | 'cancelled'
   created_at: string
   updated_at: string
@@ -311,10 +327,10 @@ export default function ServiceOfferDetailPage() {
               category={offer.category}
               location={offer.location}
               images={offer.images}
-              ngo_name={offer.ngo_name}
+              ngo_name={offer.provider_name || offer.ngo_name}
               ngo_id={offer.ngo_id}
-              provider={offer.ngo_name}
-              providerType="ngo"
+              provider={offer.provider_name || offer.ngo_name}
+              providerType={offer.provider_type || 'ngo'}
               verified={true}
               tags={offer.tags}
               created_at={offer.created_at}
@@ -323,7 +339,17 @@ export default function ServiceOfferDetailPage() {
               price_description={offer.price_description}
               status={offer.status}
               contact_info={offer.contact_info}
-              wage_info={(offer as any).wage_info}
+              offer_type={offer.offer_type}
+              amount={offer.amount}
+              location_scope={offer.location_scope}
+              conditions={offer.conditions}
+              item={offer.item}
+              quantity={offer.quantity}
+              delivery_scope={offer.delivery_scope}
+              skill={offer.skill}
+              capacity={offer.capacity}
+              duration={offer.duration}
+              scope={offer.scope}
               type="offer"
             />
           </div>
@@ -417,7 +443,7 @@ export default function ServiceOfferDetailPage() {
                       <Label htmlFor="message">Application Message *</Label>
                       <Textarea
                         id="message"
-                        placeholder="Tell the NGO why you are a good fit for this service opportunity..."
+                        placeholder="Tell the provider why you are a good fit for this service opportunity..."
                         value={applicationMessage}
                         onChange={(e) => setApplicationMessage(e.target.value)}
                         rows={4}

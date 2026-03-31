@@ -57,10 +57,10 @@ Navdrishti follows a modern full-stack architecture built on Next.js with a Post
 3. **API Requests** → Bearer Token → Route Authorization
 
 ### Service Management Flow
-1. **NGO** creates service request/offer
+1. **NGO/Individual/Company** creates capability offers (NGOs also create service requests)
 2. **Admin** reviews and approves content
 3. **Users** browse and apply for services
-4. **NGO** manages applications and hires
+4. **Offer owner** manages applications and hires
 5. **Platform** tracks engagement and analytics
 
 ### Social Feed Flow
@@ -82,7 +82,7 @@ Navdrishti follows a modern full-stack architecture built on Next.js with a Post
 
 #### Service Management
 - **Service Requests**: NGO volunteer/assistance requests
-- **Service Offers**: NGO professional service offerings
+- **Service Offers**: Verified NGO, individual, and company capability offerings
 - **Application Tracking**: User applications and hire management
 - **Admin Moderation**: Content approval and review system
 
@@ -104,12 +104,12 @@ Navdrishti follows a modern full-stack architecture built on Next.js with a Post
 - **users**: User profiles and authentication
 - **posts**: Social feed content
 - **service_requests**: NGO assistance requests
-- **service_offers**: NGO service offerings
+- **service_offers**: Multi-provider capability offerings (NGO/individual/company)
 - **service_volunteers**: Volunteer applications and progress
 - **service_clients**: Client engagements for offered services
 
 ### Relationship Patterns
-- **One-to-Many**: User → Posts, NGO → Service Offers
+- **One-to-Many**: User → Posts, User → Service Offers
 - **Many-to-Many**: Users ↔ Service Applications
 - **Polymorphic**: Notifications → Multiple entity types
 

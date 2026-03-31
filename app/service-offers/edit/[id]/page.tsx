@@ -1,429 +1,626 @@
 'use client'
 
-import { useState, useEffect, use } from 'react'
+import { useEffect, useState, use } from 'react'
 import { useRouter } from 'next/navigation'
-import { Header } from '@/components/header'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import Link from 'next/link'
 import { ArrowLeft, Loader2 } from 'lucide-react'
+
+import { Header } from '@/components/header'
+import ProtectedRoute from '@/components/protected-route'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
-import Link from 'next/link'
 
-const categories = [
-  'Healthcare & Medical',
-  'Education & Training',
-  'Training & Workshops',
-  'Community Outreach Programs',
-  'Environmental Sustainability Services',
-  'Healthcare Services & Camps',
-  'Research & Survey Services',
-  'Creative & Communication Services',
-  'Event Management',
-  'Skill Development Programs',
-  'Monitoring & Evaluation',
-  'Customized CSR Program Execution',
-  'Women Empowerment Training',
-  'Livelihood Development Programs',
-  'Digital Literacy Training',
-  'Awareness & Advocacy Campaigns'
-];
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 
-const priceTypes = [
-  { value: 'free', label: 'Free' },
-  { value: 'donation', label: 'Donation Based' },
-  { value: 'fixed', label: 'Fixed Price' },
-  { value: 'negotiable', label: 'Negotiable' }
-];
+type OfferType = 'financial' | 'material' | 'service' | 'infrastructure'
+type TransactionType = 'sell' | 'rent' | 'volunteer'
 
-const availabilityOptions = [
-  'Available',
-  'Busy',
-  'Unavailable',
-  'By Appointment'
-];
+type FormData = {
+  title: string
+  description: string
+  offer_type: OfferType
+  transaction_type: TransactionType
+  sell_amount: number | ''
+  rent_per_day: number | ''
+  amount: number | ''
+  location_scope: string
+  conditions: string
+  item: string
+  quantity: number | ''
+  delivery_scope: string
+  skill: string
+  capacity: string
+  duration: string
+  scope: string
+  budget_range: string
+}
 
-interface ServiceOffer {
-  id: number;
-  title: string;
-  description: string;
-  category: string;
-  location: string;
-  price_type: string;
-  price_amount: number;
-  requirements: string;
-  status: string;
+const OFFER_TYPES: { value: OfferType; label: string }[] = [
+  { value: 'financial', label: 'Financial' },
+  { value: 'material', label: 'Material' },
+  { value: 'service', label: 'Service/Skill' },
+  { value: 'infrastructure', label: 'Infrastructure' }
+]
+
+const TRANSACTION_TYPES: { value: TransactionType; label: string }[] = [
+  { value: 'sell', label: 'Sell' },
+  { value: 'rent', label: 'Rent' },
+  { value: 'volunteer', label: 'Volunteer' }
+]
+
+const toNumberOrEmpty = (value: unknown): number | '' => {
+  if (value === null || value === undefined || value === '') return ''
+  const numericValue = Number(value)
+  return Number.isFinite(numericValue) ? numericValue : ''
+}
+
+const toStringOrEmpty = (value: unknown): string => {
+  if (value === null || value === undefined) return ''
+  return String(value)
+}
+
+const parseInfrastructureMeta = (rawConditions: unknown): { budgetRange: string; details: string } => {
+  const text = typeof rawConditions === 'string' ? rawConditions : ''
+  if (!text) return { budgetRange: '', details: '' }
+
+  const match = text.match(/budget\s*range\s*:\s*([^|]+)/i)
+  const budgetRange = match?.[1]?.trim() || ''
+  const details = text
+    .replace(/budget\s*range\s*:\s*([^|]+)\|?/i, '')
+    .trim()
+
+  return { budgetRange, details }
+}
+
+const isOfferType = (value: unknown): value is OfferType => {
+  return typeof value === 'string' && OFFER_TYPES.some((type) => type.value === value)
+}
+
+const isTransactionType = (value: unknown): value is TransactionType => {
+  return typeof value === 'string' && TRANSACTION_TYPES.some((type) => type.value === value)
 }
 
 export default function EditServiceOfferPage({ params }: { params: Promise<{ id: string }> }) {
-  const resolvedParams = use(params);
-  const router = useRouter();
-  const { user } = useAuth();
-  const { toast } = useToast();
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [offer, setOffer] = useState<ServiceOffer | null>(null);
-  
-  const [formData, setFormData] = useState({
+  const resolvedParams = use(params)
+  const router = useRouter()
+  const { user, token } = useAuth()
+  const { toast } = useToast()
+
+  const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+
+  const [formData, setFormData] = useState<FormData>({
     title: '',
     description: '',
-    category: '',
-    location: '',
-    pricing: 0,
-    priceType: 'free',
-    availability: 'Available',
-    deliveryTime: '',
-    contactInfo: 'email'
-  });
+    offer_type: 'financial',
+    transaction_type: 'sell',
+    sell_amount: '',
+    rent_per_day: '',
+    amount: '',
+    location_scope: '',
+    conditions: '',
+    item: '',
+    quantity: '',
+    delivery_scope: '',
+    skill: '',
+    capacity: '',
+    duration: '',
+    scope: '',
+    budget_range: ''
+  })
 
-  // Check if user is authorized (NGO only)
-  useEffect(() => {
-    if (!user) {
-      router.push('/login');
-      return;
-    }
-    if (user.user_type !== 'ngo') {
-      toast({
-        title: "Access Denied",
-        description: "Only NGOs can edit service offers",
-        variant: "destructive",
-      });
-      router.push('/service-offers');
-      return;
-    }
-  }, [user, router, toast]);
+  const handleInput = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target
+    const numericFields = new Set(['amount', 'quantity', 'sell_amount', 'rent_per_day'])
 
-  // Fetch offer data
+    setFormData((prev) => ({
+      ...prev,
+      [name]: numericFields.has(name) ? (value === '' ? '' : Number(value)) : value
+    }))
+  }
+
+  const handleSelect = <K extends keyof FormData>(name: K, value: FormData[K]) => {
+    setFormData((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const buildOfferDetailsPayload = () => {
+    const resolvedAmount = formData.transaction_type === 'volunteer'
+      ? 0
+      : formData.transaction_type === 'rent'
+        ? (formData.rent_per_day === '' ? null : Number(formData.rent_per_day))
+        : (formData.sell_amount === '' ? null : Number(formData.sell_amount))
+
+    switch (formData.offer_type) {
+      case 'financial':
+        return {
+          amount: resolvedAmount,
+          location_scope: formData.location_scope,
+          conditions: formData.conditions
+        }
+      case 'material':
+        return {
+          item: formData.item,
+          quantity: formData.quantity,
+          delivery_scope: formData.delivery_scope
+        }
+      case 'service':
+        return {
+          skill: formData.skill,
+          capacity: formData.capacity,
+          duration: formData.duration
+        }
+      case 'infrastructure':
+        return {
+          scope: formData.scope,
+          capacity: formData.capacity,
+          budget_range: formData.budget_range
+        }
+      default:
+        return {}
+    }
+  }
+
+  const buildTransactionPayload = () => {
+    if (formData.transaction_type === 'volunteer') {
+      return {
+        transaction_type: 'volunteer' as TransactionType,
+        sell_amount: 0,
+        rent_per_day: 0
+      }
+    }
+
+    if (formData.transaction_type === 'rent') {
+      return {
+        transaction_type: 'rent' as TransactionType,
+        sell_amount: null,
+        rent_per_day: formData.rent_per_day
+      }
+    }
+
+    return {
+      transaction_type: 'sell' as TransactionType,
+      sell_amount: formData.sell_amount,
+      rent_per_day: 0
+    }
+  }
+
+  const hasOfferSpecificFields = () => {
+    switch (formData.offer_type) {
+      case 'financial':
+        return !!formData.location_scope.trim()
+      case 'material':
+        return !!formData.item.trim() && formData.quantity !== '' && !!formData.delivery_scope.trim()
+      case 'service':
+        return !!formData.skill.trim() && formData.capacity !== '' && !!formData.duration.trim()
+      case 'infrastructure':
+        return !!formData.scope.trim() && formData.capacity !== '' && !!formData.budget_range.trim()
+      default:
+        return false
+    }
+  }
+
+  const hasTransactionSpecificFields = () => {
+    switch (formData.transaction_type) {
+      case 'volunteer':
+        return true
+      case 'rent':
+        return formData.rent_per_day !== '' && Number(formData.rent_per_day) > 0
+      case 'sell':
+      default:
+        return formData.sell_amount !== '' && Number(formData.sell_amount) > 0
+    }
+  }
+
   useEffect(() => {
-    if (!user || !resolvedParams.id) return;
+    if (!resolvedParams.id || !token) return
 
     const fetchOffer = async () => {
       try {
-        const token = localStorage.getItem('token');
         const response = await fetch(`/api/service-offers/${resolvedParams.id}`, {
           headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        });
-
-        const data = await response.json();
-
-        if (data.success) {
-          const offerData = data.data;
-          setOffer(offerData);
-          
-          // Parse requirements if it exists and is a string, otherwise use as object
-          let requirements: any = {};
-          try {
-            if (offerData.requirements) {
-              if (typeof offerData.requirements === 'string') {
-                requirements = JSON.parse(offerData.requirements);
-              } else {
-                requirements = offerData.requirements;
-              }
-            }
-          } catch (e) {
-            console.error('Error parsing requirements:', e);
-            requirements = {};
+            Authorization: `Bearer ${token}`
           }
+        })
 
-          setFormData({
-            title: offerData.title || '',
-            description: offerData.description || '',
-            category: offerData.category || '',
-            location: offerData.location || '',
-            pricing: offerData.price_amount || 0,
-            priceType: offerData.price_type || 'free',
-            availability: requirements?.availability || 'Available',
-            deliveryTime: requirements?.deliveryTime || '',
-            contactInfo: requirements?.contactInfo || 'email'
-          });
-        } else {
-          toast({
-            title: "Error",
-            description: data.error || "Failed to fetch offer details",
-            variant: "destructive",
-          });
-          router.push('/service-offers');
+        const data = await response.json()
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to fetch service offer')
         }
+
+        const offer = data?.data ?? data
+
+        const infrastructureMeta = parseInfrastructureMeta(offer.conditions)
+
+        setFormData({
+          title: offer.title || '',
+          description: offer.description || '',
+          offer_type: isOfferType(offer.offer_type) ? offer.offer_type : 'financial',
+          transaction_type: isTransactionType(offer.transaction_type) ? offer.transaction_type : 'sell',
+          sell_amount: toNumberOrEmpty(offer.sell_amount),
+          rent_per_day: toNumberOrEmpty(offer.rent_per_day),
+          amount: toNumberOrEmpty(offer.amount),
+          location_scope: offer.location_scope || '',
+          conditions: infrastructureMeta.details || offer.conditions || '',
+          item: offer.item || '',
+          quantity: toNumberOrEmpty(offer.quantity),
+          delivery_scope: offer.delivery_scope || '',
+          skill: offer.skill || '',
+          capacity: toStringOrEmpty(offer.capacity),
+          duration: offer.duration || '',
+          scope: offer.scope || '',
+          budget_range: infrastructureMeta.budgetRange
+        })
       } catch (error) {
-        console.error('Error fetching offer:', error);
         toast({
-          title: "Error",
-          description: "Failed to fetch offer details",
-          variant: "destructive",
-        });
-        router.push('/service-offers');
+          title: 'Error',
+          description: error instanceof Error ? error.message : 'Failed to fetch service offer',
+          variant: 'destructive'
+        })
+        router.push('/service-offers')
       } finally {
-        setLoading(false);
+        setLoading(false)
       }
-    };
-
-    fetchOffer();
-  }, [user, resolvedParams.id, router, toast]);
-
-  const handleInputChange = (field: string, value: string | number) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }));
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!formData.title || !formData.description || !formData.category) {
-      toast({
-        title: "Validation Error",
-        description: "Please fill in all required fields",
-        variant: "destructive",
-      });
-      return;
     }
 
-    setSubmitting(true);
+    fetchOffer()
+  }, [resolvedParams.id, router, toast, token])
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!token) {
+      toast({ title: 'Authentication Error', description: 'Please log in to continue.', variant: 'destructive' })
+      return
+    }
+
+    if (!formData.title.trim() || !formData.description.trim()) {
+      toast({ title: 'Validation Error', description: 'Please complete all required fields.', variant: 'destructive' })
+      return
+    }
+
+    if (!hasOfferSpecificFields()) {
+      toast({ title: 'Validation Error', description: 'Please complete all required offer details.', variant: 'destructive' })
+      return
+    }
+
+    if (!hasTransactionSpecificFields()) {
+      toast({ title: 'Validation Error', description: 'Please complete all required pricing details.', variant: 'destructive' })
+      return
+    }
+
+    setSubmitting(true)
 
     try {
-      const token = localStorage.getItem('token');
       const response = await fetch(`/api/service-offers/${resolvedParams.id}`, {
         method: 'PUT',
         headers: {
-          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify(formData),
-      });
+        body: JSON.stringify({
+          title: formData.title,
+          description: formData.description,
+          offer_type: formData.offer_type,
+          ...buildTransactionPayload(),
+          ...buildOfferDetailsPayload()
+        })
+      })
 
-      const data = await response.json();
+      const data = await response.json()
 
-      if (data.success) {
-        toast({
-          title: "Success",
-          description: "Service offer updated successfully",
-        });
-        router.push('/service-offers?view=my-offers');
-      } else {
-        toast({
-          title: "Error",
-          description: data.error || "Failed to update service offer",
-          variant: "destructive",
-        });
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to update service offer')
       }
+
+      toast({ title: 'Capability Offer Updated', description: data.data?.message || 'Offer updated successfully.' })
+      router.push('/service-offers?view=my-offers')
     } catch (error) {
-      console.error('Error updating offer:', error);
       toast({
-        title: "Error",
-        description: "Failed to update service offer",
-        variant: "destructive",
-      });
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Unexpected error while updating offer',
+        variant: 'destructive'
+      })
     } finally {
-      setSubmitting(false);
+      setSubmitting(false)
     }
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <Header />
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-8 w-8 animate-spin" />
-        </div>
-      </div>
-    );
   }
 
-  if (!offer) {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <Header />
-        <div className="container mx-auto px-4 py-8">
-          <div className="text-center">
-            <h1 className="text-2xl font-bold mb-4">Offer Not Found</h1>
-            <Button onClick={() => router.back()} className="hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  if (!user) return null
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Header />
-      
-      <div className="container mx-auto px-4 py-8">
-        <div className="mb-6">
-          <Button variant="ghost" onClick={() => router.back()} className="px-0 text-blue-600 hover:text-blue-800 hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0">
-            <ArrowLeft size={20} className="mr-2" />
-            Back
-          </Button>
-        </div>
+    <ProtectedRoute requireVerification={true} permission="canCreateServiceOffers">
+      <div className="min-h-screen bg-gray-50">
+        <Header />
 
-        <div className="max-w-2xl mx-auto">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-2xl">Edit Service Offer</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSubmit} className="space-y-6">
-                <div>
-                  <Label htmlFor="title">Service Title *</Label>
-                  <Input
-                    id="title"
-                    value={formData.title}
-                    onChange={(e) => handleInputChange('title', e.target.value)}
-                    placeholder="Brief title for your service"
-                    required
-                  />
-                </div>
+        <div className="max-w-3xl mx-auto p-6">
+          <div className="mb-8">
+            <Button variant="ghost" onClick={() => router.back()} className="mb-4 px-0 text-blue-600 hover:text-blue-700 hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0">
+              <ArrowLeft size={18} className="mr-2" />
+              Back
+            </Button>
+            <h1 className="text-3xl font-bold text-gray-900">Edit Capability Offer</h1>
+            <p className="text-gray-600 mt-2">Update your offer details based on capability type.</p>
+          </div>
 
-                <div>
-                  <Label htmlFor="description">Description *</Label>
-                  <Textarea
-                    id="description"
-                    value={formData.description}
-                    onChange={(e) => handleInputChange('description', e.target.value)}
-                    placeholder="Detailed description of your service"
-                    rows={4}
-                    required
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {loading ? (
+            <Card>
+              <CardContent className="py-12 flex items-center justify-center">
+                <Loader2 className="h-8 w-8 animate-spin" />
+              </CardContent>
+            </Card>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Capability Details</CardTitle>
+                  <CardDescription>Define your execution capacity in a structured, match-ready way.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
                   <div>
-                    <Label htmlFor="category">Category *</Label>
-                    <Select value={formData.category} onValueChange={(value) => handleInputChange('category', value)}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select category" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {categories.map((category) => (
-                          <SelectItem key={category} value={category}>
-                            {category}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Label htmlFor="title">Offer Title *</Label>
+                    <Input
+                      id="title"
+                      name="title"
+                      value={formData.title}
+                      onChange={handleInput}
+                      placeholder="e.g., Funding support for school infrastructure"
+                      required
+                    />
                   </div>
 
                   <div>
-                    <Label htmlFor="availability">Availability</Label>
-                    <Select value={formData.availability} onValueChange={(value) => handleInputChange('availability', value)}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {availabilityOptions.map((option) => (
-                          <SelectItem key={option} value={option}>
-                            {option}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div>
-                  <Label htmlFor="location">Location</Label>
-                  <Input
-                    id="location"
-                    value={formData.location}
-                    onChange={(e) => handleInputChange('location', e.target.value)}
-                    placeholder="City, area, or specific location"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="priceType">Price Type</Label>
-                    <Select value={formData.priceType} onValueChange={(value) => handleInputChange('priceType', value)}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {priceTypes.map((type) => (
-                          <SelectItem key={type.value} value={type.value}>
-                            {type.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Label htmlFor="description">Description *</Label>
+                    <Textarea
+                      id="description"
+                      name="description"
+                      value={formData.description}
+                      onChange={handleInput}
+                      placeholder="Explain your capability, limits, and engagement model."
+                      rows={4}
+                      required
+                    />
                   </div>
 
-                  {formData.priceType === 'fixed' && (
+                  <div className="grid grid-cols-1 gap-4">
                     <div>
-                      <Label htmlFor="pricing">Price (₹)</Label>
-                      <Input
-                        id="pricing"
-                        type="number"
-                        min="0"
-                        value={formData.pricing}
-                        onChange={(e) => handleInputChange('pricing', parseFloat(e.target.value) || 0)}
-                        placeholder="Enter price"
-                      />
+                      <Label htmlFor="offer_type">Offer Type *</Label>
+                      <Select value={formData.offer_type} onValueChange={(value) => handleSelect('offer_type', value as OfferType)}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select offer type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {OFFER_TYPES.map((type) => (
+                            <SelectItem key={type.value} value={type.value}>
+                              {type.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="transaction_type">Offer Mode *</Label>
+                      <Select value={formData.transaction_type} onValueChange={(value) => handleSelect('transaction_type', value as TransactionType)}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select offer mode" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {TRANSACTION_TYPES.map((type) => (
+                            <SelectItem key={type.value} value={type.value}>
+                              {type.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Offer Details</CardTitle>
+                  <CardDescription>Provide details specific to the selected offer type.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {formData.transaction_type === 'sell' && (
+                      <div>
+                        <Label htmlFor="sell_amount">Amount (₹) *</Label>
+                        <Input
+                          id="sell_amount"
+                          name="sell_amount"
+                          type="number"
+                          min="0"
+                          value={formData.sell_amount}
+                          onChange={handleInput}
+                          placeholder="e.g., 25000"
+                          required
+                        />
+                      </div>
+                    )}
+
+                    {formData.transaction_type === 'rent' && (
+                      <div>
+                        <Label htmlFor="rent_per_day">Per Day Charge (₹) *</Label>
+                        <Input
+                          id="rent_per_day"
+                          name="rent_per_day"
+                          type="number"
+                          min="0"
+                          value={formData.rent_per_day}
+                          onChange={handleInput}
+                          placeholder="e.g., 1500"
+                          required
+                        />
+                      </div>
+                    )}
+
+                  </div>
+
+                  {formData.offer_type === 'financial' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="md:col-span-2">
+                        <Label htmlFor="location_scope">Location Scope *</Label>
+                        <Input
+                          id="location_scope"
+                          name="location_scope"
+                          value={formData.location_scope}
+                          onChange={handleInput}
+                          placeholder="e.g., India, North India, NCR"
+                          required
+                        />
+                      </div>
+                      <div className="md:col-span-2">
+                        <Label htmlFor="conditions">Conditions</Label>
+                        <Textarea
+                          id="conditions"
+                          name="conditions"
+                          value={formData.conditions}
+                          onChange={handleInput}
+                          placeholder="Mention any disbursal conditions or eligibility constraints"
+                          rows={3}
+                        />
+                      </div>
                     </div>
                   )}
-                </div>
 
-                <div>
-                  <Label htmlFor="deliveryTime">Delivery/Response Time</Label>
-                  <Input
-                    id="deliveryTime"
-                    value={formData.deliveryTime}
-                    onChange={(e) => handleInputChange('deliveryTime', e.target.value)}
-                    placeholder="e.g., 24 hours, 3 days, Same day"
-                  />
-                </div>
+                  {formData.offer_type === 'material' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="item">Item Name *</Label>
+                        <Input
+                          id="item"
+                          name="item"
+                          value={formData.item}
+                          onChange={handleInput}
+                          placeholder="e.g., Blankets, School Kits, Medical Supplies"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="quantity">Quantity *</Label>
+                        <Input
+                          id="quantity"
+                          name="quantity"
+                          type="number"
+                          min="0"
+                          value={formData.quantity}
+                          onChange={handleInput}
+                          placeholder="e.g., 1000"
+                          required
+                        />
+                      </div>
+                      <div className="md:col-span-2">
+                        <Label htmlFor="delivery_scope">Delivery Scope *</Label>
+                        <Input
+                          id="delivery_scope"
+                          name="delivery_scope"
+                          value={formData.delivery_scope}
+                          onChange={handleInput}
+                          placeholder="e.g., North India, NCR, Pan India"
+                          required
+                        />
+                      </div>
+                    </div>
+                  )}
 
-                <div>
-                  <Label htmlFor="contactInfo">Contact Preference</Label>
-                  <Select value={formData.contactInfo} onValueChange={(value) => handleInputChange('contactInfo', value)}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="email">Email</SelectItem>
-                      <SelectItem value="phone">Phone</SelectItem>
-                      <SelectItem value="both">Email & Phone</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                  {formData.offer_type === 'service' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="skill">Skill Offered *</Label>
+                        <Input
+                          id="skill"
+                          name="skill"
+                          value={formData.skill}
+                          onChange={handleInput}
+                          placeholder="e.g., Legal Advisory, Content Design, Medical Assistance"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="capacity">Capacity *</Label>
+                        <Input
+                          id="capacity"
+                          name="capacity"
+                          value={formData.capacity}
+                          onChange={handleInput}
+                          placeholder="e.g., 10 volunteers"
+                          required
+                        />
+                      </div>
+                      <div className="md:col-span-2">
+                        <Label htmlFor="duration">Duration *</Label>
+                        <Input
+                          id="duration"
+                          name="duration"
+                          value={formData.duration}
+                          onChange={handleInput}
+                          placeholder="e.g., 3 months"
+                          required
+                        />
+                      </div>
+                    </div>
+                  )}
 
-                <div className="flex gap-4 pt-4">
-                  <Button 
-                    type="submit" 
-                    disabled={submitting}
-                    className="flex-1"
-                  >
-                    {submitting ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Updating...
-                      </>
-                    ) : (
-                      'Update Offer'
-                    )}
-                  </Button>
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    onClick={() => router.back()}
-                    className="flex-1"
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
+                  {formData.offer_type === 'infrastructure' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="scope">Infrastructure Scope *</Label>
+                        <Input
+                          id="scope"
+                          name="scope"
+                          value={formData.scope}
+                          onChange={handleInput}
+                          placeholder="e.g., Construction"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="capacity">Capacity *</Label>
+                        <Input
+                          id="capacity"
+                          name="capacity"
+                          value={formData.capacity}
+                          onChange={handleInput}
+                          placeholder="e.g., 2 schools"
+                          required
+                        />
+                      </div>
+                      <div className="md:col-span-2">
+                        <Label htmlFor="budget_range">Budget Range *</Label>
+                        <Input
+                          id="budget_range"
+                          name="budget_range"
+                          value={formData.budget_range}
+                          onChange={handleInput}
+                          placeholder="e.g., Rs 10L to Rs 20L"
+                          required
+                        />
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <div className="flex gap-4">
+                <Button type="submit" disabled={submitting} className="flex-1">
+                  {submitting ? 'Updating...' : 'Update Capability Offer'}
+                </Button>
+                <Button type="button" variant="outline" asChild>
+                  <Link href="/service-offers">Cancel</Link>
+                </Button>
+              </div>
+            </form>
+          )}
         </div>
       </div>
-    </div>
-  );
+    </ProtectedRoute>
+  )
 }

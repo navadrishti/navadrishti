@@ -32,6 +32,17 @@ interface ServiceDetailsProps {
   price_description?: string
   status?: string
   contact_info?: string
+  offer_type?: 'financial' | 'material' | 'service' | 'infrastructure' | string
+  amount?: number | null
+  location_scope?: string | null
+  conditions?: string | null
+  item?: string | null
+  quantity?: number | null
+  delivery_scope?: string | null
+  skill?: string | null
+  capacity?: number | null
+  duration?: string | null
+  scope?: string | null
   wage_info?: {
     min_amount?: number
     max_amount?: number
@@ -92,6 +103,17 @@ export function ServiceDetails({
   price_description,
   status,
   contact_info,
+  offer_type,
+  amount,
+  location_scope,
+  conditions,
+  item,
+  quantity,
+  delivery_scope,
+  skill,
+  capacity,
+  duration,
+  scope,
   wage_info,
   urgency_level,
   priority,
@@ -166,11 +188,11 @@ export function ServiceDetails({
   const estimatedBudget = requirementsData?.estimated_budget || requirementsData?.budget;
   const requestDeadline = deadline || timeline || requirementsData?.timeline;
   const impactDescription = requirementsData?.impact_description;
-  const offerType = (type === 'offer' ? (wage_info as any)?.offer_type : null) || category;
-  const capacityLimit = (wage_info as any)?.capacity_limit;
-  const coverageArea = (wage_info as any)?.coverage_area;
-  const categoryFocus = (wage_info as any)?.category_focus;
-  const validityPeriod = (wage_info as any)?.validity_period;
+  const offerType = (type === 'offer' ? offer_type : null) || (wage_info as any)?.offer_type || category;
+  const capacityLimit = capacity || (wage_info as any)?.capacity_limit;
+  const coverageArea = location_scope || delivery_scope || (wage_info as any)?.coverage_area;
+  const categoryFocus = conditions || (wage_info as any)?.category_focus;
+  const validityPeriod = duration || (wage_info as any)?.validity_period;
   const providerLabel = providerType === 'ngo' ? 'Non-Profit Organization' : providerType;
   const requesterProfileData = requester_profile?.profile_data || {};
   const requesterEmail = requester_profile?.email || 'Email not set';
@@ -550,13 +572,13 @@ export function ServiceDetails({
               </div>
               
               <div className="text-right">
-                {type === 'offer' && price_amount ? (
+                {type === 'offer' && (amount || price_amount) ? (
                   <>
                     <div className="text-2xl font-bold text-green-600 flex items-center">
                       <IndianRupee className="h-5 w-5" />
-                      {formatPrice(price_amount)}
+                      {formatPrice(amount || price_amount || 0)}
                     </div>
-                    <div className="text-sm text-muted-foreground">{price_type} pricing</div>
+                    <div className="text-sm text-muted-foreground">{offerType || price_type} offer</div>
                   </>
                 ) : type === 'request' && (urgency_level || priority) ? (
                   <Badge className={`${getPriorityColor(urgency_level || priority)} font-semibold`}>
@@ -606,14 +628,14 @@ export function ServiceDetails({
                   </div>
                 )}
                 
-                {/* Service Offer - Price Type */}
-                {type === 'offer' && price_type && (
+                {/* Service Offer - Type */}
+                {type === 'offer' && offerType && (
                   <div className="bg-green-50 rounded-lg p-4">
                     <div className="flex items-center gap-2 mb-2">
                       <Clock size={16} className="text-green-600" />
-                      <span className="text-sm font-medium text-green-700">Pricing Model</span>
+                      <span className="text-sm font-medium text-green-700">Offer Type</span>
                     </div>
-                    <p className="font-semibold text-green-800 capitalize">{price_type.replace('_', ' ')}</p>
+                    <p className="font-semibold text-green-800 capitalize">{String(offerType).replace('_', ' ')}</p>
                   </div>
                 )}
                 
@@ -690,7 +712,7 @@ export function ServiceDetails({
             </div>
 
             {/* Additional Information */}
-            {((type === 'offer' && (price_description || categoryFocus || validityPeriod)) || (type === 'request' && (timeline || impactDescription)) || contact_info) && (
+            {((type === 'offer' && (price_description || categoryFocus || validityPeriod || item || skill || scope)) || (type === 'request' && (timeline || impactDescription)) || contact_info) && (
               <div>
                 <h3 className="font-semibold mb-3">Additional Information</h3>
                 <div className="space-y-3">
@@ -717,15 +739,38 @@ export function ServiceDetails({
 
                   {type === 'offer' && categoryFocus && (
                     <div>
-                      <h4 className="font-medium mb-2 text-gray-900">Category Focus</h4>
+                      <h4 className="font-medium mb-2 text-gray-900">Conditions</h4>
                       <p className="text-muted-foreground bg-gray-50 rounded-lg p-3">{categoryFocus}</p>
                     </div>
                   )}
 
                   {type === 'offer' && validityPeriod && (
                     <div>
-                      <h4 className="font-medium mb-2 text-gray-900">Validity Period</h4>
+                      <h4 className="font-medium mb-2 text-gray-900">Duration</h4>
                       <p className="text-muted-foreground bg-gray-50 rounded-lg p-3">{String(validityPeriod).replaceAll('_', ' ')}</p>
+                    </div>
+                  )}
+
+                  {type === 'offer' && item && (
+                    <div>
+                      <h4 className="font-medium mb-2 text-gray-900">Material Item</h4>
+                      <p className="text-muted-foreground bg-gray-50 rounded-lg p-3">
+                        {item}{quantity ? ` (Quantity: ${quantity})` : ''}
+                      </p>
+                    </div>
+                  )}
+
+                  {type === 'offer' && skill && (
+                    <div>
+                      <h4 className="font-medium mb-2 text-gray-900">Skill Offered</h4>
+                      <p className="text-muted-foreground bg-gray-50 rounded-lg p-3">{skill}</p>
+                    </div>
+                  )}
+
+                  {type === 'offer' && scope && (
+                    <div>
+                      <h4 className="font-medium mb-2 text-gray-900">Infrastructure Scope</h4>
+                      <p className="text-muted-foreground bg-gray-50 rounded-lg p-3">{scope}</p>
                     </div>
                   )}
                   

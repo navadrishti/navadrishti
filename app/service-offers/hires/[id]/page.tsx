@@ -29,7 +29,10 @@ interface Hire {
   client_id: number;
   client_name: string;
   client_email: string;
-  client_type: 'individual' | 'company';
+  client_type: 'individual' | 'company' | 'ngo';
+  client?: {
+    user_type?: 'individual' | 'company' | 'ngo';
+  };
   message: string;
   status: 'pending' | 'accepted' | 'rejected' | 'active' | 'completed' | 'cancelled';
   created_at: string;
@@ -48,20 +51,10 @@ export default function ServiceOfferHiresPage({ params }: { params: Promise<{ id
   const [hires, setHires] = useState<Hire[]>([]);
   const [updating, setUpdating] = useState<number | null>(null);
 
-  // Check if user is authorized (NGO only)
+  // Check authentication
   useEffect(() => {
     if (!user) {
       router.push('/login');
-      return;
-    }
-    if (user.user_type !== 'ngo') {
-      toast({
-        title: "Access Denied",
-        description: "Only NGOs can view hires",
-        variant: "destructive",
-      });
-      router.push('/service-offers');
-      return;
     }
   }, [user, router, toast]);
 
@@ -102,9 +95,19 @@ export default function ServiceOfferHiresPage({ params }: { params: Promise<{ id
         const hiresData = await hiresResponse.json();
 
         if (hiresData.success) {
-          setHires(hiresData.data);
+          const normalizedHires = (hiresData.data || []).map((hire: any) => ({
+            ...hire,
+            client_type: hire.response_meta?.client_type || hire.client?.user_type || hire.client_type || 'individual'
+          }));
+          setHires(normalizedHires);
         } else {
-          console.error('Failed to fetch hires:', hiresData.error);
+          toast({
+            title: "Access Denied",
+            description: hiresData.error || "You can only view hires for your own offers",
+            variant: "destructive",
+          });
+          router.push('/service-offers');
+          return;
         }
 
       } catch (error) {
@@ -192,6 +195,19 @@ export default function ServiceOfferHiresPage({ params }: { params: Promise<{ id
 
   const filterHiresByStatus = (status: string) => {
     return hires.filter(h => h.status === status);
+  };
+
+  const getClientTypeLabel = (type: string) => {
+    switch (type) {
+      case 'individual':
+        return 'Individual';
+      case 'company':
+        return 'Company';
+      case 'ngo':
+        return 'NGO';
+      default:
+        return 'Participant';
+    }
   };
 
   if (loading) {
@@ -315,7 +331,7 @@ export default function ServiceOfferHiresPage({ params }: { params: Promise<{ id
                           <div className="flex items-center gap-2 mb-2">
                             <h3 className="font-semibold">{hire.client_name}</h3>
                             <Badge variant="outline">
-                              {hire.client_type === 'individual' ? 'Individual' : 'Company'}
+                              {getClientTypeLabel(hire.client_type)}
                             </Badge>
                           </div>
                           <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
@@ -396,7 +412,7 @@ export default function ServiceOfferHiresPage({ params }: { params: Promise<{ id
                           <div className="flex items-center gap-2 mb-2">
                             <h3 className="font-semibold">{hire.client_name}</h3>
                             <Badge variant="outline">
-                              {hire.client_type === 'individual' ? 'Individual' : 'Company'}
+                              {getClientTypeLabel(hire.client_type)}
                             </Badge>
                             {getStatusBadge(hire.status)}
                           </div>
@@ -458,7 +474,7 @@ export default function ServiceOfferHiresPage({ params }: { params: Promise<{ id
                           <div className="flex items-center gap-2 mb-2">
                             <h3 className="font-semibold">{hire.client_name}</h3>
                             <Badge variant="outline">
-                              {hire.client_type === 'individual' ? 'Individual' : 'Company'}
+                              {getClientTypeLabel(hire.client_type)}
                             </Badge>
                             {getStatusBadge(hire.status)}
                           </div>
@@ -522,7 +538,7 @@ export default function ServiceOfferHiresPage({ params }: { params: Promise<{ id
                           <div className="flex items-center gap-2 mb-2">
                             <h3 className="font-semibold">{hire.client_name}</h3>
                             <Badge variant="outline">
-                              {hire.client_type === 'individual' ? 'Individual' : 'Company'}
+                              {getClientTypeLabel(hire.client_type)}
                             </Badge>
                             {getStatusBadge(hire.status)}
                           </div>

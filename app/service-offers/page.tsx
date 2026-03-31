@@ -29,7 +29,6 @@ export default function ServiceOffersPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All Categories');
   const [locationFilter, setLocationFilter] = useState('');
-  const [employmentTypeFilter, setEmploymentTypeFilter] = useState('all');
   const [currentView, setCurrentView] = useState('all');
   const [serviceOffers, setServiceOffers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -120,9 +119,6 @@ export default function ServiceOffersPage() {
       if (locationFilter) {
         params.append('location', locationFilter);
       }
-      if (employmentTypeFilter && employmentTypeFilter !== 'all') {
-        params.append('employment_type', employmentTypeFilter);
-      }
       if (user?.id) {
         params.append('userId', user.id.toString());
       }
@@ -153,7 +149,7 @@ export default function ServiceOffersPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedCategory, searchTerm, locationFilter, employmentTypeFilter, currentView, user?.id]);
+  }, [selectedCategory, searchTerm, locationFilter, currentView, user?.id]);
 
   // Load data on component mount and when filters change
   useEffect(() => {
@@ -166,6 +162,8 @@ export default function ServiceOffersPage() {
 
   // No need for client-side filtering since API handles it
   const filteredOffers = serviceOffers;
+  const getOfferProviderName = (offer: any) => offer.provider_name || offer.ngo_name || offer.ngo?.name || 'Unknown Provider';
+  const getOfferProviderType = (offer: any) => offer.provider_type || offer.ngo?.user_type || 'ngo';
 
   if (error) {
     return (
@@ -278,17 +276,27 @@ export default function ServiceOffersPage() {
                     category={offer.category}
                     location={offer.location}
                     images={offer.images}
-                    ngo_name={offer.ngo_name}
+                    ngo_name={getOfferProviderName(offer)}
                     ngo_id={offer.ngo_id}
-                    provider={offer.ngo_name}
-                    providerType="ngo"
+                    provider={getOfferProviderName(offer)}
+                    providerType={getOfferProviderType(offer)}
                     verified={offer.verified}
                     tags={offer.tags}
                     created_at={offer.created_at}
                     price_amount={offer.price_amount}
                     price_type={offer.price_type}
                     price_description={offer.price_description}
-                    wage_info={offer.wage_info}
+                    offer_type={offer.offer_type}
+                    amount={offer.amount}
+                    location_scope={offer.location_scope}
+                    conditions={offer.conditions}
+                    item={offer.item}
+                    quantity={offer.quantity}
+                    delivery_scope={offer.delivery_scope}
+                    skill={offer.skill}
+                    capacity={offer.capacity}
+                    duration={offer.duration}
+                    scope={offer.scope}
                     status={offer.status}
                     type="offer"
                     onDelete={() => handleDeleteOffer(offer.id)}
@@ -358,17 +366,27 @@ export default function ServiceOffersPage() {
                           category={offer.category}
                           location={offer.location}
                           images={offer.images}
-                          ngo_name={offer.ngo_name}
+                          ngo_name={getOfferProviderName(offer)}
                           ngo_id={offer.ngo_id}
-                          provider={offer.ngo_name}
-                          providerType="ngo"
+                          provider={getOfferProviderName(offer)}
+                          providerType={getOfferProviderType(offer)}
                           verified={offer.verified}
                           tags={offer.tags}
                           created_at={offer.created_at}
                           price_amount={offer.price_amount}
                           price_type={offer.price_type}
                           price_description={offer.price_description}
-                          wage_info={offer.wage_info}
+                          offer_type={offer.offer_type}
+                          amount={offer.amount}
+                          location_scope={offer.location_scope}
+                          conditions={offer.conditions}
+                          item={offer.item}
+                          quantity={offer.quantity}
+                          delivery_scope={offer.delivery_scope}
+                          skill={offer.skill}
+                          capacity={offer.capacity}
+                          duration={offer.duration}
+                          scope={offer.scope}
                           status={offer.status}
                           type="offer"
                           onDelete={() => handleDeleteOffer(offer.id)}
@@ -419,17 +437,27 @@ export default function ServiceOffersPage() {
                       category={offer.category}
                       location={offer.location}
                       images={offer.images}
-                      ngo_name={offer.ngo_name}
+                      ngo_name={getOfferProviderName(offer)}
                       ngo_id={offer.ngo_id}
-                      provider={offer.ngo_name}
-                      providerType="ngo"
+                      provider={getOfferProviderName(offer)}
+                      providerType={getOfferProviderType(offer)}
                       verified={offer.verified}
                       tags={offer.tags}
                       created_at={offer.created_at}
                       price_amount={offer.price_amount}
                       price_type={offer.price_type}
                       price_description={offer.price_description}
-                      wage_info={offer.wage_info}
+                      offer_type={offer.offer_type}
+                      amount={offer.amount}
+                      location_scope={offer.location_scope}
+                      conditions={offer.conditions}
+                      item={offer.item}
+                      quantity={offer.quantity}
+                      delivery_scope={offer.delivery_scope}
+                      skill={offer.skill}
+                      capacity={offer.capacity}
+                      duration={offer.duration}
+                      scope={offer.scope}
                       status={offer.status}
                       type="offer"
                       canInteract={true}

@@ -27,16 +27,11 @@ export async function GET(
 
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
-    const { id: userId, user_type: userType } = decoded;
-
-    // Only NGOs can view hires for their offers
-    if (userType !== 'ngo') {
-      return NextResponse.json({ error: 'Only NGOs can view hires' }, { status: 403 });
-    }
+    const { id: userId } = decoded;
 
     const offerId = parseInt(id);
 
-    // First, verify that this offer belongs to the authenticated NGO
+    // First, verify that this offer belongs to the authenticated owner
     const offer = await db.serviceOffers.getById(offerId);
 
     if (!offer) {
@@ -52,7 +47,7 @@ export async function GET(
       .from('service_clients')
       .select(`
         *,
-        client:users!client_id(name, email)
+        client:users!client_id(name, email, user_type)
       `)
       .eq('service_offer_id', offerId)
       .order('applied_at', { ascending: false });

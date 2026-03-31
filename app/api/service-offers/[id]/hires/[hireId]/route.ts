@@ -27,12 +27,7 @@ export async function PUT(
 
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
-    const { id: userId, user_type: userType } = decoded;
-
-    // Only NGOs can update hire status
-    if (userType !== 'ngo') {
-      return NextResponse.json({ error: 'Only NGOs can update hire status' }, { status: 403 });
-    }
+    const { id: userId } = decoded;
 
     const offerId = parseInt(id);
     const hId = parseInt(hireId);
@@ -45,7 +40,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
     }
 
-    // First, verify that this offer belongs to the authenticated NGO
+    // First, verify that this offer belongs to the authenticated owner
     const offer = await db.serviceOffers.getById(offerId);
 
     if (!offer) {
