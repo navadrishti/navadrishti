@@ -348,11 +348,6 @@ export function ServiceCard({
             </Badge>
           )}
           
-          {type === 'offer' && offerType && (
-            <Badge variant="outline" className="text-xs font-medium px-3 py-1.5 capitalize">
-              {String(offerType || '').replace('_', ' ')}
-            </Badge>
-          )}
         </div>
 
         {/* Title */}
@@ -362,6 +357,11 @@ export function ServiceCard({
         >
           {title}
         </h3>
+
+        {/* Description */}
+        <p className="text-gray-700 text-sm leading-relaxed line-clamp-3">
+          {description}
+        </p>
 
         {/* Organization Info */}
         <div className="flex items-center gap-3 pt-2">
@@ -384,11 +384,6 @@ export function ServiceCard({
       </CardHeader>
 
       <CardContent className="space-y-4 flex-1 pb-4">
-        {/* Description */}
-        <p className="text-gray-700 text-sm leading-relaxed line-clamp-3">
-          {description}
-        </p>
-
         {isFinancialNeed && Number.isFinite(fundingTargetInr) && fundingTargetInr > 0 && (
           <div className="space-y-3 rounded-lg border p-4">
             <div className="flex items-center justify-between gap-2">
