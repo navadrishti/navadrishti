@@ -47,6 +47,17 @@ interface ServiceCardProps {
   price_type?: 'fixed' | 'negotiable' | 'project_based' | 'hourly'
   price_description?: string
   status?: string
+  offer_type?: 'financial' | 'material' | 'service' | 'infrastructure' | string
+  amount?: number | null
+  location_scope?: string | null
+  conditions?: string | null
+  item?: string | null
+  quantity?: number | null
+  delivery_scope?: string | null
+  skill?: string | null
+  capacity?: number | null
+  duration?: string | null
+  scope?: string | null
   wage_info?: {
     min_amount?: number
     max_amount?: number
@@ -140,7 +151,17 @@ export function ServiceCard({
   price_description,
   status,
   wage_info,
-  employment_type,
+  offer_type,
+  amount,
+  location_scope,
+  conditions,
+  item,
+  quantity,
+  delivery_scope,
+  skill,
+  capacity,
+  duration,
+  scope,
   experience_requirements,
   skills_required,
   benefits,
@@ -232,6 +253,19 @@ export function ServiceCard({
     }
   };
 
+  const getProviderLabel = (type: string) => {
+    switch (type) {
+      case 'individual':
+        return 'Individual';
+      case 'company':
+        return 'Company';
+      case 'ngo':
+        return 'NGO';
+      default:
+        return 'Provider';
+    }
+  };
+
   // Parse requirements for service requests
   const parseRequirements = (req?: string | object) => {
     if (!req) return null;
@@ -244,6 +278,8 @@ export function ServiceCard({
   };
 
   const requirementsData = parseRequirements(requirements);
+  const providerDisplayName = provider || ngo_name;
+  const providerDisplayType = providerType || 'ngo';
   const requestType = requirementsData?.request_type || category;
   const isFinancialNeed = type === 'request' && String(requestType || '').toLowerCase().includes('financial');
   const beneficiaryCount = Number(requirementsData?.beneficiary_count || 0);
@@ -258,9 +294,9 @@ export function ServiceCard({
     ? 'Anytime (No expiry)'
     : requestDeadline;
   const impactScore = Number(impact_score || requirementsData?.impact_score || 0);
-  const offerType = wage_info?.offer_type || category;
-  const capacityLimit = wage_info?.capacity_limit;
-  const coverageArea = wage_info?.coverage_area;
+  const offerType = offer_type || wage_info?.offer_type || category;
+  const capacityLimit = capacity || wage_info?.capacity_limit;
+  const coverageArea = location_scope || delivery_scope || wage_info?.coverage_area;
 
   const formatInrValue = (value: unknown): string => {
     if (value === null || value === undefined) return '';
@@ -312,9 +348,9 @@ export function ServiceCard({
             </Badge>
           )}
           
-          {type === 'offer' && (offerType || employment_type) && (
+          {type === 'offer' && offerType && (
             <Badge variant="outline" className="text-xs font-medium px-3 py-1.5 capitalize">
-              {(offerType || employment_type || '').replace('_', ' ')}
+              {String(offerType || '').replace('_', ' ')}
             </Badge>
           )}
         </div>
@@ -330,17 +366,18 @@ export function ServiceCard({
         {/* Organization Info */}
         <div className="flex items-center gap-3 pt-2">
           <div className="w-10 h-10 rounded-full flex items-center justify-center bg-blue-600 text-white font-bold text-sm flex-shrink-0 shadow-md">
-            {getInitials(ngo_name)}
+            {getInitials(providerDisplayName)}
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <p className="font-semibold text-gray-900 text-sm truncate">{ngo_name}</p>
+              <p className="font-semibold text-gray-900 text-sm truncate">{providerDisplayName}</p>
               {verified && (
                 <VerificationBadge status="verified" size="sm" showText={false} />
               )}
             </div>
-            <p className="text-xs text-gray-500">
-              {type === 'request' ? 'Requesting Help' : 'Service Provider'}
+            <p className="text-xs text-gray-500 flex items-center gap-1">
+              {getProviderIcon(providerDisplayType)}
+              {type === 'request' ? 'Requesting Help' : `${getProviderLabel(providerDisplayType)} Provider`}
             </p>
           </div>
         </div>
@@ -435,7 +472,7 @@ export function ServiceCard({
             <div className="space-y-1 col-span-2">
               <div className="flex items-center gap-1.5 text-gray-500">
                 <Target size={14} />
-                <span className="text-xs font-medium">Capacity Limit</span>
+                <span className="text-xs font-medium">Capacity</span>
               </div>
               <p className="text-sm font-bold text-blue-700">{capacityLimit}</p>
             </div>
@@ -451,25 +488,59 @@ export function ServiceCard({
             </div>
           )}
 
-          {type === 'offer' && wage_info && (wage_info.min_amount || wage_info.max_amount) && (
+          {type === 'offer' && offerType === 'financial' && (amount || wage_info?.min_amount || wage_info?.max_amount) && (
             <div className="space-y-1 col-span-2">
               <div className="flex items-center gap-1.5 text-gray-500">
                 <IndianRupee size={14} />
-                <span className="text-xs font-medium">Pricing</span>
+                <span className="text-xs font-medium">Amount</span>
               </div>
               <p className="text-sm font-bold text-green-700">
-                ₹{wage_info.min_amount ? Number(wage_info.min_amount).toLocaleString() : ''}
-                {wage_info.min_amount && wage_info.max_amount && ' - '}
-                {wage_info.max_amount ? `₹${Number(wage_info.max_amount).toLocaleString()}` : ''}
-                {wage_info.payment_frequency && (
+                {amount ? `₹${Number(amount).toLocaleString('en-IN')}` : ''}
+                {!amount && wage_info?.min_amount ? `₹${Number(wage_info.min_amount).toLocaleString('en-IN')}` : ''}
+                {!amount && wage_info?.min_amount && wage_info?.max_amount && ' - '}
+                {!amount && wage_info?.max_amount ? `₹${Number(wage_info.max_amount).toLocaleString('en-IN')}` : ''}
+                {wage_info?.payment_frequency && (
                   <span className="text-xs font-normal text-gray-600 ml-1">
                     /{wage_info.payment_frequency}
                   </span>
                 )}
-                {wage_info.negotiable && (
+                {wage_info?.negotiable && (
                   <Badge variant="outline" className="ml-2 text-xs">Negotiable</Badge>
                 )}
               </p>
+            </div>
+          )}
+
+          {type === 'offer' && offerType === 'material' && item && (
+            <div className="space-y-1 col-span-2">
+              <div className="flex items-center gap-1.5 text-gray-500">
+                <Briefcase size={14} />
+                <span className="text-xs font-medium">Material</span>
+              </div>
+              <p className="text-sm font-semibold text-gray-900">
+                {item}
+                {quantity ? ` (${quantity})` : ''}
+              </p>
+            </div>
+          )}
+
+          {type === 'offer' && offerType === 'service' && skill && (
+            <div className="space-y-1 col-span-2">
+              <div className="flex items-center gap-1.5 text-gray-500">
+                <Briefcase size={14} />
+                <span className="text-xs font-medium">Skill Offered</span>
+              </div>
+              <p className="text-sm font-semibold text-gray-900">{skill}</p>
+            </div>
+          )}
+
+          {type === 'offer' && offerType === 'infrastructure' && scope && (
+            <div className="space-y-1 col-span-2">
+              <div className="flex items-center gap-1.5 text-gray-500">
+                <Target size={14} />
+                <span className="text-xs font-medium">Infrastructure Scope</span>
+              </div>
+              <p className="text-sm font-semibold text-gray-900 line-clamp-2">{scope}</p>
             </div>
           )}
         </div>
@@ -493,6 +564,20 @@ export function ServiceCard({
                 </Badge>
               )}
             </div>
+          </div>
+        )}
+
+        {type === 'offer' && conditions && (
+          <div className="space-y-2 pt-2">
+            <p className="text-xs font-medium text-gray-500">Conditions</p>
+            <p className="text-sm text-gray-700 line-clamp-2">{conditions}</p>
+          </div>
+        )}
+
+        {type === 'offer' && duration && (
+          <div className="space-y-2 pt-2">
+            <p className="text-xs font-medium text-gray-500">Duration</p>
+            <p className="text-sm text-gray-700">{duration}</p>
           </div>
         )}
 

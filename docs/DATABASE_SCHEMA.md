@@ -19,7 +19,7 @@ Navdrishti uses Supabase PostgreSQL as the primary datastore. The active applica
 - Connected to `service_volunteers` records.
 
 ### service_offers
-- Professional or programmatic offerings published by NGOs.
+- Professional or programmatic offerings published by verified NGOs, individuals, and companies.
 - Connected to `service_clients` records.
 
 ### service_volunteers
