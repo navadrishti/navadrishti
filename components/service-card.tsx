@@ -297,6 +297,13 @@ export function ServiceCard({
   const offerType = offer_type || wage_info?.offer_type || category;
   const capacityLimit = capacity || wage_info?.capacity_limit;
   const coverageArea = location_scope || delivery_scope || wage_info?.coverage_area;
+  const normalizedPriceAmount = Number(price_amount);
+  const hasPriceAmount = Number.isFinite(normalizedPriceAmount) && normalizedPriceAmount > 0;
+  const normalizedOfferAmount = Number(amount);
+  const hasOfferAmount = Number.isFinite(normalizedOfferAmount) && normalizedOfferAmount > 0;
+  const hasWageRange = Number.isFinite(Number(wage_info?.min_amount)) || Number.isFinite(Number(wage_info?.max_amount));
+  const hasOfferPrice = hasPriceAmount || (type === 'offer' && offerType === 'financial' && (hasOfferAmount || hasWageRange));
+  const normalizedPriceType = price_type ? String(price_type).replace(/_/g, ' ') : '';
 
   const formatInrValue = (value: unknown): string => {
     if (value === null || value === undefined) return '';
@@ -350,13 +357,19 @@ export function ServiceCard({
           
         </div>
 
-        {/* Title */}
-        <h3 
-          className="font-bold text-xl text-gray-900 line-clamp-2 leading-tight cursor-pointer hover:text-blue-600 transition-colors" 
-          onClick={handleCardClick}
-        >
-          {title}
-        </h3>
+        {/* Title and posted date */}
+        <div className="flex items-start justify-between gap-3">
+          <h3
+            className="font-bold text-xl text-gray-900 line-clamp-2 leading-tight cursor-pointer hover:text-blue-600 transition-colors flex-1"
+            onClick={handleCardClick}
+          >
+            {title}
+          </h3>
+          <p className="text-xs text-gray-500 flex items-center gap-1 whitespace-nowrap pt-1">
+            <Calendar size={12} />
+            {formatDate(created_at)}
+          </p>
+        </div>
 
         {/* Description */}
         <p className="text-gray-700 text-sm leading-relaxed line-clamp-3">
@@ -403,14 +416,6 @@ export function ServiceCard({
 
         {/* Key Information Grid */}
         <div className="grid grid-cols-2 gap-3 pt-2">
-          <div className="space-y-1">
-            <div className="flex items-center gap-1.5 text-gray-500">
-              <Calendar size={14} />
-              <span className="text-xs font-medium">Posted</span>
-            </div>
-            <p className="text-sm font-semibold text-gray-900">{formatDate(created_at)}</p>
-          </div>
-          
           {location && (
             <div className="space-y-1">
               <div className="flex items-center gap-1.5 text-gray-500">
@@ -464,12 +469,44 @@ export function ServiceCard({
 
           {/* Service Offer Specific Fields */}
           {type === 'offer' && capacityLimit && (
-            <div className="space-y-1 col-span-2">
+            <div className={`space-y-1 ${hasOfferPrice ? '' : 'col-span-2'}`}>
               <div className="flex items-center gap-1.5 text-gray-500">
                 <Target size={14} />
                 <span className="text-xs font-medium">Capacity</span>
               </div>
               <p className="text-sm font-bold text-blue-700">{capacityLimit}</p>
+            </div>
+          )}
+
+          {type === 'offer' && hasOfferPrice && (
+            <div className={`space-y-1 ${capacityLimit ? '' : 'col-span-2'}`}>
+              <div className="flex items-center gap-1.5 text-gray-500">
+                <IndianRupee size={14} />
+                <span className="text-xs font-medium">Price</span>
+              </div>
+              <p className="text-sm font-bold text-green-700">
+                {hasPriceAmount ? formatPrice(normalizedPriceAmount) : ''}
+                {!hasPriceAmount && hasOfferAmount ? formatPrice(normalizedOfferAmount) : ''}
+                {!hasPriceAmount && !hasOfferAmount && wage_info?.min_amount ? formatPrice(wage_info.min_amount) : ''}
+                {!hasPriceAmount && !hasOfferAmount && wage_info?.min_amount && wage_info?.max_amount && ' - '}
+                {!hasPriceAmount && !hasOfferAmount && wage_info?.max_amount ? formatPrice(wage_info.max_amount) : ''}
+                {hasPriceAmount && normalizedPriceType && (
+                  <span className="text-xs font-normal text-gray-600 ml-1">
+                    /{normalizedPriceType}
+                  </span>
+                )}
+                {!hasPriceAmount && wage_info?.payment_frequency && (
+                  <span className="text-xs font-normal text-gray-600 ml-1">
+                    /{wage_info.payment_frequency}
+                  </span>
+                )}
+                {(price_type === 'negotiable' || wage_info?.negotiable) && (
+                  <Badge variant="outline" className="ml-2 text-xs">Negotiable</Badge>
+                )}
+              </p>
+              {price_description && (
+                <p className="text-xs text-gray-600 line-clamp-1">{price_description}</p>
+              )}
             </div>
           )}
 
@@ -480,29 +517,6 @@ export function ServiceCard({
                 <span className="text-xs font-medium">Coverage</span>
               </div>
               <p className="text-sm font-semibold text-gray-900 truncate">{coverageArea}</p>
-            </div>
-          )}
-
-          {type === 'offer' && offerType === 'financial' && (amount || wage_info?.min_amount || wage_info?.max_amount) && (
-            <div className="space-y-1 col-span-2">
-              <div className="flex items-center gap-1.5 text-gray-500">
-                <IndianRupee size={14} />
-                <span className="text-xs font-medium">Amount</span>
-              </div>
-              <p className="text-sm font-bold text-green-700">
-                {amount ? `₹${Number(amount).toLocaleString('en-IN')}` : ''}
-                {!amount && wage_info?.min_amount ? `₹${Number(wage_info.min_amount).toLocaleString('en-IN')}` : ''}
-                {!amount && wage_info?.min_amount && wage_info?.max_amount && ' - '}
-                {!amount && wage_info?.max_amount ? `₹${Number(wage_info.max_amount).toLocaleString('en-IN')}` : ''}
-                {wage_info?.payment_frequency && (
-                  <span className="text-xs font-normal text-gray-600 ml-1">
-                    /{wage_info.payment_frequency}
-                  </span>
-                )}
-                {wage_info?.negotiable && (
-                  <Badge variant="outline" className="ml-2 text-xs">Negotiable</Badge>
-                )}
-              </p>
             </div>
           )}
 
