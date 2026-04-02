@@ -575,10 +575,8 @@ export function ServiceDetails({
                 {type === 'offer' && (amount || price_amount) ? (
                   <>
                     <div className="text-2xl font-bold text-green-600 flex items-center">
-                      <IndianRupee className="h-5 w-5" />
                       {formatPrice(amount || price_amount || 0)}
                     </div>
-                    <div className="text-sm text-muted-foreground">{offerType || price_type} offer</div>
                   </>
                 ) : type === 'request' && (urgency_level || priority) ? (
                   <Badge className={`${getPriorityColor(urgency_level || priority)} font-semibold`}>
@@ -608,14 +606,16 @@ export function ServiceDetails({
               </h3>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Category */}
-                <div className="bg-blue-50 rounded-lg p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Target size={16} className="text-blue-600" />
-                    <span className="text-sm font-medium text-blue-700">{type === 'request' ? 'Request Type' : 'Capability Type'}</span>
+                {/* Service Request - Type */}
+                {type === 'request' && (
+                  <div className="bg-blue-50 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Target size={16} className="text-blue-600" />
+                      <span className="text-sm font-medium text-blue-700">Request Type</span>
+                    </div>
+                    <p className="font-semibold text-blue-800">{requestType}</p>
                   </div>
-                  <p className="font-semibold text-blue-800">{type === 'request' ? requestType : offerType}</p>
-                </div>
+                )}
                 
                 {/* Location */}
                 {location && (
@@ -625,17 +625,6 @@ export function ServiceDetails({
                       <span className="text-sm font-medium text-purple-700">Location</span>
                     </div>
                     <p className="font-semibold text-purple-800">{location}</p>
-                  </div>
-                )}
-                
-                {/* Service Offer - Type */}
-                {type === 'offer' && offerType && (
-                  <div className="bg-green-50 rounded-lg p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Clock size={16} className="text-green-600" />
-                      <span className="text-sm font-medium text-green-700">Offer Type</span>
-                    </div>
-                    <p className="font-semibold text-green-800 capitalize">{String(offerType).replace('_', ' ')}</p>
                   </div>
                 )}
                 
