@@ -106,11 +106,10 @@ Navdrishti follows a modern full-stack architecture built on Next.js with a Post
 - **service_requests**: NGO assistance requests
 - **service_offers**: Multi-provider capability offerings (NGO/individual/company)
 - **service_volunteers**: Volunteer applications and progress
-- **service_clients**: Client engagements for offered services
 
 ### Relationship Patterns
 - **One-to-Many**: User → Posts, User → Service Offers
-- **Many-to-Many**: Users ↔ Service Applications
+- **Many-to-Many**: Users ↔ Service Requests
 - **Polymorphic**: Notifications → Multiple entity types
 
 ## 🔐 Security Architecture

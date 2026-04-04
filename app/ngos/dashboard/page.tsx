@@ -430,13 +430,13 @@ function NGODashboardContent() {
                           </div>
                         ) : (
                           serviceOffers.map((offer) => (
-                            <div key={offer.id} className="grid grid-cols-1 md:grid-cols-5 p-4 text-sm items-center">
+                            <div key={offer.id} className="grid grid-cols-1 md:grid-cols-4 p-4 text-sm items-center">
                               <div className="font-medium">{offer.title}</div>
                               <div>{offer.category}</div>
                               <div>
                                 <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
                                   offer.status === 'active' 
-                                    ? 'bg-green-50 text-green-700'
+                                  ? 'bg-green-50 text-green-700'
                                     : offer.status === 'paused'
                                     ? 'bg-amber-50 text-amber-700'
                                     : 'bg-gray-50 text-gray-700'
@@ -444,16 +444,12 @@ function NGODashboardContent() {
                                   {offer.status === 'active' ? 'Available' : offer.status?.charAt(0).toUpperCase() + offer.status?.slice(1) || 'Unknown'}
                                 </span>
                               </div>
-                              <div>{offer.hires_count || 0} requests</div>
                               <div className="flex justify-end gap-2">
                                 <Link href={`/service-offers/${offer.id}`}>
                                   <Button variant="ghost" size="sm">View</Button>
                                 </Link>
                                 <Link href={`/service-offers/edit/${offer.id}`}>
                                   <Button variant="outline" size="sm">Edit</Button>
-                                </Link>
-                                <Link href={`/service-offers/hires/${offer.id}`}>
-                                  <Button variant="outline" size="sm">Hires</Button>
                                 </Link>
                               </div>
                             </div>

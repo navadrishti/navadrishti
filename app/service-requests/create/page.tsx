@@ -9,7 +9,6 @@ import { Header } from '@/components/header'
 import ProtectedRoute from '@/components/protected-route'
 import { useAuth } from '@/lib/auth-context'
 import { SERVICE_REQUEST_CATEGORIES } from '@/lib/categories'
-import { getRequestUrgencyLevel } from '@/lib/utils'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -299,9 +298,6 @@ export default function CreateServiceRequestPage() {
       if (isBlank(need.budget)) return `Need ${index + 1}: budget range is required.`
       if (!budgetRanges.includes(need.budget)) return `Need ${index + 1}: select a valid budget range.`
 
-      if (isBlank(need.estimated_budget)) return `Need ${index + 1}: estimated budget is required.`
-      if (!isValidMoneyValue(need.estimated_budget)) return `Need ${index + 1}: estimated budget must be a valid amount like "INR 50,000".`
-
       if (isBlank(need.beneficiary_count)) return `Need ${index + 1}: beneficiary count is required.`
       if (!isValidPositiveInteger(need.beneficiary_count)) return `Need ${index + 1}: beneficiary count must be a positive whole number.`
 
@@ -434,14 +430,10 @@ export default function CreateServiceRequestPage() {
             request_type: need.request_type,
             category: need.category,
             location: activeProjectLocation,
-            urgency: getRequestUrgencyLevel({
-              createdAt: Date.now(),
-              deadline: need.timeline,
-              fallback: need.urgency || 'medium'
-            }),
+            urgency: need.urgency || 'medium',
             timeline: need.timeline,
             budget: need.budget,
-            estimated_budget: need.estimated_budget,
+            estimated_budget: need.budget,
             beneficiary_count: need.beneficiary_count,
             impact_description: need.impact_description,
             contactInfo: need.contactInfo,
@@ -665,9 +657,6 @@ export default function CreateServiceRequestPage() {
                                 <Label htmlFor={`beneficiary_count-${index}`}>Beneficiary Count *</Label>
                                 <Input id={`beneficiary_count-${index}`} type="number" min="1" step="1" value={need.beneficiary_count} onChange={(e) => updateNeed(index, 'beneficiary_count', e.target.value)} placeholder="e.g., 300" required />
                               </div>
-                              <div className="rounded-lg border bg-muted/20 p-3 text-sm text-muted-foreground">
-                                Urgency is calculated automatically from the timeline and date posted.
-                              </div>
                             </div>
 
                             <div className="grid gap-4 md:grid-cols-2">
@@ -687,10 +676,6 @@ export default function CreateServiceRequestPage() {
                                 </Select>
                               </div>
 
-                              <div>
-                                <Label htmlFor={`estimated_budget-${index}`}>Estimated Budget *</Label>
-                                <Input id={`estimated_budget-${index}`} value={need.estimated_budget} onChange={(e) => updateNeed(index, 'estimated_budget', e.target.value)} placeholder="e.g., INR 50,000" required />
-                              </div>
                             </div>
 
                             <div>

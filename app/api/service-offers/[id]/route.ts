@@ -294,12 +294,14 @@ export async function GET(
     // Return the service offer data (publicly accessible)
     const providerName = serviceOffer.ngo?.name || serviceOffer.ngo_name;
     const providerType = serviceOffer.ngo?.user_type || 'ngo';
+    const providerProfileImage = serviceOffer.ngo?.profile_image || null;
 
     return NextResponse.json({
       ...normalizeOffer(serviceOffer),
       ngo_name: providerName,
       provider_name: providerName,
-      provider_type: providerType
+      provider_type: providerType,
+      provider_profile_image: providerProfileImage
     });
 
   } catch (error) {

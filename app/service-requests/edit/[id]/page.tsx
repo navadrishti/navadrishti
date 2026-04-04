@@ -72,17 +72,8 @@ const createEmptyNeed = (): NeedDraft => ({
   infrastructure_scope: ''
 })
 
-const urgencyLevels = [
-  { value: 'low', label: 'Low' },
-  { value: 'medium', label: 'Medium' },
-  { value: 'high', label: 'High' },
-  { value: 'critical', label: 'Critical' }
-]
-
-const moneyPattern = /^(?:₹|INR)?\s*\d[\d,]*(?:\.\d{1,2})?$/i
 const timelinePattern = /^(?:anytime|\d+\s*(?:day|days|week|weeks|month|months|year|years)|\d{4}-\d{2}-\d{2})$/i
 
-const isValidMoneyValue = (value: string) => moneyPattern.test(value.trim())
 const isValidTimelineValue = (value: string) => timelinePattern.test(value.trim())
 const isValidPositiveInteger = (value: string) => /^\d+$/.test(value.trim()) && Number(value) > 0
 
@@ -359,9 +350,6 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
         return `${label}: select a valid budget range.`
       }
 
-      if (isBlank(need.estimated_budget)) return `${label}: estimated budget is required.`
-      if (!isValidMoneyValue(need.estimated_budget)) return `${label}: estimated budget must be a valid amount like INR 50,000.`
-
       if (isBlank(need.beneficiary_count)) return `${label}: beneficiary count is required.`
       if (!isValidPositiveInteger(need.beneficiary_count)) return `${label}: beneficiary count must be a positive whole number.`
 
@@ -393,7 +381,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
       return null
     }
 
-    if ([formData.title, formData.description, formData.request_type, formData.timeline, formData.budget, formData.estimated_budget, formData.beneficiary_count, formData.impact_description, formData.contactInfo].some(isBlank)) {
+    if ([formData.title, formData.description, formData.request_type, formData.timeline, formData.budget, formData.beneficiary_count, formData.impact_description, formData.contactInfo].some(isBlank)) {
       toast({ title: 'Validation Error', description: 'Every main request field must be filled.', variant: 'destructive' })
       return
     }
@@ -410,11 +398,6 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
 
     if (!isValidTimelineValue(formData.timeline)) {
       toast({ title: 'Validation Error', description: 'Timeline must be Anytime, a duration like 4 weeks, or a date like 2026-05-15.', variant: 'destructive' })
-      return
-    }
-
-    if (!isValidMoneyValue(formData.estimated_budget)) {
-      toast({ title: 'Validation Error', description: 'Estimated budget must be a valid amount like INR 50,000.', variant: 'destructive' })
       return
     }
 
@@ -522,6 +505,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
           category: formData.request_type,
           projectId: activeProjectId || undefined,
           project: projectPayload,
+          estimated_budget: formData.budget,
           details
         })
       })
@@ -545,7 +529,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
               urgency: need.urgency,
               timeline: need.timeline,
               budget: need.budget,
-              estimated_budget: need.estimated_budget,
+              estimated_budget: need.budget,
               beneficiary_count: need.beneficiary_count,
               impact_description: need.impact_description,
               contactInfo: need.contactInfo,
@@ -764,29 +748,6 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
                   />
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="urgency">Urgency *</Label>
-                    <Select value={formData.urgency} onValueChange={(value) => handleInput('urgency', value)}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {urgencyLevels.map((level) => (
-                          <SelectItem key={level.value} value={level.value}>
-                            {level.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="estimated_budget">Estimated Budget *</Label>
-                    <Input id="estimated_budget" value={formData.estimated_budget} onChange={(e) => handleInput('estimated_budget', e.target.value)} placeholder="e.g., INR 50,000" required />
-                  </div>
-                </div>
-
                 <div>
                   <Label htmlFor="timeline">Timeline / Deadline *</Label>
                   <div className="mt-2 flex gap-2">
@@ -917,19 +878,6 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
                               <div>
                                 <Label htmlFor={`extra_beneficiary_count-${index}`}>Beneficiary Count *</Label>
                                 <Input id={`extra_beneficiary_count-${index}`} type="number" min="1" step="1" value={need.beneficiary_count} onChange={(e) => updateAdditionalNeed(index, 'beneficiary_count', e.target.value)} placeholder="e.g., 100" required />
-                              </div>
-                              <div>
-                                <Label htmlFor={`extra_urgency-${index}`}>Urgency *</Label>
-                                <Select value={need.urgency} onValueChange={(value) => updateAdditionalNeed(index, 'urgency', value)}>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select urgency" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {urgencyLevels.map((level) => (
-                                      <SelectItem key={level.value} value={level.value}>{level.label}</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
                               </div>
                             </div>
 

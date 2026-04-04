@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { getRequestUrgencyLevel } from '@/lib/utils'
 
 interface ServiceRequest {
   id: number
@@ -131,6 +132,7 @@ export default function ServiceRequestDetailPage() {
   
   const [paymentAmount, setPaymentAmount] = useState('1000')
   const [paying, setPaying] = useState(false)
+  const [currentTimeMs, setCurrentTimeMs] = useState(() => Date.now())
   const [request, setRequest] = useState<ServiceRequest | null>(null)
   const [userApplication, setUserApplication] = useState<VolunteerApplication | null>(null)
   const [applicants, setApplicants] = useState<ApplicantEntry[]>([])
@@ -181,6 +183,14 @@ export default function ServiceRequestDetailPage() {
         script.parentNode.removeChild(script)
       }
     }
+  }, [])
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTimeMs(Date.now())
+    }, 60 * 1000)
+
+    return () => clearInterval(interval)
   }, [])
 
   const fetchRequestDetails = async () => {
@@ -623,6 +633,7 @@ export default function ServiceRequestDetailPage() {
   const getUrgencyColor = (urgency: string) => {
     if (!urgency) return 'bg-gray-100 text-gray-800 border-gray-200';
     switch (urgency.toLowerCase()) {
+      case 'critical': return 'bg-red-200 text-red-900 border-red-300'
       case 'high': return 'bg-red-100 text-red-800 border-red-200'
       case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-200'
       case 'low': return 'bg-green-100 text-green-800 border-green-200'
@@ -661,6 +672,12 @@ export default function ServiceRequestDetailPage() {
   const categoryDetails = parsedRequirements?.category_details || {}
   const rawDeadline = String(request?.deadline || request?.timeline || parsedRequirements?.timeline || 'Not specified')
   const infoDeadline = rawDeadline.trim().toLowerCase() === 'anytime' ? 'Anytime (No expiry)' : rawDeadline
+  const effectiveUrgency = getRequestUrgencyLevel({
+    createdAt: request?.created_at,
+    deadline: request?.deadline || request?.timeline || parsedRequirements?.timeline,
+    fallback: request?.urgency_level,
+    referenceTimeMs: currentTimeMs
+  })
   const isFinancialNeed = infoRequestType.toLowerCase().includes('financial')
   const fundingTargetInr = parseAmountToInr(parsedRequirements?.funding_target_inr || parsedRequirements?.estimated_budget || parsedRequirements?.budget)
   const fundsRaisedInr = parseAmountToInr(parsedRequirements?.funds_raised_inr)
@@ -929,6 +946,12 @@ export default function ServiceRequestDetailPage() {
                       <div>
                         <p className="font-medium text-gray-500">Deadline</p>
                         <p className="font-semibold">{infoDeadline}</p>
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-500">Urgency</p>
+                        <Badge className={getUrgencyColor(effectiveUrgency)}>
+                          {effectiveUrgency.charAt(0).toUpperCase() + effectiveUrgency.slice(1)}
+                        </Badge>
                       </div>
                       <div>
                         <p className="font-medium text-gray-500">Budget</p>

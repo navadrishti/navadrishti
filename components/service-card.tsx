@@ -46,6 +46,7 @@ interface ServiceCardProps {
   price_amount?: number
   price_type?: 'fixed' | 'negotiable' | 'project_based' | 'hourly'
   price_description?: string
+  transaction_type?: 'sell' | 'rent' | 'volunteer' | string
   status?: string
   offer_type?: 'financial' | 'material' | 'service' | 'infrastructure' | string
   amount?: number | null
@@ -157,6 +158,7 @@ export function ServiceCard({
   price_amount,
   price_type,
   price_description,
+  transaction_type,
   status,
   wage_info,
   offer_type,
@@ -210,17 +212,6 @@ export function ServiceCard({
 
   const imageArray = parseImages(images);
 
-  const liveUrgency = type === 'request'
-    ? getRequestUrgencyLevel({
-        createdAt: created_at,
-        deadline,
-        referenceTimeMs: currentTime,
-        fallback: urgency_level || priority || 'medium'
-      })
-    : null;
-
-  const effectiveRequestUrgency = liveUrgency || (urgency_level || priority || 'medium');
-  
   // Parse tags safely
   const parseTags = (tagData?: string[] | string): string[] => {
     if (!tagData) return [];
@@ -326,14 +317,79 @@ export function ServiceCard({
   const fundingProgress = isFinancialNeed && Number.isFinite(fundingTargetInr) && fundingTargetInr > 0
     ? Math.min(100, Math.round((Math.max(fundsRaisedInr, 0) / fundingTargetInr) * 100))
     : 0;
-  const requestDeadline = timeline || deadline || requirementsData?.timeline;
+  const requestDeadline = deadline || timeline || requirementsData?.timeline;
   const formattedRequestDeadline = String(requestDeadline || '').trim().toLowerCase() === 'anytime'
     ? 'Anytime (No expiry)'
     : requestDeadline;
+  const liveUrgency = type === 'request'
+    ? getRequestUrgencyLevel({
+        createdAt: created_at,
+        deadline: requestDeadline,
+        referenceTimeMs: currentTime,
+        fallback: urgency_level || priority || 'medium'
+      })
+    : null;
+  const effectiveRequestUrgency = liveUrgency || (urgency_level || priority || 'medium');
   const impactScore = Number(impact_score || requirementsData?.impact_score || 0);
   const offerType = offer_type || wage_info?.offer_type || category;
   const capacityLimit = capacity || wage_info?.capacity_limit;
   const coverageArea = location_scope || delivery_scope || wage_info?.coverage_area;
+  const normalizedPriceAmount = Number(price_amount);
+  const hasPriceAmount = Number.isFinite(normalizedPriceAmount) && normalizedPriceAmount > 0;
+  const normalizedOfferAmount = Number(amount);
+  const hasOfferAmount = Number.isFinite(normalizedOfferAmount) && normalizedOfferAmount > 0;
+  const hasWageRange = Number.isFinite(Number(wage_info?.min_amount)) || Number.isFinite(Number(wage_info?.max_amount));
+  const normalizedPriceType = price_type ? String(price_type).replace(/_/g, ' ') : '';
+  const normalizedTransactionType = String(transaction_type || '').toLowerCase();
+  const normalizedPriceDescription = String(price_description || '').trim();
+  const priceDescriptionLower = normalizedPriceDescription.toLowerCase();
+  const isVolunteerPricing = normalizedTransactionType === 'volunteer'
+    || normalizedPriceType === 'free'
+    || normalizedPriceType === 'donation'
+    || priceDescriptionLower.includes('volunteer')
+    || priceDescriptionLower.includes('no charges')
+    || priceDescriptionLower.includes('free');
+  const pricingModeLabel = isVolunteerPricing
+    ? 'volunteer'
+    : normalizedTransactionType === 'rent'
+      ? 'per day'
+      : normalizedTransactionType === 'sell'
+        ? 'fixed total'
+        : normalizedPriceType === 'hourly'
+          ? 'per hour'
+          : normalizedPriceType === 'project based'
+            ? 'project based'
+            : normalizedPriceType === 'fixed'
+              ? 'fixed total'
+              : '';
+  const hasOfferPriceDetails = type === 'offer' && (
+    hasPriceAmount ||
+    hasOfferAmount ||
+    hasWageRange ||
+    isVolunteerPricing ||
+    Boolean(normalizedPriceType) ||
+    Boolean(wage_info?.payment_frequency) ||
+    Boolean(wage_info?.negotiable) ||
+    Boolean(price_description)
+  );
+  const hasDuplicateRentDescription = normalizedTransactionType === 'rent' && (
+    priceDescriptionLower.includes('rent') ||
+    priceDescriptionLower.includes('per day') ||
+    priceDescriptionLower.includes('/day')
+  );
+  const hasDuplicateSellDescription = normalizedTransactionType === 'sell' && (
+    priceDescriptionLower.includes('sell') ||
+    priceDescriptionLower.includes('fixed total')
+  );
+  const hasDuplicateVolunteerDescription = isVolunteerPricing && (
+    priceDescriptionLower.includes('volunteer') ||
+    priceDescriptionLower.includes('no charges') ||
+    priceDescriptionLower.includes('free')
+  );
+  const shouldShowPriceDescription = Boolean(normalizedPriceDescription)
+    && !hasDuplicateRentDescription
+    && !hasDuplicateSellDescription
+    && !hasDuplicateVolunteerDescription;
 
   const formatInrValue = (value: unknown): string => {
     if (value === null || value === undefined) return '';
@@ -402,7 +458,7 @@ export function ServiceCard({
         )}
 
         {/* Key Information Grid */}
-        <div className="grid grid-cols-1 gap-3 pt-2 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 pt-2 sm:grid-cols-2 sm:grid-flow-row-dense">
           <div className="space-y-1">
             <div className="flex items-center gap-1.5 text-gray-500">
               <Calendar size={14} />
@@ -513,17 +569,25 @@ export function ServiceCard({
             </div>
           )}
 
-          {type === 'offer' && offerType === 'financial' && (amount || wage_info?.min_amount || wage_info?.max_amount) && (
-            <div className="space-y-1 sm:col-span-2">
+          {hasOfferPriceDetails && (
+            <div className="space-y-1 sm:col-start-2">
               <div className="flex items-center gap-1.5 text-gray-500">
                 <IndianRupee size={14} />
-                <span className="text-xs font-medium">Amount</span>
+                <span className="text-xs font-medium">Price Details</span>
               </div>
               <p className="text-sm font-bold text-green-700">
-                {amount ? `₹${Number(amount).toLocaleString('en-IN')}` : ''}
-                {!amount && wage_info?.min_amount ? `₹${Number(wage_info.min_amount).toLocaleString('en-IN')}` : ''}
-                {!amount && wage_info?.min_amount && wage_info?.max_amount && ' - '}
-                {!amount && wage_info?.max_amount ? `₹${Number(wage_info.max_amount).toLocaleString('en-IN')}` : ''}
+                {isVolunteerPricing ? 'Volunteer' : ''}
+                {!isVolunteerPricing && hasPriceAmount ? formatPrice(normalizedPriceAmount) : ''}
+                {!isVolunteerPricing && !hasPriceAmount && hasOfferAmount ? formatPrice(normalizedOfferAmount) : ''}
+                {!isVolunteerPricing && !hasPriceAmount && !hasOfferAmount && wage_info?.min_amount ? formatPrice(wage_info.min_amount) : ''}
+                {!isVolunteerPricing && !hasPriceAmount && !hasOfferAmount && wage_info?.min_amount && wage_info?.max_amount && ' - '}
+                {!isVolunteerPricing && !hasPriceAmount && !hasOfferAmount && wage_info?.max_amount ? formatPrice(wage_info.max_amount) : ''}
+                {!isVolunteerPricing && !hasPriceAmount && !hasOfferAmount && !hasWageRange && (normalizedPriceType || price_description) ? 'Custom pricing' : ''}
+                {pricingModeLabel && !isVolunteerPricing && !wage_info?.payment_frequency && (
+                  <span className="text-xs font-normal text-gray-600 ml-1">
+                    {pricingModeLabel}
+                  </span>
+                )}
                 {wage_info?.payment_frequency && (
                   <span className="text-xs font-normal text-gray-600 ml-1">
                     /{wage_info.payment_frequency}
@@ -533,11 +597,14 @@ export function ServiceCard({
                   <Badge variant="outline" className="ml-2 text-xs">Negotiable</Badge>
                 )}
               </p>
+              {shouldShowPriceDescription && (
+                <p className="text-xs text-gray-600 line-clamp-2">{normalizedPriceDescription}</p>
+              )}
             </div>
           )}
 
           {type === 'offer' && offerType === 'material' && item && (
-            <div className="space-y-1 col-span-2">
+            <div className="space-y-1">
               <div className="flex items-center gap-1.5 text-gray-500">
                 <Briefcase size={14} />
                 <span className="text-xs font-medium">Material</span>
@@ -550,7 +617,7 @@ export function ServiceCard({
           )}
 
           {type === 'offer' && offerType === 'service' && skill && (
-            <div className="space-y-1 col-span-2">
+            <div className="space-y-1">
               <div className="flex items-center gap-1.5 text-gray-500">
                 <Briefcase size={14} />
                 <span className="text-xs font-medium">Skill Offered</span>
@@ -560,7 +627,7 @@ export function ServiceCard({
           )}
 
           {type === 'offer' && offerType === 'infrastructure' && scope && (
-            <div className="space-y-1 col-span-2">
+            <div className="space-y-1">
               <div className="flex items-center gap-1.5 text-gray-500">
                 <Target size={14} />
                 <span className="text-xs font-medium">Infrastructure Scope</span>

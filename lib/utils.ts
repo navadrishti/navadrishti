@@ -37,7 +37,7 @@ type RequestUrgencyInput = {
 
 const REQUEST_URGENCY_ORDER: RequestUrgency[] = ['low', 'medium', 'high', 'critical']
 
-function parseDateValue(value?: string | number | Date | null): number | null {
+function parseDateValue(value?: string | number | Date | null, baseTimeMs?: number | null): number | null {
   if (!value) return null
 
   if (value instanceof Date) {
@@ -71,7 +71,10 @@ function parseDateValue(value?: string | number | Date | null): number | null {
     year: 365 * 24 * 60 * 60 * 1000
   }
 
-  return amount * (multiplierMap[unit] || multiplierMap.day)
+  const durationMs = amount * (multiplierMap[unit] || multiplierMap.day)
+  const anchorMs = Number.isFinite(baseTimeMs) ? Number(baseTimeMs) : Date.now()
+
+  return anchorMs + durationMs
 }
 
 function normalizeUrgency(value?: string | null): RequestUrgency | null {
@@ -85,7 +88,7 @@ function normalizeUrgency(value?: string | null): RequestUrgency | null {
 export function getRequestUrgencyLevel({ createdAt, deadline, fallback, referenceTimeMs }: RequestUrgencyInput = {}): RequestUrgency {
   const fallbackUrgency = normalizeUrgency(fallback) || 'medium'
   const createdAtMs = parseDateValue(createdAt)
-  const deadlineMs = parseDateValue(deadline)
+  const deadlineMs = parseDateValue(deadline, createdAtMs)
 
   if (!createdAtMs || !deadlineMs) {
     return fallbackUrgency

@@ -31,6 +31,53 @@ function parseAmount(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function parseTimelineToDeadlineMs(timeline: unknown, baseMs: number): number | null {
+  const text = String(timeline || '').trim();
+  if (!text || /^(anytime|not specified|none|n\/a)$/i.test(text)) return null;
+
+  const directDate = new Date(text);
+  if (!Number.isNaN(directDate.getTime())) {
+    return directDate.getTime();
+  }
+
+  const relativeMatch = text.match(/(\d+)\s*(day|days|week|weeks|month|months|year|years)/i);
+  if (!relativeMatch) return null;
+
+  const amount = Number(relativeMatch[1]);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+
+  const unit = relativeMatch[2].toLowerCase();
+  const multiplierMap: Record<string, number> = {
+    day: 24 * 60 * 60 * 1000,
+    days: 24 * 60 * 60 * 1000,
+    week: 7 * 24 * 60 * 60 * 1000,
+    weeks: 7 * 24 * 60 * 60 * 1000,
+    month: 30 * 24 * 60 * 60 * 1000,
+    months: 30 * 24 * 60 * 60 * 1000,
+    year: 365 * 24 * 60 * 60 * 1000,
+    years: 365 * 24 * 60 * 60 * 1000
+  };
+
+  return baseMs + (amount * (multiplierMap[unit] || multiplierMap.day));
+}
+
+function deriveAutoUrgency(timeline: unknown, createdAtMs: number): 'low' | 'medium' | 'high' | 'critical' {
+  const deadlineMs = parseTimelineToDeadlineMs(timeline, createdAtMs);
+  if (!deadlineMs) return 'medium';
+
+  const totalDurationMs = deadlineMs - createdAtMs;
+  if (totalDurationMs <= 0) return 'critical';
+
+  const remainingMs = deadlineMs - Date.now();
+  if (remainingMs <= 0) return 'critical';
+
+  const remainingRatio = remainingMs / totalDurationMs;
+  if (remainingRatio <= 0.15) return 'critical';
+  if (remainingRatio <= 0.35) return 'high';
+  if (remainingRatio <= 0.65) return 'medium';
+  return 'low';
+}
+
 function buildProgressFields(body: Record<string, any>, existing?: Record<string, any> | null) {
   const targetAmount = parseAmount(body.target_amount ?? body.estimated_budget ?? body.budget ?? existing?.target_amount ?? existing?.estimated_budget ?? existing?.budget);
   const targetQuantity = parseAmount(body.target_quantity ?? body.quantity ?? body.volunteers_needed ?? body.beneficiary_count ?? existing?.target_quantity ?? existing?.quantity ?? existing?.volunteers_needed ?? existing?.beneficiary_count);
@@ -129,7 +176,6 @@ export async function PUT(
       category,
       request_type,
       location,
-      urgency,
       timeline,
       budget,
       contactInfo,
@@ -147,7 +193,7 @@ export async function PUT(
     } = body;
 
     // Validate required fields
-    const missingRequiredFields = [title, description, location, urgency, timeline, estimated_budget, impact_description].some((value) => !String(value ?? '').trim());
+    const missingRequiredFields = [title, description, location, timeline, impact_description].some((value) => !String(value ?? '').trim());
     if (missingRequiredFields || !(request_type || category)) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
@@ -233,14 +279,9 @@ export async function PUT(
         : projectPayload || null
     };
 
-    // Map urgency to database enum values
-    const urgencyMap: { [key: string]: string } = {
-      'low': 'low',
-      'medium': 'medium',
-      'high': 'high',
-      'critical': 'critical'
-    };
-    const mappedUrgency = urgencyMap[urgency] || 'medium';
+    const createdAtMs = Number(new Date(existingRequest.created_at || Date.now()));
+    const safeCreatedAtMs = Number.isFinite(createdAtMs) ? createdAtMs : Date.now();
+    const mappedUrgency = deriveAutoUrgency(timeline, safeCreatedAtMs);
 
     // Prepare requirements JSON
     const requirementsData = {

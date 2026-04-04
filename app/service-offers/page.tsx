@@ -296,6 +296,7 @@ export default function ServiceOffersPage() {
                     price_amount={offer.price_amount}
                     price_type={offer.price_type}
                     price_description={offer.price_description}
+                    transaction_type={offer.transaction_type}
                     offer_type={offer.offer_type}
                     amount={offer.amount}
                     location_scope={offer.location_scope}
@@ -393,6 +394,7 @@ export default function ServiceOffersPage() {
                               price_amount={offer.price_amount}
                               price_type={offer.price_type}
                               price_description={offer.price_description}
+                              transaction_type={offer.transaction_type}
                               offer_type={offer.offer_type}
                               amount={offer.amount}
                               location_scope={offer.location_scope}
@@ -455,6 +457,7 @@ export default function ServiceOffersPage() {
                               price_amount={offer.price_amount}
                               price_type={offer.price_type}
                               price_description={offer.price_description}
+                              transaction_type={offer.transaction_type}
                               offer_type={offer.offer_type}
                               amount={offer.amount}
                               location_scope={offer.location_scope}
@@ -536,6 +539,7 @@ export default function ServiceOffersPage() {
                             price_amount={offer.price_amount}
                             price_type={offer.price_type}
                             price_description={offer.price_description}
+                            transaction_type={offer.transaction_type}
                             offer_type={offer.offer_type}
                             amount={offer.amount}
                             location_scope={offer.location_scope}
@@ -594,6 +598,7 @@ export default function ServiceOffersPage() {
                             price_amount={offer.price_amount}
                             price_type={offer.price_type}
                             price_description={offer.price_description}
+                            transaction_type={offer.transaction_type}
                             offer_type={offer.offer_type}
                             amount={offer.amount}
                             location_scope={offer.location_scope}
