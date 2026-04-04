@@ -18,6 +18,8 @@ interface EmailOptions {
   text?: string;
 }
 
+const shouldLogEmailWarnings = process.env.EMAIL_DEBUG === 'true';
+
 // Create transporter based on environment variables
 const createTransporter = () => {
   // Check if SMTP is configured
@@ -40,7 +42,9 @@ export async function sendEmail({ to, subject, html, text }: EmailOptions) {
   const transporter = createTransporter();
 
   if (!transporter) {
-    console.warn('Email not configured. Email not sent.');
+    if (shouldLogEmailWarnings) {
+      console.warn('Email not configured. Email not sent.');
+    }
     return { success: false, message: 'Email service not configured' };
   }
 
@@ -301,7 +305,9 @@ class EmailService {
 
   private initializeTransporter() {
     if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
-      console.warn('SMTP configuration missing.');
+      if (shouldLogEmailWarnings) {
+        console.warn('SMTP configuration missing.');
+      }
       return;
     }
     this.transporter = nodemailer.createTransporter({
