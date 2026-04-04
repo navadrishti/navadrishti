@@ -410,7 +410,7 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // Get hire counts and application counts for each offer
+    // Get application counts for each offer
     if (filteredOffers && filteredOffers.length > 0) {
       const offerIds = filteredOffers.map(offer => offer.id);
 
@@ -433,7 +433,6 @@ export async function GET(request: NextRequest) {
         // Add counts to offers
         filteredOffers.forEach((offer: any) => {
           const offerCounts = counts[offer.id] || { total: 0, accepted: 0, pending: 0 };
-          offer.hires_count = offerCounts.accepted;
           offer.applications_count = offerCounts.total;
           offer.pending_applications = offerCounts.pending;
         });

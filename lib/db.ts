@@ -366,7 +366,7 @@ export const db = {
       
       if (error) throw error;
       
-      // Fetch hire counts for each service offer
+      // Fetch application counts for each service offer
       if (data && data.length > 0) {
         const offerIds = data.map((item: any) => item.id);
         
@@ -376,16 +376,16 @@ export const db = {
           .in('service_offer_id', offerIds)
           .eq('status', 'accepted'); // Only count accepted clients
         
-        // Count hires per offer
+        // Count applications per offer
         const hireCounts = (hires || []).reduce((acc: any, hire: any) => {
           acc[hire.service_offer_id] = (acc[hire.service_offer_id] || 0) + 1;
           return acc;
         }, {});
         
-        // Add hire counts to offers
+        // Add application counts to offers
         return data.map((offer: any) => ({
           ...offer,
-          hires_count: hireCounts[offer.id] || 0
+          applications_count: hireCounts[offer.id] || 0
         }));
       }
       
@@ -397,7 +397,7 @@ export const db = {
         .from('service_offers')
         .select(`
           *,
-          ngo:users!ngo_id(name, email, user_type, location, verification_status)
+          ngo:users!ngo_id(name, email, user_type, location, verification_status, profile_image)
         `)
         .eq('id', id)
         .single();

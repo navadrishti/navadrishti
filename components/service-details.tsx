@@ -22,6 +22,7 @@ interface ServiceDetailsProps {
   ngo_id: number
   provider?: string
   providerType?: string
+  provider_profile_image?: string | null
   verified?: boolean
   tags?: string[]
   created_at: string
@@ -30,6 +31,7 @@ interface ServiceDetailsProps {
   price_amount?: number
   price_type?: 'fixed' | 'negotiable' | 'project_based' | 'hourly'
   price_description?: string
+  transaction_type?: 'sell' | 'rent' | 'volunteer' | string
   status?: string
   contact_info?: string
   offer_type?: 'financial' | 'material' | 'service' | 'infrastructure' | string
@@ -82,6 +84,7 @@ interface ServiceDetailsProps {
   }
   
   type: 'request' | 'offer'
+  hideSidebar?: boolean
 }
 
 export function ServiceDetails({
@@ -95,12 +98,14 @@ export function ServiceDetails({
   ngo_id,
   provider,
   providerType = 'ngo',
+  provider_profile_image,
   verified,
   tags,
   created_at,
   price_amount,
   price_type,
   price_description,
+  transaction_type,
   status,
   contact_info,
   offer_type,
@@ -122,7 +127,8 @@ export function ServiceDetails({
   deadline,
   requirements,
   requester_profile,
-  type
+  type,
+  hideSidebar = false
 }: ServiceDetailsProps) {
 
   // Parse images safely
@@ -158,15 +164,6 @@ export function ServiceDetails({
 
     return () => clearInterval(timer)
   }, [])
-
-  const liveRequestUrgency = type === 'request'
-    ? getRequestUrgencyLevel({
-        createdAt: created_at,
-        deadline,
-        referenceTimeMs: currentTime,
-        fallback: urgency_level || priority || 'medium'
-      })
-    : null;
 
   // Parse tags safely
   const parseTags = (tagData?: string[] | string): string[] => {
@@ -206,6 +203,14 @@ export function ServiceDetails({
   const beneficiaryCount = Number(requirementsData?.beneficiary_count || 0);
   const estimatedBudget = requirementsData?.estimated_budget || requirementsData?.budget;
   const requestDeadline = deadline || timeline || requirementsData?.timeline;
+  const liveRequestUrgency = type === 'request'
+    ? getRequestUrgencyLevel({
+        createdAt: created_at,
+        deadline: requestDeadline,
+        referenceTimeMs: currentTime,
+        fallback: urgency_level || priority || 'medium'
+      })
+    : null;
   const impactDescription = requirementsData?.impact_description;
   const capacityLimit = capacity || (wage_info as any)?.capacity_limit;
   const coverageArea = location_scope || delivery_scope || (wage_info as any)?.coverage_area;
@@ -252,6 +257,191 @@ export function ServiceDetails({
         );
       })
     : [];
+
+  const normalizedPriceAmount = Number(price_amount);
+  const hasPriceAmount = Number.isFinite(normalizedPriceAmount) && normalizedPriceAmount > 0;
+  const normalizedOfferAmount = Number(amount);
+  const hasOfferAmount = Number.isFinite(normalizedOfferAmount) && normalizedOfferAmount > 0;
+  const normalizedTransactionType = String(transaction_type || '').toLowerCase();
+  const normalizedPriceType = price_type ? String(price_type).replace(/_/g, ' ') : '';
+  const normalizedPriceDescription = String(price_description || '').trim();
+  const priceDescriptionLower = normalizedPriceDescription.toLowerCase();
+  const isVolunteerPricing = normalizedTransactionType === 'volunteer'
+    || normalizedPriceType === 'free'
+    || normalizedPriceType === 'donation'
+    || priceDescriptionLower.includes('volunteer')
+    || priceDescriptionLower.includes('no charges')
+    || priceDescriptionLower.includes('free');
+  const pricingModeLabel = isVolunteerPricing
+    ? 'volunteer'
+    : normalizedTransactionType === 'rent'
+      ? 'per day'
+      : normalizedTransactionType === 'sell'
+        ? 'fixed total'
+        : normalizedPriceType === 'hourly'
+          ? 'per hour'
+          : normalizedPriceType === 'project based'
+            ? 'project based'
+            : normalizedPriceType === 'fixed'
+              ? 'fixed total'
+              : '';
+  const primaryOfferPriceText = isVolunteerPricing
+    ? 'Volunteer'
+    : hasOfferAmount
+      ? formatPrice(normalizedOfferAmount)
+      : hasPriceAmount
+        ? formatPrice(normalizedPriceAmount)
+        : '';
+  const hasOfferPricingInfo = type === 'offer' && (isVolunteerPricing || Boolean(primaryOfferPriceText) || Boolean(pricingModeLabel));
+  const hasDuplicateRentDescription = normalizedTransactionType === 'rent' && (
+    priceDescriptionLower.includes('rent') ||
+    priceDescriptionLower.includes('per day') ||
+    priceDescriptionLower.includes('/day')
+  );
+  const hasDuplicateSellDescription = normalizedTransactionType === 'sell' && (
+    priceDescriptionLower.includes('sell') ||
+    priceDescriptionLower.includes('fixed total')
+  );
+  const hasDuplicateVolunteerDescription = isVolunteerPricing && (
+    priceDescriptionLower.includes('volunteer') ||
+    priceDescriptionLower.includes('no charges') ||
+    priceDescriptionLower.includes('free')
+  );
+  const shouldShowPricingDescription = Boolean(normalizedPriceDescription)
+    && !hasDuplicateRentDescription
+    && !hasDuplicateSellDescription
+    && !hasDuplicateVolunteerDescription;
+
+  if (hideSidebar && type === 'offer') {
+    return (
+      <div className="space-y-6">
+        <div className="space-y-3">
+          <h2 className="text-2xl font-semibold text-gray-900">{title}</h2>
+        </div>
+
+        <div className="space-y-6">
+          <section className="space-y-3">
+            <h3 className="text-sm font-medium text-gray-500">Description</h3>
+            <p className="text-sm text-gray-700 leading-relaxed">{description}</p>
+          </section>
+
+          <section className="space-y-4">
+            <h3 className="text-sm font-medium text-gray-500">Service Details</h3>
+
+            <div className="grid grid-cols-1 gap-x-12 gap-y-6 md:grid-cols-2">
+              <div>
+                <p className="text-sm text-gray-500">Capability Type</p>
+                <p className="text-base font-semibold text-gray-900">{category}</p>
+              </div>
+
+              {location && (
+                <div>
+                  <p className="text-sm text-gray-500">Location</p>
+                  <p className="text-base font-semibold text-gray-900">{location}</p>
+                </div>
+              )}
+
+              {coverageArea && (
+                <div>
+                  <p className="text-sm text-gray-500">Coverage Area</p>
+                  <p className="text-base font-semibold text-gray-900">{coverageArea}</p>
+                </div>
+              )}
+
+              {capacityLimit && (
+                <div>
+                  <p className="text-sm text-gray-500">Capacity Limit</p>
+                  <p className="text-base font-semibold text-gray-900">{capacityLimit}</p>
+                </div>
+              )}
+
+              {status && (
+                <div>
+                  <p className="text-sm text-gray-500">Status</p>
+                  <p className="text-base font-semibold text-gray-900 capitalize">{status}</p>
+                </div>
+              )}
+
+              {hasOfferPricingInfo && (
+                <div>
+                  <p className="text-sm text-gray-500">Price</p>
+                  <p className="text-base font-semibold text-gray-900">
+                    {primaryOfferPriceText}
+                    {pricingModeLabel && !isVolunteerPricing && (
+                      <span className="ml-1 font-normal text-gray-500">{pricingModeLabel}</span>
+                    )}
+                  </p>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {(categoryFocus || validityPeriod || item || skill || scope || contact_info) && (
+            <section className="space-y-4">
+              <h3 className="text-sm font-medium text-gray-500">Additional Information</h3>
+
+              <div className="space-y-3">
+                {categoryFocus && (
+                  <div>
+                    <p className="text-sm text-gray-500">Conditions</p>
+                    <p className="text-sm text-gray-700">{categoryFocus}</p>
+                  </div>
+                )}
+
+                {validityPeriod && (
+                  <div>
+                    <p className="text-sm text-gray-500">Duration</p>
+                    <p className="text-sm text-gray-700">{String(validityPeriod).replaceAll('_', ' ')}</p>
+                  </div>
+                )}
+
+                {item && (
+                  <div>
+                    <p className="text-sm text-gray-500">Material Item</p>
+                    <p className="text-sm text-gray-700">{item}{quantity ? ` (Quantity: ${quantity})` : ''}</p>
+                  </div>
+                )}
+
+                {skill && (
+                  <div>
+                    <p className="text-sm text-gray-500">Skill Offered</p>
+                    <p className="text-sm text-gray-700">{skill}</p>
+                  </div>
+                )}
+
+                {scope && (
+                  <div>
+                    <p className="text-sm text-gray-500">Infrastructure Scope</p>
+                    <p className="text-sm text-gray-700">{scope}</p>
+                  </div>
+                )}
+
+                {contact_info && (
+                  <div>
+                    <p className="text-sm text-gray-500">Contact Information</p>
+                    <p className="text-sm text-gray-700">{contact_info}</p>
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
+
+          {tagArray.length > 0 && (
+            <section className="space-y-3">
+              <h3 className="text-sm font-medium text-gray-500">Services Included</h3>
+              <div className="flex flex-wrap gap-2">
+                {tagArray.map((tag, index) => (
+                  <Badge key={index} variant="secondary" className="bg-gray-100 text-gray-700 border-gray-200 hover:bg-gray-200">
+                    {tag}
+                  </Badge>
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   const getProviderIcon = (type: string) => {
     switch (type) {
@@ -521,10 +711,18 @@ export function ServiceDetails({
     );
   }
 
+  const containerClassName = hideSidebar
+    ? 'space-y-6'
+    : 'grid grid-cols-1 lg:grid-cols-3 gap-8';
+
+  const mainContentClassName = hideSidebar
+    ? 'space-y-6'
+    : 'lg:col-span-2 space-y-6';
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+    <div className={containerClassName}>
       {/* Main Content */}
-      <div className="lg:col-span-2 space-y-6">
+      <div className={mainContentClassName}>
         
         {/* Image Gallery */}
         {imageArray.length > 0 && (
@@ -570,18 +768,6 @@ export function ServiceDetails({
         <Card>
           <CardHeader>
             <div className="flex items-start gap-3">
-              <div className={`flex h-12 w-12 items-center justify-center rounded-xl shadow-md ${
-                type === 'request' 
-                  ? 'bg-blue-600' 
-                  : 'bg-green-600'
-              }`}>
-                {type === 'request' ? (
-                  <HeartHandshake size={20} className="text-white" />
-                ) : (
-                  <Target size={20} className="text-white" />
-                )}
-              </div>
-              
               <div className="flex-1">
                 <CardTitle className="text-2xl mb-2">{title}</CardTitle>
                 <CardDescription className="text-base">
@@ -590,13 +776,7 @@ export function ServiceDetails({
               </div>
               
               <div className="text-right">
-                {type === 'offer' && (amount || price_amount) ? (
-                  <>
-                    <div className="text-2xl font-bold text-green-600">
-                      {formatPrice(amount || price_amount || 0)}
-                    </div>
-                  </>
-                ) : type === 'request' && liveRequestUrgency ? (
+                {type === 'request' && liveRequestUrgency ? (
                   <Badge className={`${getPriorityColor(liveRequestUrgency)} font-semibold`}>
                     {liveRequestUrgency.toUpperCase()} PRIORITY
                   </Badge>
@@ -624,14 +804,16 @@ export function ServiceDetails({
               </h3>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Category */}
-                <div className="bg-blue-50 rounded-lg p-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Target size={16} className="text-blue-600" />
-                    <span className="text-sm font-medium text-blue-700">{type === 'request' ? 'Request Type' : 'Capability Type'}</span>
+                {/* Request Type */}
+                {type === 'request' && (
+                  <div className="bg-blue-50 rounded-lg p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Target size={16} className="text-blue-600" />
+                      <span className="text-sm font-medium text-blue-700">Request Type</span>
+                    </div>
+                    <p className="font-semibold text-blue-800">{requestType}</p>
                   </div>
-                  <p className="font-semibold text-blue-800">{type === 'request' ? requestType : category}</p>
-                </div>
+                )}
                 
                 {/* Location */}
                 {location && (
@@ -717,17 +899,10 @@ export function ServiceDetails({
             </div>
 
             {/* Additional Information */}
-            {((type === 'offer' && (price_description || categoryFocus || validityPeriod || item || skill || scope)) || (type === 'request' && (timeline || impactDescription)) || contact_info) && (
+            {((type === 'offer' && (categoryFocus || validityPeriod || item || skill || scope)) || (type === 'request' && (timeline || impactDescription)) || contact_info) && (
               <div>
                 <h3 className="font-semibold mb-3">Additional Information</h3>
                 <div className="space-y-3">
-                  {type === 'offer' && price_description && (
-                    <div>
-                      <h4 className="font-medium mb-2 text-gray-900">Pricing Details</h4>
-                      <p className="text-muted-foreground bg-gray-50 rounded-lg p-3">{price_description}</p>
-                    </div>
-                  )}
-                  
                   {type === 'request' && timeline && (
                     <div>
                       <h4 className="font-medium mb-2 text-gray-900">Timeline</h4>
@@ -832,6 +1007,7 @@ export function ServiceDetails({
       </div>
 
       {/* Sidebar */}
+      {!hideSidebar && (
       <div className="lg:col-span-1 space-y-6">
         {/* Provider Information */}
         <Card>
@@ -844,13 +1020,22 @@ export function ServiceDetails({
           
           <CardContent className="space-y-4">
             <div className="flex items-center gap-3">
-              <div className={`flex h-12 w-12 items-center justify-center rounded-full shadow-md ${
-                type === 'request' 
-                  ? 'bg-blue-600' 
-                  : 'bg-green-600'
-              }`}>
-                {getProviderIcon(providerType)}
-              </div>
+              {provider_profile_image ? (
+                <img
+                  src={provider_profile_image}
+                  alt={`${ngo_name} profile`}
+                  className="h-12 w-12 rounded-full object-cover shadow-md"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div className={`flex h-12 w-12 items-center justify-center rounded-full shadow-md ${
+                  type === 'request'
+                    ? 'bg-blue-600'
+                    : 'bg-green-600'
+                }`}>
+                  {getProviderIcon(providerType)}
+                </div>
+              )}
               <div>
                 <p className="font-semibold text-gray-900">{ngo_name}</p>
                 <p className="text-sm text-gray-500 capitalize">
@@ -886,13 +1071,6 @@ export function ServiceDetails({
           
           <CardContent className="space-y-3">
             <div className="flex justify-between items-center py-2 border-b border-gray-100">
-              <span className="text-sm text-gray-600">Type:</span>
-              <Badge variant="outline" className="capitalize">
-                {type === 'request' ? 'Service Request' : 'Service Offer'}
-              </Badge>
-            </div>
-            
-            <div className="flex justify-between items-center py-2 border-b border-gray-100">
               <span className="text-sm text-gray-600">Category:</span>
               <span className="text-sm font-medium">{category}</span>
             </div>
@@ -903,18 +1081,23 @@ export function ServiceDetails({
                 <span className="text-sm font-medium">{location}</span>
               </div>
             )}
-            
-            {type === 'offer' && price_amount && (
+
+            {hasOfferPricingInfo && (
               <div className="flex justify-between items-center py-2">
                 <span className="text-sm text-gray-600">Price:</span>
                 <span className="text-lg font-bold text-green-600">
-                  {formatPrice(price_amount)}
+                  {primaryOfferPriceText}
+                  {pricingModeLabel && !isVolunteerPricing && (
+                    <span className="ml-1 text-xs font-medium text-gray-600">{pricingModeLabel}</span>
+                  )}
                 </span>
               </div>
             )}
+            
           </CardContent>
         </Card>
       </div>
+      )}
     </div>
   );
 }
