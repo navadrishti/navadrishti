@@ -137,7 +137,19 @@ export async function GET(
   try {
     const { postId } = await params;
 
-    const post = await socialFeedDb.posts.getById(postId);
+    let viewerUserId: number | undefined;
+    const authHeader = request.headers.get('authorization');
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      try {
+        const token = authHeader.substring(7);
+        const viewer = verifyToken(token);
+        viewerUserId = viewer?.id;
+      } catch {
+        viewerUserId = undefined;
+      }
+    }
+
+    const post = await socialFeedDb.posts.getById(postId, viewerUserId);
     if (!post) {
       return NextResponse.json({ error: 'Post not found' }, { status: 404 });
     }

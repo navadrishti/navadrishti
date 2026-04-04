@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useRef, useState, Suspense } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Building, CheckCircle, HandHeart, HeartHandshake, MailCheck, Phone, TicketCheck } from 'lucide-react';
+import { Building, CheckCircle, HandHeart, HeartHandshake, MailCheck, Phone } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import ProtectedRoute from '@/components/protected-route';
 import { Header } from '@/components/header';
@@ -19,8 +19,8 @@ function CompanyDashboardContent() {
   const { user } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const activeTab = searchParams.get('tab') || 'service-requests';
-  const tabsRef = useRef<HTMLDivElement>(null);
+  const requestedTab = searchParams.get('tab') || 'csr-projects';
+  const activeTab = requestedTab === 'service-requests' ? 'csr-projects' : requestedTab;
   const [csrProjects, setCsrProjects] = useState<any[]>([]);
   const [projectEvidenceById, setProjectEvidenceById] = useState<Record<string, any>>({});
   const [loadingEvidenceProjectId, setLoadingEvidenceProjectId] = useState<string | null>(null);
@@ -166,6 +166,11 @@ function CompanyDashboardContent() {
   const updateCompanyCAStatus = async (identityId: string, status: 'active' | 'inactive') => {
     setCompanyCAFeedback(null);
 
+    if (!identityId) {
+      setCompanyCAFeedback({ type: 'error', message: 'Invalid Company CA identity.' });
+      return;
+    }
+
     try {
       const token = localStorage.getItem('token');
       if (!token) {
@@ -173,7 +178,7 @@ function CompanyDashboardContent() {
         return;
       }
 
-      const response = await fetch(`/api/companies/ca/accounts/${identityId}`, {
+      const response = await fetch(`/api/companies/ca/accounts/${encodeURIComponent(identityId)}`, {
         method: 'PATCH',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -196,14 +201,6 @@ function CompanyDashboardContent() {
   };
 
   useEffect(() => {
-    if (activeTab && tabsRef.current) {
-      setTimeout(() => {
-        tabsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }, 100)
-    }
-  }, [activeTab])
-
-  useEffect(() => {
     if (user?.id) {
       fetchCSRProjects();
       fetchCompanyCAAccounts();
@@ -215,6 +212,9 @@ function CompanyDashboardContent() {
     user?.phone_verified &&
     user?.verification_status === 'verified'
   );
+
+  const activeCompanyCAAccounts = companyCAAccounts.filter((account: any) => account.status === 'active');
+  const inactiveCompanyCAAccounts = companyCAAccounts.filter((account: any) => account.status !== 'active');
 
   return (
     <ProtectedRoute userTypes={['company']}>
@@ -332,34 +332,19 @@ function CompanyDashboardContent() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div ref={tabsRef}>
+                <div>
                   <Tabs value={activeTab} onValueChange={(value) => {
                     window.history.replaceState(null, '', `/companies/dashboard?tab=${value}`);
                     router.replace(`/companies/dashboard?tab=${value}`, { scroll: false });
                   }} className="w-full">
-                    <TabsList className="grid w-full grid-cols-1 sm:grid-cols-4 h-auto">
-                      <TabsTrigger value="service-requests" className="text-xs sm:text-sm">Service Requests</TabsTrigger>
+                    <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 h-auto">
                       <TabsTrigger value="services-hired" className="text-xs sm:text-sm">Services Hired</TabsTrigger>
                       <TabsTrigger value="csr-projects" className="text-xs sm:text-sm">CSR Projects</TabsTrigger>
                       <TabsTrigger value="company-ca" className="text-xs sm:text-sm">Company CA Access</TabsTrigger>
                     </TabsList>
-                  
-                  <TabsContent value="service-requests" className="mt-4 space-y-4">
-                    <h3 className="font-medium">NGO Requests You've Volunteered For</h3>
-                    <div className="rounded-md border p-8 text-center">
-                      <div className="text-muted-foreground">
-                        <TicketCheck className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                        <p className="text-lg font-medium mb-2">Service Requests Coming Soon</p>
-                        <p className="text-sm mb-4">We're working on the CSR service request system where companies can volunteer for NGO projects.</p>
-                        <Link href="/service-requests">
-                          <Button variant="outline">Browse Available Requests</Button>
-                        </Link>
-                      </div>
-                    </div>
-                  </TabsContent>
-                  
+
                   <TabsContent value="services-hired" className="mt-4 space-y-4">
-                    <h3 className="font-medium">Services You've Hired from NGOs</h3>
+                    <h3 className="font-medium">Services You've Hired</h3>
                     <div className="rounded-md border p-8 text-center">
                       <div className="text-muted-foreground">
                         <HeartHandshake className="h-12 w-12 mx-auto mb-4 opacity-50" />
@@ -502,16 +487,16 @@ function CompanyDashboardContent() {
 
                     <div className="rounded-md border bg-white p-4">
                       <div className="flex items-center justify-between">
-                        <h4 className="font-semibold text-slate-900">Existing Company CA Accounts</h4>
+                        <h4 className="font-semibold text-slate-900">Existing Active Company CA Accounts</h4>
                         <Button variant="outline" size="sm" onClick={fetchCompanyCAAccounts}>Refresh</Button>
                       </div>
                       {loadingCompanyCAAccounts ? (
                         <p className="mt-3 text-sm text-slate-600">Loading accounts...</p>
-                      ) : companyCAAccounts.length === 0 ? (
-                        <p className="mt-3 text-sm text-slate-600">No Company CA accounts yet.</p>
+                      ) : activeCompanyCAAccounts.length === 0 ? (
+                        <p className="mt-3 text-sm text-slate-600">No active Company CA accounts.</p>
                       ) : (
                         <div className="mt-3 space-y-2">
-                          {companyCAAccounts.map((account: any) => (
+                          {activeCompanyCAAccounts.map((account: any) => (
                             <div key={account.id} className="rounded-md border bg-slate-50 p-3 text-sm">
                               <div className="flex items-center justify-between">
                                 <p className="font-medium text-slate-900">{account.users?.name || 'Company CA'}</p>
@@ -519,26 +504,42 @@ function CompanyDashboardContent() {
                               </div>
                               <p className="text-slate-600">{account.users?.email || 'No email'}</p>
                               <div className="mt-2 flex items-center gap-2">
-                                {account.status === 'active' ? (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => updateCompanyCAStatus(account.id, 'inactive')}
-                                  >
-                                    Deactivate
-                                  </Button>
-                                ) : (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => updateCompanyCAStatus(account.id, 'active')}
-                                  >
-                                    Activate
-                                  </Button>
-                                )}
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => updateCompanyCAStatus(String(account.id ?? ''), 'inactive')}
+                                >
+                                  Deactivate
+                                </Button>
                               </div>
                             </div>
                           ))}
+                        </div>
+                      )}
+
+                      {!loadingCompanyCAAccounts && inactiveCompanyCAAccounts.length > 0 && (
+                        <div className="mt-5 border-t pt-4">
+                          <h5 className="font-medium text-slate-900">Inactive Company CA Accounts</h5>
+                          <div className="mt-3 space-y-2">
+                            {inactiveCompanyCAAccounts.map((account: any) => (
+                              <div key={account.id} className="rounded-md border bg-slate-50 p-3 text-sm">
+                                <div className="flex items-center justify-between">
+                                  <p className="font-medium text-slate-900">{account.users?.name || 'Company CA'}</p>
+                                  <Badge variant="outline">{account.status}</Badge>
+                                </div>
+                                <p className="text-slate-600">{account.users?.email || 'No email'}</p>
+                                <div className="mt-2 flex items-center gap-2">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => updateCompanyCAStatus(String(account.id ?? ''), 'active')}
+                                  >
+                                    Activate
+                                  </Button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </div>

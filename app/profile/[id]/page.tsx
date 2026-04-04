@@ -407,29 +407,6 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
                     </div>
                   </div>
 
-                  {/* Additional Stats Row for NGOs/Companies */}
-                  {(stats.serviceRequests > 0 || stats.serviceOffers > 0 || stats.volunteeredServices > 0) && (
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4">
-                      {stats.serviceRequests > 0 && (
-                        <div className="text-center p-3 bg-white rounded-lg border border-gray-700">
-                          <p className="text-2xl font-bold text-orange-500">{stats.serviceRequests}</p>
-                          <p className="text-sm text-gray-900">Service Requests</p>
-                        </div>
-                      )}
-                      {stats.serviceOffers > 0 && (
-                        <div className="text-center p-3 bg-white rounded-lg border border-gray-700">
-                          <p className="text-2xl font-bold text-orange-500">{stats.serviceOffers}</p>
-                          <p className="text-sm text-gray-900">Service Offers</p>
-                        </div>
-                      )}
-                      {stats.volunteeredServices > 0 && (
-                        <div className="text-center p-3 bg-white rounded-lg border border-gray-700">
-                          <p className="text-2xl font-bold text-orange-500">{stats.volunteeredServices}</p>
-                          <p className="text-sm text-gray-900">Volunteered</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </>
               )}
             </div>

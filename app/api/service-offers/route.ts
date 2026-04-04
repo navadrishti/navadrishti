@@ -347,8 +347,7 @@ export async function GET(request: NextRequest) {
       query = query.or('admin_status.eq.approved,admin_status.is.null')
               .eq('status', 'active');
     } else if (view === 'my-offers') {
-      // For my-offers view, show all offers by the user
-      query = query.eq('status', 'active');
+      // For my-offers view, show all offers by the user across statuses
     } else if (view === 'my-responses') {
       query = query.in('id', responseOfferIds || []);
     }

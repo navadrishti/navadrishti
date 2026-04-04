@@ -1,6 +1,6 @@
 'use client'
 
-import React from "react"
+import React, { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ImageCarousel } from "@/components/ui/image-carousel"
@@ -9,7 +9,7 @@ import {
   MapPin, IndianRupee, Clock, Calendar, Users, Building, User, 
   HeartHandshake, Star, Target, Info, Package 
 } from "lucide-react"
-import { formatPrice } from "@/lib/utils"
+import { formatPrice, getRequestUrgencyLevel } from "@/lib/utils"
 
 interface ServiceDetailsProps {
   id: number
@@ -149,6 +149,25 @@ export function ServiceDetails({
 
   const imageArray = parseImages(images);
 
+  const [currentTime, setCurrentTime] = useState(() => Date.now())
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(Date.now())
+    }, 60_000)
+
+    return () => clearInterval(timer)
+  }, [])
+
+  const liveRequestUrgency = type === 'request'
+    ? getRequestUrgencyLevel({
+        createdAt: created_at,
+        deadline,
+        referenceTimeMs: currentTime,
+        fallback: urgency_level || priority || 'medium'
+      })
+    : null;
+
   // Parse tags safely
   const parseTags = (tagData?: string[] | string): string[] => {
     if (!tagData) return [];
@@ -188,7 +207,6 @@ export function ServiceDetails({
   const estimatedBudget = requirementsData?.estimated_budget || requirementsData?.budget;
   const requestDeadline = deadline || timeline || requirementsData?.timeline;
   const impactDescription = requirementsData?.impact_description;
-  const offerType = (type === 'offer' ? offer_type : null) || (wage_info as any)?.offer_type || category;
   const capacityLimit = capacity || (wage_info as any)?.capacity_limit;
   const coverageArea = location_scope || delivery_scope || (wage_info as any)?.coverage_area;
   const categoryFocus = conditions || (wage_info as any)?.category_focus;
@@ -369,9 +387,9 @@ export function ServiceDetails({
                   <CardDescription className="text-base">Need Description</CardDescription>
                 </div>
 
-                {(urgency_level || priority) && (
-                  <Badge className={`${getPriorityColor(urgency_level || priority)} font-semibold`}>
-                    {(urgency_level || priority || 'normal').toUpperCase()} PRIORITY
+                {liveRequestUrgency && (
+                  <Badge className={`${getPriorityColor(liveRequestUrgency)} font-semibold`}>
+                    {liveRequestUrgency.toUpperCase()} PRIORITY
                   </Badge>
                 )}
               </div>
@@ -574,15 +592,13 @@ export function ServiceDetails({
               <div className="text-right">
                 {type === 'offer' && (amount || price_amount) ? (
                   <>
-                    <div className="text-2xl font-bold text-green-600 flex items-center">
-                      <IndianRupee className="h-5 w-5" />
+                    <div className="text-2xl font-bold text-green-600">
                       {formatPrice(amount || price_amount || 0)}
                     </div>
-                    <div className="text-sm text-muted-foreground">{offerType || price_type} offer</div>
                   </>
-                ) : type === 'request' && (urgency_level || priority) ? (
-                  <Badge className={`${getPriorityColor(urgency_level || priority)} font-semibold`}>
-                    {(urgency_level || priority || 'normal').toUpperCase()} PRIORITY
+                ) : type === 'request' && liveRequestUrgency ? (
+                  <Badge className={`${getPriorityColor(liveRequestUrgency)} font-semibold`}>
+                    {liveRequestUrgency.toUpperCase()} PRIORITY
                   </Badge>
                 ) : null}
               </div>
@@ -614,7 +630,7 @@ export function ServiceDetails({
                     <Target size={16} className="text-blue-600" />
                     <span className="text-sm font-medium text-blue-700">{type === 'request' ? 'Request Type' : 'Capability Type'}</span>
                   </div>
-                  <p className="font-semibold text-blue-800">{type === 'request' ? requestType : offerType}</p>
+                  <p className="font-semibold text-blue-800">{type === 'request' ? requestType : category}</p>
                 </div>
                 
                 {/* Location */}
@@ -625,17 +641,6 @@ export function ServiceDetails({
                       <span className="text-sm font-medium text-purple-700">Location</span>
                     </div>
                     <p className="font-semibold text-purple-800">{location}</p>
-                  </div>
-                )}
-                
-                {/* Service Offer - Type */}
-                {type === 'offer' && offerType && (
-                  <div className="bg-green-50 rounded-lg p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Clock size={16} className="text-green-600" />
-                      <span className="text-sm font-medium text-green-700">Offer Type</span>
-                    </div>
-                    <p className="font-semibold text-green-800 capitalize">{String(offerType).replace('_', ' ')}</p>
                   </div>
                 )}
                 

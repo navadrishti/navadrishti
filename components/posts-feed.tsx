@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useAuth, User } from '@/lib/auth-context';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -75,9 +75,10 @@ interface PostsFeedProps {
   refreshTrigger?: number;
   showAllPosts?: boolean;
   showPostedDate?: boolean;
+  focusPostId?: number;
 }
 
-export function PostsFeed({ userId, limit = 10, refreshTrigger, showAllPosts = false, showPostedDate = false }: PostsFeedProps) {
+export function PostsFeed({ userId, limit = 10, refreshTrigger, showAllPosts = false, showPostedDate = false, focusPostId }: PostsFeedProps) {
   const { user, token } = useAuth();
   
   // Generate initials for avatar fallback
@@ -103,6 +104,8 @@ export function PostsFeed({ userId, limit = 10, refreshTrigger, showAllPosts = f
   const [editContent, setEditContent] = useState<string>('');
   const [deletingPost, setDeletingPost] = useState<number | null>(null);
   const [actionLoading, setActionLoading] = useState<Record<number, boolean>>({});
+  const autoLoadAttemptsRef = useRef(0);
+  const lastFocusedPostIdRef = useRef<number | null>(null);
 
   // Fetch posts with proper stats visible to all users
   const fetchPosts = useCallback(async (pageNum = 1, reset = false) => {
@@ -742,6 +745,35 @@ export function PostsFeed({ userId, limit = 10, refreshTrigger, showAllPosts = f
     
     fetchPosts(1, true);
   }, [fetchPosts, refreshTrigger]);
+
+  useEffect(() => {
+    autoLoadAttemptsRef.current = 0;
+  }, [focusPostId, refreshTrigger, userId, limit, showAllPosts]);
+
+  // If a focused post is requested but not yet loaded, auto-load more pages.
+  useEffect(() => {
+    if (!focusPostId || showAllPosts || isLoading || isLoadingMore) return;
+    if (posts.some((post) => post.id === focusPostId)) return;
+    if (!hasMore) return;
+    if (autoLoadAttemptsRef.current >= 5) return;
+
+    autoLoadAttemptsRef.current += 1;
+    setIsLoadingMore(true);
+    fetchPosts(page + 1, false);
+  }, [focusPostId, showAllPosts, isLoading, isLoadingMore, posts, hasMore, page, fetchPosts]);
+
+  // Scroll to and briefly highlight the focused post when present.
+  useEffect(() => {
+    if (!focusPostId) return;
+    if (lastFocusedPostIdRef.current === focusPostId) return;
+    if (!posts.some((post) => post.id === focusPostId)) return;
+
+    const target = document.getElementById(`post-${focusPostId}`);
+    if (!target) return;
+
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    lastFocusedPostIdRef.current = focusPostId;
+  }, [focusPostId, posts]);
 
   if (isLoading) {
     return (

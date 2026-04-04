@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -30,6 +31,7 @@ interface UserStats {
 }
 
 export default function HomePage() {
+  const searchParams = useSearchParams()
   const { user, token } = useAuth()
   const [mounted, setMounted] = useState(false)
   const [suggestionsLoading, setSuggestionsLoading] = useState(true)
@@ -37,6 +39,11 @@ export default function HomePage() {
   const [userStats, setUserStats] = useState<UserStats>({ posts: 0, followers: 0, following: 0, impactScore: 0 })
   const [suggestedUsers, setSuggestedUsers] = useState<any[]>([])
   const [refreshTrigger, setRefreshTrigger] = useState(0)
+
+  const focusPostParam = searchParams.get('focusPost')
+  const focusPostId = focusPostParam && /^\d+$/.test(focusPostParam)
+    ? parseInt(focusPostParam, 10)
+    : undefined
 
   // Generate initials for avatar fallback (same logic as header)
   const getInitials = (name: string) => {
@@ -138,7 +145,10 @@ export default function HomePage() {
             {mounted && user && <PostCreator onPostCreated={handlePostCreated} className="mb-6" />}
 
             {/* Posts Feed */}
-            <PostsFeed refreshTrigger={refreshTrigger} />
+            <PostsFeed
+              refreshTrigger={refreshTrigger}
+              focusPostId={focusPostId}
+            />
           </div>
 
           {/* Right Sidebar - Trending & Suggestions */}

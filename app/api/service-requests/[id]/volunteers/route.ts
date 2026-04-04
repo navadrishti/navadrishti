@@ -81,7 +81,7 @@ export async function POST(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { volunteer_id, message } = body;
+    const { volunteer_id, message, fulfillment_amount, fulfillment_quantity } = body;
 
     // Validate required fields
     if (!volunteer_id || !message) {
@@ -129,7 +129,9 @@ export async function POST(
       service_request_id: requestId,
       volunteer_id: volunteer_id,
       application_message: message,
-      status: 'pending'
+      status: 'pending',
+      fulfillment_amount: fulfillment_amount != null ? Number(fulfillment_amount) : null,
+      fulfillment_quantity: fulfillment_quantity != null ? Number(fulfillment_quantity) : null
     };
 
     const newApplication = await db.serviceVolunteers.create(volunteerData);
