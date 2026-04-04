@@ -386,10 +386,24 @@ export function ServiceCard({
     priceDescriptionLower.includes('no charges') ||
     priceDescriptionLower.includes('free')
   );
+  const offerDescriptorValues = [item, skill, scope, location_scope, delivery_scope]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean);
+  const isDuplicateOfferDescriptorPriceDescription = offerDescriptorValues.includes(priceDescriptionLower);
+  const isGenericFallbackPriceDescription = [
+    'financial support',
+    'material support',
+    'skill support',
+    'infrastructure support',
+    'other support',
+    'service support'
+  ].includes(priceDescriptionLower);
   const shouldShowPriceDescription = Boolean(normalizedPriceDescription)
     && !hasDuplicateRentDescription
     && !hasDuplicateSellDescription
-    && !hasDuplicateVolunteerDescription;
+    && !hasDuplicateVolunteerDescription
+    && !isDuplicateOfferDescriptorPriceDescription
+    && !isGenericFallbackPriceDescription;
 
   const formatInrValue = (value: unknown): string => {
     if (value === null || value === undefined) return '';

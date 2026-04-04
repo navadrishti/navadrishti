@@ -452,19 +452,19 @@ export function ServiceDetails({
     }
   };
 
-  const getPriorityColor = (level?: string) => {
-    if (!level) return 'text-blue-600 bg-blue-50 border-blue-200';
+  const getPriorityTextColor = (level?: string) => {
+    if (!level) return 'text-blue-700';
     switch (level.toLowerCase()) {
       case 'urgent':
       case 'critical':
       case 'high':
-        return 'text-red-600 bg-red-50 border-red-200';
+        return 'text-red-700';
       case 'medium':
-        return 'text-orange-600 bg-orange-50 border-orange-200';
+        return 'text-orange-700';
       case 'low':
-        return 'text-green-600 bg-green-50 border-green-200';
+        return 'text-green-700';
       default:
-        return 'text-blue-600 bg-blue-50 border-blue-200';
+        return 'text-blue-700';
     }
   };
 
@@ -578,9 +578,12 @@ export function ServiceDetails({
                 </div>
 
                 {liveRequestUrgency && (
-                  <Badge className={`${getPriorityColor(liveRequestUrgency)} font-semibold`}>
-                    {liveRequestUrgency.toUpperCase()} PRIORITY
-                  </Badge>
+                  <div className="text-right space-y-0.5">
+                    <p className="text-xs font-medium text-gray-500">Urgency</p>
+                    <p className={`text-sm font-semibold ${getPriorityTextColor(liveRequestUrgency)}`}>
+                      {liveRequestUrgency.toUpperCase()}
+                    </p>
+                  </div>
                 )}
               </div>
             </CardHeader>
@@ -777,9 +780,12 @@ export function ServiceDetails({
               
               <div className="text-right">
                 {type === 'request' && liveRequestUrgency ? (
-                  <Badge className={`${getPriorityColor(liveRequestUrgency)} font-semibold`}>
-                    {liveRequestUrgency.toUpperCase()} PRIORITY
-                  </Badge>
+                  <div className="text-right space-y-0.5">
+                    <p className="text-xs font-medium text-gray-500">Urgency</p>
+                    <p className={`text-sm font-semibold ${getPriorityTextColor(liveRequestUrgency)}`}>
+                      {liveRequestUrgency.toUpperCase()}
+                    </p>
+                  </div>
                 ) : null}
               </div>
             </div>

@@ -630,14 +630,14 @@ export default function ServiceRequestDetailPage() {
     }
   }
 
-  const getUrgencyColor = (urgency: string) => {
-    if (!urgency) return 'bg-gray-100 text-gray-800 border-gray-200';
+  const getUrgencyTextColor = (urgency: string) => {
+    if (!urgency) return 'text-gray-800';
     switch (urgency.toLowerCase()) {
-      case 'critical': return 'bg-red-200 text-red-900 border-red-300'
-      case 'high': return 'bg-red-100 text-red-800 border-red-200'
-      case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-200'
-      case 'low': return 'bg-green-100 text-green-800 border-green-200'
-      default: return 'bg-gray-100 text-gray-800 border-gray-200'
+      case 'critical': return 'text-red-900'
+      case 'high': return 'text-red-800'
+      case 'medium': return 'text-yellow-800'
+      case 'low': return 'text-green-800'
+      default: return 'text-gray-800'
     }
   }
 
@@ -949,9 +949,9 @@ export default function ServiceRequestDetailPage() {
                       </div>
                       <div>
                         <p className="font-medium text-gray-500">Urgency</p>
-                        <Badge className={getUrgencyColor(effectiveUrgency)}>
-                          {effectiveUrgency.charAt(0).toUpperCase() + effectiveUrgency.slice(1)}
-                        </Badge>
+                        <p className={`font-semibold ${getUrgencyTextColor(effectiveUrgency)}`}>
+                          {effectiveUrgency.toUpperCase()}
+                        </p>
                       </div>
                       <div>
                         <p className="font-medium text-gray-500">Budget</p>
