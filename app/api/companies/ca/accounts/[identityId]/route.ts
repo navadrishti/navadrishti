@@ -9,7 +9,7 @@ const updateSchema = z.object({
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { identityId: string } }
+  { params }: { params: { identityId: string } | Promise<{ identityId: string }> }
 ) {
   try {
     const user = getAuthUserFromRequest(request);
@@ -22,7 +22,14 @@ export async function PATCH(
       return NextResponse.json({ error: parsed.error.issues[0]?.message || 'Invalid payload' }, { status: 400 });
     }
 
-    const identityId = params.identityId;
+    const resolvedParams = await Promise.resolve(params);
+    const identityIdRaw = resolvedParams?.identityId;
+    const identityId = typeof identityIdRaw === 'string' ? decodeURIComponent(identityIdRaw).trim() : '';
+
+    if (!identityId) {
+      return NextResponse.json({ error: 'Invalid company CA identity id' }, { status: 400 });
+    }
+
     const { status } = parsed.data;
 
     const { data: existing, error: findError } = await supabase

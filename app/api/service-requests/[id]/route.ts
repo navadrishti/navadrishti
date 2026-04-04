@@ -23,6 +23,30 @@ function safeParseJson(value: unknown): Record<string, any> {
   }
 }
 
+function parseAmount(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  if (!text) return null;
+  const parsed = Number(text.replace(/[^\d.-]/g, ''));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function buildProgressFields(body: Record<string, any>, existing?: Record<string, any> | null) {
+  const targetAmount = parseAmount(body.target_amount ?? body.estimated_budget ?? body.budget ?? existing?.target_amount ?? existing?.estimated_budget ?? existing?.budget);
+  const targetQuantity = parseAmount(body.target_quantity ?? body.quantity ?? body.volunteers_needed ?? body.beneficiary_count ?? existing?.target_quantity ?? existing?.quantity ?? existing?.volunteers_needed ?? existing?.beneficiary_count);
+  const currentAmount = parseAmount(body.current_amount ?? existing?.current_amount) ?? 0;
+  const currentQuantity = parseAmount(body.current_quantity ?? existing?.current_quantity) ?? 0;
+
+  return {
+    target_amount: targetAmount,
+    current_amount: currentAmount,
+    target_quantity: targetQuantity,
+    current_quantity: currentQuantity,
+    remaining_amount: targetAmount != null ? Math.max(targetAmount - currentAmount, 0) : null,
+    remaining_quantity: targetQuantity != null ? Math.max(targetQuantity - currentQuantity, 0) : null
+  };
+}
+
 // GET - Fetch single service request
 export async function GET(
   request: NextRequest,
@@ -111,16 +135,21 @@ export async function PUT(
       contactInfo,
       estimated_budget,
       beneficiary_count,
-      impact_description
+      impact_description,
+      projectId,
+      project,
+      target_amount,
+      target_quantity,
+      current_amount,
+      current_quantity,
+      project_context,
+      details
     } = body;
 
     // Validate required fields
-    if (!title || !description || !(request_type || category)) {
+    const missingRequiredFields = [title, description, location, urgency, timeline, estimated_budget, impact_description].some((value) => !String(value ?? '').trim());
+    if (missingRequiredFields || !(request_type || category)) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
-    }
-
-    if (!impact_description || !String(impact_description).trim()) {
-      return NextResponse.json({ error: 'impact_description is required' }, { status: 400 });
     }
 
     if (!beneficiary_count || Number(beneficiary_count) <= 0) {
@@ -145,6 +174,65 @@ export async function PUT(
       return NextResponse.json({ error: 'You can only update your own requests' }, { status: 403 });
     }
 
+    let resolvedProjectId: string | null = projectId || existingRequest.project_id || null;
+    let resolvedProjectLocation = String(location || existingRequest.location || '').trim();
+    const projectPayload = project && typeof project === 'object' ? project : null;
+
+    if (projectPayload && !resolvedProjectId) {
+      const projectTitle = String(projectPayload.title || '').trim();
+      const projectDescription = String(projectPayload.description || '').trim();
+      const projectLocation = String(projectPayload.exact_address || projectPayload.location || location || '').trim();
+      const projectTimeline = String(projectPayload.timeline || timeline || '').trim();
+
+      if (!projectTitle || !projectLocation) {
+        return NextResponse.json({ error: 'Project title and exact address are required' }, { status: 400 });
+      }
+
+      if ([projectTitle, projectDescription, projectLocation, projectTimeline].some((value) => !value)) {
+        return NextResponse.json({ error: 'Project title, description, exact address, and timeline are required' }, { status: 400 });
+      }
+
+      const createdProject = await db.requestProjects.create({
+        ngo_id: userId,
+        title: projectTitle,
+        description: projectDescription,
+        location: projectLocation,
+        exact_address: projectLocation,
+        timeline: projectTimeline || null,
+        status: 'active'
+      });
+
+      resolvedProjectId = createdProject.id;
+      resolvedProjectLocation = projectLocation;
+    }
+
+    if (resolvedProjectId) {
+      const projectRecord = await db.requestProjects.getById(String(resolvedProjectId));
+      if (projectRecord && projectRecord.ngo_id !== userId) {
+        return NextResponse.json({ error: 'Project ownership mismatch' }, { status: 403 });
+      }
+
+      resolvedProjectLocation = String(projectRecord?.exact_address || projectRecord?.location || resolvedProjectLocation || '').trim();
+
+      if (projectPayload) {
+        await db.requestProjects.update(String(resolvedProjectId), {
+          title: String(projectPayload.title || '').trim() || undefined,
+          description: String(projectPayload.description || '').trim() || null,
+          location: String(projectPayload.exact_address || projectPayload.location || location || '').trim() || undefined,
+          exact_address: String(projectPayload.exact_address || projectPayload.location || location || '').trim() || undefined,
+          timeline: String(projectPayload.timeline || timeline || '').trim() || null,
+          updated_at: new Date().toISOString()
+        });
+      }
+    }
+
+    const projectContext = {
+      ...(safeParseJson(project_context) || {}),
+      project: resolvedProjectId
+        ? { id: resolvedProjectId, exact_address: resolvedProjectLocation }
+        : projectPayload || null
+    };
+
     // Map urgency to database enum values
     const urgencyMap: { [key: string]: string } = {
       'low': 'low',
@@ -162,15 +250,29 @@ export async function PUT(
       impact_description: String(impact_description || '').trim(),
       budget: budget || estimated_budget || 'Not specified',
       contactInfo: contactInfo || 'Not specified',
-      timeline: timelineLabel
+      timeline: timelineLabel,
+      project: projectContext,
+      category_details: details || {}
     };
+
+    const progressFields = buildProgressFields({
+      target_amount,
+      target_quantity,
+      current_amount,
+      current_quantity,
+      estimated_budget,
+      budget,
+      beneficiary_count,
+      volunteers_needed: body.volunteers_needed,
+      quantity: body.quantity
+    }, existingRequest);
 
     // Update the service request using Supabase helper
     const updateData = {
       title,
       description,
       category: normalizedRequestType,
-      location,
+      location: resolvedProjectLocation || location,
       urgency_level: mappedUrgency,
       requirements: JSON.stringify(requirementsData),
       updated_at: new Date().toISOString(),
@@ -180,7 +282,10 @@ export async function PUT(
       beneficiary_count: Number(beneficiary_count || 0),
       impact_description: String(impact_description || '').trim(),
       timeline: storedTimeline,
-      contact_info: contactInfo || null
+      contact_info: contactInfo || null,
+      project_id: resolvedProjectId,
+      project_context: projectContext,
+      ...progressFields
     };
 
     await db.serviceRequests.update(requestId, updateData);
@@ -224,6 +329,7 @@ export async function DELETE(
     }
 
     const requestId = parseInt(id);
+    const forceDelete = new URL(request.url).searchParams.get('force') === 'true';
 
     // First, verify that this request belongs to the authenticated NGO and delete it
     const existingRequest = await db.serviceRequests.getById(requestId);
@@ -241,7 +347,7 @@ export async function DELETE(
       ['accepted', 'active', 'completed'].includes(String(applicant.status || '').toLowerCase())
     );
 
-    if (hasAcceptedApplicant) {
+    if (hasAcceptedApplicant && !forceDelete) {
       return NextResponse.json(
         { error: 'Cannot delete request after accepting an applicant' },
         { status: 400 }

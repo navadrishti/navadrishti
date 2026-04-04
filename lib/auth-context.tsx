@@ -127,29 +127,33 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   // Load user from localStorage on initial render
   useEffect(() => {
+    let needsServerHydration = false;
+
     try {
       const storedToken = localStorage.getItem('token');
       const storedUser = localStorage.getItem('user');
       
       // Check if token exists and is not the string "undefined" or "null"
-      if (storedToken && 
+        if (storedToken && 
           storedToken !== 'undefined' && 
-          storedToken !== 'null' && 
-          storedUser && 
-          storedUser !== 'undefined' && 
-          storedUser !== 'null') {
+          storedToken !== 'null') {
         
         // Clean the token of any quotes or extra characters
         const cleanToken = storedToken.replace(/[\"']/g, '').trim();
         
         if (cleanToken.length > 0 && cleanToken !== 'undefined' && cleanToken !== 'null') {
           setToken(cleanToken);
-          try {
-            const parsedUser = JSON.parse(storedUser);
-            setUser(parsedUser);
-          } catch (parseError) {
-            localStorage.removeItem('token');
-            localStorage.removeItem('user');
+          if (storedUser && storedUser !== 'undefined' && storedUser !== 'null') {
+            try {
+              const parsedUser = JSON.parse(storedUser);
+              setUser(parsedUser);
+            } catch (parseError) {
+              // Keep token and let /api/auth/me rehydrate user snapshot.
+              localStorage.removeItem('user');
+              needsServerHydration = true;
+            }
+          } else {
+            needsServerHydration = true;
           }
         } else {
           localStorage.removeItem('token');
@@ -165,8 +169,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
     }
-    
-    setLoading(false);
+
+    if (!needsServerHydration) {
+      setLoading(false);
+    }
   }, []);
 
   // Verify token and fetch current user
@@ -201,15 +207,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
           notify.error('Your session has expired. Please log in again.');
           logout();
         } else {
-          // Other error, but still clear auth to be safe
-          console.log('Token verification failed with status:', response.status);
-          notify.error('Authentication error. Please log in again.');
-          logout();
+          // Keep existing local session for non-auth failures (e.g., transient server error).
+          console.log('Token verification failed with non-401 status:', response.status);
         }
       } catch (error) {
         console.error('Token verification error:', error);
-        notify.error('Connection error. Please check your internet connection.');
-        logout();
+        // Keep local session during transient network failures.
+      } finally {
+        setLoading(false);
       }
     };
     

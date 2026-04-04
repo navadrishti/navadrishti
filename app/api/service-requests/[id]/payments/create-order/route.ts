@@ -37,8 +37,8 @@ export async function POST(
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
 
-    if (!['individual', 'company'].includes(decoded.user_type)) {
-      return NextResponse.json({ error: 'Only individuals and companies can contribute' }, { status: 403 });
+    if (decoded.user_type !== 'individual') {
+      return NextResponse.json({ error: 'Only individuals can contribute directly' }, { status: 403 });
     }
 
     const { id } = await params;

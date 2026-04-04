@@ -50,10 +50,20 @@ interface ServiceRequest {
     industry?: string
     verification_status?: string
   }
+  project?: {
+    id?: string
+    title?: string
+    description?: string
+    location?: string
+    timeline?: string
+    status?: string
+  }
   status: 'active' | 'in_progress' | 'completed' | 'cancelled'
   created_at: string
   updated_at: string
 }
+
+type RequestType = 'financial' | 'material' | 'skill' | 'infrastructure' | 'other'
 
 interface VolunteerApplication {
   id: number
@@ -65,7 +75,17 @@ interface VolunteerApplication {
   response_meta?: {
     ngo_decision_comment?: string | null
     ngo_decision_at?: string
+    individual_done_at?: string | null
+    ngo_confirmed_at?: string | null
   }
+  fulfillment_amount?: number | null
+  fulfillment_quantity?: number | null
+  assigned_amount?: number | null
+  assigned_quantity?: number | null
+  fulfilled_amount?: number | null
+  fulfilled_quantity?: number | null
+  individual_receipt_url?: string | null
+  ngo_receipt_url?: string | null
 }
 
 interface ApplicantEntry {
@@ -77,6 +97,8 @@ interface ApplicantEntry {
   response_meta?: {
     ngo_decision_comment?: string | null
     ngo_decision_at?: string
+    individual_done_at?: string | null
+    ngo_confirmed_at?: string | null
   }
   volunteer?: {
     id?: number
@@ -117,11 +139,20 @@ export default function ServiceRequestDetailPage() {
   const [updatingApplicantId, setUpdatingApplicantId] = useState<number | null>(null)
   const [decisionComments, setDecisionComments] = useState<Record<number, string>>({})
   const [applicationMessage, setApplicationMessage] = useState('')
+  const [applicationFulfillmentAmount, setApplicationFulfillmentAmount] = useState('')
+  const [applicationFulfillmentQuantity, setApplicationFulfillmentQuantity] = useState('')
+  const [applicantAllocations, setApplicantAllocations] = useState<Record<number, string>>({})
+  const [applicantQuantities, setApplicantQuantities] = useState<Record<number, string>>({})
+  const [receiptUploads, setReceiptUploads] = useState<Record<number, File | null>>({})
+  const [ngoCompletionNotes, setNgoCompletionNotes] = useState<Record<number, string>>({})
+  const [individualReceiptFile, setIndividualReceiptFile] = useState<File | null>(null)
+  const [individualCompletionNote, setIndividualCompletionNote] = useState('')
 
   const requestId = params.id as string
   const isAuthenticated = !!(user && token)
   const isNgoOwner = user?.user_type === 'ngo' && request?.ngo_id === user?.id
-  const canVolunteer = user?.user_type === 'individual' || user?.user_type === 'company'
+  const canVolunteer = user?.user_type === 'individual'
+  const canCompanyFulfillViaCSR = user?.user_type === 'company'
 
   useEffect(() => {
     if (requestId) {
@@ -129,7 +160,7 @@ export default function ServiceRequestDetailPage() {
       if (isAuthenticated && user) {
         if (user.user_type === 'ngo') {
           fetchApplicants()
-        } else {
+        } else if (user.user_type === 'individual') {
           checkExistingApplication()
         }
       }
@@ -226,6 +257,8 @@ export default function ServiceRequestDetailPage() {
     if (!token) return
 
     const decisionComment = (decisionComments[applicant.id] || '').trim()
+    const allocationAmount = applicantAllocations[applicant.id] || ''
+    const allocationQuantity = applicantQuantities[applicant.id] || ''
 
     setUpdatingApplicantId(applicant.id)
     try {
@@ -237,7 +270,9 @@ export default function ServiceRequestDetailPage() {
         },
         body: JSON.stringify({
           status: nextStatus,
-          decisionComment
+          decisionComment,
+          allocationAmount,
+          allocationQuantity
         })
       })
 
@@ -298,9 +333,18 @@ export default function ServiceRequestDetailPage() {
     if (user.user_type === 'ngo') {
       toast({
         title: "Invalid User Type",
-        description: "NGOs create requests. Individuals and companies can respond.",
+        description: "NGOs create requests. Individuals can volunteer, and companies can fulfill via CSR.",
         variant: "destructive"
       })
+      return
+    }
+
+    if (user.user_type === 'company') {
+      toast({
+        title: "Use CSR Fulfillment",
+        description: "Companies fulfill requests through CSR projects. Open your dashboard to continue.",
+      })
+      router.push(`/companies/dashboard?tab=service-requests&requestId=${requestId}`)
       return
     }
 
@@ -309,6 +353,24 @@ export default function ServiceRequestDetailPage() {
         title: "Message Required",
         description: "Please provide a message with your application",
         variant: "destructive"
+      })
+      return
+    }
+
+    if (isFinancialRequest && !applicationFulfillmentAmount.trim()) {
+      toast({
+        title: 'Fulfillment amount required',
+        description: 'Enter how much you can contribute for this financial need.',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    if (!isFinancialRequest && !applicationFulfillmentQuantity.trim()) {
+      toast({
+        title: 'Fulfillment quantity required',
+        description: 'Enter how much you can fulfill for this need.',
+        variant: 'destructive'
       })
       return
     }
@@ -323,7 +385,9 @@ export default function ServiceRequestDetailPage() {
         },
         body: JSON.stringify({
           volunteer_id: user.id,
-          message: applicationMessage
+          message: applicationMessage,
+          fulfillment_amount: isFinancialRequest ? applicationFulfillmentAmount : null,
+          fulfillment_quantity: isFinancialRequest ? null : applicationFulfillmentQuantity
         })
       })
 
@@ -332,9 +396,11 @@ export default function ServiceRequestDetailPage() {
         if (result.success) {
           setUserApplication(result.data)
           setApplicationMessage('')
+          setApplicationFulfillmentAmount('')
+          setApplicationFulfillmentQuantity('')
           toast({
             title: "Application Submitted",
-            description: "Your application has been submitted successfully. You can view your applications in the 'My Volunteering' tab.",
+            description: "Your application has been submitted successfully. You can view your applications in the 'My Applications' tab.",
           })
           
           // Redirect to service requests page with volunteering tab after a short delay
@@ -381,6 +447,80 @@ export default function ServiceRequestDetailPage() {
       })
     } finally {
       setApplying(false)
+    }
+  }
+
+  const handleMarkIndividualDone = async () => {
+    if (!userApplication || !token) return
+
+    try {
+      let receiptUrl: string | undefined
+      if (individualReceiptFile) {
+        receiptUrl = await uploadReceiptFile(individualReceiptFile)
+      }
+
+      const response = await fetch(`/api/service-requests/${requestId}/volunteers/${userApplication.id}`, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          status: 'completed',
+          receiptUrl,
+          completionNote: individualCompletionNote
+        })
+      })
+
+      const data = await response.json()
+      if (!response.ok || !data.success) {
+        toast({ title: 'Update failed', description: data.error || 'Could not mark completion', variant: 'destructive' })
+        return
+      }
+
+      setUserApplication(data.data)
+      toast({ title: 'Done', description: 'Your fulfillment has been marked as done.' })
+      fetchRequestDetails()
+      checkExistingApplication()
+    } catch (error: any) {
+      toast({ title: 'Update failed', description: error?.message || 'Could not mark completion', variant: 'destructive' })
+    }
+  }
+
+  const handleNgoConfirm = async (applicant: ApplicantEntry) => {
+    if (!token) return
+
+    try {
+      let receiptUrl: string | undefined
+      const receiptFile = receiptUploads[applicant.id]
+      if (receiptFile) {
+        receiptUrl = await uploadReceiptFile(receiptFile)
+      }
+
+      const response = await fetch(`/api/service-requests/${requestId}/volunteers/${applicant.id}`, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          status: 'completed',
+          receiptUrl,
+          completionNote: ngoCompletionNotes[applicant.id] || ''
+        })
+      })
+
+      const data = await response.json()
+      if (!response.ok || !data.success) {
+        toast({ title: 'Update failed', description: data.error || 'Could not confirm fulfillment', variant: 'destructive' })
+        return
+      }
+
+      toast({ title: 'Receipt confirmed', description: 'The fulfillment was moved to history.' })
+      fetchRequestDetails()
+      fetchApplicants()
+    } catch (error: any) {
+      toast({ title: 'Update failed', description: error?.message || 'Could not confirm fulfillment', variant: 'destructive' })
     }
   }
 
@@ -517,6 +657,8 @@ export default function ServiceRequestDetailPage() {
   const infoBudget = String(parsedRequirements?.estimated_budget || parsedRequirements?.budget || 'Not specified')
   const infoBeneficiaries = Number(parsedRequirements?.beneficiary_count || 0)
   const infoImpact = String(parsedRequirements?.impact_description || 'Not specified')
+  const linkedProject = request?.project || parsedRequirements?.project?.project || null
+  const categoryDetails = parsedRequirements?.category_details || {}
   const rawDeadline = String(request?.deadline || request?.timeline || parsedRequirements?.timeline || 'Not specified')
   const infoDeadline = rawDeadline.trim().toLowerCase() === 'anytime' ? 'Anytime (No expiry)' : rawDeadline
   const isFinancialNeed = infoRequestType.toLowerCase().includes('financial')
@@ -535,6 +677,27 @@ export default function ServiceRequestDetailPage() {
   const requesterSector = String(requesterProfileData.sector || requesterProfile?.industry || 'Sector not set')
   const requesterFounded = String(requesterProfileData.founded || requesterProfileData.founded_year || 'Founded year not set')
   const requesterPincode = requesterProfile?.pincode || 'Pincode not set'
+  const isFinancialRequest = infoRequestType.toLowerCase().includes('financial')
+
+  const uploadReceiptFile = async (file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    const response = await fetch('/api/uploads/receipt', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      body: formData
+    })
+
+    const data = await response.json()
+    if (!response.ok || !data?.success) {
+      throw new Error(data?.error || 'Failed to upload receipt')
+    }
+
+    return data.data?.url as string
+  }
 
   if (loading) {
     return (
@@ -652,14 +815,14 @@ export default function ServiceRequestDetailPage() {
       <Header />
       
       <div className="mx-auto max-w-7xl px-4 py-8">
-        <div className="mb-6 flex items-center justify-between gap-3">
-          <Button variant="ghost" onClick={() => router.back()} className="px-0 text-blue-600 hover:text-blue-800 hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0">
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <Button variant="ghost" onClick={() => router.back()} className="w-full justify-start px-0 text-blue-600 hover:text-blue-800 hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0 sm:w-auto">
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back
           </Button>
           {isNgoOwner && (
             <Link href={`/service-requests/edit/${request.id}`}>
-              <Button variant="outline">Edit Request</Button>
+              <Button variant="outline" className="w-full sm:w-auto">Edit Request</Button>
             </Link>
           )}
         </div>
@@ -754,7 +917,7 @@ export default function ServiceRequestDetailPage() {
                       <p className="text-sm text-muted-foreground">{request.description}</p>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                    <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
                       <div>
                         <p className="font-medium text-gray-500">Request Type</p>
                         <p className="font-semibold">{infoRequestType}</p>
@@ -782,6 +945,63 @@ export default function ServiceRequestDetailPage() {
                       <p className="text-sm text-muted-foreground">{infoImpact}</p>
                     </div>
 
+                    {linkedProject && (
+                      <div className="space-y-3 rounded-lg border p-4 bg-muted/30">
+                        <div>
+                          <p className="text-sm font-medium text-gray-500">Project Context</p>
+                          <p className="font-semibold">{linkedProject.title || 'Project'}</p>
+                        </div>
+                        <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                          <div>
+                            <p className="text-gray-500">Project Location</p>
+                            <p className="font-medium">{linkedProject.location || request.location || 'Not specified'}</p>
+                          </div>
+                          <div>
+                            <p className="text-gray-500">Project Timeline</p>
+                            <p className="font-medium">{linkedProject.timeline || infoDeadline}</p>
+                          </div>
+                          {linkedProject.description && (
+                            <div className="md:col-span-2">
+                              <p className="text-gray-500">Project Description</p>
+                              <p className="font-medium text-muted-foreground">{linkedProject.description}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {Object.keys(categoryDetails || {}).length > 0 && (
+                      <div className="space-y-3 rounded-lg border p-4">
+                        <p className="text-sm font-medium text-gray-500">Request Specific Details</p>
+                        <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                          {categoryDetails.material_items && (
+                            <div>
+                              <p className="text-gray-500">Material Items</p>
+                              <p className="font-medium">{categoryDetails.material_items}</p>
+                            </div>
+                          )}
+                          {categoryDetails.skill_role && (
+                            <div>
+                              <p className="text-gray-500">Skill Role</p>
+                              <p className="font-medium">{categoryDetails.skill_role}</p>
+                            </div>
+                          )}
+                          {categoryDetails.skill_duration && (
+                            <div>
+                              <p className="text-gray-500">Skill Duration</p>
+                              <p className="font-medium">{categoryDetails.skill_duration}</p>
+                            </div>
+                          )}
+                          {categoryDetails.infrastructure_scope && (
+                            <div className="md:col-span-2">
+                              <p className="text-gray-500">Infrastructure Scope</p>
+                              <p className="font-medium text-muted-foreground">{categoryDetails.infrastructure_scope}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
                     {isFinancialNeed && (
                       <div className="space-y-3 rounded-lg border p-4">
                         <div className="flex items-center justify-between gap-2">
@@ -795,7 +1015,7 @@ export default function ServiceRequestDetailPage() {
                           <div className="h-full bg-emerald-500" style={{ width: `${fundingProgress}%` }} />
                         </div>
 
-                        <div className="grid grid-cols-1 gap-2 text-sm md:grid-cols-3">
+                        <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-3">
                           <div>
                             <p className="text-gray-500">Target</p>
                             <p className="font-semibold">INR {fundingTargetInr.toLocaleString('en-IN')}</p>
@@ -832,7 +1052,7 @@ export default function ServiceRequestDetailPage() {
 
                         {!canPayForRequest && request.status !== 'completed' && (
                           <p className="text-xs text-muted-foreground">
-                            Verified individuals and companies can contribute directly to Financial Need requests.
+                            Verified individuals can contribute directly to Financial Need requests. Companies should fulfill via CSR projects.
                           </p>
                         )}
                       </div>
@@ -842,7 +1062,7 @@ export default function ServiceRequestDetailPage() {
                   <TabsContent value="volunteer" className="mt-4">
                     {!isAuthenticated ? (
                       <div className="text-center space-y-4">
-                        <p className="text-muted-foreground">You need to be logged in to respond to this request.</p>
+                        <p className="text-muted-foreground">Log in to volunteer (individual) or fulfill via CSR (company).</p>
                         <Button asChild className="w-full">
                           <Link href="/login">Log In</Link>
                         </Button>
@@ -902,6 +1122,59 @@ export default function ServiceRequestDetailPage() {
                                 />
                               </div>
 
+                              {applicant.status === 'pending' && (
+                                <div className="grid gap-4 md:grid-cols-2">
+                                  <div>
+                                    <Label htmlFor={`allocation-${applicant.id}`}>
+                                      {isFinancialNeed ? 'Acceptable Amount' : 'Acceptable Quantity'}
+                                    </Label>
+                                    <Input
+                                      id={`allocation-${applicant.id}`}
+                                      type="number"
+                                      min="1"
+                                      value={isFinancialNeed ? (applicantAllocations[applicant.id] || '') : (applicantQuantities[applicant.id] || '')}
+                                      onChange={(e) => {
+                                        if (isFinancialNeed) {
+                                          setApplicantAllocations((prev) => ({ ...prev, [applicant.id]: e.target.value }))
+                                        } else {
+                                          setApplicantQuantities((prev) => ({ ...prev, [applicant.id]: e.target.value }))
+                                        }
+                                      }}
+                                      placeholder={isFinancialNeed ? 'e.g., 5000' : 'e.g., 10'}
+                                    />
+                                  </div>
+                                  <div className="text-xs text-muted-foreground self-end">
+                                    Fill this with the exact amount or quantity this applicant can handle.
+                                  </div>
+                                </div>
+                              )}
+
+                              {(applicant.response_meta?.individual_done_at || applicant.response_meta?.ngo_confirmed_at) && (
+                                <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
+                                  <div className="text-sm font-medium">Completion Tracking</div>
+                                  <div className="grid gap-3 md:grid-cols-2">
+                                    <div>
+                                      <Label htmlFor={`ngo-receipt-${applicant.id}`}>Receipt Upload</Label>
+                                      <Input
+                                        id={`ngo-receipt-${applicant.id}`}
+                                        type="file"
+                                        accept="image/*,.pdf"
+                                        onChange={(e) => setReceiptUploads((prev) => ({ ...prev, [applicant.id]: e.target.files?.[0] || null }))}
+                                      />
+                                    </div>
+                                    <div>
+                                      <Label htmlFor={`ngo-note-${applicant.id}`}>Confirmation Note</Label>
+                                      <Textarea
+                                        id={`ngo-note-${applicant.id}`}
+                                        value={ngoCompletionNotes[applicant.id] || ''}
+                                        onChange={(e) => setNgoCompletionNotes((prev) => ({ ...prev, [applicant.id]: e.target.value }))}
+                                        rows={2}
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
                               {applicant.status === 'pending' ? (
                                 <div className="flex flex-col sm:flex-row gap-2">
                                   <Button
@@ -926,6 +1199,12 @@ export default function ServiceRequestDetailPage() {
                                     )}
                                   </Button>
                                 </div>
+                              ) : applicant.response_meta?.individual_done_at && !applicant.response_meta?.ngo_confirmed_at ? (
+                                <div className="flex flex-col sm:flex-row gap-2">
+                                  <Button onClick={() => handleNgoConfirm(applicant)} disabled={updatingApplicantId === applicant.id}>
+                                    Confirm Receipt
+                                  </Button>
+                                </div>
                               ) : (
                                 <p className="text-xs text-muted-foreground">
                                   This application has already been reviewed.
@@ -935,11 +1214,26 @@ export default function ServiceRequestDetailPage() {
                           ))
                         )}
                       </div>
+                    ) : canCompanyFulfillViaCSR ? (
+                      <div className="space-y-4">
+                        <Alert>
+                          <Building className="h-4 w-4" />
+                          <AlertDescription>
+                            Companies fulfill NGO needs through CSR execution projects, not volunteer applications.
+                          </AlertDescription>
+                        </Alert>
+
+                        <Button asChild className="w-full">
+                          <Link href={`/companies/dashboard?tab=service-requests&requestId=${requestId}`}>
+                            Fulfill This Need via CSR
+                          </Link>
+                        </Button>
+                      </div>
                     ) : !canVolunteer ? (
                       <Alert>
                         <XCircle className="h-4 w-4" />
                         <AlertDescription>
-                          NGOs create requests. Verified individuals and companies can respond.
+                          NGOs create requests. Verified individuals can volunteer. Companies can fulfill via CSR.
                         </AlertDescription>
                       </Alert>
                     ) : user && user.verification_status !== 'verified' ? (
@@ -992,6 +1286,45 @@ export default function ServiceRequestDetailPage() {
                             </p>
                           </div>
 
+                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 text-sm">
+                            <div>
+                              <span className="font-medium">Your Fulfillment:</span>
+                              <p className="mt-1 p-2 bg-muted rounded">
+                                {isFinancialNeed
+                                  ? `INR ${Number(userApplication.fulfillment_amount || userApplication.assigned_amount || 0).toLocaleString('en-IN')}`
+                                  : String(userApplication.fulfillment_quantity || userApplication.assigned_quantity || 0)}
+                              </p>
+                            </div>
+                            <div>
+                              <span className="font-medium">Receipt Status:</span>
+                              <p className="mt-1 p-2 bg-muted rounded">
+                                {userApplication.response_meta?.individual_done_at ? 'Marked done' : 'Pending completion'}
+                              </p>
+                            </div>
+                          </div>
+
+                          {(userApplication.status === 'accepted' || userApplication.status === 'active') && (
+                            <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
+                              <div>
+                                <p className="font-medium text-sm">Mark Fulfillment Done</p>
+                                <p className="text-xs text-muted-foreground">Upload your receipt and confirm once your part is complete.</p>
+                              </div>
+                              <div className="grid gap-3 md:grid-cols-2">
+                                <div>
+                                  <Label htmlFor="individual-receipt">Receipt Upload</Label>
+                                  <Input id="individual-receipt" type="file" accept="image/*,.pdf" onChange={(e) => setIndividualReceiptFile(e.target.files?.[0] || null)} />
+                                </div>
+                                <div>
+                                  <Label htmlFor="individual-note">Completion Note</Label>
+                                  <Textarea id="individual-note" value={individualCompletionNote} onChange={(e) => setIndividualCompletionNote(e.target.value)} rows={2} placeholder="Optional note about the completed fulfillment" />
+                                </div>
+                              </div>
+                              <Button onClick={handleMarkIndividualDone} className="w-full">
+                                Mark as Done
+                              </Button>
+                            </div>
+                          )}
+
                           {userApplication.status === 'rejected' && userApplication.response_meta?.ngo_decision_comment && (
                             <div>
                               <span className="text-sm font-medium text-red-700">Reason from NGO:</span>
@@ -1015,7 +1348,7 @@ export default function ServiceRequestDetailPage() {
                             <Building className="h-4 w-4" />
                           )}
                           <span className="text-sm">
-                            Applying as {user?.user_type === 'individual' ? 'Individual' : 'Company'}
+                            Applying as Individual
                           </span>
                         </div>
 
@@ -1028,6 +1361,36 @@ export default function ServiceRequestDetailPage() {
                             onChange={(e) => setApplicationMessage(e.target.value)}
                             rows={4}
                           />
+                        </div>
+
+                        <div className="grid gap-4 md:grid-cols-2">
+                          {isFinancialNeed ? (
+                            <div>
+                              <Label htmlFor="fulfillment_amount">Amount You Can Fulfill *</Label>
+                              <Input
+                                id="fulfillment_amount"
+                                type="number"
+                                min="1"
+                                value={applicationFulfillmentAmount}
+                                onChange={(e) => setApplicationFulfillmentAmount(e.target.value)}
+                                placeholder="e.g., 5000"
+                                required
+                              />
+                            </div>
+                          ) : (
+                            <div>
+                              <Label htmlFor="fulfillment_quantity">Quantity You Can Fulfill *</Label>
+                              <Input
+                                id="fulfillment_quantity"
+                                type="number"
+                                min="1"
+                                value={applicationFulfillmentQuantity}
+                                onChange={(e) => setApplicationFulfillmentQuantity(e.target.value)}
+                                placeholder="e.g., 10"
+                                required
+                              />
+                            </div>
+                          )}
                         </div>
 
                         <Button

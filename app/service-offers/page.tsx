@@ -34,6 +34,8 @@ export default function ServiceOffersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [deleting, setDeleting] = useState<number | null>(null);
+  const [myCapabilitiesBucket, setMyCapabilitiesBucket] = useState<'ongoing' | 'history'>('ongoing');
+  const [myApplicationsBucket, setMyApplicationsBucket] = useState<'ongoing' | 'history'>('ongoing');
   
   const canCreateOffers = mounted && !!user && ['ngo', 'company', 'individual'].includes(user.user_type);
   const canRespondToOffers = !!user && ['ngo', 'company', 'individual'].includes(user.user_type);
@@ -162,6 +164,14 @@ export default function ServiceOffersPage() {
 
   // No need for client-side filtering since API handles it
   const filteredOffers = serviceOffers;
+  const isHistoryOffer = (offer: any) => {
+    const status = String(offer?.status || '').toLowerCase();
+    return ['completed', 'cancelled', 'closed', 'archived', 'inactive', 'expired', 'rejected'].includes(status);
+  };
+  const myCapabilitiesOngoing = filteredOffers.filter((offer) => !isHistoryOffer(offer));
+  const myCapabilitiesHistory = filteredOffers.filter((offer) => isHistoryOffer(offer));
+  const myApplicationsOngoing = filteredOffers.filter((offer) => !isHistoryOffer(offer));
+  const myApplicationsHistory = filteredOffers.filter((offer) => isHistoryOffer(offer));
   const getOfferProviderName = (offer: any) => offer.provider_name || offer.ngo_name || offer.ngo?.name || 'Unknown Provider';
   const getOfferProviderType = (offer: any) => offer.provider_type || offer.ngo?.user_type || 'ngo';
 
@@ -331,73 +341,144 @@ export default function ServiceOffersPage() {
             <div className="min-h-[400px]">
               {user && (
                 <>
-                  {loading ? (
-                    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                      {Array.from({ length: 6 }).map((_, i) => (
-                        <SkeletonServiceCard key={i} />
-                      ))}
-                    </div>
-                  ) : filteredOffers.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center h-[400px]">
-                      <div className="mb-4 rounded-full bg-muted p-3">
-                        <Target size={24} className="text-muted-foreground" />
-                      </div>
-                    <h3 className="mb-1 text-lg font-semibold">No capabilities published yet</h3>
-                    <p className="mb-4 text-muted-foreground">
-                      You haven't posted any capability offers yet.
-                    </p>
-                    <div className="flex flex-col sm:flex-row gap-3">
-                      <Link href="/service-offers/create">
-                        <Button>
-                          <Plus size={16} className="mr-2" />
-                          Create Capability Offer
-                        </Button>
-                      </Link>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                    {filteredOffers.map((offer) => (
-                        <ServiceCard
-                          key={offer.id}
-                          id={offer.id}
-                          title={offer.title}
-                          description={offer.description}
-                          category={offer.category}
-                          location={offer.location}
-                          images={offer.images}
-                          ngo_name={getOfferProviderName(offer)}
-                          ngo_id={offer.ngo_id}
-                          provider={getOfferProviderName(offer)}
-                          providerType={getOfferProviderType(offer)}
-                          verified={offer.verified}
-                          tags={offer.tags}
-                          created_at={offer.created_at}
-                          price_amount={offer.price_amount}
-                          price_type={offer.price_type}
-                          price_description={offer.price_description}
-                          offer_type={offer.offer_type}
-                          amount={offer.amount}
-                          location_scope={offer.location_scope}
-                          conditions={offer.conditions}
-                          item={offer.item}
-                          quantity={offer.quantity}
-                          delivery_scope={offer.delivery_scope}
-                          skill={offer.skill}
-                          capacity={offer.capacity}
-                          duration={offer.duration}
-                          scope={offer.scope}
-                          status={offer.status}
-                          type="offer"
-                          onDelete={() => handleDeleteOffer(offer.id)}
-                          isDeleting={deleting === offer.id}
-                          showDeleteButton={true}
-                          isOwner={true}
-                          canInteract={true}
-                        />
-                    ))}
-                  </div>
-                )}
+                  <Tabs value={myCapabilitiesBucket} onValueChange={(value) => setMyCapabilitiesBucket(value as 'ongoing' | 'history')} className="w-full">
+                    <TabsList className="mb-4 grid w-full grid-cols-2">
+                      <TabsTrigger value="ongoing">Ongoing</TabsTrigger>
+                      <TabsTrigger value="history">History</TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="ongoing" className="mt-0">
+                      {loading ? (
+                        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                          {Array.from({ length: 6 }).map((_, i) => (
+                            <SkeletonServiceCard key={i} />
+                          ))}
+                        </div>
+                      ) : myCapabilitiesOngoing.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center h-[400px]">
+                          <div className="mb-4 rounded-full bg-muted p-3">
+                            <Target size={24} className="text-muted-foreground" />
+                          </div>
+                          <h3 className="mb-1 text-lg font-semibold">No ongoing capabilities</h3>
+                          <p className="mb-4 text-muted-foreground">
+                            Active capability offers will appear here.
+                          </p>
+                          <div className="flex flex-col sm:flex-row gap-3">
+                            <Link href="/service-offers/create">
+                              <Button>
+                                <Plus size={16} className="mr-2" />
+                                Create Capability Offer
+                              </Button>
+                            </Link>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                          {myCapabilitiesOngoing.map((offer) => (
+                            <ServiceCard
+                              key={offer.id}
+                              id={offer.id}
+                              title={offer.title}
+                              description={offer.description}
+                              category={offer.category}
+                              location={offer.location}
+                              images={offer.images}
+                              ngo_name={getOfferProviderName(offer)}
+                              ngo_id={offer.ngo_id}
+                              provider={getOfferProviderName(offer)}
+                              providerType={getOfferProviderType(offer)}
+                              verified={offer.verified}
+                              tags={offer.tags}
+                              created_at={offer.created_at}
+                              price_amount={offer.price_amount}
+                              price_type={offer.price_type}
+                              price_description={offer.price_description}
+                              offer_type={offer.offer_type}
+                              amount={offer.amount}
+                              location_scope={offer.location_scope}
+                              conditions={offer.conditions}
+                              item={offer.item}
+                              quantity={offer.quantity}
+                              delivery_scope={offer.delivery_scope}
+                              skill={offer.skill}
+                              capacity={offer.capacity}
+                              duration={offer.duration}
+                              scope={offer.scope}
+                              status={offer.status}
+                              type="offer"
+                              onDelete={() => handleDeleteOffer(offer.id)}
+                              isDeleting={deleting === offer.id}
+                              showDeleteButton={true}
+                              isOwner={true}
+                              canInteract={true}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </TabsContent>
+
+                    <TabsContent value="history" className="mt-0">
+                      {loading ? (
+                        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                          {Array.from({ length: 6 }).map((_, i) => (
+                            <SkeletonServiceCard key={i} />
+                          ))}
+                        </div>
+                      ) : myCapabilitiesHistory.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center h-[400px]">
+                          <div className="mb-4 rounded-full bg-muted p-3">
+                            <Target size={24} className="text-muted-foreground" />
+                          </div>
+                          <h3 className="mb-1 text-lg font-semibold">No history yet</h3>
+                          <p className="mb-4 text-muted-foreground">
+                            Completed or closed capability offers will appear here.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                          {myCapabilitiesHistory.map((offer) => (
+                            <ServiceCard
+                              key={offer.id}
+                              id={offer.id}
+                              title={offer.title}
+                              description={offer.description}
+                              category={offer.category}
+                              location={offer.location}
+                              images={offer.images}
+                              ngo_name={getOfferProviderName(offer)}
+                              ngo_id={offer.ngo_id}
+                              provider={getOfferProviderName(offer)}
+                              providerType={getOfferProviderType(offer)}
+                              verified={offer.verified}
+                              tags={offer.tags}
+                              created_at={offer.created_at}
+                              price_amount={offer.price_amount}
+                              price_type={offer.price_type}
+                              price_description={offer.price_description}
+                              offer_type={offer.offer_type}
+                              amount={offer.amount}
+                              location_scope={offer.location_scope}
+                              conditions={offer.conditions}
+                              item={offer.item}
+                              quantity={offer.quantity}
+                              delivery_scope={offer.delivery_scope}
+                              skill={offer.skill}
+                              capacity={offer.capacity}
+                              duration={offer.duration}
+                              scope={offer.scope}
+                              status={offer.status}
+                              type="offer"
+                              onDelete={() => handleDeleteOffer(offer.id)}
+                              isDeleting={deleting === offer.id}
+                              showDeleteButton={true}
+                              isOwner={true}
+                              canInteract={true}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </TabsContent>
+                  </Tabs>
               </>
             )}
             </div>
@@ -405,65 +486,134 @@ export default function ServiceOffersPage() {
           
           <TabsContent value="my-responses" className="mt-0">
             <div className="min-h-[400px]">
-              {canRespondToOffers && loading ? (
-                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                  {Array.from({ length: 6 }).map((_, i) => (
-                    <SkeletonServiceCard key={i} />
-                  ))}
-                </div>
-              ) : canRespondToOffers && filteredOffers.length === 0 ? (
-                <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center h-[400px]">
-                  <div className="mb-4 rounded-full bg-muted p-3">
-                    <Target size={24} className="text-muted-foreground" />
-                  </div>
-                <h3 className="mb-1 text-lg font-semibold">No applications yet</h3>
-                <p className="mb-4 text-muted-foreground">
-                  You haven't applied to any capability offers yet.
-                </p>
-                <Link href="/service-offers">
-                  <Button variant="outline">
-                    Browse Capabilities
-                  </Button>
-                </Link>
-              </div>
-              ) : canRespondToOffers ? (
-                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                  {filteredOffers.map((offer) => (
-                    <ServiceCard
-                      key={offer.id}
-                      id={offer.id}
-                      title={offer.title}
-                      description={offer.description}
-                      category={offer.category}
-                      location={offer.location}
-                      images={offer.images}
-                      ngo_name={getOfferProviderName(offer)}
-                      ngo_id={offer.ngo_id}
-                      provider={getOfferProviderName(offer)}
-                      providerType={getOfferProviderType(offer)}
-                      verified={offer.verified}
-                      tags={offer.tags}
-                      created_at={offer.created_at}
-                      price_amount={offer.price_amount}
-                      price_type={offer.price_type}
-                      price_description={offer.price_description}
-                      offer_type={offer.offer_type}
-                      amount={offer.amount}
-                      location_scope={offer.location_scope}
-                      conditions={offer.conditions}
-                      item={offer.item}
-                      quantity={offer.quantity}
-                      delivery_scope={offer.delivery_scope}
-                      skill={offer.skill}
-                      capacity={offer.capacity}
-                      duration={offer.duration}
-                      scope={offer.scope}
-                      status={offer.status}
-                      type="offer"
-                      canInteract={true}
-                    />
-                  ))}
-                </div>
+              {canRespondToOffers ? (
+                <Tabs value={myApplicationsBucket} onValueChange={(value) => setMyApplicationsBucket(value as 'ongoing' | 'history')} className="w-full">
+                  <TabsList className="mb-4 grid w-full grid-cols-2">
+                    <TabsTrigger value="ongoing">Ongoing</TabsTrigger>
+                    <TabsTrigger value="history">History</TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="ongoing" className="mt-0">
+                    {loading ? (
+                      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                        {Array.from({ length: 6 }).map((_, i) => (
+                          <SkeletonServiceCard key={i} />
+                        ))}
+                      </div>
+                    ) : myApplicationsOngoing.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center h-[400px]">
+                        <div className="mb-4 rounded-full bg-muted p-3">
+                          <Target size={24} className="text-muted-foreground" />
+                        </div>
+                        <h3 className="mb-1 text-lg font-semibold">No ongoing applications</h3>
+                        <p className="mb-4 text-muted-foreground">
+                          Active applications will appear here.
+                        </p>
+                        <Link href="/service-offers">
+                          <Button variant="outline">
+                            Browse Capabilities
+                          </Button>
+                        </Link>
+                      </div>
+                    ) : (
+                      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                        {myApplicationsOngoing.map((offer) => (
+                          <ServiceCard
+                            key={offer.id}
+                            id={offer.id}
+                            title={offer.title}
+                            description={offer.description}
+                            category={offer.category}
+                            location={offer.location}
+                            images={offer.images}
+                            ngo_name={getOfferProviderName(offer)}
+                            ngo_id={offer.ngo_id}
+                            provider={getOfferProviderName(offer)}
+                            providerType={getOfferProviderType(offer)}
+                            verified={offer.verified}
+                            tags={offer.tags}
+                            created_at={offer.created_at}
+                            price_amount={offer.price_amount}
+                            price_type={offer.price_type}
+                            price_description={offer.price_description}
+                            offer_type={offer.offer_type}
+                            amount={offer.amount}
+                            location_scope={offer.location_scope}
+                            conditions={offer.conditions}
+                            item={offer.item}
+                            quantity={offer.quantity}
+                            delivery_scope={offer.delivery_scope}
+                            skill={offer.skill}
+                            capacity={offer.capacity}
+                            duration={offer.duration}
+                            scope={offer.scope}
+                            status={offer.status}
+                            type="offer"
+                            canInteract={true}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </TabsContent>
+
+                  <TabsContent value="history" className="mt-0">
+                    {loading ? (
+                      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                        {Array.from({ length: 6 }).map((_, i) => (
+                          <SkeletonServiceCard key={i} />
+                        ))}
+                      </div>
+                    ) : myApplicationsHistory.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center h-[400px]">
+                        <div className="mb-4 rounded-full bg-muted p-3">
+                          <Target size={24} className="text-muted-foreground" />
+                        </div>
+                        <h3 className="mb-1 text-lg font-semibold">No history yet</h3>
+                        <p className="mb-4 text-muted-foreground">
+                          Completed, cancelled, or closed applications will appear here.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                        {myApplicationsHistory.map((offer) => (
+                          <ServiceCard
+                            key={offer.id}
+                            id={offer.id}
+                            title={offer.title}
+                            description={offer.description}
+                            category={offer.category}
+                            location={offer.location}
+                            images={offer.images}
+                            ngo_name={getOfferProviderName(offer)}
+                            ngo_id={offer.ngo_id}
+                            provider={getOfferProviderName(offer)}
+                            providerType={getOfferProviderType(offer)}
+                            verified={offer.verified}
+                            tags={offer.tags}
+                            created_at={offer.created_at}
+                            price_amount={offer.price_amount}
+                            price_type={offer.price_type}
+                            price_description={offer.price_description}
+                            offer_type={offer.offer_type}
+                            amount={offer.amount}
+                            location_scope={offer.location_scope}
+                            conditions={offer.conditions}
+                            item={offer.item}
+                            quantity={offer.quantity}
+                            delivery_scope={offer.delivery_scope}
+                            skill={offer.skill}
+                            capacity={offer.capacity}
+                            duration={offer.duration}
+                            scope={offer.scope}
+                            status={offer.status}
+                            type="offer"
+                            canInteract={true}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </TabsContent>
+                </Tabs>
               ) : null}
             </div>
           </TabsContent>

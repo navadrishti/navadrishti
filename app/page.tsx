@@ -1,26 +1,62 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import Link from "next/link"
+import dynamic from "next/dynamic"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { Header } from "@/components/header"
-import { PlatformActivityFeed } from "@/components/platform-activity-feed"
-import { PlatformAnnouncements } from "@/components/platform-announcements"
-import { Leaderboard } from "@/components/leaderboard"
-import { StatsGrowth } from "@/components/stats-growth"
-import { RecentVerifications } from "@/components/recent-verifications"
-import { StickyFooter } from "@/components/sticky-footer"
-import { useAuth } from "@/lib/auth-context"
 import { 
   TrendingUp, 
-  Users, 
-  Building, 
-  HandHeart,
-  BarChart3,
-  ArrowRight
 } from "lucide-react"
+
+const PlatformAnnouncements = dynamic(
+  () => import("@/components/platform-announcements").then((m) => m.PlatformAnnouncements),
+  {
+    loading: () => null
+  }
+)
+
+const PlatformActivityFeed = dynamic(
+  () => import("@/components/platform-activity-feed").then((m) => m.PlatformActivityFeed),
+  {
+    loading: () => (
+      <div className="h-72 rounded-2xl border border-white/20 bg-white/10 animate-pulse" />
+    )
+  }
+)
+
+const Leaderboard = dynamic(
+  () => import("@/components/leaderboard").then((m) => m.Leaderboard),
+  {
+    loading: () => (
+      <Card className="border-2 border-gray-200 bg-white shadow-lg"><CardContent className="p-6"><div className="h-48 animate-pulse rounded bg-gray-100" /></CardContent></Card>
+    )
+  }
+)
+
+const StatsGrowth = dynamic(
+  () => import("@/components/stats-growth").then((m) => m.StatsGrowth),
+  {
+    loading: () => (
+      <Card className="border-2 border-gray-200 bg-white shadow-lg"><CardContent className="p-6"><div className="h-36 animate-pulse rounded bg-gray-100" /></CardContent></Card>
+    )
+  }
+)
+
+const RecentVerifications = dynamic(
+  () => import("@/components/recent-verifications").then((m) => m.RecentVerifications),
+  {
+    loading: () => (
+      <Card className="border-2 border-gray-200 bg-white shadow-lg"><CardContent className="p-6"><div className="h-40 animate-pulse rounded bg-gray-100" /></CardContent></Card>
+    )
+  }
+)
+
+const StickyFooter = dynamic(
+  () => import("@/components/sticky-footer").then((m) => m.StickyFooter),
+  {
+    loading: () => null
+  }
+)
 
 interface PlatformStats {
   activeUsers: number
@@ -30,8 +66,6 @@ interface PlatformStats {
 }
 
 export default function HomePage() {
-  const { user } = useAuth()
-  const [mounted, setMounted] = useState(false)
   const [stats, setStats] = useState<PlatformStats>({
     activeUsers: 0,
     partnerNGOs: 0,
@@ -39,15 +73,15 @@ export default function HomePage() {
     successStories: 0
   })
   const [statsLoading, setStatsLoading] = useState(true)
+  const [showActivityFeed, setShowActivityFeed] = useState(false)
+  const [showSecondaryWidgets, setShowSecondaryWidgets] = useState(false)
 
   useEffect(() => {
-    setMounted(true)
-  }, [])
+    const controller = new AbortController()
 
-  useEffect(() => {
     const fetchStats = async () => {
       try {
-        const res = await fetch('/api/stats', { headers: { 'Cache-Control': 'no-cache' } })
+        const res = await fetch('/api/stats', { signal: controller.signal })
         const data = await res.json()
         if (data.success) {
           setStats({
@@ -58,7 +92,9 @@ export default function HomePage() {
           })
         }
       } catch (err) {
-        console.error('Stats error:', err)
+        if (!(err instanceof DOMException && err.name === 'AbortError')) {
+          console.error('Stats error:', err)
+        }
       } finally {
         setStatsLoading(false)
       }
@@ -66,7 +102,50 @@ export default function HomePage() {
 
     fetchStats()
     const interval = setInterval(fetchStats, 60000)
-    return () => clearInterval(interval)
+    return () => {
+      controller.abort()
+      clearInterval(interval)
+    }
+  }, [])
+
+  useEffect(() => {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null
+    let idleId: number | null = null
+
+    const enableActivityFeed = () => setShowActivityFeed(true)
+
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      idleId = (window as any).requestIdleCallback(enableActivityFeed, { timeout: 700 })
+    } else {
+      timeoutId = setTimeout(enableActivityFeed, 150)
+    }
+
+    return () => {
+      if (idleId !== null && typeof window !== 'undefined' && 'cancelIdleCallback' in window) {
+        (window as any).cancelIdleCallback(idleId)
+      }
+      if (timeoutId) clearTimeout(timeoutId)
+    }
+  }, [])
+
+  useEffect(() => {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null
+    let idleId: number | null = null
+
+    const enableSecondaryWidgets = () => setShowSecondaryWidgets(true)
+
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      idleId = (window as any).requestIdleCallback(enableSecondaryWidgets, { timeout: 1200 })
+    } else {
+      timeoutId = setTimeout(enableSecondaryWidgets, 350)
+    }
+
+    return () => {
+      if (idleId !== null && typeof window !== 'undefined' && 'cancelIdleCallback' in window) {
+        (window as any).cancelIdleCallback(idleId)
+      }
+      if (timeoutId) clearTimeout(timeoutId)
+    }
   }, [])
 
   return (
@@ -138,15 +217,15 @@ export default function HomePage() {
             </div>
             
             {/* Platform Announcements */}
-            <PlatformAnnouncements />
+            {showSecondaryWidgets ? <PlatformAnnouncements /> : null}
             
-            <div className="bg-white rounded-2xl shadow-lg border-2 border-orange-500 overflow-hidden mb-4">
-              <div className="bg-white px-6 py-4 border-b border-gray-200">
+            <div className="bg-white rounded-2xl shadow-sm border-2 border-slate-200 overflow-hidden mb-4">
+              <div className="bg-white px-6 py-4 border-b border-slate-200">
                 <div className="flex items-center gap-3">
-                  <TrendingUp className="w-6 h-6 text-orange-500" />
+                  <TrendingUp className="w-6 h-6 text-blue-700" />
                   <div>
-                    <h2 className="text-xl font-bold text-orange-500">Platform Activity</h2>
-                    <p className="text-sm text-gray-600">
+                    <h2 className="text-xl font-bold text-slate-900">Platform Activity</h2>
+                    <p className="text-sm text-slate-600">
                       Recent updates and activities across the platform
                     </p>
                   </div>
@@ -154,7 +233,25 @@ export default function HomePage() {
               </div>
             </div>
             
-            <PlatformActivityFeed />
+            {showActivityFeed ? (
+              <PlatformActivityFeed />
+            ) : (
+              <div className="space-y-4">
+                {[1, 2, 3, 4].map((i) => (
+                  <Card key={i} className="border-2 border-gray-200 bg-white shadow-sm animate-pulse">
+                    <CardContent className="p-6">
+                      <div className="flex gap-4">
+                        <div className="w-10 h-10 rounded-full bg-gray-200" />
+                        <div className="flex-1 space-y-2">
+                          <div className="h-4 rounded bg-gray-200 w-3/4" />
+                          <div className="h-3 rounded bg-gray-200 w-1/2" />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Right Sidebar */}
@@ -212,16 +309,34 @@ export default function HomePage() {
             </Card>
             
             {/* Leaderboard */}
-            <Leaderboard />
+            {showSecondaryWidgets ? (
+              <Leaderboard />
+            ) : (
+              <Card className="border-2 border-gray-200 bg-white shadow-lg">
+                <CardContent className="p-6"><div className="h-48 animate-pulse rounded bg-gray-100" /></CardContent>
+              </Card>
+            )}
             
             {/* Stats Growth */}
-            <StatsGrowth />
+            {showSecondaryWidgets ? (
+              <StatsGrowth />
+            ) : (
+              <Card className="border-2 border-gray-200 bg-white shadow-lg">
+                <CardContent className="p-6"><div className="h-36 animate-pulse rounded bg-gray-100" /></CardContent>
+              </Card>
+            )}
             
             {/* Recent Verifications */}
-            <RecentVerifications />
+            {showSecondaryWidgets ? (
+              <RecentVerifications />
+            ) : (
+              <Card className="border-2 border-gray-200 bg-white shadow-lg">
+                <CardContent className="p-6"><div className="h-40 animate-pulse rounded bg-gray-100" /></CardContent>
+              </Card>
+            )}
             
             {/* Footer */}
-            <StickyFooter />
+            {showSecondaryWidgets ? <StickyFooter /> : null}
           </div>
         </div>
       </div>

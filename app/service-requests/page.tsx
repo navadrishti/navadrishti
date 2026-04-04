@@ -92,9 +92,15 @@ function ServiceRequestsContent() {
     'my-requests': [],
     'my-responses': []
   })
+  const [ongoingApplications, setOngoingApplications] = useState<any[]>([])
+  const [historyApplications, setHistoryApplications] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingApplications, setLoadingApplications] = useState(false)
   const [error, setError] = useState('')
   const [deleting, setDeleting] = useState<number | null>(null)
+  const [responseBucket, setResponseBucket] = useState<'ongoing' | 'history'>('ongoing')
+  const [currentTime, setCurrentTime] = useState(() => Date.now())
+  const [myNeedsBucket, setMyNeedsBucket] = useState<'ongoing' | 'history'>('ongoing')
 
   useEffect(() => {
     setMounted(true)
@@ -103,7 +109,7 @@ function ServiceRequestsContent() {
   const serviceRequests = requests[currentView] || []
   const authReady = mounted && !authLoading
   const isNGO = authReady && user?.user_type === 'ngo'
-  const canVolunteer = authReady && (user?.user_type === 'individual' || user?.user_type === 'company')
+  const canVolunteer = authReady && user?.user_type === 'individual'
   const showMyNeedsTab = isNGO
   const showMyResponsesTab = canVolunteer
 
@@ -135,6 +141,14 @@ function ServiceRequestsContent() {
       setCurrentView('all')
     }
   }, [authReady, currentView, showMyNeedsTab, showMyResponsesTab])
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(Date.now())
+    }, 60_000)
+
+    return () => clearInterval(timer)
+  }, [])
 
   const deleteRequest = async (id: number) => {
     if (!user || !confirm('Delete this request? This cannot be undone.')) return
@@ -204,6 +218,36 @@ function ServiceRequestsContent() {
       return () => clearInterval(interval)
     }
   }, [currentView, canVolunteer])
+
+  useEffect(() => {
+    const fetchApplicationBuckets = async () => {
+      if (!canVolunteer || currentView !== 'my-responses') return
+
+      const token = localStorage.getItem('token')
+      if (!token) return
+
+      setLoadingApplications(true)
+      try {
+        const [ongoingRes, historyRes] = await Promise.all([
+          fetch('/api/service-request-assignments?view=ongoing', { headers: { Authorization: `Bearer ${token}` } }),
+          fetch('/api/service-request-assignments?view=history', { headers: { Authorization: `Bearer ${token}` } })
+        ])
+
+        const ongoingData = await ongoingRes.json()
+        const historyData = await historyRes.json()
+
+        setOngoingApplications(ongoingData.success ? (ongoingData.data || []) : [])
+        setHistoryApplications(historyData.success ? (historyData.data || []) : [])
+      } catch {
+        setOngoingApplications([])
+        setHistoryApplications([])
+      } finally {
+        setLoadingApplications(false)
+      }
+    }
+
+    fetchApplicationBuckets()
+  }, [canVolunteer, currentView, user?.id])
   
   const handleTabChange = (value: string) => {
     setCurrentView(value)
@@ -212,10 +256,18 @@ function ServiceRequestsContent() {
   }
 
   const filteredRequests = serviceRequests
+  const isHistoryRequest = (request: any) => {
+    const status = String(request?.status || '').toLowerCase()
+    return status === 'completed' || status === 'cancelled'
+  }
+  const myNeedsOngoingRequests = filteredRequests.filter((request) => !isHistoryRequest(request))
+  const myNeedsHistoryRequests = filteredRequests.filter((request) => isHistoryRequest(request))
   const hasAcceptedApplicant = (request: any) => {
     const count = Number(request?.accepted_volunteers_count ?? request?.volunteers_count ?? 0)
     return Number.isFinite(count) && count > 0
   }
+
+  const currentApplications = responseBucket === 'ongoing' ? ongoingApplications : historyApplications
 
   if (error) {
     return (
@@ -272,15 +324,15 @@ function ServiceRequestsContent() {
         )}
         
         <Tabs value={currentView} className="mb-8" onValueChange={handleTabChange}>
-          <TabsList className="mb-6 inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground">
-            <TabsTrigger value="all" className="min-w-[100px] whitespace-nowrap">All Needs</TabsTrigger>
+          <TabsList className="mb-6 inline-flex h-auto flex-wrap items-stretch justify-start gap-1 rounded-md bg-muted p-1 text-muted-foreground sm:h-10 sm:flex-nowrap">
+            <TabsTrigger value="all" className="whitespace-nowrap">All Needs</TabsTrigger>
             {showMyNeedsTab && (
-              <TabsTrigger value="my-requests" className="min-w-[100px] whitespace-nowrap">
+              <TabsTrigger value="my-requests" className="whitespace-nowrap">
                 My Needs
               </TabsTrigger>
             )}
             {showMyResponsesTab && (
-              <TabsTrigger value="my-responses" className="min-w-[100px] whitespace-nowrap">
+              <TabsTrigger value="my-responses" className="whitespace-nowrap">
                 My Applications
               </TabsTrigger>
             )}
@@ -348,6 +400,8 @@ function ServiceRequestsContent() {
                   deadline={request.deadline}
                   requirements={request.requirements}
                   impact_score={request.impact_score}
+                  project={request.project}
+                  currentTime={currentTime}
                   type="request"
                   onDelete={() => deleteRequest(request.id)}
                   isDeleting={deleting === request.id}
@@ -381,63 +435,130 @@ function ServiceRequestsContent() {
             <div className="min-h-[400px]">
               {isNGO && (
                 <>
-                  {loading ? (
-                    <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                      {Array.from({ length: 6 }).map((_, i) => (
-                        <ServiceRequestCardSkeleton key={i} />
-                      ))}
-                    </div>
-                  ) : filteredRequests.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center">
-                    <div className="mb-4 rounded-full bg-muted p-3">
-                      <Target size={24} className="text-muted-foreground" />
-                    </div>
-                    <h3 className="mb-1 text-lg font-semibold">No needs posted yet</h3>
-                    <p className="mb-4 text-muted-foreground">
-                      You haven't posted any NGO requests yet.
-                    </p>
-                    <Link href="/service-requests/create">
-                      <Button>
-                        <Plus size={16} className="mr-2" />
-                        Create New Need
-                      </Button>
-                    </Link>
-                  </div>
-                ) : (
-                  <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                    {filteredRequests.map((request) => (
-                      <ServiceCard
-                        key={request.id}
-                        id={request.id}
-                        title={request.title}
-                        description={request.description}
-                        category={request.category}
-                        location={request.location}
-                        images={request.images}
-                        ngo_name={request.ngo_name}
-                        ngo_id={request.ngo_id}
-                        provider={request.ngo_name}
-                        providerType="ngo"
-                        verified={request.verified}
-                        tags={request.tags}
-                        created_at={request.created_at}
-                        urgency_level={request.urgency_level}
-                        priority={request.priority}
-                        volunteers_needed={request.volunteers_needed}
-                        timeline={request.timeline}
-                        deadline={request.deadline}
-                        requirements={request.requirements}
-                        impact_score={request.impact_score}
-                        type="request"
-                        onDelete={() => deleteRequest(request.id)}
-                        isDeleting={deleting === request.id}
-                        showDeleteButton={!hasAcceptedApplicant(request)}
-                        isOwner={true}
-                        canInteract={true}
-                      />
-                    ))}
-                  </div>
-                )}
+                  <Tabs value={myNeedsBucket} onValueChange={(value) => setMyNeedsBucket(value as 'ongoing' | 'history')} className="w-full">
+                    <TabsList className="mb-4 grid w-full grid-cols-2">
+                      <TabsTrigger value="ongoing">Ongoing</TabsTrigger>
+                      <TabsTrigger value="history">History</TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="ongoing" className="mt-0">
+                      {loading ? (
+                        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                          {Array.from({ length: 6 }).map((_, i) => (
+                            <ServiceRequestCardSkeleton key={i} />
+                          ))}
+                        </div>
+                      ) : myNeedsOngoingRequests.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center">
+                          <div className="mb-4 rounded-full bg-muted p-3">
+                            <Target size={24} className="text-muted-foreground" />
+                          </div>
+                          <h3 className="mb-1 text-lg font-semibold">No ongoing needs</h3>
+                          <p className="mb-4 text-muted-foreground">
+                            Active and in-progress NGO requests will appear here.
+                          </p>
+                          <Link href="/service-requests/create">
+                            <Button>
+                              <Plus size={16} className="mr-2" />
+                              Create New Need
+                            </Button>
+                          </Link>
+                        </div>
+                      ) : (
+                        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                          {myNeedsOngoingRequests.map((request) => (
+                            <ServiceCard
+                              key={request.id}
+                              id={request.id}
+                              title={request.title}
+                              description={request.description}
+                              category={request.category}
+                              location={request.location}
+                              images={request.images}
+                              ngo_name={request.ngo_name}
+                              ngo_id={request.ngo_id}
+                              provider={request.ngo_name}
+                              providerType="ngo"
+                              verified={request.verified}
+                              tags={request.tags}
+                              created_at={request.created_at}
+                              urgency_level={request.urgency_level}
+                              priority={request.priority}
+                              volunteers_needed={request.volunteers_needed}
+                              timeline={request.timeline}
+                              deadline={request.deadline}
+                              requirements={request.requirements}
+                              impact_score={request.impact_score}
+                              project={request.project}
+                              currentTime={currentTime}
+                              type="request"
+                              onDelete={() => deleteRequest(request.id)}
+                              isDeleting={deleting === request.id}
+                              showDeleteButton={!hasAcceptedApplicant(request)}
+                              isOwner={true}
+                              canInteract={true}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </TabsContent>
+
+                    <TabsContent value="history" className="mt-0">
+                      {loading ? (
+                        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                          {Array.from({ length: 6 }).map((_, i) => (
+                            <ServiceRequestCardSkeleton key={i} />
+                          ))}
+                        </div>
+                      ) : myNeedsHistoryRequests.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center">
+                          <div className="mb-4 rounded-full bg-muted p-3">
+                            <Target size={24} className="text-muted-foreground" />
+                          </div>
+                          <h3 className="mb-1 text-lg font-semibold">No history yet</h3>
+                          <p className="mb-4 text-muted-foreground">
+                            Completed or cancelled NGO requests will appear here.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                          {myNeedsHistoryRequests.map((request) => (
+                            <ServiceCard
+                              key={request.id}
+                              id={request.id}
+                              title={request.title}
+                              description={request.description}
+                              category={request.category}
+                              location={request.location}
+                              images={request.images}
+                              ngo_name={request.ngo_name}
+                              ngo_id={request.ngo_id}
+                              provider={request.ngo_name}
+                              providerType="ngo"
+                              verified={request.verified}
+                              tags={request.tags}
+                              created_at={request.created_at}
+                              urgency_level={request.urgency_level}
+                              priority={request.priority}
+                              volunteers_needed={request.volunteers_needed}
+                              timeline={request.timeline}
+                              deadline={request.deadline}
+                              requirements={request.requirements}
+                              impact_score={request.impact_score}
+                              project={request.project}
+                              currentTime={currentTime}
+                              type="request"
+                              onDelete={() => deleteRequest(request.id)}
+                              isDeleting={deleting === request.id}
+                              showDeleteButton={false}
+                              isOwner={true}
+                              canInteract={true}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </TabsContent>
+                  </Tabs>
                 </>
               )}
             </div>
@@ -465,62 +586,135 @@ function ServiceRequestsContent() {
                   </Button>
                 </div>
               )}
-              
-              {canVolunteer && loading ? (
-                <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                  {Array.from({ length: 6 }).map((_, i) => (
-                    <ServiceRequestCardSkeleton key={i} />
-                  ))}
-                </div>
-              ) : canVolunteer && filteredRequests.length === 0 ? (
-                <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center">
-                  <div className="mb-4 rounded-full bg-muted p-3">
-                    <HeartHandshake size={24} className="text-muted-foreground" />
-                  </div>
-                  <h3 className="mb-1 text-lg font-semibold">No applications yet</h3>
-                  <p className="mb-4 text-muted-foreground">
-                    You haven't applied to any NGO requests yet.
-                  </p>
-                  <Link href="/service-requests">
-                    <Button variant="outline">
-                      Browse Needs
-                    </Button>
-                  </Link>
-                </div>
-              ) : canVolunteer && filteredRequests.length > 0 ? (
-                <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                  {filteredRequests.map((request) => (
-                    <ServiceCard
-                      key={request.id}
-                      id={request.id}
-                      title={request.title}
-                      description={request.description}
-                      category={request.category}
-                      location={request.location}
-                      images={request.images}
-                      ngo_name={request.ngo_name}
-                      ngo_id={request.ngo_id}
-                      provider={request.ngo_name}
-                      providerType="ngo"
-                      verified={request.verified}
-                      tags={request.tags}
-                      created_at={request.created_at}
-                      urgency_level={request.urgency_level}
-                      priority={request.priority}
-                      volunteers_needed={request.volunteers_needed}
-                      timeline={request.timeline}
-                      deadline={request.deadline}
-                      requirements={request.requirements}
-                      impact_score={request.impact_score}
-                      type="request"
-                      volunteer_application={request.volunteer_application}
-                      showDeleteButton={false}
-                      isOwner={false}
-                      canInteract={true}
-                    />
-                  ))}
-                </div>
-              ) : null}
+
+              {canVolunteer && (
+                <Tabs value={responseBucket} onValueChange={(value) => setResponseBucket(value as 'ongoing' | 'history')} className="w-full">
+                  <TabsList className="mb-4 grid w-full grid-cols-2">
+                    <TabsTrigger value="ongoing">Ongoing</TabsTrigger>
+                    <TabsTrigger value="history">History</TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="ongoing" className="mt-0">
+                    {loadingApplications || loading ? (
+                      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                        {Array.from({ length: 6 }).map((_, i) => (
+                          <ServiceRequestCardSkeleton key={i} />
+                        ))}
+                      </div>
+                    ) : ongoingApplications.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center">
+                        <div className="mb-4 rounded-full bg-muted p-3">
+                          <HeartHandshake size={24} className="text-muted-foreground" />
+                        </div>
+                        <h3 className="mb-1 text-lg font-semibold">No ongoing applications</h3>
+                        <p className="mb-4 text-muted-foreground">
+                          Accepted and active assignments will appear here.
+                        </p>
+                        <Link href="/service-requests">
+                          <Button variant="outline">
+                            Browse Needs
+                          </Button>
+                        </Link>
+                      </div>
+                    ) : (
+                      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                        {ongoingApplications.map((application) => (
+                          <ServiceCard
+                            key={application.id}
+                            id={application.request?.id || application.id}
+                            title={application.request?.title || 'Service Request'}
+                            description={application.request?.description || ''}
+                            category={application.request?.category || 'Request'}
+                            location={application.request?.project?.title || application.request?.location || 'Project not set'}
+                            images={application.request?.images}
+                            ngo_name={application.request?.ngo_name || 'NGO'}
+                            ngo_id={application.request?.ngo_id || 0}
+                            provider={application.request?.ngo_name || 'NGO'}
+                            providerType="ngo"
+                            verified={application.request?.verified}
+                            tags={application.request?.tags}
+                            created_at={application.request?.created_at || application.applied_at}
+                            urgency_level={application.request?.urgency_level}
+                            priority={application.request?.priority}
+                            volunteers_needed={application.request?.volunteers_needed}
+                            timeline={application.request?.timeline}
+                            deadline={application.request?.deadline}
+                            requirements={application.request?.requirements}
+                            impact_score={application.request?.impact_score}
+                            project={application.request?.project}
+                            currentTime={currentTime}
+                            type="request"
+                            volunteer_application={application}
+                            showDeleteButton={false}
+                            isOwner={false}
+                            canInteract={true}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </TabsContent>
+
+                  <TabsContent value="history" className="mt-0">
+                    {loadingApplications || loading ? (
+                      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                        {Array.from({ length: 6 }).map((_, i) => (
+                          <ServiceRequestCardSkeleton key={i} />
+                        ))}
+                      </div>
+                    ) : historyApplications.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center">
+                        <div className="mb-4 rounded-full bg-muted p-3">
+                          <HeartHandshake size={24} className="text-muted-foreground" />
+                        </div>
+                        <h3 className="mb-1 text-lg font-semibold">No history yet</h3>
+                        <p className="mb-4 text-muted-foreground">
+                          Completed, rejected, or cancelled applications will appear here.
+                        </p>
+                        <Link href="/service-requests">
+                          <Button variant="outline">
+                            Browse Needs
+                          </Button>
+                        </Link>
+                      </div>
+                    ) : (
+                      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                        {historyApplications.map((application) => (
+                          <ServiceCard
+                            key={application.id}
+                            id={application.request?.id || application.id}
+                            title={application.request?.title || 'Service Request'}
+                            description={application.request?.description || ''}
+                            category={application.request?.category || 'Request'}
+                            location={application.request?.project?.title || application.request?.location || 'Project not set'}
+                            images={application.request?.images}
+                            ngo_name={application.request?.ngo_name || 'NGO'}
+                            ngo_id={application.request?.ngo_id || 0}
+                            provider={application.request?.ngo_name || 'NGO'}
+                            providerType="ngo"
+                            verified={application.request?.verified}
+                            tags={application.request?.tags}
+                            created_at={application.request?.created_at || application.applied_at}
+                            urgency_level={application.request?.urgency_level}
+                            priority={application.request?.priority}
+                            volunteers_needed={application.request?.volunteers_needed}
+                            timeline={application.request?.timeline}
+                            deadline={application.request?.deadline}
+                            requirements={application.request?.requirements}
+                            impact_score={application.request?.impact_score}
+                            project={application.request?.project}
+                            currentTime={currentTime}
+                            type="request"
+                            volunteer_application={application}
+                            showDeleteButton={false}
+                            isOwner={false}
+                            canInteract={true}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </TabsContent>
+                </Tabs>
+              )}
             </div>
           </TabsContent>
         </Tabs>

@@ -32,12 +32,10 @@ export const socialFeedDb = {
           reaction_count,
           share_count,
           view_count,
-          is_approved,
           author:users!author_id(id, name, email, user_type, profile_image, verification_status),
           reactions:post_reactions(user_id, reaction_type),
           comments:post_comments(id)
         `)
-        .eq('is_approved', true)
         .order('published_at', { ascending: false });
 
       // Apply filters
@@ -101,7 +99,7 @@ export const socialFeedDb = {
       }) || [];
     },
 
-    async getById(id: string) {
+    async getById(id: string, viewerUserId?: number) {
       const { data, error } = await supabase
         .from('posts')
         .select(`
@@ -118,11 +116,24 @@ export const socialFeedDb = {
           )
         `)
         .eq('id', id)
-        .eq('is_approved', true)
         .single();
 
       if (error && error.code !== 'PGRST116') throw error;
-      return data;
+
+      if (!data) return data;
+
+      const userLiked = viewerUserId
+        ? Array.isArray(data.reactions) && data.reactions.some((reaction: any) =>
+            reaction.user_id === viewerUserId && reaction.reaction_type === 'like'
+          )
+        : false;
+
+      return {
+        ...data,
+        user_interaction: {
+          has_liked: userLiked
+        }
+      };
     },
 
     async create(postData: {
@@ -152,7 +163,6 @@ export const socialFeedDb = {
           location: postData.location,
           visibility: postData.visibility || 'public',
           published_at: new Date().toISOString(),
-          is_approved: true,
           reaction_count: 0,
           comment_count: 0,
           share_count: 0,
@@ -658,7 +668,6 @@ export const socialFeedDb = {
           *,
           author:users!author_id(id, name, email, user_type, profile_image, verification_status)
         `)
-        .eq('is_approved', true)
         .order('published_at', { ascending: false });
 
       // Filter by connections if specified
@@ -930,26 +939,75 @@ export const socialFeedDb = {
   trending: {
     async getTopics(limit: number = 10) {
       const { data, error } = await supabase
-        .from('trending_topics')
-        .select('*')
-        .order('trend_score', { ascending: false })
+        .from('hashtags')
+        .select('tag, daily_mentions, weekly_mentions, total_mentions, trending_score, category, is_trending, updated_at')
+        .eq('is_trending', true)
+        .order('trending_score', { ascending: false })
         .limit(limit);
 
       if (error) throw error;
-      return data;
+      return (data || []).map((hashtag: any) => ({
+        topic: `#${hashtag.tag}`,
+        category: hashtag.category || 'general',
+        mention_count: hashtag.daily_mentions || 0,
+        unique_users_count: hashtag.weekly_mentions || 0,
+        trend_score: hashtag.trending_score || 0,
+        total_mentions: hashtag.total_mentions || 0,
+        last_mentioned_at: hashtag.updated_at
+      }));
     },
 
     async updateTopic(topic: string, category: string = 'hashtag') {
+      const normalizedTag = topic.replace(/^#/, '').trim().toLowerCase();
+      if (!normalizedTag) return null;
+
+      const { data: existing, error: selectError } = await supabase
+        .from('hashtags')
+        .select('id, total_mentions, daily_mentions, weekly_mentions')
+        .eq('tag', normalizedTag)
+        .maybeSingle();
+
+      if (selectError) throw selectError;
+
+      const now = new Date().toISOString();
+
+      if (existing) {
+        const totalMentions = (existing.total_mentions || 0) + 1;
+        const dailyMentions = (existing.daily_mentions || 0) + 1;
+        const weeklyMentions = (existing.weekly_mentions || 0) + 1;
+        const trendingScore = dailyMentions * 4 + weeklyMentions * 2 + totalMentions * 0.2;
+
+        const { data, error } = await supabase
+          .from('hashtags')
+          .update({
+            category,
+            total_mentions: totalMentions,
+            daily_mentions: dailyMentions,
+            weekly_mentions: weeklyMentions,
+            trending_score: Math.round(trendingScore * 100) / 100,
+            is_trending: dailyMentions >= 2,
+            updated_at: now
+          })
+          .eq('id', existing.id)
+          .select()
+          .single();
+
+        if (error) throw error;
+        return data;
+      }
+
       const { data, error } = await supabase
-        .from('trending_topics')
-        .upsert({
-          topic,
+        .from('hashtags')
+        .insert({
+          tag: normalizedTag,
           category,
-          mention_count: 1,
-          unique_users_count: 1,
-          last_mentioned_at: new Date().toISOString()
-        }, {
-          onConflict: 'topic'
+          total_mentions: 1,
+          daily_mentions: 1,
+          weekly_mentions: 1,
+          trending_score: 1.5,
+          is_trending: false,
+          created_at: now,
+          updated_at: now
         })
         .select()
         .single();

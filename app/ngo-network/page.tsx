@@ -60,126 +60,185 @@ export default function NGONetworkPage() {
       .finally(() => setLoading(false))
   }, [debouncedSearch, selectedSector])
 
+  const hasActiveFilters = Boolean(debouncedSearch || (selectedSector && selectedSector !== "all"))
+
+  const clearFilters = () => {
+    setSearch("")
+    setDebouncedSearch("")
+    setSelectedSector("all")
+  }
+
   return (
     <>
       <Header />
-      <main className="min-h-screen bg-gray-50">
-        {/* Hero */}
-        <div className="bg-udaan-navy py-10 px-4">
-          <div className="max-w-5xl mx-auto">
-            <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">NGO Network</h1>
-            <p className="text-white/70 text-base mb-6">
-              Verified NGOs — all three checks passed: email, mobile & documentation.
-            </p>
+      <main className="min-h-screen bg-slate-100">
+        <section className="relative overflow-hidden bg-udaan-navy px-4 pb-10 pt-12">
+          <div className="pointer-events-none absolute -left-24 top-10 h-56 w-56 rounded-full bg-udaan-orange/20 blur-3xl" />
+          <div className="pointer-events-none absolute -right-20 -top-8 h-64 w-64 rounded-full bg-blue-400/25 blur-3xl" />
+          <div className="pointer-events-none absolute bottom-0 left-1/3 h-40 w-40 rounded-full bg-cyan-300/20 blur-2xl" />
 
-            {/* Filters */}
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-                <Input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search by name, location or sector…"
-                  className="pl-9 bg-white text-black placeholder:text-gray-400 border-0"
-                />
+          <div className="relative mx-auto max-w-6xl">
+            <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+              <div>
+                <p className="text-sm font-medium uppercase tracking-[0.18em] text-white/70">Verified Directory</p>
+                <h1 className="mt-2 text-4xl font-extrabold leading-tight text-white md:text-5xl">NGO Network</h1>
+                <p className="mt-3 max-w-2xl text-base text-white/80 md:text-lg">
+                  Discover trusted NGOs with complete verification checks and connect directly.
+                </p>
               </div>
-              {sectors.length > 0 && (
-                <Select value={selectedSector} onValueChange={setSelectedSector}>
-                  <SelectTrigger className="w-full sm:w-48 bg-white text-black border-0">
-                    <SelectValue placeholder="All sectors" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All sectors</SelectItem>
-                    {sectors.map((s) => (
-                      <SelectItem key={s} value={s}>{s}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
+
+              <div className="grid w-full max-w-sm grid-cols-2 gap-3 md:w-auto md:min-w-[320px]">
+                <div className="rounded-xl border border-white/20 bg-white/10 p-3 backdrop-blur">
+                  <p className="text-xs uppercase tracking-wide text-white/70">Verified NGOs</p>
+                  <p className="mt-1 text-2xl font-bold text-white">{ngos.length}</p>
+                </div>
+                <div className="rounded-xl border border-white/20 bg-white/10 p-3 backdrop-blur">
+                  <p className="text-xs uppercase tracking-wide text-white/70">Sectors</p>
+                  <p className="mt-1 text-2xl font-bold text-white">{sectors.length || "-"}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-8 rounded-2xl border border-white/15 bg-white/95 p-4 shadow-xl shadow-black/15">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center">
+                <div className="relative flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <Input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search by NGO name, city, state or sector"
+                    className="h-11 border-slate-200 bg-white pl-9 text-slate-900 placeholder:text-slate-400"
+                  />
+                </div>
+
+                {sectors.length > 0 && (
+                  <Select value={selectedSector} onValueChange={setSelectedSector}>
+                    <SelectTrigger className="h-11 w-full border-slate-200 bg-white text-slate-900 md:w-56">
+                      <SelectValue placeholder="All sectors" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All sectors</SelectItem>
+                      {sectors.map((s) => (
+                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+
+                {hasActiveFilters ? (
+                  <Button type="button" variant="outline" className="h-11 border-slate-200" onClick={clearFilters}>
+                    Clear Filters
+                  </Button>
+                ) : null}
+              </div>
             </div>
           </div>
-        </div>
+        </section>
 
-        {/* Content */}
-        <div className="max-w-5xl mx-auto px-4 py-8">
+        <section className="mx-auto max-w-6xl px-4 py-8">
+          <div className="mb-5 flex items-center justify-between">
+            <p className="text-sm text-slate-600">
+              Showing <span className="font-semibold text-slate-900">{ngos.length}</span> verified NGO{ngos.length !== 1 ? "s" : ""}
+            </p>
+            {selectedSector !== "all" ? (
+              <Badge variant="outline" className="border-udaan-orange/40 bg-udaan-orange/10 text-udaan-orange">
+                Sector: {selectedSector}
+              </Badge>
+            ) : null}
+          </div>
+
           {loading ? (
-            <div className="flex justify-center items-center py-20">
-              <Loader2 className="h-8 w-8 animate-spin text-udaan-navy" />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {[1, 2, 3, 4, 5, 6].map((idx) => (
+                <div key={idx} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="mb-4 h-14 w-14 animate-pulse rounded-full bg-slate-200" />
+                  <div className="mb-2 h-5 w-3/4 animate-pulse rounded bg-slate-200" />
+                  <div className="mb-4 h-4 w-1/2 animate-pulse rounded bg-slate-100" />
+                  <div className="mb-6 h-4 w-2/3 animate-pulse rounded bg-slate-100" />
+                  <div className="h-10 w-full animate-pulse rounded-lg bg-slate-200" />
+                </div>
+              ))}
             </div>
           ) : ngos.length === 0 ? (
-            <div className="text-center py-20 text-gray-500">
-              <Building2 className="h-12 w-12 mx-auto mb-3 opacity-30" />
-              <p className="text-lg font-medium">No NGOs found</p>
-              <p className="text-sm mt-1">Try adjusting your search or filters.</p>
+            <div className="rounded-2xl border border-slate-200 bg-white py-16 text-center text-slate-500 shadow-sm">
+              <Building2 className="mx-auto mb-4 h-12 w-12 opacity-30" />
+              <p className="text-xl font-semibold text-slate-700">No NGOs found</p>
+              <p className="mt-1 text-sm">Try refining your search, or clear filters to broaden results.</p>
+              {hasActiveFilters ? (
+                <Button type="button" variant="outline" className="mt-5" onClick={clearFilters}>
+                  Reset Search
+                </Button>
+              ) : null}
             </div>
           ) : (
-            <>
-              <p className="text-sm text-gray-500 mb-4">
-                Showing <span className="font-semibold text-gray-800">{ngos.length}</span> verified NGO{ngos.length !== 1 ? "s" : ""}
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {ngos.map((ngo) => (
-                  <Card key={ngo.id} className="overflow-hidden hover:shadow-md transition-shadow">
-                    <CardContent className="p-5 flex flex-col gap-4">
-                      {/* Top row: avatar + verification */}
-                      <div className="flex items-start gap-4">
-                        <Avatar className="h-14 w-14 flex-shrink-0 border-2 border-udaan-orange/30">
-                          {ngo.profile_image ? (
-                            <AvatarImage src={ngo.profile_image} alt={ngo.name} />
-                          ) : null}
-                          <AvatarFallback className="bg-gradient-to-br from-udaan-navy to-blue-600 text-white font-bold text-lg">
-                            {getInitials(ngo.name)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <Link
-                              href={`/profile/${ngo.id}`}
-                              className="font-semibold text-gray-900 leading-tight truncate hover:text-blue-600 transition-colors"
-                            >
-                              {ngo.name}
-                            </Link>
-                            <VerificationBadge status="verified" size="sm" showText={false} />
-                          </div>
-                          {ngo.sector ? (
-                            <Badge variant="secondary" className="mt-1 text-xs bg-blue-50 text-blue-700 border border-blue-200">
-                              {ngo.sector}
-                            </Badge>
-                          ) : (
-                            <span className="text-xs text-gray-400 mt-1 block">No sector listed</span>
-                          )}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {ngos.map((ngo, index) => (
+                <Card
+                  key={ngo.id}
+                  className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg"
+                  style={{ animationDelay: `${index * 40}ms` }}
+                >
+                  <CardContent className="flex h-full flex-col p-5">
+                    <div className="mb-4 flex items-start gap-4">
+                      <Avatar className="h-14 w-14 flex-shrink-0 border-2 border-udaan-orange/25">
+                        {ngo.profile_image ? (
+                          <AvatarImage src={ngo.profile_image} alt={ngo.name} />
+                        ) : null}
+                        <AvatarFallback className="bg-gradient-to-br from-udaan-navy via-blue-600 to-cyan-500 text-lg font-bold text-white">
+                          {getInitials(ngo.name)}
+                        </AvatarFallback>
+                      </Avatar>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <Link
+                            href={`/profile/${ngo.id}`}
+                            className="truncate text-lg font-semibold text-slate-900 transition-colors hover:text-udaan-navy"
+                          >
+                            {ngo.name}
+                          </Link>
+                          <VerificationBadge status="verified" size="sm" showText={false} />
                         </div>
+
+                        {ngo.sector ? (
+                          <Badge variant="secondary" className="mt-2 border border-blue-200 bg-blue-50 text-blue-700">
+                            {ngo.sector}
+                          </Badge>
+                        ) : (
+                          <p className="mt-2 text-xs text-slate-400">No sector listed</p>
+                        )}
                       </div>
+                    </div>
 
-                      {/* Location */}
-                      {ngo.location ? (
-                        <div className="flex items-center gap-1.5 text-sm text-gray-600">
-                          <MapPin className="h-3.5 w-3.5 flex-shrink-0 text-gray-400" />
-                          <span className="truncate">{ngo.location}</span>
-                        </div>
-                      ) : null}
+                    <div className="mb-4 space-y-2 rounded-xl bg-slate-50 p-3 text-sm text-slate-600">
+                      <div className="flex items-center gap-2">
+                        <MapPin className="h-3.5 w-3.5 text-slate-400" />
+                        <span className="truncate">{ngo.location || "Location not specified"}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Mail className="h-3.5 w-3.5 text-slate-400" />
+                        <span className="truncate">{ngo.email}</span>
+                      </div>
+                    </div>
 
-                      {/* Email button */}
-                      <a
-                        href={`mailto:${ngo.email}`}
-                        className="mt-auto"
-                      >
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="w-full flex items-center gap-2 border-udaan-orange text-udaan-orange hover:bg-udaan-orange hover:text-white transition-colors"
-                        >
-                          <Mail className="h-4 w-4" />
-                          Email NGO
+                    <div className="mt-auto flex gap-2">
+                      <Link href={`/profile/${ngo.id}`} className="flex-1">
+                        <Button variant="outline" className="w-full border-slate-300 text-slate-700 hover:bg-slate-100">
+                          View Profile
+                        </Button>
+                      </Link>
+                      <a href={`mailto:${ngo.email}`} className="flex-1">
+                        <Button className="w-full bg-udaan-orange text-white hover:bg-udaan-orange/90">
+                          Contact
                         </Button>
                       </a>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           )}
-        </div>
+        </section>
       </main>
     </>
   )

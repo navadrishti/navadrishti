@@ -38,8 +38,8 @@ export async function POST(
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
 
-    if (!['individual', 'company'].includes(decoded.user_type)) {
-      return NextResponse.json({ error: 'Only individuals and companies can contribute' }, { status: 403 });
+    if (decoded.user_type !== 'individual') {
+      return NextResponse.json({ error: 'Only individuals can contribute directly' }, { status: 403 });
     }
 
     const keySecret = process.env.RAZORPAY_KEY_SECRET;
@@ -131,6 +131,25 @@ export async function POST(
 
     const nextRaisedInr = currentRaisedInr + paidInr;
     const reachedTarget = nextRaisedInr >= targetInr;
+
+    const { data: acceptedAssignments } = await db.serviceVolunteers.getByRequestId(requestId);
+    const matchingAssignment = (acceptedAssignments || []).find((item: any) =>
+      item.volunteer_id === decoded.id && ['accepted', 'active', 'completed'].includes(String(item.status || '').toLowerCase())
+    );
+
+    if (matchingAssignment) {
+      const existingFulfilled = parseAmountToInr(matchingAssignment.fulfilled_amount || 0);
+      await db.serviceVolunteers.updateStatus(matchingAssignment.id, matchingAssignment.status || 'active');
+      await supabase
+        .from('service_volunteers')
+        .update({
+          fulfilled_amount: Number((existingFulfilled + paidInr).toFixed(2)),
+          individual_done_at: matchingAssignment.individual_done_at || new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', matchingAssignment.id)
+        .eq('service_request_id', requestId);
+    }
 
     const nextRequirements = {
       ...requirements,

@@ -174,6 +174,11 @@ export function Header() {
             label: 'Post a Need',
             href: '/service-requests/create',
             description: 'Create a new service request'
+          },
+          {
+            label: 'NGO AI Agent',
+            href: '/ngos/ai-agent',
+            description: 'Generate service request drafts with AI'
           }
         ]
       : []),
@@ -207,9 +212,9 @@ export function Header() {
             description: 'Create and plan CSR initiatives'
           },
           {
-            label: 'Budget Planner',
-            href: '/companies/csr-budget',
-            description: 'Manage CSR allocations'
+            label: 'CSR Health Snapshot',
+            href: '/companies/csr-health',
+            description: 'One-glance execution health and risks'
           },
           {
             label: 'Impact Reports',

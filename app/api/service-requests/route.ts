@@ -56,6 +56,30 @@ function computeProofStrength(request: any): number {
   return Math.max(0, Math.min(100, score));
 }
 
+function parseAmount(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  if (!text) return null;
+  const parsed = Number(text.replace(/[^\d.-]/g, ''));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function buildProgressFields(body: Record<string, any>, existing?: Record<string, any> | null) {
+  const targetAmount = parseAmount(body.target_amount ?? body.estimated_budget ?? body.budget ?? existing?.target_amount ?? existing?.estimated_budget ?? existing?.budget);
+  const targetQuantity = parseAmount(body.target_quantity ?? body.quantity ?? body.volunteers_needed ?? body.beneficiary_count ?? existing?.target_quantity ?? existing?.quantity ?? existing?.volunteers_needed ?? existing?.beneficiary_count);
+  const currentAmount = parseAmount(body.current_amount ?? existing?.current_amount) ?? 0;
+  const currentQuantity = parseAmount(body.current_quantity ?? existing?.current_quantity) ?? 0;
+
+  return {
+    target_amount: targetAmount,
+    current_amount: currentAmount,
+    target_quantity: targetQuantity,
+    current_quantity: currentQuantity,
+    remaining_amount: targetAmount != null ? Math.max(targetAmount - currentAmount, 0) : null,
+    remaining_quantity: targetQuantity != null ? Math.max(targetQuantity - currentQuantity, 0) : null
+  };
+}
+
 // GET - Fetch service requests (public endpoint - no auth required for viewing)
 export async function GET(request: NextRequest) {
   try {
@@ -64,6 +88,7 @@ export async function GET(request: NextRequest) {
     const category = searchParams.get('category');
     const search = searchParams.get('search');
     const userId = searchParams.get('userId');
+    const projectId = searchParams.get('projectId');
     const rawView = searchParams.get('view'); // 'all', 'my-requests', 'my-responses' (legacy: 'volunteering')
     const view = rawView === 'volunteering' ? 'my-responses' : rawView;
 
@@ -89,11 +114,11 @@ export async function GET(request: NextRequest) {
             });
           }
         } else if (view === 'my-responses') {
-          // Only individuals and companies can volunteer
-          if (payload.user_type === 'ngo') {
+          // Only individuals can volunteer directly on requests
+          if (payload.user_type !== 'individual') {
             return NextResponse.json({ 
               success: true, 
-              data: [] // Return empty array for NGOs
+              data: []
             });
           }
         }
@@ -109,6 +134,9 @@ export async function GET(request: NextRequest) {
     }
     if (view === 'my-requests' && authenticatedUserId) {
       filters.requester_id = authenticatedUserId;
+    }
+    if (projectId) {
+      filters.project_id = projectId;
     }
     
     let serviceRequests;
@@ -139,19 +167,28 @@ export async function GET(request: NextRequest) {
         // Fetch requester data separately and merge
         if (serviceRequests.length > 0) {
           const requesterIds = [...new Set(serviceRequests.map((item: any) => item.ngo_id))];
+          const projectIds = [...new Set(serviceRequests.map((item: any) => item.project_id).filter(Boolean))];
           const { data: users } = await supabase
             .from('users')
             .select('id, name, email, user_type')
             .in('id', requesterIds);
+          const { data: projects } = projectIds.length > 0
+            ? await supabase
+                .from('service_request_projects')
+                .select('*')
+                .in('id', projectIds)
+            : { data: [] as any[] };
           
           // Merge requester data and volunteer application data
           serviceRequests = serviceRequests.map((request: any) => {
             const requester = users?.find((user: any) => user.id === request.ngo_id);
+            const project = projects?.find((item: any) => item.id === request.project_id) || null;
             const volunteerApp = volunteerApplications.find(app => app.service_request_id === request.id);
             
             return {
               ...request,
               requester,
+              project,
               volunteer_application: volunteerApp,
               // Add requester_id for backward compatibility
               requester_id: request.ngo_id
@@ -340,19 +377,21 @@ export async function POST(request: NextRequest) {
         contactInfo,
         estimated_budget,
         beneficiary_count,
-        impact_description
+        impact_description,
+        projectId,
+        project,
+        target_amount,
+        target_quantity,
+        current_amount,
+        current_quantity,
+        project_context,
+        details
       } = body;
 
       // Validate required fields
-      if (!title || !description || !(request_type || category)) {
+      const missingRequiredFields = [title, description, location, urgency, timeline, budget, estimated_budget, contactInfo, impact_description].some((value) => !String(value ?? '').trim());
+      if (missingRequiredFields || !(request_type || category)) {
         return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
-      }
-
-      if (!impact_description || !String(impact_description).trim()) {
-        return NextResponse.json(
-          { error: 'impact_description is required (What changes?)' },
-          { status: 400 }
-        );
       }
 
       if (!beneficiary_count || Number(beneficiary_count) <= 0) {
@@ -369,6 +408,49 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
+
+      let resolvedProjectId: string | null = projectId || null;
+      let resolvedProjectLocation = String(location || '').trim();
+      const projectPayload = project && typeof project === 'object' ? project : null;
+      if (projectPayload && !resolvedProjectId) {
+        const projectTitle = String(projectPayload.title || '').trim();
+        const projectDescription = String(projectPayload.description || '').trim();
+        const projectLocation = String(projectPayload.exact_address || projectPayload.location || location || '').trim();
+        const projectTimeline = String(projectPayload.timeline || timeline || '').trim();
+
+        if ([projectTitle, projectDescription, projectLocation, projectTimeline].some((value) => !value)) {
+          return NextResponse.json({ error: 'Project title, description, exact address, and timeline are required' }, { status: 400 });
+        }
+
+        const createdProject = await db.requestProjects.create({
+          ngo_id: userId,
+          title: projectTitle,
+          description: projectDescription,
+          location: projectLocation,
+          exact_address: projectLocation,
+          timeline: projectTimeline || null,
+          status: 'active'
+        });
+
+        resolvedProjectId = createdProject.id;
+        resolvedProjectLocation = projectLocation;
+      }
+
+      if (resolvedProjectId) {
+        const projectRecord = await db.requestProjects.getById(String(resolvedProjectId));
+        if (projectRecord && projectRecord.ngo_id !== userId) {
+          return NextResponse.json({ error: 'Project ownership mismatch' }, { status: 403 });
+        }
+
+        resolvedProjectLocation = String(projectRecord?.exact_address || projectRecord?.location || resolvedProjectLocation || '').trim();
+      }
+
+      const projectContext = {
+        ...(safeParseJson(project_context) || {}),
+        project: resolvedProjectId
+          ? { id: resolvedProjectId, exact_address: resolvedProjectLocation }
+          : projectPayload || null
+      };
 
       const trimmedTimeline = typeof timeline === 'string' ? timeline.trim() : '';
       const isAnytimeTimeline = trimmedTimeline.toLowerCase() === 'anytime';
@@ -392,8 +474,22 @@ export async function POST(request: NextRequest) {
         impact_description: String(impact_description || '').trim(),
         budget: budget || estimated_budget || 'Not specified',
         contactInfo: contactInfo || 'Not specified',
-        timeline: timelineLabel
+        timeline: timelineLabel,
+        project: projectContext,
+        category_details: details || {}
       };
+
+      const progressFields = buildProgressFields({
+        target_amount,
+        target_quantity,
+        current_amount,
+        current_quantity,
+        estimated_budget,
+        budget,
+        beneficiary_count,
+        volunteers_needed: body.volunteers_needed,
+        quantity: body.quantity
+      });
 
       // Insert new service request using Supabase helpers
       const requestData = {
@@ -401,7 +497,7 @@ export async function POST(request: NextRequest) {
         title: title,
         description: description,
         category: normalizedRequestType,
-        location: location,
+        location: resolvedProjectLocation || location,
         urgency_level: mappedUrgency,
         volunteers_needed: 1, // default volunteers_needed
         tags: JSON.stringify([]), // empty tags array
@@ -413,7 +509,10 @@ export async function POST(request: NextRequest) {
         beneficiary_count: Number(beneficiary_count || 0),
         impact_description: String(impact_description || '').trim(),
         timeline: storedTimeline,
-        contact_info: contactInfo || null
+        contact_info: contactInfo || null,
+        project_id: resolvedProjectId,
+        project_context: projectContext,
+        ...progressFields
       };
 
       const result = await db.serviceRequests.create(requestData);

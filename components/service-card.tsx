@@ -12,7 +12,7 @@ import {
   Edit, Eye, MoreVertical, Trash2, ArrowRight, User, Briefcase 
 } from "lucide-react"
 import { VerificationBadge } from "./verification-badge"
-import { formatPrice } from "@/lib/utils"
+import { formatPrice, getRequestUrgencyLevel } from "@/lib/utils"
 import { useAuth } from "@/lib/auth-context"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import Link from "next/link"
@@ -54,6 +54,12 @@ interface ServiceCardProps {
   item?: string | null
   quantity?: number | null
   delivery_scope?: string | null
+  project?: {
+    id?: string
+    title?: string
+    location?: string
+    timeline?: string
+  }
   skill?: string | null
   capacity?: number | null
   duration?: string | null
@@ -78,6 +84,7 @@ interface ServiceCardProps {
   }
   skills_required?: string[]
   benefits?: string[]
+  currentTime?: number
   
   // Common functionality
   type: 'request' | 'offer'
@@ -146,6 +153,7 @@ export function ServiceCard({
   deadline,
   requirements,
   impact_score,
+  project,
   price_amount,
   price_type,
   price_description,
@@ -165,6 +173,7 @@ export function ServiceCard({
   experience_requirements,
   skills_required,
   benefits,
+  currentTime,
   type,
   onDelete,
   isDeleting,
@@ -200,6 +209,17 @@ export function ServiceCard({
   };
 
   const imageArray = parseImages(images);
+
+  const liveUrgency = type === 'request'
+    ? getRequestUrgencyLevel({
+        createdAt: created_at,
+        deadline,
+        referenceTimeMs: currentTime,
+        fallback: urgency_level || priority || 'medium'
+      })
+    : null;
+
+  const effectiveRequestUrgency = liveUrgency || (urgency_level || priority || 'medium');
   
   // Parse tags safely
   const parseTags = (tagData?: string[] | string): string[] => {
@@ -244,6 +264,22 @@ export function ServiceCard({
     }
   };
 
+  const getPriorityTextColor = (level?: string) => {
+    if (!level) return 'text-blue-700';
+    switch (level.toLowerCase()) {
+      case 'urgent':
+      case 'critical':
+      case 'high':
+        return 'text-red-700';
+      case 'medium':
+        return 'text-orange-700';
+      case 'low':
+        return 'text-green-700';
+      default:
+        return 'text-blue-700';
+    }
+  };
+
   const getProviderIcon = (type: string) => {
     switch (type) {
       case 'individual': return <User size={16} />;
@@ -282,6 +318,7 @@ export function ServiceCard({
   const providerDisplayType = providerType || 'ngo';
   const requestType = requirementsData?.request_type || category;
   const isFinancialNeed = type === 'request' && String(requestType || '').toLowerCase().includes('financial');
+  const projectContext = project || requirementsData?.project?.project || null;
   const beneficiaryCount = Number(requirementsData?.beneficiary_count || 0);
   const estimatedBudget = requirementsData?.estimated_budget || requirementsData?.budget;
   const fundingTargetInr = isFinancialNeed ? Number(String(requirementsData?.funding_target_inr || estimatedBudget || '').replace(/[^\d.-]/g, '')) : 0;
@@ -326,69 +363,27 @@ export function ServiceCard({
   return (
     <Card className="h-full flex flex-col hover:shadow-xl transition-all duration-300 border-2 border-gray-200 hover:border-blue-500">
       <CardHeader className="space-y-3 pb-4">
-        {/* Category and Priority/Status */}
-        <div className="flex items-center justify-between gap-2">
-          <Badge variant="secondary" className="text-xs font-medium px-3 py-1.5">
-            {category}
-          </Badge>
-          
-          {type === 'request' && (urgency_level || priority) && (
-            <Badge 
-              className={`text-xs font-bold px-3 py-1.5 ${
-                (urgency_level || priority)?.toLowerCase() === 'urgent' || 
-                (urgency_level || priority)?.toLowerCase() === 'critical' || 
-                (urgency_level || priority)?.toLowerCase() === 'high' 
-                  ? 'bg-red-500 text-white' 
-                  : (urgency_level || priority)?.toLowerCase() === 'medium' 
-                    ? 'bg-orange-500 text-white' 
-                    : 'bg-green-500 text-white'
-              }`}
-            >
-              {(urgency_level || priority)?.toUpperCase()}
-            </Badge>
-          )}
-          
-          {type === 'offer' && offerType && (
-            <Badge variant="outline" className="text-xs font-medium px-3 py-1.5 capitalize">
-              {String(offerType || '').replace('_', ' ')}
-            </Badge>
-          )}
-        </div>
+        {type === 'request' && projectContext?.title && (
+          <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900 shadow-sm">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-600">Project</p>
+            <p className="text-sm font-bold leading-snug text-blue-950">{projectContext.title}</p>
+          </div>
+        )}
 
         {/* Title */}
         <h3 
-          className="font-bold text-xl text-gray-900 line-clamp-2 leading-tight cursor-pointer hover:text-blue-600 transition-colors" 
+          className="cursor-pointer text-lg font-bold leading-tight text-gray-900 transition-colors hover:text-blue-600 sm:text-xl line-clamp-2" 
           onClick={handleCardClick}
         >
           {title}
         </h3>
 
-        {/* Organization Info */}
-        <div className="flex items-center gap-3 pt-2">
-          <div className="w-10 h-10 rounded-full flex items-center justify-center bg-blue-600 text-white font-bold text-sm flex-shrink-0 shadow-md">
-            {getInitials(providerDisplayName)}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <p className="font-semibold text-gray-900 text-sm truncate">{providerDisplayName}</p>
-              {verified && (
-                <VerificationBadge status="verified" size="sm" showText={false} />
-              )}
-            </div>
-            <p className="text-xs text-gray-500 flex items-center gap-1">
-              {getProviderIcon(providerDisplayType)}
-              {type === 'request' ? 'Requesting Help' : `${getProviderLabel(providerDisplayType)} Provider`}
-            </p>
-          </div>
-        </div>
+        <p className="text-sm text-gray-700 leading-relaxed line-clamp-3">
+          {description}
+        </p>
       </CardHeader>
 
       <CardContent className="space-y-4 flex-1 pb-4">
-        {/* Description */}
-        <p className="text-gray-700 text-sm leading-relaxed line-clamp-3">
-          {description}
-        </p>
-
         {isFinancialNeed && Number.isFinite(fundingTargetInr) && fundingTargetInr > 0 && (
           <div className="space-y-3 rounded-lg border p-4">
             <div className="flex items-center justify-between gap-2">
@@ -407,7 +402,7 @@ export function ServiceCard({
         )}
 
         {/* Key Information Grid */}
-        <div className="grid grid-cols-2 gap-3 pt-2">
+        <div className="grid grid-cols-1 gap-3 pt-2 sm:grid-cols-2">
           <div className="space-y-1">
             <div className="flex items-center gap-1.5 text-gray-500">
               <Calendar size={14} />
@@ -423,6 +418,26 @@ export function ServiceCard({
                 <span className="text-xs font-medium">Location</span>
               </div>
               <p className="text-sm font-semibold text-gray-900 truncate">{location}</p>
+            </div>
+          )}
+
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5 text-gray-500">
+              <Target size={14} />
+              <span className="text-xs font-medium">Category</span>
+            </div>
+            <p className="text-sm font-semibold text-blue-700 truncate">{category}</p>
+          </div>
+
+          {type === 'request' && effectiveRequestUrgency && (
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5 text-gray-500">
+                <Clock size={14} />
+                <span className="text-xs font-medium">Urgency</span>
+              </div>
+              <p className={`text-sm font-semibold truncate ${getPriorityTextColor(String(effectiveRequestUrgency))}`}>
+                {String(effectiveRequestUrgency).toUpperCase()}
+              </p>
             </div>
           )}
 
@@ -469,7 +484,7 @@ export function ServiceCard({
 
           {/* Service Offer Specific Fields */}
           {type === 'offer' && capacityLimit && (
-            <div className="space-y-1 col-span-2">
+            <div className="space-y-1 sm:col-span-2">
               <div className="flex items-center gap-1.5 text-gray-500">
                 <Target size={14} />
                 <span className="text-xs font-medium">Capacity</span>
@@ -488,8 +503,18 @@ export function ServiceCard({
             </div>
           )}
 
+          {type === 'offer' && status && (
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5 text-gray-500">
+                <Clock size={14} />
+                <span className="text-xs font-medium">Status</span>
+              </div>
+              <p className="text-sm font-semibold text-gray-900 capitalize">{String(status)}</p>
+            </div>
+          )}
+
           {type === 'offer' && offerType === 'financial' && (amount || wage_info?.min_amount || wage_info?.max_amount) && (
-            <div className="space-y-1 col-span-2">
+            <div className="space-y-1 sm:col-span-2">
               <div className="flex items-center gap-1.5 text-gray-500">
                 <IndianRupee size={14} />
                 <span className="text-xs font-medium">Amount</span>
@@ -543,6 +568,33 @@ export function ServiceCard({
               <p className="text-sm font-semibold text-gray-900 line-clamp-2">{scope}</p>
             </div>
           )}
+
+          <div className="space-y-1 sm:col-span-2">
+            <div className="flex items-center gap-1.5 text-gray-500">
+              <User size={14} />
+              <span className="text-xs font-medium">{type === 'request' ? 'Requesting Body' : 'Offering Entity'}</span>
+            </div>
+            <Link
+              href={`/profile/${ngo_id}`}
+              className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 transition-colors hover:border-blue-300 hover:bg-blue-50"
+            >
+              <div className="w-9 h-9 rounded-full flex items-center justify-center bg-blue-600 text-white font-bold text-xs flex-shrink-0 shadow-sm">
+                {getInitials(providerDisplayName)}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="font-semibold text-gray-900 text-sm truncate">{providerDisplayName}</p>
+                  {verified && (
+                    <VerificationBadge status="verified" size="sm" showText={false} />
+                  )}
+                </div>
+                <p className="text-xs text-gray-600 flex items-center gap-1">
+                  {getProviderIcon(providerDisplayType)}
+                  {getProviderLabel(providerDisplayType)}
+                </p>
+              </div>
+            </Link>
+          </div>
         </div>
 
         {/* Skills for Service Offers */}

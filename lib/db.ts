@@ -94,6 +94,60 @@ export const db = {
   },
 
   // Service Requests
+  requestProjects: {
+    async getAll(filters: any = {}) {
+      let query = supabase.from('service_request_projects').select('*');
+
+      if (filters.ngo_id) {
+        query = query.eq('ngo_id', filters.ngo_id);
+      }
+
+      if (filters.status) {
+        query = query.eq('status', filters.status);
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      return data || [];
+    },
+
+    async getById(id: string) {
+      const { data, error } = await supabase
+        .from('service_request_projects')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (error && error.code !== 'PGRST116') throw error;
+      return data;
+    },
+
+    async create(projectData: any) {
+      const { data, error } = await supabase
+        .from('service_request_projects')
+        .insert(projectData)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+
+    async update(id: string, projectData: any) {
+      const { data, error } = await supabase
+        .from('service_request_projects')
+        .update(projectData)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    }
+  },
+
   serviceRequests: {
     async getAll(filters: any = {}) {
       let query = supabase.from('service_requests').select('*');
@@ -107,6 +161,9 @@ export const db = {
       if (filters.requester_id) {
         query = query.eq('ngo_id', filters.requester_id);
       }
+      if (filters.project_id) {
+        query = query.eq('project_id', filters.project_id);
+      }
       
       const { data, error } = await query.order('created_at', { ascending: false });
       
@@ -115,13 +172,20 @@ export const db = {
       // Fetch requester data and volunteer counts separately
       if (data && data.length > 0) {
         const requesterIds = [...new Set(data.map((item: any) => item.ngo_id))];
+        const projectIds = [...new Set(data.map((item: any) => item.project_id).filter(Boolean))];
         const requestIds = data.map((item: any) => item.id);
         
-        const [usersResult, volunteersResult] = await Promise.all([
+        const [usersResult, projectsResult, volunteersResult] = await Promise.all([
           supabase
             .from('users')
             .select('id, name, email, user_type, verification_status')
             .in('id', requesterIds),
+          projectIds.length > 0
+            ? supabase
+                .from('service_request_projects')
+                .select('*')
+                .in('id', projectIds)
+            : Promise.resolve({ data: [], error: null }),
           supabase
             .from('service_volunteers')
             .select('service_request_id')
@@ -130,6 +194,7 @@ export const db = {
         ]);
         
         const users = usersResult.data || [];
+        const projects = projectsResult.data || [];
         const volunteers = volunteersResult.data || [];
         
         // Count volunteers per request
@@ -142,6 +207,7 @@ export const db = {
         return data.map((request: any) => ({
           ...request,
           requester: users?.find((user: any) => user.id === request.ngo_id),
+          project: projects?.find((project: any) => project.id === request.project_id) || null,
           volunteers_count: volunteerCounts[request.id] || 0,
           // Add requester_id for backward compatibility
           requester_id: request.ngo_id
@@ -162,15 +228,25 @@ export const db = {
       
       // Fetch requester data separately
       if (data && data.ngo_id) {
-        const { data: requester } = await supabase
-          .from('users')
-          .select('id, name, email, user_type, location, city, state_province, country, phone, pincode, ngo_size, profile_image, profile_data, industry, verification_status')
-          .eq('id', data.ngo_id)
-          .single();
+        const [{ data: requester }, { data: project }] = await Promise.all([
+          supabase
+            .from('users')
+            .select('id, name, email, user_type, location, city, state_province, country, phone, pincode, ngo_size, profile_image, profile_data, industry, verification_status')
+            .eq('id', data.ngo_id)
+            .single(),
+          data.project_id
+            ? supabase
+                .from('service_request_projects')
+                .select('*')
+                .eq('id', data.project_id)
+                .single()
+            : Promise.resolve({ data: null })
+        ]);
         
         return {
           ...data,
           requester,
+          project: project || null,
           // Add requester_id for backward compatibility
           requester_id: data.ngo_id
         };
@@ -238,6 +314,33 @@ export const db = {
       
       if (error) throw error;
       return true;
+    }
+  },
+
+  serviceRequestContributions: {
+    async create(contributionData: any) {
+      const { data, error } = await supabase
+        .from('service_request_contributions')
+        .insert(contributionData)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+
+    async getByRequestId(serviceRequestId: number) {
+      const { data, error } = await supabase
+        .from('service_request_contributions')
+        .select(`
+          *,
+          contributor:users!contributor_id(id, name, email, user_type, profile_image)
+        `)
+        .eq('service_request_id', serviceRequestId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data || [];
     }
   },
 
