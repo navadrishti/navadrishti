@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
+import { getCompanyCAUserIdSet } from '@/lib/company-ca-visibility';
 
 export async function GET(request: NextRequest) {
   try {
@@ -41,8 +42,11 @@ export async function GET(request: NextRequest) {
       }, { status: 500 });
     }
 
+    const companyCAIds = await getCompanyCAUserIdSet((profiles ?? []).map((profile) => Number(profile.id)));
+    const visibleProfiles = (profiles ?? []).filter((profile) => !companyCAIds.has(Number(profile.id)));
+
     // Sort results by hierarchy: names starting with search term first, then by position of match
-    const sortedProfiles = profiles?.sort((a, b) => {
+    const sortedProfiles = visibleProfiles.sort((a, b) => {
       const nameA = a.name.toLowerCase().trim();
       const nameB = b.name.toLowerCase().trim();
       const searchLower = searchTerm.toLowerCase().trim();
@@ -61,7 +65,7 @@ export async function GET(request: NextRequest) {
       
       // Sort by position of match (earlier position = higher priority)
       return aIndex - bIndex;
-    }) || [];
+    });
 
     // Format the results for frontend
     const formattedProfiles = sortedProfiles?.map(profile => ({

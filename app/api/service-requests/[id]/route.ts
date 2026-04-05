@@ -11,6 +11,89 @@ interface JWTPayload {
   name: string;
 }
 
+function safeParseJson(value: unknown): Record<string, any> {
+  if (!value) return {};
+  if (typeof value === 'object') return value as Record<string, any>;
+  if (typeof value !== 'string') return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function parseAmount(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  if (!text) return null;
+  const parsed = Number(text.replace(/[^\d.-]/g, ''));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseTimelineToDeadlineMs(timeline: unknown, baseMs: number): number | null {
+  const text = String(timeline || '').trim();
+  if (!text || /^(anytime|not specified|none|n\/a)$/i.test(text)) return null;
+
+  const directDate = new Date(text);
+  if (!Number.isNaN(directDate.getTime())) {
+    return directDate.getTime();
+  }
+
+  const relativeMatch = text.match(/(\d+)\s*(day|days|week|weeks|month|months|year|years)/i);
+  if (!relativeMatch) return null;
+
+  const amount = Number(relativeMatch[1]);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+
+  const unit = relativeMatch[2].toLowerCase();
+  const multiplierMap: Record<string, number> = {
+    day: 24 * 60 * 60 * 1000,
+    days: 24 * 60 * 60 * 1000,
+    week: 7 * 24 * 60 * 60 * 1000,
+    weeks: 7 * 24 * 60 * 60 * 1000,
+    month: 30 * 24 * 60 * 60 * 1000,
+    months: 30 * 24 * 60 * 60 * 1000,
+    year: 365 * 24 * 60 * 60 * 1000,
+    years: 365 * 24 * 60 * 60 * 1000
+  };
+
+  return baseMs + (amount * (multiplierMap[unit] || multiplierMap.day));
+}
+
+function deriveAutoUrgency(timeline: unknown, createdAtMs: number): 'low' | 'medium' | 'high' | 'critical' {
+  const deadlineMs = parseTimelineToDeadlineMs(timeline, createdAtMs);
+  if (!deadlineMs) return 'medium';
+
+  const totalDurationMs = deadlineMs - createdAtMs;
+  if (totalDurationMs <= 0) return 'critical';
+
+  const remainingMs = deadlineMs - Date.now();
+  if (remainingMs <= 0) return 'critical';
+
+  const remainingRatio = remainingMs / totalDurationMs;
+  if (remainingRatio <= 0.15) return 'critical';
+  if (remainingRatio <= 0.35) return 'high';
+  if (remainingRatio <= 0.65) return 'medium';
+  return 'low';
+}
+
+function buildProgressFields(body: Record<string, any>, existing?: Record<string, any> | null) {
+  const targetAmount = parseAmount(body.target_amount ?? body.estimated_budget ?? body.budget ?? existing?.target_amount ?? existing?.estimated_budget ?? existing?.budget);
+  const targetQuantity = parseAmount(body.target_quantity ?? body.quantity ?? body.volunteers_needed ?? body.beneficiary_count ?? existing?.target_quantity ?? existing?.quantity ?? existing?.volunteers_needed ?? existing?.beneficiary_count);
+  const currentAmount = parseAmount(body.current_amount ?? existing?.current_amount) ?? 0;
+  const currentQuantity = parseAmount(body.current_quantity ?? existing?.current_quantity) ?? 0;
+
+  return {
+    target_amount: targetAmount,
+    current_amount: currentAmount,
+    target_quantity: targetQuantity,
+    current_quantity: currentQuantity,
+    remaining_amount: targetAmount != null ? Math.max(targetAmount - currentAmount, 0) : null,
+    remaining_quantity: targetQuantity != null ? Math.max(targetQuantity - currentQuantity, 0) : null
+  };
+}
+
 // GET - Fetch single service request
 export async function GET(
   request: NextRequest,
@@ -35,6 +118,13 @@ export async function GET(
     if (serviceRequest.requester) {
       serviceRequest.ngo_name = serviceRequest.requester.name;
     }
+
+    const requirements = safeParseJson(serviceRequest.requirements);
+    // Prefer direct DB columns, fall back to requirements JSON for legacy rows
+    serviceRequest.request_type = serviceRequest.request_type || requirements.request_type || serviceRequest.category || 'Skill / Service Need';
+    serviceRequest.estimated_budget = serviceRequest.estimated_budget != null ? String(serviceRequest.estimated_budget) : (requirements.estimated_budget || requirements.budget || 'Not specified');
+    serviceRequest.beneficiary_count = serviceRequest.beneficiary_count != null ? Number(serviceRequest.beneficiary_count) : Number(requirements.beneficiary_count || 0);
+    serviceRequest.impact_description = serviceRequest.impact_description || requirements.impact_description || '';
 
     // Return the service request data (publicly accessible)
     return NextResponse.json({
@@ -84,17 +174,40 @@ export async function PUT(
       title, 
       description, 
       category,
+      request_type,
       location,
-      urgency,
       timeline,
       budget,
-      contactInfo
+      contactInfo,
+      estimated_budget,
+      beneficiary_count,
+      impact_description,
+      projectId,
+      project,
+      target_amount,
+      target_quantity,
+      current_amount,
+      current_quantity,
+      project_context,
+      details
     } = body;
 
     // Validate required fields
-    if (!title || !description || !category) {
+    const missingRequiredFields = [title, description, location, timeline, impact_description].some((value) => !String(value ?? '').trim());
+    if (missingRequiredFields || !(request_type || category)) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
+
+    if (!beneficiary_count || Number(beneficiary_count) <= 0) {
+      return NextResponse.json({ error: 'beneficiary_count must be greater than 0' }, { status: 400 });
+    }
+
+    const normalizedRequestType = request_type || category;
+
+    const trimmedTimeline = typeof timeline === 'string' ? timeline.trim() : '';
+    const isAnytimeTimeline = trimmedTimeline.toLowerCase() === 'anytime';
+    const storedTimeline = trimmedTimeline && !isAnytimeTimeline ? trimmedTimeline : null;
+    const timelineLabel = isAnytimeTimeline ? 'Anytime' : (trimmedTimeline || 'Not specified');
 
     // First, verify that this request belongs to the authenticated NGO
     const existingRequest = await db.serviceRequests.getById(requestId);
@@ -107,31 +220,113 @@ export async function PUT(
       return NextResponse.json({ error: 'You can only update your own requests' }, { status: 403 });
     }
 
-    // Map urgency to database enum values
-    const urgencyMap: { [key: string]: string } = {
-      'low': 'low',
-      'medium': 'medium',
-      'high': 'high',
-      'critical': 'critical'
+    let resolvedProjectId: string | null = projectId || existingRequest.project_id || null;
+    let resolvedProjectLocation = String(location || existingRequest.location || '').trim();
+    const projectPayload = project && typeof project === 'object' ? project : null;
+
+    if (projectPayload && !resolvedProjectId) {
+      const projectTitle = String(projectPayload.title || '').trim();
+      const projectDescription = String(projectPayload.description || '').trim();
+      const projectLocation = String(projectPayload.exact_address || projectPayload.location || location || '').trim();
+      const projectTimeline = String(projectPayload.timeline || timeline || '').trim();
+
+      if (!projectTitle || !projectLocation) {
+        return NextResponse.json({ error: 'Project title and exact address are required' }, { status: 400 });
+      }
+
+      if ([projectTitle, projectDescription, projectLocation, projectTimeline].some((value) => !value)) {
+        return NextResponse.json({ error: 'Project title, description, exact address, and timeline are required' }, { status: 400 });
+      }
+
+      const createdProject = await db.requestProjects.create({
+        ngo_id: userId,
+        title: projectTitle,
+        description: projectDescription,
+        location: projectLocation,
+        exact_address: projectLocation,
+        timeline: projectTimeline || null,
+        status: 'active'
+      });
+
+      resolvedProjectId = createdProject.id;
+      resolvedProjectLocation = projectLocation;
+    }
+
+    if (resolvedProjectId) {
+      const projectRecord = await db.requestProjects.getById(String(resolvedProjectId));
+      if (projectRecord && projectRecord.ngo_id !== userId) {
+        return NextResponse.json({ error: 'Project ownership mismatch' }, { status: 403 });
+      }
+
+      resolvedProjectLocation = String(projectRecord?.exact_address || projectRecord?.location || resolvedProjectLocation || '').trim();
+
+      if (projectPayload) {
+        await db.requestProjects.update(String(resolvedProjectId), {
+          title: String(projectPayload.title || '').trim() || undefined,
+          description: String(projectPayload.description || '').trim() || null,
+          location: String(projectPayload.exact_address || projectPayload.location || location || '').trim() || undefined,
+          exact_address: String(projectPayload.exact_address || projectPayload.location || location || '').trim() || undefined,
+          timeline: String(projectPayload.timeline || timeline || '').trim() || null,
+          updated_at: new Date().toISOString()
+        });
+      }
+    }
+
+    const projectContext = {
+      ...(safeParseJson(project_context) || {}),
+      project: resolvedProjectId
+        ? { id: resolvedProjectId, exact_address: resolvedProjectLocation }
+        : projectPayload || null
     };
-    const mappedUrgency = urgencyMap[urgency] || 'medium';
+
+    const createdAtMs = Number(new Date(existingRequest.created_at || Date.now()));
+    const safeCreatedAtMs = Number.isFinite(createdAtMs) ? createdAtMs : Date.now();
+    const mappedUrgency = deriveAutoUrgency(timeline, safeCreatedAtMs);
 
     // Prepare requirements JSON
     const requirementsData = {
-      budget: budget || 'Not specified',
+      request_type: normalizedRequestType,
+      estimated_budget: estimated_budget || budget || 'Not specified',
+      beneficiary_count: Number(beneficiary_count || 0),
+      impact_description: String(impact_description || '').trim(),
+      budget: budget || estimated_budget || 'Not specified',
       contactInfo: contactInfo || 'Not specified',
-      timeline: timeline || 'Not specified'
+      timeline: timelineLabel,
+      project: projectContext,
+      category_details: details || {}
     };
+
+    const progressFields = buildProgressFields({
+      target_amount,
+      target_quantity,
+      current_amount,
+      current_quantity,
+      estimated_budget,
+      budget,
+      beneficiary_count,
+      volunteers_needed: body.volunteers_needed,
+      quantity: body.quantity
+    }, existingRequest);
 
     // Update the service request using Supabase helper
     const updateData = {
       title,
       description,
-      category,
-      location,
+      category: normalizedRequestType,
+      location: resolvedProjectLocation || location,
       urgency_level: mappedUrgency,
       requirements: JSON.stringify(requirementsData),
-      updated_at: new Date().toISOString()
+      updated_at: new Date().toISOString(),
+      // Direct schema columns
+      request_type: normalizedRequestType,
+      estimated_budget: parseFloat(String(estimated_budget || budget || '')) || null,
+      beneficiary_count: Number(beneficiary_count || 0),
+      impact_description: String(impact_description || '').trim(),
+      timeline: storedTimeline,
+      contact_info: contactInfo || null,
+      project_id: resolvedProjectId,
+      project_context: projectContext,
+      ...progressFields
     };
 
     await db.serviceRequests.update(requestId, updateData);
@@ -175,6 +370,7 @@ export async function DELETE(
     }
 
     const requestId = parseInt(id);
+    const forceDelete = new URL(request.url).searchParams.get('force') === 'true';
 
     // First, verify that this request belongs to the authenticated NGO and delete it
     const existingRequest = await db.serviceRequests.getById(requestId);
@@ -185,6 +381,18 @@ export async function DELETE(
 
     if (existingRequest.requester_id !== userId) {
       return NextResponse.json({ error: 'You can only delete your own service requests' }, { status: 403 });
+    }
+
+    const applicants = await db.serviceVolunteers.getByRequestId(requestId);
+    const hasAcceptedApplicant = (applicants || []).some((applicant: any) =>
+      ['accepted', 'active', 'completed'].includes(String(applicant.status || '').toLowerCase())
+    );
+
+    if (hasAcceptedApplicant && !forceDelete) {
+      return NextResponse.json(
+        { error: 'Cannot delete request after accepting an applicant' },
+        { status: 400 }
+      );
     }
 
     // Delete the service request (which will also delete related volunteers)

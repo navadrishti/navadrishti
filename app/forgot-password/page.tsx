@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,6 +11,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ArrowLeft, Mail } from 'lucide-react';
 
 export default function ForgotPasswordPage() {
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
@@ -85,12 +87,10 @@ export default function ForgotPasswordPage() {
               Send Another Email
             </Button>
             
-            <Link href="/login" className="w-full">
-              <Button variant="ghost" className="w-full">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to Sign In
-              </Button>
-            </Link>
+            <Button variant="ghost" className="w-full hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0" onClick={() => router.back()}>
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back
+            </Button>
           </CardFooter>
         </Card>
       </div>
@@ -140,10 +140,14 @@ export default function ForgotPasswordPage() {
             </Button>
             
             <div className="flex items-center justify-center space-x-4 text-sm">
-              <Link href="/login" className="font-medium text-primary hover:underline">
-                <ArrowLeft className="inline mr-1 h-4 w-4" />
-                Back to Sign In
-              </Link>
+              <button
+                type="button"
+                onClick={() => router.back()}
+                className="inline-flex items-center font-medium text-primary hover:underline"
+              >
+                <ArrowLeft className="mr-1 h-4 w-4" />
+                Back
+              </button>
               <span className="text-muted-foreground">|</span>
               <Link href="/register" className="font-medium text-primary hover:underline">
                 Create Account

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
 import jwt from 'jsonwebtoken'
 import { JWT_SECRET } from '@/lib/auth'
+import { getCompanyCAUserIdSet } from '@/lib/company-ca-visibility'
 
 interface JWTPayload {
   id: number;
@@ -60,9 +61,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch users' }, { status: 500 })
     }
 
+    const companyCAIds = await getCompanyCAUserIdSet((users || []).map((candidate) => Number(candidate.id)))
+    const visibleUsers = (users || []).filter((candidate) => !companyCAIds.has(Number(candidate.id)))
+
     return NextResponse.json({ 
       success: true,
-      users: users || []
+      users: visibleUsers
     })
 
   } catch (error) {

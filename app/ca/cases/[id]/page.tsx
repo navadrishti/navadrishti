@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { VerificationBadge } from '@/components/verification-badge';
 import { 
   ArrowLeft,
   FileText, 
@@ -351,9 +352,10 @@ export default function CACaseDetailPage() {
     return (
       <div className="text-center py-12">
         <p className="text-blue-600">Case not found</p>
-        <Link href="/ca">
-          <Button className="mt-4 bg-orange-500 hover:bg-orange-600">Back to Dashboard</Button>
-        </Link>
+        <Button className="mt-4 bg-orange-500" onClick={() => router.back()}>
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back
+        </Button>
       </div>
     );
   }
@@ -363,12 +365,10 @@ export default function CACaseDetailPage() {
   return (
     <div className="space-y-6">
       {/* Back Button */}
-      <Link href={caseData.status === 'ca_approved' || caseData.status === 'ca_rejected' ? '/ca/cases' : '/ca'}>
-        <Button variant="ghost" size="sm" className="text-blue-600 hover:text-blue-700 hover:bg-blue-50">
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to {caseData.status === 'ca_approved' || caseData.status === 'ca_rejected' ? 'History' : 'Dashboard'}
-        </Button>
-      </Link>
+      <Button variant="ghost" size="sm" className="text-blue-600 hover:text-blue-700 hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0" onClick={() => router.back()}>
+        <ArrowLeft className="mr-2 h-4 w-4" />
+        Back
+      </Button>
 
       {/* Header */}
       <div className="flex items-start justify-between">
@@ -384,9 +384,7 @@ export default function CACaseDetailPage() {
             {caseData.entity_type.toUpperCase()}
           </Badge>
           {caseData.status === 'ca_approved' && (
-            <Badge className="bg-green-100 text-green-800">
-              Verified
-            </Badge>
+            <VerificationBadge status="verified" size="sm" showText={true} />
           )}
           {caseData.status === 'ca_rejected' && (
             <Badge className="bg-orange-100 text-orange-800">
@@ -473,9 +471,7 @@ export default function CACaseDetailPage() {
                                 Needs Review
                               </Badge>
                             ) : (
-                              <Badge className="bg-green-100 text-green-800 text-xs">
-                                Verified
-                              </Badge>
+                              <VerificationBadge status="verified" size="sm" showText={true} />
                             )}
                           </div>
                         )}

@@ -86,7 +86,6 @@ export async function GET(request: NextRequest) {
     const { data: posts, error: postsError } = await supabase
       .from('posts')
       .select('content, tags, created_at')
-      .eq('is_approved', true)
       .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()) // Last 7 days
       .order('created_at', { ascending: false })
       .limit(100)

@@ -31,6 +31,10 @@ export async function POST(request: NextRequest) {
       userId, 
       name,
       email,
+      email_verified,
+      email_verified_at,
+      phone_verified,
+      phone_verified_at,
       profileImageUrl, 
       city, 
       state_province, 
@@ -54,6 +58,10 @@ export async function POST(request: NextRequest) {
     const updateData: any = {};
     if (name !== undefined) updateData.name = name;
     if (email !== undefined) updateData.email = email;
+    if (email_verified !== undefined) updateData.email_verified = email_verified;
+    if (email_verified_at !== undefined) updateData.email_verified_at = email_verified_at;
+    if (phone_verified !== undefined) updateData.phone_verified = phone_verified;
+    if (phone_verified_at !== undefined) updateData.phone_verified_at = phone_verified_at;
     if (profileImageUrl !== undefined) updateData.profile_image = profileImageUrl;
     if (city !== undefined) updateData.city = city;
     if (state_province !== undefined) updateData.state_province = state_province;

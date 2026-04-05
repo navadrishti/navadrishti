@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { CheckCircle } from 'lucide-react';
+import { ArrowLeft, CheckCircle } from 'lucide-react';
 
 function ResetPasswordContent() {
   const [password, setPassword] = useState('');
@@ -161,8 +161,9 @@ function ResetPasswordContent() {
               </Button>
             </Link>
             <Link href="/login" className="w-full">
-              <Button variant="outline" className="w-full">
-                Back to Sign In
+              <Button variant="outline" className="w-full hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0" onClick={(e) => { e.preventDefault(); router.back(); }}>
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back
               </Button>
             </Link>
           </CardFooter>

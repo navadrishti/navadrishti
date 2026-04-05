@@ -59,6 +59,38 @@ interface AuthProviderProps {
 // Create context
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const getFriendlySignupErrorMessage = (data: any, status: number) => {
+  const rawError = data?.error;
+
+  if (typeof rawError === 'string' && rawError.trim().length > 0) {
+    return rawError;
+  }
+
+  if (Array.isArray(rawError) && rawError.length > 0) {
+    const firstItem = rawError[0];
+    if (typeof firstItem === 'string') {
+      return firstItem;
+    }
+    if (firstItem?.message) {
+      return firstItem.message;
+    }
+  }
+
+  if (status === 400) {
+    return 'Please check your details and try again.';
+  }
+
+  if (status === 409) {
+    return 'An account with this email already exists. Please log in or use a different email.';
+  }
+
+  if (status >= 500) {
+    return 'We could not create your account right now. Please try again in a moment.';
+  }
+
+  return 'Unable to create account. Please try again.';
+};
+
 // Create provider
 export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null);
@@ -66,31 +98,62 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
+  const hydrateUserFromServer = async (authToken: string, fallbackUser?: User | null) => {
+    try {
+      const response = await fetch('/api/auth/me', {
+        headers: {
+          'Authorization': `Bearer ${authToken}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setUser(data.user);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        return data.user as User;
+      }
+    } catch (err) {
+      console.error('User hydration error:', err);
+    }
+
+    if (fallbackUser) {
+      setUser(fallbackUser);
+      localStorage.setItem('user', JSON.stringify(fallbackUser));
+      return fallbackUser;
+    }
+
+    return null;
+  };
+
   // Load user from localStorage on initial render
   useEffect(() => {
+    let needsServerHydration = false;
+
     try {
       const storedToken = localStorage.getItem('token');
       const storedUser = localStorage.getItem('user');
       
       // Check if token exists and is not the string "undefined" or "null"
-      if (storedToken && 
+        if (storedToken && 
           storedToken !== 'undefined' && 
-          storedToken !== 'null' && 
-          storedUser && 
-          storedUser !== 'undefined' && 
-          storedUser !== 'null') {
+          storedToken !== 'null') {
         
         // Clean the token of any quotes or extra characters
         const cleanToken = storedToken.replace(/[\"']/g, '').trim();
         
         if (cleanToken.length > 0 && cleanToken !== 'undefined' && cleanToken !== 'null') {
           setToken(cleanToken);
-          try {
-            const parsedUser = JSON.parse(storedUser);
-            setUser(parsedUser);
-          } catch (parseError) {
-            localStorage.removeItem('token');
-            localStorage.removeItem('user');
+          if (storedUser && storedUser !== 'undefined' && storedUser !== 'null') {
+            try {
+              const parsedUser = JSON.parse(storedUser);
+              setUser(parsedUser);
+            } catch (parseError) {
+              // Keep token and let /api/auth/me rehydrate user snapshot.
+              localStorage.removeItem('user');
+              needsServerHydration = true;
+            }
+          } else {
+            needsServerHydration = true;
           }
         } else {
           localStorage.removeItem('token');
@@ -106,8 +169,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
     }
-    
-    setLoading(false);
+
+    if (!needsServerHydration) {
+      setLoading(false);
+    }
   }, []);
 
   // Verify token and fetch current user
@@ -142,15 +207,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
           notify.error('Your session has expired. Please log in again.');
           logout();
         } else {
-          // Other error, but still clear auth to be safe
-          console.log('Token verification failed with status:', response.status);
-          notify.error('Authentication error. Please log in again.');
-          logout();
+          // Keep existing local session for non-auth failures (e.g., transient server error).
+          console.log('Token verification failed with non-401 status:', response.status);
         }
       } catch (error) {
         console.error('Token verification error:', error);
-        notify.error('Connection error. Please check your internet connection.');
-        logout();
+        // Keep local session during transient network failures.
+      } finally {
+        setLoading(false);
       }
     };
     
@@ -184,9 +248,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
       
       // Save token and user to state and localStorage
       setToken(data.token);
-      setUser(data.user);
       localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user));
+
+      await hydrateUserFromServer(data.token, data.user);
       
       notify.success(`Welcome back, ${data.user.name}!`);
     } catch (error: any) {
@@ -215,23 +279,32 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const data = await response.json();
       
       if (!response.ok) {
-        const errorMessage = data.error || 'Signup failed';
+        const errorMessage = getFriendlySignupErrorMessage(data, response.status);
         setError(errorMessage);
         notify.error(errorMessage);
-        return;
+        const handledError = new Error(errorMessage) as Error & { handled?: boolean };
+        handledError.handled = true;
+        throw handledError;
       }
       
       // Save token and user to state and localStorage
       setToken(data.token);
-      setUser(data.user);
       localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user));
+
+      await hydrateUserFromServer(data.token, data.user);
       
       notify.success(`Welcome to Navadrishti, ${data.user.name}!`);
     } catch (error: any) {
-      const errorMessage = error.message || 'An error occurred during signup';
+      if (error?.handled) {
+        throw error;
+      }
+
+      const errorMessage = error?.message?.trim()
+        ? error.message
+        : 'Unable to create account right now. Please try again.';
       setError(errorMessage);
       notify.error(errorMessage);
+      throw new Error(errorMessage);
     } finally {
       setLoading(false);
     }

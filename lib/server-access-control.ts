@@ -108,34 +108,27 @@ export function checkApiPermission(
       break;
 
     case 'canCreateServiceOffers':
-      if (user.user_type !== 'ngo') {
-        return {
-          hasPermission: false,
-          errorMessage: 'Only NGOs can create service offers',
-          statusCode: 403
-        };
-      }
       if (!isVerified) {
         return {
           hasPermission: false,
-          errorMessage: 'NGO verification required',
+          errorMessage: 'Verification required',
           statusCode: 403
         };
       }
       break;
 
     case 'canApplyToServiceOffers':
-      if (user.user_type !== 'individual') {
+      if (!['individual', 'company', 'ngo'].includes(user.user_type)) {
         return {
           hasPermission: false,
-          errorMessage: 'Only individuals can apply to service offers',
+          errorMessage: 'Only verified participants can apply to service offers',
           statusCode: 403
         };
       }
       if (!isVerified) {
         return {
           hasPermission: false,
-          errorMessage: 'Identity verification required',
+          errorMessage: 'Verification required',
           statusCode: 403
         };
       }
@@ -190,7 +183,7 @@ export const protectedRoutes: Record<string, {
     permission: 'canCreateServiceRequests'
   },
   '/service-offers/create': { 
-    userTypes: ['ngo'], 
+    userTypes: ['individual', 'company', 'ngo'], 
     requireVerification: true,
     permission: 'canCreateServiceOffers'
   },
