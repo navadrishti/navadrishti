@@ -23,6 +23,7 @@ interface CampaignData {
 
 export default function CSRAgentPage() {
   const { user } = useAuth()
+  const [mounted, setMounted] = useState(false)
   const [messages, setMessages] = useState<Message[]>([
     { role: 'assistant', content: 'Hello! I\'m your AI CSR Campaign Assistant. I\'ll help you create a powerful CSR campaign. Let\'s start with the basics - what would you like to name your campaign?' }
   ])
@@ -40,6 +41,10 @@ export default function CSRAgentPage() {
   useEffect(() => {
     scrollToBottom()
   }, [messages])
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   const questions = [
     { key: 'name', question: 'What would you like to name your campaign?' },
@@ -100,16 +105,35 @@ export default function CSRAgentPage() {
     }, 2000)
   }
 
+  if (!mounted) {
+    return (
+      <>
+        <Header />
+        <div className="container mx-auto px-4 py-8">
+          <Card>
+            <CardHeader>
+              <CardTitle>Loading AI CSR Agent</CardTitle>
+              <CardDescription>Preparing your workspace...</CardDescription>
+            </CardHeader>
+          </Card>
+        </div>
+      </>
+    )
+  }
+
   if (user?.user_type !== 'company') {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <Card>
-          <CardHeader>
-            <CardTitle>Access Denied</CardTitle>
-            <CardDescription>This feature is only available for company accounts.</CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
+      <>
+        <Header />
+        <div className="container mx-auto px-4 py-8">
+          <Card>
+            <CardHeader>
+              <CardTitle>Access Denied</CardTitle>
+              <CardDescription>This feature is only available for company accounts.</CardDescription>
+            </CardHeader>
+          </Card>
+        </div>
+      </>
     )
   }
 

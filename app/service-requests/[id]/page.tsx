@@ -132,7 +132,7 @@ export default function ServiceRequestDetailPage() {
   
   const [paymentAmount, setPaymentAmount] = useState('1000')
   const [paying, setPaying] = useState(false)
-  const [currentTimeMs, setCurrentTimeMs] = useState(() => Date.now())
+  const [currentTimeMs, setCurrentTimeMs] = useState(0)
   const [request, setRequest] = useState<ServiceRequest | null>(null)
   const [userApplication, setUserApplication] = useState<VolunteerApplication | null>(null)
   const [applicants, setApplicants] = useState<ApplicantEntry[]>([])
@@ -186,6 +186,7 @@ export default function ServiceRequestDetailPage() {
   }, [])
 
   useEffect(() => {
+    setCurrentTimeMs(Date.now())
     const interval = setInterval(() => {
       setCurrentTimeMs(Date.now())
     }, 60 * 1000)

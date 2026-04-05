@@ -19,6 +19,7 @@ function CompanyDashboardContent() {
   const { user } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [mounted, setMounted] = useState(false);
   const requestedTab = searchParams.get('tab') || 'csr-projects';
   const activeTab = requestedTab === 'service-requests' ? 'csr-projects' : requestedTab;
   const [csrProjects, setCsrProjects] = useState<any[]>([]);
@@ -31,6 +32,10 @@ function CompanyDashboardContent() {
   const [companyCAForm, setCompanyCAForm] = useState({ name: '', email: '', password: '' });
   const [companyCAFeedback, setCompanyCAFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [lastCreatedCompanyCA, setLastCreatedCompanyCA] = useState<{ email: string; password: string } | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const fetchCSRProjects = async () => {
     try {
@@ -216,6 +221,26 @@ function CompanyDashboardContent() {
   const activeCompanyCAAccounts = companyCAAccounts.filter((account: any) => account.status === 'active');
   const inactiveCompanyCAAccounts = companyCAAccounts.filter((account: any) => account.status !== 'active');
 
+  if (!mounted) {
+    return (
+      <ProtectedRoute userTypes={['company']}>
+        <div className="flex min-h-screen flex-col">
+          <Header />
+          <main className="flex-1 p-4 md:p-6 lg:p-8 bg-gray-50">
+            <div className="mx-auto max-w-7xl space-y-8">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Loading Dashboard</CardTitle>
+                  <CardDescription>Preparing your company workspace...</CardDescription>
+                </CardHeader>
+              </Card>
+            </div>
+          </main>
+        </div>
+      </ProtectedRoute>
+    );
+  }
+
   return (
     <ProtectedRoute userTypes={['company']}>
       <div className="flex min-h-screen flex-col">
@@ -337,10 +362,13 @@ function CompanyDashboardContent() {
                     window.history.replaceState(null, '', `/companies/dashboard?tab=${value}`);
                     router.replace(`/companies/dashboard?tab=${value}`, { scroll: false });
                   }} className="w-full">
-                    <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 h-auto">
+                    <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 lg:grid-cols-6 h-auto">
                       <TabsTrigger value="services-hired" className="text-xs sm:text-sm">Services Hired</TabsTrigger>
                       <TabsTrigger value="csr-projects" className="text-xs sm:text-sm">CSR Projects</TabsTrigger>
-                      <TabsTrigger value="company-ca" className="text-xs sm:text-sm">Company CA Access</TabsTrigger>
+                      <TabsTrigger value="company-ca" className="text-xs sm:text-sm">CA Access</TabsTrigger>
+                      <TabsTrigger value="csr-budget" className="text-xs sm:text-sm">CSR Budget</TabsTrigger>
+                      <TabsTrigger value="csr-health" className="text-xs sm:text-sm">CSR Health</TabsTrigger>
+                      <TabsTrigger value="impact-reports" className="text-xs sm:text-sm">Impact Reports</TabsTrigger>
                     </TabsList>
 
                   <TabsContent value="services-hired" className="mt-4 space-y-4">
@@ -543,6 +571,105 @@ function CompanyDashboardContent() {
                         </div>
                       )}
                     </div>
+                  </TabsContent>
+
+                  <TabsContent value="csr-budget" className="mt-4 space-y-4">
+                    <Card className="border-2 border-slate-200">
+                      <CardHeader>
+                        <CardTitle>CSR Budget</CardTitle>
+                        <CardDescription>Review budgets, allocations, and planned spend across CSR initiatives.</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                          <div className="rounded-md border bg-white p-4">
+                            <p className="text-sm font-medium text-gray-500">Allocated Budget</p>
+                            <p className="mt-1 text-2xl font-bold text-udaan-navy">Rs 25L</p>
+                          </div>
+                          <div className="rounded-md border bg-white p-4">
+                            <p className="text-sm font-medium text-gray-500">Committed</p>
+                            <p className="mt-1 text-2xl font-bold text-green-600">Rs 16.4L</p>
+                          </div>
+                          <div className="rounded-md border bg-white p-4">
+                            <p className="text-sm font-medium text-gray-500">Remaining</p>
+                            <p className="mt-1 text-2xl font-bold text-amber-600">Rs 8.6L</p>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-3">
+                          <Button asChild>
+                            <Link href="/companies/csr-budget">Open CSR Budget</Link>
+                          </Button>
+                          <Button variant="outline" asChild>
+                            <Link href="/companies/impact-reports">View Impact Reports</Link>
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+
+                  <TabsContent value="csr-health" className="mt-4 space-y-4">
+                    <Card className="border-2 border-slate-200">
+                      <CardHeader>
+                        <CardTitle>CSR Health</CardTitle>
+                        <CardDescription>Monitor project health, risks, milestones, and execution status.</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                          <div className="rounded-md border bg-white p-4">
+                            <p className="text-sm font-medium text-gray-500">Healthy Projects</p>
+                            <p className="mt-1 text-2xl font-bold text-green-600">8</p>
+                          </div>
+                          <div className="rounded-md border bg-white p-4">
+                            <p className="text-sm font-medium text-gray-500">At Risk</p>
+                            <p className="mt-1 text-2xl font-bold text-amber-600">2</p>
+                          </div>
+                          <div className="rounded-md border bg-white p-4">
+                            <p className="text-sm font-medium text-gray-500">Critical</p>
+                            <p className="mt-1 text-2xl font-bold text-red-600">1</p>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-3">
+                          <Button asChild>
+                            <Link href="/companies/csr-health">Open CSR Health</Link>
+                          </Button>
+                          <Button variant="outline" asChild>
+                            <Link href="/companies/csr-agent">Use AI CSR Agent</Link>
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+
+                  <TabsContent value="impact-reports" className="mt-4 space-y-4">
+                    <Card className="border-2 border-slate-200">
+                      <CardHeader>
+                        <CardTitle>Impact Reports</CardTitle>
+                        <CardDescription>Generate and review CSR impact reports for leadership and compliance.</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                          <div className="rounded-md border bg-white p-4">
+                            <p className="text-sm font-medium text-gray-500">Reports Generated</p>
+                            <p className="mt-1 text-2xl font-bold text-udaan-navy">14</p>
+                          </div>
+                          <div className="rounded-md border bg-white p-4">
+                            <p className="text-sm font-medium text-gray-500">This Quarter</p>
+                            <p className="mt-1 text-2xl font-bold text-green-600">4</p>
+                          </div>
+                          <div className="rounded-md border bg-white p-4">
+                            <p className="text-sm font-medium text-gray-500">Export Ready</p>
+                            <p className="mt-1 text-2xl font-bold text-blue-600">Yes</p>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-3">
+                          <Button asChild>
+                            <Link href="/companies/impact-reports">Open Impact Reports</Link>
+                          </Button>
+                          <Button variant="outline" asChild>
+                            <Link href="/companies/csr-budget">Review Budget</Link>
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
                   </TabsContent>
                 </Tabs>
                 </div>

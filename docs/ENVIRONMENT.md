@@ -479,5 +479,3 @@ LOG_LEVEL=debug
 The application provides health check endpoints:
 
 - `GET /api/health` - Basic health check
-- `GET /api/health/db` - Database connectivity
-- `GET /api/health/services` - External services status

@@ -506,23 +506,6 @@ Review and approve/reject service offer.
 
 ## 📊 Analytics
 
-### GET /api/stats
-Get platform statistics.
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "total_users": 1250,
-    "active_service_requests": 45,
-    "total_volunteers": 320,
-    "active_service_offers": 27,
-    "success_stories": 23
-  }
-}
-```
-
 ### GET /api/activity-feed
 Fetch user activity feed.
 
