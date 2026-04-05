@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useAuth } from "@/lib/auth-context"
 import { Header } from "@/components/header"
 import { Button } from "@/components/ui/button"
@@ -13,11 +13,16 @@ import { Calendar, Upload, Image, Video, FileText, Send } from "lucide-react"
 
 export default function CampaignUpdatesPage() {
   const { user } = useAuth()
+  const [mounted, setMounted] = useState(false)
   const [selectedCampaign, setSelectedCampaign] = useState("")
   const [updateTitle, setUpdateTitle] = useState("")
   const [updateContent, setUpdateContent] = useState("")
   const [beneficiariesReached, setBeneficiariesReached] = useState("")
   const [milestonesCompleted, setMilestonesCompleted] = useState("")
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   const campaigns = [
     { id: '1', name: 'Education Drive 2024', status: 'active', progress: 65 },
@@ -40,16 +45,35 @@ export default function CampaignUpdatesPage() {
     },
   ]
 
+  if (!mounted) {
+    return (
+      <>
+        <Header />
+        <div className="container mx-auto px-4 py-8">
+          <Card>
+            <CardHeader>
+              <CardTitle>Loading Campaign Updates</CardTitle>
+              <CardDescription>Preparing your workspace...</CardDescription>
+            </CardHeader>
+          </Card>
+        </div>
+      </>
+    )
+  }
+
   if (user?.user_type !== 'ngo') {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <Card>
-          <CardHeader>
-            <CardTitle>Access Denied</CardTitle>
-            <CardDescription>This feature is only available for NGO accounts.</CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
+      <>
+        <Header />
+        <div className="container mx-auto px-4 py-8">
+          <Card>
+            <CardHeader>
+              <CardTitle>Access Denied</CardTitle>
+              <CardDescription>This feature is only available for NGO accounts.</CardDescription>
+            </CardHeader>
+          </Card>
+        </div>
+      </>
     )
   }
 

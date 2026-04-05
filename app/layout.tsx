@@ -5,6 +5,7 @@ import '@/styles/colors.css'
 import { AuthProvider } from '@/lib/auth-context'
 import { ThemeProvider } from '@/components/theme-provider'
 import { PageTransition } from '@/components/page-transition'
+import { AIAgentCTA } from '@/components/ai-agent-cta'
 import { Toaster } from 'sonner'
 import Script from 'next/script'
 import { Analytics } from '@vercel/analytics/next'
@@ -141,6 +142,7 @@ export default function RootLayout({
                 }
               }}
             />
+            <AIAgentCTA />
           </AuthProvider>
         </ThemeProvider>
         <Analytics />

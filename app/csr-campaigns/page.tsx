@@ -6,8 +6,63 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Search, MapPin, Calendar, Users, TrendingUp, Filter } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Search, MapPin, Calendar, Users, Filter } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
+
+const SCHEDULE_VII_CATEGORIES = [
+  "Eradicating Hunger, Poverty and Malnutrition",
+  "Promoting Healthcare and Sanitation",
+  "Education and Livelihood Enhancement",
+  "Gender Equality and Women Empowerment",
+  "Environmental Sustainability",
+  "Protection of Heritage, Art and Culture",
+  "Support for Armed Forces Veterans",
+  "Rural Development Projects",
+  "Slum Area Development",
+  "Sports Promotion",
+  "Disaster Management and Relief",
+] as const
+
+const inferScheduleVIICategory = (cause: string) => {
+  const normalized = cause.toLowerCase()
+
+  if (/(hunger|poverty|malnutrition|nutrition|food)/.test(normalized)) {
+    return "Eradicating Hunger, Poverty and Malnutrition"
+  }
+  if (/(health|healthcare|hospital|medical|sanitation|swachh|drinking water)/.test(normalized)) {
+    return "Promoting Healthcare and Sanitation"
+  }
+  if (/(education|school|skill|livelihood|training|scholarship|learning)/.test(normalized)) {
+    return "Education and Livelihood Enhancement"
+  }
+  if (/(women|girl|gender|empowerment|orphan|senior|old age|divyang|differently abled)/.test(normalized)) {
+    return "Gender Equality and Women Empowerment"
+  }
+  if (/(environment|climate|tree|forest|river|water conservation|biodiversity|renewable|clean energy)/.test(normalized)) {
+    return "Environmental Sustainability"
+  }
+  if (/(heritage|culture|art|craft|museum|restoration)/.test(normalized)) {
+    return "Protection of Heritage, Art and Culture"
+  }
+  if (/(veteran|armed force|war widow|military)/.test(normalized)) {
+    return "Support for Armed Forces Veterans"
+  }
+  if (/(rural|village|gram|farmer|agri)/.test(normalized)) {
+    return "Rural Development Projects"
+  }
+  if (/(slum|urban poor|informal settlement)/.test(normalized)) {
+    return "Slum Area Development"
+  }
+  if (/(sport|athlete|olympic|paralympic|coach|academy)/.test(normalized)) {
+    return "Sports Promotion"
+  }
+  if (/(disaster|flood|earthquake|cyclone|relief|rehabilitation|calamity)/.test(normalized)) {
+    return "Disaster Management and Relief"
+  }
+
+  return "Rural Development Projects"
+}
 
 interface Campaign {
   id: string
@@ -60,7 +115,7 @@ export default function CSRCampaignsPage() {
           id: item.id,
           title: item.title || item.cause,
           company: item.company_id ? `Company #${item.company_id}` : 'Company',
-          category: item.cause,
+          category: inferScheduleVIICategory(item.cause || ''),
           location: item.region,
           duration: item.timeline ? `${item.timeline} months` : 'Flexible timeline',
           volunteers: 0,
@@ -80,13 +135,7 @@ export default function CSRCampaignsPage() {
     loadCampaigns()
   }, [])
 
-  const categories = useMemo(() => {
-    const dynamic = new Set(campaigns.map((campaign) => campaign.category).filter(Boolean))
-    return ['all', ...Array.from(dynamic)]
-  }, [campaigns])
-
-  const activeCampaignCount = campaigns.filter((campaign) => campaign.status !== 'completed').length
-  const companiesCount = new Set(campaigns.map((campaign) => campaign.company)).size
+  const categories = useMemo(() => ['all', ...SCHEDULE_VII_CATEGORIES], [])
 
   const filteredCampaigns = campaigns.filter(campaign => {
     const matchesSearch = campaign.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -111,66 +160,13 @@ export default function CSRCampaignsPage() {
       <div className="container mx-auto px-4 py-8">
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-udaan-navy mb-2">CSR Campaigns</h1>
-          <p className="text-gray-600">
-            {isIndividual
-              ? 'Browse ongoing CSR campaigns you can actively join as a volunteer'
-              : 'Discover and participate in corporate social responsibility initiatives'}
-          </p>
+          <p className="text-gray-600">Discover and participate in corporate social responsibility initiatives</p>
         </div>
-
-      <div className="grid md:grid-cols-4 gap-6 mb-8">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">Active Campaigns</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-udaan-orange" />
-              <span className="text-3xl font-bold text-udaan-navy">{activeCampaignCount}</span>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">Total Volunteers</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-green-600" />
-              <span className="text-3xl font-bold text-green-600">{campaigns.length}</span>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">Companies</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <Calendar className="h-5 w-5 text-blue-600" />
-              <span className="text-3xl font-bold text-blue-600">{companiesCount}</span>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">Impact Created</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-purple-600" />
-              <span className="text-3xl font-bold text-purple-600">
-                {campaigns.length > 0 ? `${Math.round((activeCampaignCount / campaigns.length) * 100)}%` : '0%'}
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
 
       <Card className="mb-6">
         <CardContent className="pt-6">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1 relative">
+          <div className="grid gap-6 md:grid-cols-2">
+            <div className="relative">
               <Search className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
               <Input
                 placeholder="Search campaigns by name or company..."
@@ -179,18 +175,19 @@ export default function CSRCampaignsPage() {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            <div className="flex gap-2 overflow-x-auto pb-2">
-              {categories.map(category => (
-                <Button
-                  key={category}
-                  variant={selectedCategory === category ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setSelectedCategory(category)}
-                  className={selectedCategory === category ? 'bg-udaan-orange hover:bg-udaan-orange/90' : ''}
-                >
-                  {category === 'all' ? 'All' : category}
-                </Button>
-              ))}
+            <div className="relative">
+              <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="All Categories" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map((category) => (
+                    <SelectItem key={category} value={category}>
+                      {category === 'all' ? 'All Categories' : category}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </CardContent>

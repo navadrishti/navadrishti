@@ -12,12 +12,6 @@ export const supabase = createClient(supabaseUrl, supabaseServiceKey, {
   }
 });
 
-// No-op function for compatibility with existing API routes
-// Supabase handles schema management automatically
-export async function initializeDatabase() {
-  return true;
-}
-
 // Helper function for backward compatibility - converts to direct Supabase queries
 export async function executeQuery({ query, values = [] }: { query: string; values?: any[] }) {
   try {

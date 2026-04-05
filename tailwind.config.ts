@@ -62,7 +62,7 @@ const config = {
         },
         // Udaan theme colors
         udaan: {
-          navy: "#002855",       // Dark blue background color
+          navy: "#0067b9",       // Match navbar blue across legacy navy usage
           blue: "#0067b9",       // Bright blue for hero section
           orange: "#F47B20",     // Orange for buttons and highlights
           cream: "#FFF8ED",      // Light cream for background sections

@@ -99,7 +99,7 @@ function ServiceRequestsContent() {
   const [error, setError] = useState('')
   const [deleting, setDeleting] = useState<number | null>(null)
   const [responseBucket, setResponseBucket] = useState<'ongoing' | 'history'>('ongoing')
-  const [currentTime, setCurrentTime] = useState(() => Date.now())
+  const [currentTime, setCurrentTime] = useState(0)
   const [myNeedsBucket, setMyNeedsBucket] = useState<'ongoing' | 'history'>('ongoing')
 
   useEffect(() => {
@@ -143,6 +143,7 @@ function ServiceRequestsContent() {
   }, [authReady, currentView, showMyNeedsTab, showMyResponsesTab])
 
   useEffect(() => {
+    setCurrentTime(Date.now())
     const timer = setInterval(() => {
       setCurrentTime(Date.now())
     }, 60_000)
