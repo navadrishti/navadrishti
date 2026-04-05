@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken } from '@/lib/auth';
 import { supabase } from '@/lib/db';
+import { getCompanyCAUserIdSet } from '@/lib/company-ca-visibility';
 
 export async function GET(request: NextRequest) {
   try {
@@ -43,14 +44,17 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
+    const companyCAIds = await getCompanyCAUserIdSet((data ?? []).map((user) => Number(user.id)));
+    const visibleUsers = (data ?? []).filter((user) => !companyCAIds.has(Number(user.id)));
+
     // Transform the data to include role
-    const suggestions = data?.map(user => ({
+    const suggestions = visibleUsers.map(user => ({
       ...user,
       role: getUserRole(user.user_type),
       verification_status: user.verification_status || 'unverified',
       city: user.city || '',
       state_province: user.state_province || ''
-    })) || [];
+    }));
 
 
 

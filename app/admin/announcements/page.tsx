@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { 
+  ArrowLeft,
   Plus, 
   Trash2, 
   Edit2, 
@@ -122,11 +123,12 @@ export default function AdminAnnouncementsPage() {
       <div className="max-w-4xl mx-auto px-4 py-8">
         <div className="mb-8">
           <Button
-            onClick={() => router.push('/admin')}
+            onClick={() => router.back()}
             variant="outline"
-            className="mb-4"
+            className="mb-4 hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0"
           >
-            ← Back to Admin Dashboard
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back
           </Button>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Manage Announcements</h1>
           <p className="text-gray-600">Add, edit, or delete platform announcements and changelogs</p>

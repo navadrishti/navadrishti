@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -179,7 +180,17 @@ export default function CALoginPage() {
 
         {/* Footer */}
         <div className="text-center mt-6 text-sm text-gray-600">
-          <p>© 2026 Navadrishti Platform</p>
+          <p className="inline-flex items-center gap-2">
+            © 2026
+            <Image
+              src="/photos/small-logo.svg"
+              alt="Navadrishti logo"
+              width={14}
+              height={14}
+              className="h-3.5 w-3.5"
+            />
+            Navadrishti Platform
+          </p>
           <p className="mt-1">ICAI Empanelled CA Portal</p>
         </div>
       </div>

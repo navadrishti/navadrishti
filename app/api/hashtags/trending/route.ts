@@ -151,7 +151,7 @@ export async function GET(request: NextRequest) {
         trending_score: hashtag.trending_score || 0,
         category: hashtag.category || 'general',
         is_trending: hashtag.is_trending || false
-      }));
+      })).filter(hashtag => hashtag.daily_mentions > 0);
       
       return NextResponse.json({
         success: true,

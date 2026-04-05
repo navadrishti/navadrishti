@@ -1,14 +1,16 @@
 'use client';
 
-import { useEffect, useRef, useState, Suspense } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { HeartHandshake, MailCheck, Phone, ShieldCheck, TicketCheck, UserRound } from 'lucide-react';
+import { HeartHandshake, MailCheck, Phone, TicketCheck, UserRound } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import ProtectedRoute from '@/components/protected-route';
 import { Header } from '@/components/header';
+import { VerificationBadge } from '@/components/verification-badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 function IndividualDashboardContent() {
@@ -16,15 +18,39 @@ function IndividualDashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const activeTab = searchParams.get('tab') || 'service-requests';
-  const tabsRef = useRef<HTMLDivElement>(null);
+  const [ongoingApplications, setOngoingApplications] = useState<any[]>([]);
+  const [historyApplications, setHistoryApplications] = useState<any[]>([]);
+  const [loadingApplications, setLoadingApplications] = useState(true);
 
   useEffect(() => {
-    if (activeTab && tabsRef.current) {
-      setTimeout(() => {
-        tabsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }, 100)
+    const loadAssignments = async () => {
+      if (!user) return
+
+      setLoadingApplications(true)
+      try {
+        const token = localStorage.getItem('token')
+        if (!token) return
+
+        const [ongoingRes, historyRes] = await Promise.all([
+          fetch('/api/service-request-assignments?view=ongoing', { headers: { Authorization: `Bearer ${token}` } }),
+          fetch('/api/service-request-assignments?view=history', { headers: { Authorization: `Bearer ${token}` } })
+        ])
+
+        const ongoingData = await ongoingRes.json()
+        const historyData = await historyRes.json()
+
+        if (ongoingData.success) setOngoingApplications(Array.isArray(ongoingData.data) ? ongoingData.data : [])
+        if (historyData.success) setHistoryApplications(Array.isArray(historyData.data) ? historyData.data : [])
+      } catch {
+        setOngoingApplications([])
+        setHistoryApplications([])
+      } finally {
+        setLoadingApplications(false)
+      }
     }
-  }, [activeTab])
+
+    loadAssignments()
+  }, [user?.id])
 
   const allVerified = Boolean(
     user?.email_verified &&
@@ -48,8 +74,10 @@ function IndividualDashboardContent() {
               </div>
             </div>
 
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
             {/* Individual Profile Section */}
-            <Card>
+            <div className="lg:col-span-4">
+            <Card className="lg:sticky lg:top-20 lg:max-h-[calc(100vh-5rem)] lg:overflow-y-auto">
               <CardHeader>
                 <CardTitle>Individual Profile</CardTitle>
                 <CardDescription>
@@ -57,9 +85,9 @@ function IndividualDashboardContent() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                <div className="flex flex-col md:flex-row gap-6">
-                  <div className="w-full md:w-1/4">
-                    <div className="aspect-square rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden">
+                <div className="flex flex-col gap-6">
+                  <div className="w-full">
+                    <div className="h-28 w-28 md:h-32 md:w-32 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden mx-auto">
                       {user?.profile_image ? (
                         <img 
                           src={user.profile_image} 
@@ -71,17 +99,17 @@ function IndividualDashboardContent() {
                       )}
                     </div>
                   </div>
-                  <div className="w-full md:w-3/4 space-y-4">
+                  <div className="w-full space-y-4">
                     <div>
                       <h3 className="text-lg font-semibold flex items-center gap-2">
                         <span>{user?.name || 'Your Name'}</span>
                         {allVerified ? (
-                          <ShieldCheck className="h-4 w-4 text-green-600" />
+                          <VerificationBadge status="verified" size="sm" showText={false} />
                         ) : (
                           <>
                             {user?.email_verified && <MailCheck className="h-4 w-4 text-green-600" />}
                             {user?.phone_verified && <Phone className="h-4 w-4 text-green-600" />}
-                            {user?.verification_status === 'verified' && <ShieldCheck className="h-4 w-4 text-green-600" />}
+                            <VerificationBadge status={user?.verification_status || 'unverified'} size="sm" showText={false} />
                           </>
                         )}
                       </h3>
@@ -98,10 +126,14 @@ function IndividualDashboardContent() {
                           <span>{user?.phone || 'Phone not set'}</span>
                         </div>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-1 gap-4 mt-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                         <div>
-                          <p className="text-sm font-medium text-gray-500">Joined</p>
-                          <p>{(user as any)?.created_at ? new Date((user as any).created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long' }) : 'Join date not available'}</p>
+                          <p className="text-sm font-medium text-gray-500">Age</p>
+                          <p>{(user as any)?.profile_data?.age || (user as any)?.profile?.age || 'Age not set'}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-500">Pincode</p>
+                          <p>{user?.pincode || 'Pincode not set'}</p>
                         </div>
                       </div>
                     </div>
@@ -112,8 +144,10 @@ function IndividualDashboardContent() {
                 </div>
               </CardContent>
             </Card>
+            </div>
 
             {/* Activity & Engagements */}
+            <div className="lg:col-span-8">
             <Card>
               <CardHeader>
                 <CardTitle>Activities & Engagements</CardTitle>
@@ -122,39 +156,109 @@ function IndividualDashboardContent() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div ref={tabsRef}>
+                <div>
                   <Tabs value={activeTab} onValueChange={(value) => {
                     window.history.replaceState(null, '', `/individuals/dashboard?tab=${value}`);
                     router.replace(`/individuals/dashboard?tab=${value}`, { scroll: false });
                   }} className="w-full">
                     <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 h-auto">
-                      <TabsTrigger value="service-requests" className="text-xs sm:text-sm">Service Requests</TabsTrigger>
+                      <TabsTrigger value="service-requests" className="text-xs sm:text-sm">My Applications</TabsTrigger>
                       <TabsTrigger value="services-hired" className="text-xs sm:text-sm">Services Hired</TabsTrigger>
                     </TabsList>
                   
                   <TabsContent value="service-requests" className="mt-4 space-y-4">
-                    <h3 className="font-medium">NGO Requests You've Volunteered For</h3>
-                    <div className="rounded-md border p-8 text-center">
-                      <div className="text-muted-foreground">
-                        <TicketCheck className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                        <p className="text-lg font-medium mb-2">Service Requests Coming Soon</p>
-                        <p className="text-sm mb-4">We're working on the service request system where you can volunteer for NGO projects.</p>
-                        <Link href="/service-requests">
-                          <Button variant="outline">Browse Available Requests</Button>
-                        </Link>
-                      </div>
-                    </div>
+                    <Tabs defaultValue="ongoing" className="w-full">
+                      <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="ongoing">Ongoing</TabsTrigger>
+                        <TabsTrigger value="history">History</TabsTrigger>
+                      </TabsList>
+
+                      <TabsContent value="ongoing" className="mt-4 space-y-3">
+                        {loadingApplications ? (
+                          <div className="rounded-md border p-6 text-center text-muted-foreground">Loading applications...</div>
+                        ) : ongoingApplications.length === 0 ? (
+                          <div className="rounded-md border p-8 text-center">
+                            <div className="text-muted-foreground">
+                              <TicketCheck className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                              <p className="text-lg font-medium mb-2">No ongoing applications</p>
+                              <p className="text-sm mb-4">Accepted and active assignments will appear here.</p>
+                              <Link href="/service-requests">
+                                <Button variant="outline">Browse Available Requests</Button>
+                              </Link>
+                            </div>
+                          </div>
+                        ) : ongoingApplications.map((application) => (
+                          <Card key={application.id}>
+                            <CardContent className="p-4 space-y-3">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="font-semibold">{application.request?.title || 'Service Request'}</p>
+                                  <p className="text-sm text-muted-foreground">{application.request?.project?.title || application.request?.location || 'Project not set'}</p>
+                                </div>
+                                <Badge variant="outline">{application.status}</Badge>
+                              </div>
+                              <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
+                                <p>Assigned: {application.request?.category?.toLowerCase().includes('financial') ? `INR ${Number(application.assigned_amount || application.fulfillment_amount || 0).toLocaleString('en-IN')}` : Number(application.assigned_quantity || application.fulfillment_quantity || 0)}</p>
+                                <p>Completed: {application.response_meta?.individual_done_at ? 'Yes' : 'No'}</p>
+                              </div>
+                              <div className="flex gap-2">
+                                <Link href={`/service-requests/${application.request?.id}`}>
+                                  <Button size="sm" variant="outline">View Need</Button>
+                                </Link>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </TabsContent>
+
+                      <TabsContent value="history" className="mt-4 space-y-3">
+                        {loadingApplications ? (
+                          <div className="rounded-md border p-6 text-center text-muted-foreground">Loading history...</div>
+                        ) : historyApplications.length === 0 ? (
+                          <div className="rounded-md border p-8 text-center">
+                            <div className="text-muted-foreground">
+                              <HeartHandshake className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                              <p className="text-lg font-medium mb-2">No history yet</p>
+                              <p className="text-sm mb-4">Completed or rejected applications will appear here.</p>
+                              <Link href="/service-requests">
+                                <Button variant="outline">Browse Needs</Button>
+                              </Link>
+                            </div>
+                          </div>
+                        ) : historyApplications.map((application) => (
+                          <Card key={application.id}>
+                            <CardContent className="p-4 space-y-3">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="font-semibold">{application.request?.title || 'Service Request'}</p>
+                                  <p className="text-sm text-muted-foreground">{application.request?.project?.title || application.request?.location || 'Project not set'}</p>
+                                </div>
+                                <Badge variant="outline">{application.status}</Badge>
+                              </div>
+                              <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
+                                <p>{application.response_meta?.individual_done_at ? 'Marked done' : 'Closed'}</p>
+                                <p>{application.response_meta?.ngo_confirmed_at ? 'NGO confirmed' : 'Awaiting review'}</p>
+                              </div>
+                              <div className="flex gap-2">
+                                <Link href={`/service-requests/${application.request?.id}`}>
+                                  <Button size="sm" variant="outline">View Need</Button>
+                                </Link>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </TabsContent>
+                    </Tabs>
                   </TabsContent>
                   
                   <TabsContent value="services-hired" className="mt-4 space-y-4">
-                    <h3 className="font-medium">Services You've Hired from NGOs</h3>
                     <div className="rounded-md border p-8 text-center">
                       <div className="text-muted-foreground">
                         <HeartHandshake className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                        <p className="text-lg font-medium mb-2">Service Hiring Coming Soon</p>
-                        <p className="text-sm mb-4">Feature to hire services from NGOs is under development.</p>
-                        <Link href="/ngos">
-                          <Button variant="outline">Browse NGOs</Button>
+                        <p className="text-lg font-medium mb-2">Services Hired Coming Soon</p>
+                        <p className="text-sm mb-4">This section is reserved for service hires. Your application history stays under My Applications.</p>
+                        <Link href="/service-requests">
+                          <Button variant="outline">Browse Needs</Button>
                         </Link>
                       </div>
                     </div>
@@ -163,6 +267,8 @@ function IndividualDashboardContent() {
                 </div>
               </CardContent>
             </Card>
+            </div>
+            </div>
           </div>
         </main>
       </div>

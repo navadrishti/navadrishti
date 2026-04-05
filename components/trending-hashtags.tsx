@@ -85,7 +85,7 @@ export function TrendingHashtags({
 
   if (loading && trendingHashtags.length === 0) {
     return (
-      <Card>
+      <Card className="h-full flex flex-col">
         <CardHeader className="pb-3">
           <CardTitle className="text-lg flex items-center gap-2">
             <Hash className="h-5 w-5" />
@@ -95,7 +95,7 @@ export function TrendingHashtags({
             </div>
           </CardTitle>
         </CardHeader>
-        <CardContent style={{ minHeight: '400px' }}>
+        <CardContent className="flex-1" style={{ minHeight: '400px' }}>
           <div className="space-y-3">
             {Array.from({ length: limit }).map((_, i) => (
               <div key={i} className="animate-pulse">
@@ -111,14 +111,14 @@ export function TrendingHashtags({
 
   if (connectionStatus === 'disconnected' && trendingHashtags.length === 0) {
     return (
-      <Card>
+      <Card className="h-full flex flex-col">
         <CardHeader className="pb-3">
           <CardTitle className="text-lg flex items-center gap-2">
             <Hash className="h-5 w-5" />
             Trending Hashtags
           </CardTitle>
         </CardHeader>
-        <CardContent style={{ minHeight: '400px' }}>
+        <CardContent className="flex-1" style={{ minHeight: '400px' }}>
           <div className="text-center py-6">
             <WifiOff className="h-8 w-8 mx-auto text-red-400 mb-2" />
             <p className="text-sm text-muted-foreground mb-2">
@@ -138,7 +138,7 @@ export function TrendingHashtags({
 
   if (trendingHashtags.length === 0) {
     return (
-      <Card>
+      <Card className="h-full flex flex-col">
         <CardHeader className="pb-3">
           <CardTitle className="text-lg flex items-center gap-2">
             <Hash className="h-5 w-5" />
@@ -148,7 +148,7 @@ export function TrendingHashtags({
             </div>
           </CardTitle>
         </CardHeader>
-        <CardContent style={{ minHeight: '400px' }}>
+        <CardContent className="flex-1" style={{ minHeight: '400px' }}>
           <div className="text-center py-6">
             <Activity className="h-8 w-8 mx-auto text-gray-400 mb-2" />
             <p className="text-sm text-muted-foreground">
@@ -164,7 +164,7 @@ export function TrendingHashtags({
   }
 
   return (
-    <Card>
+    <Card className="h-full flex flex-col">
       <CardHeader className="pb-3">
         <CardTitle className="text-lg flex items-center gap-2">
           <Hash className="h-5 w-5" />
@@ -178,7 +178,7 @@ export function TrendingHashtags({
           </div>
         </CardTitle>
       </CardHeader>
-      <CardContent style={{ minHeight: '400px' }}>
+      <CardContent className="flex flex-1 flex-col" style={{ minHeight: '400px' }}>
         <div className="space-y-3">
           {trendingHashtags.map((hashtag, index) => (
             <div
@@ -238,7 +238,7 @@ export function TrendingHashtags({
         </div>
 
         {/* Footer */}
-        <div className="mt-4 pt-3 border-t">
+        <div className="mt-auto pt-3 border-t">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>
               Rankings by activity

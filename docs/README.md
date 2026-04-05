@@ -8,7 +8,7 @@ Navdrishti serves as a bridge between those who need help and those who can prov
 
 ### Key Features
 - **Service Requests**: NGOs post volunteer opportunities and community projects
-- **Service Offers**: NGOs showcase professional services to get hired
+- **Service Offers**: Verified NGOs, individuals, and companies showcase professional capabilities to get hired
 - **Social Feed**: Community engagement through posts, likes, and interactions
 - **Multi-tier Authentication**: Separate user types with role-based permissions
 - **Real-time Notifications**: Keep users engaged with activity updates
@@ -16,8 +16,8 @@ Navdrishti serves as a bridge between those who need help and those who can prov
 
 ### User Types
 1. **NGOs** - Create service requests, offer professional services, manage projects
-2. **Individuals** - Volunteer for causes, hire NGO services, and contribute to campaigns
-3. **Companies** - Partner with NGOs, hire services, support community initiatives
+2. **Individuals** - Volunteer for causes, create/hire capability offers, and contribute to campaigns
+3. **Companies** - Partner with NGOs, create/hire capability offers, and support community initiatives
 4. **Admins** - Platform moderation, user verification, content management
 
 ## 📚 Documentation Structure

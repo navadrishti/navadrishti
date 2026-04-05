@@ -1,0 +1,202 @@
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+   ▲ Next.js 16.0.7 (Turbopack)
+   - Environments: .env
+
+   Creating an optimized production build ...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+ ✓ Compiled successfully in 4.2s
+   Skipping validation of types
+   Collecting page data using 15 workers ...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+   Generating static pages using 15 workers (0/117) ...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+   Generating static pages using 15 workers (29/117) 
+   Generating static pages using 15 workers (58/117) 
+   Generating static pages using 15 workers (87/117) 
+ ✓ Generating static pages using 15 workers (117/117) in 788.6ms
+   Finalizing page optimization ...
+
+Route (app)                                              Revalidate  Expire
+┌ ○ /
+├ ○ /_not-found
+├ ○ /admin
+├ ○ /admin/announcements
+├ ○ /admin/login
+├ ƒ /api/activity-feed
+├ ƒ /api/addresses
+├ ƒ /api/addresses/[addressId]
+├ ƒ /api/admin/analytics
+├ ƒ /api/admin/announcements
+├ ƒ /api/admin/audit
+├ ƒ /api/admin/auth
+├ ƒ /api/admin/logout
+├ ƒ /api/admin/migrate
+├ ƒ /api/admin/service-offers
+├ ƒ /api/admin/service-offers/[offerId]/review
+├ ƒ /api/admin/service-offers/auto-reject
+├ ƒ /api/admin/settings
+├ ƒ /api/admin/verify
+├ ƒ /api/auth/change-password
+├ ƒ /api/auth/delete-account
+├ ƒ /api/auth/forgot-password
+├ ƒ /api/auth/login
+├ ƒ /api/auth/logout
+├ ƒ /api/auth/me
+├ ƒ /api/auth/prepare-email-otp
+├ ƒ /api/auth/reset-password
+├ ƒ /api/auth/signup
+├ ƒ /api/auth/start-verification
+├ ƒ /api/auth/verify-phone
+├ ƒ /api/auth/verify-reset-token
+├ ƒ /api/auto-update-statuses
+├ ƒ /api/ca/auth
+├ ƒ /api/ca/cases
+├ ƒ /api/ca/cases/[id]
+├ ƒ /api/ca/cases/[id]/approve
+├ ƒ /api/ca/cases/[id]/clarification
+├ ƒ /api/ca/cases/[id]/reject
+├ ƒ /api/ca/dashboard
+├ ƒ /api/ca/logout
+├ ƒ /api/ca/verify
+├ ƒ /api/campaigns
+├ ƒ /api/companies/ca/accounts
+├ ƒ /api/companies/ca/accounts/[identityId]
+├ ƒ /api/companies/ca/auth
+├ ƒ /api/companies/ca/change-password
+├ ƒ /api/companies/ca/logout
+├ ƒ /api/companies/ca/verify
+├ ƒ /api/cron/daily-cleanup
+├ ƒ /api/csr-projects
+├ ƒ /api/csr-projects/[id]/audit
+├ ƒ /api/csr-projects/[id]/evidence
+├ ƒ /api/csr-projects/[id]/invite
+├ ƒ /api/csr-projects/[id]/milestones
+├ ƒ /api/dashboard/activity
+├ ƒ /api/dashboard/stats
+├ ƒ /api/debug/database
+├ ƒ /api/debug/my-contributions
+├ ƒ /api/debug/token
+├ ƒ /api/debug/upload
+├ ƒ /api/hashtags/fix
+├ ƒ /api/hashtags/maintenance
+├ ƒ /api/hashtags/refresh
+├ ƒ /api/hashtags/reset-daily
+├ ƒ /api/hashtags/setup-triggers
+├ ƒ /api/hashtags/trending
+├ ƒ /api/health
+├ ƒ /api/init-db
+├ ƒ /api/leaderboard
+├ ƒ /api/milestones/[id]/evidence
+├ ƒ /api/milestones/[id]/payment
+├ ƒ /api/milestones/[id]/review
+├ ƒ /api/ngos/list
+├ ƒ /api/ngos/network
+├ ƒ /api/platform-activities
+├ ƒ /api/posts
+├ ƒ /api/posts/[postId]
+├ ƒ /api/posts/[postId]/comments
+├ ƒ /api/posts/[postId]/interact
+├ ƒ /api/posts/[postId]/share
+├ ƒ /api/profile/[userId]
+├ ƒ /api/profile/company
+├ ƒ /api/profile/organization
+├ ƒ /api/profile/portfolio
+├ ƒ /api/profile/skills
+├ ƒ /api/profile/update
+├ ƒ /api/recent-verifications
+├ ƒ /api/search/profiles
+├ ƒ /api/service-clients
+├ ƒ /api/service-offers
+├ ƒ /api/service-offers/[id]
+├ ƒ /api/service-offers/[id]/clients
+├ ƒ /api/service-request-assignments
+├ ƒ /api/service-request-projects
+├ ƒ /api/service-requests
+├ ƒ /api/service-requests/[id]
+├ ƒ /api/service-requests/[id]/payments/create-order
+├ ƒ /api/service-requests/[id]/payments/verify
+├ ƒ /api/service-requests/[id]/refresh-status
+├ ƒ /api/service-requests/[id]/volunteers
+├ ƒ /api/service-requests/[id]/volunteers/[volunteerId]
+├ ƒ /api/service-volunteers
+├ ƒ /api/shipping/rates
+├ ƒ /api/social-feed/comments
+├ ƒ /api/social-feed/connections
+├ ƒ /api/social-feed/reactions
+├ ƒ /api/social-feed/suggestions
+├ ƒ /api/social-feed/trending
+├ ƒ /api/social-feed/users/[userId]/stats
+├ ○ /api/stats                                                   5m      1y
+├ ƒ /api/stats-growth
+├ ƒ /api/upload
+├ ƒ /api/uploads/receipt
+├ ƒ /api/users
+├ ƒ /api/users/suggestions
+├ ƒ /api/users/verified
+├ ƒ /api/verification/company
+├ ƒ /api/verification/individual
+├ ƒ /api/verification/ngo
+├ ƒ /api/verification/status
+├ ƒ /api/verification/upload
+├ ƒ /ca
+├ ○ /ca/cases
+├ ƒ /ca/cases/[id]
+├ ○ /ca/login
+├ ƒ /companies/ca
+├ ○ /companies/ca/login
+├ ○ /companies/csr-agent
+├ ○ /companies/csr-health
+├ ○ /companies/dashboard
+├ ○ /companies/impact-reports
+├ ○ /companies/register
+├ ○ /csr-campaigns
+├ ○ /forgot-password
+├ ○ /home
+├ ○ /individuals/dashboard
+├ ○ /individuals/register
+├ ○ /login
+├ ○ /ngo-network
+├ ○ /ngos/ai-agent
+├ ○ /ngos/ai-assistant
+├ ○ /ngos/campaign-updates
+├ ○ /ngos/dashboard
+├ ○ /ngos/register
+├ ƒ /posts/[postId]
+├ ○ /profile
+├ ƒ /profile/[id]
+├ ○ /register
+├ ○ /reset-password
+├ ○ /service-offers
+├ ƒ /service-offers/[id]
+├ ○ /service-offers/create
+├ ƒ /service-offers/edit/[id]
+├ ○ /service-requests
+├ ƒ /service-requests/[id]
+├ ƒ /service-requests/applicants/[id]
+├ ○ /service-requests/create
+├ ƒ /service-requests/edit/[id]
+├ ○ /settings
+└ ○ /verification
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

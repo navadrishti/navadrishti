@@ -1,8 +1,9 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
+import { useOtpSender } from '@/hooks/use-otp-sender';
 import { smoothNavigate } from '@/lib/utils';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,13 +11,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
 import { ArrowLeft, AlertTriangle, CheckCircle, FileText, Shield, Upload, User } from 'lucide-react';
 
 type VerificationCategory = 'individual' | 'ngo' | 'company';
 type Step = 1 | 2;
-type IndividualIdType = 'aadhaar' | 'pan' | 'voter-id' | 'driving-license';
+type IndividualIdType = '' | 'aadhaar' | 'pan' | 'voter-id' | 'driving-license';
 type NgoRegistrationType = 'Trust' | 'Society' | 'Section 8';
+type FormErrors = Record<string, string>;
 
 type DocumentKey =
   | 'individualOptionalId'
@@ -32,7 +34,7 @@ type DocumentKey =
   | 'companyBoardResolution';
 
 const documentLabels: Record<DocumentKey, string> = {
-  individualOptionalId: 'Optional ID Upload (Aadhaar / PAN / Voter ID / Driving License)',
+  individualOptionalId: 'Government ID Upload (Aadhaar / PAN / Voter ID / Driving License)',
   ngoRegistrationCertificate: 'Registration Certificate (Trust / Society / Section 8)',
   ngoPanCard: 'PAN Card of NGO',
   ngoAddressProof: 'Address Proof (utility bill / rent agreement / bank letter)',
@@ -83,6 +85,56 @@ export default function VerificationPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+  const [authSnapshot, setAuthSnapshot] = useState<{ email_verified?: boolean; phone_verified?: boolean } | null>(null);
+  const [formErrors, setFormErrors] = useState<FormErrors>({});
+  const [otpInput, setOtpInput] = useState({ email: '', phone: '' });
+  const progressValue = currentStep === 1 ? 50 : 100;
+  const {
+    otpSending,
+    otpSent,
+    otpCooldown,
+    otpVerifying,
+    otpVerified,
+    handleSendEmailOtp,
+    handleVerifyEmailOtp,
+    handleSendPhoneOtp
+  } = useOtpSender(setFormErrors);
+  const baseEmailVerified = authSnapshot?.email_verified ?? user?.email_verified ?? false;
+  const isEmailVerified = mounted ? Boolean(baseEmailVerified || otpVerified.email) : false;
+  const isPhoneVerified = mounted ? Boolean(authSnapshot?.phone_verified ?? user?.phone_verified ?? false) : false;
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    const fetchAuthSnapshot = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+
+        const response = await fetch('/api/auth/me', {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+
+        if (!response.ok) return;
+        const data = await response.json();
+        setAuthSnapshot({
+          email_verified: data?.user?.email_verified,
+          phone_verified: data?.user?.phone_verified
+        });
+      } catch {
+        // keep existing values from auth context on failure
+      }
+    };
+
+    if (mounted) {
+      fetchAuthSnapshot();
+    }
+  }, [mounted, otpVerified.email]);
 
   const category: VerificationCategory = user?.user_type === 'ngo' ? 'ngo' : user?.user_type === 'company' ? 'company' : 'individual';
 
@@ -99,7 +151,7 @@ export default function VerificationPage() {
     ngoAssociationNumber: '',
     companyCinNumber: '',
     companyGstApplicable: false,
-    individualIdType: 'aadhaar'
+    individualIdType: ''
   });
 
   const [documentFiles, setDocumentFiles] = useState<Record<DocumentKey, File | null>>(
@@ -118,7 +170,7 @@ export default function VerificationPage() {
 
   const requiredDocs = useMemo(() => {
     if (formData.category === 'individual') {
-      return [] as DocumentKey[];
+      return ['individualOptionalId'] as DocumentKey[];
     }
 
     if (formData.category === 'ngo') {
@@ -182,6 +234,33 @@ export default function VerificationPage() {
     router.back();
   };
 
+  const persistEmailVerification = async () => {
+    if (!user?.id) return false;
+    const verifiedAt = new Date().toISOString();
+
+    const response = await fetch('/api/profile/update', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        userId: user.id,
+        email_verified: true,
+        email_verified_at: verifiedAt
+      })
+    });
+
+    if (!response.ok) {
+      return false;
+    }
+
+    setAuthSnapshot((prev) => ({
+      ...(prev || {}),
+      email_verified: true
+    }));
+    return true;
+  };
+
   const validateStepOne = () => {
     if (!formData.entityName || !formData.contactNumber || !formData.email) {
       setError('Please fill name, contact number, and email.');
@@ -189,10 +268,16 @@ export default function VerificationPage() {
     }
 
     if (formData.category === 'individual') {
-      if (!user?.email_verified) {
+      if (!isEmailVerified) {
         setError('Email verification is mandatory for individual verification. Please verify your email first.');
         return false;
       }
+
+      if (!formData.individualIdType) {
+        setError('Please select an ID type for individual verification.');
+        return false;
+      }
+
       return true;
     }
 
@@ -339,10 +424,10 @@ export default function VerificationPage() {
         <Button
           variant="ghost"
           onClick={handleBack}
-          className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
+          className="text-gray-600 hover:text-gray-900 hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0"
         >
-          <ArrowLeft className="h-4 w-4" />
-          Back to Dashboard
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back
         </Button>
       </div>
 
@@ -356,9 +441,12 @@ export default function VerificationPage() {
 
       <Card>
         <CardContent className="pt-6">
-          <div className="flex items-center justify-between">
-            <Badge variant={currentStep === 1 ? 'default' : 'outline'}>Page 1: Add Details</Badge>
-            <Badge variant={currentStep === 2 ? 'default' : 'outline'}>Page 2: Upload Documents</Badge>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-sm text-gray-600">
+              <span>Step {currentStep} of 2</span>
+              <span>{progressValue}%</span>
+            </div>
+            <Progress value={progressValue} className="h-2" />
           </div>
           <p className="text-sm text-gray-600 mt-3 capitalize">
             Verification type: <span className="font-medium">{formData.category}</span>
@@ -394,7 +482,7 @@ export default function VerificationPage() {
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="entityName">Name (Person / Company / NGO)</Label>
+                <Label htmlFor="entityName">Full Name</Label>
                 <Input
                   id="entityName"
                   value={formData.entityName}
@@ -424,19 +512,98 @@ export default function VerificationPage() {
               />
             </div>
 
+            <div className="rounded-md border p-3 bg-gray-50 text-sm text-gray-700 space-y-3">
+              <div>
+                <p>
+                  Email verification:{' '}
+                  <span className="font-medium">{isEmailVerified ? 'Verified' : 'Not Verified'}</span>
+                </p>
+                {!isEmailVerified && (
+                  <div className="mt-2 space-y-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleSendEmailOtp(formData.email)}
+                      disabled={otpSending.email || otpCooldown.email > 0}
+                    >
+                      {otpSending.email
+                        ? 'Sending...'
+                        : otpCooldown.email > 0
+                          ? `Resend in ${otpCooldown.email}s`
+                          : otpSent.email
+                            ? 'Resend OTP'
+                            : 'Verify Email'}
+                    </Button>
+                    {formErrors.email && <p className="text-sm text-red-500">{formErrors.email}</p>}
+                    {otpSent.email && (
+                      <div className="space-y-2">
+                        <Input
+                          value={otpInput.email}
+                          onChange={(e) => setOtpInput((prev) => ({ ...prev, email: e.target.value }))}
+                          placeholder="Enter OTP"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={async () => {
+                            const ok = await handleVerifyEmailOtp(formData.email, otpInput.email);
+                            if (ok) {
+                              await persistEmailVerification();
+                              setError(null);
+                            }
+                          }}
+                          disabled={otpVerifying.email}
+                        >
+                          {otpVerifying.email ? 'Verifying...' : 'Verify OTP'}
+                        </Button>
+                        {formErrors.emailOtp && <p className="text-sm text-red-500">{formErrors.emailOtp}</p>}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <p>
+                  Phone OTP verification:{' '}
+                  <span className="font-medium">{isPhoneVerified ? 'Verified' : 'Not Verified'}</span>
+                </p>
+                {!isPhoneVerified && (
+                  <div className="mt-2 space-y-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleSendPhoneOtp(formData.contactNumber)}
+                      disabled={otpSending.phone || otpCooldown.phone > 0}
+                    >
+                      {otpSending.phone
+                        ? 'Sending...'
+                        : otpCooldown.phone > 0
+                          ? `Resend in ${otpCooldown.phone}s`
+                          : otpSent.phone
+                            ? 'Resend OTP'
+                            : 'Verify Mobile'}
+                    </Button>
+                    {formErrors.phone && <p className="text-sm text-red-500">{formErrors.phone}</p>}
+                    {otpSent.phone && (
+                      <Input
+                        value={otpInput.phone}
+                        onChange={(e) => setOtpInput((prev) => ({ ...prev, phone: e.target.value }))}
+                        placeholder="Enter OTP"
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
             {formData.category === 'individual' && (
               <>
-                <div className="rounded-md border p-3 bg-gray-50 text-sm text-gray-700 space-y-1">
-                  <p>
-                    Email verification: <span className="font-medium">{user?.email_verified ? 'Verified' : 'Not Verified (mandatory)'}</span>
-                  </p>
-                  <p>
-                    Phone OTP verification: <span className="font-medium">{user?.phone_verified ? 'Verified' : 'Not Verified (optional / recommended)'}</span>
-                  </p>
-                </div>
-
                 <div className="space-y-2">
-                  <Label>Optional ID Type (for high-trust roles)</Label>
+                  <Label>ID Type *</Label>
                   <Select
                     value={formData.individualIdType}
                     onValueChange={(value) =>
@@ -444,7 +611,7 @@ export default function VerificationPage() {
                     }
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select optional ID type" />
+                      <SelectValue placeholder="Select ID type" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="aadhaar">Aadhaar</SelectItem>
@@ -642,8 +809,9 @@ export default function VerificationPage() {
             ))}
 
             <div className="flex items-center justify-between pt-2">
-              <Button variant="outline" onClick={() => setCurrentStep(1)} disabled={loading}>
-                Back to Details
+              <Button variant="outline" onClick={() => setCurrentStep(1)} disabled={loading} className="hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0">
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back
               </Button>
               <Button onClick={submitVerification} disabled={loading}>
                 {loading ? 'Submitting...' : 'Submit Verification'}

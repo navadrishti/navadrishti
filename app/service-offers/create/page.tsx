@@ -1,296 +1,206 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { ArrowLeft } from 'lucide-react'
+
 import { Header } from '@/components/header'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, Loader2, Plus, X, Users, MapPin, DollarSign, Clock, Briefcase } from 'lucide-react'
+import ProtectedRoute from '@/components/protected-route'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
-import ProtectedRoute from '@/components/protected-route'
-import Link from 'next/link'
 
-const categories = [
-  'Training & Workshops',
-  'Community Outreach Programs',
-  'Environmental Sustainability Services',
-  'Healthcare Services & Camps',
-  'Research & Survey Services',
-  'Creative & Communication Services',
-  'Event Management',
-  'Skill Development Programs',
-  'Monitoring & Evaluation',
-  'Customized CSR Program Execution',
-  'Women Empowerment Training',
-  'Livelihood Development Programs',
-  'Digital Literacy Training',
-  'Awareness & Advocacy Campaigns'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
+
+type OfferType = 'financial' | 'material' | 'service' | 'infrastructure'
+type TransactionType = 'sell' | 'rent' | 'volunteer'
+
+type FormData = {
+  title: string
+  description: string
+  offer_type: OfferType
+  transaction_type: TransactionType
+  sell_amount: number | ''
+  rent_per_day: number | ''
+  amount: number | ''
+  location_scope: string
+  conditions: string
+  item: string
+  quantity: number | ''
+  delivery_scope: string
+  skill: string
+  capacity: string
+  duration: string
+  scope: string
+  budget_range: string
+}
+
+const OFFER_TYPES: { value: OfferType; label: string }[] = [
+  { value: 'financial', label: 'Financial' },
+  { value: 'material', label: 'Material' },
+  { value: 'service', label: 'Service/Skill' },
+  { value: 'infrastructure', label: 'Infrastructure' }
 ]
 
-const employmentTypes = [
-  { value: 'full_time', label: 'Full Time' },
-  { value: 'part_time', label: 'Part Time' },
-  { value: 'contract', label: 'Contract/Freelance' },
-  { value: 'internship', label: 'Internship' },
+const TRANSACTION_TYPES: { value: TransactionType; label: string }[] = [
+  { value: 'sell', label: 'Sell' },
+  { value: 'rent', label: 'Rent' },
   { value: 'volunteer', label: 'Volunteer' }
-]
-
-const experienceLevels = [
-  { value: 'entry', label: 'Entry Level (0-1 years)' },
-  { value: 'junior', label: 'Junior (1-3 years)' },
-  { value: 'mid', label: 'Mid Level (3-5 years)' },
-  { value: 'senior', label: 'Senior (5+ years)' },
-  { value: 'any', label: 'Any Experience Level' }
-]
-
-const paymentFrequencies = [
-  { value: 'hourly', label: 'Per Hour' },
-  { value: 'daily', label: 'Per Day' },
-  { value: 'weekly', label: 'Per Week' },
-  { value: 'monthly', label: 'Per Month' },
-  { value: 'project', label: 'Per Project' }
-]
-
-const commonBenefits = [
-  'Health Insurance',
-  'Accommodation Provided',
-  'Meals Provided',
-  'Transportation Allowance',
-  'Training & Development',
-  'Certification Provided',
-  'Flexible Working Hours',
-  'Work from Home Option',
-  'Performance Bonus',
-  'Annual Leave',
-  'Professional Growth Opportunities'
-]
-
-const commonSkills = [
-  'Communication',
-  'Teaching',
-  'Computer Skills',
-  'First Aid',
-  'Driving',
-  'Counseling',
-  'Data Entry',
-  'Customer Service',
-  'Project Management',
-  'Social Media',
-  'Languages',
-  'Medical Knowledge'
 ]
 
 export default function CreateServiceOfferPage() {
   const router = useRouter()
   const { user, token } = useAuth()
   const { toast } = useToast()
+
   const [loading, setLoading] = useState(false)
-  const [individuals, setIndividuals] = useState<any[]>([])
-  const [searchTerm, setSearchTerm] = useState('')
-  
-  const [formData, setFormData] = useState({
-    // Basic Information
+  const [formData, setFormData] = useState<FormData>({
     title: '',
     description: '',
-    category: '',
-    employment_type: '',
-    
-    // Location
-    location: '',
-    city: '',
-    state_province: '',
-    pincode: '',
-    
-    // Wages & Compensation
-    wage_info: {
-      min_amount: '',
-      max_amount: '',
-      currency: 'INR',
-      payment_frequency: 'monthly',
-      negotiable: false
-    },
-    
-    // Experience & Skills
-    experience_requirements: {
-      level: 'any',
-      years_required: 0,
-      specific_skills: [] as string[],
-      certifications: [] as string[]
-    },
-    skills_required: [] as string[],
-    
-    // Duration & Schedule
-    duration: {
-      type: 'ongoing', // 'fixed' or 'ongoing'
-      duration_months: ''
-    },
-    working_hours: {
-      hours_per_week: '',
-      flexible: false,
-      schedule_details: ''
-    },
-    
-    // Benefits & Application
-    benefits: [] as string[],
-    application_deadline: '',
-    start_date: '',
-    
-    // Contact & Invitations
-    contact_preferences: {
-      email: true,
-      phone: false,
-      whatsapp: false
-    },
-    invited_individuals: [] as number[],
-    
-    // Media & Tags
-    images: [] as string[],
-    tags: [] as string[]
+    offer_type: 'financial',
+    transaction_type: 'sell',
+    sell_amount: '',
+    rent_per_day: '',
+    amount: '',
+    location_scope: '',
+    conditions: '',
+    item: '',
+    quantity: '',
+    delivery_scope: '',
+    skill: '',
+    capacity: '',
+    duration: '',
+    scope: '',
+    budget_range: ''
   })
 
-  // Check authentication and user type
-  useEffect(() => {
-    if (!user) {
-      router.push('/login')
-      return
-    }
-    if (user.user_type !== 'ngo') {
-      toast({
-        title: "Access Denied",
-        description: "Only NGOs can create service offers",
-        variant: "destructive",
-      })
-      router.push('/service-offers')
-      return
-    }
-  }, [user, router, toast])
+  const handleInput = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target
+    const numericFields = new Set(['amount', 'quantity', 'sell_amount', 'rent_per_day'])
 
-  // Fetch individuals for invitations
-  useEffect(() => {
-    const fetchIndividuals = async () => {
-      if (!token) return
-      
-      try {
-        const response = await fetch('/api/users?type=individual', {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        })
-        
-        if (response.ok) {
-          const data = await response.json()
-          setIndividuals(data.users || [])
-        }
-      } catch (error) {
-        console.warn('Failed to fetch individuals:', error)
-      }
-    }
-    
-    fetchIndividuals()
-  }, [token])
-
-  const handleSkillAdd = (skill: string, type: 'required' | 'experience') => {
-    if (!skill.trim()) return
-    
-    if (type === 'required') {
-      if (!formData.skills_required.includes(skill)) {
-        setFormData(prev => ({
-          ...prev,
-          skills_required: [...prev.skills_required, skill]
-        }))
-      }
-    } else {
-      if (!formData.experience_requirements.specific_skills.includes(skill)) {
-        setFormData(prev => ({
-          ...prev,
-          experience_requirements: {
-            ...prev.experience_requirements,
-            specific_skills: [...prev.experience_requirements.specific_skills, skill]
-          }
-        }))
-      }
-    }
-  }
-
-  const handleSkillRemove = (skill: string, type: 'required' | 'experience') => {
-    if (type === 'required') {
-      setFormData(prev => ({
-        ...prev,
-        skills_required: prev.skills_required.filter(s => s !== skill)
-      }))
-    } else {
-      setFormData(prev => ({
-        ...prev,
-        experience_requirements: {
-          ...prev.experience_requirements,
-          specific_skills: prev.experience_requirements.specific_skills.filter(s => s !== skill)
-        }
-      }))
-    }
-  }
-
-  const handleBenefitToggle = (benefit: string) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      benefits: prev.benefits.includes(benefit)
-        ? prev.benefits.filter(b => b !== benefit)
-        : [...prev.benefits, benefit]
+      [name]: numericFields.has(name) ? (value === '' ? '' : Number(value)) : value
     }))
   }
 
-  const handleIndividualInvite = (individualId: number) => {
-    setFormData(prev => ({
-      ...prev,
-      invited_individuals: prev.invited_individuals.includes(individualId)
-        ? prev.invited_individuals.filter(id => id !== individualId)
-        : [...prev.invited_individuals, individualId]
-    }))
+  const handleSelect = <K extends keyof FormData>(name: K, value: FormData[K]) => {
+    setFormData((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const buildOfferDetailsPayload = () => {
+    const resolvedAmount = formData.transaction_type === 'volunteer'
+      ? 0
+      : formData.transaction_type === 'rent'
+        ? (formData.rent_per_day === '' ? null : Number(formData.rent_per_day))
+        : (formData.sell_amount === '' ? null : Number(formData.sell_amount))
+
+    switch (formData.offer_type) {
+      case 'financial':
+        return {
+          amount: resolvedAmount,
+          location_scope: formData.location_scope,
+          conditions: formData.conditions
+        }
+      case 'material':
+        return {
+          item: formData.item,
+          quantity: formData.quantity,
+          delivery_scope: formData.delivery_scope
+        }
+      case 'service':
+        return {
+          skill: formData.skill,
+          capacity: formData.capacity,
+          duration: formData.duration
+        }
+      case 'infrastructure':
+        return {
+          scope: formData.scope,
+          capacity: formData.capacity,
+          budget_range: formData.budget_range
+        }
+      default:
+        return {}
+    }
+  }
+
+  const buildTransactionPayload = () => {
+    if (formData.transaction_type === 'volunteer') {
+      return {
+        transaction_type: 'volunteer' as TransactionType,
+        sell_amount: 0,
+        rent_per_day: 0
+      }
+    }
+
+    if (formData.transaction_type === 'rent') {
+      return {
+        transaction_type: 'rent' as TransactionType,
+        sell_amount: null,
+        rent_per_day: formData.rent_per_day
+      }
+    }
+
+    return {
+      transaction_type: 'sell' as TransactionType,
+      sell_amount: formData.sell_amount,
+      rent_per_day: 0
+    }
+  }
+
+  const hasOfferSpecificFields = () => {
+    switch (formData.offer_type) {
+      case 'financial':
+        return !!formData.location_scope.trim()
+      case 'material':
+        return !!formData.item.trim() && formData.quantity !== '' && !!formData.delivery_scope.trim()
+      case 'service':
+        return !!formData.skill.trim() && formData.capacity !== '' && !!formData.duration.trim()
+      case 'infrastructure':
+        return !!formData.scope.trim() && formData.capacity !== '' && !!formData.budget_range.trim()
+      default:
+        return false
+    }
+  }
+
+  const hasTransactionSpecificFields = () => {
+    switch (formData.transaction_type) {
+      case 'volunteer':
+        return true
+      case 'rent':
+        return formData.rent_per_day !== '' && Number(formData.rent_per_day) > 0
+      case 'sell':
+      default:
+        return formData.sell_amount !== '' && Number(formData.sell_amount) > 0
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (!token) {
-      toast({
-        title: "Authentication Error",
-        description: "Please log in to create a service offer",
-        variant: "destructive",
-      })
+      toast({ title: 'Authentication Error', description: 'Please log in to continue.', variant: 'destructive' })
       return
     }
 
-    // Validate required fields
-    if (!formData.title || !formData.description || !formData.category) {
-      toast({
-        title: "Validation Error",
-        description: "Please fill in all required fields",
-        variant: "destructive",
-      })
+    if (!formData.title.trim() || !formData.description.trim()) {
+      toast({ title: 'Validation Error', description: 'Please complete all required fields.', variant: 'destructive' })
       return
     }
 
-    if (formData.skills_required.length === 0) {
-      toast({
-        title: "Validation Error",
-        description: "Please add at least one skill your team can provide",
-        variant: "destructive",
-      })
+    if (!hasOfferSpecificFields()) {
+      toast({ title: 'Validation Error', description: 'Please complete all required offer details.', variant: 'destructive' })
       return
     }
 
-    if (formData.invited_individuals.length === 0) {
-      toast({
-        title: "Validation Error",
-        description: "Please assign at least one team member to work on projects",
-        variant: "destructive",
-      })
+    if (!hasTransactionSpecificFields()) {
+      toast({ title: 'Validation Error', description: 'Please complete all required pricing details.', variant: 'destructive' })
       return
     }
 
@@ -301,516 +211,324 @@ export default function CreateServiceOfferPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify({
+          title: formData.title,
+          description: formData.description,
+          offer_type: formData.offer_type,
+          ...buildTransactionPayload(),
+          ...buildOfferDetailsPayload()
+        })
       })
 
       const data = await response.json()
 
       if (response.ok) {
-        toast({
-          title: "Service Offer Created!",
-          description: data.data.message,
-          variant: "default",
-        })
+        toast({ title: 'Capability Offer Created', description: data.data?.message || 'Offer submitted successfully.' })
         router.push('/service-offers?view=my-offers')
-      } else {
-        toast({
-          title: "Error",
-          description: data.error || 'Failed to create service offer',
-          variant: "destructive",
-        })
+        return
       }
+
+      toast({ title: 'Error', description: data.error || 'Failed to create service offer', variant: 'destructive' })
     } catch (error) {
-      console.error('Error creating service offer:', error)
-      toast({
-        title: "Error",
-        description: "An unexpected error occurred",
-        variant: "destructive",
-      })
+      toast({ title: 'Error', description: 'Unexpected error while creating offer', variant: 'destructive' })
     } finally {
       setLoading(false)
     }
   }
 
-  const filteredIndividuals = individuals.filter(individual =>
-    individual.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    individual.email?.toLowerCase().includes(searchTerm.toLowerCase())
-  )
-
-  if (!user || user.user_type !== 'ngo') {
-    return null
-  }
-
-
+  if (!user) return null
 
   return (
-    <ProtectedRoute 
-      userTypes={['ngo']} 
+    <ProtectedRoute
       requireVerification={true}
       permission="canCreateServiceOffers"
     >
       <div className="min-h-screen bg-gray-50">
         <Header />
-      
-      <div className="max-w-4xl mx-auto p-6">
-        {/* Header */}
-        <div className="mb-8">
-          <Link href="/service-offers" className="inline-flex items-center text-blue-600 hover:text-blue-700 mb-4">
-            <ArrowLeft size={20} className="mr-2" />
-            Back to Service Offers
-          </Link>
-          <h1 className="text-3xl font-bold text-gray-900">Create Service Offer</h1>
-          <p className="text-gray-600 mt-2">Offer your NGO's services to companies and individuals who need them</p>
-        </div>
 
-        <form onSubmit={handleSubmit} className="space-y-8">
-          {/* Basic Information */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <Briefcase className="mr-2" size={20} />
-                Basic Information
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="title">Service Title *</Label>
-                <Input
-                  id="title"
-                  value={formData.title}
-                  onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
-                  placeholder="e.g., Community Health Services, Education & Training, Legal Documentation"
-                  required
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="description">Service Description *</Label>
-                <Textarea
-                  id="description"
-                  value={formData.description}
-                  onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                  placeholder="Describe what services your NGO can provide, expertise areas, and value proposition..."
-                  rows={4}
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="category">Category *</Label>
-                  <Select
-                    value={formData.category}
-                    onValueChange={(value) => setFormData(prev => ({ ...prev, category: value }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categories.map((category) => (
-                        <SelectItem key={category} value={category}>
-                          {category}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <Label htmlFor="employment_type">Employment Type *</Label>
-                  <Select
-                    value={formData.employment_type}
-                    onValueChange={(value) => setFormData(prev => ({ ...prev, employment_type: value }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {employmentTypes.map((type) => (
-                        <SelectItem key={type.value} value={type.value}>
-                          {type.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Location */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <MapPin className="mr-2" size={20} />
-                Location Details
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="location">Work Location</Label>
-                <Input
-                  id="location"
-                  value={formData.location}
-                  onChange={(e) => setFormData(prev => ({ ...prev, location: e.target.value }))}
-                  placeholder="e.g., Our main office, Remote, Field work in rural areas"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <Label htmlFor="city">City</Label>
-                  <Input
-                    id="city"
-                    value={formData.city}
-                    onChange={(e) => setFormData(prev => ({ ...prev, city: e.target.value }))}
-                    placeholder="e.g., Mumbai"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="state">State</Label>
-                  <Input
-                    id="state"
-                    value={formData.state_province}
-                    onChange={(e) => setFormData(prev => ({ ...prev, state_province: e.target.value }))}
-                    placeholder="e.g., Maharashtra"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="pincode">Pincode</Label>
-                  <Input
-                    id="pincode"
-                    value={formData.pincode}
-                    onChange={(e) => setFormData(prev => ({ ...prev, pincode: e.target.value }))}
-                    placeholder="e.g., 400001"
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Wages & Compensation */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <DollarSign className="mr-2" size={20} />
-                Service Pricing
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <Label htmlFor="min_wage">Minimum Rate (₹)</Label>
-                  <Input
-                    id="min_wage"
-                    type="number"
-                    value={formData.wage_info.min_amount}
-                    onChange={(e) => setFormData(prev => ({
-                      ...prev,
-                      wage_info: { ...prev.wage_info, min_amount: e.target.value }
-                    }))}
-                    placeholder="e.g., 15000"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="max_wage">Maximum Rate (₹)</Label>
-                  <Input
-                    id="max_wage"
-                    type="number"
-                    value={formData.wage_info.max_amount}
-                    onChange={(e) => setFormData(prev => ({
-                      ...prev,
-                      wage_info: { ...prev.wage_info, max_amount: e.target.value }
-                    }))}
-                    placeholder="e.g., 25000"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="payment_frequency">Payment Frequency</Label>
-                  <Select
-                    value={formData.wage_info.payment_frequency}
-                    onValueChange={(value) => setFormData(prev => ({
-                      ...prev,
-                      wage_info: { ...prev.wage_info, payment_frequency: value }
-                    }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {paymentFrequencies.map((freq) => (
-                        <SelectItem key={freq.value} value={freq.value}>
-                          {freq.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="negotiable"
-                  checked={formData.wage_info.negotiable}
-                  onCheckedChange={(checked) => setFormData(prev => ({
-                    ...prev,
-                    wage_info: { ...prev.wage_info, negotiable: checked as boolean }
-                  }))}
-                />
-                <Label htmlFor="negotiable">Pricing is negotiable</Label>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Experience Requirements */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Our Team Capabilities</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="team_capabilities">Team Experience & Capabilities</Label>
-                <Textarea
-                  id="team_capabilities"
-                  value={formData.experience_requirements.level}
-                  onChange={(e) => setFormData(prev => ({
-                    ...prev,
-                    experience_requirements: { ...prev.experience_requirements, level: e.target.value }
-                  }))}
-                  placeholder="Describe your team's experience, qualifications, certifications, and what makes them capable of delivering quality services..."
-                  rows={3}
-                />
-              </div>
-
-              <div>
-                <Label>Our Team Skills *</Label>
-                <p className="text-sm text-gray-600 mb-2">Add the skills and expertise your NGO team can provide</p>
-                <div className="flex flex-wrap gap-2 mb-2">
-                  {formData.skills_required.map((skill) => (
-                    <Badge key={skill} variant="secondary" className="pr-1">
-                      {skill}
-                      <button
-                        type="button"
-                        onClick={() => handleSkillRemove(skill, 'required')}
-                        className="ml-1 hover:bg-gray-200 rounded"
-                      >
-                        <X size={14} />
-                      </button>
-                    </Badge>
-                  ))}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {commonSkills.map((skill) => (
-                    <Button
-                      key={skill}
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleSkillAdd(skill, 'required')}
-                      className="h-8"
-                      disabled={formData.skills_required.includes(skill)}
-                    >
-                      <Plus size={14} className="mr-1" />
-                      {skill}
-                    </Button>
-                  ))}
-                </div>
-                {formData.skills_required.length === 0 && (
-                  <p className="text-sm text-red-500 mt-2">Please add at least one skill your team offers</p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Working Hours & Duration */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <Clock className="mr-2" size={20} />
-                Schedule & Duration
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="hours_per_week">Hours per Week</Label>
-                  <Input
-                    id="hours_per_week"
-                    type="number"
-                    value={formData.working_hours.hours_per_week}
-                    onChange={(e) => setFormData(prev => ({
-                      ...prev,
-                      working_hours: { ...prev.working_hours, hours_per_week: e.target.value }
-                    }))}
-                    placeholder="e.g., 40"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="duration_type">Duration</Label>
-                  <Select
-                    value={formData.duration.type}
-                    onValueChange={(value) => setFormData(prev => ({
-                      ...prev,
-                      duration: { ...prev.duration, type: value }
-                    }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ongoing">Ongoing</SelectItem>
-                      <SelectItem value="fixed">Fixed Duration</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {formData.duration.type === 'fixed' && (
-                <div>
-                  <Label htmlFor="duration_months">Duration (Months)</Label>
-                  <Input
-                    id="duration_months"
-                    type="number"
-                    value={formData.duration.duration_months}
-                    onChange={(e) => setFormData(prev => ({
-                      ...prev,
-                      duration: { ...prev.duration, duration_months: e.target.value }
-                    }))}
-                    placeholder="e.g., 6"
-                  />
-                </div>
-              )}
-
-              <div>
-                <Label htmlFor="schedule_details">Schedule Details</Label>
-                <Textarea
-                  id="schedule_details"
-                  value={formData.working_hours.schedule_details}
-                  onChange={(e) => setFormData(prev => ({
-                    ...prev,
-                    working_hours: { ...prev.working_hours, schedule_details: e.target.value }
-                  }))}
-                  placeholder="e.g., Monday to Friday, 9 AM to 5 PM"
-                  rows={2}
-                />
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="flexible"
-                  checked={formData.working_hours.flexible}
-                  onCheckedChange={(checked) => setFormData(prev => ({
-                    ...prev,
-                    working_hours: { ...prev.working_hours, flexible: checked as boolean }
-                  }))}
-                />
-                <Label htmlFor="flexible">Flexible working hours</Label>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Invite Individuals */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <Users className="mr-2" size={20} />
-                Assign Team Members *
-              </CardTitle>
-              <p className="text-sm text-gray-600">Select individuals from your NGO who will work on projects when hired</p>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="search_individuals">Search Team Members</Label>
-                <Input
-                  id="search_individuals"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Search for individuals to add to your service team..."
-                />
-              </div>
-
-              <div className="max-h-60 overflow-y-auto space-y-2">
-                {filteredIndividuals.map((individual) => (
-                  <div key={individual.id} className="flex items-center justify-between p-3 border rounded-lg">
-                    <div>
-                      <p className="font-medium">{individual.name}</p>
-                      <p className="text-sm text-gray-600">{individual.email}</p>
-                      {individual.location && (
-                        <p className="text-sm text-gray-500">{individual.location}</p>
-                      )}
-                    </div>
-                    <Checkbox
-                      checked={formData.invited_individuals.includes(individual.id)}
-                      onCheckedChange={() => handleIndividualInvite(individual.id)}
-                    />
-                  </div>
-                ))}
-              </div>
-
-              <div>
-                {formData.invited_individuals.length > 0 ? (
-                  <p className="text-sm text-green-600">
-                    ✓ {formData.invited_individuals.length} team member(s) assigned to this service
-                  </p>
-                ) : (
-                  <p className="text-sm text-red-500">
-                    Please assign at least one team member who will work on projects
-                  </p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Application Details */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Application Timeline</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="application_deadline">Application Deadline</Label>
-                  <Input
-                    id="application_deadline"
-                    type="date"
-                    value={formData.application_deadline}
-                    onChange={(e) => setFormData(prev => ({ ...prev, application_deadline: e.target.value }))}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="start_date">Expected Start Date</Label>
-                  <Input
-                    id="start_date"
-                    type="date"
-                    value={formData.start_date}
-                    onChange={(e) => setFormData(prev => ({ ...prev, start_date: e.target.value }))}
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Submit Button */}
-          <div className="flex justify-end space-x-4">
-            <Button type="button" variant="outline" onClick={() => router.back()}>
-              Cancel
+        <div className="max-w-3xl mx-auto p-6">
+          <div className="mb-8">
+            <Button variant="ghost" onClick={() => router.back()} className="mb-4 px-0 text-blue-600 hover:text-blue-700 hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0">
+              <ArrowLeft size={18} className="mr-2" />
+              Back
             </Button>
-            <Button type="submit" disabled={loading}>
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Creating...
-                </>
-              ) : (
-                'Create Service Offer'
-              )}
-            </Button>
+            <h1 className="text-3xl font-bold text-gray-900">Create Capability Offer</h1>
+            <p className="text-gray-600 mt-2">Publish what you can fund, supply, execute, or support.</p>
           </div>
-        </form>
+
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Capability Details</CardTitle>
+                <CardDescription>Define your execution capacity in a structured, match-ready way.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <Label htmlFor="title">Offer Title *</Label>
+                  <Input
+                    id="title"
+                    name="title"
+                    value={formData.title}
+                    onChange={handleInput}
+                    placeholder="e.g., Funding support for school infrastructure"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="description">Description *</Label>
+                  <Textarea
+                    id="description"
+                    name="description"
+                    value={formData.description}
+                    onChange={handleInput}
+                    placeholder="Explain your capability, limits, and engagement model."
+                    rows={4}
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 gap-4">
+                  <div>
+                    <Label htmlFor="offer_type">Offer Type *</Label>
+                    <Select
+                      value={formData.offer_type}
+                      onValueChange={(value) => handleSelect('offer_type', value as OfferType)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select offer type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {OFFER_TYPES.map((type) => (
+                          <SelectItem key={type.value} value={type.value}>
+                            {type.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="transaction_type">Offer Mode *</Label>
+                    <Select
+                      value={formData.transaction_type}
+                      onValueChange={(value) => handleSelect('transaction_type', value as TransactionType)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select offer mode" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {TRANSACTION_TYPES.map((type) => (
+                          <SelectItem key={type.value} value={type.value}>
+                            {type.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Offer Details</CardTitle>
+                <CardDescription>Provide details specific to the selected offer type.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {formData.transaction_type === 'sell' && (
+                    <div>
+                      <Label htmlFor="sell_amount">Amount (₹) *</Label>
+                      <Input
+                        id="sell_amount"
+                        name="sell_amount"
+                        type="number"
+                        min="0"
+                        value={formData.sell_amount}
+                        onChange={handleInput}
+                        placeholder="e.g., 25000"
+                        required
+                      />
+                    </div>
+                  )}
+
+                  {formData.transaction_type === 'rent' && (
+                    <div>
+                      <Label htmlFor="rent_per_day">Per Day Charge (₹) *</Label>
+                      <Input
+                        id="rent_per_day"
+                        name="rent_per_day"
+                        type="number"
+                        min="0"
+                        value={formData.rent_per_day}
+                        onChange={handleInput}
+                        placeholder="e.g., 1500"
+                        required
+                      />
+                    </div>
+                  )}
+
+                </div>
+
+                {formData.offer_type === 'financial' && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="md:col-span-2">
+                      <Label htmlFor="location_scope">Location Scope *</Label>
+                      <Input
+                        id="location_scope"
+                        name="location_scope"
+                        value={formData.location_scope}
+                        onChange={handleInput}
+                        placeholder="e.g., India, North India, NCR"
+                        required
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label htmlFor="conditions">Conditions</Label>
+                      <Textarea
+                        id="conditions"
+                        name="conditions"
+                        value={formData.conditions}
+                        onChange={handleInput}
+                        placeholder="Mention any disbursal conditions or eligibility constraints"
+                        rows={3}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {formData.offer_type === 'material' && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="item">Item Name *</Label>
+                      <Input
+                        id="item"
+                        name="item"
+                        value={formData.item}
+                        onChange={handleInput}
+                        placeholder="e.g., Blankets, School Kits, Medical Supplies"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="quantity">Quantity *</Label>
+                      <Input
+                        id="quantity"
+                        name="quantity"
+                        type="number"
+                        min="0"
+                        value={formData.quantity}
+                        onChange={handleInput}
+                        placeholder="e.g., 1000"
+                        required
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label htmlFor="delivery_scope">Delivery Scope *</Label>
+                      <Input
+                        id="delivery_scope"
+                        name="delivery_scope"
+                        value={formData.delivery_scope}
+                        onChange={handleInput}
+                        placeholder="e.g., North India, NCR, Pan India"
+                        required
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {formData.offer_type === 'service' && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="skill">Skill Offered *</Label>
+                      <Input
+                        id="skill"
+                        name="skill"
+                        value={formData.skill}
+                        onChange={handleInput}
+                        placeholder="e.g., Legal Advisory, Content Design, Medical Assistance"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="capacity">Capacity *</Label>
+                      <Input
+                        id="capacity"
+                        name="capacity"
+                        value={formData.capacity}
+                        onChange={handleInput}
+                        placeholder="e.g., 10 volunteers"
+                        required
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label htmlFor="duration">Duration *</Label>
+                      <Input
+                        id="duration"
+                        name="duration"
+                        value={formData.duration}
+                        onChange={handleInput}
+                        placeholder="e.g., 3 months"
+                        required
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {formData.offer_type === 'infrastructure' && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="scope">Infrastructure Scope *</Label>
+                      <Input
+                        id="scope"
+                        name="scope"
+                        value={formData.scope}
+                        onChange={handleInput}
+                        placeholder="e.g., Construction"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="capacity">Capacity *</Label>
+                      <Input
+                        id="capacity"
+                        name="capacity"
+                        value={formData.capacity}
+                        onChange={handleInput}
+                        placeholder="e.g., 2 schools"
+                        required
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <Label htmlFor="budget_range">Budget Range *</Label>
+                      <Input
+                        id="budget_range"
+                        name="budget_range"
+                        value={formData.budget_range}
+                        onChange={handleInput}
+                        placeholder="e.g., Rs 10L to Rs 20L"
+                        required
+                      />
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <div className="flex gap-4">
+              <Button type="submit" disabled={loading} className="flex-1">
+                {loading ? 'Creating...' : 'Create Capability Offer'}
+              </Button>
+              <Button type="button" variant="outline" asChild>
+                <Link href="/service-offers">Cancel</Link>
+              </Button>
+            </div>
+          </form>
+        </div>
       </div>
-    </div>
     </ProtectedRoute>
   )
 }

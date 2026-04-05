@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle2, Building2, Heart } from 'lucide-react';
+import { Building2, Heart } from 'lucide-react';
+import { VerificationBadge } from '@/components/verification-badge';
 import { formatDistanceToNow } from 'date-fns';
 
 interface Verification {
@@ -83,7 +85,11 @@ export function RecentVerifications() {
             <p className="text-sm text-gray-500">No recent verifications</p>
           ) : (
             verifications.map((verification) => (
-              <div key={verification.id} className="flex items-center gap-3 pb-3 border-b last:border-0 last:pb-0">
+              <Link
+                key={verification.id}
+                href={`/profile/${verification.id}`}
+                className="group flex items-center gap-3 pb-3 border-b last:border-0 last:pb-0 transition-colors"
+              >
                 <Avatar className="w-10 h-10">
                   <AvatarImage src={verification.profile_image} alt={verification.name} />
                   <AvatarFallback className="bg-gradient-to-br from-green-500 to-teal-600 text-white">
@@ -92,13 +98,16 @@ export function RecentVerifications() {
                 </Avatar>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium text-black truncate">
+                    <p className="text-sm font-medium text-black truncate transition-colors group-hover:text-blue-600">
                       {verification.name}
                     </p>
-                    <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+                    <VerificationBadge status="verified" size="sm" showText={false} />
                   </div>
                   <div className="flex items-center gap-2 mt-1">
-                    <Badge variant="secondary" className="text-xs">
+                    <Badge
+                      variant="outline"
+                      className="text-xs bg-transparent border-blue-300 text-blue-700 hover:bg-transparent"
+                    >
                       {verification.type === 'NGO' ? (
                         <><Heart className="w-3 h-3 mr-1" /> NGO</>
                       ) : (
@@ -110,7 +119,7 @@ export function RecentVerifications() {
                     </span>
                   </div>
                 </div>
-              </div>
+              </Link>
             ))
           )}
         </div>

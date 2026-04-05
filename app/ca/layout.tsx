@@ -3,6 +3,7 @@
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
 
@@ -140,7 +141,17 @@ export default function CALayout({ children }: { children: React.ReactNode }) {
       <footer className="bg-blue-600 border-t border-blue-700 mt-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between text-sm text-blue-100">
-            <p>© 2026 Navadrishti. CA Verification System.</p>
+            <div className="flex items-center gap-2">
+              <span>© 2026</span>
+              <Image
+                src="/photos/small-logo.svg"
+                alt="Navadrishti logo"
+                width={18}
+                height={18}
+                className="h-[18px] w-[18px]"
+              />
+              <p>Navadrishti. CA Verification System.</p>
+            </div>
             <div className="flex items-center space-x-1">
               <span>ICAI Empanelled Portal</span>
             </div>

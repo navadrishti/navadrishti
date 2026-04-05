@@ -14,7 +14,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const { login, error, loading, clearError, user } = useAuth();
+  const [submitting, setSubmitting] = useState(false);
+  const { login, error, clearError, user } = useAuth();
   const router = useRouter();
 
   // Add effect to redirect user when successfully logged in
@@ -40,9 +41,14 @@ export default function LoginPage() {
       return;
     }
     
-    // Call login function from auth context
-    await login(email, password);
-    // Removed the immediate redirect - now handled by the useEffect above
+    setSubmitting(true);
+    try {
+      // Call login function from auth context
+      await login(email, password);
+      // Removed the immediate redirect - now handled by the useEffect above
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -101,9 +107,9 @@ export default function LoginPage() {
             <Button 
               type="submit" 
               className="w-full transition-all duration-300 hover:scale-[1.02] active:scale-95" 
-              disabled={loading}
+                disabled={submitting}
             >
-              {loading ? (
+              {submitting ? (
                 <span className="flex items-center gap-2">
                   <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
                   Signing In...

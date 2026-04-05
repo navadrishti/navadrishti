@@ -18,13 +18,28 @@ import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 interface ServiceOffer {
   id: number
   title: string
   description: string
   category: string
+  offer_type?: 'financial' | 'material' | 'service' | 'infrastructure' | string
   location: string
+  city?: string
+  state_province?: string
+  pincode?: string
+  amount?: number
+  location_scope?: string
+  conditions?: string
+  item?: string
+  quantity?: number
+  delivery_scope?: string
+  skill?: string
+  capacity?: number
+  duration?: string
+  scope?: string
   images?: string[]
   tags?: string[]
   price_amount: number
@@ -33,6 +48,9 @@ interface ServiceOffer {
   contact_info: string
   ngo_name: string
   ngo_id: number
+  provider_name?: string
+  provider_type?: 'ngo' | 'company' | 'individual' | string
+  provider_profile_image?: string | null
   status: 'active' | 'paused' | 'completed' | 'cancelled'
   created_at: string
   updated_at: string
@@ -41,7 +59,7 @@ interface ServiceOffer {
 interface ClientApplication {
   id: number
   client_id: number
-  client_type: 'individual' | 'company'
+  client_type: 'individual' | 'company' | 'ngo'
   message: string
   status: 'pending' | 'accepted' | 'rejected' | 'active' | 'completed' | 'cancelled'
   created_at: string
@@ -64,7 +82,7 @@ export default function ServiceOfferDetailPage() {
 
   const offerId = params.id as string
   const isAuthenticated = !!(user && token)
-  const canApplyToOffer = user?.user_type === 'individual'
+  const canApplyToOffer = !!user && user.id !== offer?.ngo_id
 
   useEffect(() => {
     if (offerId) {
@@ -77,7 +95,7 @@ export default function ServiceOfferDetailPage() {
 
   const fetchOfferDetails = async () => {
     try {
-      const response = await fetch(`/api/service-offers/${offerId}`)
+      const response = await fetch(`/api/service-offers/${offerId}`, { cache: 'no-store' })
       if (response.ok) {
         const data = await response.json()
         setOffer(data)
@@ -124,10 +142,10 @@ export default function ServiceOfferDetailPage() {
       return
     }
 
-    if (user.user_type !== 'individual') {
+    if (offer && user.id === offer.ngo_id) {
       toast({
-        title: "Invalid User Type",
-        description: "Only individuals can apply to service offers",
+        title: "Not Allowed",
+        description: "You cannot respond to your own capability offer",
         variant: "destructive"
       })
       return
@@ -222,50 +240,44 @@ export default function ServiceOfferDetailPage() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
         <Header />
-        <div className="container mx-auto px-4 py-8 max-w-4xl">
-          {/* Back button skeleton */}
-          <div className="mb-8">
-            <div className="h-10 bg-gray-200 rounded-md w-32 animate-pulse"></div>
+        <div className="mx-auto max-w-7xl px-4 py-8">
+          <div className="mb-6">
+            <div className="h-5 w-44 rounded bg-gray-200 animate-pulse"></div>
           </div>
 
-          {/* Main content skeleton */}
-          <div className="grid gap-8 md:grid-cols-3">
-            {/* Main content */}
-            <div className="md:col-span-2 space-y-6">
-              <SkeletonBigBox />
-              
-              {/* Details section */}
-              <div className="rounded-lg border bg-white p-6 space-y-4">
-                <SkeletonHeader />
-                <SkeletonTextLines lines={4} />
-                
-                {/* Info items */}
-                <div className="grid gap-4 md:grid-cols-2 mt-6">
-                  {Array.from({ length: 6 }).map((_, i) => (
-                    <SkeletonAvatarText key={i} />
-                  ))}
-                </div>
-              </div>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            <div className="lg:col-span-4">
+              <Card className="lg:sticky lg:top-20">
+                <CardHeader>
+                  <div className="h-6 w-40 rounded bg-gray-200 animate-pulse" />
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="h-28 w-28 md:h-32 md:w-32 rounded-lg bg-gray-200 animate-pulse mx-auto" />
+                  <div className="space-y-2">
+                    <div className="h-6 w-3/4 rounded bg-gray-200 animate-pulse" />
+                    <div className="h-4 w-1/2 rounded bg-gray-200 animate-pulse" />
+                  </div>
+                  <div className="space-y-2">
+                    <div className="h-4 w-full rounded bg-gray-200 animate-pulse" />
+                    <div className="h-4 w-10/12 rounded bg-gray-200 animate-pulse" />
+                  </div>
+                </CardContent>
+              </Card>
             </div>
 
-            {/* Sidebar */}
-            <div className="space-y-6">
-              <div className="rounded-lg border bg-white p-6">
-                <SkeletonAvatarText />
-                <div className="mt-4 space-y-3">
-                  <SkeletonTextLines lines={2} />
-                  <div className="h-10 bg-blue-200 rounded-md w-full animate-pulse"></div>
-                </div>
-              </div>
-              
-              <div className="rounded-lg border bg-white p-6">
-                <div className="h-6 bg-gray-200 rounded w-24 animate-pulse mb-4"></div>
-                <div className="space-y-3">
-                  {Array.from({ length: 3 }).map((_, i) => (
-                    <SkeletonAvatarText key={i} />
-                  ))}
-                </div>
-              </div>
+            <div className="lg:col-span-8">
+              <Card>
+                <CardHeader>
+                  <div className="h-6 w-64 rounded bg-gray-200 animate-pulse" />
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid w-full grid-cols-2 gap-2">
+                    <div className="h-10 rounded bg-gray-200 animate-pulse" />
+                    <div className="h-10 rounded bg-gray-200 animate-pulse" />
+                  </div>
+                  <SkeletonBigBox />
+                </CardContent>
+              </Card>
             </div>
           </div>
         </div>
@@ -277,7 +289,7 @@ export default function ServiceOfferDetailPage() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
         <Header />
-        <div className="container mx-auto px-4 py-8">
+        <div className="mx-auto max-w-7xl px-4 py-8">
           <Alert>
             <XCircle className="h-4 w-4" />
             <AlertDescription>
@@ -293,54 +305,116 @@ export default function ServiceOfferDetailPage() {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       <Header />
       
-      <div className="container mx-auto px-4 py-8">
+      <div className="mx-auto max-w-7xl px-4 py-8">
         <div className="mb-6">
-          <Link href="/service-offers" className="inline-flex items-center text-blue-600 hover:text-blue-800">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Service Offers
-          </Link>
+          <Button variant="ghost" onClick={() => router.back()} className="w-full justify-start px-0 text-blue-600 hover:text-blue-800 hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0 sm:w-auto">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back
+          </Button>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Main Content */}
-          <div className="lg:col-span-2">
-            <ServiceDetails
-              id={offer.id}
-              title={offer.title}
-              description={offer.description}
-              category={offer.category}
-              location={offer.location}
-              images={offer.images}
-              ngo_name={offer.ngo_name}
-              ngo_id={offer.ngo_id}
-              provider={offer.ngo_name}
-              providerType="ngo"
-              verified={true}
-              tags={offer.tags}
-              created_at={offer.created_at}
-              price_amount={offer.price_amount}
-              price_type={offer.price_type}
-              price_description={offer.price_description}
-              status={offer.status}
-              contact_info={offer.contact_info}
-              type="offer"
-            />
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          <div className="lg:col-span-4">
+            <Card className="lg:sticky lg:top-20">
+              <CardHeader>
+                <CardTitle>Service Provider</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="h-28 w-28 md:h-32 md:w-32 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden mx-auto">
+                  {offer.provider_profile_image ? (
+                    <img
+                      src={offer.provider_profile_image}
+                      alt={offer.provider_name || offer.ngo_name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <Building className="h-12 w-12 text-gray-400" />
+                  )}
+                </div>
+
+                <div>
+                  <h3 className="text-lg font-semibold">{offer.provider_name || offer.ngo_name}</h3>
+                  <p className="text-sm text-gray-500 capitalize">{offer.provider_type || 'ngo'}</p>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Coverage</p>
+                    <p>{offer.location_scope || offer.location || 'Not specified'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Contact</p>
+                    <p className="break-words">{offer.contact_info || 'Not specified'}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
 
-          {/* Application Sidebar */}
-          <div className="lg:col-span-1">
+          <div className="lg:col-span-8">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <MessageSquare className="h-5 w-5" />
-                  Apply for This Offer
-                </CardTitle>
+                <CardTitle>Capability Details & Response</CardTitle>
               </CardHeader>
-              
+
               <CardContent>
+                <Tabs defaultValue="details" className="w-full">
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="details">Capability Details</TabsTrigger>
+                    <TabsTrigger value="respond">Respond</TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="details" className="mt-4">
+                    <ServiceDetails
+                      id={offer.id}
+                      title={offer.title}
+                      description={offer.description}
+                      category={offer.category}
+                      location={offer.location}
+                      images={offer.images}
+                      ngo_name={offer.provider_name || offer.ngo_name}
+                      ngo_id={offer.ngo_id}
+                      provider={offer.provider_name || offer.ngo_name}
+                      providerType={offer.provider_type || 'ngo'}
+                      provider_profile_image={offer.provider_profile_image}
+                      verified={true}
+                      tags={offer.tags}
+                      created_at={offer.created_at}
+                      price_amount={offer.price_amount}
+                      price_type={offer.price_type}
+                      price_description={offer.price_description}
+                      transaction_type={offer.transaction_type}
+                      status={offer.status}
+                      contact_info={offer.contact_info}
+                      offer_type={offer.offer_type}
+                      amount={offer.amount}
+                      location_scope={offer.location_scope}
+                      conditions={offer.conditions}
+                      item={offer.item}
+                      quantity={offer.quantity}
+                      delivery_scope={offer.delivery_scope}
+                      skill={offer.skill}
+                      capacity={offer.capacity}
+                      duration={offer.duration}
+                      scope={offer.scope}
+                      type="offer"
+                      hideSidebar
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="respond" className="mt-4">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <MessageSquare className="h-5 w-5" />
+                          Respond to This Capability
+                        </CardTitle>
+                      </CardHeader>
+
+                      <CardContent>
                 {!isAuthenticated ? (
                   <div className="text-center space-y-4">
-                    <p className="text-muted-foreground">You need to be logged in to apply for this service offer.</p>
+                    <p className="text-muted-foreground">You need to be logged in to respond to this capability offer.</p>
                     <Button asChild className="w-full">
                       <Link href="/login">Log In</Link>
                     </Button>
@@ -349,7 +423,7 @@ export default function ServiceOfferDetailPage() {
                   <Alert>
                     <XCircle className="h-4 w-4" />
                     <AlertDescription>
-                      Only individuals can apply to service offers.
+                      Offer owners cannot respond to their own capability listing.
                     </AlertDescription>
                   </Alert>
                 ) : user && user.verification_status !== 'verified' ? (
@@ -409,14 +483,14 @@ export default function ServiceOfferDetailPage() {
                   <div className="space-y-4">
                     <div className="flex items-center gap-2 p-2 bg-muted rounded">
                       <User className="h-4 w-4" />
-                      <span className="text-sm">Applying as Individual</span>
+                      <span className="text-sm">Responding as {user?.user_type}</span>
                     </div>
                     
                     <div className="space-y-2">
                       <Label htmlFor="message">Application Message *</Label>
                       <Textarea
                         id="message"
-                        placeholder="Tell the NGO why you are a good fit for this service opportunity..."
+                        placeholder="Tell the provider why you are a good fit for this service opportunity..."
                         value={applicationMessage}
                         onChange={(e) => setApplicationMessage(e.target.value)}
                         rows={4}
@@ -479,6 +553,10 @@ export default function ServiceOfferDetailPage() {
                     </Button>
                   </div>
                 )}
+                      </CardContent>
+                    </Card>
+                  </TabsContent>
+                </Tabs>
               </CardContent>
             </Card>
           </div>

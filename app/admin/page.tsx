@@ -23,11 +23,16 @@ interface ServiceOffer {
     email: string;
     profile_image: string | null;
   };
-  location: {
-    state: string;
-    city: string;
-    area: string;
-  };
+  location:
+    | {
+        state?: string | null;
+        city?: string | null;
+        area?: string | null;
+      }
+    | string
+    | null;
+  city?: string | null;
+  state_province?: string | null;
   wage_info: {
     type: 'hourly' | 'daily' | 'monthly' | 'fixed';
     min_amount: number;
@@ -58,6 +63,26 @@ export default function AdminPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [autoRejectingExpired, setAutoRejectingExpired] = useState(false);
+
+  const getOfferLocation = (offer: ServiceOffer) => {
+    const rawLocation = offer.location;
+    const locationObject =
+      rawLocation && typeof rawLocation === 'object' ? rawLocation : null;
+    const locationString = typeof rawLocation === 'string' ? rawLocation.trim() : '';
+
+    const city = (locationObject?.city || offer.city || '').trim();
+    const state = (locationObject?.state || offer.state_province || '').trim();
+    const area = (locationObject?.area || '').trim();
+
+    const short = [city, state].filter(Boolean).join(', ');
+    const full = [area, city, state].filter(Boolean).join(', ');
+
+    return {
+      short: short || locationString || 'Location not provided',
+      full: full || short || locationString || 'Location not provided',
+      searchable: [area, city, state, locationString].filter(Boolean).join(' ').toLowerCase()
+    };
+  };
 
   // Check for admin token on component mount
   useEffect(() => {
@@ -217,10 +242,11 @@ export default function AdminPage() {
   // Filter offers based on active tab and search
   const filteredOffers = serviceOffers.filter(offer => {
     const matchesTab = offer.admin_status === activeTab;
+    const location = getOfferLocation(offer);
     const matchesSearch = searchQuery === '' || 
       offer.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       offer.organization.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      offer.location.city.toLowerCase().includes(searchQuery.toLowerCase());
+      location.searchable.includes(searchQuery.toLowerCase());
     
     return matchesTab && matchesSearch;
   });
@@ -474,7 +500,10 @@ export default function AdminPage() {
                 </CardContent>
               </Card>
             ) : (
-              filteredOffers.map((offer) => (
+              filteredOffers.map((offer) => {
+                const location = getOfferLocation(offer)
+
+                return (
                 <Card key={offer.id} className="hover:shadow-md transition-shadow">
                   <CardHeader>
                     <div className="flex items-start justify-between">
@@ -503,7 +532,7 @@ export default function AdminPage() {
                           </div>
                           <div className="flex items-center gap-1">
                             <MapPin className="h-4 w-4" />
-                            {offer.location.city}, {offer.location.state}
+                            {location.short}
                           </div>
                           <div className="flex items-center gap-1">
                             <Calendar className="h-4 w-4" />
@@ -555,7 +584,8 @@ export default function AdminPage() {
                     )}
                   </CardContent>
                 </Card>
-              ))
+                )
+              })
             )}
           </TabsContent>
         ))}
@@ -582,7 +612,7 @@ export default function AdminPage() {
                   <div className="space-y-2">
                     <div><span className="font-medium">Organization:</span> {selectedOffer.organization.name}</div>
                     <div><span className="font-medium">Email:</span> {selectedOffer.organization.email}</div>
-                    <div><span className="font-medium">Location:</span> {selectedOffer.location.area}, {selectedOffer.location.city}, {selectedOffer.location.state}</div>
+                    <div><span className="font-medium">Location:</span> {getOfferLocation(selectedOffer).full}</div>
                     <div><span className="font-medium">Employment Type:</span> {selectedOffer.employment_type}</div>
                     <div><span className="font-medium">Duration:</span> {selectedOffer.duration}</div>
                   </div>
