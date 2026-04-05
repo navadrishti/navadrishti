@@ -260,9 +260,9 @@ export default function SettingsPage() {
         <Header />
         <main className="flex-1 px-6 py-8 md:px-10">
           <div className="text-center py-8">
-            <h1 className="text-2xl font-bold mb-4">Sign In Required</h1>
+            <h1 className="text-2xl font-bold mb-4">Login Required</h1>
             <Link href="/login">
-              <Button>Sign In</Button>
+              <Button>Log In</Button>
             </Link>
           </div>
         </main>

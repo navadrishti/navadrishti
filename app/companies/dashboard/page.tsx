@@ -487,12 +487,14 @@ function CompanyDashboardContent() {
                             placeholder="Minimum 8 characters"
                           />
                         </div>
-                        <div className="md:col-span-3 flex items-center gap-3">
-                          <Button type="submit" disabled={creatingCompanyCA}>
+                        <div className="md:col-span-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+                          <Button type="submit" disabled={creatingCompanyCA} className="w-full sm:w-auto">
                             {creatingCompanyCA ? 'Creating...' : 'Create Company CA Credentials'}
                           </Button>
-                          <Link href="/companies/ca/login">
-                            <Button type="button" variant="outline">Open Company CA Panel Login</Button>
+                          <Link href="/companies/ca/login" className="w-full sm:w-auto">
+                            <Button type="button" variant="outline" className="h-auto w-full whitespace-normal text-center sm:w-auto">
+                              Open Company CA Panel Login
+                            </Button>
                           </Link>
                         </div>
                       </form>

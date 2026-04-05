@@ -177,16 +177,15 @@ export default function ProtectedRoute({
       <div className="flex min-h-screen items-center justify-center">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <Shield className="mx-auto h-12 w-12 text-muted-foreground" />
-            <CardTitle>Sign In Required</CardTitle>
+            <CardTitle>Login Required</CardTitle>
             <CardDescription>
-              Please sign in to access this page
+              Please log in to access this page
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Link href="/login">
               <Button className="w-full">
-                Sign In
+                Log In
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </Link>
