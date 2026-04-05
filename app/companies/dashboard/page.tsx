@@ -378,17 +378,17 @@ function CompanyDashboardContent() {
                         <HeartHandshake className="h-12 w-12 mx-auto mb-4 opacity-50" />
                         <p className="text-lg font-medium mb-2">Service Hiring Coming Soon</p>
                         <p className="text-sm mb-4">Hire services from verified NGOs for your CSR initiatives and community programs.</p>
-                        <Link href="/service-offers">
-                          <Button variant="outline">Browse Service Offers</Button>
+                        <Link href="/service-offers" className="block w-full sm:inline-block sm:w-auto">
+                          <Button variant="outline" className="h-auto w-full whitespace-normal text-center sm:w-auto">Browse Service Offers</Button>
                         </Link>
                       </div>
                     </div>
                   </TabsContent>
 
                   <TabsContent value="csr-projects" className="mt-4 space-y-4">
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <h3 className="font-medium">Active CSR Projects</h3>
-                      <Button variant="outline" size="sm" onClick={fetchCSRProjects}>Refresh</Button>
+                      <Button variant="outline" size="sm" onClick={fetchCSRProjects} className="w-full sm:w-auto">Refresh</Button>
                     </div>
 
                     {loadingCSRProjects ? (
@@ -516,9 +516,9 @@ function CompanyDashboardContent() {
                     </div>
 
                     <div className="rounded-md border bg-white p-4">
-                      <div className="flex items-center justify-between">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <h4 className="font-semibold text-slate-900">Existing Active Company CA Accounts</h4>
-                        <Button variant="outline" size="sm" onClick={fetchCompanyCAAccounts}>Refresh</Button>
+                        <Button variant="outline" size="sm" onClick={fetchCompanyCAAccounts} className="w-full sm:w-auto">Refresh</Button>
                       </div>
                       {loadingCompanyCAAccounts ? (
                         <p className="mt-3 text-sm text-slate-600">Loading accounts...</p>
@@ -528,15 +528,16 @@ function CompanyDashboardContent() {
                         <div className="mt-3 space-y-2">
                           {activeCompanyCAAccounts.map((account: any) => (
                             <div key={account.id} className="rounded-md border bg-slate-50 p-3 text-sm">
-                              <div className="flex items-center justify-between">
+                              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                 <p className="font-medium text-slate-900">{account.users?.name || 'Company CA'}</p>
                                 <Badge variant="outline">{account.status}</Badge>
                               </div>
                               <p className="text-slate-600">{account.users?.email || 'No email'}</p>
-                              <div className="mt-2 flex items-center gap-2">
+                              <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
                                 <Button
                                   variant="outline"
                                   size="sm"
+                                  className="w-full sm:w-auto"
                                   onClick={() => updateCompanyCAStatus(String(account.id ?? ''), 'inactive')}
                                 >
                                   Deactivate
@@ -553,15 +554,16 @@ function CompanyDashboardContent() {
                           <div className="mt-3 space-y-2">
                             {inactiveCompanyCAAccounts.map((account: any) => (
                               <div key={account.id} className="rounded-md border bg-slate-50 p-3 text-sm">
-                                <div className="flex items-center justify-between">
+                                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                   <p className="font-medium text-slate-900">{account.users?.name || 'Company CA'}</p>
                                   <Badge variant="outline">{account.status}</Badge>
                                 </div>
                                 <p className="text-slate-600">{account.users?.email || 'No email'}</p>
-                                <div className="mt-2 flex items-center gap-2">
+                                <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
                                   <Button
                                     variant="outline"
                                     size="sm"
+                                    className="w-full sm:w-auto"
                                     onClick={() => updateCompanyCAStatus(String(account.id ?? ''), 'active')}
                                   >
                                     Activate
