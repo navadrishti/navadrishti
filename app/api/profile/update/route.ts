@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createClient } from '@supabase/supabase-js';
 import { verifyToken } from '@/lib/auth';
-import { mapDedicatedColumnsFromIncomingProfile, stripDedicatedProfileData, type AppUserType } from '@/lib/profile-storage';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -77,7 +76,7 @@ export async function POST(request: NextRequest) {
       // Get current profile_data first
       const { data: currentUser, error: fetchError } = await supabase
         .from('users')
-        .select('profile_data, user_type')
+        .select('profile_data')
         .eq('id', userId)
         .single();
 
@@ -90,12 +89,8 @@ export async function POST(request: NextRequest) {
       }
 
       const currentProfileData = currentUser?.profile_data || {};
-      const incomingProfileData = profile_data;
-      const mergedProfileData = { ...currentProfileData, ...incomingProfileData };
-      const userType = ((currentUser?.user_type || 'individual') as AppUserType);
-
-      Object.assign(updateData, mapDedicatedColumnsFromIncomingProfile(userType, incomingProfileData));
-      updateData.profile_data = stripDedicatedProfileData(userType, mergedProfileData);
+      const newProfileData = { ...currentProfileData, ...profile_data };
+      updateData.profile_data = newProfileData;
     }
 
     // Only proceed if there's data to update
@@ -192,7 +187,7 @@ export async function PUT(request: NextRequest) {
     // First try with just profile_data
     let { data: currentUser, error: fetchError } = await supabase
       .from('users')
-      .select('profile_data, user_type')
+      .select('profile_data')
       .eq('id', userId)
       .single();
 
@@ -211,7 +206,7 @@ export async function PUT(request: NextRequest) {
         );
       }
       
-      currentUser = { profile_data: {}, user_type: 'individual' };
+      currentUser = { profile_data: {} };
     }
 
 
@@ -229,14 +224,10 @@ export async function PUT(request: NextRequest) {
     if (skills !== undefined) updatedProfileData.skills = skills;
     if (interests !== undefined) updatedProfileData.interests = interests;
     
-    // Ensure profile_data stays deduplicated from dedicated users columns.
-    const userType = ((currentUser?.user_type || 'individual') as AppUserType);
-    const sanitizedProfileData = stripDedicatedProfileData(userType, updatedProfileData);
-
     // Prepare final update data
     const finalUpdateData = {
       ...directUserFields,
-      profile_data: sanitizedProfileData,
+      profile_data: updatedProfileData,
       updated_at: new Date().toISOString()
     };
     

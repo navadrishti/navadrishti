@@ -1,7 +1,6 @@
 import { NextRequest } from 'next/server';
 import { supabase } from '@/lib/db';
 import { isCompanyCAUser } from '@/lib/company-ca-visibility';
-import { stripDedicatedProfileData } from '@/lib/profile-storage';
 
 interface RouteParams {
   params: Promise<{ userId: string }>
@@ -43,34 +42,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         email_verified,
         phone_verified,
         profile_data,
-        industry,
-        website,
-        company_size,
-        ngo_size,
-        ngo_registration_type,
-        ngo_registration_number,
-        ngo_registration_date,
-        ngo_pan_number,
-        ngo_12a_number,
-        ngo_80g_number,
-        ngo_csr1_registration_number,
-        ngo_fcra_applicable,
-        ngo_fcra_number,
-        ngo_bank_details,
-        ngo_sectors_schedule_vii,
-        ngo_past_projects,
-        ngo_geographic_coverage,
-        ngo_execution_capacity,
-        ngo_team_strength,
-        company_cin_number,
-        company_pan_number,
-        company_net_worth,
-        company_turnover,
-        company_net_profit,
-        company_csr_vision,
-        company_focus_areas_schedule_vii,
-        company_implementation_model,
-        company_governance_mechanism,
         created_at
       `)
       .eq('id', parsedUserId)
@@ -143,11 +114,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       );
     };
 
-    const sanitizedProfileData = stripDedicatedProfileData(
-      userResult.user_type,
-      userResult.profile_data || {}
-    );
-
     // Format the response with available profile data
     const formattedProfile = {
       ...userResult,
@@ -159,8 +125,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       interests: [],
       website: null,
       portfolio: [],
-      // Include only non-dedicated attributes in profile_data.
-      profile_data: sanitizedProfileData,
+      // Include profile_data for structured profile attributes.
+      profile_data: userResult.profile_data || {},
       verification_status: verificationStatus,
       verification_details: verificationDetails
     };
