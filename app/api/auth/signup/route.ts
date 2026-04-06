@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { hashPassword, generateToken } from '@/lib/auth';
-import { stripDedicatedProfileData } from '@/lib/profile-storage';
 
 const parseNumeric = (value: unknown): number | null => {
   if (value === null || value === undefined) return null;
@@ -22,15 +21,6 @@ const parseInteger = (value: unknown): number | null => {
   if (!match) return null;
   const parsed = Number(match[0]);
   return Number.isFinite(parsed) ? parsed : null;
-};
-
-const firstNonEmptyString = (...values: unknown[]): string | null => {
-  for (const value of values) {
-    if (typeof value === 'string' && value.trim().length > 0) {
-      return value.trim();
-    }
-  }
-  return null;
 };
 
 const hasMeaningfulValue = (value: unknown): boolean => {
@@ -173,8 +163,6 @@ export async function POST(req: NextRequest) {
     // Hash password
     const hashedPassword = await hashPassword(password);
     
-    const profileDataForStorage = stripDedicatedProfileData(user_type, profile);
-
     // Create user with profile data
     const userData = {
       email,
@@ -190,53 +178,7 @@ export async function POST(req: NextRequest) {
       state_province,
       pincode,
       country,
-      // Existing top-level profile fields already present on users
-      industry: typeof profile.industry === 'string' ? profile.industry : null,
-      website: typeof profile.website === 'string' ? profile.website : null,
-      company_size: typeof profile.company_size === 'string' ? profile.company_size : null,
-      ngo_size: typeof profile.ngo_size === 'string' ? profile.ngo_size : null,
-
-      // NGO registration fields (new users columns)
-      ngo_registration_type: firstNonEmptyString(profile.ngo_registration_type, profile.registration_type),
-      ngo_registration_number: firstNonEmptyString(profile.ngo_registration_number, profile.registration_number),
-      ngo_registration_date: typeof firstNonEmptyString(profile.registration_date) === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(firstNonEmptyString(profile.registration_date) || '')
-        ? firstNonEmptyString(profile.registration_date)
-        : null,
-      ngo_pan_number: firstNonEmptyString(profile.ngo_pan_number, profile.pan_number),
-      ngo_12a_number: firstNonEmptyString(profile.twelve_a_number),
-      ngo_80g_number: firstNonEmptyString(profile.eighty_g_number),
-      ngo_csr1_registration_number: firstNonEmptyString(profile.csr1_registration_number),
-      ngo_fcra_applicable: Boolean(profile.ngo_fcra_applicable),
-      ngo_fcra_number: firstNonEmptyString(profile.ngo_fcra_number, profile.fcra_number),
-      ngo_bank_details: typeof profile.bank_details === 'string' && profile.bank_details.trim().length > 0
-        ? { summary: profile.bank_details }
-        : (typeof profile.bank_details === 'object' && profile.bank_details !== null ? profile.bank_details : {}),
-      ngo_sectors_schedule_vii: typeof profile.sectors_schedule_vii === 'string' && profile.sectors_schedule_vii.trim().length > 0
-        ? [profile.sectors_schedule_vii]
-        : (Array.isArray(profile.sectors_schedule_vii) ? profile.sectors_schedule_vii : []),
-      ngo_past_projects: typeof profile.past_projects === 'string' && profile.past_projects.trim().length > 0
-        ? [profile.past_projects]
-        : (Array.isArray(profile.past_projects) ? profile.past_projects : []),
-      ngo_geographic_coverage: typeof profile.geographic_coverage === 'string' && profile.geographic_coverage.trim().length > 0
-        ? [profile.geographic_coverage]
-        : (Array.isArray(profile.geographic_coverage) ? profile.geographic_coverage : []),
-      ngo_execution_capacity: firstNonEmptyString(profile.execution_capacity),
-      ngo_team_strength: parseInteger(profile.team_strength),
-
-      // Company registration fields (new users columns)
-      company_cin_number: firstNonEmptyString(profile.company_cin_number, profile.cin_number),
-      company_pan_number: firstNonEmptyString(profile.company_pan_number, profile.pan_number),
-      company_net_worth: parseNumeric(profile.net_worth),
-      company_turnover: parseNumeric(profile.turnover),
-      company_net_profit: parseNumeric(profile.net_profit),
-      company_csr_vision: firstNonEmptyString(profile.csr_vision),
-      company_focus_areas_schedule_vii: typeof profile.focus_areas_schedule_vii === 'string' && profile.focus_areas_schedule_vii.trim().length > 0
-        ? [profile.focus_areas_schedule_vii]
-        : (Array.isArray(profile.focus_areas_schedule_vii) ? profile.focus_areas_schedule_vii : []),
-      company_implementation_model: firstNonEmptyString(profile.implementation_model),
-      company_governance_mechanism: firstNonEmptyString(profile.governance_mechanism),
-
-      profile_data: profileDataForStorage
+      profile_data: profile
     };
     
     const newUser = await db.users.create(userData);

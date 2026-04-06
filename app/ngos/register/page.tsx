@@ -269,6 +269,11 @@ export default function NGORegister() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
       <Card className="w-full max-w-2xl">
         <CardHeader className="space-y-1">
+          <div className="text-sm">
+            <Link href="/register" className="font-medium text-primary">
+              Back
+            </Link>
+          </div>
           <CardTitle className="text-2xl font-bold text-center">Register as NGO</CardTitle>
           <CardDescription className="text-center">
             Create your NGO account to connect with volunteers and companies
