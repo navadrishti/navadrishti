@@ -153,80 +153,6 @@ export function Header() {
     return 'Browse & post capability offers'
   }
 
-  const servicesMenuItems: NavigationItem[] = [
-    {
-      label: 'NGO Requests',
-      href: '/service-requests',
-      description: serviceRequestDescription()
-    },
-    {
-      label: 'Capability Offers',
-      href: '/service-offers',
-      description: serviceOfferDescription()
-    },
-    // Only NGOs can post a need
-    ...(user?.user_type === 'ngo'
-      ? [
-          {
-            label: 'Post a Need',
-            href: '/service-requests/create',
-            description: 'Create a new service request'
-          },
-          {
-            label: 'NGO AI Agent',
-            href: '/ngos/ai-agent',
-            description: 'Generate service request drafts with AI'
-          }
-        ]
-      : []),
-    // Any verified user can post a capability offer
-    ...(user?.user_type === 'ngo' || user?.user_type === 'company' || user?.user_type === 'individual'
-      ? [
-          {
-            label: 'Post a Capability',
-            href: '/service-offers/create',
-            description: user?.user_type === 'individual'
-              ? 'Offer your skills or services'
-              : user?.user_type === 'company'
-              ? 'Advertise your company\'s capacity'
-              : 'Publish a capability offer'
-          }
-        ]
-      : [])
-  ]
-
-  const csrMenuItems: NavigationItem[] = [
-    {
-      label: 'CSR Campaigns',
-      href: '/csr-campaigns',
-      description: 'Browse active initiatives'
-    },
-    ...(user?.user_type === 'company'
-      ? [
-          {
-            label: 'AI CSR Agent',
-            href: '/companies/csr-agent',
-            description: 'Create and plan CSR initiatives'
-          },
-          {
-            label: 'CSR Health Snapshot',
-            href: '/companies/csr-health',
-            description: 'One-glance execution health and risks'
-          },
-          {
-            label: 'Impact Reports',
-            href: '/companies/impact-reports',
-            description: 'Review campaign outcomes'
-          }
-        ]
-      : [])
-  ]
-
-  const navigationMenus = [
-    { id: 'services', label: 'Services', items: servicesMenuItems },
-    { id: 'csrs', label: 'CSRs', items: csrMenuItems },
-  ]
-
   const desktopNavItems: NavigationItem[] = [
     {
       label: 'Feed',
@@ -645,28 +571,15 @@ export function Header() {
                     )}
                   {/* Navigation */}
                   <nav className="grid gap-2 text-base font-medium mb-8">
-                    <div>
-                      <div className="mt-2 mb-1">
-                        <div className="text-xs font-bold text-udaan-orange uppercase tracking-wider px-3">Social</div>
-                      </div>
-                      <Link href="/home" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
-                        <span>Feed</span>
+                    {desktopNavItems.map((item) => (
+                      <Link
+                        key={`mobile-nav-${item.href}`}
+                        href={item.href}
+                        className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors"
+                        title={item.description}
+                      >
+                        <span>{item.label}</span>
                       </Link>
-                      <Link href="/ngo-network" className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
-                        <span>NGO Network</span>
-                      </Link>
-                    </div>
-                    {navigationMenus.map((menu) => (
-                      <div key={`mobile-${menu.id}`}>
-                        <div className="mt-2 mb-1">
-                          <div className="text-xs font-bold text-udaan-orange uppercase tracking-wider px-3">{menu.label}</div>
-                        </div>
-                        {menu.items.map((item) => (
-                          <Link key={`mobile-${menu.id}-${item.href}`} href={item.href} className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors">
-                            <span>{item.label}</span>
-                          </Link>
-                        ))}
-                      </div>
                     ))}
                   </nav>
 
