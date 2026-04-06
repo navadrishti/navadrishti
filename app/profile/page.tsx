@@ -12,7 +12,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { useAuth } from '@/lib/auth-context'
 import { useOtpSender } from '@/hooks/use-otp-sender'
-import { Shield, Settings, User } from 'lucide-react'
+import { Settings, User } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { VerificationBadge, VerificationDetails } from '@/components/verification-badge'
@@ -642,10 +642,7 @@ export default function ProfilePage() {
             <div className="space-y-6">
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Shield className="h-5 w-5" />
-                    Verification Status
-                  </CardTitle>
+                  <CardTitle>Verification Status</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="space-y-4">

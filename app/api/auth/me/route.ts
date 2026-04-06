@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, supabase } from '@/lib/db';
 import { withAuth, UserData } from '@/lib/auth';
+import { stripDedicatedProfileData } from '@/lib/profile-storage';
 
 async function handler(req: NextRequest) {
   try {
@@ -50,6 +51,11 @@ async function handler(req: NextRequest) {
       }
     }
     
+    const sanitizedProfileData = stripDedicatedProfileData(
+      freshUserData.user_type,
+      freshUserData.profile_data || {}
+    );
+
     return NextResponse.json({
       user: {
         id: freshUserData.id,
@@ -69,10 +75,38 @@ async function handler(req: NextRequest) {
         state_province: freshUserData.state_province,
         pincode: freshUserData.pincode,
         country: freshUserData.country,
+        industry: freshUserData.industry,
+        website: freshUserData.website,
+        company_size: freshUserData.company_size,
+        ngo_size: freshUserData.ngo_size,
+        ngo_registration_type: freshUserData.ngo_registration_type,
+        ngo_registration_number: freshUserData.ngo_registration_number,
+        ngo_registration_date: freshUserData.ngo_registration_date,
+        ngo_pan_number: freshUserData.ngo_pan_number,
+        ngo_12a_number: freshUserData.ngo_12a_number,
+        ngo_80g_number: freshUserData.ngo_80g_number,
+        ngo_csr1_registration_number: freshUserData.ngo_csr1_registration_number,
+        ngo_fcra_applicable: freshUserData.ngo_fcra_applicable,
+        ngo_fcra_number: freshUserData.ngo_fcra_number,
+        ngo_bank_details: freshUserData.ngo_bank_details,
+        ngo_sectors_schedule_vii: freshUserData.ngo_sectors_schedule_vii,
+        ngo_past_projects: freshUserData.ngo_past_projects,
+        ngo_geographic_coverage: freshUserData.ngo_geographic_coverage,
+        ngo_execution_capacity: freshUserData.ngo_execution_capacity,
+        ngo_team_strength: freshUserData.ngo_team_strength,
+        company_cin_number: freshUserData.company_cin_number,
+        company_pan_number: freshUserData.company_pan_number,
+        company_net_worth: freshUserData.company_net_worth,
+        company_turnover: freshUserData.company_turnover,
+        company_net_profit: freshUserData.company_net_profit,
+        company_csr_vision: freshUserData.company_csr_vision,
+        company_focus_areas_schedule_vii: freshUserData.company_focus_areas_schedule_vii,
+        company_implementation_model: freshUserData.company_implementation_model,
+        company_governance_mechanism: freshUserData.company_governance_mechanism,
         created_at: freshUserData.created_at,
-        profile_data: freshUserData.profile_data || {}, // Include profile_data
+        profile_data: sanitizedProfileData,
         // For backward compatibility, also extract profile fields
-        profile: freshUserData.profile_data || {}
+        profile: sanitizedProfileData
       }
     });
     

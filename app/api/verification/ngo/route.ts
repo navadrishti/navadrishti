@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     // Verify user is an NGO
     const { data: user, error: userError } = await supabase
       .from('users')
-      .select('user_type, profile_data')
+      .select('user_type')
       .eq('id', userId)
       .single();
 
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
 
     switch (action) {
       case 'initiate':
-        return await initiateNGOVerification(userId, organizationName, registrationNumber, registrationType, user?.profile_data, documents);
+        return await initiateNGOVerification(userId, organizationName, registrationNumber, registrationType, documents);
       
       case 'verify-gst':
         return await verifyGST(userId, gstNumber);
@@ -70,7 +70,6 @@ async function initiateNGOVerification(
   organizationName: string, 
   registrationNumber: string, 
   registrationType: string,
-  profileData?: any,
   documents?: Record<string, string>
 ) {
   try {
@@ -102,7 +101,15 @@ async function initiateNGOVerification(
         .eq('user_id', userId);
     }
 
-    const existingProfileData = (profileData && typeof profileData === 'object') ? profileData : {};
+    const { data: userRow } = await supabase
+      .from('users')
+      .select('profile_data')
+      .eq('id', userId)
+      .single();
+
+    const existingProfileData = (userRow?.profile_data && typeof userRow.profile_data === 'object')
+      ? userRow.profile_data
+      : {};
     const existingVerificationDocs = (existingProfileData.verification_documents && typeof existingProfileData.verification_documents === 'object')
       ? existingProfileData.verification_documents
       : {};

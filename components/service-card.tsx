@@ -442,13 +442,13 @@ export function ServiceCard({
 
         {/* Title */}
         <h3 
-          className="cursor-pointer text-lg font-bold leading-tight text-gray-900 transition-colors hover:text-blue-600 sm:text-xl line-clamp-2" 
+          className="cursor-pointer text-lg font-bold leading-tight text-gray-900 transition-colors hover:text-blue-600 sm:text-xl line-clamp-2 [overflow-wrap:anywhere]" 
           onClick={handleCardClick}
         >
           {title}
         </h3>
 
-        <p className="text-sm text-gray-700 leading-relaxed line-clamp-3">
+        <p className="text-sm text-gray-700 leading-relaxed line-clamp-3 [overflow-wrap:anywhere]">
           {description}
         </p>
       </CardHeader>

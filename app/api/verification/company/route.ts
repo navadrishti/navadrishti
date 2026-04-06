@@ -1,6 +1,6 @@
 // API endpoint for Company verification (manual document-first flow)
 import { NextRequest, NextResponse } from 'next/server';
-import { db, supabase } from '@/lib/db';
+import { supabase } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 
@@ -36,9 +36,13 @@ export async function POST(req: NextRequest) {
     }
 
     // Verify user is a company
-    const user = await db.users.findById(userId);
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('user_type')
+      .eq('id', userId)
+      .single();
 
-    if (!user || user.user_type !== 'company') {
+    if (userError || !user || user.user_type !== 'company') {
       return NextResponse.json({ error: 'Only companies can use this verification method' }, { status: 403 });
     }
 
@@ -46,7 +50,7 @@ export async function POST(req: NextRequest) {
 
     switch (action) {
       case 'initiate':
-        return await initiateCompanyVerification(userId, companyName, cinNumber, companyType, user?.profile_data, documents);
+        return await initiateCompanyVerification(userId, companyName, cinNumber, companyType, documents);
       
       case 'verify-gst':
         return await verifyGST(userId, gstNumber);
@@ -74,7 +78,6 @@ async function initiateCompanyVerification(
   companyName: string, 
   cinNumber: string, 
   companyType: string,
-  profileData?: any,
   documents?: Record<string, string>
 ) {
   try {
@@ -106,12 +109,22 @@ async function initiateCompanyVerification(
         .eq('user_id', userId);
     }
 
-    const existingProfileData = (profileData && typeof profileData === 'object') ? profileData : {};
+    const { data: userRow } = await supabase
+      .from('users')
+      .select('profile_data')
+      .eq('id', userId)
+      .single();
+
+    const existingProfileData = (userRow?.profile_data && typeof userRow.profile_data === 'object')
+      ? userRow.profile_data
+      : {};
     const existingVerificationDocs = (existingProfileData.verification_documents && typeof existingProfileData.verification_documents === 'object')
       ? existingProfileData.verification_documents
       : {};
 
-    await db.users.update(userId, {
+    await supabase
+      .from('users')
+      .update({
       profile_data: {
         ...existingProfileData,
         verification_documents: {
@@ -125,7 +138,8 @@ async function initiateCompanyVerification(
         }
       },
       verification_status: 'pending'
-    });
+      })
+      .eq('id', userId);
 
     return NextResponse.json({
       success: true,

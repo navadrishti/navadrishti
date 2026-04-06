@@ -16,12 +16,12 @@ import { ArrowLeft, AlertTriangle, CheckCircle, FileText, Shield, Upload, User }
 
 type VerificationCategory = 'individual' | 'ngo' | 'company';
 type Step = 1 | 2;
-type IndividualIdType = '' | 'aadhaar' | 'pan' | 'voter-id' | 'driving-license';
 type NgoRegistrationType = 'Trust' | 'Society' | 'Section 8';
 type FormErrors = Record<string, string>;
 
 type DocumentKey =
-  | 'individualOptionalId'
+  | 'individualAadhaar'
+  | 'individualPanCard'
   | 'ngoRegistrationCertificate'
   | 'ngoPanCard'
   | 'ngoAddressProof'
@@ -34,7 +34,8 @@ type DocumentKey =
   | 'companyBoardResolution';
 
 const documentLabels: Record<DocumentKey, string> = {
-  individualOptionalId: 'Government ID Upload (Aadhaar / PAN / Voter ID / Driving License)',
+  individualAadhaar: 'Aadhaar Card',
+  individualPanCard: 'PAN Card',
   ngoRegistrationCertificate: 'Registration Certificate (Trust / Society / Section 8)',
   ngoPanCard: 'PAN Card of NGO',
   ngoAddressProof: 'Address Proof (utility bill / rent agreement / bank letter)',
@@ -60,11 +61,11 @@ interface VerificationFormData {
   ngoAssociationNumber: string;
   companyCinNumber: string;
   companyGstApplicable: boolean;
-  individualIdType: IndividualIdType;
 }
 
 const allDocumentKeys: DocumentKey[] = [
-  'individualOptionalId',
+  'individualAadhaar',
+  'individualPanCard',
   'ngoRegistrationCertificate',
   'ngoPanCard',
   'ngoAddressProof',
@@ -79,14 +80,24 @@ const allDocumentKeys: DocumentKey[] = [
 
 export default function VerificationPage() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
+
+  const resolveCategory = (userType?: string): VerificationCategory => {
+    if (userType === 'ngo') return 'ngo';
+    if (userType === 'company') return 'company';
+    return 'individual';
+  };
 
   const [currentStep, setCurrentStep] = useState<Step>(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
-  const [authSnapshot, setAuthSnapshot] = useState<{ email_verified?: boolean; phone_verified?: boolean } | null>(null);
+  const [authSnapshot, setAuthSnapshot] = useState<{
+    email_verified?: boolean;
+    phone_verified?: boolean;
+    verification_status?: 'verified' | 'unverified' | 'pending';
+  } | null>(null);
   const [formErrors, setFormErrors] = useState<FormErrors>({});
   const [otpInput, setOtpInput] = useState({ email: '', phone: '' });
   const progressValue = currentStep === 1 ? 50 : 100;
@@ -103,6 +114,9 @@ export default function VerificationPage() {
   const baseEmailVerified = authSnapshot?.email_verified ?? user?.email_verified ?? false;
   const isEmailVerified = mounted ? Boolean(baseEmailVerified || otpVerified.email) : false;
   const isPhoneVerified = mounted ? Boolean(authSnapshot?.phone_verified ?? user?.phone_verified ?? false) : false;
+  const documentVerificationStatus = authSnapshot?.verification_status ?? user?.verification_status ?? 'unverified';
+  const isDocumentVerified = mounted ? documentVerificationStatus === 'verified' : false;
+  const isFullyVerified = mounted ? Boolean(isEmailVerified && isPhoneVerified && isDocumentVerified) : false;
 
   useEffect(() => {
     setMounted(true);
@@ -124,7 +138,8 @@ export default function VerificationPage() {
         const data = await response.json();
         setAuthSnapshot({
           email_verified: data?.user?.email_verified,
-          phone_verified: data?.user?.phone_verified
+          phone_verified: data?.user?.phone_verified,
+          verification_status: data?.user?.verification_status
         });
       } catch {
         // keep existing values from auth context on failure
@@ -136,13 +151,11 @@ export default function VerificationPage() {
     }
   }, [mounted, otpVerified.email]);
 
-  const category: VerificationCategory = user?.user_type === 'ngo' ? 'ngo' : user?.user_type === 'company' ? 'company' : 'individual';
-
   const [formData, setFormData] = useState<VerificationFormData>({
-    entityName: user?.name || '',
-    contactNumber: user?.phone || '',
-    email: user?.email || '',
-    category,
+    entityName: '',
+    contactNumber: '',
+    email: '',
+    category: 'individual',
     panNumber: '',
     registrationNumber: '',
     ngoRegistrationType: 'Trust',
@@ -150,9 +163,34 @@ export default function VerificationPage() {
     ngoFcraExpiryDate: '',
     ngoAssociationNumber: '',
     companyCinNumber: '',
-    companyGstApplicable: false,
-    individualIdType: ''
+    companyGstApplicable: false
   });
+  const [didSyncUserDefaults, setDidSyncUserDefaults] = useState(false);
+
+  useEffect(() => {
+    if (!mounted || !user || didSyncUserDefaults) {
+      return;
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      entityName: user.name || '',
+      contactNumber: user.phone || '',
+      email: user.email || '',
+      category: resolveCategory(user.user_type)
+    }));
+    setDidSyncUserDefaults(true);
+  }, [mounted, user, didSyncUserDefaults]);
+
+  useEffect(() => {
+    if (!mounted || authLoading) {
+      return;
+    }
+
+    if (!user) {
+      smoothNavigate(router, '/login', { delay: 0 });
+    }
+  }, [mounted, authLoading, user, router]);
 
   const [documentFiles, setDocumentFiles] = useState<Record<DocumentKey, File | null>>(
     allDocumentKeys.reduce((acc, key) => {
@@ -170,7 +208,7 @@ export default function VerificationPage() {
 
   const requiredDocs = useMemo(() => {
     if (formData.category === 'individual') {
-      return ['individualOptionalId'] as DocumentKey[];
+      return ['individualAadhaar', 'individualPanCard'] as DocumentKey[];
     }
 
     if (formData.category === 'ngo') {
@@ -193,7 +231,7 @@ export default function VerificationPage() {
 
   const visibleDocs = useMemo(() => {
     if (formData.category === 'individual') {
-      return ['individualOptionalId'] as DocumentKey[];
+      return ['individualAadhaar', 'individualPanCard'] as DocumentKey[];
     }
 
     if (formData.category === 'ngo') {
@@ -270,11 +308,6 @@ export default function VerificationPage() {
     if (formData.category === 'individual') {
       if (!isEmailVerified) {
         setError('Email verification is mandatory for individual verification. Please verify your email first.');
-        return false;
-      }
-
-      if (!formData.individualIdType) {
-        setError('Please select an ID type for individual verification.');
         return false;
       }
 
@@ -393,7 +426,7 @@ export default function VerificationPage() {
         initiatePayload.cinNumber = formData.companyCinNumber || formData.registrationNumber;
         initiatePayload.companyType = 'Registered Company';
       } else {
-        initiatePayload.documentType = formData.individualIdType === 'pan' ? 'pan' : 'aadhaar';
+        initiatePayload.documentType = 'aadhaar';
       }
 
       const initiateResponse = await fetch(verificationEndpoint, {
@@ -417,6 +450,50 @@ export default function VerificationPage() {
       setLoading(false);
     }
   };
+
+  if (!mounted || authLoading) {
+    return (
+      <div className="max-w-4xl mx-auto p-6 space-y-6">
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-sm text-gray-600">Loading verification dashboard...</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="max-w-4xl mx-auto p-6 space-y-6">
+        <Alert>
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>Please log in to access the verification dashboard.</AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
+
+  if (isFullyVerified) {
+    return (
+      <div className="max-w-4xl mx-auto p-6 space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CheckCircle className="h-5 w-5 text-green-600" />
+              You're all set
+            </CardTitle>
+            <CardDescription>
+              Your email, mobile number, and document verification are already complete.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button onClick={handleBack}>Back to Dashboard</Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-6">
@@ -601,27 +678,9 @@ export default function VerificationPage() {
             </div>
 
             {formData.category === 'individual' && (
-              <>
-                <div className="space-y-2">
-                  <Label>ID Type *</Label>
-                  <Select
-                    value={formData.individualIdType}
-                    onValueChange={(value) =>
-                      setFormData((prev) => ({ ...prev, individualIdType: value as IndividualIdType }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select ID type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="aadhaar">Aadhaar</SelectItem>
-                      <SelectItem value="pan">PAN</SelectItem>
-                      <SelectItem value="voter-id">Voter ID</SelectItem>
-                      <SelectItem value="driving-license">Driving License</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </>
+              <div className="rounded-md border bg-blue-50 p-3 text-sm text-blue-800">
+                Aadhaar Card and PAN Card are mandatory for individual verification.
+              </div>
             )}
 
             {formData.category === 'ngo' && (
@@ -794,6 +853,7 @@ export default function VerificationPage() {
                   id={docKey}
                   type="file"
                   accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                  className="h-auto border-2 border-blue-200 bg-white py-2 file:mr-4 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-blue-700 hover:file:bg-blue-100"
                   onChange={(e) => handleFileChange(docKey, e.target.files)}
                 />
                 {documentFiles[docKey] && (

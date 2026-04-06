@@ -28,13 +28,24 @@ export default function NGORegister() {
     pincode: '',
     country: 'India',
     founded: '',
-    sector: ''
+    sector: '',
+    registrationDate: '',
+    twelveANumber: '',
+    eightyGNumber: '',
+    csr1RegistrationNumber: '',
+    bankDetails: '',
+    sectorsScheduleVii: '',
+    pastProjects: '',
+    geographicCoverage: '',
+    executionCapacity: '',
+    teamStrength: ''
   })
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
-  const { otpSending, otpSent, otpCooldown, otpVerifying, otpVerified, handleSendEmailOtp, handleVerifyEmailOtp, handleSendPhoneOtp, resetEmailOtpState } = useOtpSender(setFormErrors)
-  const [otpInput, setOtpInput] = useState({ email: '', phone: '' })
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const { otpSending, otpSent, otpCooldown, otpVerifying, otpVerified, handleSendEmailOtp, handleVerifyEmailOtp, resetEmailOtpState } = useOtpSender(setFormErrors)
+  const [otpInput, setOtpInput] = useState({ email: '' })
 
-  const { signup, error, loading, clearError } = useAuth()
+  const { signup, error, clearError } = useAuth()
   const router = useRouter()
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -136,6 +147,46 @@ export default function NGORegister() {
     if (!formData.state.trim()) {
       errors.state = 'State/Province is required'
     }
+
+    if (!formData.registrationDate) {
+      errors.registrationDate = 'Registration date is required'
+    }
+
+    if (!formData.twelveANumber.trim()) {
+      errors.twelveANumber = '12A number is required'
+    }
+
+    if (!formData.eightyGNumber.trim()) {
+      errors.eightyGNumber = '80G number is required'
+    }
+
+    if (!formData.csr1RegistrationNumber.trim()) {
+      errors.csr1RegistrationNumber = 'CSR-1 registration number is required'
+    }
+
+    if (!formData.bankDetails.trim()) {
+      errors.bankDetails = 'Bank details are required'
+    }
+
+    if (!formData.sectorsScheduleVii.trim()) {
+      errors.sectorsScheduleVii = 'Sectors worked (Schedule VII mapped) is required'
+    }
+
+    if (!formData.pastProjects.trim()) {
+      errors.pastProjects = 'Past projects are required'
+    }
+
+    if (!formData.geographicCoverage.trim()) {
+      errors.geographicCoverage = 'Geographic coverage is required'
+    }
+
+    if (!formData.executionCapacity.trim()) {
+      errors.executionCapacity = 'Execution capacity is required'
+    }
+
+    if (!formData.teamStrength.trim()) {
+      errors.teamStrength = 'Team strength is required'
+    }
     
     setFormErrors(errors)
     return Object.keys(errors).length === 0
@@ -170,6 +221,7 @@ export default function NGORegister() {
     }
     
     try {
+      setIsSubmitting(true)
 
       
       // Prepare user data for signup
@@ -187,7 +239,17 @@ export default function NGORegister() {
           ngo_name: formData.ngoName,
           ngo_size: formData.ngoSize,
           founded: formData.founded,
-          sector: formData.sector
+          sector: formData.sector,
+          registration_date: formData.registrationDate,
+          twelve_a_number: formData.twelveANumber,
+          eighty_g_number: formData.eightyGNumber,
+          csr1_registration_number: formData.csr1RegistrationNumber,
+          bank_details: formData.bankDetails,
+          sectors_schedule_vii: formData.sectorsScheduleVii,
+          past_projects: formData.pastProjects,
+          geographic_coverage: formData.geographicCoverage,
+          execution_capacity: formData.executionCapacity,
+          team_strength: formData.teamStrength
         }
       }
       
@@ -198,6 +260,8 @@ export default function NGORegister() {
       router.push('/ngos/dashboard');
     } catch {
       // Error state and user notification are handled in auth context
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -326,38 +390,15 @@ export default function NGORegister() {
                 
                 <div className="space-y-2">
                   <Label htmlFor="phone">Phone Number</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="phone"
-                      name="phone"
-                      type="tel"
-                      value={formData.phone}
-                      onChange={handleChange}
-                      placeholder="+91 9876543210"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => handleSendPhoneOtp(formData.phone)}
-                      disabled={otpSending.phone || otpCooldown.phone > 0}
-                    >
-                      {otpSending.phone ? 'Sending...' : otpCooldown.phone > 0 ? `Resend in ${otpCooldown.phone}s` : 'Send OTP'}
-                    </Button>
-                  </div>
+                  <Input
+                    id="phone"
+                    name="phone"
+                    type="tel"
+                    value={formData.phone}
+                    onChange={handleChange}
+                    placeholder="+91 9876543210"
+                  />
                   {formErrors.phone && <p className="text-sm text-red-500">{formErrors.phone}</p>}
-                  {otpSent.phone && <p className="text-sm text-green-600">OTP sent to your phone</p>}
-                  {otpSent.phone && (
-                    <div className="space-y-2">
-                      <Label htmlFor="phoneOtp">Phone OTP</Label>
-                      <Input
-                        id="phoneOtp"
-                        name="phoneOtp"
-                        value={otpInput.phone}
-                        onChange={(e) => setOtpInput(prev => ({ ...prev, phone: e.target.value }))}
-                        placeholder="Enter phone OTP"
-                      />
-                    </div>
-                  )}
                 </div>
                 
                 <div className="space-y-2">
@@ -417,6 +458,141 @@ export default function NGORegister() {
                     onChange={handleChange}
                     placeholder="Education, Healthcare, Environment, etc."
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="registrationDate">Registration Date</Label>
+                  <Input
+                    id="registrationDate"
+                    name="registrationDate"
+                    type="date"
+                    value={formData.registrationDate}
+                    onChange={handleChange}
+                  />
+                  <p className="text-xs text-muted-foreground">Use the date on your registration certificate.</p>
+                  {formErrors.registrationDate && <p className="text-sm text-red-500">{formErrors.registrationDate}</p>}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="teamStrength">Team Strength</Label>
+                  <Input
+                    id="teamStrength"
+                    name="teamStrength"
+                    value={formData.teamStrength}
+                    onChange={handleChange}
+                    placeholder="e.g. 45 full-time, 120 volunteers"
+                  />
+                  <p className="text-xs text-muted-foreground">Mention full-time team and active volunteers.</p>
+                  {formErrors.teamStrength && <p className="text-sm text-red-500">{formErrors.teamStrength}</p>}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="twelveANumber">12A Number</Label>
+                  <Input
+                    id="twelveANumber"
+                    name="twelveANumber"
+                    value={formData.twelveANumber}
+                    onChange={handleChange}
+                    placeholder="Enter 12A number"
+                  />
+                  <p className="text-xs text-muted-foreground">Enter the approval/reference number issued under section 12A/12AB.</p>
+                  {formErrors.twelveANumber && <p className="text-sm text-red-500">{formErrors.twelveANumber}</p>}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="eightyGNumber">80G Number</Label>
+                  <Input
+                    id="eightyGNumber"
+                    name="eightyGNumber"
+                    value={formData.eightyGNumber}
+                    onChange={handleChange}
+                    placeholder="Enter 80G number"
+                  />
+                  <p className="text-xs text-muted-foreground">Use the exemption certificate reference under section 80G.</p>
+                  {formErrors.eightyGNumber && <p className="text-sm text-red-500">{formErrors.eightyGNumber}</p>}
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="csr1RegistrationNumber">CSR-1 Registration Number</Label>
+                  <Input
+                    id="csr1RegistrationNumber"
+                    name="csr1RegistrationNumber"
+                    value={formData.csr1RegistrationNumber}
+                    onChange={handleChange}
+                    placeholder="Enter CSR-1 registration number"
+                  />
+                  <p className="text-xs text-muted-foreground">Provide the CSR-1 acknowledgment or registration reference.</p>
+                  {formErrors.csr1RegistrationNumber && <p className="text-sm text-red-500">{formErrors.csr1RegistrationNumber}</p>}
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="bankDetails">Bank Details</Label>
+                  <Textarea
+                    id="bankDetails"
+                    name="bankDetails"
+                    value={formData.bankDetails}
+                    onChange={handleChange}
+                    placeholder="Provide account holder name, bank name, branch, account number (masked where needed), and IFSC"
+                    rows={3}
+                  />
+                  <p className="text-xs text-muted-foreground">Include account holder, bank/branch, account number, and IFSC.</p>
+                  {formErrors.bankDetails && <p className="text-sm text-red-500">{formErrors.bankDetails}</p>}
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="sectorsScheduleVii">Sectors Worked (Schedule VII Mapped)</Label>
+                  <Textarea
+                    id="sectorsScheduleVii"
+                    name="sectorsScheduleVii"
+                    value={formData.sectorsScheduleVii}
+                    onChange={handleChange}
+                    placeholder="List sectors and map them to Schedule VII categories"
+                    rows={3}
+                  />
+                  <p className="text-xs text-muted-foreground">Example: education (ii), healthcare (i), rural development (x).</p>
+                  {formErrors.sectorsScheduleVii && <p className="text-sm text-red-500">{formErrors.sectorsScheduleVii}</p>}
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="pastProjects">Past Projects</Label>
+                  <Textarea
+                    id="pastProjects"
+                    name="pastProjects"
+                    value={formData.pastProjects}
+                    onChange={handleChange}
+                    placeholder="Summarize key completed projects with outcomes"
+                    rows={3}
+                  />
+                  <p className="text-xs text-muted-foreground">Mention project name, location, period, and measurable outcomes.</p>
+                  {formErrors.pastProjects && <p className="text-sm text-red-500">{formErrors.pastProjects}</p>}
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="geographicCoverage">Geographic Coverage</Label>
+                  <Textarea
+                    id="geographicCoverage"
+                    name="geographicCoverage"
+                    value={formData.geographicCoverage}
+                    onChange={handleChange}
+                    placeholder="Mention states, districts, or regions where you operate"
+                    rows={2}
+                  />
+                  <p className="text-xs text-muted-foreground">List states/districts and whether operations are urban, rural, or both.</p>
+                  {formErrors.geographicCoverage && <p className="text-sm text-red-500">{formErrors.geographicCoverage}</p>}
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="executionCapacity">Execution Capacity</Label>
+                  <Textarea
+                    id="executionCapacity"
+                    name="executionCapacity"
+                    value={formData.executionCapacity}
+                    onChange={handleChange}
+                    placeholder="Describe operational capacity, delivery model, and partner ecosystem"
+                    rows={3}
+                  />
+                  <p className="text-xs text-muted-foreground">Include implementation bandwidth, partner network, and reporting capability.</p>
+                  {formErrors.executionCapacity && <p className="text-sm text-red-500">{formErrors.executionCapacity}</p>}
                 </div>
               </div>
             </div>
@@ -485,8 +661,8 @@ export default function NGORegister() {
             
 
             <div className="flex flex-col space-y-4">
-              <Button type="submit" className="w-full" disabled={loading || !otpVerified.email}>
-                {loading ? 'Creating Account...' : 'Create NGO Account'}
+              <Button type="submit" className="w-full" disabled={isSubmitting || !otpVerified.email}>
+                {isSubmitting ? 'Creating Account...' : 'Create NGO Account'}
               </Button>
               
               <div className="text-center text-sm">
