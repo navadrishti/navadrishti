@@ -14,6 +14,8 @@ import { Clock, CheckCircle, AlertTriangle, HeartHandshake, Trash2, Plus, Buildi
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 import { SkeletonOrderItem } from '@/components/ui/skeleton';
+import { ProfileDashboardTab } from '@/components/profile-dashboard-tab';
+import { DashboardQuickSidebar } from '@/components/dashboard-quick-sidebar';
 
 function NGODashboardContent() {
   const { user, refreshUser } = useAuth();
@@ -33,6 +35,12 @@ function NGODashboardContent() {
   const [loadingCSRProjects, setLoadingCSRProjects] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
   const [deletingRequest, setDeletingRequest] = useState<number | null>(null);
+  const sidebarItems = [
+    { value: 'profile', label: 'Profile' },
+    { value: 'service-offers', label: 'Service Offers' },
+    { value: 'service-requests', label: 'Service Requests' },
+    { value: 'csr-projects', label: 'CSR Projects' },
+  ];
 
   // Handle service request deletion
   const handleDeleteRequest = async (requestId: number, requestTitle: string) => {
@@ -280,6 +288,10 @@ function NGODashboardContent() {
   const ongoingCSRProjects = csrProjects.filter((project) => getProjectBucket(project) === 'ongoing');
   const completedCSRProjects = csrProjects.filter((project) => getProjectBucket(project) === 'completed');
 
+  const navigateToTab = (value: string) => {
+    router.replace(`/ngos/dashboard?tab=${value}`, { scroll: false });
+  };
+
   return (
     <ProtectedRoute userTypes={['ngo']}>
       <div className="flex min-h-screen flex-col">
@@ -291,111 +303,30 @@ function NGODashboardContent() {
               <div>
                 <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
                 <p className="text-gray-500 mt-1">
-                  Manage your NGO profile, service offers, and service requests
+                  Manage your NGO service offers, service requests, and CSR projects
                 </p>
               </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            {/* NGO Profile Section */}
-            <div className="lg:col-span-4">
-            <Card className="lg:sticky lg:top-20 lg:max-h-[calc(100vh-5rem)] lg:overflow-y-auto">
-              <CardHeader>
-                <CardTitle>NGO Profile</CardTitle>
-                <CardDescription>
-                  Your organization's public profile information
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="flex flex-col gap-6">
-                  <div className="w-full">
-                    <div className="h-28 w-28 md:h-32 md:w-32 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden mx-auto">
-                      {user?.profile_image ? (
-                        <img 
-                          src={user.profile_image} 
-                          alt={user?.name || 'Profile'} 
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <Building className="h-12 w-12 text-gray-400" />
-                      )}
-                    </div>
-                  </div>
-                  <div className="w-full space-y-4">
-                    <div>
-                      <h3 className="text-lg font-semibold flex items-center gap-2">
-                        <span>{user?.name || 'Your NGO Name'}</span>
-                        {allVerified ? (
-                          <VerificationBadge status="verified" size="sm" showText={false} />
-                        ) : (
-                          <>
-                            {user?.email_verified && <MailCheck className="h-4 w-4 text-green-600" />}
-                            {user?.phone_verified && <Phone className="h-4 w-4 text-green-600" />}
-                            <VerificationBadge status={user?.verification_status || 'unverified'} size="sm" showText={false} />
-                          </>
-                        )}
-                      </h3>
-                      <p className="text-sm text-gray-500">{user?.email || 'ngo@example.org'}</p>
-                    </div>
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <p className="text-sm font-medium text-gray-500">Location</p>
-                          <p>{user?.city && user?.state_province ? `${user.city}, ${user.state_province}${user.country ? `, ${user.country}` : ''}` : 'Location not set'}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-500">Phone</p>
-                          <span>{user?.phone || 'Phone not set'}</span>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-500">NGO Size</p>
-                          <p>{(user as any)?.profile_data?.ngo_size || (user as any)?.profile?.ngo_size || 'NGO size not set'}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-500">Sector</p>
-                          <p>{(user as any)?.profile_data?.sector || (user as any)?.profile?.sector || 'Sector not set'}</p>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                        <div>
-                          <p className="text-sm font-medium text-gray-500">Founded Year</p>
-                          <p>{(user as any)?.profile_data?.founded || (user as any)?.profile?.founded || 'Founded year not set'}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-500">Pincode</p>
-                          <p>{user?.pincode || 'Pincode not set'}</p>
-                        </div>
-                      </div>
-                    </div>
-                    <Button variant="outline" asChild>
-                      <Link href="/profile">Edit Profile</Link>
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            </div>
+              <DashboardQuickSidebar
+                items={sidebarItems}
+                activeTab={activeTab}
+                onSelect={navigateToTab}
+                desktopClassName="lg:col-span-4"
+                triggerLabel="Dashboard sections"
+              />
 
-            {/* Activities & Engagements */}
-            <div className="lg:col-span-8">
-            <Card>
-              <CardHeader>
-                <CardTitle>Activities & Engagements</CardTitle>
-                <CardDescription>
-                  Manage your service offerings and service requests
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div>
-                  <Tabs value={activeTab} onValueChange={(value) => {
-                    window.history.replaceState(null, '', `/ngos/dashboard?tab=${value}`);
-                    router.replace(`/ngos/dashboard?tab=${value}`, { scroll: false });
-                  }} className="w-full">
-                    <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 h-auto">
-                      <TabsTrigger value="service-offers" className="text-xs sm:text-sm">Service Offers</TabsTrigger>
-                      <TabsTrigger value="service-requests" className="text-xs sm:text-sm">Service Requests</TabsTrigger>
-                      <TabsTrigger value="csr-projects" className="text-xs sm:text-sm">CSR Projects</TabsTrigger>
-                    </TabsList>
+              <div className="lg:col-span-8">
+                <Card className="min-h-[420px]">
+                  <CardContent className="pt-6">
+                    <Tabs value={activeTab} onValueChange={(value) => {
+                      window.history.replaceState(null, '', `/ngos/dashboard?tab=${value}`);
+                      router.replace(`/ngos/dashboard?tab=${value}`, { scroll: false });
+                    }} className="w-full">
+                  <TabsContent value="profile" className="mt-4 space-y-4">
+                    <ProfileDashboardTab />
+                  </TabsContent>
                   
                   <TabsContent value="service-offers" className="mt-4 space-y-4">
                     <div className="flex justify-between items-center">
@@ -407,7 +338,7 @@ function NGODashboardContent() {
                         </Button>
                       </Link>
                     </div>
-                    <div className="rounded-md border">
+                    <div>
                       <div className="grid grid-cols-1 md:grid-cols-5 p-4 text-sm font-medium text-gray-500 border-b">
                         <div>Service</div>
                         <div>Category</div>
@@ -478,9 +409,9 @@ function NGODashboardContent() {
 
                       <TabsContent value="ongoing-needs" className="mt-4 space-y-3">
                         {loadingData ? (
-                          <div className="rounded-md border p-6 text-center text-muted-foreground">Loading ongoing needs...</div>
+                          <div className="p-6 text-center text-muted-foreground">Loading ongoing needs...</div>
                         ) : ongoingNeeds.length === 0 ? (
-                          <div className="rounded-md border p-8 text-center text-muted-foreground">
+                          <div className="p-8 text-center text-muted-foreground">
                             <p className="text-lg font-medium mb-2">No ongoing needs</p>
                             <p className="text-sm">Accepted and active requests will appear here until fulfillment is confirmed.</p>
                           </div>
@@ -516,9 +447,9 @@ function NGODashboardContent() {
 
                       <TabsContent value="history-needs" className="mt-4 space-y-3">
                         {loadingData ? (
-                          <div className="rounded-md border p-6 text-center text-muted-foreground">Loading history...</div>
+                          <div className="p-6 text-center text-muted-foreground">Loading history...</div>
                         ) : historyNeeds.length === 0 ? (
-                          <div className="rounded-md border p-8 text-center text-muted-foreground">
+                          <div className="p-8 text-center text-muted-foreground">
                             <p className="text-lg font-medium mb-2">No history yet</p>
                             <p className="text-sm">Completed or cancelled requests will appear here.</p>
                           </div>
@@ -555,7 +486,7 @@ function NGODashboardContent() {
                     </div>
 
                     {loadingCSRProjects ? (
-                      <div className="rounded-md border p-8 text-center text-muted-foreground">Loading CSR projects...</div>
+                      <div className="p-8 text-center text-muted-foreground">Loading CSR projects...</div>
                     ) : (
                       <Tabs defaultValue="invitations" className="w-full">
                         <TabsList className="grid w-full grid-cols-3 h-auto">
@@ -566,7 +497,7 @@ function NGODashboardContent() {
 
                         <TabsContent value="invitations" className="mt-4 space-y-3">
                           {invitationProjects.length === 0 ? (
-                            <div className="rounded-md border p-8 text-center text-muted-foreground">
+                            <div className="p-8 text-center text-muted-foreground">
                               <p className="text-lg font-medium mb-2">No invitations pending</p>
                               <p className="text-sm">New CSR project invitations will appear here.</p>
                             </div>
@@ -612,7 +543,7 @@ function NGODashboardContent() {
 
                         <TabsContent value="ongoing" className="mt-4 space-y-3">
                           {ongoingCSRProjects.length === 0 ? (
-                            <div className="rounded-md border p-8 text-center text-muted-foreground">
+                            <div className="p-8 text-center text-muted-foreground">
                               <p className="text-lg font-medium mb-2">No ongoing CSR projects</p>
                               <p className="text-sm">Active projects accepted by your NGO will appear here.</p>
                             </div>
@@ -664,7 +595,7 @@ function NGODashboardContent() {
 
                         <TabsContent value="completed" className="mt-4 space-y-3">
                           {completedCSRProjects.length === 0 ? (
-                            <div className="rounded-md border p-8 text-center text-muted-foreground">
+                            <div className="p-8 text-center text-muted-foreground">
                               <p className="text-lg font-medium mb-2">No completed CSR projects yet</p>
                               <p className="text-sm">Completed projects will appear here for reference and reporting.</p>
                             </div>
@@ -715,11 +646,10 @@ function NGODashboardContent() {
                       </Tabs>
                     )}
                   </TabsContent>
-                </Tabs>
-                </div>
-              </CardContent>
-            </Card>
-            </div>
+                    </Tabs>
+                  </CardContent>
+                </Card>
+              </div>
             </div>
           </div>
         </main>
@@ -730,7 +660,7 @@ function NGODashboardContent() {
 
 export default function NGODashboard() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-background"><Header /><div className="container mx-auto px-4 py-8">Loading...</div></div>}>
+    <Suspense fallback={<div className="min-h-screen bg-gray-50"><Header /><div className="container mx-auto px-4 py-8 text-gray-600">Loading dashboard...</div></div>}>
       <NGODashboardContent />
     </Suspense>
   );

@@ -14,6 +14,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { ProfileDashboardTab } from '@/components/profile-dashboard-tab';
+import { DashboardQuickSidebar } from '@/components/dashboard-quick-sidebar';
 
 function CompanyDashboardContent() {
   const { user } = useAuth();
@@ -220,6 +222,19 @@ function CompanyDashboardContent() {
 
   const activeCompanyCAAccounts = companyCAAccounts.filter((account: any) => account.status === 'active');
   const inactiveCompanyCAAccounts = companyCAAccounts.filter((account: any) => account.status !== 'active');
+  const sidebarItems = [
+    { value: 'profile', label: 'Profile' },
+    { value: 'services-hired', label: 'Services Hired' },
+    { value: 'csr-projects', label: 'CSR Projects' },
+    { value: 'company-ca', label: 'CA Access' },
+    { value: 'csr-budget', label: 'CSR Budget' },
+    { value: 'csr-health', label: 'CSR Health' },
+    { value: 'impact-reports', label: 'Impact Reports' },
+  ];
+
+  const navigateToTab = (value: string) => {
+    router.replace(`/companies/dashboard?tab=${value}`, { scroll: false });
+  };
 
   if (!mounted) {
     return (
@@ -258,122 +273,28 @@ function CompanyDashboardContent() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            {/* Company Profile Section */}
-            <div className="lg:col-span-4">
-            <Card className="lg:sticky lg:top-20 lg:max-h-[calc(100vh-5rem)] lg:overflow-y-auto">
-              <CardHeader>
-                <CardTitle>Company Profile</CardTitle>
-                <CardDescription>
-                  Your company's public profile information
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="flex flex-col gap-6">
-                  <div className="w-full">
-                    <div className="h-28 w-28 md:h-32 md:w-32 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden mx-auto">
-                      {user?.profile_image ? (
-                        <img 
-                          src={user.profile_image} 
-                          alt={user?.name || 'Profile'} 
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <Building className="h-12 w-12 text-gray-400" />
-                      )}
-                    </div>
-                  </div>
-                  <div className="w-full space-y-4">
-                    <div>
-                      <h3 className="text-lg font-semibold flex items-center gap-2">
-                        <span>{user?.name || 'TechCorp Solutions'}</span>
-                        {allVerified ? (
-                          <VerificationBadge status="verified" size="sm" showText={false} />
-                        ) : (
-                          <>
-                            {user?.email_verified && <MailCheck className="h-4 w-4 text-green-600" />}
-                            {user?.phone_verified && <Phone className="h-4 w-4 text-green-600" />}
-                            <VerificationBadge status={user?.verification_status || 'unverified'} size="sm" showText={false} />
-                          </>
-                        )}
-                      </h3>
-                      <p className="text-sm text-gray-500">{user?.email || 'company@example.org'}</p>
-                    </div>
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <p className="text-sm font-medium text-gray-500">Location</p>
-                          <p>{user?.city && user?.state_province ? `${user.city}, ${user.state_province}${user.country ? `, ${user.country}` : ''}` : 'Location not set'}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-500">Phone</p>
-                          <span>{user?.phone || 'Phone not set'}</span>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-500">Industry</p>
-                          <p>{(user as any)?.profile_data?.industry || (user as any)?.profile?.industry || 'Industry not set'}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-500">Company Size</p>
-                          <p>{(user as any)?.profile_data?.company_size || (user as any)?.profile?.company_size || 'Company size not set'}</p>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                        <div>
-                          <p className="text-sm font-medium text-gray-500">Website</p>
-                          <p>{(user as any)?.profile_data?.website || (user as any)?.profile?.website || 'Website not set'}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-500">Sector</p>
-                          <p>{(user as any)?.profile_data?.sector || (user as any)?.profile?.sector || 'Sector not set'}</p>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                        <div>
-                          <p className="text-sm font-medium text-gray-500">Founded Year</p>
-                          <p>{(user as any)?.profile_data?.founded || (user as any)?.profile?.founded || 'Founded year not set'}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-500">Pincode</p>
-                          <p>{user?.pincode || 'Pincode not set'}</p>
-                        </div>
-                      </div>
-                    </div>
-                    <Button variant="outline" asChild>
-                      <Link href="/profile">Edit Profile</Link>
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            </div>
+              <DashboardQuickSidebar
+                items={sidebarItems}
+                activeTab={activeTab}
+                onSelect={navigateToTab}
+                desktopClassName="lg:col-span-4"
+                triggerLabel="Dashboard sections"
+              />
 
-            {/* Activities & Engagements */}
-            <div className="lg:col-span-8">
-            <Card>
-              <CardHeader>
-                <CardTitle>Activities & Engagements</CardTitle>
-                <CardDescription>
-                  Track your CSR activities and service engagements
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div>
-                  <Tabs value={activeTab} onValueChange={(value) => {
-                    window.history.replaceState(null, '', `/companies/dashboard?tab=${value}`);
-                    router.replace(`/companies/dashboard?tab=${value}`, { scroll: false });
-                  }} className="w-full">
-                    <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 lg:grid-cols-6 h-auto">
-                      <TabsTrigger value="services-hired" className="text-xs sm:text-sm">Services Hired</TabsTrigger>
-                      <TabsTrigger value="csr-projects" className="text-xs sm:text-sm">CSR Projects</TabsTrigger>
-                      <TabsTrigger value="company-ca" className="text-xs sm:text-sm">CA Access</TabsTrigger>
-                      <TabsTrigger value="csr-budget" className="text-xs sm:text-sm">CSR Budget</TabsTrigger>
-                      <TabsTrigger value="csr-health" className="text-xs sm:text-sm">CSR Health</TabsTrigger>
-                      <TabsTrigger value="impact-reports" className="text-xs sm:text-sm">Impact Reports</TabsTrigger>
-                    </TabsList>
+              <div className="lg:col-span-8">
+                <Card className="min-h-[420px]">
+                  <CardContent className="pt-6">
+                    <Tabs value={activeTab} onValueChange={(value) => {
+                      window.history.replaceState(null, '', `/companies/dashboard?tab=${value}`);
+                      router.replace(`/companies/dashboard?tab=${value}`, { scroll: false });
+                    }} className="w-full">
+                  <TabsContent value="profile" className="mt-4 space-y-4">
+                    <ProfileDashboardTab />
+                  </TabsContent>
 
                   <TabsContent value="services-hired" className="mt-4 space-y-4">
                     <h3 className="font-medium">Services You've Hired</h3>
-                    <div className="rounded-md border p-8 text-center">
+                    <div className="p-8 text-center">
                       <div className="text-muted-foreground">
                         <HeartHandshake className="h-12 w-12 mx-auto mb-4 opacity-50" />
                         <p className="text-lg font-medium mb-2">Service Hiring Coming Soon</p>
@@ -392,9 +313,9 @@ function CompanyDashboardContent() {
                     </div>
 
                     {loadingCSRProjects ? (
-                      <div className="rounded-md border p-8 text-center text-muted-foreground">Loading CSR projects...</div>
+                      <div className="p-8 text-center text-muted-foreground">Loading CSR projects...</div>
                     ) : csrProjects.length === 0 ? (
-                      <div className="rounded-md border p-8 text-center">
+                      <div className="p-8 text-center">
                         <div className="text-muted-foreground">
                           <p className="text-lg font-medium mb-2">No CSR projects yet</p>
                           <p className="text-sm mb-4">Create campaigns and convert them into active projects to track milestones and evidence.</p>
@@ -451,7 +372,7 @@ function CompanyDashboardContent() {
                   </TabsContent>
 
                   <TabsContent value="company-ca" className="mt-4 space-y-4">
-                    <div className="rounded-md border bg-white p-4">
+                    <div className="space-y-4 pt-1">
                       <h3 className="font-semibold text-slate-900">Generate Company CA Panel Credentials</h3>
                       <p className="mt-1 text-sm text-slate-600">
                         Create a scoped Company CA login for your internal compliance reviewer.
@@ -506,7 +427,7 @@ function CompanyDashboardContent() {
                       )}
 
                       {lastCreatedCompanyCA && (
-                        <div className="mt-3 rounded-md border bg-green-50 p-3 text-sm text-green-800">
+                        <div className="mt-3 rounded-md bg-green-50 p-3 text-sm text-green-800">
                           <p>Generated credentials:</p>
                           <p>Email: {lastCreatedCompanyCA.email}</p>
                           <p>Password: {lastCreatedCompanyCA.password}</p>
@@ -515,7 +436,7 @@ function CompanyDashboardContent() {
                       )}
                     </div>
 
-                    <div className="rounded-md border bg-white p-4">
+                    <div className="space-y-3 pt-2">
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <h4 className="font-semibold text-slate-900">Existing Active Company CA Accounts</h4>
                         <Button variant="outline" size="sm" onClick={fetchCompanyCAAccounts} className="w-full sm:w-auto">Refresh</Button>
@@ -578,108 +499,107 @@ function CompanyDashboardContent() {
                   </TabsContent>
 
                   <TabsContent value="csr-budget" className="mt-4 space-y-4">
-                    <Card className="border-2 border-slate-200">
-                      <CardHeader>
-                        <CardTitle>CSR Budget</CardTitle>
-                        <CardDescription>Review budgets, allocations, and planned spend across CSR initiatives.</CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                          <div className="rounded-md border bg-white p-4">
-                            <p className="text-sm font-medium text-gray-500">Allocated Budget</p>
-                            <p className="mt-1 text-2xl font-bold text-udaan-navy">Rs 25L</p>
-                          </div>
-                          <div className="rounded-md border bg-white p-4">
-                            <p className="text-sm font-medium text-gray-500">Committed</p>
-                            <p className="mt-1 text-2xl font-bold text-green-600">Rs 16.4L</p>
-                          </div>
-                          <div className="rounded-md border bg-white p-4">
-                            <p className="text-sm font-medium text-gray-500">Remaining</p>
-                            <p className="mt-1 text-2xl font-bold text-amber-600">Rs 8.6L</p>
-                          </div>
+                    <div className="space-y-4 pt-1">
+                      <div className="space-y-1">
+                        <h3 className="text-3xl font-semibold text-udaan-navy">CSR Budget</h3>
+                        <p className="text-gray-600">Review budgets, allocations, and planned spend across CSR initiatives.</p>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                        <div className="rounded-md border bg-white p-4">
+                          <p className="text-sm font-medium text-gray-500">Allocated Budget</p>
+                          <p className="mt-1 text-2xl font-bold text-udaan-navy">Rs 25L</p>
                         </div>
-                        <div className="flex flex-wrap gap-3">
-                          <Button asChild>
-                            <Link href="/companies/csr-budget">Open CSR Budget</Link>
-                          </Button>
-                          <Button variant="outline" asChild>
-                            <Link href="/companies/impact-reports">View Impact Reports</Link>
-                          </Button>
+                        <div className="rounded-md border bg-white p-4">
+                          <p className="text-sm font-medium text-gray-500">Committed</p>
+                          <p className="mt-1 text-2xl font-bold text-green-600">Rs 16.4L</p>
                         </div>
-                      </CardContent>
-                    </Card>
+                        <div className="rounded-md border bg-white p-4">
+                          <p className="text-sm font-medium text-gray-500">Remaining</p>
+                          <p className="mt-1 text-2xl font-bold text-amber-600">Rs 8.6L</p>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-3 pt-1">
+                        <Button asChild>
+                          <Link href="/companies/csr-budget">Open CSR Budget</Link>
+                        </Button>
+                        <Button variant="outline" asChild>
+                          <Link href="/companies/impact-reports">View Impact Reports</Link>
+                        </Button>
+                      </div>
+                    </div>
                   </TabsContent>
 
                   <TabsContent value="csr-health" className="mt-4 space-y-4">
-                    <Card className="border-2 border-slate-200">
-                      <CardHeader>
-                        <CardTitle>CSR Health</CardTitle>
-                        <CardDescription>Monitor project health, risks, milestones, and execution status.</CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                          <div className="rounded-md border bg-white p-4">
-                            <p className="text-sm font-medium text-gray-500">Healthy Projects</p>
-                            <p className="mt-1 text-2xl font-bold text-green-600">8</p>
-                          </div>
-                          <div className="rounded-md border bg-white p-4">
-                            <p className="text-sm font-medium text-gray-500">At Risk</p>
-                            <p className="mt-1 text-2xl font-bold text-amber-600">2</p>
-                          </div>
-                          <div className="rounded-md border bg-white p-4">
-                            <p className="text-sm font-medium text-gray-500">Critical</p>
-                            <p className="mt-1 text-2xl font-bold text-red-600">1</p>
-                          </div>
+                    <div className="space-y-4 pt-1">
+                      <div className="space-y-1">
+                        <h3 className="text-3xl font-semibold text-udaan-navy">CSR Health</h3>
+                        <p className="text-gray-600">Monitor project health, risks, milestones, and execution status.</p>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                        <div className="rounded-md border bg-white p-4">
+                          <p className="text-sm font-medium text-gray-500">Healthy Projects</p>
+                          <p className="mt-1 text-2xl font-bold text-green-600">8</p>
                         </div>
-                        <div className="flex flex-wrap gap-3">
-                          <Button asChild>
-                            <Link href="/companies/csr-health">Open CSR Health</Link>
-                          </Button>
-                          <Button variant="outline" asChild>
-                            <Link href="/companies/csr-agent">Use AI CSR Agent</Link>
-                          </Button>
+                        <div className="rounded-md border bg-white p-4">
+                          <p className="text-sm font-medium text-gray-500">At Risk</p>
+                          <p className="mt-1 text-2xl font-bold text-amber-600">2</p>
                         </div>
-                      </CardContent>
-                    </Card>
+                        <div className="rounded-md border bg-white p-4">
+                          <p className="text-sm font-medium text-gray-500">Critical</p>
+                          <p className="mt-1 text-2xl font-bold text-red-600">1</p>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-3 pt-1">
+                        <Button asChild>
+                          <Link href="/companies/csr-health">Open CSR Health</Link>
+                        </Button>
+                        <Button variant="outline" asChild>
+                          <Link href="/companies/csr-agent">Use AI CSR Agent</Link>
+                        </Button>
+                      </div>
+                    </div>
                   </TabsContent>
 
                   <TabsContent value="impact-reports" className="mt-4 space-y-4">
-                    <Card className="border-2 border-slate-200">
-                      <CardHeader>
-                        <CardTitle>Impact Reports</CardTitle>
-                        <CardDescription>Generate and review CSR impact reports for leadership and compliance.</CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                          <div className="rounded-md border bg-white p-4">
-                            <p className="text-sm font-medium text-gray-500">Reports Generated</p>
-                            <p className="mt-1 text-2xl font-bold text-udaan-navy">14</p>
-                          </div>
-                          <div className="rounded-md border bg-white p-4">
-                            <p className="text-sm font-medium text-gray-500">This Quarter</p>
-                            <p className="mt-1 text-2xl font-bold text-green-600">4</p>
-                          </div>
-                          <div className="rounded-md border bg-white p-4">
-                            <p className="text-sm font-medium text-gray-500">Export Ready</p>
-                            <p className="mt-1 text-2xl font-bold text-blue-600">Yes</p>
-                          </div>
+                    <div className="space-y-4 pt-1">
+                      <div className="space-y-1">
+                        <h3 className="text-3xl font-semibold text-udaan-navy">Impact Reports</h3>
+                        <p className="text-gray-600">Generate and review CSR impact reports for leadership and compliance.</p>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                        <div className="rounded-md border bg-white p-4">
+                          <p className="text-sm font-medium text-gray-500">Reports Generated</p>
+                          <p className="mt-1 text-2xl font-bold text-udaan-navy">14</p>
                         </div>
-                        <div className="flex flex-wrap gap-3">
-                          <Button asChild>
-                            <Link href="/companies/impact-reports">Open Impact Reports</Link>
-                          </Button>
-                          <Button variant="outline" asChild>
-                            <Link href="/companies/csr-budget">Review Budget</Link>
-                          </Button>
+                        <div className="rounded-md border bg-white p-4">
+                          <p className="text-sm font-medium text-gray-500">This Quarter</p>
+                          <p className="mt-1 text-2xl font-bold text-green-600">4</p>
                         </div>
-                      </CardContent>
-                    </Card>
+                        <div className="rounded-md border bg-white p-4">
+                          <p className="text-sm font-medium text-gray-500">Export Ready</p>
+                          <p className="mt-1 text-2xl font-bold text-blue-600">Yes</p>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-3 pt-1">
+                        <Button asChild>
+                          <Link href="/companies/impact-reports">Open Impact Reports</Link>
+                        </Button>
+                        <Button variant="outline" asChild>
+                          <Link href="/companies/csr-budget">Review Budget</Link>
+                        </Button>
+                      </div>
+                    </div>
                   </TabsContent>
-                </Tabs>
-                </div>
-              </CardContent>
-            </Card>
-            </div>
+                    </Tabs>
+                  </CardContent>
+                </Card>
+              </div>
             </div>
           </div>
         </main>
@@ -690,7 +610,7 @@ function CompanyDashboardContent() {
 
 export default function CompanyDashboard() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-background"><Header /><div className="container mx-auto px-4 py-8">Loading...</div></div>}>
+    <Suspense fallback={<div className="min-h-screen bg-gray-50"><Header /><div className="container mx-auto px-4 py-8 text-gray-600">Loading dashboard...</div></div>}>
       <CompanyDashboardContent />
     </Suspense>
   );

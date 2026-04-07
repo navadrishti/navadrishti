@@ -30,17 +30,25 @@ import Link from 'next/link';
 // Shared skeleton loader component
 function PageSkeleton() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-8 animate-fadeIn">
-      <div className="max-w-7xl mx-auto space-y-6">
-        <div className="h-16 bg-white dark:bg-slate-800 rounded-lg shadow-sm animate-pulse" />
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="md:col-span-2 space-y-4">
-            <div className="h-64 bg-white dark:bg-slate-800 rounded-lg shadow-sm animate-pulse" />
-            <div className="h-48 bg-white dark:bg-slate-800 rounded-lg shadow-sm animate-pulse" />
+    <div className="min-h-screen bg-gray-50 animate-fadeIn">
+      <div className="p-4 md:p-6 lg:p-8">
+        <div className="mx-auto max-w-7xl space-y-8">
+          <div className="space-y-3">
+            <div className="h-10 w-52 rounded-lg bg-white shadow-sm animate-pulse" />
+            <div className="h-5 w-80 max-w-[90%] rounded-md bg-white shadow-sm animate-pulse" />
           </div>
-          <div className="space-y-4">
-            <div className="h-32 bg-white dark:bg-slate-800 rounded-lg shadow-sm animate-pulse" />
-            <div className="h-32 bg-white dark:bg-slate-800 rounded-lg shadow-sm animate-pulse" />
+
+          <div className="rounded-xl border bg-white p-6 shadow-sm">
+            <div className="space-y-4">
+              <div className="h-6 w-56 rounded-md bg-slate-100 animate-pulse" />
+              <div className="h-40 rounded-lg bg-slate-100 animate-pulse" />
+              <div className="h-10 w-40 rounded-lg bg-slate-100 animate-pulse" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="h-28 rounded-xl border bg-white shadow-sm animate-pulse" />
+            <div className="h-28 rounded-xl border bg-white shadow-sm animate-pulse" />
           </div>
         </div>
       </div>
@@ -154,23 +162,7 @@ export default function ProtectedRoute({
 
   // Show loading state with skeleton
   if (!mounted || loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 p-8 animate-fadeIn">
-        <div className="max-w-7xl mx-auto space-y-6">
-          <div className="h-16 bg-white dark:bg-slate-800 rounded-lg shadow-sm animate-pulse" />
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="md:col-span-2 space-y-4">
-              <div className="h-64 bg-white dark:bg-slate-800 rounded-lg shadow-sm animate-pulse" />
-              <div className="h-48 bg-white dark:bg-slate-800 rounded-lg shadow-sm animate-pulse" />
-            </div>
-            <div className="space-y-4">
-              <div className="h-32 bg-white dark:bg-slate-800 rounded-lg shadow-sm animate-pulse" />
-              <div className="h-32 bg-white dark:bg-slate-800 rounded-lg shadow-sm animate-pulse" />
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+    return <PageSkeleton />;
   }
 
   // Show login prompt if not authenticated

@@ -12,13 +12,17 @@ const prepareRateLimitStore = new Map<string, number>();
 
 const normalizeEmail = (value: string) => value.trim().toLowerCase();
 
-const isAlreadyRegisteredError = (message: string) => {
-  const normalized = message.toLowerCase();
+const isAlreadyRegisteredError = (error: { message?: string; code?: string | number | null }) => {
+  const code = String(error.code || '').toLowerCase();
+  const normalized = String(error.message || '').toLowerCase();
   return (
-    normalized.includes('already registered') ||
+    code === 'email_exists' ||
     normalized.includes('already exists') ||
+    normalized.includes('already registered') ||
+    normalized.includes('already been registered') ||
     normalized.includes('duplicate') ||
-    normalized.includes('user already registered')
+    normalized.includes('user already registered') ||
+    (normalized.includes('already') && normalized.includes('registered'))
   );
 };
 
@@ -57,7 +61,7 @@ export async function POST(req: NextRequest) {
       email_confirm: true
     });
 
-    if (error && !isAlreadyRegisteredError(error.message || '')) {
+    if (error && !isAlreadyRegisteredError(error)) {
       console.error('Prepare email OTP error:', error);
       return NextResponse.json({ error: 'Failed to prepare email OTP session' }, { status: 500 });
     }

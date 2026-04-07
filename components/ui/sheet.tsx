@@ -53,9 +53,15 @@ interface SheetContentProps
   extends React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>,
     VariantProps<typeof sheetVariants> {}
 
+// Some workspace type resolutions do not infer children on the Radix content wrapper.
+// Declare it explicitly so composed sheet content renders cleanly in consuming components.
+type SheetContentPropsWithChildren = SheetContentProps & {
+  children?: React.ReactNode
+}
+
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
-  SheetContentProps
+  SheetContentPropsWithChildren
 >(({ side = "right", className, children, ...props }, ref) => (
   <SheetPortal>
     <SheetOverlay />
