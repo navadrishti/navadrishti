@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Header } from '@/components/header'
 import { Button } from '@/components/ui/button'
@@ -143,6 +143,7 @@ function DeleteAccountDialog({ open, onOpenChange, onConfirm, loading, error }: 
 export default function SettingsPage() {
   const { user, token, logout } = useAuth();
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -156,6 +157,19 @@ export default function SettingsPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      router.back();
+      return;
+    }
+
+    router.push('/dashboard');
+  };
 
   // Handle password change
   const handlePasswordChange = async (e: React.FormEvent) => {
@@ -254,16 +268,41 @@ export default function SettingsPage() {
     }
   };
 
+  if (!mounted) {
+    return (
+      <div className="flex min-h-screen flex-col">
+        <Header />
+        <main className="flex-1 px-6 py-8 md:px-10">
+          <div className="mx-auto max-w-4xl space-y-4">
+            <div className="h-8 w-20 rounded-md bg-muted/60" />
+            <div className="space-y-3 py-8 text-center">
+              <div className="mx-auto h-8 w-40 rounded-md bg-muted/60" />
+              <div className="mx-auto h-10 w-28 rounded-md bg-muted/60" />
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   if (!user) {
     return (
       <div className="flex min-h-screen flex-col">
         <Header />
         <main className="flex-1 px-6 py-8 md:px-10">
-          <div className="text-center py-8">
-            <h1 className="text-2xl font-bold mb-4">Login Required</h1>
-            <Link href="/login">
-              <Button>Log In</Button>
-            </Link>
+          <div className="mx-auto max-w-4xl space-y-4">
+            <Button variant="ghost" size="sm" onClick={handleBack} className="w-fit gap-2 px-0 text-muted-foreground hover:bg-transparent hover:text-muted-foreground">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                <path d="m15 18-6-6 6-6" />
+              </svg>
+              Back
+            </Button>
+            <div className="text-center py-8">
+              <h1 className="text-2xl font-bold mb-4">Login Required</h1>
+              <Link href="/login">
+                <Button>Log In</Button>
+              </Link>
+            </div>
           </div>
         </main>
       </div>
@@ -276,11 +315,19 @@ export default function SettingsPage() {
       
       <main className="flex-1 px-6 py-8 md:px-10">
         <div className="max-w-4xl mx-auto">
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-            <p className="text-muted-foreground">
-              Manage your account settings
-            </p>
+          <div className="mb-8 space-y-4">
+            <Button variant="ghost" size="sm" onClick={handleBack} className="w-fit gap-2 px-0 text-muted-foreground hover:bg-transparent hover:text-muted-foreground">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                <path d="m15 18-6-6 6-6" />
+              </svg>
+              Back
+            </Button>
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
+              <p className="text-muted-foreground">
+                Manage your account settings
+              </p>
+            </div>
           </div>
 
           <div className="grid gap-6">

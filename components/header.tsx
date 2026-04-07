@@ -34,6 +34,7 @@ export function Header() {
   const { user, logout, refreshUser } = useAuth()
   const router = useRouter()
   const [mounted, setMounted] = useState(false)
+  const [mobileSheetOpen, setMobileSheetOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<ProfileSearchResult[]>([])
   const [isSearching, setIsSearching] = useState(false)
@@ -52,6 +53,11 @@ export function Header() {
       }
     }
   }, [])
+
+  useEffect(() => {
+    if (!mounted) return
+    window.dispatchEvent(new CustomEvent('nd-mobile-menu-state', { detail: { open: mobileSheetOpen } }))
+  }, [mobileSheetOpen, mounted])
 
   const openProfileMenu = () => {
     if (profileMenuTimeoutRef.current) {
@@ -379,7 +385,7 @@ export function Header() {
               </button>
 
               {isProfileMenuOpen && (
-                <div className="absolute right-0 top-full mt-2 w-64 rounded-md border bg-white p-1 text-black shadow-lg">
+                <div className="absolute left-0 top-full mt-2 w-64 rounded-md border bg-white p-1 text-black shadow-lg">
                   <div className="px-2 py-1.5 text-sm font-semibold text-gray-900">{user.name}</div>
                   <div className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-muted-foreground">
                     <span className="truncate">{user.email} • {user.user_type.charAt(0).toUpperCase() + user.user_type.slice(1)}</span>
@@ -390,7 +396,6 @@ export function Header() {
                     />
                   </div>
                   <div className="my-1 h-px bg-gray-200" />
-                  <Link href="/profile" className="block rounded px-2 py-2 text-sm text-gray-800 hover:bg-gray-100">Profile</Link>
                   <Link href={getDashboardLink()} className="block rounded px-2 py-2 text-sm text-gray-800 hover:bg-gray-100">Dashboard</Link>
                   <Link href="/settings" className="block rounded px-2 py-2 text-sm text-gray-800 hover:bg-gray-100">Settings</Link>
                   <div className="my-1 h-px bg-gray-200" />
@@ -419,7 +424,7 @@ export function Header() {
         </div>
         <div className="flex md:hidden flex-1 items-center justify-end gap-2">
           {/* Mobile Menu Sheet */}
-          <Sheet>
+          <Sheet open={mobileSheetOpen} onOpenChange={setMobileSheetOpen}>
             <SheetTrigger asChild>
               <Button 
                 variant="ghost" 
@@ -599,11 +604,6 @@ export function Header() {
                         </div>
                         
                         <div className="space-y-3 pb-8">
-                          <Link href="/profile">
-                            <Button variant="outline" className="w-full h-12 text-udaan-navy border-udaan-navy bg-white hover:bg-udaan-orange hover:border-udaan-orange hover:text-white transition-colors">
-                              Profile
-                            </Button>
-                          </Link>
                           <Link href={getDashboardLink()}>
                             <Button variant="outline" className="w-full h-12 text-udaan-navy border-udaan-navy bg-white hover:bg-udaan-orange hover:border-udaan-orange hover:text-white transition-colors">
                               Dashboard
