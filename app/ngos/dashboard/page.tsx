@@ -92,6 +92,26 @@ const isActionableProjectApplicationStatus = (status: string): boolean => {
   return ['pending', 'pledged', 'invited', 'pending_acceptance', 'awaiting_acceptance', 'offered', 'assigned'].includes(normalized);
 };
 
+const formatStatusLabel = (status: string): string => {
+  const normalized = String(status || '').trim().toLowerCase();
+  if (!normalized) return 'Unknown';
+  return normalized
+    .replace(/_/g, ' ')
+    .split(' ')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+};
+
+const getStatusBadgeClass = (status: string): string => {
+  const normalized = String(status || '').trim().toLowerCase();
+  if (normalized === 'accepted' || normalized === 'completed') return 'border-green-300 bg-green-50 text-green-700';
+  if (normalized === 'pending' || normalized === 'pledged' || normalized === 'invited' || normalized === 'pending_acceptance' || normalized === 'awaiting_acceptance' || normalized === 'offered' || normalized === 'assigned') return 'border-amber-300 bg-amber-50 text-amber-700';
+  if (normalized === 'in_progress' || normalized === 'active') return 'border-blue-300 bg-blue-50 text-blue-700';
+  if (normalized === 'rejected' || normalized === 'cancelled' || normalized === 'closed') return 'border-red-300 bg-red-50 text-red-700';
+  if (normalized === 'expired') return 'border-slate-300 bg-slate-100 text-slate-700';
+  return 'border-slate-300 bg-white text-slate-700';
+};
+
 function NGODashboardContent() {
   const { user, refreshUser } = useAuth();
   const { toast } = useToast();
@@ -410,7 +430,7 @@ function NGODashboardContent() {
 
       toast({
         title: decision === 'accepted' ? 'Invitation accepted' : 'Invitation rejected',
-        description: decision === 'accepted' ? 'You are now available for lead NGO selection.' : 'Invitation was rejected.'
+        description: decision === 'accepted' ? 'You are now the lead NGO for this project. Other invites are expired automatically.' : 'Invitation was rejected.'
       });
 
       fetchLeadNgoInvitations();
@@ -954,7 +974,9 @@ function NGODashboardContent() {
                                     <p className="text-sm text-slate-600">Company: {application.company_name}</p>
                                     <p className="text-xs text-slate-500">{application.company_email || 'No email'} • {application.project_location || 'Location not set'}</p>
                                   </div>
-                                  <Badge variant="outline" className="capitalize w-fit">{application.status}</Badge>
+                                  <Badge variant="outline" className={`w-fit ${getStatusBadgeClass(application.status)}`}>
+                                    {formatStatusLabel(application.status)}
+                                  </Badge>
                                 </div>
 
                                 <p className="text-xs text-slate-600">Needs in application: {application.needs.length}</p>
@@ -1021,7 +1043,9 @@ function NGODashboardContent() {
                                   <p className="font-semibold">{assignment.project_title}</p>
                                   <p className="text-sm text-slate-600">Assigned Company: {assignment.assigned_company_name}</p>
                                 </div>
-                                <Badge variant="outline" className="capitalize w-fit">{assignment.assignment_status}</Badge>
+                                <Badge variant="outline" className={`w-fit ${getStatusBadgeClass(assignment.assignment_status)}`}>
+                                  {formatStatusLabel(assignment.assignment_status)}
+                                </Badge>
                               </div>
                               <div className="grid grid-cols-1 gap-2 text-xs text-slate-600 sm:grid-cols-4">
                                 <p>Total Needs: {assignment.needs.length}</p>
@@ -1049,7 +1073,9 @@ function NGODashboardContent() {
                                   <p className="font-semibold">{assignment.project_title}</p>
                                   <p className="text-sm text-slate-600">Assigned Company: {assignment.assigned_company_name}</p>
                                 </div>
-                                <Badge variant="outline" className="capitalize w-fit">{assignment.assignment_status}</Badge>
+                                <Badge variant="outline" className={`w-fit ${getStatusBadgeClass(assignment.assignment_status)}`}>
+                                  {formatStatusLabel(assignment.assignment_status)}
+                                </Badge>
                               </div>
                               <div className="grid grid-cols-1 gap-2 text-xs text-slate-600 sm:grid-cols-4">
                                 <p>Total Needs: {assignment.needs.length}</p>
@@ -1167,7 +1193,9 @@ function NGODashboardContent() {
                                   <p className="text-sm text-slate-600">Assigned Company: {assignment.assigned_company_name}</p>
                                   <p className="text-xs text-slate-500">{assignment.assigned_company_email || 'No email'} • {assignment.project_location || 'Location not set'}</p>
                                 </div>
-                                <Badge variant="outline" className="capitalize w-fit">{assignment.assignment_status}</Badge>
+                                <Badge variant="outline" className={`w-fit ${getStatusBadgeClass(assignment.assignment_status)}`}>
+                                  {formatStatusLabel(assignment.assignment_status)}
+                                </Badge>
                               </div>
 
                               <p className="text-xs text-slate-600">Need-level tracking is available only in the project detail page.</p>
@@ -1216,7 +1244,9 @@ function NGODashboardContent() {
                                           <p className="text-sm text-slate-600">Invited by: {invite.company_name}</p>
                                           <p className="text-xs text-slate-500">{invite.company_email || 'No email'} • {invite.project_location || 'Location not set'}</p>
                                         </div>
-                                        <Badge variant="outline" className="capitalize w-fit">{invite.status}</Badge>
+                                        <Badge variant="outline" className={`w-fit ${getStatusBadgeClass(invite.status)}`}>
+                                          {formatStatusLabel(invite.status)}
+                                        </Badge>
                                       </div>
 
                                       <div className="flex flex-wrap gap-2">
