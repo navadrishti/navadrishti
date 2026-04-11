@@ -397,6 +397,7 @@ export function Header() {
                   </div>
                   <div className="my-1 h-px bg-gray-200" />
                   <Link href={getDashboardLink()} className="block rounded px-2 py-2 text-sm text-gray-800 hover:bg-gray-100">Dashboard</Link>
+                  <Link href="/help-support" className="block rounded px-2 py-2 text-sm text-gray-800 hover:bg-gray-100">Help & Support</Link>
                   <Link href="/settings" className="block rounded px-2 py-2 text-sm text-gray-800 hover:bg-gray-100">Settings</Link>
                   <div className="my-1 h-px bg-gray-200" />
                   <button
@@ -607,6 +608,11 @@ export function Header() {
                           <Link href={getDashboardLink()}>
                             <Button variant="outline" className="w-full h-12 text-udaan-navy border-udaan-navy bg-white hover:bg-udaan-orange hover:border-udaan-orange hover:text-white transition-colors">
                               Dashboard
+                            </Button>
+                          </Link>
+                          <Link href="/help-support">
+                            <Button variant="outline" className="w-full h-12 text-udaan-navy border-udaan-navy bg-white hover:bg-udaan-orange hover:border-udaan-orange hover:text-white transition-colors">
+                              Help & Support
                             </Button>
                           </Link>
                           <Link href="/settings">

@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { ProfileDashboardTab } from '@/components/profile-dashboard-tab';
 import { DashboardQuickSidebar } from '@/components/dashboard-quick-sidebar';
 import { useToast } from '@/hooks/use-toast';
@@ -32,6 +33,72 @@ interface OfferRequestItem {
   status: 'pending' | 'accepted' | 'rejected' | 'active' | 'completed' | 'cancelled';
   isAssigned: boolean;
   created_at: string;
+}
+
+interface CompanyProjectOpportunity {
+  project_id: string;
+  project_title: string;
+  project_description?: string;
+  project_location?: string;
+  project_timeline?: string;
+  ngo_id: number;
+  ngo_name: string;
+  ngo_email?: string;
+  needs: Array<{
+    id: number;
+    title: string;
+    status: string;
+    request_type?: string;
+    estimated_budget?: number | null;
+    target_amount?: number | null;
+    target_quantity?: number | null;
+    beneficiary_count?: number | null;
+  }>;
+  company_application_status: 'none' | 'pending' | 'accepted' | 'rejected' | string;
+  company_application_eligible?: boolean;
+  company_application_reason?: string;
+  latest_application_at?: string | null;
+  note?: string;
+}
+
+interface CSRTrackingAssignment {
+  project_id: string;
+  project_title: string;
+  project_location?: string;
+  project_timeline?: string;
+  lead_ngo_id: number;
+  lead_ngo_name: string;
+  lead_ngo_email?: string;
+  assigned_company_id: number;
+  assigned_company_name: string;
+  assigned_company_email?: string;
+  selected_lead_ngo_id?: number | null;
+  selected_lead_ngo_name?: string | null;
+  selected_lead_ngo_email?: string | null;
+  assignment_status: string;
+  assigned_at?: string | null;
+  review_note?: string;
+  lead_ngo_invites?: Array<{
+    id: string;
+    ngo_id: number;
+    ngo_name: string;
+    ngo_email?: string;
+    status: string;
+    note?: string;
+    selected_as_lead?: boolean;
+  }>;
+  needs: Array<{
+    id: number;
+    title: string;
+    status: string;
+    request_type?: string;
+  }>;
+}
+
+interface NgoDirectoryItem {
+  id: number;
+  name: string;
+  email?: string;
 }
 
 function CompanyDashboardContent() {
@@ -53,6 +120,19 @@ function CompanyDashboardContent() {
   const [csrProjects, setCsrProjects] = useState<any[]>([]);
   const [projectEvidenceById, setProjectEvidenceById] = useState<Record<string, any>>({});
   const [loadingEvidenceProjectId, setLoadingEvidenceProjectId] = useState<string | null>(null);
+  const [projectOpportunities, setProjectOpportunities] = useState<CompanyProjectOpportunity[]>([]);
+  const [loadingProjectOpportunities, setLoadingProjectOpportunities] = useState(false);
+  const [applyingProjectId, setApplyingProjectId] = useState<string | null>(null);
+  const [projectApplicationNote, setProjectApplicationNote] = useState('');
+  const [csrTrackingAssignments, setCsrTrackingAssignments] = useState<CSRTrackingAssignment[]>([]);
+  const [loadingCSRTrackingAssignments, setLoadingCSRTrackingAssignments] = useState(false);
+  const [ngoDirectory, setNgoDirectory] = useState<NgoDirectoryItem[]>([]);
+  const [loadingNgoDirectory, setLoadingNgoDirectory] = useState(false);
+  const [inviteSearchByProject, setInviteSearchByProject] = useState<Record<string, string>>({});
+  const [inviteNoteByProject, setInviteNoteByProject] = useState<Record<string, string>>({});
+  const [selectedNgoIdsByProject, setSelectedNgoIdsByProject] = useState<Record<string, number[]>>({});
+  const [invitingProjectId, setInvitingProjectId] = useState<string | null>(null);
+  const [selectingLeadProjectId, setSelectingLeadProjectId] = useState<string | null>(null);
   const [loadingCSRProjects, setLoadingCSRProjects] = useState(false);
   const [companyCAAccounts, setCompanyCAAccounts] = useState<any[]>([]);
   const [loadingCompanyCAAccounts, setLoadingCompanyCAAccounts] = useState(false);
@@ -60,6 +140,7 @@ function CompanyDashboardContent() {
   const [companyCAForm, setCompanyCAForm] = useState({ name: '', email: '', password: '' });
   const [companyCAFeedback, setCompanyCAFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [lastCreatedCompanyCA, setLastCreatedCompanyCA] = useState<{ email: string; password: string } | null>(null);
+  const highlightedRequestId = Number(searchParams.get('requestId') || '');
 
   useEffect(() => {
     setMounted(true);
@@ -92,6 +173,211 @@ function CompanyDashboardContent() {
       setCsrProjects([]);
     } finally {
       setLoadingCSRProjects(false);
+    }
+  };
+
+  const fetchProjectOpportunities = async () => {
+    try {
+      setLoadingProjectOpportunities(true);
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setProjectOpportunities([]);
+        return;
+      }
+
+      const query = Number.isFinite(highlightedRequestId)
+        ? `?mode=company-projects&requestId=${highlightedRequestId}`
+        : '?mode=company-projects';
+
+      const response = await fetch(`/api/service-request-assignments${query}`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      const payload = await response.json();
+      if (response.ok && payload?.success) {
+        setProjectOpportunities(Array.isArray(payload.data) ? payload.data : []);
+      } else {
+        setProjectOpportunities([]);
+      }
+    } catch (error) {
+      console.error('Failed to fetch project opportunities:', error);
+      setProjectOpportunities([]);
+    } finally {
+      setLoadingProjectOpportunities(false);
+    }
+  };
+
+  const fetchCSRTrackingAssignments = async () => {
+    try {
+      setLoadingCSRTrackingAssignments(true);
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setCsrTrackingAssignments([]);
+        return;
+      }
+
+      const response = await fetch('/api/service-request-assignments?mode=csr-tracking', {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      const payload = await response.json();
+      if (response.ok && payload?.success) {
+        setCsrTrackingAssignments(Array.isArray(payload.data) ? payload.data : []);
+      } else {
+        setCsrTrackingAssignments([]);
+      }
+    } catch (error) {
+      console.error('Failed to fetch CSR tracking assignments:', error);
+      setCsrTrackingAssignments([]);
+    } finally {
+      setLoadingCSRTrackingAssignments(false);
+    }
+  };
+
+  const fetchNgoDirectory = async () => {
+    try {
+      setLoadingNgoDirectory(true);
+      const response = await fetch('/api/ngos/list');
+      const payload = await response.json();
+      if (response.ok && payload?.success) {
+        setNgoDirectory(Array.isArray(payload.ngos) ? payload.ngos : []);
+      } else {
+        setNgoDirectory([]);
+      }
+    } catch (error) {
+      setNgoDirectory([]);
+    } finally {
+      setLoadingNgoDirectory(false);
+    }
+  };
+
+  const inviteLeadNgosFromDashboard = async (projectId: string) => {
+    try {
+      setInvitingProjectId(projectId);
+      const token = localStorage.getItem('token');
+      if (!token) {
+        toast({ title: 'Error', description: 'Please login again', variant: 'destructive' });
+        return;
+      }
+
+      const ngoIds = selectedNgoIdsByProject[projectId] || [];
+      if (ngoIds.length === 0) {
+        toast({ title: 'Select NGOs', description: 'Choose at least one NGO to invite.', variant: 'destructive' });
+        return;
+      }
+
+      const response = await fetch('/api/service-request-assignments', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          action: 'invite-lead-ngo',
+          projectId,
+          ngoIds,
+          note: inviteNoteByProject[projectId] || ''
+        })
+      });
+
+      const payload = await response.json();
+      if (!response.ok || !payload?.success) {
+        toast({ title: 'Invite failed', description: payload?.error || 'Could not send invitations', variant: 'destructive' });
+        return;
+      }
+
+      toast({ title: 'Invites sent', description: payload?.data?.message || 'Lead NGO invitations sent.' });
+      setSelectedNgoIdsByProject((prev) => ({ ...prev, [projectId]: [] }));
+      setInviteNoteByProject((prev) => ({ ...prev, [projectId]: '' }));
+      fetchCSRTrackingAssignments();
+    } catch (error) {
+      toast({ title: 'Invite failed', description: 'Could not send invitations', variant: 'destructive' });
+    } finally {
+      setInvitingProjectId(null);
+    }
+  };
+
+  const selectLeadNgoFromDashboard = async (projectId: string, ngoId: number) => {
+    try {
+      setSelectingLeadProjectId(projectId);
+      const token = localStorage.getItem('token');
+      if (!token) {
+        toast({ title: 'Error', description: 'Please login again', variant: 'destructive' });
+        return;
+      }
+
+      const response = await fetch('/api/service-request-assignments', {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          action: 'select-lead-ngo',
+          projectId,
+          ngoId
+        })
+      });
+
+      const payload = await response.json();
+      if (!response.ok || !payload?.success) {
+        toast({ title: 'Selection failed', description: payload?.error || 'Could not select lead NGO', variant: 'destructive' });
+        return;
+      }
+
+      toast({ title: 'Lead NGO selected', description: 'Lead NGO assigned successfully.' });
+      fetchCSRTrackingAssignments();
+    } catch (error) {
+      toast({ title: 'Selection failed', description: 'Could not select lead NGO', variant: 'destructive' });
+    } finally {
+      setSelectingLeadProjectId(null);
+    }
+  };
+
+  const applyToProjectOpportunity = async (projectId: string) => {
+    try {
+      setApplyingProjectId(projectId);
+      const token = localStorage.getItem('token');
+      if (!token) {
+        toast({ title: 'Error', description: 'Please login again', variant: 'destructive' });
+        return;
+      }
+
+      const response = await fetch('/api/service-request-assignments', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          action: 'apply-project',
+          projectId,
+          note: projectApplicationNote
+        })
+      });
+
+      const payload = await response.json();
+      if (!response.ok || !payload?.success) {
+        toast({ title: 'Application failed', description: payload?.error || 'Could not apply for project', variant: 'destructive' });
+        return;
+      }
+
+      toast({
+        title: 'Application submitted',
+        description: payload?.data?.message || 'Sent to NGO for review.'
+      });
+
+      setProjectApplicationNote('');
+      fetchProjectOpportunities();
+      fetchCSRTrackingAssignments();
+    } catch (error) {
+      toast({ title: 'Application failed', description: 'Could not apply for project', variant: 'destructive' });
+    } finally {
+      setApplyingProjectId(null);
     }
   };
 
@@ -376,9 +662,12 @@ function CompanyDashboardContent() {
       fetchOfferApplications();
       fetchOfferRequests();
       fetchCSRProjects();
+      fetchProjectOpportunities();
+      fetchCSRTrackingAssignments();
+      fetchNgoDirectory();
       fetchCompanyCAAccounts();
     }
-  }, [user?.id]);
+  }, [user?.id, highlightedRequestId]);
 
   const allVerified = Boolean(
     user?.email_verified &&
@@ -598,6 +887,231 @@ function CompanyDashboardContent() {
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <h3 className="font-medium">Active CSR Projects</h3>
                       <Button variant="outline" size="sm" onClick={fetchCSRProjects} className="w-full sm:w-auto">Refresh</Button>
+                    </div>
+
+                    <div className="rounded-md border bg-slate-50 p-4 space-y-3">
+                      <div>
+                        <p className="font-semibold text-slate-900">NGO Project Opportunities</p>
+                        <p className="text-sm text-slate-600">Apply once to cover all active needs in a project. NGO approval starts tracking for the full project scope.</p>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto] md:items-end">
+                        <div>
+                          <Label htmlFor="project-apply-note">Application note (optional)</Label>
+                          <Input
+                            id="project-apply-note"
+                            value={projectApplicationNote}
+                            onChange={(event) => setProjectApplicationNote(event.target.value)}
+                            placeholder="Scope, timeline, logistics plan (Delhivery), payment controls (Razorpay)"
+                          />
+                        </div>
+                        <Button variant="outline" size="sm" onClick={fetchProjectOpportunities}>Refresh Opportunities</Button>
+                      </div>
+
+                      {loadingProjectOpportunities ? (
+                        <div className="flex items-center justify-center py-8 text-sm text-slate-600">
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          Loading opportunities...
+                        </div>
+                      ) : projectOpportunities.length === 0 ? (
+                        <p className="text-sm text-slate-600">No project opportunities currently available.</p>
+                      ) : (
+                        <div className="space-y-3">
+                          {projectOpportunities.map((opportunity) => (
+                            <div key={opportunity.project_id} className="rounded-md border bg-white p-3 space-y-2">
+                              <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                                <div>
+                                  <p className="font-semibold">{opportunity.project_title}</p>
+                                  <p className="text-sm text-slate-600">NGO: {opportunity.ngo_name}</p>
+                                  <p className="text-xs text-slate-500">{opportunity.project_location || 'Location not set'} • {opportunity.project_timeline || 'Timeline not set'}</p>
+                                </div>
+                                <Badge variant="outline" className="capitalize w-fit">{opportunity.company_application_status}</Badge>
+                              </div>
+
+                              <p className="text-xs text-slate-600">Project needs are visible only on the project detail page.</p>
+
+                              <div className="flex flex-wrap gap-2 pt-1">
+                                <Link href={`/service-requests/projects/${opportunity.project_id}`}>
+                                  <Button size="sm" variant="outline">View Project</Button>
+                                </Link>
+                                <Button
+                                  size="sm"
+                                  onClick={() => applyToProjectOpportunity(opportunity.project_id)}
+                                  disabled={
+                                    applyingProjectId === opportunity.project_id ||
+                                    opportunity.company_application_eligible === false ||
+                                    opportunity.company_application_status === 'pending' ||
+                                    opportunity.company_application_status === 'accepted'
+                                  }
+                                >
+                                  {applyingProjectId === opportunity.project_id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : opportunity.company_application_status === 'accepted' ? (
+                                    'Accepted by NGO'
+                                  ) : opportunity.company_application_status === 'pending' ? (
+                                    'Pending NGO Review'
+                                  ) : opportunity.company_application_eligible === false ? (
+                                    'Not Eligible'
+                                  ) : (
+                                    'Apply For Full Project'
+                                  )}
+                                </Button>
+                              </div>
+
+                              {opportunity.company_application_eligible === false && opportunity.company_application_reason ? (
+                                <p className="text-xs text-red-600">{opportunity.company_application_reason}</p>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="rounded-md border bg-slate-50 p-4 space-y-3">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="font-semibold text-slate-900">Service Request CSR Tracking</p>
+                          <p className="text-sm text-slate-600">Approved project handoffs are tracked here with lead NGO visibility.</p>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={fetchCSRTrackingAssignments}>Refresh Tracking</Button>
+                      </div>
+
+                      {loadingCSRTrackingAssignments ? (
+                        <div className="flex items-center justify-center py-6 text-sm text-slate-600">
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          Loading tracking assignments...
+                        </div>
+                      ) : csrTrackingAssignments.length === 0 ? (
+                        <p className="text-sm text-slate-600">No accepted handoffs yet.</p>
+                      ) : (
+                        <div className="space-y-3">
+                          {csrTrackingAssignments.map((assignment) => {
+                            return (
+                            <div key={`${assignment.project_id}:${assignment.assigned_company_id}`} className="rounded-md border bg-white p-3 space-y-3">
+                              <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                                <div>
+                                  <p className="font-semibold">{assignment.project_title}</p>
+                                  <p className="text-sm text-slate-600">Lead NGO: {assignment.lead_ngo_name}</p>
+                                  <p className="text-xs text-slate-500">{assignment.lead_ngo_email || 'No email'} • {assignment.project_location || 'Location not set'}</p>
+                                </div>
+                                <Badge variant="outline" className="capitalize w-fit">{assignment.assignment_status}</Badge>
+                              </div>
+
+                              <p className="text-xs text-slate-600">Need-level tracking is available only in the project detail page.</p>
+
+                              {assignment.selected_lead_ngo_id ? (
+                                <div className="rounded-md border bg-emerald-50 p-2 text-xs text-emerald-800">
+                                  Selected Lead NGO: {assignment.selected_lead_ngo_name || 'NGO'} {assignment.selected_lead_ngo_email ? `(${assignment.selected_lead_ngo_email})` : ''}
+                                </div>
+                              ) : null}
+
+                              <div className="rounded-md border bg-slate-50 p-3 space-y-3">
+                                <p className="text-sm font-medium text-slate-900">Invite Lead NGOs</p>
+                                <p className="text-xs text-slate-600">Search and invite multiple NGOs here. Recommendation suggestions will plug in later.</p>
+
+                                <Input
+                                  placeholder="Search NGOs by name or email"
+                                  value={inviteSearchByProject[assignment.project_id] || ''}
+                                  onChange={(event) =>
+                                    setInviteSearchByProject((prev) => ({
+                                      ...prev,
+                                      [assignment.project_id]: event.target.value
+                                    }))
+                                  }
+                                />
+
+                                {loadingNgoDirectory ? (
+                                  <p className="text-xs text-slate-600">Loading NGO directory...</p>
+                                ) : (
+                                  <div className="max-h-36 space-y-2 overflow-auto">
+                                    {ngoDirectory
+                                      .filter((ngo) => ngo.id !== Number(assignment.lead_ngo_id))
+                                      .filter((ngo) => {
+                                        const term = String(inviteSearchByProject[assignment.project_id] || '').toLowerCase().trim();
+                                        if (!term) return true;
+                                        return String(ngo.name || '').toLowerCase().includes(term) || String(ngo.email || '').toLowerCase().includes(term);
+                                      })
+                                      .map((ngo) => (
+                                        <label key={`${assignment.project_id}-${ngo.id}`} className="flex items-center gap-2 rounded-md border bg-white px-2 py-1.5 text-xs">
+                                          <input
+                                            type="checkbox"
+                                            checked={(selectedNgoIdsByProject[assignment.project_id] || []).includes(ngo.id)}
+                                            onChange={(event) => {
+                                              setSelectedNgoIdsByProject((prev) => {
+                                                const current = prev[assignment.project_id] || [];
+                                                return {
+                                                  ...prev,
+                                                  [assignment.project_id]: event.target.checked
+                                                    ? [...current, ngo.id]
+                                                    : current.filter((id) => id !== ngo.id)
+                                                };
+                                              });
+                                            }}
+                                          />
+                                          <span>{ngo.name} {ngo.email ? `(${ngo.email})` : ''}</span>
+                                        </label>
+                                      ))}
+                                  </div>
+                                )}
+
+                                <Textarea
+                                  rows={2}
+                                  placeholder="Optional note"
+                                  value={inviteNoteByProject[assignment.project_id] || ''}
+                                  onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) =>
+                                    setInviteNoteByProject((prev) => ({
+                                      ...prev,
+                                      [assignment.project_id]: event.target.value
+                                    }))
+                                  }
+                                />
+
+                                <Button
+                                  size="sm"
+                                  onClick={() => inviteLeadNgosFromDashboard(assignment.project_id)}
+                                  disabled={!allVerified || invitingProjectId === assignment.project_id || (selectedNgoIdsByProject[assignment.project_id] || []).length === 0}
+                                >
+                                  {invitingProjectId === assignment.project_id ? 'Sending...' : !allVerified ? 'Verification Required' : 'Send Lead NGO Invites'}
+                                </Button>
+                              </div>
+
+                              {(assignment.lead_ngo_invites || []).length > 0 ? (
+                                <div className="rounded-md border bg-slate-50 p-3 space-y-2">
+                                  <p className="text-sm font-medium text-slate-900">Lead NGO Invite Responses</p>
+                                  {(assignment.lead_ngo_invites || []).map((invite) => {
+                                    const canSelect = String(invite.status || '').toLowerCase() === 'accepted';
+                                    return (
+                                      <div key={invite.id} className="flex flex-col gap-2 rounded-md border bg-white p-2 md:flex-row md:items-center md:justify-between">
+                                        <div>
+                                          <p className="text-xs font-medium text-slate-900">{invite.ngo_name}</p>
+                                          <p className="text-xs text-slate-500">{invite.ngo_email || 'No email'}</p>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <Badge variant="outline" className="capitalize">{invite.status}</Badge>
+                                          <Button
+                                            size="sm"
+                                            variant={invite.selected_as_lead ? 'secondary' : 'outline'}
+                                            disabled={!allVerified || !canSelect || selectingLeadProjectId === assignment.project_id || invite.selected_as_lead}
+                                            onClick={() => selectLeadNgoFromDashboard(assignment.project_id, invite.ngo_id)}
+                                          >
+                                            {invite.selected_as_lead ? 'Lead Selected' : (selectingLeadProjectId === assignment.project_id ? 'Selecting...' : 'Select as Lead')}
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : null}
+
+                              <div className="flex justify-end">
+                                <Link href={`/service-requests/projects/${assignment.project_id}`}>
+                                  <Button size="sm" variant="outline">Open Project Detail</Button>
+                                </Link>
+                              </div>
+                            </div>
+                          )})}
+                        </div>
+                      )}
                     </div>
 
                     {loadingCSRProjects ? (

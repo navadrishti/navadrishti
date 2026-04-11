@@ -16,6 +16,7 @@ interface EmailOptions {
   subject: string;
   html: string;
   text?: string;
+  replyTo?: string;
 }
 
 const shouldLogEmailWarnings = process.env.EMAIL_DEBUG === 'true';
@@ -38,7 +39,7 @@ const createTransporter = () => {
   });
 };
 
-export async function sendEmail({ to, subject, html, text }: EmailOptions) {
+export async function sendEmail({ to, subject, html, text, replyTo }: EmailOptions) {
   const transporter = createTransporter();
 
   if (!transporter) {
@@ -55,6 +56,7 @@ export async function sendEmail({ to, subject, html, text }: EmailOptions) {
       subject,
       html,
       text: text || '',
+      replyTo: replyTo || process.env.SMTP_REPLY_TO || process.env.EMAIL_REPLY_TO,
     });
 
     return { success: true };

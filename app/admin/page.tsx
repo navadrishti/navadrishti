@@ -391,6 +391,13 @@ export default function AdminPage() {
         </div>
         <div className="flex gap-3">
           <Button
+            onClick={() => router.push('/admin/support')}
+            variant="outline"
+            className="border-blue-200 text-blue-700 hover:bg-blue-50"
+          >
+            Support Inbox
+          </Button>
+          <Button
             onClick={() => router.push('/admin/announcements')}
             variant="outline"
             className="border-orange-200 text-orange-700 hover:bg-orange-50"

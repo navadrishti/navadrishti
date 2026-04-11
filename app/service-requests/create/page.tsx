@@ -614,6 +614,31 @@ export default function CreateServiceRequestPage() {
         setError(validationError)
         return
       }
+
+      const recommendations = getNeedRecommendations(need)
+      if (recommendations.length > 0) {
+        const selectedOfferIds = selectedOffersByNeed[index] || []
+        if (selectedOfferIds.length === 0) {
+          setError(`Need ${index + 1}: matching capability offers exist. Select one or more offers before creating this need.`)
+          setRecommendationNeedIndex(index)
+          return
+        }
+
+        const selectedRecommendations = recommendations.filter((item) => selectedOfferIds.includes(item.offer.id))
+        const targetCoverage = getTargetCoverageValue(need)
+        if (targetCoverage && targetCoverage > 0) {
+          const selectedCoverage = selectedRecommendations.reduce((sum, item) => {
+            const ratio = item.coverageRatio || 0
+            return sum + (ratio * targetCoverage)
+          }, 0)
+
+          if (selectedCoverage < targetCoverage) {
+            setError(`Need ${index + 1}: selected capability offers do not fully cover this need. Add more offers to reach full coverage.`)
+            setRecommendationNeedIndex(index)
+            return
+          }
+        }
+      }
     }
 
     setLoading(true)

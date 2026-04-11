@@ -156,15 +156,18 @@ export default function ServiceRequestDetailPage() {
   const [applicantQuantities, setApplicantQuantities] = useState<Record<number, string>>({})
   const [receiptUploads, setReceiptUploads] = useState<Record<number, File | null>>({})
   const [ngoCompletionNotes, setNgoCompletionNotes] = useState<Record<number, string>>({})
+  const [ngoDeliveryTrackingByApplicant, setNgoDeliveryTrackingByApplicant] = useState<Record<number, string>>({})
   const [individualReceiptFile, setIndividualReceiptFile] = useState<File | null>(null)
   const [individualCompletionNote, setIndividualCompletionNote] = useState('')
+  const [individualDeliveryTrackingId, setIndividualDeliveryTrackingId] = useState('')
 
   const requestId = params.id as string
   const isAuthenticated = !!(user && token)
   const effectiveUserType = isHydrated ? user?.user_type : undefined
+  const canShowVolunteerTab = effectiveUserType !== 'company' && effectiveUserType !== 'ngo'
+  const showNeedTabList = canShowVolunteerTab
   const isNgoOwner = effectiveUserType === 'ngo' && request?.ngo_id === user?.id
   const canVolunteer = effectiveUserType === 'individual'
-  const canCompanyFulfillViaCSR = effectiveUserType === 'company'
 
   useEffect(() => {
     setIsHydrated(true)
@@ -493,7 +496,8 @@ export default function ServiceRequestDetailPage() {
         body: JSON.stringify({
           status: 'completed',
           receiptUrl,
-          completionNote: individualCompletionNote
+          completionNote: individualCompletionNote,
+          deliveryTrackingId: individualDeliveryTrackingId.trim() || undefined
         })
       })
 
@@ -504,6 +508,7 @@ export default function ServiceRequestDetailPage() {
       }
 
       setUserApplication(data.data)
+        setIndividualDeliveryTrackingId('')
       toast({ title: 'Done', description: 'Your fulfillment has been marked as done.' })
       fetchRequestDetails()
       checkExistingApplication()
@@ -531,7 +536,8 @@ export default function ServiceRequestDetailPage() {
         body: JSON.stringify({
           status: 'completed',
           receiptUrl,
-          completionNote: ngoCompletionNotes[applicant.id] || ''
+          completionNote: ngoCompletionNotes[applicant.id] || '',
+          deliveryTrackingId: (ngoDeliveryTrackingByApplicant[applicant.id] || '').trim() || undefined
         })
       })
 
@@ -542,6 +548,7 @@ export default function ServiceRequestDetailPage() {
       }
 
       toast({ title: 'Receipt confirmed', description: 'The fulfillment was moved to history.' })
+        setNgoDeliveryTrackingByApplicant((prev) => ({ ...prev, [applicant.id]: '' }))
       fetchRequestDetails()
       fetchApplicants()
     } catch (error: any) {
@@ -684,6 +691,7 @@ export default function ServiceRequestDetailPage() {
   const infoBeneficiaries = Number(parsedRequirements?.beneficiary_count || 0)
   const infoImpact = String(parsedRequirements?.impact_description || 'Not specified')
   const linkedProject = request?.project || parsedRequirements?.project?.project || null
+  const linkedProjectId = String(linkedProject?.id || request?.project?.id || '').trim()
   const categoryDetails = parsedRequirements?.category_details || {}
   const rawDeadline = String(request?.deadline || request?.timeline || parsedRequirements?.timeline || 'Not specified')
   const infoDeadline = rawDeadline.trim().toLowerCase() === 'anytime' ? 'Anytime (No expiry)' : rawDeadline
@@ -694,6 +702,7 @@ export default function ServiceRequestDetailPage() {
     referenceTimeMs: currentTimeMs
   })
   const isFinancialNeed = infoRequestType.toLowerCase().includes('financial')
+  const isMaterialNeed = infoRequestType.toLowerCase().includes('material')
   const fundingTargetInr = parseAmountToInr(parsedRequirements?.funding_target_inr || parsedRequirements?.estimated_budget || parsedRequirements?.budget)
   const fundsRaisedInr = parseAmountToInr(parsedRequirements?.funds_raised_inr)
   const fundsRemainingInr = Math.max(0, fundingTargetInr - fundsRaisedInr)
@@ -927,18 +936,16 @@ export default function ServiceRequestDetailPage() {
 
           <div className="lg:col-span-8">
             <Card>
-              <CardHeader>
-                <CardTitle>Request Details & Volunteering</CardTitle>
-              </CardHeader>
-
-              <CardContent>
+              <CardContent className="pt-6">
                 <Tabs defaultValue="details" className="w-full">
-                  <TabsList className="grid w-full grid-cols-2">
-                    <TabsTrigger value="details">Request Details</TabsTrigger>
-                    <TabsTrigger value="volunteer">{effectiveUserType === 'ngo' ? 'Applicants' : 'Volunteer'}</TabsTrigger>
-                  </TabsList>
+                  {showNeedTabList ? (
+                    <TabsList className="grid w-full grid-cols-2">
+                      <TabsTrigger value="details">Request Details</TabsTrigger>
+                      <TabsTrigger value="volunteer">Volunteer</TabsTrigger>
+                    </TabsList>
+                  ) : null}
 
-                  <TabsContent value="details" className="mt-4 space-y-4">
+                  <TabsContent value="details" className={`${showNeedTabList ? 'mt-4' : ''} space-y-4`}>
                     <div className="space-y-2">
                       <p className="text-sm font-medium text-gray-500">Title</p>
                       <p className="font-semibold text-lg">{request.title}</p>
@@ -1005,36 +1012,13 @@ export default function ServiceRequestDetailPage() {
                             </div>
                           )}
                         </div>
-                      </div>
-                    )}
-
-                    {Object.keys(categoryDetails || {}).length > 0 && (
-                      <div className="space-y-3 rounded-lg border p-4">
-                        <p className="text-sm font-medium text-gray-500">Request Specific Details</p>
-                        <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
-                          {categoryDetails.material_items && (
-                            <div>
-                              <p className="text-gray-500">Material Items</p>
-                              <p className="font-medium">{categoryDetails.material_items}</p>
-                            </div>
-                          )}
-                          {categoryDetails.skill_role && (
-                            <div>
-                              <p className="text-gray-500">Skill Role</p>
-                              <p className="font-medium">{categoryDetails.skill_role}</p>
-                            </div>
-                          )}
-                          {categoryDetails.skill_duration && (
-                            <div>
-                              <p className="text-gray-500">Skill Duration</p>
-                              <p className="font-medium">{categoryDetails.skill_duration}</p>
-                            </div>
-                          )}
-                          {categoryDetails.infrastructure_scope && (
-                            <div className="md:col-span-2">
-                              <p className="text-gray-500">Infrastructure Scope</p>
-                              <p className="font-medium text-muted-foreground">{categoryDetails.infrastructure_scope}</p>
-                            </div>
+                        <div className="flex flex-wrap gap-2">
+                          {linkedProjectId ? (
+                            <Link href={`/service-requests/projects/${linkedProjectId}`}>
+                              <Button variant="outline" size="sm">View Project Detail</Button>
+                            </Link>
+                          ) : (
+                            <Button variant="outline" size="sm" disabled>View Project Detail</Button>
                           )}
                         </div>
                       </div>
@@ -1093,10 +1077,12 @@ export default function ServiceRequestDetailPage() {
                             Verified individuals can contribute directly to Financial Need requests. Companies should fulfill via CSR projects.
                           </p>
                         )}
+
                       </div>
                     )}
                   </TabsContent>
 
+                  {canShowVolunteerTab ? (
                   <TabsContent value="volunteer" className="mt-4">
                     {!isAuthenticated ? (
                       <div className="text-center space-y-4">
@@ -1210,6 +1196,22 @@ export default function ServiceRequestDetailPage() {
                                       />
                                     </div>
                                   </div>
+                                  {isMaterialNeed && (
+                                    <div>
+                                      <Label htmlFor={`ngo-tracking-${applicant.id}`}>Delhivery Tracking ID</Label>
+                                      <Input
+                                        id={`ngo-tracking-${applicant.id}`}
+                                        value={ngoDeliveryTrackingByApplicant[applicant.id] || ''}
+                                        onChange={(e) =>
+                                          setNgoDeliveryTrackingByApplicant((prev) => ({
+                                            ...prev,
+                                            [applicant.id]: e.target.value
+                                          }))
+                                        }
+                                        placeholder="Optional tracking id"
+                                      />
+                                    </div>
+                                  )}
                                 </div>
                               )}
 
@@ -1252,26 +1254,18 @@ export default function ServiceRequestDetailPage() {
                           ))
                         )}
                       </div>
-                    ) : canCompanyFulfillViaCSR ? (
-                      <div className="space-y-4">
-                        <Alert>
-                          <Building className="h-4 w-4" />
-                          <AlertDescription>
-                            Companies fulfill NGO needs through CSR execution projects, not volunteer applications.
-                          </AlertDescription>
-                        </Alert>
-
-                        <Button asChild className="w-full">
-                          <Link href={`/companies/dashboard?tab=service-requests&requestId=${requestId}`}>
-                            Fulfill This Need via CSR
-                          </Link>
-                        </Button>
-                      </div>
+                    ) : effectiveUserType === 'company' ? (
+                      <Alert>
+                        <Building className="h-4 w-4" />
+                        <AlertDescription>
+                          Companies cannot volunteer from need details. Use project details or the CSR dashboard for company actions.
+                        </AlertDescription>
+                      </Alert>
                     ) : !canVolunteer ? (
                       <Alert>
                         <XCircle className="h-4 w-4" />
                         <AlertDescription>
-                          NGOs create requests. Verified individuals can volunteer. Companies can fulfill via CSR.
+                          NGOs create requests. Only verified individuals can volunteer from need details.
                         </AlertDescription>
                       </Alert>
                     ) : user && user.verification_status !== 'verified' ? (
@@ -1357,6 +1351,17 @@ export default function ServiceRequestDetailPage() {
                                   <Textarea id="individual-note" value={individualCompletionNote} onChange={(e) => setIndividualCompletionNote(e.target.value)} rows={2} placeholder="Optional note about the completed fulfillment" />
                                 </div>
                               </div>
+                              {isMaterialNeed && (
+                                <div>
+                                  <Label htmlFor="individual-tracking">Delhivery Tracking ID</Label>
+                                  <Input
+                                    id="individual-tracking"
+                                    value={individualDeliveryTrackingId}
+                                    onChange={(e) => setIndividualDeliveryTrackingId(e.target.value)}
+                                    placeholder="Optional tracking id"
+                                  />
+                                </div>
+                              )}
                               <Button onClick={handleMarkIndividualDone} className="w-full">
                                 Mark as Done
                               </Button>
@@ -1450,6 +1455,7 @@ export default function ServiceRequestDetailPage() {
                       </div>
                     )}
                   </TabsContent>
+                  ) : null}
                 </Tabs>
               </CardContent>
             </Card>
