@@ -269,7 +269,7 @@ export function PostCreator({ onPostCreated, className }: PostCreatorProps) {
           placeholder="What's on your mind? Use #hashtags to categorize your post..."
           value={content}
           onChange={handleContentChange}
-          className="min-h-[120px] resize-none border-2 border-orange-200 focus:border-orange-400 focus-visible:ring-2 focus-visible:ring-orange-200 text-base rounded-xl transition-colors"
+          className="min-h-[120px] resize-none border-2 border-orange-200 focus:border-orange-400 focus-visible:ring-0 focus-visible:ring-offset-0 text-base rounded-xl transition-colors"
           maxLength={2000}
         />
 

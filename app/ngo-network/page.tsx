@@ -93,13 +93,13 @@ export default function NGONetworkPage() {
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="Search by NGO name, city, state or sector"
-                    className="h-11 border-slate-200 bg-white pl-9 text-slate-900 placeholder:text-slate-400"
+                    className="h-11 border-slate-200 bg-white pl-9 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
                   />
                 </div>
 
                 {sectors.length > 0 && (
                   <Select value={selectedSector} onValueChange={setSelectedSector}>
-                    <SelectTrigger className="h-11 w-full border-slate-200 bg-white text-slate-900 md:w-56">
+                    <SelectTrigger className="h-11 w-full border-slate-200 bg-white text-slate-900 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 md:w-56">
                       <SelectValue placeholder="All sectors" />
                     </SelectTrigger>
                     <SelectContent>

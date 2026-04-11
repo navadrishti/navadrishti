@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Loader2, Plus } from 'lucide-react'
+import { ArrowLeft, Loader2, Plus, Sparkles, CheckCircle2 } from 'lucide-react'
 
 import { Header } from '@/components/header'
 import ProtectedRoute from '@/components/protected-route'
@@ -15,6 +15,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { StyledSelect } from '@/components/ui/styled-select'
 import { Textarea } from '@/components/ui/textarea'
 
 type RequestProject = {
@@ -24,6 +25,32 @@ type RequestProject = {
   location: string
   exact_address?: string | null
   timeline?: string | null
+}
+
+type ServiceOfferLite = {
+  id: number
+  title: string
+  description?: string | null
+  offer_type?: string | null
+  transaction_type?: string | null
+  amount?: number | string | null
+  sell_amount?: number | string | null
+  quantity?: number | string | null
+  capacity?: number | string | null
+  item?: string | null
+  skill?: string | null
+  scope?: string | null
+  status?: string | null
+  ngo_name?: string | null
+  provider_name?: string | null
+}
+
+type NeedRecommendation = {
+  offer: ServiceOfferLite
+  score: number
+  coverageRatio: number | null
+  coverageLabel: 'full' | 'partial' | 'possible'
+  rationale: string
 }
 
 type NeedDraft = {
@@ -99,6 +126,32 @@ const isValidMoneyValue = (value: string) => moneyPattern.test(value.trim())
 const isValidTimelineValue = (value: string) => timelinePattern.test(value.trim())
 const isValidPositiveInteger = (value: string) => /^\d+$/.test(value.trim()) && Number(value) > 0
 
+const toNumber = (value: unknown): number | null => {
+  if (value === null || value === undefined) return null
+  const text = String(value).trim()
+  if (!text) return null
+  const parsed = Number(text.replace(/[^\d.-]/g, ''))
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+const parseBudgetUpperBound = (budget: string): number | null => {
+  const text = String(budget || '').trim()
+  if (!text) return null
+  if (/under\s+inr\s+([\d,]+)/i.test(text)) {
+    const match = text.match(/under\s+inr\s+([\d,]+)/i)
+    return match ? toNumber(match[1]) : null
+  }
+  if (/inr\s+([\d,]+)\s*-\s*inr\s+([\d,]+)/i.test(text)) {
+    const match = text.match(/inr\s+([\d,]+)\s*-\s*inr\s+([\d,]+)/i)
+    return match ? toNumber(match[2]) : null
+  }
+  if (/inr\s+([\d,]+)\+/i.test(text)) {
+    const match = text.match(/inr\s+([\d,]+)\+/i)
+    return match ? toNumber(match[1]) : null
+  }
+  return null
+}
+
 export default function CreateServiceRequestPage() {
   const router = useRouter()
   const { user } = useAuth()
@@ -108,6 +161,10 @@ export default function CreateServiceRequestPage() {
   const [projectMode, setProjectMode] = useState<'new' | 'existing'>('new')
   const [projects, setProjects] = useState<RequestProject[]>([])
   const [needs, setNeeds] = useState<NeedDraft[]>([createEmptyNeed()])
+  const [recommendationNeedIndex, setRecommendationNeedIndex] = useState(0)
+  const [serviceOffers, setServiceOffers] = useState<ServiceOfferLite[]>([])
+  const [offersLoading, setOffersLoading] = useState(false)
+  const [selectedOffersByNeed, setSelectedOffersByNeed] = useState<Record<number, number[]>>({})
   const [formData, setFormData] = useState({
     projectId: '',
     project_title: '',
@@ -225,6 +282,39 @@ export default function CreateServiceRequestPage() {
     }
   }, [user?.id])
 
+  useEffect(() => {
+    const loadOffers = async () => {
+      setOffersLoading(true)
+      try {
+        const response = await fetch('/api/service-offers?view=all')
+        const data = await response.json()
+        if (response.ok && data.success) {
+          const activeOffers = (Array.isArray(data.data) ? data.data : []).filter((offer: ServiceOfferLite) => {
+            const status = String(offer.status || 'active').toLowerCase()
+            return !['inactive', 'closed', 'completed', 'cancelled', 'archived', 'rejected', 'expired'].includes(status)
+          })
+          setServiceOffers(activeOffers)
+        } else {
+          setServiceOffers([])
+        }
+      } catch {
+        setServiceOffers([])
+      } finally {
+        setOffersLoading(false)
+      }
+    }
+
+    loadOffers()
+  }, [])
+
+  useEffect(() => {
+    setRecommendationNeedIndex((prev) => {
+      if (needs.length === 0) return 0
+      if (prev < needs.length) return prev
+      return needs.length - 1
+    })
+  }, [needs.length])
+
   const handleInput = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }))
   }
@@ -243,6 +333,18 @@ export default function CreateServiceRequestPage() {
 
   const removeNeed = (index: number) => {
     setNeeds((prev) => prev.length === 1 ? prev : prev.filter((_, needIndex) => needIndex !== index))
+    setSelectedOffersByNeed((prev) => {
+      const next: Record<number, number[]> = {}
+      Object.entries(prev).forEach(([key, value]) => {
+        const currentIndex = Number(key)
+        if (currentIndex < index) {
+          next[currentIndex] = value
+        } else if (currentIndex > index) {
+          next[currentIndex - 1] = value
+        }
+      })
+      return next
+    })
   }
 
   const setNeedCount = (count: number) => {
@@ -253,6 +355,16 @@ export default function CreateServiceRequestPage() {
         return [...prev, ...Array.from({ length: safeCount - prev.length }, () => createEmptyNeed())]
       }
       return prev.slice(0, safeCount)
+    })
+    setSelectedOffersByNeed((prev) => {
+      const next: Record<number, number[]> = {}
+      Object.entries(prev).forEach(([key, value]) => {
+        const index = Number(key)
+        if (index < safeCount) {
+          next[index] = value
+        }
+      })
+      return next
     })
   }
 
@@ -274,7 +386,134 @@ export default function CreateServiceRequestPage() {
     ? projects.find((project) => project.id === formData.projectId)?.exact_address || projects.find((project) => project.id === formData.projectId)?.location || formData.project_location
     : formData.project_location
 
-  const primaryNeed = needs[0] ?? createEmptyNeed()
+  const getTargetCoverageValue = (need: NeedDraft): number | null => {
+    if (need.request_type === 'Financial Need') {
+      return toNumber(need.target_amount) || toNumber(need.estimated_budget) || parseBudgetUpperBound(need.budget)
+    }
+    if (need.request_type === 'Material Need') {
+      return toNumber(need.target_quantity) || toNumber(need.beneficiary_count)
+    }
+    if (need.request_type === 'Skill / Service Need') {
+      return toNumber(need.target_quantity) || toNumber(need.beneficiary_count)
+    }
+    if (need.request_type === 'Infrastructure Project') {
+      return toNumber(need.target_amount) || toNumber(need.estimated_budget) || parseBudgetUpperBound(need.budget)
+    }
+    return null
+  }
+
+  const getOfferCapacityForNeed = (need: NeedDraft, offer: ServiceOfferLite): number | null => {
+    if (need.request_type === 'Financial Need') {
+      return toNumber(offer.amount) || toNumber(offer.sell_amount)
+    }
+    if (need.request_type === 'Material Need') {
+      return toNumber(offer.quantity)
+    }
+    if (need.request_type === 'Skill / Service Need') {
+      return toNumber(offer.capacity)
+    }
+    if (need.request_type === 'Infrastructure Project') {
+      return toNumber(offer.amount) || toNumber(offer.sell_amount) || toNumber(offer.capacity)
+    }
+    return null
+  }
+
+  const getNeedRecommendations = (need: NeedDraft): NeedRecommendation[] => {
+    const needTypeToOfferType: Record<string, string> = {
+      'Financial Need': 'financial',
+      'Material Need': 'material',
+      'Skill / Service Need': 'service',
+      'Infrastructure Project': 'infrastructure'
+    }
+
+    const expectedOfferType = needTypeToOfferType[need.request_type || '']
+    const needText = `${need.title} ${need.description} ${need.material_items} ${need.skill_role} ${need.infrastructure_scope}`.toLowerCase()
+    const targetCoverage = getTargetCoverageValue(need)
+
+    return serviceOffers
+      .map((offer) => {
+        const offerType = String(offer.offer_type || '').toLowerCase()
+        const offerText = `${offer.title} ${offer.description || ''} ${offer.item || ''} ${offer.skill || ''} ${offer.scope || ''}`.toLowerCase()
+
+        let score = 0
+        if (expectedOfferType && offerType === expectedOfferType) score += 60
+
+        const keywords = needText.split(/\s+/).filter((word) => word.length > 3)
+        const keywordMatches = keywords.reduce((count, word) => count + (offerText.includes(word) ? 1 : 0), 0)
+        score += Math.min(30, keywordMatches * 3)
+
+        const capacity = getOfferCapacityForNeed(need, offer)
+        const coverageRatio = targetCoverage && capacity ? capacity / targetCoverage : null
+
+        let coverageLabel: 'full' | 'partial' | 'possible' = 'possible'
+        if (coverageRatio !== null) {
+          if (coverageRatio >= 1) {
+            coverageLabel = 'full'
+            score += 10
+          } else if (coverageRatio > 0) {
+            coverageLabel = 'partial'
+            score += Math.max(2, Math.floor(coverageRatio * 10))
+          }
+        }
+
+        const rationale = coverageRatio === null
+          ? 'Type and context match'
+          : coverageRatio >= 1
+            ? 'Can fully fulfill this need'
+            : `Can partially fulfill ~${Math.max(1, Math.round(coverageRatio * 100))}%`
+
+        return {
+          offer,
+          score,
+          coverageRatio,
+          coverageLabel,
+          rationale
+        }
+      })
+      .filter((recommendation) => recommendation.score >= 45)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 8)
+  }
+
+  const activeNeed = needs[recommendationNeedIndex] ?? createEmptyNeed()
+  const activeNeedRecommendations = getNeedRecommendations(activeNeed)
+  const activeSelectedOfferIds = selectedOffersByNeed[recommendationNeedIndex] || []
+
+  const combinedCoverageForActiveNeed = activeNeedRecommendations
+    .filter((recommendation) => activeSelectedOfferIds.includes(recommendation.offer.id))
+    .reduce((sum, recommendation) => sum + (recommendation.coverageRatio || 0), 0)
+  const activeCoverageCapReached = combinedCoverageForActiveNeed >= 1
+
+  const toggleRecommendedOfferSelection = (offerId: number) => {
+    const recommendation = activeNeedRecommendations.find((item) => item.offer.id === offerId)
+    if (!recommendation) return
+
+    setSelectedOffersByNeed((prev) => {
+      const selectedIds = prev[recommendationNeedIndex] || []
+      const alreadySelected = selectedIds.includes(offerId)
+
+      if (alreadySelected) {
+        return {
+          ...prev,
+          [recommendationNeedIndex]: selectedIds.filter((id) => id !== offerId)
+        }
+      }
+
+      const existingCoverage = activeNeedRecommendations
+        .filter((item) => selectedIds.includes(item.offer.id))
+        .reduce((sum, item) => sum + (item.coverageRatio || 0), 0)
+
+      const coverageReached = existingCoverage >= 1
+      if (coverageReached) {
+        return prev
+      }
+
+      return {
+        ...prev,
+        [recommendationNeedIndex]: [...selectedIds, offerId]
+      }
+    })
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -417,6 +656,10 @@ export default function CreateServiceRequestPage() {
 
       for (let index = 0; index < needs.length; index += 1) {
         const need = needs[index]
+        const selectedOfferIds = selectedOffersByNeed[index] || []
+        const matchedRecommendations = getNeedRecommendations(need).filter((item) => selectedOfferIds.includes(item.offer.id))
+        const combinedCoverage = matchedRecommendations.reduce((sum, item) => sum + (item.coverageRatio || 0), 0)
+
         const response = await fetch('/api/service-requests', {
           method: 'POST',
           headers: {
@@ -451,7 +694,20 @@ export default function CreateServiceRequestPage() {
               material_items: need.material_items,
               skill_role: need.skill_role,
               skill_duration: need.skill_duration,
-              infrastructure_scope: need.infrastructure_scope
+              infrastructure_scope: need.infrastructure_scope,
+              recommended_offer_ids: selectedOfferIds,
+              recommendation_summary: {
+                selected_count: selectedOfferIds.length,
+                combined_coverage_ratio: combinedCoverage,
+                recommendations: matchedRecommendations.map((item) => ({
+                  offer_id: item.offer.id,
+                  title: item.offer.title,
+                  score: item.score,
+                  coverage_ratio: item.coverageRatio,
+                  coverage_label: item.coverageLabel,
+                  rationale: item.rationale
+                }))
+              }
             }
           })
         })
@@ -497,7 +753,7 @@ export default function CreateServiceRequestPage() {
             <p className="text-muted-foreground">Define a measurable need with clear beneficiary and impact outcomes.</p>
           </div>
 
-          <div className="mx-auto w-full max-w-4xl">
+          <div className="mx-auto w-full max-w-7xl">
             <Card>
               <CardHeader>
                 <CardTitle>Request Details</CardTitle>
@@ -512,7 +768,9 @@ export default function CreateServiceRequestPage() {
                 )}
 
                 <form onSubmit={handleSubmit} className="space-y-6">
-                  <div className="space-y-4 rounded-lg border p-4 bg-muted/30">
+                  <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
+                    <div className="space-y-6">
+                      <div className="space-y-4 rounded-lg border p-4 bg-muted/30">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
                         <h3 className="font-semibold">Project Context</h3>
@@ -573,186 +831,258 @@ export default function CreateServiceRequestPage() {
                         </div>
                       </div>
                     )}
-                  </div>
+                      </div>
 
-                  <div className="space-y-6">
-                    <div className="rounded-lg border p-4 bg-muted/30">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div>
-                          <h3 className="font-semibold">Need List</h3>
-                          <p className="text-sm text-muted-foreground">Add as many separate needs as this project requires.</p>
+                      <div className="space-y-6">
+                        <div className="rounded-lg border p-4 bg-muted/30">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                              <h3 className="font-semibold">Need List</h3>
+                              <p className="text-sm text-muted-foreground">Add as many separate needs as this project requires.</p>
+                            </div>
+                            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+                              <Label htmlFor="need_count" className="text-sm text-muted-foreground">Number of needs</Label>
+                              <Input
+                                id="need_count"
+                                type="number"
+                                min="1"
+                                max="20"
+                                value={needs.length}
+                                onChange={(e) => setNeedCount(Number(e.target.value))}
+                                className="w-full sm:w-24"
+                              />
+                              <Button type="button" variant="outline" onClick={addNeed} className="w-full sm:w-auto">
+                                <Plus size={16} className="mr-2" />
+                                Add Need
+                              </Button>
+                            </div>
+                          </div>
                         </div>
-                        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-                          <Label htmlFor="need_count" className="text-sm text-muted-foreground">Number of needs</Label>
-                          <Input
-                            id="need_count"
-                            type="number"
-                            min="1"
-                            max="20"
-                            value={needs.length}
-                            onChange={(e) => setNeedCount(Number(e.target.value))}
-                            className="w-full sm:w-24"
-                          />
-                          <Button type="button" variant="outline" onClick={addNeed} className="w-full sm:w-auto">
-                            <Plus size={16} className="mr-2" />
-                            Add Need
-                          </Button>
+
+                        <div className="space-y-6">
+                          {needs.map((need, index) => (
+                            <div key={index} className="rounded-lg border p-4 space-y-4">
+                              <div className="flex items-center justify-between gap-3">
+                                <div>
+                                  <h3 className="font-semibold">Need {index + 1}</h3>
+                                  <p className="text-sm text-muted-foreground">Each need is saved as one request under the same project.</p>
+                                </div>
+                                {index > 0 && (
+                                  <Button type="button" variant="ghost" onClick={() => removeNeed(index)} className="text-red-600 hover:text-red-700 hover:bg-red-50">
+                                    Remove
+                                  </Button>
+                                )}
+                              </div>
+
+                              <div className="grid gap-4">
+                                <div>
+                                  <Label htmlFor={`title-${index}`}>Request Title *</Label>
+                                  <Input id={`title-${index}`} value={need.title} onChange={(e) => updateNeed(index, 'title', e.target.value)} placeholder="e.g., School kit support for 300 students" required />
+                                </div>
+
+                                <div>
+                                  <Label htmlFor={`description-${index}`}>Need Description *</Label>
+                                  <Textarea id={`description-${index}`} value={need.description} onChange={(e) => updateNeed(index, 'description', e.target.value)} placeholder="Describe the exact need and context." rows={4} required />
+                                </div>
+
+                                <div className="grid gap-4 md:grid-cols-2">
+                                  <div>
+                                    <Label htmlFor={`request_type-${index}`}>Request Type *</Label>
+                                    <StyledSelect
+                                      value={need.request_type}
+                                      options={SERVICE_REQUEST_CATEGORIES}
+                                      placeholder="Select request type"
+                                      onValueChange={(value) => {
+                                        updateNeed(index, 'request_type', value)
+                                        updateNeed(index, 'category', value)
+                                      }}
+                                    />
+                                  </div>
+
+                                </div>
+
+                                <div className="grid gap-4 md:grid-cols-2">
+                                  <div>
+                                    <Label htmlFor={`beneficiary_count-${index}`}>Beneficiary Count *</Label>
+                                    <Input id={`beneficiary_count-${index}`} type="number" min="1" step="1" value={need.beneficiary_count} onChange={(e) => updateNeed(index, 'beneficiary_count', e.target.value)} placeholder="e.g., 300" required />
+                                  </div>
+                                </div>
+
+                                <div className="grid gap-4 md:grid-cols-2">
+                                  <div>
+                                    <Label htmlFor={`budget-${index}`}>Budget Range *</Label>
+                                    <Select value={need.budget} onValueChange={(value) => updateNeed(index, 'budget', value)}>
+                                      <SelectTrigger>
+                                        <SelectValue placeholder="Select budget range" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {budgetRanges.map((range) => (
+                                          <SelectItem key={range} value={range}>
+                                            {range}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+
+                                </div>
+
+                                <div>
+                                  <Label htmlFor={`impact_description-${index}`}>Impact Description *</Label>
+                                  <Textarea id={`impact_description-${index}`} value={need.impact_description} onChange={(e) => updateNeed(index, 'impact_description', e.target.value)} placeholder="Who benefits? How many? What measurable change occurs after execution?" rows={3} required />
+                                </div>
+
+                                <div>
+                                  <Label htmlFor={`timeline-${index}`}>Timeline / Deadline *</Label>
+                                  <div className="mt-2 flex gap-2">
+                                    <Input id={`timeline-${index}`} value={need.timeline} onChange={(e) => updateNeed(index, 'timeline', e.target.value)} placeholder="Anytime, 4 weeks, 2026-05-15" required />
+                                    <Button type="button" variant="outline" onClick={() => updateNeed(index, 'timeline', 'Anytime')}>
+                                      Anytime
+                                    </Button>
+                                  </div>
+                                  <p className="mt-1 text-xs text-muted-foreground">Use Anytime, a duration like 4 weeks, or a date like 2026-05-15.</p>
+                                </div>
+
+                                <div>
+                                  <Label htmlFor={`contactInfo-${index}`}>Contact Information *</Label>
+                                  <Textarea id={`contactInfo-${index}`} value={need.contactInfo} onChange={(e) => updateNeed(index, 'contactInfo', e.target.value)} placeholder="Primary contact and escalation details" rows={3} required />
+                                </div>
+
+                                {need.request_type === 'Material Need' && (
+                                  <div className="rounded-lg border p-4 space-y-4">
+                                    <div>
+                                      <h4 className="font-semibold">Material Details</h4>
+                                      <p className="text-sm text-muted-foreground">Describe the exact items and delivery quantity.</p>
+                                    </div>
+                                    <div className="grid gap-4 md:grid-cols-2">
+                                      <div>
+                                        <Label htmlFor={`material_items-${index}`}>Items Needed *</Label>
+                                        <Input id={`material_items-${index}`} value={need.material_items} onChange={(e) => updateNeed(index, 'material_items', e.target.value)} placeholder="e.g., books, notebooks, uniforms" required />
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {need.request_type === 'Skill / Service Need' && (
+                                  <div className="rounded-lg border p-4 space-y-4">
+                                    <div>
+                                      <h4 className="font-semibold">Skill / Service Details</h4>
+                                      <p className="text-sm text-muted-foreground">Define the role, headcount, and duration clearly.</p>
+                                    </div>
+                                    <div className="grid gap-4 md:grid-cols-2">
+                                      <div>
+                                        <Label htmlFor={`skill_role-${index}`}>Role Needed *</Label>
+                                        <Input id={`skill_role-${index}`} value={need.skill_role} onChange={(e) => updateNeed(index, 'skill_role', e.target.value)} placeholder="e.g., Mathematics teacher" required />
+                                      </div>
+                                      <div className="md:col-span-2">
+                                        <Label htmlFor={`skill_duration-${index}`}>Duration *</Label>
+                                        <Input id={`skill_duration-${index}`} value={need.skill_duration} onChange={(e) => updateNeed(index, 'skill_duration', e.target.value)} placeholder="e.g., 1 month" required />
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {need.request_type === 'Infrastructure Project' && (
+                                  <div className="rounded-lg border p-4 space-y-4">
+                                    <div>
+                                      <h4 className="font-semibold">Infrastructure Scope</h4>
+                                      <p className="text-sm text-muted-foreground">Summarize the execution scope and budget target.</p>
+                                    </div>
+                                    <div className="grid gap-4 md:grid-cols-2">
+                                      <div className="md:col-span-2">
+                                        <Label htmlFor={`infrastructure_scope-${index}`}>Scope *</Label>
+                                        <Textarea id={`infrastructure_scope-${index}`} value={need.infrastructure_scope} onChange={(e) => updateNeed(index, 'infrastructure_scope', e.target.value)} placeholder="e.g., Build two classrooms and one washroom block." rows={3} required />
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     </div>
 
-                    <div className="space-y-6">
-                      {needs.map((need, index) => (
-                        <div key={index} className="rounded-lg border p-4 space-y-4">
-                          <div className="flex items-center justify-between gap-3">
-                            <div>
-                              <h3 className="font-semibold">Need {index + 1}</h3>
-                              <p className="text-sm text-muted-foreground">Each need is saved as one request under the same project.</p>
-                            </div>
-                            {index > 0 && (
-                              <Button type="button" variant="ghost" onClick={() => removeNeed(index)} className="text-red-600 hover:text-red-700 hover:bg-red-50">
-                                Remove
-                              </Button>
-                            )}
-                          </div>
-
-                          <div className="grid gap-4">
-                            <div>
-                              <Label htmlFor={`title-${index}`}>Request Title *</Label>
-                              <Input id={`title-${index}`} value={need.title} onChange={(e) => updateNeed(index, 'title', e.target.value)} placeholder="e.g., School kit support for 300 students" required />
-                            </div>
-
-                            <div>
-                              <Label htmlFor={`description-${index}`}>Need Description *</Label>
-                              <Textarea id={`description-${index}`} value={need.description} onChange={(e) => updateNeed(index, 'description', e.target.value)} placeholder="Describe the exact need and context." rows={4} required />
-                            </div>
-
-                            <div className="grid gap-4 md:grid-cols-2">
-                              <div>
-                                <Label htmlFor={`request_type-${index}`}>Request Type *</Label>
-                                <Select
-                                  value={need.request_type}
-                                  onValueChange={(value) => {
-                                    updateNeed(index, 'request_type', value)
-                                    updateNeed(index, 'category', value)
-                                  }}
-                                >
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select request type" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {SERVICE_REQUEST_CATEGORIES.map((category) => (
-                                      <SelectItem key={category} value={category}>
-                                        {category}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-
-                            </div>
-
-                            <div className="grid gap-4 md:grid-cols-2">
-                              <div>
-                                <Label htmlFor={`beneficiary_count-${index}`}>Beneficiary Count *</Label>
-                                <Input id={`beneficiary_count-${index}`} type="number" min="1" step="1" value={need.beneficiary_count} onChange={(e) => updateNeed(index, 'beneficiary_count', e.target.value)} placeholder="e.g., 300" required />
-                              </div>
-                            </div>
-
-                            <div className="grid gap-4 md:grid-cols-2">
-                              <div>
-                                <Label htmlFor={`budget-${index}`}>Budget Range *</Label>
-                                <Select value={need.budget} onValueChange={(value) => updateNeed(index, 'budget', value)}>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select budget range" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {budgetRanges.map((range) => (
-                                      <SelectItem key={range} value={range}>
-                                        {range}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-
-                            </div>
-
-                            <div>
-                              <Label htmlFor={`impact_description-${index}`}>Impact Description *</Label>
-                              <Textarea id={`impact_description-${index}`} value={need.impact_description} onChange={(e) => updateNeed(index, 'impact_description', e.target.value)} placeholder="Who benefits? How many? What measurable change occurs after execution?" rows={3} required />
-                            </div>
-
-                            <div>
-                              <Label htmlFor={`timeline-${index}`}>Timeline / Deadline *</Label>
-                              <div className="mt-2 flex gap-2">
-                                <Input id={`timeline-${index}`} value={need.timeline} onChange={(e) => updateNeed(index, 'timeline', e.target.value)} placeholder="Anytime, 4 weeks, 2026-05-15" required />
-                                <Button type="button" variant="outline" onClick={() => updateNeed(index, 'timeline', 'Anytime')}>
-                                  Anytime
-                                </Button>
-                              </div>
-                              <p className="mt-1 text-xs text-muted-foreground">Use Anytime, a duration like 4 weeks, or a date like 2026-05-15.</p>
-                            </div>
-
-                            <div>
-                              <Label htmlFor={`contactInfo-${index}`}>Contact Information *</Label>
-                              <Textarea id={`contactInfo-${index}`} value={need.contactInfo} onChange={(e) => updateNeed(index, 'contactInfo', e.target.value)} placeholder="Primary contact and escalation details" rows={3} required />
-                            </div>
-
-                            {need.request_type === 'Material Need' && (
-                              <div className="rounded-lg border p-4 space-y-4">
-                                <div>
-                                  <h4 className="font-semibold">Material Details</h4>
-                                  <p className="text-sm text-muted-foreground">Describe the exact items and delivery quantity.</p>
-                                </div>
-                                <div className="grid gap-4 md:grid-cols-2">
-                                  <div>
-                                    <Label htmlFor={`material_items-${index}`}>Items Needed *</Label>
-                                    <Input id={`material_items-${index}`} value={need.material_items} onChange={(e) => updateNeed(index, 'material_items', e.target.value)} placeholder="e.g., books, notebooks, uniforms" required />
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-
-                            {need.request_type === 'Skill / Service Need' && (
-                              <div className="rounded-lg border p-4 space-y-4">
-                                <div>
-                                  <h4 className="font-semibold">Skill / Service Details</h4>
-                                  <p className="text-sm text-muted-foreground">Define the role, headcount, and duration clearly.</p>
-                                </div>
-                                <div className="grid gap-4 md:grid-cols-2">
-                                  <div>
-                                    <Label htmlFor={`skill_role-${index}`}>Role Needed *</Label>
-                                    <Input id={`skill_role-${index}`} value={need.skill_role} onChange={(e) => updateNeed(index, 'skill_role', e.target.value)} placeholder="e.g., Mathematics teacher" required />
-                                  </div>
-                                  <div className="md:col-span-2">
-                                    <Label htmlFor={`skill_duration-${index}`}>Duration *</Label>
-                                    <Input id={`skill_duration-${index}`} value={need.skill_duration} onChange={(e) => updateNeed(index, 'skill_duration', e.target.value)} placeholder="e.g., 1 month" required />
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-
-                            {need.request_type === 'Infrastructure Project' && (
-                              <div className="rounded-lg border p-4 space-y-4">
-                                <div>
-                                  <h4 className="font-semibold">Infrastructure Scope</h4>
-                                  <p className="text-sm text-muted-foreground">Summarize the execution scope and budget target.</p>
-                                </div>
-                                <div className="grid gap-4 md:grid-cols-2">
-                                  <div className="md:col-span-2">
-                                    <Label htmlFor={`infrastructure_scope-${index}`}>Scope *</Label>
-                                    <Textarea id={`infrastructure_scope-${index}`} value={need.infrastructure_scope} onChange={(e) => updateNeed(index, 'infrastructure_scope', e.target.value)} placeholder="e.g., Build two classrooms and one washroom block." rows={3} required />
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-                          </div>
+                    <aside className="space-y-4 lg:sticky lg:top-24">
+                      <div className="rounded-lg border bg-background p-4">
+                        <div className="mb-3 flex items-center gap-2">
+                          <Sparkles size={16} className="text-primary" />
+                          <h3 className="font-semibold">Recommended Capability Offers</h3>
                         </div>
-                      ))}
-                    </div>
-                  </div>
+                        <p className="text-xs text-muted-foreground">
+                          Suggested offers that can fulfill this need partially or fully. You can select multiple offers when one is not enough.
+                        </p>
 
+                        <div className="mt-4 space-y-3">
+                          <Label htmlFor="recommendation_need_index">Need to match</Label>
+                          <Select value={String(recommendationNeedIndex)} onValueChange={(value) => setRecommendationNeedIndex(Number(value))}>
+                            <SelectTrigger id="recommendation_need_index">
+                              <SelectValue placeholder="Choose need" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {needs.map((_, index) => (
+                                <SelectItem key={`need-selector-${index}`} value={String(index)}>
+                                  Need {index + 1}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="mt-3 rounded-md border bg-muted/40 p-2 text-xs text-muted-foreground">
+                          Selected offers: {activeSelectedOfferIds.length}
+                          {combinedCoverageForActiveNeed > 0 && (
+                            <span> • Estimated coverage: {Math.round(combinedCoverageForActiveNeed * 100)}%</span>
+                          )}
+                        </div>
+                        {activeCoverageCapReached && (
+                          <div className="mt-2 rounded-md border border-emerald-200 bg-emerald-50 p-2 text-xs text-emerald-700">
+                            Coverage target reached. Deselect one offer to pick a different recommendation.
+                          </div>
+                        )}
+
+                        <div className="mt-4 space-y-3 max-h-[420px] overflow-auto pr-1">
+                          {offersLoading ? (
+                            <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
+                              <Loader2 size={16} className="mr-2 animate-spin" />
+                              Loading offers...
+                            </div>
+                          ) : activeNeedRecommendations.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">No strong matches yet. Update title, type, or description to improve suggestions.</p>
+                          ) : (
+                            activeNeedRecommendations.map((recommendation) => {
+                              const isSelected = activeSelectedOfferIds.includes(recommendation.offer.id)
+                              const selectionLocked = activeCoverageCapReached && !isSelected
+                              return (
+                                <button
+                                  key={recommendation.offer.id}
+                                  type="button"
+                                  onClick={() => toggleRecommendedOfferSelection(recommendation.offer.id)}
+                                  disabled={selectionLocked}
+                                  className={`w-full rounded-md border p-3 text-left transition-colors ${isSelected ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40'} ${selectionLocked ? 'cursor-not-allowed opacity-60' : ''}`}
+                                >
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div>
+                                      <p className="text-sm font-medium leading-tight">{recommendation.offer.title}</p>
+                                      <p className="text-xs text-muted-foreground mt-1">{recommendation.offer.provider_name || recommendation.offer.ngo_name || 'Offer provider'}</p>
+                                    </div>
+                                    {isSelected && <CheckCircle2 size={16} className="text-primary" />}
+                                  </div>
+                                  <div className="mt-2 flex items-center gap-2 text-xs">
+                                    <span className={`rounded-full px-2 py-0.5 ${recommendation.coverageLabel === 'full' ? 'bg-green-100 text-green-700' : recommendation.coverageLabel === 'partial' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-700'}`}>
+                                      {recommendation.coverageLabel === 'full' ? 'Full' : recommendation.coverageLabel === 'partial' ? 'Partial' : 'Possible'}
+                                    </span>
+                                    <span className="text-muted-foreground">Score {recommendation.score}</span>
+                                  </div>
+                                  <p className="mt-2 text-xs text-muted-foreground">{recommendation.rationale}</p>
+                                </button>
+                              )
+                            })
+                          )}
+                        </div>
+                      </div>
+                    </aside>
+                  </div>
                   <div className="flex flex-col gap-3 pt-6 sm:flex-row">
                     <Button type="submit" disabled={loading} className="w-full flex-1">
                       {loading ? 'Creating...' : 'Create Execution Request'}

@@ -11,13 +11,15 @@ import { FileText, Download, Users, TrendingUp, Target, Calendar, BarChart3, Loa
 
 export default function ImpactReportsPage() {
   const { user } = useAuth()
-  const [mounted, setMounted] = useState(false)
+  const [isHydrated, setIsHydrated] = useState(false)
   const [selectedCampaign, setSelectedCampaign] = useState("")
   const [reportType, setReportType] = useState("")
   const [isGenerating, setIsGenerating] = useState(false)
 
+  const effectiveUserType = isHydrated ? user?.user_type : undefined
+
   useEffect(() => {
-    setMounted(true)
+    setIsHydrated(true)
   }, [])
 
   const campaigns = [
@@ -40,7 +42,7 @@ export default function ImpactReportsPage() {
     }, 2000)
   }
 
-  if (!mounted) {
+  if (!isHydrated) {
     return (
       <>
         <Header />
@@ -56,7 +58,7 @@ export default function ImpactReportsPage() {
     )
   }
 
-  if (user?.user_type !== 'company') {
+  if (effectiveUserType !== 'company') {
     return (
       <>
         <Header />

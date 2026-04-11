@@ -15,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { StyledSelect } from '@/components/ui/styled-select'
 import { Textarea } from '@/components/ui/textarea'
 
 type RequestProject = {
@@ -703,24 +704,15 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="request_type">Request Type *</Label>
-                    <Select
+                    <StyledSelect
                       value={formData.request_type}
+                      options={SERVICE_REQUEST_CATEGORIES}
+                      placeholder="Select request type"
                       onValueChange={(value) => {
                         handleInput('request_type', value)
                         handleInput('category', value)
                       }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select request type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {SERVICE_REQUEST_CATEGORIES.map((category) => (
-                          <SelectItem key={category} value={category}>
-                            {category}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    />
                   </div>
 
                   <div>

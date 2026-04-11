@@ -3,7 +3,7 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { HeartHandshake, TicketCheck } from 'lucide-react';
+import { HeartHandshake, TicketCheck, CheckCircle, Loader2, XCircle } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import ProtectedRoute from '@/components/protected-route';
 import { Header } from '@/components/header';
@@ -13,20 +13,185 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ProfileDashboardTab } from '@/components/profile-dashboard-tab';
 import { DashboardQuickSidebar } from '@/components/dashboard-quick-sidebar';
+import { useToast } from '@/hooks/use-toast';
+
+interface OfferRequestItem {
+  id: number;
+  service_offer_id: number;
+  offer_title: string;
+  client_id: number;
+  client?: {
+    name?: string;
+    email?: string;
+    user_type?: string;
+  };
+  message?: string;
+  status: 'pending' | 'accepted' | 'rejected' | 'active' | 'completed' | 'cancelled';
+  isAssigned: boolean;
+  created_at: string;
+}
 
 function IndividualDashboardContent() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const activeTab = searchParams.get('tab') || 'service-requests';
+  const requestedTab = searchParams.get('tab') || 'profile';
+  const activeTab = requestedTab === 'services-hired' ? 'service-requests' : requestedTab;
+  const [serviceOffers, setServiceOffers] = useState<any[]>([]);
+  const [offerApplications, setOfferApplications] = useState<any[]>([]);
+  const [offerRequests, setOfferRequests] = useState<OfferRequestItem[]>([]);
+  const [loadingServiceOffers, setLoadingServiceOffers] = useState(true);
+  const [loadingOfferApplications, setLoadingOfferApplications] = useState(true);
+  const [loadingOfferRequests, setLoadingOfferRequests] = useState(true);
+  const [updatingOfferRequestId, setUpdatingOfferRequestId] = useState<number | null>(null);
+  const [capabilityOffersTab, setCapabilityOffersTab] = useState<'your-capabilities' | 'your-applications' | 'requests'>('your-capabilities');
+  const [myApplicationsTab, setMyApplicationsTab] = useState<'ongoing' | 'history'>('ongoing');
   const [ongoingApplications, setOngoingApplications] = useState<any[]>([]);
   const [historyApplications, setHistoryApplications] = useState<any[]>([]);
   const [loadingApplications, setLoadingApplications] = useState(true);
   const sidebarItems = [
     { value: 'profile', label: 'Profile' },
+    { value: 'capability-offers', label: 'Capability Offers' },
     { value: 'service-requests', label: 'My Applications' },
-    { value: 'services-hired', label: 'Services Hired' },
   ];
+
+  const fetchServiceOffers = async () => {
+    try {
+      setLoadingServiceOffers(true);
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setServiceOffers([]);
+        return;
+      }
+
+      const response = await fetch('/api/service-offers?view=my-offers&limit=20', {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      const data = await response.json();
+      setServiceOffers(data.success ? (data.data || []) : []);
+    } catch {
+      setServiceOffers([]);
+    } finally {
+      setLoadingServiceOffers(false);
+    }
+  };
+
+  const fetchOfferApplications = async () => {
+    try {
+      setLoadingOfferApplications(true);
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setOfferApplications([]);
+        return;
+      }
+
+      const response = await fetch('/api/service-offers?view=my-responses&limit=20', {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      const data = await response.json();
+      setOfferApplications(data.success ? (data.data || []) : []);
+    } catch {
+      setOfferApplications([]);
+    } finally {
+      setLoadingOfferApplications(false);
+    }
+  };
+
+  const fetchOfferRequests = async () => {
+    try {
+      setLoadingOfferRequests(true);
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setOfferRequests([]);
+        return;
+      }
+
+      const response = await fetch('/api/service-offers/requests', {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      const data = await response.json();
+      setOfferRequests(data.success ? (data.data || []) : []);
+    } catch {
+      setOfferRequests([]);
+    } finally {
+      setLoadingOfferRequests(false);
+    }
+  };
+
+  const handleOfferRequestStatusUpdate = async (requestId: number, newStatus: 'accepted' | 'rejected') => {
+    try {
+      setUpdatingOfferRequestId(requestId);
+      const token = localStorage.getItem('token');
+
+      const response = await fetch(`/api/service-offers/requests/${requestId}`, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ status: newStatus })
+      });
+
+      const data = await response.json();
+      if (!data.success) {
+        toast({
+          title: 'Error',
+          description: data.error || 'Failed to update request status',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      setOfferRequests((prev) =>
+        prev.map((request) => {
+          if (request.id === requestId) {
+            return {
+              ...request,
+              status: newStatus,
+              isAssigned: newStatus === 'accepted'
+            };
+          }
+
+          if (
+            newStatus === 'accepted' &&
+            request.service_offer_id === data.data.service_offer_id &&
+            (request.status === 'pending' || request.status === 'accepted')
+          ) {
+            return {
+              ...request,
+              status: 'rejected',
+              isAssigned: false
+            };
+          }
+
+          return request;
+        })
+      );
+
+      toast({
+        title: 'Success',
+        description: newStatus === 'accepted' ? 'Request accepted and offer assigned' : 'Request rejected'
+      });
+    } catch {
+      toast({
+        title: 'Error',
+        description: 'Failed to update request status',
+        variant: 'destructive'
+      });
+    } finally {
+      setUpdatingOfferRequestId(null);
+    }
+  };
 
   useEffect(() => {
     const loadAssignments = async () => {
@@ -58,7 +223,20 @@ function IndividualDashboardContent() {
     loadAssignments()
   }, [user?.id])
 
+  useEffect(() => {
+    if (!user?.id) return;
+    fetchServiceOffers();
+    fetchOfferApplications();
+    fetchOfferRequests();
+  }, [user?.id]);
+
   const navigateToTab = (value: string) => {
+    if (value === 'capability-offers') {
+      setCapabilityOffersTab('your-capabilities');
+    }
+    if (value === 'service-requests') {
+      setMyApplicationsTab('ongoing');
+    }
     router.replace(`/individuals/dashboard?tab=${value}`, { scroll: false });
   };
 
@@ -93,8 +271,145 @@ function IndividualDashboardContent() {
                   <CardContent className="pt-6">
                     {activeTab === 'profile' ? (
                       <ProfileDashboardTab />
+                    ) : activeTab === 'capability-offers' ? (
+                      <Tabs value={capabilityOffersTab} onValueChange={(value) => setCapabilityOffersTab(value as 'your-capabilities' | 'your-applications' | 'requests')} className="w-full">
+                        <TabsList className="grid w-full grid-cols-3">
+                          <TabsTrigger value="your-capabilities">Your Capabilities</TabsTrigger>
+                          <TabsTrigger value="your-applications">Your Applications</TabsTrigger>
+                          <TabsTrigger value="requests">Requests</TabsTrigger>
+                        </TabsList>
+
+                        <TabsContent value="your-capabilities" className="mt-4 space-y-3">
+                          {loadingServiceOffers ? (
+                            <div className="p-6 text-center text-muted-foreground">Loading capability offers...</div>
+                          ) : serviceOffers.length === 0 ? (
+                            <div className="p-8 text-center text-muted-foreground">
+                              <p className="text-lg font-medium mb-2">No capability offers yet</p>
+                              <p className="text-sm mb-4">Create an offer to contribute skills, funds, materials, or infrastructure.</p>
+                              <Link href="/service-offers/create">
+                                <Button variant="outline">Create Capability Offer</Button>
+                              </Link>
+                            </div>
+                          ) : serviceOffers.map((offer) => (
+                            <Card key={offer.id}>
+                              <CardContent className="p-4 space-y-3">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <p className="font-semibold">{offer.title}</p>
+                                    <p className="text-sm text-muted-foreground">{offer.category || 'Capability'}</p>
+                                  </div>
+                                  <Badge variant="outline">{offer.status || 'active'}</Badge>
+                                </div>
+                                <div className="flex gap-2">
+                                  <Link href={`/service-offers/${offer.id}`}>
+                                    <Button size="sm" variant="outline">View</Button>
+                                  </Link>
+                                  <Link href={`/service-offers/edit/${offer.id}`}>
+                                    <Button size="sm" variant="outline">Edit</Button>
+                                  </Link>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </TabsContent>
+
+                        <TabsContent value="your-applications" className="mt-4 space-y-3">
+                          {loadingOfferApplications ? (
+                            <div className="p-6 text-center text-muted-foreground">Loading your applications...</div>
+                          ) : offerApplications.length === 0 ? (
+                            <div className="p-8 text-center text-muted-foreground">
+                              <p className="text-lg font-medium mb-2">No applications yet</p>
+                              <p className="text-sm mb-4">Applications you make on capability offers will appear here.</p>
+                              <Link href="/service-offers">
+                                <Button variant="outline">Browse Capability Offers</Button>
+                              </Link>
+                            </div>
+                          ) : offerApplications.map((offer) => (
+                            <Card key={offer.id}>
+                              <CardContent className="p-4 space-y-3">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <p className="font-semibold">{offer.title}</p>
+                                    <p className="text-sm text-muted-foreground">{offer.provider_name || offer.ngo_name || 'Provider not available'}</p>
+                                  </div>
+                                  <Badge variant="outline">{offer.status || 'active'}</Badge>
+                                </div>
+                                <div className="flex gap-2">
+                                  <Link href={`/service-offers/${offer.id}`}>
+                                    <Button size="sm" variant="outline">View Offer</Button>
+                                  </Link>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </TabsContent>
+
+                        <TabsContent value="requests" className="mt-4 space-y-3">
+                          {loadingOfferRequests ? (
+                            <div className="flex items-center justify-center py-12">
+                              <Loader2 className="h-6 w-6 animate-spin" />
+                            </div>
+                          ) : offerRequests.length === 0 ? (
+                            <div className="p-8 text-center text-muted-foreground">
+                              <p className="text-lg font-medium mb-2">No requests yet</p>
+                              <p className="text-sm">Incoming requests on your capability offers will appear here.</p>
+                            </div>
+                          ) : offerRequests.map((request) => (
+                            <Card key={request.id}>
+                              <CardContent className="p-4 space-y-3">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <p className="font-semibold">{request.offer_title}</p>
+                                    <p className="text-sm text-muted-foreground">
+                                      Requester: {request.client?.name || 'Unknown'} ({request.client?.user_type || 'participant'})
+                                    </p>
+                                    <p className="text-sm text-muted-foreground">{request.client?.email || 'No email available'}</p>
+                                  </div>
+                                  <Badge variant="outline" className="capitalize">{request.status}</Badge>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  <Link href={`/service-offers/${request.service_offer_id}`}>
+                                    <Button size="sm" variant="outline">View Offer</Button>
+                                  </Link>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleOfferRequestStatusUpdate(request.id, 'accepted')}
+                                    disabled={updatingOfferRequestId === request.id || request.status === 'accepted'}
+                                    className="bg-green-600 hover:bg-green-700"
+                                  >
+                                    {updatingOfferRequestId === request.id ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <>
+                                        <CheckCircle size={14} className="mr-1" />
+                                        Accept
+                                      </>
+                                    )}
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleOfferRequestStatusUpdate(request.id, 'rejected')}
+                                    disabled={updatingOfferRequestId === request.id || request.status === 'rejected'}
+                                    className="border-red-300 text-red-600 hover:bg-red-50"
+                                  >
+                                    {updatingOfferRequestId === request.id ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <>
+                                        <XCircle size={14} className="mr-1" />
+                                        Reject
+                                      </>
+                                    )}
+                                  </Button>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </TabsContent>
+                      </Tabs>
                     ) : activeTab === 'service-requests' ? (
-                      <Tabs defaultValue="ongoing" className="w-full">
+                      <Tabs value={myApplicationsTab} onValueChange={(value) => setMyApplicationsTab(value as 'ongoing' | 'history')} className="w-full">
                         <TabsList className="grid w-full grid-cols-2">
                           <TabsTrigger value="ongoing">Ongoing</TabsTrigger>
                           <TabsTrigger value="history">History</TabsTrigger>
@@ -176,18 +491,7 @@ function IndividualDashboardContent() {
                           ))}
                         </TabsContent>
                       </Tabs>
-                    ) : (
-                      <div className="p-8 text-center">
-                        <div className="text-muted-foreground">
-                          <HeartHandshake className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                          <p className="text-lg font-medium mb-2">Services Hired Coming Soon</p>
-                          <p className="text-sm mb-4">This section is reserved for service hires. Your application history stays under My Applications.</p>
-                          <Link href="/service-requests">
-                            <Button variant="outline">Browse Requests</Button>
-                          </Link>
-                        </div>
-                      </div>
-                    )}
+                    ) : null}
                   </CardContent>
                 </Card>
               </div>

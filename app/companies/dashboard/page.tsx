@@ -3,7 +3,7 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Building, CheckCircle, HandHeart, HeartHandshake, MailCheck, Phone } from 'lucide-react';
+import { Building, CheckCircle, HandHeart, MailCheck, Phone, Loader2, XCircle } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import ProtectedRoute from '@/components/protected-route';
 import { Header } from '@/components/header';
@@ -16,14 +16,40 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ProfileDashboardTab } from '@/components/profile-dashboard-tab';
 import { DashboardQuickSidebar } from '@/components/dashboard-quick-sidebar';
+import { useToast } from '@/hooks/use-toast';
+
+interface OfferRequestItem {
+  id: number;
+  service_offer_id: number;
+  offer_title: string;
+  client_id: number;
+  client?: {
+    name?: string;
+    email?: string;
+    user_type?: string;
+  };
+  message?: string;
+  status: 'pending' | 'accepted' | 'rejected' | 'active' | 'completed' | 'cancelled';
+  isAssigned: boolean;
+  created_at: string;
+}
 
 function CompanyDashboardContent() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [mounted, setMounted] = useState(false);
-  const requestedTab = searchParams.get('tab') || 'csr-projects';
-  const activeTab = requestedTab === 'service-requests' ? 'csr-projects' : requestedTab;
+  const requestedTab = searchParams.get('tab') || 'profile';
+  const activeTab = requestedTab === 'service-requests' ? 'csr-projects' : requestedTab === 'services-hired' ? 'capability-offers' : requestedTab;
+  const [serviceOffers, setServiceOffers] = useState<any[]>([]);
+  const [offerApplications, setOfferApplications] = useState<any[]>([]);
+  const [offerRequests, setOfferRequests] = useState<OfferRequestItem[]>([]);
+  const [loadingServiceOffers, setLoadingServiceOffers] = useState(false);
+  const [loadingOfferApplications, setLoadingOfferApplications] = useState(false);
+  const [loadingOfferRequests, setLoadingOfferRequests] = useState(false);
+  const [updatingOfferRequestId, setUpdatingOfferRequestId] = useState<number | null>(null);
+  const [capabilityOffersTab, setCapabilityOffersTab] = useState<'your-capabilities' | 'your-applications' | 'requests'>('your-capabilities');
   const [csrProjects, setCsrProjects] = useState<any[]>([]);
   const [projectEvidenceById, setProjectEvidenceById] = useState<Record<string, any>>({});
   const [loadingEvidenceProjectId, setLoadingEvidenceProjectId] = useState<string | null>(null);
@@ -66,6 +92,143 @@ function CompanyDashboardContent() {
       setCsrProjects([]);
     } finally {
       setLoadingCSRProjects(false);
+    }
+  };
+
+  const fetchServiceOffers = async () => {
+    try {
+      setLoadingServiceOffers(true);
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setServiceOffers([]);
+        return;
+      }
+
+      const response = await fetch('/api/service-offers?view=my-offers&limit=20', {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      const payload = await response.json();
+      setServiceOffers(payload.success ? (payload.data || []) : []);
+    } catch {
+      setServiceOffers([]);
+    } finally {
+      setLoadingServiceOffers(false);
+    }
+  };
+
+  const fetchOfferApplications = async () => {
+    try {
+      setLoadingOfferApplications(true);
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setOfferApplications([]);
+        return;
+      }
+
+      const response = await fetch('/api/service-offers?view=my-responses&limit=20', {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      const payload = await response.json();
+      setOfferApplications(payload.success ? (payload.data || []) : []);
+    } catch {
+      setOfferApplications([]);
+    } finally {
+      setLoadingOfferApplications(false);
+    }
+  };
+
+  const fetchOfferRequests = async () => {
+    try {
+      setLoadingOfferRequests(true);
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setOfferRequests([]);
+        return;
+      }
+
+      const response = await fetch('/api/service-offers/requests', {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      const payload = await response.json();
+      setOfferRequests(payload.success ? (payload.data || []) : []);
+    } catch {
+      setOfferRequests([]);
+    } finally {
+      setLoadingOfferRequests(false);
+    }
+  };
+
+  const handleOfferRequestStatusUpdate = async (requestId: number, newStatus: 'accepted' | 'rejected') => {
+    try {
+      setUpdatingOfferRequestId(requestId);
+      const token = localStorage.getItem('token');
+
+      const response = await fetch(`/api/service-offers/requests/${requestId}`, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ status: newStatus })
+      });
+
+      const payload = await response.json();
+      if (!payload.success) {
+        toast({
+          title: 'Error',
+          description: payload.error || 'Failed to update request status',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      setOfferRequests((prev) =>
+        prev.map((request) => {
+          if (request.id === requestId) {
+            return {
+              ...request,
+              status: newStatus,
+              isAssigned: newStatus === 'accepted'
+            };
+          }
+
+          if (
+            newStatus === 'accepted' &&
+            request.service_offer_id === payload.data.service_offer_id &&
+            (request.status === 'pending' || request.status === 'accepted')
+          ) {
+            return {
+              ...request,
+              status: 'rejected',
+              isAssigned: false
+            };
+          }
+
+          return request;
+        })
+      );
+
+      toast({
+        title: 'Success',
+        description: newStatus === 'accepted' ? 'Request accepted and offer assigned' : 'Request rejected'
+      });
+    } catch {
+      toast({
+        title: 'Error',
+        description: 'Failed to update request status',
+        variant: 'destructive'
+      });
+    } finally {
+      setUpdatingOfferRequestId(null);
     }
   };
 
@@ -209,6 +372,9 @@ function CompanyDashboardContent() {
 
   useEffect(() => {
     if (user?.id) {
+      fetchServiceOffers();
+      fetchOfferApplications();
+      fetchOfferRequests();
       fetchCSRProjects();
       fetchCompanyCAAccounts();
     }
@@ -224,7 +390,7 @@ function CompanyDashboardContent() {
   const inactiveCompanyCAAccounts = companyCAAccounts.filter((account: any) => account.status !== 'active');
   const sidebarItems = [
     { value: 'profile', label: 'Profile' },
-    { value: 'services-hired', label: 'Services Hired' },
+    { value: 'capability-offers', label: 'Capability Offers' },
     { value: 'csr-projects', label: 'CSR Projects' },
     { value: 'company-ca', label: 'CA Access' },
     { value: 'csr-budget', label: 'CSR Budget' },
@@ -233,6 +399,9 @@ function CompanyDashboardContent() {
   ];
 
   const navigateToTab = (value: string) => {
+    if (value === 'capability-offers') {
+      setCapabilityOffersTab('your-capabilities');
+    }
     router.replace(`/companies/dashboard?tab=${value}`, { scroll: false });
   };
 
@@ -292,18 +461,137 @@ function CompanyDashboardContent() {
                     <ProfileDashboardTab />
                   </TabsContent>
 
-                  <TabsContent value="services-hired" className="mt-4 space-y-4">
-                    <h3 className="font-medium">Services You've Hired</h3>
-                    <div className="p-8 text-center">
-                      <div className="text-muted-foreground">
-                        <HeartHandshake className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                        <p className="text-lg font-medium mb-2">Service Hiring Coming Soon</p>
-                        <p className="text-sm mb-4">Hire services from verified NGOs for your CSR initiatives and community programs.</p>
-                        <Link href="/service-offers" className="block w-full sm:inline-block sm:w-auto">
-                          <Button variant="outline" className="h-auto w-full whitespace-normal text-center sm:w-auto">Browse Service Offers</Button>
-                        </Link>
-                      </div>
-                    </div>
+                  <TabsContent value="capability-offers" className="mt-4 space-y-4">
+                    <Tabs value={capabilityOffersTab} onValueChange={(value) => setCapabilityOffersTab(value as 'your-capabilities' | 'your-applications' | 'requests')} className="w-full">
+                      <TabsList className="grid w-full grid-cols-3 h-auto">
+                        <TabsTrigger value="your-capabilities">Your Capabilities</TabsTrigger>
+                        <TabsTrigger value="your-applications">Your Applications</TabsTrigger>
+                        <TabsTrigger value="requests">Requests</TabsTrigger>
+                      </TabsList>
+
+                      <TabsContent value="your-capabilities" className="mt-4 space-y-3">
+                        {loadingServiceOffers ? (
+                          <div className="p-6 text-center text-muted-foreground">Loading capability offers...</div>
+                        ) : serviceOffers.length === 0 ? (
+                          <div className="p-8 text-center text-muted-foreground">
+                            <p className="text-lg font-medium mb-2">No capability offers yet</p>
+                            <p className="text-sm mb-4">Create capability offers to support NGO needs and partnerships.</p>
+                            <Link href="/service-offers/create">
+                              <Button variant="outline">Create Capability Offer</Button>
+                            </Link>
+                          </div>
+                        ) : serviceOffers.map((offer) => (
+                          <div key={offer.id} className="rounded-md border bg-white p-4 space-y-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="font-semibold">{offer.title}</p>
+                                <p className="text-sm text-muted-foreground">{offer.category || 'Capability'}</p>
+                              </div>
+                              <Badge variant="outline">{offer.status || 'active'}</Badge>
+                            </div>
+                            <div className="flex gap-2">
+                              <Link href={`/service-offers/${offer.id}`}>
+                                <Button variant="outline" size="sm">View</Button>
+                              </Link>
+                              <Link href={`/service-offers/edit/${offer.id}`}>
+                                <Button variant="outline" size="sm">Edit</Button>
+                              </Link>
+                            </div>
+                          </div>
+                        ))}
+                      </TabsContent>
+
+                      <TabsContent value="your-applications" className="mt-4 space-y-3">
+                        {loadingOfferApplications ? (
+                          <div className="p-6 text-center text-muted-foreground">Loading your applications...</div>
+                        ) : offerApplications.length === 0 ? (
+                          <div className="p-8 text-center text-muted-foreground">
+                            <p className="text-lg font-medium mb-2">No applications yet</p>
+                            <p className="text-sm mb-4">Applications on capability offers will appear here.</p>
+                            <Link href="/service-offers">
+                              <Button variant="outline">Browse Capability Offers</Button>
+                            </Link>
+                          </div>
+                        ) : offerApplications.map((offer) => (
+                          <div key={offer.id} className="rounded-md border bg-white p-4 space-y-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="font-semibold">{offer.title}</p>
+                                <p className="text-sm text-muted-foreground">{offer.provider_name || offer.ngo_name || 'Provider not available'}</p>
+                              </div>
+                              <Badge variant="outline">{offer.status || 'active'}</Badge>
+                            </div>
+                            <div className="flex gap-2">
+                              <Link href={`/service-offers/${offer.id}`}>
+                                <Button variant="outline" size="sm">View Offer</Button>
+                              </Link>
+                            </div>
+                          </div>
+                        ))}
+                      </TabsContent>
+
+                      <TabsContent value="requests" className="mt-4 space-y-3">
+                        {loadingOfferRequests ? (
+                          <div className="flex items-center justify-center py-12">
+                            <Loader2 className="h-6 w-6 animate-spin" />
+                          </div>
+                        ) : offerRequests.length === 0 ? (
+                          <div className="p-8 text-center text-muted-foreground">
+                            <p className="text-lg font-medium mb-2">No requests yet</p>
+                            <p className="text-sm">Incoming requests on your capability offers will appear here.</p>
+                          </div>
+                        ) : offerRequests.map((request) => (
+                          <div key={request.id} className="rounded-md border bg-white p-4 space-y-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="font-semibold">{request.offer_title}</p>
+                                <p className="text-sm text-muted-foreground">
+                                  Requester: {request.client?.name || 'Unknown'} ({request.client?.user_type || 'participant'})
+                                </p>
+                                <p className="text-sm text-muted-foreground">{request.client?.email || 'No email available'}</p>
+                              </div>
+                              <Badge variant="outline" className="capitalize">{request.status}</Badge>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <Link href={`/service-offers/${request.service_offer_id}`}>
+                                <Button size="sm" variant="outline">View Offer</Button>
+                              </Link>
+                              <Button
+                                size="sm"
+                                onClick={() => handleOfferRequestStatusUpdate(request.id, 'accepted')}
+                                disabled={updatingOfferRequestId === request.id || request.status === 'accepted'}
+                                className="bg-green-600 hover:bg-green-700"
+                              >
+                                {updatingOfferRequestId === request.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <>
+                                    <CheckCircle size={14} className="mr-1" />
+                                    Accept
+                                  </>
+                                )}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleOfferRequestStatusUpdate(request.id, 'rejected')}
+                                disabled={updatingOfferRequestId === request.id || request.status === 'rejected'}
+                                className="border-red-300 text-red-600 hover:bg-red-50"
+                              >
+                                {updatingOfferRequestId === request.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <>
+                                    <XCircle size={14} className="mr-1" />
+                                    Reject
+                                  </>
+                                )}
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </TabsContent>
+                    </Tabs>
                   </TabsContent>
 
                   <TabsContent value="csr-projects" className="mt-4 space-y-4">
