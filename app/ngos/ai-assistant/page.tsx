@@ -17,6 +17,7 @@ function NGOAIAssistantContent() {
   const searchParams = useSearchParams()
   const initialTab = searchParams.get('tab') || 'proposal'
   const [mounted, setMounted] = useState(false)
+  const effectiveUserType = mounted ? user?.user_type : undefined
   
   const [activeTab, setActiveTab] = useState(initialTab)
   const [isGenerating, setIsGenerating] = useState(false)
@@ -133,7 +134,7 @@ ${user?.name}
     )
   }
 
-  if (user?.user_type !== 'ngo') {
+  if (effectiveUserType !== 'ngo') {
     return (
       <>
         <Header />

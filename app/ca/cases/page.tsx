@@ -19,6 +19,13 @@ export default function CACasesPage() {
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [entityFilter, setEntityFilter] = useState('all');
 
+  const formatDate = (value?: string | null) => {
+    if (!value) return 'N/A';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'N/A';
+    return date.toLocaleDateString('en-IN', { timeZone: 'UTC' });
+  };
+
   useEffect(() => {
     fetchCases();
   }, []);
@@ -302,7 +309,7 @@ export default function CACasesPage() {
                     <div className="flex flex-wrap items-center gap-4 text-sm text-blue-700 mb-2">
                       <span className="font-mono">#{case_.id}</span>
                       <span>•</span>
-                      <span>Submitted: {new Date(case_.submitted_at).toLocaleDateString()}</span>
+                      <span>Submitted: {formatDate(case_.submitted_at)}</span>
                       <span>•</span>
                       <span>Completed {case_.days_pending} days ago</span>
                     </div>

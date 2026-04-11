@@ -84,6 +84,18 @@ export default function AdminPage() {
     };
   };
 
+  const formatDate = (value: string) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'N/A';
+    return date.toLocaleDateString('en-IN', { timeZone: 'UTC' });
+  };
+
+  const formatDateTime = (value: string) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'N/A';
+    return date.toLocaleString('en-IN', { timeZone: 'UTC' });
+  };
+
   // Check for admin token on component mount
   useEffect(() => {
     const checkAdminAuth = async () => {
@@ -536,7 +548,7 @@ export default function AdminPage() {
                           </div>
                           <div className="flex items-center gap-1">
                             <Calendar className="h-4 w-4" />
-                            {new Date(offer.created_at).toLocaleDateString()}
+                            {formatDate(offer.created_at)}
                           </div>
                         </div>
                       </div>
@@ -638,7 +650,7 @@ export default function AdminPage() {
                       </div>
                     </div>
                     <div>
-                      <span className="font-medium">Submitted:</span> {new Date(selectedOffer.created_at).toLocaleString()}
+                      <span className="font-medium">Submitted:</span> {formatDateTime(selectedOffer.created_at)}
                     </div>
                   </div>
                 </div>

@@ -25,6 +25,12 @@ export default function CompanyCAPanelClient() {
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '' });
   const [passwordMessage, setPasswordMessage] = useState('');
 
+  const formatDateTime = (value: string) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'N/A';
+    return date.toLocaleString('en-IN', { timeZone: 'UTC' });
+  };
+
   const fetchProjectTimeline = async (projectId: string) => {
     const response = await fetch(`/api/csr-projects/${projectId}/evidence`, {
       credentials: 'include'
@@ -433,7 +439,7 @@ export default function CompanyCAPanelClient() {
                         <p className="text-xs font-semibold text-slate-800">Recent Audit Events</p>
                         <div className="mt-2 space-y-1 text-xs text-slate-600">
                           {(projectAuditById[project.id] || []).slice(0, 5).map((event: any) => (
-                            <p key={event.id}>{event.event_type} - {new Date(event.created_at).toLocaleString()}</p>
+                            <p key={event.id}>{event.event_type} - {formatDateTime(event.created_at)}</p>
                           ))}
                         </div>
                       </div>

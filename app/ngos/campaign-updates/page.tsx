@@ -14,6 +14,7 @@ import { Calendar, Upload, Image, Video, FileText, Send } from "lucide-react"
 export default function CampaignUpdatesPage() {
   const { user } = useAuth()
   const [mounted, setMounted] = useState(false)
+  const effectiveUserType = mounted ? user?.user_type : undefined
   const [selectedCampaign, setSelectedCampaign] = useState("")
   const [updateTitle, setUpdateTitle] = useState("")
   const [updateContent, setUpdateContent] = useState("")
@@ -61,7 +62,7 @@ export default function CampaignUpdatesPage() {
     )
   }
 
-  if (user?.user_type !== 'ngo') {
+  if (effectiveUserType !== 'ngo') {
     return (
       <>
         <Header />
