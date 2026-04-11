@@ -33,6 +33,7 @@ const reviewQueueProjectApplicationStatuses = ['pending', 'pledged', 'invited', 
 
 const COMPANY_PROJECT_CONTRIBUTION_TYPE = 'company_project_csr'
 const LEAD_NGO_INVITE_CONTRIBUTION_TYPE = 'project_lead_ngo_invite'
+const EXPIRED_STATUS = 'expired'
 
 function safeProjectIdFromMeta(meta: any): string | null {
   if (!meta || typeof meta !== 'object') return null
@@ -108,7 +109,27 @@ export async function GET(request: NextRequest) {
         ? requests.filter((item: any) => !Number.isFinite(requestIdFilter) || item.id === requestIdFilter)
         : []
 
-      const projectIds = [...new Set(filteredRequests.map((item: any) => item.project_id).filter(Boolean))]
+      // If any need in a project is already accepted by a company, hide that project from opportunity listing.
+      const { data: acceptedProjectAssignments, error: acceptedProjectAssignmentsError } = filteredRequests.length > 0
+        ? await supabase
+            .from('service_request_contributions')
+            .select('service_request_id')
+            .in('service_request_id', filteredRequests.map((item: any) => item.id))
+            .eq('contribution_type', COMPANY_PROJECT_CONTRIBUTION_TYPE)
+            .eq('status', 'accepted')
+        : { data: [], error: null as any }
+
+      if (acceptedProjectAssignmentsError) throw acceptedProjectAssignmentsError
+
+      const acceptedNeedIdSet = new Set(
+        (acceptedProjectAssignments || [])
+          .map((item: any) => Number(item.service_request_id))
+          .filter((id: number) => Number.isFinite(id) && id > 0)
+      )
+
+      const listingRequests = filteredRequests.filter((item: any) => !acceptedNeedIdSet.has(Number(item.id)))
+
+      const projectIds = [...new Set(listingRequests.map((item: any) => item.project_id).filter(Boolean))]
 
       if (projectIds.length === 0) {
         return NextResponse.json({ success: true, data: [] })
@@ -119,23 +140,23 @@ export async function GET(request: NextRequest) {
         .select('id, service_request_id, status, created_at, updated_at, meta')
         .eq('contributor_id', userId)
         .eq('contribution_type', COMPANY_PROJECT_CONTRIBUTION_TYPE)
-        .in('service_request_id', filteredRequests.map((item: any) => item.id))
+        .in('service_request_id', listingRequests.map((item: any) => item.id))
         .order('created_at', { ascending: false })
 
       if (companyApplicationsError) throw companyApplicationsError
 
-      const { data: fulfillmentRows, error: fulfillmentRowsError } = filteredRequests.length > 0
+      const { data: fulfillmentRows, error: fulfillmentRowsError } = listingRequests.length > 0
         ? await supabase
             .from('service_volunteers')
             .select('service_request_id, status, individual_done_at, ngo_confirmed_at, fulfilled_amount, fulfilled_quantity, volunteer:users!volunteer_id(id, user_type)')
-            .in('service_request_id', filteredRequests.map((item: any) => item.id))
+        .in('service_request_id', listingRequests.map((item: any) => item.id))
         : { data: [], error: null as any }
 
       if (fulfillmentRowsError) throw fulfillmentRowsError
 
       const grouped = new Map<string, any>()
 
-      for (const need of filteredRequests) {
+      for (const need of listingRequests) {
         const projectId = String(need.project_id)
         const existing = grouped.get(projectId) || {
           project_id: projectId,
@@ -177,7 +198,7 @@ export async function GET(request: NextRequest) {
       }, {})
 
       const hasIndividualFulfillmentByProject = (fulfillmentRows || []).reduce((acc: Record<string, boolean>, row: any) => {
-        const requestItem = filteredRequests.find((item: any) => Number(item.id) === Number(row.service_request_id))
+        const requestItem = listingRequests.find((item: any) => Number(item.id) === Number(row.service_request_id))
         if (!requestItem?.project_id) return acc
 
         const isIndividual = String(row?.volunteer?.user_type || '').toLowerCase() === 'individual'
@@ -815,6 +836,20 @@ export async function POST(request: NextRequest) {
     const needIds = activeNeeds.map((item: any) => item.id)
 
     if (action === 'apply-project') {
+      const { data: existingAcceptedRows, error: existingAcceptedRowsError } = await supabase
+        .from('service_request_contributions')
+        .select('id, contributor_id, service_request_id')
+        .in('service_request_id', needIds)
+        .eq('contribution_type', COMPANY_PROJECT_CONTRIBUTION_TYPE)
+        .eq('status', 'accepted')
+
+      if (existingAcceptedRowsError) throw existingAcceptedRowsError
+      if ((existingAcceptedRows || []).length > 0) {
+        return NextResponse.json({
+          error: 'This project has already been accepted by a company. New applications are not allowed.'
+        }, { status: 409 })
+      }
+
       const { data: fulfillmentRows, error: fulfillmentRowsError } = await supabase
         .from('service_volunteers')
         .select('service_request_id, status, individual_done_at, ngo_confirmed_at, fulfilled_amount, fulfilled_quantity, volunteer:users!volunteer_id(id, user_type)')
@@ -868,6 +903,32 @@ export async function POST(request: NextRequest) {
       if (acceptedRowsError) throw acceptedRowsError
       if (!acceptedRows || acceptedRows.length === 0) {
         return NextResponse.json({ error: 'Project must be accepted by NGO before inviting lead NGOs' }, { status: 409 })
+      }
+
+      const { data: alreadyAcceptedLeadInvite, error: alreadyAcceptedLeadInviteError } = await supabase
+        .from('service_request_contributions')
+        .select('id, contributor_id')
+        .eq('contribution_type', LEAD_NGO_INVITE_CONTRIBUTION_TYPE)
+        .eq('meta->>project_id', projectId)
+        .eq('meta->>inviting_company_id', String(userId))
+        .eq('status', 'accepted')
+        .maybeSingle()
+
+      if (alreadyAcceptedLeadInviteError) throw alreadyAcceptedLeadInviteError
+
+      if (alreadyAcceptedLeadInvite) {
+        await supabase
+          .from('service_request_contributions')
+          .update({ status: EXPIRED_STATUS, updated_at: new Date().toISOString() })
+          .eq('contribution_type', LEAD_NGO_INVITE_CONTRIBUTION_TYPE)
+          .eq('meta->>project_id', projectId)
+          .eq('meta->>inviting_company_id', String(userId))
+          .neq('id', alreadyAcceptedLeadInvite.id)
+          .in('status', ['pending', 'invited', 'pending_acceptance', 'awaiting_acceptance', 'offered', 'assigned'])
+
+        return NextResponse.json({
+          error: 'A lead NGO has already accepted this project invite. No additional invites are allowed.'
+        }, { status: 409 })
       }
 
       const anchorNeedId = needIds[0]
@@ -1016,10 +1077,45 @@ export async function PUT(request: NextRequest) {
         return NextResponse.json({ error: 'Invitation not found' }, { status: 404 })
       }
 
+      const currentInviteStatus = String(invite.status || '').toLowerCase()
+      const actionableInviteStatuses = ['pending', 'invited', 'pending_acceptance', 'awaiting_acceptance', 'offered', 'assigned']
+      if (!actionableInviteStatuses.includes(currentInviteStatus)) {
+        return NextResponse.json({ error: 'This invitation is no longer actionable.' }, { status: 409 })
+      }
+
+      const projectId = String(invite?.meta?.project_id || '').trim()
+      const invitingCompanyId = String(invite?.meta?.inviting_company_id || '').trim()
+
+      if (decision === 'accepted') {
+        const { data: existingAcceptedInvite, error: existingAcceptedInviteError } = await supabase
+          .from('service_request_contributions')
+          .select('id, contributor_id')
+          .eq('contribution_type', LEAD_NGO_INVITE_CONTRIBUTION_TYPE)
+          .eq('meta->>project_id', projectId)
+          .eq('meta->>inviting_company_id', invitingCompanyId)
+          .eq('status', 'accepted')
+          .neq('id', inviteId)
+          .maybeSingle()
+
+        if (existingAcceptedInviteError) throw existingAcceptedInviteError
+
+        if (existingAcceptedInvite) {
+          await supabase
+            .from('service_request_contributions')
+            .update({ status: EXPIRED_STATUS, updated_at: new Date().toISOString() })
+            .eq('id', inviteId)
+
+          return NextResponse.json({ error: 'A lead NGO is already accepted for this project invite.' }, { status: 409 })
+        }
+      }
+
       const nextMeta = {
         ...(invite.meta && typeof invite.meta === 'object' ? invite.meta : {}),
         ngo_response: decision,
-        ngo_responded_at: new Date().toISOString()
+        ngo_responded_at: new Date().toISOString(),
+        selected_as_lead: decision === 'accepted',
+        selected_at: decision === 'accepted' ? new Date().toISOString() : null,
+        auto_selected_by: decision === 'accepted' ? 'ngo_acceptance' : null
       }
 
       const { error: updateInviteError } = await supabase
@@ -1032,6 +1128,49 @@ export async function PUT(request: NextRequest) {
         .eq('id', inviteId)
 
       if (updateInviteError) throw updateInviteError
+
+      if (decision === 'accepted') {
+        const { error: expireOtherInvitesError } = await supabase
+          .from('service_request_contributions')
+          .update({ status: EXPIRED_STATUS, updated_at: new Date().toISOString() })
+          .eq('contribution_type', LEAD_NGO_INVITE_CONTRIBUTION_TYPE)
+          .eq('meta->>project_id', projectId)
+          .eq('meta->>inviting_company_id', invitingCompanyId)
+          .neq('id', inviteId)
+          .in('status', ['pending', 'invited', 'pending_acceptance', 'awaiting_acceptance', 'offered', 'assigned'])
+
+        if (expireOtherInvitesError) throw expireOtherInvitesError
+
+        const { data: projectNeeds, error: projectNeedsError } = await supabase
+          .from('service_requests')
+          .select('id, project_context')
+          .eq('project_id', projectId)
+
+        if (projectNeedsError) throw projectNeedsError
+
+        for (const need of projectNeeds || []) {
+          const currentContext = safeJsonObject(need.project_context)
+          const currentAssignment = safeJsonObject(currentContext.csr_assignment)
+
+          const nextContext = {
+            ...currentContext,
+            csr_assignment: {
+              ...currentAssignment,
+              selected_lead_ngo_id: userId,
+              selected_lead_ngo_at: new Date().toISOString(),
+              lead_selection_mode: 'ngo_acceptance',
+              lead_selection_invite_id: inviteId
+            }
+          }
+
+          const { error: updateNeedError } = await supabase
+            .from('service_requests')
+            .update({ project_context: nextContext, updated_at: new Date().toISOString() })
+            .eq('id', need.id)
+
+          if (updateNeedError) throw updateNeedError
+        }
+      }
 
       return NextResponse.json({ success: true, data: { inviteId, decision } })
     }
@@ -1136,6 +1275,31 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'projectId, companyId and decision are required' }, { status: 400 })
     }
 
+    if (decision === 'accepted') {
+      const { data: alreadyAcceptedRows, error: alreadyAcceptedRowsError } = await supabase
+        .from('service_request_contributions')
+        .select('id, contributor_id, service_request_id')
+        .eq('contribution_type', COMPANY_PROJECT_CONTRIBUTION_TYPE)
+        .in('service_request_id', (
+          await supabase
+            .from('service_requests')
+            .select('id')
+            .eq('project_id', projectId)
+            .eq('ngo_id', userId)
+            .not('status', 'in', '(completed,cancelled)')
+        ).data?.map((item: any) => item.id) || [])
+        .eq('status', 'accepted')
+        .neq('contributor_id', companyId)
+
+      if (alreadyAcceptedRowsError) throw alreadyAcceptedRowsError
+
+      if ((alreadyAcceptedRows || []).length > 0) {
+        return NextResponse.json({
+          error: 'A company application is already accepted for this project. You cannot accept another application.'
+        }, { status: 409 })
+      }
+    }
+
     const { data: ownNeeds, error: ownNeedsError } = await supabase
       .from('service_requests')
       .select('id, ngo_id, status, project_context')
@@ -1186,6 +1350,19 @@ export async function PUT(request: NextRequest) {
     }
 
     if (decision === 'accepted') {
+      const { error: expireOtherApplicationsError } = await supabase
+        .from('service_request_contributions')
+        .update({
+          status: EXPIRED_STATUS,
+          updated_at: new Date().toISOString()
+        })
+        .in('service_request_id', needIds)
+        .eq('contribution_type', COMPANY_PROJECT_CONTRIBUTION_TYPE)
+        .neq('contributor_id', companyId)
+        .in('status', reviewQueueProjectApplicationStatuses)
+
+      if (expireOtherApplicationsError) throw expireOtherApplicationsError
+
       for (const need of ownNeeds || []) {
         const existingContext = safeJsonObject(need.project_context)
         const nextContext = {

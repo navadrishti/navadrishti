@@ -12,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -101,6 +102,33 @@ interface NgoDirectoryItem {
   email?: string;
 }
 
+const formatStatusLabel = (status: string): string => {
+  const normalized = String(status || '').trim().toLowerCase();
+  if (!normalized) return 'Unknown';
+  return normalized
+    .replace(/_/g, ' ')
+    .split(' ')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+};
+
+const getStatusBadgeClass = (status: string): string => {
+  const normalized = String(status || '').trim().toLowerCase();
+  if (normalized === 'accepted' || normalized === 'completed') return 'border-green-300 bg-green-50 text-green-700';
+  if (normalized === 'pending' || normalized === 'pledged' || normalized === 'invited' || normalized === 'pending_acceptance' || normalized === 'awaiting_acceptance' || normalized === 'offered' || normalized === 'assigned') return 'border-amber-300 bg-amber-50 text-amber-700';
+  if (normalized === 'in_progress' || normalized === 'active') return 'border-blue-300 bg-blue-50 text-blue-700';
+  if (normalized === 'rejected' || normalized === 'cancelled' || normalized === 'closed') return 'border-red-300 bg-red-50 text-red-700';
+  if (normalized === 'expired') return 'border-slate-300 bg-slate-100 text-slate-700';
+  return 'border-slate-300 bg-white text-slate-700';
+};
+
+const getInitials = (name: string): string => {
+  if (!name) return 'N';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+  return `${parts[0].charAt(0)}${parts[parts.length - 1].charAt(0)}`.toUpperCase();
+};
+
 function CompanyDashboardContent() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -130,9 +158,7 @@ function CompanyDashboardContent() {
   const [loadingNgoDirectory, setLoadingNgoDirectory] = useState(false);
   const [inviteSearchByProject, setInviteSearchByProject] = useState<Record<string, string>>({});
   const [inviteNoteByProject, setInviteNoteByProject] = useState<Record<string, string>>({});
-  const [selectedNgoIdsByProject, setSelectedNgoIdsByProject] = useState<Record<string, number[]>>({});
   const [invitingProjectId, setInvitingProjectId] = useState<string | null>(null);
-  const [selectingLeadProjectId, setSelectingLeadProjectId] = useState<string | null>(null);
   const [loadingCSRProjects, setLoadingCSRProjects] = useState(false);
   const [companyCAAccounts, setCompanyCAAccounts] = useState<any[]>([]);
   const [loadingCompanyCAAccounts, setLoadingCompanyCAAccounts] = useState(false);
@@ -255,7 +281,7 @@ function CompanyDashboardContent() {
     }
   };
 
-  const inviteLeadNgosFromDashboard = async (projectId: string) => {
+  const inviteLeadNgosFromDashboard = async (projectId: string, ngoIds: number[]) => {
     try {
       setInvitingProjectId(projectId);
       const token = localStorage.getItem('token');
@@ -264,9 +290,8 @@ function CompanyDashboardContent() {
         return;
       }
 
-      const ngoIds = selectedNgoIdsByProject[projectId] || [];
       if (ngoIds.length === 0) {
-        toast({ title: 'Select NGOs', description: 'Choose at least one NGO to invite.', variant: 'destructive' });
+        toast({ title: 'Select NGO', description: 'Choose at least one NGO to invite.', variant: 'destructive' });
         return;
       }
 
@@ -291,50 +316,12 @@ function CompanyDashboardContent() {
       }
 
       toast({ title: 'Invites sent', description: payload?.data?.message || 'Lead NGO invitations sent.' });
-      setSelectedNgoIdsByProject((prev) => ({ ...prev, [projectId]: [] }));
       setInviteNoteByProject((prev) => ({ ...prev, [projectId]: '' }));
       fetchCSRTrackingAssignments();
     } catch (error) {
       toast({ title: 'Invite failed', description: 'Could not send invitations', variant: 'destructive' });
     } finally {
       setInvitingProjectId(null);
-    }
-  };
-
-  const selectLeadNgoFromDashboard = async (projectId: string, ngoId: number) => {
-    try {
-      setSelectingLeadProjectId(projectId);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        toast({ title: 'Error', description: 'Please login again', variant: 'destructive' });
-        return;
-      }
-
-      const response = await fetch('/api/service-request-assignments', {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          action: 'select-lead-ngo',
-          projectId,
-          ngoId
-        })
-      });
-
-      const payload = await response.json();
-      if (!response.ok || !payload?.success) {
-        toast({ title: 'Selection failed', description: payload?.error || 'Could not select lead NGO', variant: 'destructive' });
-        return;
-      }
-
-      toast({ title: 'Lead NGO selected', description: 'Lead NGO assigned successfully.' });
-      fetchCSRTrackingAssignments();
-    } catch (error) {
-      toast({ title: 'Selection failed', description: 'Could not select lead NGO', variant: 'destructive' });
-    } finally {
-      setSelectingLeadProjectId(null);
     }
   };
 
@@ -925,7 +912,9 @@ function CompanyDashboardContent() {
                                   <p className="text-sm text-slate-600">NGO: {opportunity.ngo_name}</p>
                                   <p className="text-xs text-slate-500">{opportunity.project_location || 'Location not set'} • {opportunity.project_timeline || 'Timeline not set'}</p>
                                 </div>
-                                <Badge variant="outline" className="capitalize w-fit">{opportunity.company_application_status}</Badge>
+                                <Badge variant="outline" className={`w-fit ${getStatusBadgeClass(opportunity.company_application_status)}`}>
+                                  {formatStatusLabel(opportunity.company_application_status)}
+                                </Badge>
                               </div>
 
                               <p className="text-xs text-slate-600">Project needs are visible only on the project detail page.</p>
@@ -994,7 +983,9 @@ function CompanyDashboardContent() {
                                   <p className="text-sm text-slate-600">Lead NGO: {assignment.lead_ngo_name}</p>
                                   <p className="text-xs text-slate-500">{assignment.lead_ngo_email || 'No email'} • {assignment.project_location || 'Location not set'}</p>
                                 </div>
-                                <Badge variant="outline" className="capitalize w-fit">{assignment.assignment_status}</Badge>
+                                <Badge variant="outline" className={`w-fit ${getStatusBadgeClass(assignment.assignment_status)}`}>
+                                  {formatStatusLabel(assignment.assignment_status)}
+                                </Badge>
                               </div>
 
                               <p className="text-xs text-slate-600">Need-level tracking is available only in the project detail page.</p>
@@ -1007,52 +998,125 @@ function CompanyDashboardContent() {
 
                               <div className="rounded-md border bg-slate-50 p-3 space-y-3">
                                 <p className="text-sm font-medium text-slate-900">Invite Lead NGOs</p>
-                                <p className="text-xs text-slate-600">Search and invite multiple NGOs here. Recommendation suggestions will plug in later.</p>
+                                <p className="text-xs text-slate-600">Suggested NGOs appear first. You can also search and invite directly from results.</p>
 
-                                <Input
-                                  placeholder="Search NGOs by name or email"
-                                  value={inviteSearchByProject[assignment.project_id] || ''}
-                                  onChange={(event) =>
-                                    setInviteSearchByProject((prev) => ({
-                                      ...prev,
-                                      [assignment.project_id]: event.target.value
-                                    }))
-                                  }
-                                />
+                                {(() => {
+                                  const term = String(inviteSearchByProject[assignment.project_id] || '').toLowerCase().trim();
+                                  const hasSelectedLeadNgo = Number(assignment.selected_lead_ngo_id || 0) > 0;
+                                  const inviteEntries: Array<[number, any]> = (assignment.lead_ngo_invites || [])
+                                    .map((invite) => [Number(invite.ngo_id), invite] as [number, any])
+                                    .filter(([ngoId]) => Number.isFinite(ngoId) && ngoId > 0);
 
-                                {loadingNgoDirectory ? (
-                                  <p className="text-xs text-slate-600">Loading NGO directory...</p>
-                                ) : (
-                                  <div className="max-h-36 space-y-2 overflow-auto">
-                                    {ngoDirectory
-                                      .filter((ngo) => ngo.id !== Number(assignment.lead_ngo_id))
-                                      .filter((ngo) => {
-                                        const term = String(inviteSearchByProject[assignment.project_id] || '').toLowerCase().trim();
-                                        if (!term) return true;
-                                        return String(ngo.name || '').toLowerCase().includes(term) || String(ngo.email || '').toLowerCase().includes(term);
-                                      })
-                                      .map((ngo) => (
-                                        <label key={`${assignment.project_id}-${ngo.id}`} className="flex items-center gap-2 rounded-md border bg-white px-2 py-1.5 text-xs">
-                                          <input
-                                            type="checkbox"
-                                            checked={(selectedNgoIdsByProject[assignment.project_id] || []).includes(ngo.id)}
-                                            onChange={(event) => {
-                                              setSelectedNgoIdsByProject((prev) => {
-                                                const current = prev[assignment.project_id] || [];
-                                                return {
-                                                  ...prev,
-                                                  [assignment.project_id]: event.target.checked
-                                                    ? [...current, ngo.id]
-                                                    : current.filter((id) => id !== ngo.id)
-                                                };
-                                              });
-                                            }}
-                                          />
-                                          <span>{ngo.name} {ngo.email ? `(${ngo.email})` : ''}</span>
-                                        </label>
-                                      ))}
-                                  </div>
-                                )}
+                                  const inviteByNgoId = new Map<number, any>(inviteEntries);
+
+                                  const availableNgos = ngoDirectory
+                                    .filter((ngo) => ngo.id !== Number(assignment.lead_ngo_id));
+
+                                  const suggestedNgos = availableNgos.slice(0, 4);
+                                  const matchedNgos = term
+                                    ? availableNgos.filter((ngo) =>
+                                        String(ngo.name || '').toLowerCase().includes(term) ||
+                                        String(ngo.email || '').toLowerCase().includes(term)
+                                      )
+                                    : [];
+
+                                  const renderNgoRow = (ngo: NgoDirectoryItem) => (
+                                    (() => {
+                                      const inviteRecord = inviteByNgoId.get(ngo.id);
+                                      const inviteStatus = String(inviteRecord?.status || '').toLowerCase();
+                                      const alreadyInvited = !!inviteRecord;
+                                      const isInviteActionable = ['pending', 'invited', 'pending_acceptance', 'awaiting_acceptance', 'offered', 'assigned'].includes(inviteStatus);
+                                      const isAlreadyFinal = ['accepted', 'expired', 'rejected'].includes(inviteStatus);
+                                      const canInvite = !hasSelectedLeadNgo && !alreadyInvited;
+
+                                      return (
+                                    <div key={`${assignment.project_id}-${ngo.id}`} className="flex items-center justify-between gap-3 rounded-md border bg-white p-3 hover:bg-[#eaf4ff] transition-colors">
+                                      <div className="flex min-w-0 items-center gap-3">
+                                        <Avatar className="h-9 w-9">
+                                          <AvatarFallback className="bg-gradient-to-br from-blue-400 to-indigo-500 text-white text-xs font-semibold">
+                                            {getInitials(ngo.name || 'NGO')}
+                                          </AvatarFallback>
+                                        </Avatar>
+                                        <div className="min-w-0">
+                                          <p className="truncate text-sm font-medium text-slate-900">{ngo.name}</p>
+                                          <p className="truncate text-xs text-slate-500">{ngo.email || 'No email'}</p>
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        {alreadyInvited ? (
+                                          <Badge variant="outline" className={getStatusBadgeClass(inviteStatus)}>
+                                            {formatStatusLabel(inviteStatus)}
+                                          </Badge>
+                                        ) : null}
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          disabled={!allVerified || !canInvite || invitingProjectId === assignment.project_id}
+                                          onClick={() => inviteLeadNgosFromDashboard(assignment.project_id, [ngo.id])}
+                                        >
+                                          {hasSelectedLeadNgo
+                                            ? 'Lead Finalized'
+                                            : invitingProjectId === assignment.project_id
+                                              ? 'Inviting...'
+                                              : alreadyInvited
+                                                ? isAlreadyFinal
+                                                  ? formatStatusLabel(inviteStatus)
+                                                  : isInviteActionable
+                                                    ? 'Invited'
+                                                    : 'Invited'
+                                                : 'Invite'}
+                                        </Button>
+                                      </div>
+                                    </div>
+                                      );
+                                    })()
+                                  );
+
+                                  return (
+                                    <>
+                                      <Input
+                                        placeholder="Search NGOs by name or email"
+                                        value={inviteSearchByProject[assignment.project_id] || ''}
+                                        onChange={(event) =>
+                                          setInviteSearchByProject((prev) => ({
+                                            ...prev,
+                                            [assignment.project_id]: event.target.value
+                                          }))
+                                        }
+                                      />
+
+                                      {loadingNgoDirectory ? (
+                                        <p className="text-xs text-slate-600">Loading NGO directory...</p>
+                                      ) : availableNgos.length === 0 ? (
+                                        <p className="text-xs text-slate-500">No NGOs available to suggest right now.</p>
+                                      ) : (
+                                        <div className="space-y-3">
+                                          {!term && suggestedNgos.length > 0 ? (
+                                            <div className="space-y-2">
+                                              <p className="text-xs font-medium text-slate-600">Suggested NGOs</p>
+                                              <div className="space-y-2">{suggestedNgos.map(renderNgoRow)}</div>
+                                            </div>
+                                          ) : null}
+
+                                          {term ? (
+                                            <div className="space-y-2">
+                                              <p className="text-xs font-medium text-slate-600">Search Results ({matchedNgos.length})</p>
+                                              {matchedNgos.length > 0 ? (
+                                                <div className="max-h-64 space-y-2 overflow-auto">{matchedNgos.map(renderNgoRow)}</div>
+                                              ) : (
+                                                <p className="text-xs text-slate-500">No NGOs found for "{inviteSearchByProject[assignment.project_id]}"</p>
+                                              )}
+                                            </div>
+                                          ) : null}
+
+                                          {hasSelectedLeadNgo ? (
+                                            <p className="text-xs text-emerald-700">Lead NGO is already finalized for this project. New invites are disabled.</p>
+                                          ) : null}
+                                        </div>
+                                      )}
+                                    </>
+                                  );
+                                })()}
 
                                 <Textarea
                                   rows={2}
@@ -1065,21 +1129,12 @@ function CompanyDashboardContent() {
                                     }))
                                   }
                                 />
-
-                                <Button
-                                  size="sm"
-                                  onClick={() => inviteLeadNgosFromDashboard(assignment.project_id)}
-                                  disabled={!allVerified || invitingProjectId === assignment.project_id || (selectedNgoIdsByProject[assignment.project_id] || []).length === 0}
-                                >
-                                  {invitingProjectId === assignment.project_id ? 'Sending...' : !allVerified ? 'Verification Required' : 'Send Lead NGO Invites'}
-                                </Button>
                               </div>
 
                               {(assignment.lead_ngo_invites || []).length > 0 ? (
                                 <div className="rounded-md border bg-slate-50 p-3 space-y-2">
                                   <p className="text-sm font-medium text-slate-900">Lead NGO Invite Responses</p>
                                   {(assignment.lead_ngo_invites || []).map((invite) => {
-                                    const canSelect = String(invite.status || '').toLowerCase() === 'accepted';
                                     return (
                                       <div key={invite.id} className="flex flex-col gap-2 rounded-md border bg-white p-2 md:flex-row md:items-center md:justify-between">
                                         <div>
@@ -1087,15 +1142,10 @@ function CompanyDashboardContent() {
                                           <p className="text-xs text-slate-500">{invite.ngo_email || 'No email'}</p>
                                         </div>
                                         <div className="flex items-center gap-2">
-                                          <Badge variant="outline" className="capitalize">{invite.status}</Badge>
-                                          <Button
-                                            size="sm"
-                                            variant={invite.selected_as_lead ? 'secondary' : 'outline'}
-                                            disabled={!allVerified || !canSelect || selectingLeadProjectId === assignment.project_id || invite.selected_as_lead}
-                                            onClick={() => selectLeadNgoFromDashboard(assignment.project_id, invite.ngo_id)}
-                                          >
-                                            {invite.selected_as_lead ? 'Lead Selected' : (selectingLeadProjectId === assignment.project_id ? 'Selecting...' : 'Select as Lead')}
-                                          </Button>
+                                          <Badge variant="outline" className={getStatusBadgeClass(invite.status)}>
+                                            {formatStatusLabel(invite.status)}
+                                          </Badge>
+                                          {invite.selected_as_lead ? <Badge variant="secondary">Lead NGO</Badge> : null}
                                         </div>
                                       </div>
                                     );
