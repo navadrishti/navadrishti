@@ -609,6 +609,98 @@ export const db = {
     }
   },
 
+  // Support Tickets
+  supportTickets: {
+    async create(ticketData: any) {
+      const { data, error } = await supabase
+        .from('support_tickets')
+        .insert(ticketData)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+
+    async getAll(filters: { status?: string; search?: string } = {}) {
+      let query = supabase
+        .from('support_tickets')
+        .select(`
+          *,
+          user:users!user_id(id, name, email, user_type, verification_status, profile_image)
+        `)
+        .order('created_at', { ascending: false });
+
+      if (filters.status) {
+        query = query.eq('status', filters.status);
+      }
+
+      if (filters.search) {
+        const search = filters.search.trim();
+        if (search) {
+          query = query.or(`title.ilike.%${search}%,description.ilike.%${search}%,ticket_id.ilike.%${search}%`);
+        }
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    },
+
+    async update(id: number | string, updateData: any) {
+      const { data, error } = await supabase
+        .from('support_tickets')
+        .update(updateData)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+
+    async getById(id: number | string) {
+      const { data, error } = await supabase
+        .from('support_tickets')
+        .select(`
+          *,
+          user:users!user_id(id, name, email, user_type, verification_status, profile_image)
+        `)
+        .eq('id', id)
+        .single();
+
+      if (error && error.code !== 'PGRST116') throw error;
+      return data;
+    }
+  },
+
+  supportTicketMessages: {
+    async create(messageData: any) {
+      const { data, error } = await supabase
+        .from('support_ticket_messages')
+        .insert(messageData)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+
+    async getByTicketId(ticketId: string) {
+      const { data, error } = await supabase
+        .from('support_ticket_messages')
+        .select(`
+          *,
+          sender:users!sender_id(id, name, email, user_type, profile_image)
+        `)
+        .eq('ticket_id', ticketId)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+      return data || [];
+    }
+  },
+
   // User Addresses
   userAddresses: {
     async getByUserId(userId: number) {

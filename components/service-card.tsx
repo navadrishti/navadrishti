@@ -435,8 +435,19 @@ export function ServiceCard({
       <CardHeader className="space-y-3 pb-4">
         {type === 'request' && projectContext?.title && (
           <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900 shadow-sm">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-600">Project</p>
-            <p className="text-sm font-bold leading-snug text-blue-950">{projectContext.title}</p>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-600">Project</p>
+                <p className="text-sm font-bold leading-snug text-blue-950">{projectContext.title}</p>
+              </div>
+              {projectContext?.id ? (
+                <Link href={`/service-requests/projects/${projectContext.id}`}>
+                  <Button variant="outline" size="sm" className="h-7 border-blue-300 bg-white px-2 text-[11px] text-blue-800 hover:bg-blue-100">
+                    Project Details
+                  </Button>
+                </Link>
+              ) : null}
+            </div>
           </div>
         )}
 

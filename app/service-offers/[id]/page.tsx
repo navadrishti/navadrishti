@@ -92,6 +92,9 @@ export default function ServiceOfferDetailPage() {
   const isAuthenticated = !!(user && token)
   const effectiveUserType = isHydrated ? user?.user_type : undefined
   const canApplyToOffer = !!user && user.id !== offer?.ngo_id
+  const canShowRespondTab = !isAuthenticated || canApplyToOffer
+  const offerVisibleTabCount = canShowRespondTab ? 2 : 1
+  const showOfferTabList = offerVisibleTabCount > 1
 
   useEffect(() => {
     setIsHydrated(true)
@@ -366,18 +369,16 @@ export default function ServiceOfferDetailPage() {
 
           <div className="lg:col-span-8">
             <Card>
-              <CardHeader>
-                <CardTitle>Capability Details & Response</CardTitle>
-              </CardHeader>
-
-              <CardContent>
+              <CardContent className="pt-6">
                 <Tabs defaultValue="details" className="w-full">
-                  <TabsList className="grid w-full grid-cols-2">
-                    <TabsTrigger value="details">Capability Details</TabsTrigger>
-                    <TabsTrigger value="respond">Respond</TabsTrigger>
-                  </TabsList>
+                  {showOfferTabList ? (
+                    <TabsList className="grid w-full grid-cols-2">
+                      <TabsTrigger value="details">Capability Details</TabsTrigger>
+                      <TabsTrigger value="respond">Respond</TabsTrigger>
+                    </TabsList>
+                  ) : null}
 
-                  <TabsContent value="details" className="mt-4">
+                  <TabsContent value="details" className={`${showOfferTabList ? 'mt-4' : ''}`}>
                     <ServiceDetails
                       id={offer.id}
                       title={offer.title}
@@ -415,7 +416,8 @@ export default function ServiceOfferDetailPage() {
                     />
                   </TabsContent>
 
-                  <TabsContent value="respond" className="mt-4">
+                  {canShowRespondTab ? (
+                  <TabsContent value="respond" className={`${showOfferTabList ? 'mt-4' : ''}`}>
                     <Card>
                       <CardHeader>
                         <CardTitle className="flex items-center gap-2">
@@ -569,6 +571,7 @@ export default function ServiceOfferDetailPage() {
                       </CardContent>
                     </Card>
                   </TabsContent>
+                  ) : null}
                 </Tabs>
               </CardContent>
             </Card>

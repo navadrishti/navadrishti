@@ -31,6 +31,29 @@ function safeParseJson(value: unknown): Record<string, any> {
   }
 }
 
+function isCompanyAssignedNeed(request: Record<string, any>): boolean {
+  const projectContext = safeParseJson(request?.project_context);
+  const requirements = safeParseJson(request?.requirements);
+
+  const assignmentFromContext = safeParseJson(projectContext?.csr_assignment);
+  const assignmentFromRequirements = safeParseJson(requirements?.csr_assignment);
+
+  const assignedCompanyId = Number(
+    assignmentFromContext?.assigned_company_id ??
+    projectContext?.assigned_company_id ??
+    assignmentFromRequirements?.assigned_company_id
+  );
+
+  const assignmentMode = String(assignmentFromContext?.mode || '').toLowerCase();
+  const handoffFlag = Boolean(
+    assignmentFromContext?.mode ||
+    assignmentFromContext?.assigned_at ||
+    projectContext?.handoff_to_company
+  );
+
+  return (Number.isFinite(assignedCompanyId) && assignedCompanyId > 0) || handoffFlag || assignmentMode === 'company_project_handoff';
+}
+
 function computeImpactScore(request: any): number {
   const urgencyWeight: Record<string, number> = {
     low: 10,
@@ -125,6 +148,45 @@ function buildProgressFields(body: Record<string, any>, existing?: Record<string
     remaining_amount: targetAmount != null ? Math.max(targetAmount - currentAmount, 0) : null,
     remaining_quantity: targetQuantity != null ? Math.max(targetQuantity - currentQuantity, 0) : null
   };
+}
+
+function mapRequestTypeToOfferType(requestType: string): string | null {
+  if (requestType === 'Financial Need') return 'financial';
+  if (requestType === 'Material Need') return 'material';
+  if (requestType === 'Skill / Service Need') return 'service';
+  if (requestType === 'Infrastructure Project') return 'infrastructure';
+  return null;
+}
+
+function getTargetCoverageForRequestType(requestType: string, payload: Record<string, any>): number | null {
+  const financialTarget = parseAmount(payload.target_amount ?? payload.estimated_budget ?? payload.budget);
+  const quantityTarget = parseAmount(payload.target_quantity ?? payload.beneficiary_count ?? payload.volunteers_needed);
+
+  if (requestType === 'Financial Need' || requestType === 'Infrastructure Project') {
+    return financialTarget;
+  }
+
+  if (requestType === 'Material Need' || requestType === 'Skill / Service Need') {
+    return quantityTarget;
+  }
+
+  return null;
+}
+
+function getOfferCapacityForRequestType(requestType: string, offer: Record<string, any>): number | null {
+  if (requestType === 'Financial Need') {
+    return parseAmount(offer.amount ?? offer.sell_amount ?? offer.price_amount);
+  }
+  if (requestType === 'Material Need') {
+    return parseAmount(offer.quantity);
+  }
+  if (requestType === 'Skill / Service Need') {
+    return parseAmount(offer.capacity);
+  }
+  if (requestType === 'Infrastructure Project') {
+    return parseAmount(offer.amount ?? offer.sell_amount ?? offer.capacity ?? offer.price_amount);
+  }
+  return null;
 }
 
 // GET - Fetch service requests (public endpoint - no auth required for viewing)
@@ -310,6 +372,33 @@ export async function GET(request: NextRequest) {
 
     // Filter out completed requests from "All Requests" view
     let finalRequests = processedRequests;
+
+    if (view === 'my-requests' && authenticatedUserId) {
+      const baseFiltered = processedRequests.filter((item: any) => !isCompanyAssignedNeed(item));
+      const filteredIds = baseFiltered
+        .map((item: any) => Number(item.id))
+        .filter((id: number) => Number.isFinite(id) && id > 0);
+
+      if (filteredIds.length > 0) {
+        const { data: assignedContributions } = await supabase
+          .from('service_request_contributions')
+          .select('service_request_id, status, contribution_type')
+          .in('service_request_id', filteredIds)
+          .eq('contribution_type', 'company_project_csr')
+          .in('status', ['accepted', 'in_progress', 'completed']);
+
+        const assignedNeedIds = new Set(
+          (assignedContributions || [])
+            .map((item: any) => Number(item.service_request_id))
+            .filter((id: number) => Number.isFinite(id) && id > 0)
+        );
+
+        finalRequests = baseFiltered.filter((item: any) => !assignedNeedIds.has(Number(item.id)));
+      } else {
+        finalRequests = baseFiltered;
+      }
+    }
+
     if (view === 'all') {
       // For each request, check if it has reached its volunteer limit
       const safeProcessed = Array.isArray(processedRequests) ? processedRequests : [];
@@ -504,6 +593,74 @@ export async function POST(request: NextRequest) {
       const timelineLabel = isAnytimeTimeline ? 'Anytime' : (trimmedTimeline || 'Not specified');
 
       const mappedUrgency = deriveAutoUrgency(timeline, Date.now());
+
+      const selectedRecommendedOfferIds: number[] = Array.isArray(details?.recommended_offer_ids)
+        ? details.recommended_offer_ids
+            .map((value: any) => Number(value))
+            .filter((value: number) => Number.isFinite(value) && value > 0)
+        : [];
+
+      const expectedOfferType = mapRequestTypeToOfferType(normalizedRequestType);
+      const coverageTarget = getTargetCoverageForRequestType(normalizedRequestType, {
+        target_amount,
+        estimated_budget,
+        budget,
+        target_quantity,
+        beneficiary_count,
+        volunteers_needed: body.volunteers_needed
+      });
+
+      if (expectedOfferType) {
+        const { data: matchingOffers, error: matchingOffersError } = await supabase
+          .from('service_offers')
+          .select('id, status, offer_type, amount, sell_amount, quantity, capacity, price_amount')
+          .eq('offer_type', expectedOfferType)
+          .not('status', 'in', '(inactive,closed,completed,cancelled,archived,rejected,expired)')
+          .limit(60);
+
+        if (matchingOffersError) throw matchingOffersError;
+
+        const offers = Array.isArray(matchingOffers) ? matchingOffers : [];
+        const offersWithCoverage = offers.map((offer: any) => ({
+          ...offer,
+          capacity: getOfferCapacityForRequestType(normalizedRequestType, offer)
+        }));
+        const directlyFulfillableOffers = offersWithCoverage.filter((offer: any) => (offer.capacity ?? 0) > 0);
+
+        if (directlyFulfillableOffers.length > 0 && selectedRecommendedOfferIds.length === 0) {
+          return NextResponse.json(
+            {
+              error: 'Matching capability offers found. Select one or more capability offers before creating this need.',
+              requiresOfferSelection: true,
+              matching_offer_ids: directlyFulfillableOffers.map((offer: any) => offer.id)
+            },
+            { status: 400 }
+          );
+        }
+
+        if (selectedRecommendedOfferIds.length > 0) {
+          const selectedOffers = offersWithCoverage.filter((offer: any) => selectedRecommendedOfferIds.includes(Number(offer.id)));
+
+          if (selectedOffers.length !== selectedRecommendedOfferIds.length) {
+            return NextResponse.json({ error: 'One or more selected capability offers are invalid for this need.' }, { status: 400 });
+          }
+
+          if (coverageTarget && coverageTarget > 0) {
+            const combinedCoverage = selectedOffers.reduce((sum: number, offer: any) => sum + (offer.capacity || 0), 0);
+            if (combinedCoverage < coverageTarget) {
+              return NextResponse.json(
+                {
+                  error: 'Selected capability offers do not fully cover the need target. Select additional offers to reach full coverage.',
+                  requiresOfferSelection: true,
+                  coverage_target: coverageTarget,
+                  combined_coverage: combinedCoverage
+                },
+                { status: 400 }
+              );
+            }
+          }
+        }
+      }
 
       // Prepare requirements JSON
       const requirementsData = {
