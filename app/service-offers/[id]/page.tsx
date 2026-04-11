@@ -65,11 +65,19 @@ interface ClientApplication {
   created_at: string
 }
 
+const formatDate = (value?: string | null) => {
+  if (!value) return 'N/A'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'N/A'
+  return date.toLocaleDateString('en-IN', { timeZone: 'UTC' })
+}
+
 export default function ServiceOfferDetailPage() {
   const params = useParams()
   const router = useRouter()
   const { user, token } = useAuth()
   const { toast } = useToast()
+  const [isHydrated, setIsHydrated] = useState(false)
   
   const [offer, setOffer] = useState<ServiceOffer | null>(null)
   const [userApplication, setUserApplication] = useState<ClientApplication | null>(null)
@@ -82,7 +90,12 @@ export default function ServiceOfferDetailPage() {
 
   const offerId = params.id as string
   const isAuthenticated = !!(user && token)
+  const effectiveUserType = isHydrated ? user?.user_type : undefined
   const canApplyToOffer = !!user && user.id !== offer?.ngo_id
+
+  useEffect(() => {
+    setIsHydrated(true)
+  }, [])
 
   useEffect(() => {
     if (offerId) {
@@ -475,7 +488,7 @@ export default function ServiceOfferDetailPage() {
                       </div>
                       
                       <p className="text-xs text-muted-foreground">
-                        Applied on {new Date(userApplication.created_at).toLocaleDateString()}
+                        Applied on {formatDate(userApplication.created_at)}
                       </p>
                     </div>
                   </div>
@@ -483,7 +496,7 @@ export default function ServiceOfferDetailPage() {
                   <div className="space-y-4">
                     <div className="flex items-center gap-2 p-2 bg-muted rounded">
                       <User className="h-4 w-4" />
-                      <span className="text-sm">Responding as {user?.user_type}</span>
+                      <span className="text-sm">Responding as {effectiveUserType || 'user'}</span>
                     </div>
                     
                     <div className="space-y-2">

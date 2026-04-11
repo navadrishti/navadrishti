@@ -125,11 +125,19 @@ const parseAmountToInr = (value: unknown): number => {
   return Number.isFinite(parsed) ? Math.max(0, parsed) : 0
 }
 
+const formatDate = (value?: string | null) => {
+  if (!value) return 'N/A'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'N/A'
+  return date.toLocaleDateString('en-IN', { timeZone: 'UTC' })
+}
+
 export default function ServiceRequestDetailPage() {
   const params = useParams()
   const router = useRouter()
   const { user, token } = useAuth()
   const { toast } = useToast()
+  const [isHydrated, setIsHydrated] = useState(false)
   
   const [paymentAmount, setPaymentAmount] = useState('1000')
   const [paying, setPaying] = useState(false)
@@ -153,9 +161,14 @@ export default function ServiceRequestDetailPage() {
 
   const requestId = params.id as string
   const isAuthenticated = !!(user && token)
-  const isNgoOwner = user?.user_type === 'ngo' && request?.ngo_id === user?.id
-  const canVolunteer = user?.user_type === 'individual'
-  const canCompanyFulfillViaCSR = user?.user_type === 'company'
+  const effectiveUserType = isHydrated ? user?.user_type : undefined
+  const isNgoOwner = effectiveUserType === 'ngo' && request?.ngo_id === user?.id
+  const canVolunteer = effectiveUserType === 'individual'
+  const canCompanyFulfillViaCSR = effectiveUserType === 'company'
+
+  useEffect(() => {
+    setIsHydrated(true)
+  }, [])
 
   useEffect(() => {
     if (requestId) {
@@ -922,7 +935,7 @@ export default function ServiceRequestDetailPage() {
                 <Tabs defaultValue="details" className="w-full">
                   <TabsList className="grid w-full grid-cols-2">
                     <TabsTrigger value="details">Request Details</TabsTrigger>
-                    <TabsTrigger value="volunteer">{user?.user_type === 'ngo' ? 'Applicants' : 'Volunteer'}</TabsTrigger>
+                    <TabsTrigger value="volunteer">{effectiveUserType === 'ngo' ? 'Applicants' : 'Volunteer'}</TabsTrigger>
                   </TabsList>
 
                   <TabsContent value="details" className="mt-4 space-y-4">
@@ -1109,7 +1122,7 @@ export default function ServiceRequestDetailPage() {
                                   <p className="font-semibold">{applicant.volunteer?.name || 'Applicant'}</p>
                                   <p className="text-sm text-muted-foreground">{applicant.volunteer?.email || 'Email not available'}</p>
                                   <p className="text-xs text-muted-foreground mt-1">
-                                    Applied on {new Date(applicant.applied_at).toLocaleDateString()}
+                                    Applied on {formatDate(applicant.applied_at)}
                                   </p>
                                 </div>
                                 <Badge className={getStatusColor(applicant.status)}>
@@ -1360,14 +1373,14 @@ export default function ServiceRequestDetailPage() {
                           )}
 
                           <p className="text-xs text-muted-foreground">
-                            Applied on {new Date(userApplication.applied_at).toLocaleDateString()}
+                            Applied on {formatDate(userApplication.applied_at)}
                           </p>
                         </div>
                       </div>
                     ) : (
                       <div className="space-y-4">
                         <div className="flex items-center gap-2 p-2 bg-muted rounded">
-                          {user?.user_type === 'individual' ? (
+                          {effectiveUserType === 'individual' ? (
                             <User className="h-4 w-4" />
                           ) : (
                             <Building className="h-4 w-4" />
