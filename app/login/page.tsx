@@ -84,7 +84,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="transition-all duration-200 focus:ring-2 focus:ring-blue-500"
+                className="transition-colors duration-150 focus:ring-0 focus:ring-offset-0"
               />
             </div>
             
@@ -104,7 +104,7 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="transition-all duration-200 focus:ring-2 focus:ring-blue-500"
+                className="transition-colors duration-150 focus:ring-0 focus:ring-offset-0"
               />
             </div>
           </CardContent>

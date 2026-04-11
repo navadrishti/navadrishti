@@ -23,7 +23,7 @@ interface CampaignData {
 
 export default function CSRAgentPage() {
   const { user } = useAuth()
-  const [mounted, setMounted] = useState(false)
+  const [isHydrated, setIsHydrated] = useState(false)
   const [messages, setMessages] = useState<Message[]>([
     { role: 'assistant', content: 'Hello! I\'m your AI CSR Campaign Assistant. I\'ll help you create a powerful CSR campaign. Let\'s start with the basics - what would you like to name your campaign?' }
   ])
@@ -34,6 +34,8 @@ export default function CSRAgentPage() {
   const [generatedCampaign, setGeneratedCampaign] = useState<any>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
+  const effectiveUserType = isHydrated ? user?.user_type : undefined
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }
@@ -43,7 +45,7 @@ export default function CSRAgentPage() {
   }, [messages])
 
   useEffect(() => {
-    setMounted(true)
+    setIsHydrated(true)
   }, [])
 
   const questions = [
@@ -105,7 +107,7 @@ export default function CSRAgentPage() {
     }, 2000)
   }
 
-  if (!mounted) {
+  if (!isHydrated) {
     return (
       <>
         <Header />
@@ -121,7 +123,7 @@ export default function CSRAgentPage() {
     )
   }
 
-  if (user?.user_type !== 'company') {
+  if (effectiveUserType !== 'company') {
     return (
       <>
         <Header />

@@ -21,7 +21,7 @@ interface BudgetCategory {
 
 export default function CSRBudgetPage() {
   const { user } = useAuth()
-  const [mounted, setMounted] = useState(false)
+  const [isHydrated, setIsHydrated] = useState(false)
   const [totalBudget, setTotalBudget] = useState(1000000)
   const [categories, setCategories] = useState<BudgetCategory[]>([
     { id: '1', name: 'Education', amount: 400000, percentage: 40, color: '#FF6B35' },
@@ -29,6 +29,8 @@ export default function CSRBudgetPage() {
     { id: '3', name: 'Environment', amount: 200000, percentage: 20, color: '#00A676' },
     { id: '4', name: 'Women Empowerment', amount: 100000, percentage: 10, color: '#F77F00' },
   ])
+
+  const effectiveUserType = isHydrated ? user?.user_type : undefined
 
   const updateCategory = (id: string, percentage: number) => {
     const newAmount = (totalBudget * percentage) / 100
@@ -68,21 +70,21 @@ export default function CSRBudgetPage() {
     }).format(amount)
 
   useEffect(() => {
-    setMounted(true)
+    setIsHydrated(true)
   }, [])
 
   return (
     <>
       <Header />
       <div className="container mx-auto px-4 py-8">
-        {!mounted ? (
+        {!isHydrated ? (
           <Card>
             <CardHeader>
               <CardTitle>Loading</CardTitle>
               <CardDescription>Preparing your CSR budget workspace...</CardDescription>
             </CardHeader>
           </Card>
-        ) : user?.user_type !== 'company' ? (
+        ) : effectiveUserType !== 'company' ? (
           <Card>
             <CardHeader>
               <CardTitle>Access Denied</CardTitle>

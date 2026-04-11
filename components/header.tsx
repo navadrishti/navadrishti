@@ -219,7 +219,7 @@ export function Header() {
                   <Input
                     type="text"
                     placeholder="Search people, NGOs, companies..."
-                    className="w-52 md:w-64 lg:w-72 xl:w-80 bg-white border-0 pl-8 pr-10 text-black placeholder:text-gray-500 focus:ring-0 relative z-20"
+                    className="w-52 md:w-64 lg:w-72 xl:w-80 bg-white border-0 pl-8 pr-10 text-black placeholder:text-gray-500 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 relative z-20"
                     value={searchQuery}
                     onChange={(e) => handleSearchChange(e.target.value)}
                     onKeyDown={(e) => {
@@ -472,7 +472,7 @@ export function Header() {
                         <Input
                           type="text"
                           placeholder="Search people, NGOs, companies..."
-                          className="w-full bg-white border-0 pl-8 pr-10 text-black placeholder:text-gray-500 focus:ring-0"
+                          className="w-full bg-white border-0 pl-8 pr-10 text-black placeholder:text-gray-500 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
                           value={searchQuery}
                           onChange={(e) => handleSearchChange(e.target.value)}
                         />

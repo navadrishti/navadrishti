@@ -6,10 +6,6 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-html {
-  scrollbar-gutter: stable;
-}
-
 @layer utilities {
   .text-balance {
     text-wrap: balance;
@@ -483,21 +479,27 @@ html {
 /* Add base transition to all interactive elements */
 @layer base {
   button, a, input, select, textarea {
-    @apply transition-all duration-200 ease-in-out;
+    @apply transition-colors duration-150 ease-in-out;
   }
 
-  /* Keep focus minimal to avoid heavy blue boxes on clickable UI */
+  /* Remove focus boxes consistently across interactive UI */
+  button:focus,
   button:focus-visible,
+  a:focus,
   a:focus-visible {
     @apply outline-none ring-0 ring-offset-0;
+    box-shadow: none !important;
   }
 
-  /* Retain subtle, accessible focus hint for form fields */
+  /* Remove transient focus flash on form fields */
+  input:focus,
+  select:focus,
+  textarea:focus,
   input:focus-visible,
   select:focus-visible,
   textarea:focus-visible {
-    @apply outline-none ring-1 ring-udaan-blue/40 ring-offset-0;
-    transition: all 0.2s ease-in-out;
+    @apply outline-none ring-0 ring-offset-0;
+    box-shadow: none !important;
   }
 }
 
@@ -613,6 +615,20 @@ html {
   body {
     @apply bg-background text-foreground;
     overflow-y: scroll !important;
+  }
+
+  html,
+  body {
+    background-color: hsl(var(--background));
+  }
+
+  html[data-scroll-locked],
+  body[data-scroll-locked],
+  body.react-remove-scroll-body {
+    overflow-y: scroll !important;
+    padding-right: 0 !important;
+    margin-right: 0 !important;
+    --removed-body-scroll-bar-size: 0px !important;
   }
   
   /* Force white background for command components */

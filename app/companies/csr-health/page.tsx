@@ -25,8 +25,15 @@ function clamp(value: number, min: number, max: number) {
 
 export default function CompanyCSRHealthPage() {
   const { user } = useAuth()
+  const [isHydrated, setIsHydrated] = useState(false)
   const [projects, setProjects] = useState<CSRProject[]>([])
   const [loading, setLoading] = useState(true)
+
+  const effectiveUserType = isHydrated ? user?.user_type : undefined
+
+  useEffect(() => {
+    setIsHydrated(true)
+  }, [])
 
   useEffect(() => {
     const fetchProjects = async () => {
@@ -104,7 +111,7 @@ export default function CompanyCSRHealthPage() {
     }
   }, [projects])
 
-  if (user?.user_type !== "company") {
+  if (effectiveUserType !== "company") {
     return (
       <>
         <Header />
