@@ -6,7 +6,7 @@ import { parseJson } from "./json-parser";
 
 // Milestone defined by the user in the request
 export const requestMilestoneSchema = z.object({
-  title:            z.string().min(1),
+  description:      z.string().min(1),
   budget_allocated: z.number().positive(),
 });
 
