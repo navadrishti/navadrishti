@@ -65,11 +65,19 @@ interface ClientApplication {
   created_at: string
 }
 
+const formatDate = (value?: string | null) => {
+  if (!value) return 'N/A'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'N/A'
+  return date.toLocaleDateString('en-IN', { timeZone: 'UTC' })
+}
+
 export default function ServiceOfferDetailPage() {
   const params = useParams()
   const router = useRouter()
   const { user, token } = useAuth()
   const { toast } = useToast()
+  const [isHydrated, setIsHydrated] = useState(false)
   
   const [offer, setOffer] = useState<ServiceOffer | null>(null)
   const [userApplication, setUserApplication] = useState<ClientApplication | null>(null)
@@ -82,7 +90,15 @@ export default function ServiceOfferDetailPage() {
 
   const offerId = params.id as string
   const isAuthenticated = !!(user && token)
+  const effectiveUserType = isHydrated ? user?.user_type : undefined
   const canApplyToOffer = !!user && user.id !== offer?.ngo_id
+  const canShowRespondTab = !isAuthenticated || canApplyToOffer
+  const offerVisibleTabCount = canShowRespondTab ? 2 : 1
+  const showOfferTabList = offerVisibleTabCount > 1
+
+  useEffect(() => {
+    setIsHydrated(true)
+  }, [])
 
   useEffect(() => {
     if (offerId) {
@@ -353,18 +369,16 @@ export default function ServiceOfferDetailPage() {
 
           <div className="lg:col-span-8">
             <Card>
-              <CardHeader>
-                <CardTitle>Capability Details & Response</CardTitle>
-              </CardHeader>
-
-              <CardContent>
+              <CardContent className="pt-6">
                 <Tabs defaultValue="details" className="w-full">
-                  <TabsList className="grid w-full grid-cols-2">
-                    <TabsTrigger value="details">Capability Details</TabsTrigger>
-                    <TabsTrigger value="respond">Respond</TabsTrigger>
-                  </TabsList>
+                  {showOfferTabList ? (
+                    <TabsList className="grid w-full grid-cols-2">
+                      <TabsTrigger value="details">Capability Details</TabsTrigger>
+                      <TabsTrigger value="respond">Respond</TabsTrigger>
+                    </TabsList>
+                  ) : null}
 
-                  <TabsContent value="details" className="mt-4">
+                  <TabsContent value="details" className={`${showOfferTabList ? 'mt-4' : ''}`}>
                     <ServiceDetails
                       id={offer.id}
                       title={offer.title}
@@ -402,7 +416,8 @@ export default function ServiceOfferDetailPage() {
                     />
                   </TabsContent>
 
-                  <TabsContent value="respond" className="mt-4">
+                  {canShowRespondTab ? (
+                  <TabsContent value="respond" className={`${showOfferTabList ? 'mt-4' : ''}`}>
                     <Card>
                       <CardHeader>
                         <CardTitle className="flex items-center gap-2">
@@ -475,7 +490,7 @@ export default function ServiceOfferDetailPage() {
                       </div>
                       
                       <p className="text-xs text-muted-foreground">
-                        Applied on {new Date(userApplication.created_at).toLocaleDateString()}
+                        Applied on {formatDate(userApplication.created_at)}
                       </p>
                     </div>
                   </div>
@@ -483,7 +498,7 @@ export default function ServiceOfferDetailPage() {
                   <div className="space-y-4">
                     <div className="flex items-center gap-2 p-2 bg-muted rounded">
                       <User className="h-4 w-4" />
-                      <span className="text-sm">Responding as {user?.user_type}</span>
+                      <span className="text-sm">Responding as {effectiveUserType || 'user'}</span>
                     </div>
                     
                     <div className="space-y-2">
@@ -556,6 +571,7 @@ export default function ServiceOfferDetailPage() {
                       </CardContent>
                     </Card>
                   </TabsContent>
+                  ) : null}
                 </Tabs>
               </CardContent>
             </Card>

@@ -18,10 +18,16 @@ export default function LoginPage() {
   const { login, error, clearError, user } = useAuth();
   const router = useRouter();
 
+  const getDashboardRoute = (userType?: string) => {
+    if (userType === 'ngo') return '/ngos/dashboard';
+    if (userType === 'company') return '/companies/dashboard';
+    return '/individuals/dashboard';
+  };
+
   // Add effect to redirect user when successfully logged in
   useEffect(() => {
     if (user) {
-      smoothNavigate(router, '/home', {
+      smoothNavigate(router, getDashboardRoute(user.user_type), {
         delay: 200,
         beforeNavigate: () => {
           // Optional: You could show a success message here
@@ -78,7 +84,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="transition-all duration-200 focus:ring-2 focus:ring-blue-500"
+                className="transition-colors duration-150 focus:ring-0 focus:ring-offset-0"
               />
             </div>
             
@@ -98,7 +104,7 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="transition-all duration-200 focus:ring-2 focus:ring-blue-500"
+                className="transition-colors duration-150 focus:ring-0 focus:ring-offset-0"
               />
             </div>
           </CardContent>

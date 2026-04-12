@@ -70,7 +70,7 @@ async function handler(req: NextRequest) {
         pincode: freshUserData.pincode,
         country: freshUserData.country,
         created_at: freshUserData.created_at,
-        profile_data: freshUserData.profile_data || {}, // Include profile_data
+        profile_data: freshUserData.profile_data || {},
         // For backward compatibility, also extract profile fields
         profile: freshUserData.profile_data || {}
       }

@@ -90,7 +90,6 @@ export async function POST(request: NextRequest) {
 
       const currentProfileData = currentUser?.profile_data || {};
       const newProfileData = { ...currentProfileData, ...profile_data };
-
       updateData.profile_data = newProfileData;
     }
 

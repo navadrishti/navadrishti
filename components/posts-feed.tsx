@@ -1334,7 +1334,7 @@ function PostCard({
                     placeholder="Write a comment..."
                     value={commentInput}
                     onChange={(e) => onCommentInputChange?.(e.target.value)}
-                    className="flex-1 min-h-[40px] max-h-[120px] resize-none border-gray-200 focus:border-blue-300 focus:ring-1 focus:ring-blue-300"
+                    className="flex-1 min-h-[40px] max-h-[120px] resize-none border-gray-200 focus:border-blue-300 focus:ring-0 focus:ring-offset-0"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();

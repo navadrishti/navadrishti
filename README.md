@@ -133,7 +133,6 @@ The application uses a PostgreSQL database with the following main tables:
 
 ### Social & Platform APIs
 - `GET /api/posts` - List community posts
-- `GET /api/stats` - Fetch platform statistics
 - `GET /api/platform-activities` - Fetch recent platform activity
 
 ## Testing

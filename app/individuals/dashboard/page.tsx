@@ -3,24 +3,195 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { HeartHandshake, MailCheck, Phone, TicketCheck, UserRound } from 'lucide-react';
+import { HeartHandshake, TicketCheck, CheckCircle, Loader2, XCircle } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import ProtectedRoute from '@/components/protected-route';
 import { Header } from '@/components/header';
-import { VerificationBadge } from '@/components/verification-badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ProfileDashboardTab } from '@/components/profile-dashboard-tab';
+import { DashboardQuickSidebar } from '@/components/dashboard-quick-sidebar';
+import { useToast } from '@/hooks/use-toast';
+
+interface OfferRequestItem {
+  id: number;
+  service_offer_id: number;
+  offer_title: string;
+  client_id: number;
+  client?: {
+    name?: string;
+    email?: string;
+    user_type?: string;
+  };
+  message?: string;
+  status: 'pending' | 'accepted' | 'rejected' | 'active' | 'completed' | 'cancelled';
+  isAssigned: boolean;
+  created_at: string;
+}
 
 function IndividualDashboardContent() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const activeTab = searchParams.get('tab') || 'service-requests';
+  const requestedTab = searchParams.get('tab') || 'profile';
+  const activeTab = requestedTab === 'services-hired' ? 'service-requests' : requestedTab;
+  const [serviceOffers, setServiceOffers] = useState<any[]>([]);
+  const [offerApplications, setOfferApplications] = useState<any[]>([]);
+  const [offerRequests, setOfferRequests] = useState<OfferRequestItem[]>([]);
+  const [loadingServiceOffers, setLoadingServiceOffers] = useState(true);
+  const [loadingOfferApplications, setLoadingOfferApplications] = useState(true);
+  const [loadingOfferRequests, setLoadingOfferRequests] = useState(true);
+  const [updatingOfferRequestId, setUpdatingOfferRequestId] = useState<number | null>(null);
+  const [capabilityOffersTab, setCapabilityOffersTab] = useState<'your-capabilities' | 'your-applications' | 'requests'>('your-capabilities');
+  const [myApplicationsTab, setMyApplicationsTab] = useState<'ongoing' | 'history'>('ongoing');
   const [ongoingApplications, setOngoingApplications] = useState<any[]>([]);
   const [historyApplications, setHistoryApplications] = useState<any[]>([]);
   const [loadingApplications, setLoadingApplications] = useState(true);
+  const sidebarItems = [
+    { value: 'profile', label: 'Profile' },
+    { value: 'capability-offers', label: 'Capability Offers' },
+    { value: 'service-requests', label: 'My Applications' },
+  ];
+
+  const fetchServiceOffers = async () => {
+    try {
+      setLoadingServiceOffers(true);
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setServiceOffers([]);
+        return;
+      }
+
+      const response = await fetch('/api/service-offers?view=my-offers&limit=20', {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      const data = await response.json();
+      setServiceOffers(data.success ? (data.data || []) : []);
+    } catch {
+      setServiceOffers([]);
+    } finally {
+      setLoadingServiceOffers(false);
+    }
+  };
+
+  const fetchOfferApplications = async () => {
+    try {
+      setLoadingOfferApplications(true);
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setOfferApplications([]);
+        return;
+      }
+
+      const response = await fetch('/api/service-offers?view=my-responses&limit=20', {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      const data = await response.json();
+      setOfferApplications(data.success ? (data.data || []) : []);
+    } catch {
+      setOfferApplications([]);
+    } finally {
+      setLoadingOfferApplications(false);
+    }
+  };
+
+  const fetchOfferRequests = async () => {
+    try {
+      setLoadingOfferRequests(true);
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setOfferRequests([]);
+        return;
+      }
+
+      const response = await fetch('/api/service-offers/requests', {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      const data = await response.json();
+      setOfferRequests(data.success ? (data.data || []) : []);
+    } catch {
+      setOfferRequests([]);
+    } finally {
+      setLoadingOfferRequests(false);
+    }
+  };
+
+  const handleOfferRequestStatusUpdate = async (requestId: number, newStatus: 'accepted' | 'rejected') => {
+    try {
+      setUpdatingOfferRequestId(requestId);
+      const token = localStorage.getItem('token');
+
+      const response = await fetch(`/api/service-offers/requests/${requestId}`, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ status: newStatus })
+      });
+
+      const data = await response.json();
+      if (!data.success) {
+        toast({
+          title: 'Error',
+          description: data.error || 'Failed to update request status',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      setOfferRequests((prev) =>
+        prev.map((request) => {
+          if (request.id === requestId) {
+            return {
+              ...request,
+              status: newStatus,
+              isAssigned: newStatus === 'accepted'
+            };
+          }
+
+          if (
+            newStatus === 'accepted' &&
+            request.service_offer_id === data.data.service_offer_id &&
+            (request.status === 'pending' || request.status === 'accepted')
+          ) {
+            return {
+              ...request,
+              status: 'rejected',
+              isAssigned: false
+            };
+          }
+
+          return request;
+        })
+      );
+
+      toast({
+        title: 'Success',
+        description: newStatus === 'accepted' ? 'Request accepted and offer assigned' : 'Request rejected'
+      });
+    } catch {
+      toast({
+        title: 'Error',
+        description: 'Failed to update request status',
+        variant: 'destructive'
+      });
+    } finally {
+      setUpdatingOfferRequestId(null);
+    }
+  };
 
   useEffect(() => {
     const loadAssignments = async () => {
@@ -52,11 +223,22 @@ function IndividualDashboardContent() {
     loadAssignments()
   }, [user?.id])
 
-  const allVerified = Boolean(
-    user?.email_verified &&
-    user?.phone_verified &&
-    user?.verification_status === 'verified'
-  );
+  useEffect(() => {
+    if (!user?.id) return;
+    fetchServiceOffers();
+    fetchOfferApplications();
+    fetchOfferRequests();
+  }, [user?.id]);
+
+  const navigateToTab = (value: string) => {
+    if (value === 'capability-offers') {
+      setCapabilityOffersTab('your-capabilities');
+    }
+    if (value === 'service-requests') {
+      setMyApplicationsTab('ongoing');
+    }
+    router.replace(`/individuals/dashboard?tab=${value}`, { scroll: false });
+  };
 
   return (
     <ProtectedRoute userTypes={['individual']}>
@@ -75,199 +257,244 @@ function IndividualDashboardContent() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            {/* Individual Profile Section */}
-            <div className="lg:col-span-4">
-            <Card className="lg:sticky lg:top-20 lg:max-h-[calc(100vh-5rem)] lg:overflow-y-auto">
-              <CardHeader>
-                <CardTitle>Individual Profile</CardTitle>
-                <CardDescription>
-                  Your personal profile information
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="flex flex-col gap-6">
-                  <div className="w-full">
-                    <div className="h-28 w-28 md:h-32 md:w-32 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden mx-auto">
-                      {user?.profile_image ? (
-                        <img 
-                          src={user.profile_image} 
-                          alt={user?.name || 'Profile'} 
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <UserRound className="h-12 w-12 text-gray-400" />
-                      )}
-                    </div>
-                  </div>
-                  <div className="w-full space-y-4">
-                    <div>
-                      <h3 className="text-lg font-semibold flex items-center gap-2">
-                        <span>{user?.name || 'Your Name'}</span>
-                        {allVerified ? (
-                          <VerificationBadge status="verified" size="sm" showText={false} />
-                        ) : (
-                          <>
-                            {user?.email_verified && <MailCheck className="h-4 w-4 text-green-600" />}
-                            {user?.phone_verified && <Phone className="h-4 w-4 text-green-600" />}
-                            <VerificationBadge status={user?.verification_status || 'unverified'} size="sm" showText={false} />
-                          </>
-                        )}
-                      </h3>
-                      <p className="text-sm text-gray-500">{user?.email || 'individual@example.org'}</p>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <p className="text-sm font-medium text-gray-500">Location</p>
-                          <p>{user?.city && user?.state_province ? `${user.city}, ${user.state_province}${user.country ? `, ${user.country}` : ''}` : 'Location not set'}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-500">Phone</p>
-                          <span>{user?.phone || 'Phone not set'}</span>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                        <div>
-                          <p className="text-sm font-medium text-gray-500">Age</p>
-                          <p>{(user as any)?.profile_data?.age || (user as any)?.profile?.age || 'Age not set'}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-500">Pincode</p>
-                          <p>{user?.pincode || 'Pincode not set'}</p>
-                        </div>
-                      </div>
-                    </div>
-                    <Button variant="outline" asChild>
-                      <Link href="/profile">Edit Profile</Link>
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            </div>
+              <DashboardQuickSidebar
+                items={sidebarItems}
+                activeTab={activeTab}
+                onSelect={navigateToTab}
+                desktopClassName="lg:col-span-4"
+                triggerLabel="Dashboard sections"
+              />
 
-            {/* Activity & Engagements */}
-            <div className="lg:col-span-8">
-            <Card>
-              <CardHeader>
-                <CardTitle>Activities & Engagements</CardTitle>
-                <CardDescription>
-                  Track your volunteering and service activity
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div>
-                  <Tabs value={activeTab} onValueChange={(value) => {
-                    window.history.replaceState(null, '', `/individuals/dashboard?tab=${value}`);
-                    router.replace(`/individuals/dashboard?tab=${value}`, { scroll: false });
-                  }} className="w-full">
-                    <TabsList className="grid w-full grid-cols-1 sm:grid-cols-2 h-auto">
-                      <TabsTrigger value="service-requests" className="text-xs sm:text-sm">My Applications</TabsTrigger>
-                      <TabsTrigger value="services-hired" className="text-xs sm:text-sm">Services Hired</TabsTrigger>
-                    </TabsList>
-                  
-                  <TabsContent value="service-requests" className="mt-4 space-y-4">
-                    <Tabs defaultValue="ongoing" className="w-full">
-                      <TabsList className="grid w-full grid-cols-2">
-                        <TabsTrigger value="ongoing">Ongoing</TabsTrigger>
-                        <TabsTrigger value="history">History</TabsTrigger>
-                      </TabsList>
+              {/* Main content */}
+              <div className="lg:col-span-8">
+                <Card className="min-h-[420px]">
+                  <CardContent className="pt-6">
+                    {activeTab === 'profile' ? (
+                      <ProfileDashboardTab />
+                    ) : activeTab === 'capability-offers' ? (
+                      <Tabs value={capabilityOffersTab} onValueChange={(value) => setCapabilityOffersTab(value as 'your-capabilities' | 'your-applications' | 'requests')} className="w-full">
+                        <TabsList className="grid w-full grid-cols-3">
+                          <TabsTrigger value="your-capabilities">Your Capabilities</TabsTrigger>
+                          <TabsTrigger value="your-applications">Your Applications</TabsTrigger>
+                          <TabsTrigger value="requests">Requests</TabsTrigger>
+                        </TabsList>
 
-                      <TabsContent value="ongoing" className="mt-4 space-y-3">
-                        {loadingApplications ? (
-                          <div className="rounded-md border p-6 text-center text-muted-foreground">Loading applications...</div>
-                        ) : ongoingApplications.length === 0 ? (
-                          <div className="rounded-md border p-8 text-center">
-                            <div className="text-muted-foreground">
-                              <TicketCheck className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                              <p className="text-lg font-medium mb-2">No ongoing applications</p>
-                              <p className="text-sm mb-4">Accepted and active assignments will appear here.</p>
-                              <Link href="/service-requests">
-                                <Button variant="outline">Browse Available Requests</Button>
+                        <TabsContent value="your-capabilities" className="mt-4 space-y-3">
+                          {loadingServiceOffers ? (
+                            <div className="p-6 text-center text-muted-foreground">Loading capability offers...</div>
+                          ) : serviceOffers.length === 0 ? (
+                            <div className="p-8 text-center text-muted-foreground">
+                              <p className="text-lg font-medium mb-2">No capability offers yet</p>
+                              <p className="text-sm mb-4">Create an offer to contribute skills, funds, materials, or infrastructure.</p>
+                              <Link href="/service-offers/create">
+                                <Button variant="outline">Create Capability Offer</Button>
                               </Link>
                             </div>
-                          </div>
-                        ) : ongoingApplications.map((application) => (
-                          <Card key={application.id}>
-                            <CardContent className="p-4 space-y-3">
-                              <div className="flex items-start justify-between gap-3">
-                                <div>
-                                  <p className="font-semibold">{application.request?.title || 'Service Request'}</p>
-                                  <p className="text-sm text-muted-foreground">{application.request?.project?.title || application.request?.location || 'Project not set'}</p>
+                          ) : serviceOffers.map((offer) => (
+                            <Card key={offer.id}>
+                              <CardContent className="p-4 space-y-3">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <p className="font-semibold">{offer.title}</p>
+                                    <p className="text-sm text-muted-foreground">{offer.category || 'Capability'}</p>
+                                  </div>
+                                  <Badge variant="outline">{offer.status || 'active'}</Badge>
                                 </div>
-                                <Badge variant="outline">{application.status}</Badge>
-                              </div>
-                              <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
-                                <p>Assigned: {application.request?.category?.toLowerCase().includes('financial') ? `INR ${Number(application.assigned_amount || application.fulfillment_amount || 0).toLocaleString('en-IN')}` : Number(application.assigned_quantity || application.fulfillment_quantity || 0)}</p>
-                                <p>Completed: {application.response_meta?.individual_done_at ? 'Yes' : 'No'}</p>
-                              </div>
-                              <div className="flex gap-2">
-                                <Link href={`/service-requests/${application.request?.id}`}>
-                                  <Button size="sm" variant="outline">View Need</Button>
-                                </Link>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))}
-                      </TabsContent>
+                                <div className="flex gap-2">
+                                  <Link href={`/service-offers/${offer.id}`}>
+                                    <Button size="sm" variant="outline">View</Button>
+                                  </Link>
+                                  <Link href={`/service-offers/edit/${offer.id}`}>
+                                    <Button size="sm" variant="outline">Edit</Button>
+                                  </Link>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </TabsContent>
 
-                      <TabsContent value="history" className="mt-4 space-y-3">
-                        {loadingApplications ? (
-                          <div className="rounded-md border p-6 text-center text-muted-foreground">Loading history...</div>
-                        ) : historyApplications.length === 0 ? (
-                          <div className="rounded-md border p-8 text-center">
-                            <div className="text-muted-foreground">
-                              <HeartHandshake className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                              <p className="text-lg font-medium mb-2">No history yet</p>
-                              <p className="text-sm mb-4">Completed or rejected applications will appear here.</p>
-                              <Link href="/service-requests">
-                                <Button variant="outline">Browse Needs</Button>
+                        <TabsContent value="your-applications" className="mt-4 space-y-3">
+                          {loadingOfferApplications ? (
+                            <div className="p-6 text-center text-muted-foreground">Loading your applications...</div>
+                          ) : offerApplications.length === 0 ? (
+                            <div className="p-8 text-center text-muted-foreground">
+                              <p className="text-lg font-medium mb-2">No applications yet</p>
+                              <p className="text-sm mb-4">Applications you make on capability offers will appear here.</p>
+                              <Link href="/service-offers">
+                                <Button variant="outline">Browse Capability Offers</Button>
                               </Link>
                             </div>
-                          </div>
-                        ) : historyApplications.map((application) => (
-                          <Card key={application.id}>
-                            <CardContent className="p-4 space-y-3">
-                              <div className="flex items-start justify-between gap-3">
-                                <div>
-                                  <p className="font-semibold">{application.request?.title || 'Service Request'}</p>
-                                  <p className="text-sm text-muted-foreground">{application.request?.project?.title || application.request?.location || 'Project not set'}</p>
+                          ) : offerApplications.map((offer) => (
+                            <Card key={offer.id}>
+                              <CardContent className="p-4 space-y-3">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <p className="font-semibold">{offer.title}</p>
+                                    <p className="text-sm text-muted-foreground">{offer.provider_name || offer.ngo_name || 'Provider not available'}</p>
+                                  </div>
+                                  <Badge variant="outline">{offer.status || 'active'}</Badge>
                                 </div>
-                                <Badge variant="outline">{application.status}</Badge>
-                              </div>
-                              <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
-                                <p>{application.response_meta?.individual_done_at ? 'Marked done' : 'Closed'}</p>
-                                <p>{application.response_meta?.ngo_confirmed_at ? 'NGO confirmed' : 'Awaiting review'}</p>
-                              </div>
-                              <div className="flex gap-2">
-                                <Link href={`/service-requests/${application.request?.id}`}>
-                                  <Button size="sm" variant="outline">View Need</Button>
+                                <div className="flex gap-2">
+                                  <Link href={`/service-offers/${offer.id}`}>
+                                    <Button size="sm" variant="outline">View Offer</Button>
+                                  </Link>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </TabsContent>
+
+                        <TabsContent value="requests" className="mt-4 space-y-3">
+                          {loadingOfferRequests ? (
+                            <div className="flex items-center justify-center py-12">
+                              <Loader2 className="h-6 w-6 animate-spin" />
+                            </div>
+                          ) : offerRequests.length === 0 ? (
+                            <div className="p-8 text-center text-muted-foreground">
+                              <p className="text-lg font-medium mb-2">No requests yet</p>
+                              <p className="text-sm">Incoming requests on your capability offers will appear here.</p>
+                            </div>
+                          ) : offerRequests.map((request) => (
+                            <Card key={request.id}>
+                              <CardContent className="p-4 space-y-3">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <p className="font-semibold">{request.offer_title}</p>
+                                    <p className="text-sm text-muted-foreground">
+                                      Requester: {request.client?.name || 'Unknown'} ({request.client?.user_type || 'participant'})
+                                    </p>
+                                    <p className="text-sm text-muted-foreground">{request.client?.email || 'No email available'}</p>
+                                  </div>
+                                  <Badge variant="outline" className="capitalize">{request.status}</Badge>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  <Link href={`/service-offers/${request.service_offer_id}`}>
+                                    <Button size="sm" variant="outline">View Offer</Button>
+                                  </Link>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleOfferRequestStatusUpdate(request.id, 'accepted')}
+                                    disabled={updatingOfferRequestId === request.id || request.status === 'accepted'}
+                                    className="bg-green-600 hover:bg-green-700"
+                                  >
+                                    {updatingOfferRequestId === request.id ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <>
+                                        <CheckCircle size={14} className="mr-1" />
+                                        Accept
+                                      </>
+                                    )}
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleOfferRequestStatusUpdate(request.id, 'rejected')}
+                                    disabled={updatingOfferRequestId === request.id || request.status === 'rejected'}
+                                    className="border-red-300 text-red-600 hover:bg-red-50"
+                                  >
+                                    {updatingOfferRequestId === request.id ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <>
+                                        <XCircle size={14} className="mr-1" />
+                                        Reject
+                                      </>
+                                    )}
+                                  </Button>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </TabsContent>
+                      </Tabs>
+                    ) : activeTab === 'service-requests' ? (
+                      <Tabs value={myApplicationsTab} onValueChange={(value) => setMyApplicationsTab(value as 'ongoing' | 'history')} className="w-full">
+                        <TabsList className="grid w-full grid-cols-2">
+                          <TabsTrigger value="ongoing">Ongoing</TabsTrigger>
+                          <TabsTrigger value="history">History</TabsTrigger>
+                        </TabsList>
+
+                        <TabsContent value="ongoing" className="mt-4 space-y-3">
+                          {loadingApplications ? (
+                            <div className="p-6 text-center text-muted-foreground">Loading applications...</div>
+                          ) : ongoingApplications.length === 0 ? (
+                            <div className="p-8 text-center">
+                              <div className="text-muted-foreground">
+                                <TicketCheck className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                                <p className="text-lg font-medium mb-2">No ongoing applications</p>
+                                <p className="text-sm mb-4">Accepted and active assignments will appear here.</p>
+                                <Link href="/service-requests">
+                                  <Button variant="outline">Browse Available Requests</Button>
                                 </Link>
                               </div>
-                            </CardContent>
-                          </Card>
-                        ))}
-                      </TabsContent>
-                    </Tabs>
-                  </TabsContent>
-                  
-                  <TabsContent value="services-hired" className="mt-4 space-y-4">
-                    <div className="rounded-md border p-8 text-center">
-                      <div className="text-muted-foreground">
-                        <HeartHandshake className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                        <p className="text-lg font-medium mb-2">Services Hired Coming Soon</p>
-                        <p className="text-sm mb-4">This section is reserved for service hires. Your application history stays under My Applications.</p>
-                        <Link href="/service-requests">
-                          <Button variant="outline">Browse Needs</Button>
-                        </Link>
-                      </div>
-                    </div>
-                  </TabsContent>
-                </Tabs>
-                </div>
-              </CardContent>
-            </Card>
-            </div>
+                            </div>
+                          ) : ongoingApplications.map((application) => (
+                            <Card key={application.id}>
+                              <CardContent className="p-4 space-y-3">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <p className="font-semibold">{application.request?.title || 'Service Request'}</p>
+                                    <p className="text-sm text-muted-foreground">{application.request?.project?.title || application.request?.location || 'Project not set'}</p>
+                                  </div>
+                                  <Badge variant="outline">{application.status}</Badge>
+                                </div>
+                                <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
+                                  <p>Assigned: {application.request?.category?.toLowerCase().includes('financial') ? `INR ${Number(application.assigned_amount || application.fulfillment_amount || 0).toLocaleString('en-IN')}` : Number(application.assigned_quantity || application.fulfillment_quantity || 0)}</p>
+                                  <p>Completed: {application.response_meta?.individual_done_at ? 'Yes' : 'No'}</p>
+                                </div>
+                                <div className="flex gap-2">
+                                  <Link href={`/service-requests/${application.request?.id}`}>
+                                    <Button size="sm" variant="outline">View Need</Button>
+                                  </Link>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </TabsContent>
+
+                        <TabsContent value="history" className="mt-4 space-y-3">
+                          {loadingApplications ? (
+                            <div className="p-6 text-center text-muted-foreground">Loading history...</div>
+                          ) : historyApplications.length === 0 ? (
+                            <div className="p-8 text-center">
+                              <div className="text-muted-foreground">
+                                <HeartHandshake className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                                <p className="text-lg font-medium mb-2">No history yet</p>
+                                <p className="text-sm mb-4">Completed or rejected applications will appear here.</p>
+                                <Link href="/service-requests">
+                                  <Button variant="outline">Browse Needs</Button>
+                                </Link>
+                              </div>
+                            </div>
+                          ) : historyApplications.map((application) => (
+                            <Card key={application.id}>
+                              <CardContent className="p-4 space-y-3">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <p className="font-semibold">{application.request?.title || 'Service Request'}</p>
+                                    <p className="text-sm text-muted-foreground">{application.request?.project?.title || application.request?.location || 'Project not set'}</p>
+                                  </div>
+                                  <Badge variant="outline">{application.status}</Badge>
+                                </div>
+                                <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
+                                  <p>{application.response_meta?.individual_done_at ? 'Marked done' : 'Closed'}</p>
+                                  <p>{application.response_meta?.ngo_confirmed_at ? 'NGO confirmed' : 'Awaiting review'}</p>
+                                </div>
+                                <div className="flex gap-2">
+                                  <Link href={`/service-requests/${application.request?.id}`}>
+                                    <Button size="sm" variant="outline">View Need</Button>
+                                  </Link>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </TabsContent>
+                      </Tabs>
+                    ) : null}
+                  </CardContent>
+                </Card>
+              </div>
             </div>
           </div>
         </main>
@@ -278,7 +505,7 @@ function IndividualDashboardContent() {
 
 export default function IndividualDashboard() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-background"><Header /><div className="container mx-auto px-4 py-8">Loading...</div></div>}>
+    <Suspense fallback={<div className="min-h-screen bg-gray-50"><Header /><div className="container mx-auto px-4 py-8 text-gray-600">Loading dashboard...</div></div>}>
       <IndividualDashboardContent />
     </Suspense>
   );

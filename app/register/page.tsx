@@ -8,8 +8,13 @@ import { Building, Briefcase, User } from 'lucide-react';
 export default function RegisterPage() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
-      <Card className="w-full max-w-md shadow-xl transition-all duration-300 hover:shadow-2xl">
+      <Card className="w-full max-w-md shadow-xl">
         <CardHeader className="space-y-1">
+          <div className="text-sm">
+            <Link href="/" className="font-medium text-primary">
+              Back
+            </Link>
+          </div>
           <CardTitle className="text-2xl font-bold text-center">Create an Account</CardTitle>
           <CardDescription className="text-center">
             Choose how you would like to join our platform
@@ -18,7 +23,7 @@ export default function RegisterPage() {
         
         <CardContent className="grid gap-4">
           <Link href="/individuals/register" passHref>
-            <Button className="w-full justify-start h-16 transition-all duration-300 hover:scale-[1.02] hover:shadow-lg active:scale-95" variant="outline">
+            <Button className="w-full justify-start h-16" variant="outline">
               <User className="mr-2 h-5 w-5" />
               <div className="flex flex-col items-start">
                 <span>Register as Individual</span>
@@ -28,7 +33,7 @@ export default function RegisterPage() {
           </Link>
           
           <Link href="/ngos/register" passHref>
-            <Button className="w-full justify-start h-16 transition-all duration-300 hover:scale-[1.02] hover:shadow-lg active:scale-95" variant="outline">
+            <Button className="w-full justify-start h-16" variant="outline">
               <Building className="mr-2 h-5 w-5" />
               <div className="flex flex-col items-start">
                 <span>Register as NGO</span>
@@ -38,7 +43,7 @@ export default function RegisterPage() {
           </Link>
           
           <Link href="/companies/register" passHref>
-            <Button className="w-full justify-start h-16 transition-all duration-300 hover:scale-[1.02] hover:shadow-lg active:scale-95" variant="outline">
+            <Button className="w-full justify-start h-16" variant="outline">
               <Briefcase className="mr-2 h-5 w-5" />
               <div className="flex flex-col items-start">
                 <span>Register as Company</span>
@@ -51,7 +56,7 @@ export default function RegisterPage() {
         <CardFooter className="flex justify-center">
           <div className="text-center text-sm">
             Already have an account?{' '}
-            <Link href="/login" className="font-medium text-primary hover:underline transition-all duration-200">
+            <Link href="/login" className="font-medium text-primary">
               Sign in
             </Link>
           </div>

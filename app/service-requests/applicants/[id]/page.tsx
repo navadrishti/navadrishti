@@ -37,6 +37,13 @@ interface Volunteer {
   hours_contributed: number;
 }
 
+const formatDate = (value?: string | null) => {
+  if (!value) return 'N/A';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'N/A';
+  return date.toLocaleDateString('en-IN', { timeZone: 'UTC' });
+};
+
 export default function ServiceRequestApplicantsPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const router = useRouter();
@@ -261,7 +268,7 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
                 </div>
               </div>
               <div className="text-right text-sm text-gray-500">
-                <p>Created: {new Date(request.created_at).toLocaleDateString()}</p>
+                <p>Created: {formatDate(request.created_at)}</p>
                 <p className="flex items-center gap-1 mt-1">
                   <Users size={16} />
                   {volunteers.length} applicant{volunteers.length !== 1 ? 's' : ''}
@@ -331,7 +338,7 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
                             </span>
                             <span className="flex items-center gap-1">
                               <Calendar size={14} />
-                              Applied {new Date(volunteer.applied_at).toLocaleDateString()}
+                              Applied {formatDate(volunteer.applied_at)}
                             </span>
                           </div>
                           {volunteer.message && (
@@ -413,7 +420,7 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
                             </span>
                             <span className="flex items-center gap-1">
                               <Calendar size={14} />
-                              Accepted {new Date(volunteer.applied_at).toLocaleDateString()}
+                              Accepted {formatDate(volunteer.applied_at)}
                             </span>
                           </div>
                           {volunteer.message && (
@@ -476,7 +483,7 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
                             {volunteer.start_date && (
                               <span className="flex items-center gap-1">
                                 <Calendar size={14} />
-                                Started {new Date(volunteer.start_date).toLocaleDateString()}
+                                Started {formatDate(volunteer.start_date)}
                               </span>
                             )}
                             {volunteer.hours_contributed > 0 && (
@@ -539,7 +546,7 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
                             {volunteer.end_date && (
                               <span className="flex items-center gap-1">
                                 <Calendar size={14} />
-                                Completed {new Date(volunteer.end_date).toLocaleDateString()}
+                                Completed {formatDate(volunteer.end_date)}
                               </span>
                             )}
                             {volunteer.hours_contributed > 0 && (

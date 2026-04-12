@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, Suspense } from "react"
+import { useEffect, useState, Suspense } from "react"
 import { useAuth } from "@/lib/auth-context"
 import { useSearchParams } from "next/navigation"
 import { Header } from "@/components/header"
@@ -16,6 +16,8 @@ function NGOAIAssistantContent() {
   const { user } = useAuth()
   const searchParams = useSearchParams()
   const initialTab = searchParams.get('tab') || 'proposal'
+  const [mounted, setMounted] = useState(false)
+  const effectiveUserType = mounted ? user?.user_type : undefined
   
   const [activeTab, setActiveTab] = useState(initialTab)
   const [isGenerating, setIsGenerating] = useState(false)
@@ -35,6 +37,10 @@ function NGOAIAssistantContent() {
   const [recipientType, setRecipientType] = useState("")
   const [campaignName, setCampaignName] = useState("")
   const [emailPurpose, setEmailPurpose] = useState("")
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   const handleGenerate = (type: string) => {
     setIsGenerating(true)
@@ -112,16 +118,35 @@ ${user?.name}
     navigator.clipboard.writeText(generatedContent)
   }
 
-  if (user?.user_type !== 'ngo') {
+  if (!mounted) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <Card>
-          <CardHeader>
-            <CardTitle>Access Denied</CardTitle>
-            <CardDescription>This feature is only available for NGO accounts.</CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
+      <>
+        <Header />
+        <div className="container mx-auto px-4 py-8">
+          <Card>
+            <CardHeader>
+              <CardTitle>Loading NGO AI Assistant</CardTitle>
+              <CardDescription>Preparing your workspace...</CardDescription>
+            </CardHeader>
+          </Card>
+        </div>
+      </>
+    )
+  }
+
+  if (effectiveUserType !== 'ngo') {
+    return (
+      <>
+        <Header />
+        <div className="container mx-auto px-4 py-8">
+          <Card>
+            <CardHeader>
+              <CardTitle>Access Denied</CardTitle>
+              <CardDescription>This feature is only available for NGO accounts.</CardDescription>
+            </CardHeader>
+          </Card>
+        </div>
+      </>
     )
   }
 

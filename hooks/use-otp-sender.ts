@@ -53,6 +53,19 @@ export function useOtpSender(setFormErrors: Dispatch<SetStateAction<FormErrors>>
     });
   }, [setFormErrors]);
 
+  const resetPhoneOtpState = useCallback(() => {
+    setOtpSent(prev => ({ ...prev, phone: false }));
+    setOtpVerified(prev => ({ ...prev, phone: false }));
+    setOtpSending(prev => ({ ...prev, phone: false }));
+    setOtpVerifying(prev => ({ ...prev, phone: false }));
+    setFormErrors(prev => {
+      const nextErrors = { ...prev };
+      delete nextErrors.phone;
+      delete nextErrors.phoneOtp;
+      return nextErrors;
+    });
+  }, [setFormErrors]);
+
   const handleSendEmailOtp = async (emailInput: string) => {
     const email = emailInput.trim();
 
@@ -211,7 +224,7 @@ export function useOtpSender(setFormErrors: Dispatch<SetStateAction<FormErrors>>
     try {
       setOtpSending(prev => ({ ...prev, phone: true }));
 
-      const response = await fetch('/api/auth/verify-phone', {
+      const response = await fetch('/api/auth/send-phone-otp', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -227,12 +240,70 @@ export function useOtpSender(setFormErrors: Dispatch<SetStateAction<FormErrors>>
       }
 
       setOtpSent(prev => ({ ...prev, phone: true }));
+      setOtpVerified(prev => ({ ...prev, phone: false }));
       startCooldown('phone');
       toast.success(data.message || 'Phone OTP sent successfully');
     } catch {
       toast.error('Failed to send phone OTP. Please try again.');
     } finally {
       setOtpSending(prev => ({ ...prev, phone: false }));
+    }
+  };
+
+  const handleVerifyPhoneOtp = async (phoneInput: string, otpInput: string) => {
+    const phone = phoneInput.trim().replace(/\s+/g, '');
+    const otp = otpInput.trim();
+
+    if (!phone) {
+      setFormErrors(prev => ({ ...prev, phone: 'Phone number is required' }));
+      return false;
+    }
+
+    if (!phoneRegex.test(phone)) {
+      setFormErrors(prev => ({ ...prev, phone: 'Please enter a valid phone number' }));
+      return false;
+    }
+
+    if (!otp) {
+      setFormErrors(prev => ({ ...prev, phoneOtp: 'Phone OTP is required' }));
+      return false;
+    }
+
+    try {
+      setOtpVerifying(prev => ({ ...prev, phone: true }));
+
+      const response = await fetch('/api/auth/verify-phone-otp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ phone, otp })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        const message = data.error || 'Invalid phone OTP';
+        setOtpVerified(prev => ({ ...prev, phone: false }));
+        setFormErrors(prev => ({ ...prev, phoneOtp: message }));
+        toast.error(message);
+        return false;
+      }
+
+      setFormErrors(prev => {
+        const nextErrors = { ...prev };
+        delete nextErrors.phoneOtp;
+        return nextErrors;
+      });
+      setOtpVerified(prev => ({ ...prev, phone: true }));
+      toast.success(data.message || 'Phone OTP verified successfully');
+      return true;
+    } catch {
+      setOtpVerified(prev => ({ ...prev, phone: false }));
+      toast.error('Failed to verify phone OTP. Please try again.');
+      return false;
+    } finally {
+      setOtpVerifying(prev => ({ ...prev, phone: false }));
     }
   };
 
@@ -245,6 +316,8 @@ export function useOtpSender(setFormErrors: Dispatch<SetStateAction<FormErrors>>
     handleSendEmailOtp,
     handleVerifyEmailOtp,
     handleSendPhoneOtp,
+    handleVerifyPhoneOtp,
     resetEmailOtpState
+    ,resetPhoneOtpState
   };
 }

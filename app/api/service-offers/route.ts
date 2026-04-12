@@ -435,6 +435,7 @@ export async function GET(request: NextRequest) {
           const offerCounts = counts[offer.id] || { total: 0, accepted: 0, pending: 0 };
           offer.applications_count = offerCounts.total;
           offer.pending_applications = offerCounts.pending;
+          offer.isAssigned = offerCounts.accepted > 0;
         });
       }
     }
