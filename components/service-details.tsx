@@ -155,9 +155,11 @@ export function ServiceDetails({
 
   const imageArray = parseImages(images);
 
-  const [currentTime, setCurrentTime] = useState(() => Date.now())
+  const [currentTime, setCurrentTime] = useState<number | null>(null)
 
   useEffect(() => {
+    setCurrentTime(Date.now())
+
     const timer = setInterval(() => {
       setCurrentTime(Date.now())
     }, 60_000)
@@ -203,7 +205,7 @@ export function ServiceDetails({
   const beneficiaryCount = Number(requirementsData?.beneficiary_count || 0);
   const estimatedBudget = requirementsData?.estimated_budget || requirementsData?.budget;
   const requestDeadline = deadline || timeline || requirementsData?.timeline;
-  const liveRequestUrgency = type === 'request'
+  const liveRequestUrgency = type === 'request' && currentTime !== null
     ? getRequestUrgencyLevel({
         createdAt: created_at,
         deadline: requestDeadline,

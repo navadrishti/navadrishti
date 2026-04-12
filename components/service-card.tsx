@@ -1,6 +1,6 @@
 'use client'
 
-import React from "react"
+import React, { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
@@ -187,6 +187,11 @@ export function ServiceCard({
   
   const router = useRouter();
   const { user } = useAuth();
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
   
   // Parse images safely
   const parseImages = (imgs?: string[] | string): string[] => {
@@ -321,7 +326,7 @@ export function ServiceCard({
   const formattedRequestDeadline = String(requestDeadline || '').trim().toLowerCase() === 'anytime'
     ? 'Anytime (No expiry)'
     : requestDeadline;
-  const liveUrgency = type === 'request'
+  const liveUrgency = isHydrated && type === 'request'
     ? getRequestUrgencyLevel({
         createdAt: created_at,
         deadline: requestDeadline,

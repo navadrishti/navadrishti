@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, ArrowLeft, CheckCircle2, Clock3, MessageSquareText, Search } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, MessageSquareText, Search } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,8 +12,33 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 
+type SupportTicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
+
 type SupportTicket = {
   id: number;
+  ticket_id: string;
+  user_id: number;
+  user_name?: string | null;
+  user_email?: string | null;
+  user_type?: string | null;
+  title: string;
+  description: string;
+  proof_url?: string | null;
+  status: SupportTicketStatus;
+  admin_notes?: string | null;
+  resolved_at?: string | null;
+  created_at: string;
+  updated_at?: string | null;
+  user?: {
+    id?: number;
+    name?: string;
+    email?: string;
+    user_type?: string;
+    verification_status?: string;
+    profile_image?: string | null;
+  };
+};
+
 type SupportTicketMessage = {
   id: number;
   ticket_id: string;
@@ -31,27 +56,69 @@ type SupportTicketMessage = {
     profile_image?: string | null;
   };
 };
-  ticket_id: string;
-  user_id: number;
-  user_name?: string | null;
+
+const statusLabels: Record<SupportTicketStatus, string> = {
+  open: 'Open',
+  in_progress: 'In Progress',
+  resolved: 'Resolved',
+  closed: 'Closed',
+};
+
+const statusClasses: Record<SupportTicketStatus, string> = {
+  open: 'bg-red-100 text-red-800 border-red-200',
+  in_progress: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+  resolved: 'bg-green-100 text-green-800 border-green-200',
+  closed: 'bg-slate-100 text-slate-700 border-slate-200',
+};
+
+export default function AdminSupportPage() {
+  const router = useRouter();
+  const { toast } = useToast();
+
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [activeTab, setActiveTab] = useState<SupportTicketStatus>('open');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [tickets, setTickets] = useState<SupportTicket[]>([]);
+  const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
   const [messages, setMessages] = useState<SupportTicketMessage[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
-  user_email?: string | null;
-  user_type?: string | null;
-  title: string;
-  description: string;
-  proof_url?: string | null;
-  status: 'open' | 'in_progress' | 'resolved' | 'closed';
-  admin_notes?: string | null;
-  resolved_at?: string | null;
-  created_at: string;
-  updated_at?: string | null;
-    loadTicketDetails(ticket.ticket_id);
-  user?: {
-    id?: number;
-  const loadTicketDetails = async (ticketId: string) => {
-    setDetailLoading(true);
+  const [statusUpdate, setStatusUpdate] = useState<SupportTicketStatus>('open');
+  const [adminNotes, setAdminNotes] = useState('');
+  const [replyMessage, setReplyMessage] = useState('');
+  const [replying, setReplying] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [refunding, setRefunding] = useState(false);
+  const [refundRequestId, setRefundRequestId] = useState('');
+  const [refundPaymentId, setRefundPaymentId] = useState('');
+  const [refundAmount, setRefundAmount] = useState('');
+  const [refundReason, setRefundReason] = useState('admin_support_refund');
+
+  const fetchTickets = async () => {
     try {
+      setLoading(true);
+      const params = new URLSearchParams();
+      params.set('status', activeTab);
+      if (searchQuery.trim()) params.set('q', searchQuery.trim());
+
+      const response = await fetch(`/api/admin/support-tickets?${params.toString()}`, { credentials: 'include' });
+      const data = await response.json();
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.error || 'Failed to fetch tickets');
+      }
+
+      setTickets(Array.isArray(data.tickets) ? data.tickets : []);
+    } catch (error: any) {
+      toast({ title: 'Failed to load tickets', description: error?.message || 'Unable to fetch tickets', variant: 'destructive' });
+      setTickets([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadTicketDetails = async (ticketId: string) => {
+    try {
+      setDetailLoading(true);
       const response = await fetch(`/api/admin/support-tickets/${encodeURIComponent(ticketId)}`, { credentials: 'include' });
       const data = await response.json();
       if (!response.ok || !data?.success) {
@@ -60,93 +127,12 @@ type SupportTicketMessage = {
 
       setSelectedTicket(data.ticket);
       setMessages(Array.isArray(data.messages) ? data.messages : []);
+      setStatusUpdate((data.ticket?.status || 'open') as SupportTicketStatus);
       setAdminNotes(data.ticket?.admin_notes || '');
-      setStatusUpdate(data.ticket?.status || 'open');
     } catch (error: any) {
-      toast({ title: 'Failed to load ticket details', description: error?.message || 'Could not load ticket thread', variant: 'destructive' });
+      toast({ title: 'Failed to load ticket', description: error?.message || 'Unable to load ticket details', variant: 'destructive' });
     } finally {
       setDetailLoading(false);
-    }
-  };
-    name?: string;
-    email?: string;
-    user_type?: string;
-    verification_status?: string;
-    profile_image?: string | null;
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now(),
-          ticket_id: data.ticket.ticket_id,
-          sender_id: 0,
-          sender_type: 'admin',
-          message_type: 'admin_reply',
-          content: replyMessage,
-          created_at: new Date().toISOString(),
-        }
-      ]);
-  };
-};
-
-const statusLabels: Record<SupportTicket['status'], string> = {
-  open: 'Open',
-  in_progress: 'In Progress',
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now(),
-          ticket_id: selectedTicket.ticket_id,
-          sender_id: 0,
-          sender_type: 'admin',
-          message_type: 'refund_initiated',
-          content: `Refund initiated for payment ${refundPaymentId} (request ${refundRequestId})`,
-          created_at: new Date().toISOString(),
-        }
-      ]);
-  resolved: 'Resolved',
-  closed: 'Closed',
-};
-
-const statusClasses: Record<SupportTicket['status'], string> = {
-
-                    <div className="space-y-3 rounded-lg border bg-slate-50 p-4">
-                      <p className="text-sm font-semibold text-gray-900">Conversation Thread</p>
-                      {detailLoading ? (
-                        <p className="text-sm text-slate-500">Loading conversation...</p>
-                      ) : messages.length === 0 ? (
-                        <p className="text-sm text-slate-500">No messages yet.</p>
-                      ) : (
-                        <div className="space-y-3">
-                          {messages.map((message) => (
-                            <div key={message.id} className={`rounded-lg border p-3 text-sm ${message.sender_type === 'admin' ? 'bg-blue-50 border-blue-200' : 'bg-white'}`}>
-                              <div className="mb-1 flex items-center justify-between gap-2 text-xs text-slate-500">
-                                <span className="font-medium capitalize text-slate-700">{message.sender_type}</span>
-                                <span>{new Date(message.created_at).toLocaleString('en-IN', { timeZone: 'UTC' })}</span>
-                              </div>
-                              <p className="whitespace-pre-wrap text-slate-800">{message.content}</p>
-                              {message.attachment_url ? (
-                                <a href={message.attachment_url} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs text-blue-700 underline">
-                                  View attachment
-                                </a>
-                              ) : null}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-  open: 'bg-red-100 text-red-800 border-red-200',
-                    
-
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data?.error || 'Failed to fetch tickets');
-      }
-
-      setTickets(Array.isArray(data.tickets) ? data.tickets : []);
-    } catch (error: any) {
-      toast({ title: 'Failed to load tickets', description: error?.message || 'Unable to fetch tickets', variant: 'destructive' });
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -168,22 +154,18 @@ const statusClasses: Record<SupportTicket['status'], string> = {
   }, [router]);
 
   useEffect(() => {
-    if (isAdmin) {
-      fetchTickets();
-    }
+    if (isAdmin) fetchTickets();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin, activeTab]);
-
-  const filteredTickets = useMemo(() => tickets, [tickets]);
 
   const selectTicket = (ticket: SupportTicket) => {
     setSelectedTicket(ticket);
-    setStatusUpdate(ticket.status);
-    setAdminNotes(ticket.admin_notes || '');
     setReplyMessage('');
     setRefundRequestId('');
     setRefundPaymentId('');
     setRefundAmount('');
     setRefundReason('admin_support_refund');
+    loadTicketDetails(ticket.ticket_id);
   };
 
   const sendReply = async () => {
@@ -192,8 +174,8 @@ const statusClasses: Record<SupportTicket['status'], string> = {
       return;
     }
 
-    setReplying(true);
     try {
+      setReplying(true);
       const response = await fetch(`/api/admin/support-tickets/${encodeURIComponent(selectedTicket.ticket_id)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -202,7 +184,7 @@ const statusClasses: Record<SupportTicket['status'], string> = {
           status: statusUpdate,
           admin_notes: adminNotes,
           reply_message: replyMessage,
-        })
+        }),
       });
 
       const data = await response.json();
@@ -212,8 +194,9 @@ const statusClasses: Record<SupportTicket['status'], string> = {
 
       toast({ title: 'Reply sent', description: `A reply was sent for ${selectedTicket.ticket_id}` });
       setSelectedTicket(data.ticket);
-      setTickets((prev) => prev.map((ticket) => ticket.ticket_id === data.ticket.ticket_id ? data.ticket : ticket));
+      setTickets((prev) => prev.map((ticket) => (ticket.ticket_id === data.ticket.ticket_id ? data.ticket : ticket)));
       setReplyMessage('');
+      await loadTicketDetails(selectedTicket.ticket_id);
     } catch (error: any) {
       toast({ title: 'Reply failed', description: error?.message || 'Could not send reply', variant: 'destructive' });
     } finally {
@@ -223,14 +206,13 @@ const statusClasses: Record<SupportTicket['status'], string> = {
 
   const initiateRefund = async () => {
     if (!selectedTicket) return;
-
     if (!refundRequestId.trim() || !refundPaymentId.trim()) {
       toast({ title: 'Refund details required', description: 'Enter the service request ID and payment ID.', variant: 'destructive' });
       return;
     }
 
-    setRefunding(true);
     try {
+      setRefunding(true);
       const response = await fetch(`/api/admin/support-tickets/${encodeURIComponent(selectedTicket.ticket_id)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -240,7 +222,7 @@ const statusClasses: Record<SupportTicket['status'], string> = {
           razorpay_payment_id: refundPaymentId,
           amount: refundAmount,
           reason: refundReason,
-        })
+        }),
       });
 
       const data = await response.json();
@@ -249,8 +231,9 @@ const statusClasses: Record<SupportTicket['status'], string> = {
       }
 
       toast({ title: 'Refund initiated', description: data?.data?.message || 'Refund request sent to Razorpay.' });
-      setTickets((prev) => prev.map((ticket) => ticket.ticket_id === selectedTicket.ticket_id ? { ...ticket, status: 'resolved' } : ticket));
-      setSelectedTicket((prev) => prev ? { ...prev, status: 'resolved' } : prev);
+      setSelectedTicket((prev) => (prev ? { ...prev, status: 'resolved' } : prev));
+      setTickets((prev) => prev.map((ticket) => (ticket.ticket_id === selectedTicket.ticket_id ? { ...ticket, status: 'resolved' } : ticket)));
+      await loadTicketDetails(selectedTicket.ticket_id);
     } catch (error: any) {
       toast({ title: 'Refund failed', description: error?.message || 'Could not initiate refund', variant: 'destructive' });
     } finally {
@@ -261,8 +244,8 @@ const statusClasses: Record<SupportTicket['status'], string> = {
   const updateSelectedTicket = async () => {
     if (!selectedTicket) return;
 
-    setSaving(true);
     try {
+      setSaving(true);
       const response = await fetch(`/api/admin/support-tickets/${encodeURIComponent(selectedTicket.ticket_id)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -270,7 +253,7 @@ const statusClasses: Record<SupportTicket['status'], string> = {
         body: JSON.stringify({
           status: statusUpdate,
           admin_notes: adminNotes,
-        })
+        }),
       });
 
       const data = await response.json();
@@ -280,7 +263,8 @@ const statusClasses: Record<SupportTicket['status'], string> = {
 
       toast({ title: 'Ticket updated', description: `${selectedTicket.ticket_id} updated successfully` });
       setSelectedTicket(data.ticket);
-      setTickets((prev) => prev.map((ticket) => ticket.ticket_id === data.ticket.ticket_id ? data.ticket : ticket));
+      setTickets((prev) => prev.map((ticket) => (ticket.ticket_id === data.ticket.ticket_id ? data.ticket : ticket)));
+      await loadTicketDetails(selectedTicket.ticket_id);
     } catch (error: any) {
       toast({ title: 'Update failed', description: error?.message || 'Could not update ticket', variant: 'destructive' });
     } finally {
@@ -288,9 +272,7 @@ const statusClasses: Record<SupportTicket['status'], string> = {
     }
   };
 
-  if (!isAdmin) {
-    return null;
-  }
+  if (!isAdmin) return null;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -321,7 +303,7 @@ const statusClasses: Record<SupportTicket['status'], string> = {
               </CardContent>
             </Card>
 
-            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as any)} className="w-full">
+            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as SupportTicketStatus)} className="w-full">
               <TabsList className="grid w-full grid-cols-4">
                 <TabsTrigger value="open">Open</TabsTrigger>
                 <TabsTrigger value="in_progress">In Progress</TabsTrigger>
@@ -334,12 +316,12 @@ const statusClasses: Record<SupportTicket['status'], string> = {
                   <Card>
                     <CardContent className="py-10 text-center text-gray-500">Loading tickets...</CardContent>
                   </Card>
-                ) : filteredTickets.length === 0 ? (
+                ) : tickets.length === 0 ? (
                   <Card>
                     <CardContent className="py-10 text-center text-gray-500">No tickets found for this status.</CardContent>
                   </Card>
                 ) : (
-                  filteredTickets.map((ticket) => (
+                  tickets.map((ticket) => (
                     <Card key={ticket.ticket_id} className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => selectTicket(ticket)}>
                       <CardContent className="p-4 space-y-2">
                         <div className="flex items-center justify-between gap-3">
@@ -366,7 +348,7 @@ const statusClasses: Record<SupportTicket['status'], string> = {
                   Ticket Details
                 </CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="pt-6">
                 {!selectedTicket ? (
                   <Alert>
                     <AlertTriangle className="h-4 w-4" />
@@ -415,6 +397,27 @@ const statusClasses: Record<SupportTicket['status'], string> = {
                     ) : null}
 
                     <div className="space-y-2">
+                      <p className="text-sm font-medium text-gray-500">Conversation Thread</p>
+                      {detailLoading ? (
+                        <p className="text-sm text-slate-500">Loading conversation...</p>
+                      ) : messages.length === 0 ? (
+                        <p className="text-sm text-slate-500">No messages yet.</p>
+                      ) : (
+                        <div className="space-y-3 rounded-lg border bg-slate-50 p-4">
+                          {messages.map((message) => (
+                            <div key={message.id} className={`rounded-lg border p-3 text-sm ${message.sender_type === 'admin' ? 'bg-blue-50 border-blue-200' : 'bg-white'}`}>
+                              <div className="mb-1 flex items-center justify-between gap-2 text-xs text-slate-500">
+                                <span className="font-medium capitalize text-slate-700">{message.sender_type}</span>
+                                <span>{new Date(message.created_at).toLocaleString('en-IN', { timeZone: 'UTC' })}</span>
+                              </div>
+                              <p className="whitespace-pre-wrap text-slate-800">{message.content}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
                       <p className="text-sm font-medium text-gray-500">Admin Notes</p>
                       <Textarea value={adminNotes} onChange={(e) => setAdminNotes(e.target.value)} rows={4} placeholder="Internal resolution notes" />
                     </div>
@@ -423,15 +426,9 @@ const statusClasses: Record<SupportTicket['status'], string> = {
                       <p className="text-sm font-semibold text-gray-900">Reply to User</p>
                       <Textarea value={replyMessage} onChange={(e) => setReplyMessage(e.target.value)} rows={4} placeholder="Write the message the user should receive" />
                       <div className="flex flex-col gap-2 sm:flex-row">
-                        <Button onClick={sendReply} disabled={replying} className="sm:w-auto">
-                          {replying ? 'Sending...' : 'Send Reply'}
-                        </Button>
-                        <Button variant="outline" onClick={() => setStatusUpdate('in_progress')} className="sm:w-auto">
-                          Mark In Progress
-                        </Button>
-                        <Button variant="outline" onClick={() => setStatusUpdate('resolved')} className="sm:w-auto">
-                          Mark Resolved
-                        </Button>
+                        <Button onClick={sendReply} disabled={replying} className="sm:w-auto">{replying ? 'Sending...' : 'Send Reply'}</Button>
+                        <Button variant="outline" onClick={() => setStatusUpdate('in_progress')} className="sm:w-auto">Mark In Progress</Button>
+                        <Button variant="outline" onClick={() => setStatusUpdate('resolved')} className="sm:w-auto">Mark Resolved</Button>
                       </div>
                     </div>
 
@@ -456,19 +453,13 @@ const statusClasses: Record<SupportTicket['status'], string> = {
                           <Input value={refundReason} onChange={(e) => setRefundReason(e.target.value)} placeholder="admin_support_refund" />
                         </div>
                       </div>
-                      <Button variant="destructive" onClick={initiateRefund} disabled={refunding}>
-                        {refunding ? 'Initiating refund...' : 'Initiate Refund'}
-                      </Button>
+                      <Button variant="destructive" onClick={initiateRefund} disabled={refunding}>{refunding ? 'Initiating refund...' : 'Initiate Refund'}</Button>
                     </div>
 
                     <div className="grid gap-3 sm:grid-cols-2">
                       <div className="space-y-2">
                         <p className="text-sm font-medium text-gray-500">Update Status</p>
-                        <select
-                          value={statusUpdate}
-                          onChange={(e) => setStatusUpdate(e.target.value as any)}
-                          className="h-10 w-full rounded-md border bg-white px-3 text-sm"
-                        >
+                        <select value={statusUpdate} onChange={(e) => setStatusUpdate(e.target.value as SupportTicketStatus)} className="h-10 w-full rounded-md border bg-white px-3 text-sm">
                           <option value="open">Open</option>
                           <option value="in_progress">In Progress</option>
                           <option value="resolved">Resolved</option>
@@ -476,9 +467,7 @@ const statusClasses: Record<SupportTicket['status'], string> = {
                         </select>
                       </div>
                       <div className="flex items-end">
-                        <Button onClick={updateSelectedTicket} disabled={saving} className="w-full">
-                          {saving ? 'Saving...' : 'Save Changes'}
-                        </Button>
+                        <Button onClick={updateSelectedTicket} disabled={saving} className="w-full">{saving ? 'Saving...' : 'Save Changes'}</Button>
                       </div>
                     </div>
                   </div>
