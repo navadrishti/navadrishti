@@ -47,33 +47,6 @@ export async function sendSMS(options: SMSOptions): Promise<boolean> {
   }
 }
 
-// Alternative SMS services (Twilio, AWS SNS, etc.)
-export async function sendSMSWithTwilio(options: SMSOptions): Promise<boolean> {
-  try {
-    if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN) {
-      console.log('Twilio not configured');
-      return false;
-    }
-
-    // Twilio SMS implementation
-    const twilio = require('twilio');
-    const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-
-    await client.messages.create({
-      body: options.template || `Your Navadrishti verification code is ${options.otp}. Valid for 10 minutes.`,
-      from: process.env.TWILIO_PHONE_NUMBER,
-      to: options.phone
-    });
-
-    console.log('📱 SMS sent via Twilio to:', options.phone);
-    return true;
-
-  } catch (error) {
-    console.error('❌ Twilio SMS error:', error);
-    return false;
-  }
-}
-
 export function generateOTPMessage(otp: string, appName: string = 'Navadrishti'): string {
   return `Your ${appName} verification code is ${otp}. Valid for 10 minutes. Do not share this code with anyone.`;
 }
