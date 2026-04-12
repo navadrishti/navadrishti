@@ -72,12 +72,8 @@ export default function NGONetworkPage() {
     <>
       <Header />
       <main className="min-h-screen bg-slate-100">
-        <section className="relative overflow-hidden bg-udaan-navy px-4 pb-10 pt-12">
-          <div className="pointer-events-none absolute -left-24 top-10 h-56 w-56 rounded-full bg-udaan-orange/20 blur-3xl" />
-          <div className="pointer-events-none absolute -right-20 -top-8 h-64 w-64 rounded-full bg-blue-400/25 blur-3xl" />
-          <div className="pointer-events-none absolute bottom-0 left-1/3 h-40 w-40 rounded-full bg-cyan-300/20 blur-2xl" />
-
-          <div className="relative mx-auto max-w-6xl">
+        <section className="bg-udaan-blue px-4 pb-10 pt-12">
+          <div className="mx-auto max-w-6xl">
             <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
               <div>
                 <p className="text-sm font-medium uppercase tracking-[0.18em] text-white/70">Verified Directory</p>
@@ -87,16 +83,6 @@ export default function NGONetworkPage() {
                 </p>
               </div>
 
-              <div className="grid w-full max-w-sm grid-cols-2 gap-3 md:w-auto md:min-w-[320px]">
-                <div className="rounded-xl border border-white/20 bg-white/10 p-3 backdrop-blur">
-                  <p className="text-xs uppercase tracking-wide text-white/70">Verified NGOs</p>
-                  <p className="mt-1 text-2xl font-bold text-white">{ngos.length}</p>
-                </div>
-                <div className="rounded-xl border border-white/20 bg-white/10 p-3 backdrop-blur">
-                  <p className="text-xs uppercase tracking-wide text-white/70">Sectors</p>
-                  <p className="mt-1 text-2xl font-bold text-white">{sectors.length || "-"}</p>
-                </div>
-              </div>
             </div>
 
             <div className="mt-8 rounded-2xl border border-white/15 bg-white/95 p-4 shadow-xl shadow-black/15">
@@ -107,13 +93,13 @@ export default function NGONetworkPage() {
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="Search by NGO name, city, state or sector"
-                    className="h-11 border-slate-200 bg-white pl-9 text-slate-900 placeholder:text-slate-400"
+                    className="h-11 border-slate-200 bg-white pl-9 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
                   />
                 </div>
 
                 {sectors.length > 0 && (
                   <Select value={selectedSector} onValueChange={setSelectedSector}>
-                    <SelectTrigger className="h-11 w-full border-slate-200 bg-white text-slate-900 md:w-56">
+                    <SelectTrigger className="h-11 w-full border-slate-200 bg-white text-slate-900 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 md:w-56">
                       <SelectValue placeholder="All sectors" />
                     </SelectTrigger>
                     <SelectContent>

@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { StyledSelect } from '@/components/ui/styled-select'
 import { Textarea } from '@/components/ui/textarea'
 
 type OfferType = 'financial' | 'material' | 'service' | 'infrastructure'
@@ -390,34 +390,22 @@ export default function EditServiceOfferPage({ params }: { params: Promise<{ id:
                   <div className="grid grid-cols-1 gap-4">
                     <div>
                       <Label htmlFor="offer_type">Offer Type *</Label>
-                      <Select value={formData.offer_type} onValueChange={(value) => handleSelect('offer_type', value as OfferType)}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select offer type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {OFFER_TYPES.map((type) => (
-                            <SelectItem key={type.value} value={type.value}>
-                              {type.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <StyledSelect
+                        value={formData.offer_type}
+                        options={OFFER_TYPES}
+                        placeholder="Select offer type"
+                        onValueChange={(value) => handleSelect('offer_type', value as OfferType)}
+                      />
                     </div>
 
                     <div>
                       <Label htmlFor="transaction_type">Offer Mode *</Label>
-                      <Select value={formData.transaction_type} onValueChange={(value) => handleSelect('transaction_type', value as TransactionType)}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select offer mode" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {TRANSACTION_TYPES.map((type) => (
-                            <SelectItem key={type.value} value={type.value}>
-                              {type.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <StyledSelect
+                        value={formData.transaction_type}
+                        options={TRANSACTION_TYPES}
+                        placeholder="Select offer mode"
+                        onValueChange={(value) => handleSelect('transaction_type', value as TransactionType)}
+                      />
                     </div>
                   </div>
                 </CardContent>

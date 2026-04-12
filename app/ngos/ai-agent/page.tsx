@@ -83,6 +83,7 @@ export default function NGOAIAgentPage() {
   const [currentStep, setCurrentStep] = useState(0)
   const [generatedDraft, setGeneratedDraft] = useState<ServiceRequestDraftPayload | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const effectiveUserType = mounted ? user?.user_type : undefined
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -229,7 +230,7 @@ export default function NGOAIAgentPage() {
     )
   }
 
-  if (user?.user_type !== 'ngo') {
+  if (effectiveUserType !== 'ngo') {
     return (
       <>
         <Header />

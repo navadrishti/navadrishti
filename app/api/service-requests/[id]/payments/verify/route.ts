@@ -1,7 +1,8 @@
 import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
-import { db } from '@/lib/db';
+import Razorpay from 'razorpay';
+import { db, supabase } from '@/lib/db';
 import { JWT_SECRET } from '@/lib/auth';
 
 interface JWTPayload {
@@ -38,35 +39,13 @@ export async function POST(
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
 
-    if (decoded.user_type !== 'individual') {
-      return NextResponse.json({ error: 'Only individuals can contribute directly' }, { status: 403 });
-    }
-
     const keySecret = process.env.RAZORPAY_KEY_SECRET;
     if (!keySecret) {
       return NextResponse.json({ error: 'Razorpay secret is not configured' }, { status: 500 });
     }
 
     const body = await request.json();
-    const {
-      razorpay_order_id,
-      razorpay_payment_id,
-      razorpay_signature,
-      amount
-    } = body || {};
-
-    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
-      return NextResponse.json({ error: 'Missing payment verification fields' }, { status: 400 });
-    }
-
-    const generatedSignature = crypto
-      .createHmac('sha256', keySecret)
-      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
-      .digest('hex');
-
-    if (generatedSignature !== razorpay_signature) {
-      return NextResponse.json({ error: 'Invalid payment signature' }, { status: 400 });
-    }
+    const action = String(body?.action || '').trim().toLowerCase();
 
     const { id } = await params;
     const requestId = Number(id);
@@ -92,6 +71,37 @@ export async function POST(
 
     if (!isFinancialRequest(serviceRequest, requirements)) {
       return NextResponse.json({ error: 'Payments are enabled only for Financial Need requests' }, { status: 400 });
+    }
+
+    if (action === 'refund') {
+      return NextResponse.json(
+        { error: 'Refunds are handled by the admin panel only and cannot be initiated from the platform' },
+        { status: 403 }
+      );
+    }
+
+    if (decoded.user_type !== 'individual') {
+      return NextResponse.json({ error: 'Only individuals can verify direct contributions' }, { status: 403 });
+    }
+
+    const {
+      razorpay_order_id,
+      razorpay_payment_id,
+      razorpay_signature,
+      amount
+    } = body || {};
+
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      return NextResponse.json({ error: 'Missing payment verification fields' }, { status: 400 });
+    }
+
+    const generatedSignature = crypto
+      .createHmac('sha256', keySecret)
+      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+      .digest('hex');
+
+    if (generatedSignature !== razorpay_signature) {
+      return NextResponse.json({ error: 'Invalid payment signature' }, { status: 400 });
     }
 
     const targetInr = parseAmountToInr(
@@ -132,7 +142,7 @@ export async function POST(
     const nextRaisedInr = currentRaisedInr + paidInr;
     const reachedTarget = nextRaisedInr >= targetInr;
 
-    const { data: acceptedAssignments } = await db.serviceVolunteers.getByRequestId(requestId);
+    const acceptedAssignments = await db.serviceVolunteers.getByRequestId(requestId);
     const matchingAssignment = (acceptedAssignments || []).find((item: any) =>
       item.volunteer_id === decoded.id && ['accepted', 'active', 'completed'].includes(String(item.status || '').toLowerCase())
     );

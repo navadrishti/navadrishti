@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useAuth } from "@/lib/auth-context"
 import { Header } from "@/components/header"
 import { Button } from "@/components/ui/button"
@@ -11,9 +11,16 @@ import { FileText, Download, Users, TrendingUp, Target, Calendar, BarChart3, Loa
 
 export default function ImpactReportsPage() {
   const { user } = useAuth()
+  const [isHydrated, setIsHydrated] = useState(false)
   const [selectedCampaign, setSelectedCampaign] = useState("")
   const [reportType, setReportType] = useState("")
   const [isGenerating, setIsGenerating] = useState(false)
+
+  const effectiveUserType = isHydrated ? user?.user_type : undefined
+
+  useEffect(() => {
+    setIsHydrated(true)
+  }, [])
 
   const campaigns = [
     { id: '1', name: 'Education for All 2024' },
@@ -35,16 +42,35 @@ export default function ImpactReportsPage() {
     }, 2000)
   }
 
-  if (user?.user_type !== 'company') {
+  if (!isHydrated) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <Card>
-          <CardHeader>
-            <CardTitle>Access Denied</CardTitle>
-            <CardDescription>This feature is only available for company accounts.</CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
+      <>
+        <Header />
+        <div className="container mx-auto px-4 py-8">
+          <Card>
+            <CardHeader>
+              <CardTitle>Loading Impact Reports</CardTitle>
+              <CardDescription>Preparing your workspace...</CardDescription>
+            </CardHeader>
+          </Card>
+        </div>
+      </>
+    )
+  }
+
+  if (effectiveUserType !== 'company') {
+    return (
+      <>
+        <Header />
+        <div className="container mx-auto px-4 py-8">
+          <Card>
+            <CardHeader>
+              <CardTitle>Access Denied</CardTitle>
+              <CardDescription>This feature is only available for company accounts.</CardDescription>
+            </CardHeader>
+          </Card>
+        </div>
+      </>
     )
   }
 

@@ -62,7 +62,7 @@ export async function PUT(
     const requestId = parseInt(id);
     const volId = parseInt(volunteerId);
     const body = await request.json();
-    const { status, decisionComment, allocationAmount, allocationQuantity, receiptUrl, completionNote } = body;
+    const { status, decisionComment, allocationAmount, allocationQuantity, receiptUrl, completionNote, deliveryTrackingId } = body;
 
     // Validate status
     const validStatuses = ['pending', 'accepted', 'rejected', 'active', 'completed', 'cancelled'];
@@ -142,6 +142,13 @@ export async function PUT(
       ngo_decision_comment: status === 'rejected' ? commentText : null,
       ngo_decision_at: new Date().toISOString()
     };
+
+    const trackingId = typeof deliveryTrackingId === 'string' ? deliveryTrackingId.trim() : '';
+    if (trackingId) {
+      (nextMeta as any).delivery_tracking_id = trackingId;
+      (nextMeta as any).delivery_provider = 'delhivery';
+      (nextMeta as any).delivery_tracking_updated_at = new Date().toISOString();
+    }
 
     const updatePayload: Record<string, any> = {
       status,

@@ -302,7 +302,7 @@ function SkeletonGrid({ items = 4 }: { items?: number }) {
 // CTA Skeleton
 function SkeletonCTA() {
   return (
-    <div className="mb-8 p-8 bg-white rounded-2xl border-2 border-black shadow-2xl relative overflow-hidden">
+    <div className="mb-8 p-8 bg-white rounded-2xl border-2 border-black shadow-sm relative overflow-hidden">
       
       <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
         <div className="text-center md:text-left">

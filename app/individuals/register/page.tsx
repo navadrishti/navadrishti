@@ -29,9 +29,10 @@ export default function IndividualRegister() {
     country: 'India'
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
-  const { otpSending, otpSent, otpCooldown, otpVerifying, otpVerified, handleSendEmailOtp, handleVerifyEmailOtp, handleSendPhoneOtp, resetEmailOtpState } = useOtpSender(setFormErrors);
-  const [otpInput, setOtpInput] = useState({ email: '', phone: '' });
-  const { signup, error, loading, clearError } = useAuth();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { otpSending, otpSent, otpCooldown, otpVerifying, otpVerified, handleSendEmailOtp, handleVerifyEmailOtp, resetEmailOtpState } = useOtpSender(setFormErrors);
+  const [otpInput, setOtpInput] = useState({ email: '' });
+  const { signup, error, clearError } = useAuth();
   const router = useRouter();
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -142,6 +143,7 @@ export default function IndividualRegister() {
     }
     
     try {
+      setIsSubmitting(true);
       // Prepare user data for signup
       const userData = {
         email: formData.email,
@@ -165,6 +167,8 @@ export default function IndividualRegister() {
       router.push('/individuals/dashboard');
     } catch {
       // Error state and user notification are handled in auth context
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -172,6 +176,11 @@ export default function IndividualRegister() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
       <Card className="w-full max-w-2xl">
         <CardHeader className="space-y-1">
+          <div className="text-sm">
+            <Link href="/register" className="font-medium text-primary">
+              Back
+            </Link>
+          </div>
           <CardTitle className="text-2xl font-bold text-center">Register as Individual</CardTitle>
           <CardDescription className="text-center">
             Create your account to connect with NGOs and companies
@@ -259,38 +268,15 @@ export default function IndividualRegister() {
               
               <div className="space-y-2">
                 <Label htmlFor="phone">Phone Number</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="phone"
-                    name="phone"
-                    type="tel"
-                    value={formData.phone}
-                    onChange={handleChange}
-                    placeholder="+91 9876543210"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => handleSendPhoneOtp(formData.phone)}
-                    disabled={otpSending.phone || otpCooldown.phone > 0}
-                  >
-                    {otpSending.phone ? 'Sending...' : otpCooldown.phone > 0 ? `Resend in ${otpCooldown.phone}s` : 'Send OTP'}
-                  </Button>
-                </div>
+                <Input
+                  id="phone"
+                  name="phone"
+                  type="tel"
+                  value={formData.phone}
+                  onChange={handleChange}
+                  placeholder="+91 9876543210"
+                />
                 {formErrors.phone && <p className="text-sm text-red-500">{formErrors.phone}</p>}
-                {otpSent.phone && <p className="text-sm text-green-600">OTP sent to your phone</p>}
-                {otpSent.phone && (
-                  <div className="space-y-2">
-                    <Label htmlFor="phoneOtp">Phone OTP</Label>
-                    <Input
-                      id="phoneOtp"
-                      name="phoneOtp"
-                      value={otpInput.phone}
-                      onChange={(e) => setOtpInput(prev => ({ ...prev, phone: e.target.value }))}
-                      placeholder="Enter phone OTP"
-                    />
-                  </div>
-                )}
               </div>
               
               <div className="space-y-2">
@@ -399,8 +385,8 @@ export default function IndividualRegister() {
           </CardContent>
           
           <CardFooter className="flex flex-col space-y-4">
-            <Button type="submit" className="w-full" disabled={loading || !otpVerified.email}>
-              {loading ? 'Creating Account...' : 'Create Account'}
+            <Button type="submit" className="w-full" disabled={isSubmitting || !otpVerified.email}>
+              {isSubmitting ? 'Creating Account...' : 'Create Account'}
             </Button>
             
             <div className="text-center text-sm">

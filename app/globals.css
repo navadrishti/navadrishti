@@ -443,6 +443,26 @@ body {
   }
 }
 
+@keyframes aiBorderFlow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@layer utilities {
+  .ai-agent-border-flow {
+    background-image: linear-gradient(90deg, #66b3ff, #0067b9, #7fc2ff, #1d4ed8, #66b3ff);
+    background-size: 300% 300%;
+    animation: aiBorderFlow 6s linear infinite;
+  }
+}
+
 /* Respect user's motion preferences */
 @media (prefers-reduced-motion: reduce) {
   .page-transition {
@@ -459,24 +479,34 @@ body {
 /* Add base transition to all interactive elements */
 @layer base {
   button, a, input, select, textarea {
-    @apply transition-all duration-200 ease-in-out;
+    @apply transition-colors duration-150 ease-in-out;
   }
-  
-  /* Smooth focus styles */
+
+  /* Remove focus boxes consistently across interactive UI */
+  button:focus,
   button:focus-visible,
-  a:focus-visible,
+  a:focus,
+  a:focus-visible {
+    @apply outline-none ring-0 ring-offset-0;
+    box-shadow: none !important;
+  }
+
+  /* Remove transient focus flash on form fields */
+  input:focus,
+  select:focus,
+  textarea:focus,
   input:focus-visible,
   select:focus-visible,
   textarea:focus-visible {
-    @apply outline-none ring-2 ring-offset-2 ring-blue-500;
-    transition: all 0.2s ease-in-out;
+    @apply outline-none ring-0 ring-offset-0;
+    box-shadow: none !important;
   }
 }
 
 @layer base {
   :root {
     /* Udaan theme colors as HSL variables */
-    --udaan-navy: 209 100% 17%;      /* #002855 */
+    --udaan-navy: 207 100% 36%;       /* #0067b9 */
     --udaan-blue: 207 100% 36%;       /* #0067b9 */
     --udaan-orange: 28 90% 54%;       /* #F47B20 */
     --udaan-cream: 37 100% 96%;       /* #FFF8ED */
@@ -524,9 +554,9 @@ body {
     --sidebar-foreground: 0 0% 100%;
     --sidebar-primary: var(--udaan-orange);
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 210 100% 20%;
+    --sidebar-accent: var(--udaan-blue);
     --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: 210 100% 20%;
+    --sidebar-border: var(--udaan-blue);
     --sidebar-ring: var(--udaan-orange);
   }
   
@@ -567,13 +597,13 @@ body {
     --chart-5: 340 75% 55%;
     
     /* Dark sidebar theme */
-    --sidebar-background: 210 100% 10%;
+    --sidebar-background: var(--udaan-blue);
     --sidebar-foreground: var(--udaan-white);
     --sidebar-primary: var(--udaan-orange);
     --sidebar-primary-foreground: var(--udaan-white);
-    --sidebar-accent: 210 100% 20%;
+    --sidebar-accent: var(--udaan-blue);
     --sidebar-accent-foreground: var(--udaan-white);
-    --sidebar-border: 210 100% 20%;
+    --sidebar-border: var(--udaan-blue);
     --sidebar-ring: var(--udaan-orange);
   }
 }
@@ -584,6 +614,43 @@ body {
   }
   body {
     @apply bg-background text-foreground;
+    overflow-y: scroll !important;
+  }
+
+  html,
+  body {
+    background-color: hsl(var(--background));
+  }
+
+  html[data-scroll-locked],
+  body[data-scroll-locked],
+  body.react-remove-scroll-body {
+    overflow-y: scroll !important;
+    padding-right: 0 !important;
+    margin-right: 0 !important;
+    --removed-body-scroll-bar-size: 0px !important;
+  }
+  
+  /* Force white background for command components */
+  [cmdk-root] {
+    @apply bg-white !important;
+  }
+  
+  [cmdk-list] {
+    @apply bg-white !important;
+  }
+  
+  [cmdk-group] {
+    @apply bg-white !important;
+  }
+
+  [cmdk-item]:hover {
+    background-color: #eaf4ff !important;
+  }
+
+  [cmdk-item][data-selected="true"] {
+    background-color: #eaf4ff !important;
+    color: hsl(var(--foreground)) !important;
   }
 }
 
