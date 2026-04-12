@@ -1,11 +1,13 @@
 "use client"
 
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { Sparkles } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
 
 export function AIAgentCTA() {
   const { user } = useAuth()
+  const pathname = usePathname()
 
   const aiAgentCta = user?.user_type === 'company'
     ? {
@@ -22,6 +24,7 @@ export function AIAgentCTA() {
     : null
 
   if (!aiAgentCta) return null
+  if (pathname === aiAgentCta.href) return null
 
   return (
     <div className="pointer-events-none fixed inset-x-4 bottom-4 z-[70] sm:inset-x-auto sm:right-4 sm:max-w-[calc(100vw-2rem)]">
