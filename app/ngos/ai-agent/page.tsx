@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Loader2, Sparkles, Send, Bot, User } from "lucide-react"
+import { CSR_SCHEDULE_VII_CATEGORIES } from "@/lib/categories"
 
 interface Message {
   role: 'user' | 'assistant'
@@ -16,6 +17,7 @@ interface Message {
 
 interface ServiceRequestData {
   projectTitle?: string
+  projectCategory?: string
   requestTitle?: string
   requestType?: string
   beneficiaryCount?: string
@@ -35,6 +37,7 @@ type ServiceRequestDraftPayload = {
     description: string
     location: string
     timeline: string
+    category: string
   }
   needs: Array<{
     title: string
@@ -60,6 +63,22 @@ const normalizeRequestType = (value?: string) => {
   if (text.includes('material')) return 'Material Need'
   if (text.includes('infrastructure')) return 'Infrastructure Project'
   return 'Skill / Service Need'
+}
+
+const normalizeProjectCategory = (value?: string) => {
+  const text = String(value || '').toLowerCase()
+  if (/(hunger|poverty|malnutrition|food)/.test(text)) return 'Eradicating Hunger, Poverty and Malnutrition'
+  if (/(health|sanitation|medical|hospital|water)/.test(text)) return 'Promoting Healthcare and Sanitation'
+  if (/(education|school|skill|livelihood|training|learning)/.test(text)) return 'Education and Livelihood Enhancement'
+  if (/(women|girl|gender|empowerment|senior|old age|divyang|disabled)/.test(text)) return 'Gender Equality and Women Empowerment'
+  if (/(environment|climate|tree|forest|water conservation|biodiversity|energy)/.test(text)) return 'Environmental Sustainability'
+  if (/(heritage|culture|art|craft|museum|restoration)/.test(text)) return 'Protection of Heritage, Art and Culture'
+  if (/(veteran|armed force|military|war widow)/.test(text)) return 'Support for Armed Forces Veterans'
+  if (/(rural|village|farmer|agri)/.test(text)) return 'Rural Development Projects'
+  if (/(slum|urban poor|informal settlement)/.test(text)) return 'Slum Area Development'
+  if (/(sport|athlete|coach|academy|paralympic|olympic)/.test(text)) return 'Sports Promotion'
+  if (/(disaster|flood|earthquake|cyclone|relief|rehabilitation)/.test(text)) return 'Disaster Management and Relief'
+  return 'Rural Development Projects'
 }
 
 const normalizeUrgency = (value?: string) => {
@@ -99,6 +118,7 @@ export default function NGOAIAgentPage() {
 
   const questions = [
     { key: 'projectTitle', question: 'What is the project title?' },
+    { key: 'projectCategory', question: `Which Schedule VII project category does this belong to? (${CSR_SCHEDULE_VII_CATEGORIES.join(', ')})` },
     { key: 'requestTitle', question: 'Great. What should be the request title?' },
     { key: 'requestType', question: 'What is the request type? (Material Need, Skill / Service Need, Infrastructure Project)' },
     { key: 'beneficiaryCount', question: 'How many beneficiaries will this request impact?' },
@@ -148,7 +168,8 @@ export default function NGOAIAgentPage() {
           title: data.projectTitle || 'Community Support Initiative',
           description: `Project focused on ${data.impactDescription || 'improving community outcomes through structured support.'}`,
           location: data.location || 'Location to be confirmed',
-          timeline: data.timeline || '3 months'
+          timeline: data.timeline || '3 months',
+          category: normalizeProjectCategory(data.projectCategory)
         },
         needs: [
           {

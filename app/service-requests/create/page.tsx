@@ -8,7 +8,7 @@ import { ArrowLeft, Loader2, Plus, Sparkles, CheckCircle2 } from 'lucide-react'
 import { Header } from '@/components/header'
 import ProtectedRoute from '@/components/protected-route'
 import { useAuth } from '@/lib/auth-context'
-import { SERVICE_REQUEST_CATEGORIES } from '@/lib/categories'
+import { CSR_SCHEDULE_VII_CATEGORIES, SERVICE_REQUEST_CATEGORIES } from '@/lib/categories'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -84,6 +84,7 @@ type AIGeneratedDraft = {
     description?: string
     location?: string
     timeline?: string
+    category?: string
   }
   needs?: Partial<NeedDraft>[]
 }
@@ -171,6 +172,7 @@ export default function CreateServiceRequestPage() {
     project_description: '',
     project_location: '',
     project_timeline: '',
+    project_category: '',
     title: '',
     description: '',
     request_type: '',
@@ -225,6 +227,7 @@ export default function CreateServiceRequestPage() {
         project_description: draft.project?.description || prev.project_description,
         project_location: draft.project?.location || prev.project_location,
         project_timeline: draft.project?.timeline || prev.project_timeline,
+        project_category: draft.project?.category || prev.project_category,
         location: draft.project?.location || prev.location,
         timeline: generatedNeeds[0]?.timeline || prev.timeline,
         title: generatedNeeds[0]?.title || prev.title,
@@ -520,14 +523,14 @@ export default function CreateServiceRequestPage() {
 
     const isBlank = (value: unknown) => !String(value ?? '').trim()
     const validateNeed = (need: NeedDraft, index: number): string | null => {
-      if (isBlank(need.title)) return `Need ${index + 1}: request title is required.`
-      if (String(need.title).trim().length < 3) return `Need ${index + 1}: request title must be at least 3 characters.`
+      if (isBlank(need.title)) return `Need ${index + 1}: need title is required.`
+      if (String(need.title).trim().length < 3) return `Need ${index + 1}: need title must be at least 3 characters.`
 
       if (isBlank(need.description)) return `Need ${index + 1}: need description is required.`
       if (String(need.description).trim().length < 20) return `Need ${index + 1}: need description must be at least 20 characters.`
 
-      if (isBlank(need.request_type)) return `Need ${index + 1}: request type is required.`
-      if (!SERVICE_REQUEST_CATEGORIES.includes(need.request_type)) return `Need ${index + 1}: select a valid request type.`
+      if (isBlank(need.request_type)) return `Need ${index + 1}: need type is required.`
+      if (!SERVICE_REQUEST_CATEGORIES.includes(need.request_type)) return `Need ${index + 1}: select a valid need type.`
 
       if (isBlank(need.timeline)) return `Need ${index + 1}: timeline / deadline is required.`
       if (!isValidTimelineValue(need.timeline)) {
@@ -567,7 +570,7 @@ export default function CreateServiceRequestPage() {
     }
 
     if (!user) {
-      setError('You must be logged in to create a service request')
+      setError('You must be logged in to create a need')
       return
     }
 
@@ -578,6 +581,11 @@ export default function CreateServiceRequestPage() {
 
     if (projectMode === 'new' && [formData.project_title, formData.project_description, formData.project_location, formData.project_timeline].some(isBlank)) {
       setError('Project title, description, exact address, and timeline are required.')
+      return
+    }
+
+    if (isBlank(formData.project_category) || !CSR_SCHEDULE_VII_CATEGORIES.includes(formData.project_category)) {
+      setError('Select a valid project category.')
       return
     }
 
@@ -650,7 +658,8 @@ export default function CreateServiceRequestPage() {
           description: formData.project_description,
           location: formData.project_location,
           exact_address: formData.project_location,
-          timeline: formData.project_timeline
+          timeline: formData.project_timeline,
+          category: formData.project_category
         }
       : null
 
@@ -696,7 +705,8 @@ export default function CreateServiceRequestPage() {
             title: need.title,
             description: need.description,
             request_type: need.request_type,
-            category: need.category,
+            category: formData.project_category,
+            project_category: formData.project_category,
             location: activeProjectLocation,
             urgency: need.urgency || 'medium',
             timeline: need.timeline,
@@ -713,7 +723,8 @@ export default function CreateServiceRequestPage() {
               project_title: formData.project_title,
               project_location: formData.project_location,
               project_description: formData.project_description,
-              project_timeline: formData.project_timeline
+                project_timeline: formData.project_timeline,
+                project_category: formData.project_category
             },
             details: {
               material_items: need.material_items,
@@ -756,7 +767,7 @@ export default function CreateServiceRequestPage() {
       const failure = creationResults.find((result) => !result.ok)
       setError(failure?.error || 'Failed to create all needs')
     } catch (err) {
-      setError('Error creating service request')
+      setError('Error creating need')
     } finally {
       setLoading(false)
     }
@@ -774,15 +785,15 @@ export default function CreateServiceRequestPage() {
               Back
             </Button>
 
-            <h1 className="text-3xl font-bold tracking-tight">Create NGO Request</h1>
+            <h1 className="text-3xl font-bold tracking-tight">Create NGO Need</h1>
             <p className="text-muted-foreground">Define a measurable need with clear beneficiary and impact outcomes.</p>
           </div>
 
           <div className="mx-auto w-full max-w-7xl">
             <Card>
               <CardHeader>
-                <CardTitle>Request Details</CardTitle>
-                <CardDescription>Every request must define who benefits, how many, and what measurable change will happen.</CardDescription>
+                <CardTitle>Need Details</CardTitle>
+                <CardDescription>Every need must define who benefits, how many, and what measurable change will happen.</CardDescription>
               </CardHeader>
 
               <CardContent>
@@ -799,7 +810,7 @@ export default function CreateServiceRequestPage() {
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div>
                         <h3 className="font-semibold">Project Context</h3>
-                        <p className="text-sm text-muted-foreground">Group this request under a broader initiative.</p>
+                        <p className="text-sm text-muted-foreground">Group this need under a broader initiative.</p>
                       </div>
                       <div className="flex w-full flex-wrap rounded-md border bg-background p-1 text-sm sm:w-auto">
                         <button type="button" onClick={() => setProjectMode('new')} className={`flex-1 rounded px-3 py-1.5 sm:flex-none ${projectMode === 'new' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'}`}>
@@ -813,6 +824,15 @@ export default function CreateServiceRequestPage() {
 
                     {projectMode === 'existing' ? (
                       <div className="space-y-3">
+                        <div>
+                          <Label htmlFor="project_category">Project Category *</Label>
+                          <StyledSelect
+                            value={formData.project_category}
+                            options={CSR_SCHEDULE_VII_CATEGORIES}
+                            placeholder="Select project category"
+                            onValueChange={(value) => handleSelect('project_category', value)}
+                          />
+                        </div>
                         <Label htmlFor="projectId">Select Project</Label>
                         <Select value={formData.projectId} onValueChange={handleProjectSelect}>
                           <SelectTrigger>
@@ -841,6 +861,15 @@ export default function CreateServiceRequestPage() {
                         <div>
                           <Label htmlFor="project_title">Project Title *</Label>
                           <Input id="project_title" name="project_title" value={formData.project_title} onChange={handleInput} placeholder="e.g., Rural Classroom Setup" required />
+                        </div>
+                        <div>
+                          <Label htmlFor="project_category">Project Category *</Label>
+                          <StyledSelect
+                            value={formData.project_category}
+                            options={CSR_SCHEDULE_VII_CATEGORIES}
+                            placeholder="Select project category"
+                            onValueChange={(value) => handleSelect('project_category', value)}
+                          />
                         </div>
                         <div>
                           <Label htmlFor="project_location">Project Exact Address *</Label>
@@ -890,7 +919,7 @@ export default function CreateServiceRequestPage() {
                               <div className="flex items-center justify-between gap-3">
                                 <div>
                                   <h3 className="font-semibold">Need {index + 1}</h3>
-                                  <p className="text-sm text-muted-foreground">Each need is saved as one request under the same project.</p>
+                                  <p className="text-sm text-muted-foreground">Each need is saved as one need entry under the same project.</p>
                                 </div>
                                 {index > 0 && (
                                   <Button type="button" variant="ghost" onClick={() => removeNeed(index)} className="text-red-600 hover:text-red-700 hover:bg-red-50">
@@ -901,7 +930,7 @@ export default function CreateServiceRequestPage() {
 
                               <div className="grid gap-4">
                                 <div>
-                                  <Label htmlFor={`title-${index}`}>Request Title *</Label>
+                                  <Label htmlFor={`title-${index}`}>Need Title *</Label>
                                   <Input id={`title-${index}`} value={need.title} onChange={(e) => updateNeed(index, 'title', e.target.value)} placeholder="e.g., School kit support for 300 students" required />
                                 </div>
 
@@ -911,19 +940,18 @@ export default function CreateServiceRequestPage() {
                                 </div>
 
                                 <div className="grid gap-4 md:grid-cols-2">
-                                  <div>
-                                    <Label htmlFor={`request_type-${index}`}>Request Type *</Label>
-                                    <StyledSelect
-                                      value={need.request_type}
-                                      options={SERVICE_REQUEST_CATEGORIES}
-                                      placeholder="Select request type"
-                                      onValueChange={(value) => {
-                                        updateNeed(index, 'request_type', value)
-                                        updateNeed(index, 'category', value)
-                                      }}
-                                    />
-                                  </div>
-
+                                                      <div>
+                                                        <Label htmlFor={`request_type-${index}`}>Need Type *</Label>
+                                                        <StyledSelect
+                                                          value={need.request_type}
+                                                          options={SERVICE_REQUEST_CATEGORIES}
+                                                          placeholder="Select need type"
+                                                          onValueChange={(value) => {
+                                                            updateNeed(index, 'request_type', value)
+                                                            updateNeed(index, 'category', value)
+                                                          }}
+                                                        />
+                                                      </div>
                                 </div>
 
                                 <div className="grid gap-4 md:grid-cols-2">
@@ -1110,7 +1138,7 @@ export default function CreateServiceRequestPage() {
                   </div>
                   <div className="flex flex-col gap-3 pt-6 sm:flex-row">
                     <Button type="submit" disabled={loading} className="w-full flex-1">
-                      {loading ? 'Creating...' : 'Create Execution Request'}
+                      {loading ? 'Creating...' : 'Create Execution Need'}
                     </Button>
                     <Button type="button" variant="outline" asChild className="w-full flex-1">
                       <Link href="/service-requests">Cancel</Link>

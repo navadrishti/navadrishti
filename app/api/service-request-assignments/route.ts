@@ -363,7 +363,7 @@ export async function GET(request: NextRequest) {
 
       const { data: project, error: projectError } = await supabase
         .from('service_request_projects')
-        .select('id, ngo_id, title, description, location, exact_address, timeline, status, updated_at, created_at, ngo:users!ngo_id(id, name, email)')
+        .select('id, ngo_id, title, description, location, exact_address, timeline, status, updated_at, created_at, ngo:users!ngo_id(id, name, email, location, city, state_province, country, phone, ngo_size, industry, pincode, profile_data)')
         .eq('id', projectId)
         .single()
 
