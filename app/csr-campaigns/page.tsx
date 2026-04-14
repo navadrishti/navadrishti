@@ -12,20 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { SkeletonServiceCard } from "@/components/ui/skeleton"
 import { Search, MapPin, Calendar, Users, Filter, Sparkles, ArrowRight } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
-
-const SCHEDULE_VII_CATEGORIES = [
-  "Eradicating Hunger, Poverty and Malnutrition",
-  "Promoting Healthcare and Sanitation",
-  "Education and Livelihood Enhancement",
-  "Gender Equality and Women Empowerment",
-  "Environmental Sustainability",
-  "Protection of Heritage, Art and Culture",
-  "Support for Armed Forces Veterans",
-  "Rural Development Projects",
-  "Slum Area Development",
-  "Sports Promotion",
-  "Disaster Management and Relief",
-] as const
+import { CSR_SCHEDULE_VII_CATEGORIES } from "@/lib/categories"
 
 const inferScheduleVIICategory = (cause: string) => {
   const normalized = cause.toLowerCase()
@@ -159,7 +146,7 @@ export default function CSRCampaignsPage() {
     loadCampaigns()
   }, [])
 
-  const categories = useMemo(() => ['all', ...SCHEDULE_VII_CATEGORIES], [])
+  const categories = useMemo(() => ['all', ...CSR_SCHEDULE_VII_CATEGORIES], [])
 
   const filteredCampaigns = campaigns.filter(campaign => {
     const matchesSearch = campaign.title.toLowerCase().includes(searchQuery.toLowerCase()) ||

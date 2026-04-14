@@ -226,7 +226,7 @@ export default function ServiceRequestDetailPage() {
       } else {
         toast({
           title: "Error",
-          description: "Failed to load service request details",
+          description: "Failed to load need details",
           variant: "destructive"
         })
         router.push('/service-requests')
@@ -235,7 +235,7 @@ export default function ServiceRequestDetailPage() {
       console.error('Error fetching request:', error)
       toast({
         title: "Error",
-        description: "Failed to load service request details",
+        description: "Failed to load need details",
         variant: "destructive"
       })
     } finally {
@@ -351,7 +351,7 @@ export default function ServiceRequestDetailPage() {
     if (!isAuthenticated || !user) {
       toast({
         title: "Authentication Required",
-        description: "Please log in to apply for this service request",
+        description: "Please log in to apply for this need",
         variant: "destructive"
       })
       router.push('/login')
@@ -361,7 +361,7 @@ export default function ServiceRequestDetailPage() {
     if (user.user_type === 'ngo') {
       toast({
         title: "Invalid User Type",
-        description: "NGOs create requests. Individuals can volunteer, and companies can fulfill via CSR.",
+        description: "NGOs create needs. Individuals can volunteer, and companies can fulfill via CSR.",
         variant: "destructive"
       })
       return
@@ -687,6 +687,13 @@ export default function ServiceRequestDetailPage() {
   })() as Record<string, any>
 
   const infoRequestType = String(parsedRequirements?.request_type || request?.category || 'Not specified')
+  const infoProjectCategory = String(
+    parsedRequirements?.project_category
+      || parsedRequirements?.project?.category
+      || parsedRequirements?.project_context?.project_category
+      || request?.category
+      || 'Not specified'
+  )
   const infoBudget = String(parsedRequirements?.estimated_budget || parsedRequirements?.budget || 'Not specified')
   const infoBeneficiaries = Number(parsedRequirements?.beneficiary_count || 0)
   const infoImpact = String(parsedRequirements?.impact_description || 'Not specified')
@@ -843,7 +850,7 @@ export default function ServiceRequestDetailPage() {
           <Alert>
             <XCircle className="h-4 w-4" />
             <AlertDescription>
-              Service request not found
+              Need not found
             </AlertDescription>
           </Alert>
         </div>
@@ -863,7 +870,7 @@ export default function ServiceRequestDetailPage() {
           </Button>
           {isNgoOwner && (
             <Link href={`/service-requests/edit/${request.id}`}>
-              <Button variant="outline" className="w-full sm:w-auto">Edit Request</Button>
+              <Button variant="outline" className="w-full sm:w-auto">Edit Need</Button>
             </Link>
           )}
         </div>
@@ -940,7 +947,7 @@ export default function ServiceRequestDetailPage() {
                 <Tabs defaultValue="details" className="w-full">
                   {showNeedTabList ? (
                     <TabsList className="grid w-full grid-cols-2">
-                      <TabsTrigger value="details">Request Details</TabsTrigger>
+                      <TabsTrigger value="details">Need Details</TabsTrigger>
                       <TabsTrigger value="volunteer">Volunteer</TabsTrigger>
                     </TabsList>
                   ) : null}
@@ -958,7 +965,7 @@ export default function ServiceRequestDetailPage() {
 
                     <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
                       <div>
-                        <p className="font-medium text-gray-500">Request Type</p>
+                        <p className="font-medium text-gray-500">Need Type</p>
                         <p className="font-semibold">{infoRequestType}</p>
                       </div>
                       <div>
@@ -997,6 +1004,10 @@ export default function ServiceRequestDetailPage() {
                           <p className="font-semibold">{linkedProject.title || 'Project'}</p>
                         </div>
                         <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                          <div>
+                            <p className="text-gray-500">Project Category</p>
+                            <p className="font-medium">{infoProjectCategory}</p>
+                          </div>
                           <div>
                             <p className="text-gray-500">Project Location</p>
                             <p className="font-medium">{linkedProject.location || request.location || 'Not specified'}</p>
@@ -1070,12 +1081,6 @@ export default function ServiceRequestDetailPage() {
                               {paying ? 'Starting Payment...' : 'Pay with Razorpay'}
                             </Button>
                           </div>
-                        )}
-
-                        {!canPayForRequest && request.status !== 'completed' && (
-                          <p className="text-xs text-muted-foreground">
-                            Verified individuals can contribute directly to Financial Need requests. Companies should fulfill via CSR projects.
-                          </p>
                         )}
 
                       </div>
@@ -1265,7 +1270,7 @@ export default function ServiceRequestDetailPage() {
                       <Alert>
                         <XCircle className="h-4 w-4" />
                         <AlertDescription>
-                          NGOs create requests. Only verified individuals can volunteer from need details.
+                          NGOs create needs. Only verified individuals can volunteer from need details.
                         </AlertDescription>
                       </Alert>
                     ) : user && user.verification_status !== 'verified' ? (
@@ -1297,7 +1302,7 @@ export default function ServiceRequestDetailPage() {
                         <Alert>
                           <CheckCircle className="h-4 w-4" />
                           <AlertDescription>
-                            You have already applied for this service request.
+                            You have already applied for this need.
                           </AlertDescription>
                         </Alert>
 

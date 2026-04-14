@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, supabase } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
+import { CSR_SCHEDULE_VII_CATEGORIES, SERVICE_REQUEST_TYPES } from '@/lib/categories';
 
 // Interface for JWT payload
 interface JWTPayload {
@@ -11,13 +12,6 @@ interface JWTPayload {
   name: string;
   verification_status?: string;
 }
-
-const REQUEST_TYPES = [
-  'Financial Need',
-  'Material Need',
-  'Skill / Service Need',
-  'Infrastructure Project'
-];
 
 function safeParseJson(value: unknown): Record<string, any> {
   if (!value) return {};
@@ -320,7 +314,8 @@ export async function GET(request: NextRequest) {
 
       const requirementsObj = safeParseJson(request.requirements);
       // Prefer direct DB columns, fall back to requirements JSON for legacy rows
-      request.request_type = request.request_type || requirementsObj.request_type || request.category || 'Skill / Service Need';
+      request.request_type = request.request_type || requirementsObj.request_type || (SERVICE_REQUEST_TYPES.includes(request.category) ? request.category : 'Skill / Service Need');
+      request.category = requirementsObj.project_category || requirementsObj?.project?.category || request.category || 'Uncategorized';
       request.estimated_budget = request.estimated_budget != null ? String(request.estimated_budget) : (requirementsObj.estimated_budget || requirementsObj.budget || 'Not specified');
       request.beneficiary_count = request.beneficiary_count != null ? Number(request.beneficiary_count) : Number(requirementsObj.beneficiary_count || 0);
       request.impact_description = request.impact_description || requirementsObj.impact_description || '';
@@ -525,7 +520,7 @@ export async function POST(request: NextRequest) {
 
       // Validate required fields
       const missingRequiredFields = [title, description, location, timeline, budget, contactInfo, impact_description].some((value) => !String(value ?? '').trim());
-      if (missingRequiredFields || !(request_type || category)) {
+      if (missingRequiredFields || !request_type || !(project_category || category)) {
         return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
       }
 
@@ -536,10 +531,19 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const normalizedRequestType = request_type || category;
-      if (!REQUEST_TYPES.includes(normalizedRequestType)) {
+      const normalizedRequestType = request_type;
+      const normalizedProjectCategory = project_category || category;
+
+      if (!SERVICE_REQUEST_TYPES.includes(normalizedRequestType)) {
         return NextResponse.json(
           { error: 'Invalid request_type. Use one of Financial Need, Material Need, Skill / Service Need, Infrastructure Project.' },
+          { status: 400 }
+        );
+      }
+
+      if (!CSR_SCHEDULE_VII_CATEGORIES.includes(normalizedProjectCategory)) {
+        return NextResponse.json(
+          { error: 'Invalid project_category. Select a valid Schedule VII category.' },
           { status: 400 }
         );
       }
@@ -582,8 +586,9 @@ export async function POST(request: NextRequest) {
 
       const projectContext = {
         ...(safeParseJson(project_context) || {}),
+        project_category: normalizedProjectCategory,
         project: resolvedProjectId
-          ? { id: resolvedProjectId, exact_address: resolvedProjectLocation }
+          ? { id: resolvedProjectId, exact_address: resolvedProjectLocation, category: normalizedProjectCategory }
           : projectPayload || null
       };
 
@@ -692,7 +697,7 @@ export async function POST(request: NextRequest) {
         ngo_id: userId,
         title: title,
         description: description,
-        category: normalizedRequestType,
+        category: normalizedProjectCategory,
         location: resolvedProjectLocation || location,
         urgency_level: mappedUrgency,
         volunteers_needed: 1, // default volunteers_needed

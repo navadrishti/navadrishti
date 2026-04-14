@@ -339,7 +339,8 @@ export default function PostPage({ params }: PostPageProps) {
     )
   }
 
-  const timeAgo = getTimeAgo(post.created_at || post.published_at || new Date().toISOString())
+  const postTimestamp = post.created_at || post.published_at || ''
+  const timeAgo = postTimestamp ? getTimeAgo(postTimestamp) : 'Unknown time'
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-slate-100">

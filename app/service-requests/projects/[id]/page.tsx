@@ -33,7 +33,20 @@ type ProjectDetailPayload = {
     exact_address?: string;
     timeline?: string;
     status?: string;
-    ngo?: { id: number; name: string; email?: string };
+    ngo?: {
+      id: number;
+      name: string;
+      email?: string;
+      location?: string;
+      city?: string;
+      state_province?: string;
+      country?: string;
+      phone?: string;
+      ngo_size?: string;
+      industry?: string;
+      pincode?: string;
+      profile_data?: Record<string, any>;
+    };
   };
   needs: NeedItem[];
   need_breakdown: {
@@ -240,6 +253,17 @@ export default function ServiceRequestProjectDetailPage() {
   const showProjectTabList = projectVisibleTabCount > 1;
   const canCompanyApply = user.user_type === 'company' && payload.csr_project_eligible_for_company_apply;
   const canCompanyManageCsr = user.user_type === 'company' && allVerified;
+  const ngo = payload.project.ngo;
+  const ngoProfileData = ngo?.profile_data || {};
+  const ngoLocation = ngo?.city && ngo?.state_province
+    ? `${ngo.city}, ${ngo.state_province}${ngo.country ? `, ${ngo.country}` : ''}`
+    : ngo?.location || payload.project.exact_address || payload.project.location || 'Location not set';
+  const ngoPhone = ngo?.phone || 'Phone not set';
+  const ngoSize = String(ngo?.ngo_size || ngoProfileData.ngo_size || 'NGO size not set');
+  const ngoSector = String(ngoProfileData.sector || ngo?.industry || 'Sector not set');
+  const ngoFounded = String(ngoProfileData.founded || ngoProfileData.founded_year || 'Founded year not set');
+  const ngoPincode = ngo?.pincode || 'Pincode not set';
+  const projectCategory = payload.needs.map((need) => String(need.category || '').trim()).find(Boolean) || 'Not specified';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
@@ -256,7 +280,7 @@ export default function ServiceRequestProjectDetailPage() {
           <div className="lg:col-span-4">
             <Card className="lg:sticky lg:top-20">
               <CardHeader>
-                <CardTitle>Project Organization</CardTitle>
+                <CardTitle>Requesting Organization</CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="h-28 w-28 md:h-32 md:w-32 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden mx-auto">
@@ -264,25 +288,42 @@ export default function ServiceRequestProjectDetailPage() {
                 </div>
 
                 <div>
-                  <h3 className="text-lg font-semibold">{payload.project.ngo?.name || 'NGO'}</h3>
-                  <p className="text-sm text-gray-500">{payload.project.ngo?.email || 'Email not set'}</p>
+                  <h3 className="text-lg font-semibold">{ngo?.name || 'NGO'}</h3>
+                  <p className="text-sm text-gray-500">{ngo?.email || 'Email not set'}</p>
                 </div>
 
-                <div className="space-y-4 text-sm">
+                <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
                   <div>
                     <p className="font-medium text-gray-500">Location</p>
-                    <p>{payload.project.exact_address || payload.project.location || 'Location not set'}</p>
+                    <p>{ngoLocation}</p>
                   </div>
                   <div>
-                    <p className="font-medium text-gray-500">Timeline</p>
-                    <p>{payload.project.timeline || 'Timeline not set'}</p>
+                    <p className="font-medium text-gray-500">Phone</p>
+                    <p>{ngoPhone}</p>
                   </div>
                   <div>
-                    <p className="font-medium text-gray-500">Project Status</p>
-                    <Badge className={`capitalize ${statusBadgeClass(payload.project.status || 'active')}`}>
-                      {String(payload.project.status || 'active').replace('_', ' ')}
-                    </Badge>
+                    <p className="font-medium text-gray-500">NGO Size</p>
+                    <p>{ngoSize}</p>
                   </div>
+                  <div>
+                    <p className="font-medium text-gray-500">Sector</p>
+                    <p>{ngoSector}</p>
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-500">Founded Year</p>
+                    <p>{ngoFounded}</p>
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-500">Pincode</p>
+                    <p>{ngoPincode}</p>
+                  </div>
+                </div>
+
+                <div className="space-y-1 text-sm">
+                  <p className="font-medium text-gray-500">Project Status</p>
+                  <Badge className={`capitalize ${statusBadgeClass(payload.project.status || 'active')}`}>
+                    {String(payload.project.status || 'active').replace('_', ' ')}
+                  </Badge>
                 </div>
               </CardContent>
             </Card>
@@ -304,6 +345,11 @@ export default function ServiceRequestProjectDetailPage() {
                     <div className="space-y-2">
                       <p className="text-sm font-medium text-gray-500">Project Title</p>
                       <p className="font-semibold text-lg">{payload.project.title}</p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium text-gray-500">Project Category</p>
+                      <p className="font-medium">{projectCategory}</p>
                     </div>
 
                     <div className="space-y-2">

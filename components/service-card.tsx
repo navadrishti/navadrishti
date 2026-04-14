@@ -315,6 +315,8 @@ export function ServiceCard({
   const requestType = requirementsData?.request_type || category;
   const isFinancialNeed = type === 'request' && String(requestType || '').toLowerCase().includes('financial');
   const projectContext = project || requirementsData?.project?.project || null;
+  const projectCategory = String(requirementsData?.project_category || projectContext?.category || category || '').trim();
+  const categoryLabel = type === 'request' ? 'Need Type' : 'Type';
   const beneficiaryCount = Number(requirementsData?.beneficiary_count || 0);
   const estimatedBudget = requirementsData?.estimated_budget || requirementsData?.budget;
   const fundingTargetInr = isFinancialNeed ? Number(String(requirementsData?.funding_target_inr || estimatedBudget || '').replace(/[^\d.-]/g, '')) : 0;
@@ -444,6 +446,9 @@ export function ServiceCard({
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-600">Project</p>
                 <p className="text-sm font-bold leading-snug text-blue-950">{projectContext.title}</p>
+                {projectCategory && (
+                  <p className="mt-1 text-xs font-medium text-blue-700">Project Category: {projectCategory}</p>
+                )}
               </div>
               {projectContext?.id ? (
                 <Link href={`/service-requests/projects/${projectContext.id}`}>
@@ -510,9 +515,9 @@ export function ServiceCard({
           <div className="space-y-1">
             <div className="flex items-center gap-1.5 text-gray-500">
               <Target size={14} />
-              <span className="text-xs font-medium">Category</span>
+              <span className="text-xs font-medium">{categoryLabel}</span>
             </div>
-            <p className="text-sm font-semibold text-blue-700 truncate">{category}</p>
+            <p className="text-sm font-semibold text-blue-700 truncate">{type === 'request' ? requestType : category}</p>
           </div>
 
           {type === 'request' && effectiveRequestUrgency && (
