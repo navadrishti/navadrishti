@@ -19,6 +19,7 @@ export const generateCampaignsInputSchema = z.object({
   start_date:     z.string().min(1),
   end_date:       z.string().min(1),
   milestone_info: z.array(requestMilestoneSchema).optional(),
+  requirementDetails: z.string().trim().optional(),
 });
 
 // Milestone returned by the LLM in the response
@@ -96,6 +97,7 @@ function buildPrompt(input: GenerateCampaignsInput): string {
     end_date,
     milestones,
     milestone_info,
+    requirementDetails,
   } = input;
 
   return `
@@ -114,9 +116,9 @@ COMPANY REQUIREMENTS
 - Location: ${location}
 - Start Date: ${start_date}
 - End Date: ${end_date}
-- Timeline: ${start_date} to ${end_date}
 - Milestones: ${milestones}
 - User defined Milestone Details: ${JSON.stringify(milestone_info ?? [])}
+- Additional Requirement Details: ${requirementDetails}
 
 -----------------------------------
 REAL-WORLD RULES
@@ -140,15 +142,14 @@ Each campaign must clearly state:
 
 4. **Milestone Enhancement**
 For each milestone:
-- Add realistic, action-oriented description (max 35 words)
 - Assign logical duration_weeks
 - Define exactly 3 clear, measurable deliverables
 
 5. **Diversity (Zero Overlap)**
-Generate EXACTLY 3 campaigns with distinct approaches:
-- Campaign 1: Infrastructure-based (facilities, labs, construction)
-- Campaign 2: Training/Service-based (skill programs, mobile units, workshops)
-- Campaign 3: Distribution-based (kits, devices, last-mile logistics)
+Generate EXACTLY 3 campaigns, each solving the problem through a different operational "Lever":
+- **Campaign 1 (Direct Implementation):** Use ${JSON.stringify(milestone_info ?? [])} as the direct blueprint. Focus on infrastructure and physical build.
+- **Campaign 2 (Capacity Building):** Pivot toward training, workshops, and institutional strengthening. Adapt milestones to focus on "Human Capital."
+- **Campaign 3 (Access & Distribution):** Pivot toward kits, logistics, and last-mile resource delivery. Adapt milestones to focus on "Tangible Goods."
 
 -----------------------------------
 STRICT RULES
@@ -158,6 +159,9 @@ STRICT RULES
 - Output MUST be raw, valid JSON
 - NO markdown, NO code blocks, NO extra text, NO conversational filler
 - Use numbers for all budget/time fields, not strings
+- For Campaign 1: Strictly use the descriptions and budgets from ${JSON.stringify(milestone_info ?? [])}. Do not alter them.
+- For Campaigns 2 & 3: ADAPT milestone descriptions and deliverables to match their respective lever (Capacity Building or Access & Distribution).
+- Do not reuse milestone titles, descriptions, or logic from Campaign 1 in Campaigns 2 or 3. Each campaign must have a completely unique operational roadmap.
 
 -----------------------------------
 OUTPUT FORMAT
@@ -167,7 +171,7 @@ OUTPUT FORMAT
   "campaigns": [
     {
       "title": "string",
-      "description": "max 40 words: execution method, beneficiary ID, ground steps in ${location}",
+      "description": "max 40 words: execution method, beneficiary ID, ground steps in ${location} with respect to ${requirementDetails}",
       "category": "${category}",
       "location": "${location}",
       "budget_inr": ${budget},
