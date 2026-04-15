@@ -214,6 +214,7 @@ export default function CSRAgentPage() {
           description: milestone.description,
           budget_allocated: Number(milestone.budgetTarget),
         })),
+        requirementDetails: formData.requirementDetails,
       }
 
       const response = await fetch("/api/csr-agent/generate-campaigns", {

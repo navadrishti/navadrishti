@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     try {
       campaigns = await generateCampaigns(validation.data);
     } catch (err) {
-      console.error("OpenRouter error:", err);
+      console.error("LLM error:", err);
 
       const message = err instanceof Error ? err.message : "LLM call failed";
       const status = message.includes(" 429:") ? 429 : 502;
