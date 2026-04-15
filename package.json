@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test:llm": "npx tsx tests/llm.smoke.ts",
+    "test:llm": "npx tsx tests/gemini.smoke.ts",
     "build:vercel": "npm run build && npm run lint",
     "migrate:safe": "npx tsx scripts/safe-migration.ts",
     "migrate:verify": "npx tsx scripts/verify-migration.ts",

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { OpenRouterChat } from "@/lib/openrouterClient";
+import { GeminiChat, GeminiError } from "@/lib/geminiClient";
 import { parseJson } from "./json-parser";
 
 /* ───────────────── SCHEMAS ───────────────── */
@@ -211,9 +211,10 @@ OUTPUT FORMAT
 
 export async function generateCampaigns(input: GenerateCampaignsInput): Promise<Campaign[]> {
   const prompt = buildPrompt(input);
-  const raw = await OpenRouterChat([{ role: "user", content: prompt }]);
+  
 
   try {
+    const raw = await GeminiChat([{ role: "user", content: prompt }]);
     const parsed = parseJson(raw);
     const result = campaignResponseSchema.safeParse(parsed);
 
@@ -224,6 +225,10 @@ export async function generateCampaigns(input: GenerateCampaignsInput): Promise<
 
     return result.data.campaigns;
   } catch (err) {
+    if (err instanceof GeminiError) {
+      console.error("Gemini API error:", err.message);
+    } 
+
     console.error("JSON parse failed:", err);
     throw new Error("Failed to parse LLM response");
   }
