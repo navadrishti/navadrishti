@@ -5,9 +5,6 @@ import { JWT_SECRET } from '@/lib/auth';
 
 interface JWTPayload {
   id: number;
-  user_type: string;
-  email: string;
-  name: string;
 }
 
 export async function GET(request: NextRequest) {
@@ -24,7 +21,7 @@ export async function GET(request: NextRequest) {
     const { data: offers, error: offersError } = await supabase
       .from('service_offers')
       .select('id, title')
-      .eq('ngo_id', ownerId)
+      .eq('creator_id', ownerId)
       .order('created_at', { ascending: false });
 
     if (offersError) {
@@ -43,10 +40,8 @@ export async function GET(request: NextRequest) {
       .select(`
         id,
         service_offer_id,
-        client_id,
         message,
         status,
-        created_at,
         response_meta,
         client:users!client_id(name, email, user_type)
       `)
@@ -62,7 +57,11 @@ export async function GET(request: NextRequest) {
       const isAssigned = typeof meta.isAssigned === 'boolean' ? meta.isAssigned : request.status === 'accepted';
 
       return {
-        ...request,
+        id: request.id,
+        service_offer_id: request.service_offer_id,
+        client: request.client,
+        message: request.message,
+        status: request.status,
         offer_title: offerTitleMap.get(request.service_offer_id) || `Offer #${request.service_offer_id}`,
         isAssigned
       };

@@ -25,19 +25,9 @@ type FormData = {
   description: string
   offer_type: OfferType
   transaction_type: TransactionType
-  sell_amount: number | ''
-  rent_per_day: number | ''
   amount: number | ''
   location_scope: string
   conditions: string
-  item: string
-  quantity: number | ''
-  delivery_scope: string
-  skill: string
-  capacity: string
-  duration: string
-  scope: string
-  budget_range: string
 }
 
 const OFFER_TYPES: { value: OfferType; label: string }[] = [
@@ -57,24 +47,6 @@ const toNumberOrEmpty = (value: unknown): number | '' => {
   if (value === null || value === undefined || value === '') return ''
   const numericValue = Number(value)
   return Number.isFinite(numericValue) ? numericValue : ''
-}
-
-const toStringOrEmpty = (value: unknown): string => {
-  if (value === null || value === undefined) return ''
-  return String(value)
-}
-
-const parseInfrastructureMeta = (rawConditions: unknown): { budgetRange: string; details: string } => {
-  const text = typeof rawConditions === 'string' ? rawConditions : ''
-  if (!text) return { budgetRange: '', details: '' }
-
-  const match = text.match(/budget\s*range\s*:\s*([^|]+)/i)
-  const budgetRange = match?.[1]?.trim() || ''
-  const details = text
-    .replace(/budget\s*range\s*:\s*([^|]+)\|?/i, '')
-    .trim()
-
-  return { budgetRange, details }
 }
 
 const isOfferType = (value: unknown): value is OfferType => {
@@ -99,24 +71,14 @@ export default function EditServiceOfferPage({ params }: { params: Promise<{ id:
     description: '',
     offer_type: 'financial',
     transaction_type: 'sell',
-    sell_amount: '',
-    rent_per_day: '',
     amount: '',
     location_scope: '',
-    conditions: '',
-    item: '',
-    quantity: '',
-    delivery_scope: '',
-    skill: '',
-    capacity: '',
-    duration: '',
-    scope: '',
-    budget_range: ''
+    conditions: ''
   })
 
   const handleInput = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
-    const numericFields = new Set(['amount', 'quantity', 'sell_amount', 'rent_per_day'])
+    const numericFields = new Set(['amount'])
 
     setFormData((prev) => ({
       ...prev,
@@ -128,91 +90,19 @@ export default function EditServiceOfferPage({ params }: { params: Promise<{ id:
     setFormData((prev) => ({ ...prev, [name]: value }))
   }
 
-  const buildOfferDetailsPayload = () => {
-    const resolvedAmount = formData.transaction_type === 'volunteer'
-      ? 0
-      : formData.transaction_type === 'rent'
-        ? (formData.rent_per_day === '' ? null : Number(formData.rent_per_day))
-        : (formData.sell_amount === '' ? null : Number(formData.sell_amount))
-
-    switch (formData.offer_type) {
-      case 'financial':
-        return {
-          amount: resolvedAmount,
-          location_scope: formData.location_scope,
-          conditions: formData.conditions
-        }
-      case 'material':
-        return {
-          item: formData.item,
-          quantity: formData.quantity,
-          delivery_scope: formData.delivery_scope
-        }
-      case 'service':
-        return {
-          skill: formData.skill,
-          capacity: formData.capacity,
-          duration: formData.duration
-        }
-      case 'infrastructure':
-        return {
-          scope: formData.scope,
-          capacity: formData.capacity,
-          budget_range: formData.budget_range
-        }
-      default:
-        return {}
-    }
-  }
-
-  const buildTransactionPayload = () => {
+  const buildResolvedAmount = () => {
     if (formData.transaction_type === 'volunteer') {
-      return {
-        transaction_type: 'volunteer' as TransactionType,
-        sell_amount: 0,
-        rent_per_day: 0
-      }
+      return 0
     }
-
-    if (formData.transaction_type === 'rent') {
-      return {
-        transaction_type: 'rent' as TransactionType,
-        sell_amount: null,
-        rent_per_day: formData.rent_per_day
-      }
-    }
-
-    return {
-      transaction_type: 'sell' as TransactionType,
-      sell_amount: formData.sell_amount,
-      rent_per_day: 0
-    }
-  }
-
-  const hasOfferSpecificFields = () => {
-    switch (formData.offer_type) {
-      case 'financial':
-        return !!formData.location_scope.trim()
-      case 'material':
-        return !!formData.item.trim() && formData.quantity !== '' && !!formData.delivery_scope.trim()
-      case 'service':
-        return !!formData.skill.trim() && formData.capacity !== '' && !!formData.duration.trim()
-      case 'infrastructure':
-        return !!formData.scope.trim() && formData.capacity !== '' && !!formData.budget_range.trim()
-      default:
-        return false
-    }
+    return formData.amount === '' ? null : Number(formData.amount)
   }
 
   const hasTransactionSpecificFields = () => {
     switch (formData.transaction_type) {
       case 'volunteer':
         return true
-      case 'rent':
-        return formData.rent_per_day !== '' && Number(formData.rent_per_day) > 0
-      case 'sell':
       default:
-        return formData.sell_amount !== '' && Number(formData.sell_amount) > 0
+        return formData.amount !== '' && Number(formData.amount) > 0
     }
   }
 
@@ -235,26 +125,14 @@ export default function EditServiceOfferPage({ params }: { params: Promise<{ id:
 
         const offer = data?.data ?? data
 
-        const infrastructureMeta = parseInfrastructureMeta(offer.conditions)
-
         setFormData({
           title: offer.title || '',
           description: offer.description || '',
           offer_type: isOfferType(offer.offer_type) ? offer.offer_type : 'financial',
           transaction_type: isTransactionType(offer.transaction_type) ? offer.transaction_type : 'sell',
-          sell_amount: toNumberOrEmpty(offer.sell_amount),
-          rent_per_day: toNumberOrEmpty(offer.rent_per_day),
           amount: toNumberOrEmpty(offer.amount),
           location_scope: offer.location_scope || '',
-          conditions: infrastructureMeta.details || offer.conditions || '',
-          item: offer.item || '',
-          quantity: toNumberOrEmpty(offer.quantity),
-          delivery_scope: offer.delivery_scope || '',
-          skill: offer.skill || '',
-          capacity: toStringOrEmpty(offer.capacity),
-          duration: offer.duration || '',
-          scope: offer.scope || '',
-          budget_range: infrastructureMeta.budgetRange
+          conditions: offer.conditions || ''
         })
       } catch (error) {
         toast({
@@ -284,7 +162,7 @@ export default function EditServiceOfferPage({ params }: { params: Promise<{ id:
       return
     }
 
-    if (!hasOfferSpecificFields()) {
+    if (!formData.location_scope.trim()) {
       toast({ title: 'Validation Error', description: 'Please complete all required offer details.', variant: 'destructive' })
       return
     }
@@ -307,8 +185,10 @@ export default function EditServiceOfferPage({ params }: { params: Promise<{ id:
           title: formData.title,
           description: formData.description,
           offer_type: formData.offer_type,
-          ...buildTransactionPayload(),
-          ...buildOfferDetailsPayload()
+          transaction_type: formData.transaction_type,
+          amount: buildResolvedAmount(),
+          location_scope: formData.location_scope,
+          conditions: formData.conditions
         })
       })
 
@@ -414,186 +294,47 @@ export default function EditServiceOfferPage({ params }: { params: Promise<{ id:
               <Card>
                 <CardHeader>
                   <CardTitle>Offer Details</CardTitle>
-                  <CardDescription>Provide details specific to the selected offer type.</CardDescription>
+                  <CardDescription>Provide the core fields used for all capability offers.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {formData.transaction_type === 'sell' && (
-                      <div>
-                        <Label htmlFor="sell_amount">Amount (₹) *</Label>
-                        <Input
-                          id="sell_amount"
-                          name="sell_amount"
-                          type="number"
-                          min="0"
-                          value={formData.sell_amount}
-                          onChange={handleInput}
-                          placeholder="e.g., 25000"
-                          required
-                        />
-                      </div>
-                    )}
-
-                    {formData.transaction_type === 'rent' && (
-                      <div>
-                        <Label htmlFor="rent_per_day">Per Day Charge (₹) *</Label>
-                        <Input
-                          id="rent_per_day"
-                          name="rent_per_day"
-                          type="number"
-                          min="0"
-                          value={formData.rent_per_day}
-                          onChange={handleInput}
-                          placeholder="e.g., 1500"
-                          required
-                        />
-                      </div>
-                    )}
-
+                    <div>
+                      <Label htmlFor="amount">Amount (₹){formData.transaction_type === 'volunteer' ? '' : ' *'}</Label>
+                      <Input
+                        id="amount"
+                        name="amount"
+                        type="number"
+                        min="0"
+                        value={formData.transaction_type === 'volunteer' ? 0 : formData.amount}
+                        onChange={handleInput}
+                        placeholder="e.g., 25000"
+                        required={formData.transaction_type !== 'volunteer'}
+                        disabled={formData.transaction_type === 'volunteer'}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="location_scope">Location Scope *</Label>
+                      <Input
+                        id="location_scope"
+                        name="location_scope"
+                        value={formData.location_scope}
+                        onChange={handleInput}
+                        placeholder="e.g., India, North India, NCR"
+                        required
+                      />
+                    </div>
                   </div>
-
-                  {formData.offer_type === 'financial' && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="md:col-span-2">
-                        <Label htmlFor="location_scope">Location Scope *</Label>
-                        <Input
-                          id="location_scope"
-                          name="location_scope"
-                          value={formData.location_scope}
-                          onChange={handleInput}
-                          placeholder="e.g., India, North India, NCR"
-                          required
-                        />
-                      </div>
-                      <div className="md:col-span-2">
-                        <Label htmlFor="conditions">Conditions</Label>
-                        <Textarea
-                          id="conditions"
-                          name="conditions"
-                          value={formData.conditions}
-                          onChange={handleInput}
-                          placeholder="Mention any disbursal conditions or eligibility constraints"
-                          rows={3}
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {formData.offer_type === 'material' && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="item">Item Name *</Label>
-                        <Input
-                          id="item"
-                          name="item"
-                          value={formData.item}
-                          onChange={handleInput}
-                          placeholder="e.g., Blankets, School Kits, Medical Supplies"
-                          required
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="quantity">Quantity *</Label>
-                        <Input
-                          id="quantity"
-                          name="quantity"
-                          type="number"
-                          min="0"
-                          value={formData.quantity}
-                          onChange={handleInput}
-                          placeholder="e.g., 1000"
-                          required
-                        />
-                      </div>
-                      <div className="md:col-span-2">
-                        <Label htmlFor="delivery_scope">Delivery Scope *</Label>
-                        <Input
-                          id="delivery_scope"
-                          name="delivery_scope"
-                          value={formData.delivery_scope}
-                          onChange={handleInput}
-                          placeholder="e.g., North India, NCR, Pan India"
-                          required
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {formData.offer_type === 'service' && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="skill">Skill Offered *</Label>
-                        <Input
-                          id="skill"
-                          name="skill"
-                          value={formData.skill}
-                          onChange={handleInput}
-                          placeholder="e.g., Legal Advisory, Content Design, Medical Assistance"
-                          required
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="capacity">Capacity *</Label>
-                        <Input
-                          id="capacity"
-                          name="capacity"
-                          value={formData.capacity}
-                          onChange={handleInput}
-                          placeholder="e.g., 10 volunteers"
-                          required
-                        />
-                      </div>
-                      <div className="md:col-span-2">
-                        <Label htmlFor="duration">Duration *</Label>
-                        <Input
-                          id="duration"
-                          name="duration"
-                          value={formData.duration}
-                          onChange={handleInput}
-                          placeholder="e.g., 3 months"
-                          required
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {formData.offer_type === 'infrastructure' && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="scope">Infrastructure Scope *</Label>
-                        <Input
-                          id="scope"
-                          name="scope"
-                          value={formData.scope}
-                          onChange={handleInput}
-                          placeholder="e.g., Construction"
-                          required
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="capacity">Capacity *</Label>
-                        <Input
-                          id="capacity"
-                          name="capacity"
-                          value={formData.capacity}
-                          onChange={handleInput}
-                          placeholder="e.g., 2 schools"
-                          required
-                        />
-                      </div>
-                      <div className="md:col-span-2">
-                        <Label htmlFor="budget_range">Budget Range *</Label>
-                        <Input
-                          id="budget_range"
-                          name="budget_range"
-                          value={formData.budget_range}
-                          onChange={handleInput}
-                          placeholder="e.g., Rs 10L to Rs 20L"
-                          required
-                        />
-                      </div>
-                    </div>
-                  )}
+                  <div>
+                    <Label htmlFor="conditions">Conditions</Label>
+                    <Textarea
+                      id="conditions"
+                      name="conditions"
+                      value={formData.conditions}
+                      onChange={handleInput}
+                      placeholder="Mention any conditions or eligibility constraints"
+                      rows={3}
+                    />
+                  </div>
                 </CardContent>
               </Card>
 

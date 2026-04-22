@@ -44,7 +44,7 @@ export async function GET(request: Request) {
     const { count: offersCount } = await supabase
       .from('service_offers')
       .select('*', { count: 'exact' })
-      .eq('ngo_id', userId)
+      .eq('creator_id', userId)
 
     // Count volunteer and client participation
     const { count: volunteerCount } = await supabase
