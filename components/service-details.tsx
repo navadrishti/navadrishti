@@ -19,7 +19,7 @@ interface ServiceDetailsProps {
   location?: string
   images?: string[]
   ngo_name: string
-  ngo_id: number
+  creator_id?: number
   provider?: string
   providerType?: string
   provider_profile_image?: string | null
@@ -95,7 +95,6 @@ export function ServiceDetails({
   location,
   images,
   ngo_name,
-  ngo_id,
   provider,
   providerType = 'ngo',
   provider_profile_image,

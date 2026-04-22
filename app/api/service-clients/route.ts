@@ -20,8 +20,8 @@ export async function GET(request: NextRequest) {
         service_offers!inner(
           title,
           description,
-          ngo_id,
-          users!service_offers_ngo_id_fkey(
+          creator_id,
+          users!creator_id(
             name,
             profile_image
           )
@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
       ...c,
       offer_title: c.service_offers.title,
       offer_description: c.service_offers.description,
-      ngo_id: c.service_offers.ngo_id,
+      ngo_id: c.service_offers.creator_id,
       ngo_name: c.service_offers.users.name,
       ngo_image: c.service_offers.users.profile_image
     })) || []

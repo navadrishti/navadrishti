@@ -49,7 +49,7 @@ async function deleteUserData(userId: number, userEmail: string) {
     const serviceOffers = await supabase
       .from('service_offers')
       .select('id')
-      .eq('ngo_id', userId);
+      .eq('creator_id', userId);
     
     if (serviceOffers.data && serviceOffers.data.length > 0) {
       const offerIds = serviceOffers.data.map((offer: any) => offer.id);
@@ -64,7 +64,7 @@ async function deleteUserData(userId: number, userEmail: string) {
       await supabase
         .from('service_offers')
         .delete()
-        .eq('ngo_id', userId);
+        .eq('creator_id', userId);
     }
     
     // Delete volunteer applications by user

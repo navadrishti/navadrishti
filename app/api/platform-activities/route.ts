@@ -66,7 +66,7 @@ export async function GET() {
           description,
           category,
           created_at,
-          provider:users!provider_id (
+          provider:users!creator_id (
             id,
             name,
             profile_image,

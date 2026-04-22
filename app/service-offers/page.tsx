@@ -230,7 +230,7 @@ export default function ServiceOffersPage() {
                       location={offer.location}
                       images={offer.images}
                       ngo_name={getOfferProviderName(offer)}
-                      ngo_id={offer.ngo_id}
+                      creator_id={offer.creator_id}
                       provider={getOfferProviderName(offer)}
                       providerType={getOfferProviderType(offer)}
                       verified={offer.verified}
@@ -255,8 +255,8 @@ export default function ServiceOffersPage() {
                       type="offer"
                       onDelete={() => handleDeleteOffer(offer.id)}
                       isDeleting={deleting === offer.id}
-                      showDeleteButton={!!(user && user.id === offer.ngo_id)}
-                      isOwner={!!(user && user.id === offer.ngo_id)}
+                      showDeleteButton={!!(user && user.id === offer.creator_id)}
+                      isOwner={!!(user && user.id === offer.creator_id)}
                       canInteract={true}
                     />
                   ))}

@@ -47,7 +47,7 @@ interface ServiceOffer {
   price_description: string
   contact_info: string
   ngo_name: string
-  ngo_id: number
+  creator_id: number
   provider_name?: string
   provider_type?: 'ngo' | 'company' | 'individual' | string
   provider_profile_image?: string | null
@@ -91,7 +91,7 @@ export default function ServiceOfferDetailPage() {
   const offerId = params.id as string
   const isAuthenticated = !!(user && token)
   const effectiveUserType = isHydrated ? user?.user_type : undefined
-  const canApplyToOffer = !!user && user.id !== offer?.ngo_id
+  const canApplyToOffer = !!user && user.id !== offer?.creator_id
   const canShowRespondTab = !isAuthenticated || canApplyToOffer
   const offerVisibleTabCount = canShowRespondTab ? 2 : 1
   const showOfferTabList = offerVisibleTabCount > 1
@@ -158,7 +158,7 @@ export default function ServiceOfferDetailPage() {
       return
     }
 
-    if (offer && user.id === offer.ngo_id) {
+    if (offer && user.id === offer.creator_id) {
       toast({
         title: "Not Allowed",
         description: "You cannot respond to your own capability offer",
@@ -387,7 +387,7 @@ export default function ServiceOfferDetailPage() {
                       location={offer.location}
                       images={offer.images}
                       ngo_name={offer.provider_name || offer.ngo_name}
-                      ngo_id={offer.ngo_id}
+                      creator_id={offer.creator_id}
                       provider={offer.provider_name || offer.ngo_name}
                       providerType={offer.provider_type || 'ngo'}
                       provider_profile_image={offer.provider_profile_image}

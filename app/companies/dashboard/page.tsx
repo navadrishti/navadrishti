@@ -24,7 +24,6 @@ interface OfferRequestItem {
   id: number;
   service_offer_id: number;
   offer_title: string;
-  client_id: number;
   client?: {
     name?: string;
     email?: string;
@@ -33,7 +32,6 @@ interface OfferRequestItem {
   message?: string;
   status: 'pending' | 'accepted' | 'rejected' | 'active' | 'completed' | 'cancelled';
   isAssigned: boolean;
-  created_at: string;
 }
 
 interface CompanyProjectOpportunity {

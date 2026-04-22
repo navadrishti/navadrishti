@@ -59,6 +59,7 @@ const toNonNegativeNumber = (value: unknown): number | null => {
 
 const buildTransactionDetails = (body: Record<string, any>) => {
   const transactionType = body.transaction_type;
+  const normalizedAmount = toNonNegativeNumber(body.amount ?? body.sell_amount ?? body.rent_per_day);
 
   if (!TRANSACTION_TYPES.includes(transactionType)) {
     return {};
@@ -76,13 +77,13 @@ const buildTransactionDetails = (body: Record<string, any>) => {
     return {
       transaction_type: 'rent',
       sell_amount: null,
-      rent_per_day: toNonNegativeNumber(body.rent_per_day)
+      rent_per_day: normalizedAmount
     };
   }
 
   return {
     transaction_type: 'sell',
-    sell_amount: toNonNegativeNumber(body.sell_amount),
+    sell_amount: normalizedAmount,
     rent_per_day: 0
   };
 };
@@ -135,52 +136,19 @@ const normalizeOffer = (offer: any) => {
 const buildOfferDetails = (body: Record<string, any>) => {
   const offerType = body.offer_type;
   const transactionDetails = buildTransactionDetails(body);
-  const resolvedFinancialAmount = body.amount ?? (
+  const resolvedAmount = toNonNegativeNumber(body.amount ?? (
     transactionDetails.transaction_type === 'volunteer'
       ? 0
       : transactionDetails.transaction_type === 'rent'
         ? (transactionDetails.rent_per_day ?? null)
         : (transactionDetails.sell_amount ?? null)
-  );
-  let offerDetails: Record<string, any>;
-
-  switch (offerType) {
-    case 'financial':
-      offerDetails = {
-        offer_type: offerType,
-        amount: resolvedFinancialAmount,
-        location_scope: body.location_scope || null,
-        conditions: body.conditions || null
-      };
-      break;
-    case 'material':
-      offerDetails = {
-        offer_type: offerType,
-        item: body.item || null,
-        quantity: body.quantity ?? null,
-        delivery_scope: body.delivery_scope || null
-      };
-      break;
-    case 'service':
-      offerDetails = {
-        offer_type: offerType,
-        skill: body.skill || null,
-        capacity: body.capacity ?? null,
-        duration: body.duration || null
-      };
-      break;
-    case 'infrastructure':
-      offerDetails = {
-        offer_type: offerType,
-        scope: body.scope || null,
-        capacity: body.capacity ?? null,
-        budget_range: body.budget_range || null,
-        conditions: body.conditions || null
-      };
-      break;
-    default:
-      offerDetails = { offer_type: offerType };
-  }
+  ));
+  const offerDetails: Record<string, any> = {
+    offer_type: offerType,
+    amount: resolvedAmount,
+    location_scope: String(body.location_scope || '').trim() || null,
+    conditions: String(body.conditions || '').trim() || null
+  };
 
   return {
     ...offerDetails,
@@ -188,54 +156,36 @@ const buildOfferDetails = (body: Record<string, any>) => {
   };
 };
 
-const hasRequiredOfferFields = (offerType: string, details: Record<string, any>) => {
-  switch (offerType) {
-    case 'financial':
-      return details.amount !== null && details.amount !== undefined && String(details.location_scope || '').trim();
-    case 'material':
-      return String(details.item || '').trim() && details.quantity !== null && details.quantity !== undefined && String(details.delivery_scope || '').trim();
-    case 'service':
-      return String(details.skill || '').trim() && String(details.capacity || '').trim() && String(details.duration || '').trim();
-    case 'infrastructure':
-      return String(details.scope || '').trim() && String(details.capacity || '').trim() && String(details.budget_range || '').trim();
-    default:
-      return false;
-  }
+const hasRequiredOfferFields = (_offerType: string, details: Record<string, any>) => {
+  return String(details.location_scope || '').trim().length > 0;
 };
 
 const hasRequiredTransactionFields = (details: Record<string, any>) => {
   const transactionType = details.transaction_type;
+  const amount = Number(details.amount ?? details.sell_amount ?? details.rent_per_day ?? 0);
 
   if (transactionType === 'volunteer') {
     return true;
   }
 
   if (transactionType === 'rent') {
-    return details.rent_per_day !== null && details.rent_per_day !== undefined && Number(details.rent_per_day) > 0;
+    return Number.isFinite(amount) && amount > 0;
   }
 
   if (transactionType === 'sell') {
-    return details.sell_amount !== null && details.sell_amount !== undefined && Number(details.sell_amount) > 0;
+    return Number.isFinite(amount) && amount > 0;
   }
 
   return false;
 };
 
 const getLegacyPricing = (offerType: string, details: Record<string, any>) => {
-  if (offerType === 'financial') {
-    const amount = Number(details.amount || 0);
+  const amount = Number(details.amount || details.sell_amount || details.rent_per_day || 0);
+  if (amount > 0) {
     return {
-      price_type: amount > 0 ? 'fixed' : 'negotiable',
+      price_type: 'fixed',
       price_amount: amount,
-      price_description: details.location_scope || 'Financial support'
-    };
-  }
-
-  if (offerType === 'material') {
-    return {
-      price_type: 'donation',
-      price_amount: 0,
-      price_description: details.item || 'Material support'
+      price_description: details.location_scope || `${offerType} support`
     };
   }
 
@@ -327,7 +277,7 @@ export async function GET(request: NextRequest) {
       .from('service_offers')
       .select(`
         *,
-        ngo:users!ngo_id(
+        ngo:users!creator_id(
           id,
           name,
           email,
@@ -358,7 +308,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (view === 'my-offers' && authenticatedUserId) {
-      query = query.eq('ngo_id', authenticatedUserId);
+      query = query.eq('creator_id', authenticatedUserId);
     }
 
     const { data: offers, error } = await query;
@@ -551,8 +501,7 @@ export async function POST(request: NextRequest) {
     const resolvedPricing = getTransactionPricing(offerDetails, legacyPricing);
 
     const offerData = {
-      // TODO: rename column to creator_id in DB to reflect companies/individuals
-      ngo_id: userId,
+      creator_id: userId,
       title: body.title,
       description: body.description,
       offer_type: body.offer_type,
