@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     // Handle case where admin approval columns might not exist yet
     let selectQuery = `
       *,
-      organization:ngo_id (
+      organization:creator_id (
         id,
         name,
         email,

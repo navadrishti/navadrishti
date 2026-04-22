@@ -343,7 +343,7 @@ export const db = {
     async getAll(filters: any = {}) {
       let query = supabase.from('service_offers').select(`
         *,
-        ngo:users!ngo_id(name, email, user_type, verification_status)
+        ngo:users!creator_id(name, email, user_type, verification_status)
       `);
       
       if (filters.category) {
@@ -352,8 +352,8 @@ export const db = {
       if (filters.status) {
         query = query.eq('status', filters.status);
       }
-      if (filters.ngo_id) {
-        query = query.eq('ngo_id', filters.ngo_id);
+      if (filters.creator_id || filters.ngo_id) {
+        query = query.eq('creator_id', filters.creator_id || filters.ngo_id);
       }
       
       const { data, error } = await query.order('created_at', { ascending: false });
@@ -391,7 +391,7 @@ export const db = {
         .from('service_offers')
         .select(`
           *,
-          ngo:users!ngo_id(name, email, user_type, location, verification_status, profile_image)
+          ngo:users!creator_id(name, email, user_type, location, verification_status, profile_image)
         `)
         .eq('id', id)
         .single();
@@ -430,7 +430,7 @@ export const db = {
         .eq('id', id);
       
       if (ngoId) {
-        query = query.eq('ngo_id', ngoId);
+        query = query.eq('creator_id', ngoId);
       }
       
       const { error } = await query;

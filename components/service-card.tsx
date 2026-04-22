@@ -26,7 +26,8 @@ interface ServiceCardProps {
   location?: string
   images?: string[]
   ngo_name: string
-  ngo_id: number
+  creator_id?: number
+  ngo_id?: number
   provider?: string
   providerType?: string
   verified?: boolean
@@ -141,6 +142,7 @@ export function ServiceCard({
   location,
   images,
   ngo_name,
+  creator_id,
   ngo_id,
   provider,
   providerType = 'ngo',
@@ -310,6 +312,7 @@ export function ServiceCard({
   };
 
   const requirementsData = parseRequirements(requirements);
+  const ownerProfileId = creator_id ?? ngo_id;
   const providerDisplayName = provider || ngo_name;
   const providerDisplayType = providerType || 'ngo';
   const requestType = requirementsData?.request_type || category;
@@ -677,7 +680,7 @@ export function ServiceCard({
               <span className="text-xs font-medium">{type === 'request' ? 'Requesting Body' : 'Offering Entity'}</span>
             </div>
             <Link
-              href={`/profile/${ngo_id}`}
+              href={ownerProfileId ? `/profile/${ownerProfileId}` : '#'}
               className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 transition-colors hover:border-blue-300 hover:bg-blue-50"
             >
               <div className="w-9 h-9 rounded-full flex items-center justify-center bg-blue-600 text-white font-bold text-xs flex-shrink-0 shadow-sm">
