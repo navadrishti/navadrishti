@@ -5,9 +5,6 @@ import { JWT_SECRET } from '@/lib/auth';
 
 interface JWTPayload {
   id: number;
-  user_type: string;
-  email: string;
-  name: string;
 }
 
 export async function PUT(
@@ -50,7 +47,7 @@ export async function PUT(
 
     const { data: offer, error: offerError } = await supabase
       .from('service_offers')
-      .select('id, ngo_id')
+      .select('id, creator_id')
       .eq('id', targetRequest.service_offer_id)
       .single();
 
@@ -58,7 +55,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Offer not found' }, { status: 404 });
     }
 
-    if (offer.ngo_id !== ownerId) {
+    if (offer.creator_id !== ownerId) {
       return NextResponse.json({ error: 'You can only manage requests for your own offers' }, { status: 403 });
     }
 
@@ -66,7 +63,7 @@ export async function PUT(
       ? targetRequest.response_meta
       : {};
 
-    await supabase
+    const { error: updateError } = await supabase
       .from('service_clients')
       .update({
         status,
@@ -78,6 +75,10 @@ export async function PUT(
       })
       .eq('id', parsedRequestId)
       .eq('service_offer_id', targetRequest.service_offer_id);
+
+    if (updateError) {
+      return NextResponse.json({ error: 'Failed to update request status' }, { status: 500 });
+    }
 
     if (status === 'accepted') {
       const { data: otherRequests } = await supabase
