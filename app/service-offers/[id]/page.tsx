@@ -45,6 +45,7 @@ interface ServiceOffer {
   price_amount: number
   price_type: 'fixed' | 'negotiable' | 'project_based' | 'hourly'
   price_description: string
+  transaction_type?: 'sell' | 'rent' | 'volunteer' | string
   contact_info: string
   ngo_name: string
   creator_id: number
