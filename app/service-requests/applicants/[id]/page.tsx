@@ -79,7 +79,7 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
       try {
         const token = localStorage.getItem('token');
         
-        // Fetch request details
+        // Fetch need details
         const requestResponse = await fetch(`/api/service-requests/${resolvedParams.id}`, {
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -92,7 +92,7 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
         } else {
           toast({
             title: "Error",
-            description: requestData.error || "Failed to fetch request details",
+            description: requestData.error || "Failed to fetch need details",
             variant: "destructive",
           });
           router.push('/service-requests');
@@ -227,7 +227,7 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
         <Header />
         <div className="container mx-auto px-4 py-8">
           <div className="text-center">
-            <h1 className="text-2xl font-bold mb-4">Request Not Found</h1>
+            <h1 className="text-2xl font-bold mb-4">Need Not Found</h1>
             <Button onClick={() => router.back()} className="hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0">
               <ArrowLeft className="mr-2 h-4 w-4" />
               Back
@@ -255,7 +255,7 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
           </Button>
         </div>
 
-        {/* Request Details Card */}
+        {/* Need Details Card */}
         <Card className="mb-8">
           <CardHeader>
             <div className="flex justify-between items-start">

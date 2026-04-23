@@ -227,14 +227,14 @@ function ServiceRequestsContent() {
       <main className="flex-1 px-6 py-8 md:px-10">
         <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">NGO Requests</h1>
+            <h1 className="text-3xl font-bold tracking-tight">NGO Needs</h1>
             <p className="text-muted-foreground">
               Structured needs from NGOs seeking measurable execution support
             </p>
           </div>
         </div>
 
-        {/* Create Service Request CTA */}
+        {/* Create Need CTA */}
         {loading ? (
           user && isNGO && <ServiceRequestCtaSkeleton />
         ) : user && isNGO && (
@@ -276,7 +276,7 @@ function ServiceRequestsContent() {
               <StyledSelect
                 value={selectedCategory}
                 options={categories}
-                placeholder="Select category"
+                placeholder="Select project category"
                 onValueChange={setSelectedCategory}
               />
             </div>
@@ -333,7 +333,7 @@ function ServiceRequestsContent() {
               </div>
               <h3 className="mb-1 text-lg font-semibold">No needs found</h3>
               <p className="mb-4 text-muted-foreground">
-                No NGO requests match your current search or filters.
+                No NGO needs match your current search or filters.
               </p>
               <Button variant="outline" onClick={() => {
                 setSearchTerm('');
