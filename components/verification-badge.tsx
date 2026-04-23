@@ -78,6 +78,10 @@ export function VerificationDetails({
   verificationDetails, 
   className = '' 
 }: VerificationDetailsProps) {
+  const formattedVerificationDate = verificationDetails?.verification_date
+    ? new Date(verificationDetails.verification_date).toLocaleDateString('en-IN', { timeZone: 'UTC' })
+    : null
+
   if (!verificationDetails) {
     return (
       <div className={`text-sm text-gray-600 ${className}`}>
@@ -126,9 +130,9 @@ export function VerificationDetails({
         </div>
       )}
       
-      {verificationDetails.verification_date && (
+      {formattedVerificationDate && (
         <div className="text-xs text-gray-500">
-          Verified on {new Date(verificationDetails.verification_date).toLocaleDateString()}
+          Verified on {formattedVerificationDate}
         </div>
       )}
     </div>

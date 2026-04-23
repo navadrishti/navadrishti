@@ -12,9 +12,9 @@ import { SkeletonServiceCard, SkeletonCTA } from '@/components/ui/skeleton';
 import { Search, ArrowRight, Plus } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/hooks/use-toast';
-import { getServiceOfferCategoriesWithAll } from '@/lib/categories';
+import { getServiceOfferTypesWithAll } from '@/lib/categories';
 
-const categories = getServiceOfferCategoriesWithAll();
+const types = getServiceOfferTypesWithAll();
 
 export default function ServiceOffersPage() {
   const { user } = useAuth();
@@ -23,7 +23,7 @@ export default function ServiceOffersPage() {
 
   const [mounted, setMounted] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('All Categories');
+  const [selectedType, setSelectedType] = useState('All Categories');
   const [locationFilter, setLocationFilter] = useState('');
 
   const [serviceOffers, setServiceOffers] = useState<any[]>([]);
@@ -96,8 +96,8 @@ export default function ServiceOffersPage() {
       setError('');
 
       const params = new URLSearchParams();
-      if (selectedCategory !== 'All Categories') {
-        params.append('category', selectedCategory);
+      if (selectedType !== 'All Categories') {
+        params.append('offer_type', selectedType);
       }
       if (searchTerm) {
         params.append('search', searchTerm);
@@ -123,7 +123,7 @@ export default function ServiceOffersPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedCategory, searchTerm, locationFilter, user?.id]);
+  }, [selectedType, searchTerm, locationFilter, user?.id]);
 
   useEffect(() => {
     fetchServiceOffers();
@@ -202,10 +202,10 @@ export default function ServiceOffersPage() {
           <div className="flex gap-4">
             <div className="relative flex-1">
               <StyledSelect
-                value={selectedCategory}
-                options={categories}
-                placeholder="Select category"
-                onValueChange={setSelectedCategory}
+                value={selectedType}
+                options={types}
+                placeholder="Select type"
+                onValueChange={setSelectedType}
               />
             </div>
           </div>
@@ -230,7 +230,7 @@ export default function ServiceOffersPage() {
                       location={offer.location}
                       images={offer.images}
                       ngo_name={getOfferProviderName(offer)}
-                      ngo_id={offer.ngo_id}
+                      creator_id={offer.creator_id}
                       provider={getOfferProviderName(offer)}
                       providerType={getOfferProviderType(offer)}
                       verified={offer.verified}
@@ -255,8 +255,8 @@ export default function ServiceOffersPage() {
                       type="offer"
                       onDelete={() => handleDeleteOffer(offer.id)}
                       isDeleting={deleting === offer.id}
-                      showDeleteButton={!!(user && user.id === offer.ngo_id)}
-                      isOwner={!!(user && user.id === offer.ngo_id)}
+                      showDeleteButton={!!(user && user.id === offer.creator_id)}
+                      isOwner={!!(user && user.id === offer.creator_id)}
                       canInteract={true}
                     />
                   ))}
@@ -274,7 +274,7 @@ export default function ServiceOffersPage() {
                 variant="outline"
                 onClick={() => {
                   setSearchTerm('');
-                  setSelectedCategory('All Categories');
+                  setSelectedType('All Categories');
                 }}
               >
                 Clear Filters

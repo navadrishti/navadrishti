@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
           supabase
             .from('service_offers')
             .select('id, status')
-            .eq('ngo_id', userId),
+            .eq('creator_id', userId),
           
           supabase
             .from('service_requests')

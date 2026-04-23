@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
       .from('service_offers')
       .select(`
         *,
-        organization:ngo_id (
+        organization:creator_id (
           id,
           name,
           email

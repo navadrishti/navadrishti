@@ -335,7 +335,7 @@ export default function SettingsPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Lock className="h-5 w-5" />
-                  Account Security
+                  Change Password
                 </CardTitle>
                 <CardDescription>
                   Manage your password and security settings

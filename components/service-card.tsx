@@ -26,7 +26,8 @@ interface ServiceCardProps {
   location?: string
   images?: string[]
   ngo_name: string
-  ngo_id: number
+  creator_id?: number
+  ngo_id?: number
   provider?: string
   providerType?: string
   verified?: boolean
@@ -141,6 +142,7 @@ export function ServiceCard({
   location,
   images,
   ngo_name,
+  creator_id,
   ngo_id,
   provider,
   providerType = 'ngo',
@@ -310,11 +312,14 @@ export function ServiceCard({
   };
 
   const requirementsData = parseRequirements(requirements);
+  const ownerProfileId = creator_id ?? ngo_id;
   const providerDisplayName = provider || ngo_name;
   const providerDisplayType = providerType || 'ngo';
   const requestType = requirementsData?.request_type || category;
   const isFinancialNeed = type === 'request' && String(requestType || '').toLowerCase().includes('financial');
   const projectContext = project || requirementsData?.project?.project || null;
+  const projectCategory = String(requirementsData?.project_category || projectContext?.category || category || '').trim();
+  const categoryLabel = type === 'request' ? 'Need Type' : 'Type';
   const beneficiaryCount = Number(requirementsData?.beneficiary_count || 0);
   const estimatedBudget = requirementsData?.estimated_budget || requirementsData?.budget;
   const fundingTargetInr = isFinancialNeed ? Number(String(requirementsData?.funding_target_inr || estimatedBudget || '').replace(/[^\d.-]/g, '')) : 0;
@@ -444,6 +449,9 @@ export function ServiceCard({
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-600">Project</p>
                 <p className="text-sm font-bold leading-snug text-blue-950">{projectContext.title}</p>
+                {projectCategory && (
+                  <p className="mt-1 text-xs font-medium text-blue-700">Project Category: {projectCategory}</p>
+                )}
               </div>
               {projectContext?.id ? (
                 <Link href={`/service-requests/projects/${projectContext.id}`}>
@@ -510,9 +518,9 @@ export function ServiceCard({
           <div className="space-y-1">
             <div className="flex items-center gap-1.5 text-gray-500">
               <Target size={14} />
-              <span className="text-xs font-medium">Category</span>
+              <span className="text-xs font-medium">{categoryLabel}</span>
             </div>
-            <p className="text-sm font-semibold text-blue-700 truncate">{category}</p>
+            <p className="text-sm font-semibold text-blue-700 truncate">{type === 'request' ? requestType : category}</p>
           </div>
 
           {type === 'request' && effectiveRequestUrgency && (
@@ -672,7 +680,7 @@ export function ServiceCard({
               <span className="text-xs font-medium">{type === 'request' ? 'Requesting Body' : 'Offering Entity'}</span>
             </div>
             <Link
-              href={`/profile/${ngo_id}`}
+              href={ownerProfileId ? `/profile/${ownerProfileId}` : '#'}
               className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 transition-colors hover:border-blue-300 hover:bg-blue-50"
             >
               <div className="w-9 h-9 rounded-full flex items-center justify-center bg-blue-600 text-white font-bold text-xs flex-shrink-0 shadow-sm">

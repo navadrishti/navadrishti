@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
+import { CSR_SCHEDULE_VII_CATEGORIES, SERVICE_REQUEST_TYPES } from '@/lib/categories';
 
 // Interface for JWT payload
 interface JWTPayload {
@@ -121,7 +122,8 @@ export async function GET(
 
     const requirements = safeParseJson(serviceRequest.requirements);
     // Prefer direct DB columns, fall back to requirements JSON for legacy rows
-    serviceRequest.request_type = serviceRequest.request_type || requirements.request_type || serviceRequest.category || 'Skill / Service Need';
+    serviceRequest.request_type = serviceRequest.request_type || requirements.request_type || (SERVICE_REQUEST_TYPES.includes(serviceRequest.category) ? serviceRequest.category : 'Skill / Service Need');
+    serviceRequest.category = requirements.project_category || requirements?.project?.category || serviceRequest.category || 'Uncategorized';
     serviceRequest.estimated_budget = serviceRequest.estimated_budget != null ? String(serviceRequest.estimated_budget) : (requirements.estimated_budget || requirements.budget || 'Not specified');
     serviceRequest.beneficiary_count = serviceRequest.beneficiary_count != null ? Number(serviceRequest.beneficiary_count) : Number(requirements.beneficiary_count || 0);
     serviceRequest.impact_description = serviceRequest.impact_description || requirements.impact_description || '';
@@ -174,6 +176,7 @@ export async function PUT(
       title, 
       description, 
       category,
+      project_category,
       request_type,
       location,
       timeline,
@@ -194,7 +197,7 @@ export async function PUT(
 
     // Validate required fields
     const missingRequiredFields = [title, description, location, timeline, impact_description].some((value) => !String(value ?? '').trim());
-    if (missingRequiredFields || !(request_type || category)) {
+    if (missingRequiredFields || !request_type || !(project_category || category)) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
@@ -202,7 +205,16 @@ export async function PUT(
       return NextResponse.json({ error: 'beneficiary_count must be greater than 0' }, { status: 400 });
     }
 
-    const normalizedRequestType = request_type || category;
+    const normalizedRequestType = request_type;
+    const normalizedProjectCategory = project_category || category;
+
+    if (!SERVICE_REQUEST_TYPES.includes(normalizedRequestType)) {
+      return NextResponse.json({ error: 'Invalid request_type. Use one of Financial Need, Material Need, Skill / Service Need, Infrastructure Project.' }, { status: 400 });
+    }
+
+    if (!CSR_SCHEDULE_VII_CATEGORIES.includes(normalizedProjectCategory)) {
+      return NextResponse.json({ error: 'Invalid project_category. Select a valid Schedule VII category.' }, { status: 400 });
+    }
 
     const trimmedTimeline = typeof timeline === 'string' ? timeline.trim() : '';
     const isAnytimeTimeline = trimmedTimeline.toLowerCase() === 'anytime';
@@ -274,8 +286,9 @@ export async function PUT(
 
     const projectContext = {
       ...(safeParseJson(project_context) || {}),
+      project_category: normalizedProjectCategory,
       project: resolvedProjectId
-        ? { id: resolvedProjectId, exact_address: resolvedProjectLocation }
+        ? { id: resolvedProjectId, exact_address: resolvedProjectLocation, category: normalizedProjectCategory }
         : projectPayload || null
     };
 
@@ -312,7 +325,7 @@ export async function PUT(
     const updateData = {
       title,
       description,
-      category: normalizedRequestType,
+      category: normalizedProjectCategory,
       location: resolvedProjectLocation || location,
       urgency_level: mappedUrgency,
       requirements: JSON.stringify(requirementsData),

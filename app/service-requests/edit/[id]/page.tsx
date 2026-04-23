@@ -8,7 +8,7 @@ import { ArrowLeft, Loader2, Plus, Trash2 } from 'lucide-react'
 import { Header } from '@/components/header'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
-import { SERVICE_REQUEST_CATEGORIES } from '@/lib/categories'
+import { CSR_SCHEDULE_VII_CATEGORIES, SERVICE_REQUEST_CATEGORIES } from '@/lib/categories'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -25,6 +25,7 @@ type RequestProject = {
   location: string
   exact_address?: string | null
   timeline?: string | null
+  category?: string | null
 }
 
 type NeedDraft = {
@@ -96,6 +97,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
     project_description: '',
     project_location: '',
     project_timeline: '',
+    project_category: '',
     title: '',
     description: '',
     request_type: '',
@@ -157,7 +159,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
       return
     }
     if (user.user_type !== 'ngo') {
-      toast({ title: 'Access Denied', description: 'Only NGOs can edit service requests', variant: 'destructive' })
+      toast({ title: 'Access Denied', description: 'Only NGOs can edit needs', variant: 'destructive' })
       router.push('/service-requests')
     }
   }, [router, toast, user])
@@ -174,7 +176,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
         const data = await response.json()
 
         if (!data.success) {
-          toast({ title: 'Error', description: data.error || 'Failed to fetch request details', variant: 'destructive' })
+          toast({ title: 'Error', description: data.error || 'Failed to fetch need details', variant: 'destructive' })
           router.push('/service-requests')
           return
         }
@@ -188,6 +190,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
         }
 
         const requestProject = req.project || requirements?.project?.project || null
+        const projectCategory = req.category || requirements?.project_category || requestProject?.category || ''
 
         if (requestProject?.id) {
           setProjectMode('existing')
@@ -201,6 +204,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
           project_description: requestProject?.description || '',
           project_location: requestProject?.exact_address || requestProject?.location || req.location || '',
           project_timeline: requestProject?.timeline || requirements.timeline || req.timeline || '',
+          project_category: projectCategory,
           title: req.title || '',
           description: req.description || '',
           request_type: requirements.request_type || req.category || '',
@@ -272,7 +276,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
           }
         }
       } catch {
-        toast({ title: 'Error', description: 'Failed to fetch request details', variant: 'destructive' })
+        toast({ title: 'Error', description: 'Failed to fetch need details', variant: 'destructive' })
         router.push('/service-requests')
       } finally {
         setLoading(false)
@@ -334,14 +338,14 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
     const isBlank = (value: unknown) => !String(value ?? '').trim()
 
     const validateNeed = (need: NeedDraft, label: string): string | null => {
-      if (isBlank(need.title)) return `${label}: request title is required.`
-      if (String(need.title).trim().length < 3) return `${label}: request title must be at least 3 characters.`
+      if (isBlank(need.title)) return `${label}: need title is required.`
+      if (String(need.title).trim().length < 3) return `${label}: need title must be at least 3 characters.`
 
       if (isBlank(need.description)) return `${label}: need description is required.`
       if (String(need.description).trim().length < 20) return `${label}: need description must be at least 20 characters.`
 
-      if (isBlank(need.request_type)) return `${label}: request type is required.`
-      if (!SERVICE_REQUEST_CATEGORIES.includes(need.request_type)) return `${label}: select a valid request type.`
+      if (isBlank(need.request_type)) return `${label}: need type is required.`
+      if (!SERVICE_REQUEST_CATEGORIES.includes(need.request_type)) return `${label}: select a valid need type.`
 
       if (isBlank(need.timeline)) return `${label}: timeline / deadline is required.`
       if (!isValidTimelineValue(need.timeline)) return `${label}: timeline must be Anytime, a duration like 4 weeks, or a date like 2026-05-15.`
@@ -383,12 +387,12 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
     }
 
     if ([formData.title, formData.description, formData.request_type, formData.timeline, formData.budget, formData.beneficiary_count, formData.impact_description, formData.contactInfo].some(isBlank)) {
-      toast({ title: 'Validation Error', description: 'Every main request field must be filled.', variant: 'destructive' })
+      toast({ title: 'Validation Error', description: 'Every main need field must be filled.', variant: 'destructive' })
       return
     }
 
     if (String(formData.title).trim().length < 3) {
-      toast({ title: 'Validation Error', description: 'Request title must be at least 3 characters.', variant: 'destructive' })
+      toast({ title: 'Validation Error', description: 'Need title must be at least 3 characters.', variant: 'destructive' })
       return
     }
 
@@ -408,12 +412,17 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
     }
 
     if (!SERVICE_REQUEST_CATEGORIES.includes(formData.request_type)) {
-      toast({ title: 'Validation Error', description: 'Select a valid request type.', variant: 'destructive' })
+      toast({ title: 'Validation Error', description: 'Select a valid need type.', variant: 'destructive' })
       return
     }
 
     if (projectMode === 'new' && [formData.project_title, formData.project_description, formData.project_location, formData.project_timeline].some(isBlank)) {
       toast({ title: 'Validation Error', description: 'Project title, description, exact address, and timeline are required.', variant: 'destructive' })
+      return
+    }
+
+    if (isBlank(formData.project_category) || !CSR_SCHEDULE_VII_CATEGORIES.includes(formData.project_category)) {
+      toast({ title: 'Validation Error', description: 'Select a valid project category.', variant: 'destructive' })
       return
     }
 
@@ -467,7 +476,8 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
           description: formData.project_description,
           location: formData.project_location,
           exact_address: formData.project_location,
-          timeline: formData.project_timeline
+          timeline: formData.project_timeline,
+          category: formData.project_category
         }
       : null
 
@@ -503,7 +513,8 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
         },
         body: JSON.stringify({
           ...formData,
-          category: formData.request_type,
+          category: formData.project_category,
+          project_category: formData.project_category,
           projectId: activeProjectId || undefined,
           project: projectPayload,
           estimated_budget: formData.budget,
@@ -525,7 +536,8 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
               title: need.title,
               description: need.description,
               request_type: need.request_type,
-              category: need.category,
+              category: formData.project_category,
+              project_category: formData.project_category,
               location: activeProjectLocation,
               urgency: need.urgency,
               timeline: need.timeline,
@@ -542,7 +554,8 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
                 project_title: formData.project_title,
                 project_location: formData.project_location,
                 project_description: formData.project_description,
-                project_timeline: formData.project_timeline
+                project_timeline: formData.project_timeline,
+                project_category: formData.project_category
               },
               details: {
                 material_items: need.material_items,
@@ -555,18 +568,18 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
 
           const createData = await createResponse.json()
           if (!createResponse.ok || !createData.success) {
-            toast({ title: 'Partial Update', description: createData.error || 'Main request saved, but one additional need failed to create.', variant: 'destructive' })
+            toast({ title: 'Partial Update', description: createData.error || 'Main need saved, but one additional need failed to create.', variant: 'destructive' })
             break
           }
         }
 
-        toast({ title: 'Success', description: 'Service request updated successfully' })
+        toast({ title: 'Success', description: 'Need updated successfully' })
         router.push('/service-requests?view=my-requests')
       } else {
-        toast({ title: 'Error', description: data.error || 'Failed to update service request', variant: 'destructive' })
+        toast({ title: 'Error', description: data.error || 'Failed to update need', variant: 'destructive' })
       }
     } catch {
-      toast({ title: 'Error', description: 'Failed to update service request', variant: 'destructive' })
+      toast({ title: 'Error', description: 'Failed to update need', variant: 'destructive' })
     } finally {
       setSubmitting(false)
     }
@@ -598,7 +611,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
         <div className="mx-auto w-full max-w-4xl">
           <Card>
             <CardHeader>
-              <CardTitle className="text-2xl">Edit Execution Request</CardTitle>
+              <CardTitle className="text-2xl">Edit Execution Need</CardTitle>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-6">
@@ -606,7 +619,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <h3 className="font-semibold">Project Context</h3>
-                      <p className="text-sm text-muted-foreground">Keep the request attached to the correct initiative.</p>
+                      <p className="text-sm text-muted-foreground">Keep the need attached to the correct initiative.</p>
                     </div>
                     <div className="flex w-full flex-wrap rounded-md border bg-background p-1 text-sm sm:w-auto">
                       <button type="button" onClick={() => setProjectMode('new')} className={`flex-1 rounded px-3 py-1.5 sm:flex-none ${projectMode === 'new' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'}`}>
@@ -616,6 +629,16 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
                         Existing Project
                       </button>
                     </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label htmlFor="project_category">Project Category *</Label>
+                    <StyledSelect
+                      value={formData.project_category}
+                      options={CSR_SCHEDULE_VII_CATEGORIES}
+                      placeholder="Select project category"
+                      onValueChange={(value) => handleInput('project_category', value)}
+                    />
                   </div>
 
                   {projectMode === 'existing' ? (
@@ -671,7 +694,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
                       <p className="text-sm font-medium text-muted-foreground">Project Summary</p>
                       <h3 className="text-lg font-semibold">{activeProjectSummary?.title || 'Project not set yet'}</h3>
                       <p className="text-sm text-muted-foreground">
-                        {activeProjectSummary?.location || 'Add an exact address to keep the request group consistent.'}
+                        {activeProjectSummary?.location || 'Add an exact address to keep the need group consistent.'}
                       </p>
                     </div>
                     <div className="grid gap-2 text-sm sm:text-right">
@@ -692,7 +715,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
                 </div>
 
                 <div>
-                  <Label htmlFor="title">Request Title *</Label>
+                  <Label htmlFor="title">Need Title *</Label>
                   <Input id="title" value={formData.title} onChange={(e) => handleInput('title', e.target.value)} required />
                 </div>
 
@@ -703,11 +726,11 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="request_type">Request Type *</Label>
+                    <Label htmlFor="request_type">Need Type *</Label>
                     <StyledSelect
                       value={formData.request_type}
                       options={SERVICE_REQUEST_CATEGORIES}
-                      placeholder="Select request type"
+                      placeholder="Select need type"
                       onValueChange={(value) => {
                         handleInput('request_type', value)
                         handleInput('category', value)
@@ -827,7 +850,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
                           <div className="flex items-center justify-between gap-3">
                             <div>
                               <h4 className="font-semibold">Extra Need {index + 1}</h4>
-                              <p className="text-sm text-muted-foreground">This will be created as a separate request.</p>
+                              <p className="text-sm text-muted-foreground">This will be created as a separate need entry.</p>
                             </div>
                             <Button type="button" variant="ghost" onClick={() => removeAdditionalNeed(index)} className="text-red-600 hover:text-red-700 hover:bg-red-50">
                               <Trash2 size={16} className="mr-2" />
@@ -837,7 +860,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
 
                           <div className="grid gap-4">
                             <div>
-                              <Label htmlFor={`extra_title-${index}`}>Request Title *</Label>
+                              <Label htmlFor={`extra_title-${index}`}>Need Title *</Label>
                               <Input id={`extra_title-${index}`} value={need.title} onChange={(e) => updateAdditionalNeed(index, 'title', e.target.value)} placeholder="e.g., Desk and chair support" required />
                             </div>
 
@@ -848,13 +871,13 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
 
                             <div className="grid gap-4 md:grid-cols-2">
                               <div>
-                                <Label htmlFor={`extra_request_type-${index}`}>Request Type *</Label>
+                                <Label htmlFor={`extra_request_type-${index}`}>Need Type *</Label>
                                 <Select value={need.request_type} onValueChange={(value) => {
                                   updateAdditionalNeed(index, 'request_type', value)
                                   updateAdditionalNeed(index, 'category', value)
                                 }}>
                                   <SelectTrigger>
-                                    <SelectValue placeholder="Select request type" />
+                                    <SelectValue placeholder="Select need type" />
                                   </SelectTrigger>
                                   <SelectContent>
                                     {SERVICE_REQUEST_CATEGORIES.map((category) => (
@@ -950,7 +973,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
                         Updating...
                       </>
                     ) : (
-                      'Update Request'
+                      'Update Need'
                     )}
                   </Button>
                   <Button type="button" variant="outline" onClick={() => router.back()} className="w-full flex-1">

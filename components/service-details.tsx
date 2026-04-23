@@ -19,7 +19,7 @@ interface ServiceDetailsProps {
   location?: string
   images?: string[]
   ngo_name: string
-  ngo_id: number
+  creator_id?: number
   provider?: string
   providerType?: string
   provider_profile_image?: string | null
@@ -95,7 +95,6 @@ export function ServiceDetails({
   location,
   images,
   ngo_name,
-  ngo_id,
   provider,
   providerType = 'ngo',
   provider_profile_image,
@@ -776,19 +775,8 @@ export function ServiceDetails({
               <div className="flex-1">
                 <CardTitle className="text-2xl mb-2">{title}</CardTitle>
                 <CardDescription className="text-base">
-                  {type === 'request' ? 'Requested by' : 'Offered by'} <span className="font-semibold">{ngo_name}</span>
+                  Offered by <span className="font-semibold">{ngo_name}</span>
                 </CardDescription>
-              </div>
-              
-              <div className="text-right">
-                {type === 'request' && liveRequestUrgency ? (
-                  <div className="text-right space-y-0.5">
-                    <p className="text-xs font-medium text-gray-500">Urgency</p>
-                    <p className={`text-sm font-semibold ${getPriorityTextColor(liveRequestUrgency)}`}>
-                      {liveRequestUrgency.toUpperCase()}
-                    </p>
-                  </div>
-                ) : null}
               </div>
             </div>
           </CardHeader>
@@ -808,21 +796,10 @@ export function ServiceDetails({
             <div>
               <h3 className="font-semibold mb-3 flex items-center gap-2">
                 <Package size={18} className="text-blue-500" />
-                {type === 'request' ? 'Request Details' : 'Service Details'}
+                Service Details
               </h3>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Request Type */}
-                {type === 'request' && (
-                  <div className="bg-blue-50 rounded-lg p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Target size={16} className="text-blue-600" />
-                      <span className="text-sm font-medium text-blue-700">Request Type</span>
-                    </div>
-                    <p className="font-semibold text-blue-800">{requestType}</p>
-                  </div>
-                )}
-                
                 {/* Location */}
                 {location && (
                   <div className="bg-purple-50 rounded-lg p-4">
@@ -834,40 +811,7 @@ export function ServiceDetails({
                   </div>
                 )}
                 
-                {/* Service Request - Deadline */}
-                {type === 'request' && requestDeadline && String(requestDeadline) !== 'Not specified' && (
-                  <div className="bg-orange-50 rounded-lg p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Calendar size={16} className="text-orange-600" />
-                      <span className="text-sm font-medium text-orange-700">Deadline</span>
-                    </div>
-                    <p className="font-semibold text-orange-800">{String(requestDeadline)}</p>
-                  </div>
-                )}
-                
-                {/* Service Request - Budget */}
-                {type === 'request' && estimatedBudget && (
-                  <div className="bg-green-50 rounded-lg p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <IndianRupee size={16} className="text-green-600" />
-                      <span className="text-sm font-medium text-green-700">Estimated Budget</span>
-                    </div>
-                    <p className="font-semibold text-green-800">{estimatedBudget}</p>
-                  </div>
-                )}
-                
-                {/* Service Request - Beneficiary Count */}
-                {type === 'request' && beneficiaryCount > 0 && (
-                  <div className="bg-indigo-50 rounded-lg p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Users size={16} className="text-indigo-600" />
-                      <span className="text-sm font-medium text-indigo-700">Beneficiaries</span>
-                    </div>
-                    <p className="font-semibold text-indigo-800">{beneficiaryCount}</p>
-                  </div>
-                )}
-
-                {type === 'offer' && capacityLimit && (
+                {capacityLimit && (
                   <div className="bg-indigo-50 rounded-lg p-4">
                     <div className="flex items-center gap-2 mb-2">
                       <Target size={16} className="text-indigo-600" />
@@ -877,7 +821,7 @@ export function ServiceDetails({
                   </div>
                 )}
 
-                {type === 'offer' && coverageArea && (
+                {coverageArea && (
                   <div className="bg-purple-50 rounded-lg p-4">
                     <div className="flex items-center gap-2 mb-2">
                       <MapPin size={16} className="text-purple-600" />
@@ -887,8 +831,7 @@ export function ServiceDetails({
                   </div>
                 )}
                 
-                {/* Service Offer - Status */}
-                {type === 'offer' && status && (
+                {status && (
                   <div className="bg-gray-50 rounded-lg p-4">
                     <div className="flex items-center gap-2 mb-2">
                       <Clock size={16} className="text-gray-600" />
@@ -907,39 +850,25 @@ export function ServiceDetails({
             </div>
 
             {/* Additional Information */}
-            {((type === 'offer' && (categoryFocus || validityPeriod || item || skill || scope)) || (type === 'request' && (timeline || impactDescription)) || contact_info) && (
+            {(categoryFocus || validityPeriod || item || skill || scope || contact_info) && (
               <div>
                 <h3 className="font-semibold mb-3">Additional Information</h3>
                 <div className="space-y-3">
-                  {type === 'request' && timeline && (
-                    <div>
-                      <h4 className="font-medium mb-2 text-gray-900">Timeline</h4>
-                      <p className="text-muted-foreground bg-gray-50 rounded-lg p-3">{timeline}</p>
-                    </div>
-                  )}
-
-                  {type === 'request' && impactDescription && (
-                    <div>
-                      <h4 className="font-medium mb-2 text-gray-900">Impact Description</h4>
-                      <p className="text-muted-foreground bg-gray-50 rounded-lg p-3">{impactDescription}</p>
-                    </div>
-                  )}
-
-                  {type === 'offer' && categoryFocus && (
+                  {categoryFocus && (
                     <div>
                       <h4 className="font-medium mb-2 text-gray-900">Conditions</h4>
                       <p className="text-muted-foreground bg-gray-50 rounded-lg p-3">{categoryFocus}</p>
                     </div>
                   )}
 
-                  {type === 'offer' && validityPeriod && (
+                  {validityPeriod && (
                     <div>
                       <h4 className="font-medium mb-2 text-gray-900">Duration</h4>
                       <p className="text-muted-foreground bg-gray-50 rounded-lg p-3">{String(validityPeriod).replaceAll('_', ' ')}</p>
                     </div>
                   )}
 
-                  {type === 'offer' && item && (
+                  {item && (
                     <div>
                       <h4 className="font-medium mb-2 text-gray-900">Material Item</h4>
                       <p className="text-muted-foreground bg-gray-50 rounded-lg p-3">
@@ -948,14 +877,14 @@ export function ServiceDetails({
                     </div>
                   )}
 
-                  {type === 'offer' && skill && (
+                  {skill && (
                     <div>
                       <h4 className="font-medium mb-2 text-gray-900">Skill Offered</h4>
                       <p className="text-muted-foreground bg-gray-50 rounded-lg p-3">{skill}</p>
                     </div>
                   )}
 
-                  {type === 'offer' && scope && (
+                  {scope && (
                     <div>
                       <h4 className="font-medium mb-2 text-gray-900">Infrastructure Scope</h4>
                       <p className="text-muted-foreground bg-gray-50 rounded-lg p-3">{scope}</p>
@@ -975,37 +904,12 @@ export function ServiceDetails({
             {/* Tags */}
             {tagArray.length > 0 && (
               <div>
-                <h3 className="font-semibold mb-3">
-                  {type === 'request' ? 'Required Skills' : 'Services Included'}
-                </h3>
+                <h3 className="font-semibold mb-3">Services Included</h3>
                 <div className="flex flex-wrap gap-2">
                   {tagArray.map((tag, index) => (
-                    <Badge key={index} variant="secondary" className={`${
-                      type === 'request' 
-                        ? 'bg-purple-100 text-purple-700 border-purple-200 hover:bg-purple-200' 
-                        : 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200'
-                    }`}>
+                    <Badge key={index} variant="secondary" className="bg-green-100 text-green-700 border-green-200 hover:bg-green-200">
                       {tag}
                     </Badge>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Service Request Requirements */}
-            {type === 'request' && requirementsData && typeof requirementsData === 'object' && (
-              <div>
-                <h3 className="font-semibold mb-3">Requirements</h3>
-                <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-                  {Object.entries(requirementsData).filter(([key, value]) => 
-                    key !== 'budget' && key !== 'evidence_required' && key !== 'completion_proof_type' && value
-                  ).map(([key, value]) => (
-                    <div key={key}>
-                      <span className="font-medium text-gray-700 capitalize">
-                        {key.replace('_', ' ')}: 
-                      </span>
-                      <span className="text-gray-600 ml-2">{String(value)}</span>
-                    </div>
                   ))}
                 </div>
               </div>
@@ -1022,7 +926,7 @@ export function ServiceDetails({
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               {getProviderIcon(providerType)}
-              {type === 'request' ? 'Requesting Organization' : 'Service Provider'}
+              Service Provider
             </CardTitle>
           </CardHeader>
           
@@ -1036,11 +940,7 @@ export function ServiceDetails({
                   referrerPolicy="no-referrer"
                 />
               ) : (
-                <div className={`flex h-12 w-12 items-center justify-center rounded-full shadow-md ${
-                  type === 'request'
-                    ? 'bg-blue-600'
-                    : 'bg-green-600'
-                }`}>
+                <div className="flex h-12 w-12 items-center justify-center rounded-full shadow-md bg-green-600">
                   {getProviderIcon(providerType)}
                 </div>
               )}
