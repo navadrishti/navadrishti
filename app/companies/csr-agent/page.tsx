@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { CSRAgentOutputCard } from "@/components/csr-agent-output-card"
-import { Sparkles } from "lucide-react"
+import { Sparkles, Trash2 } from "lucide-react"
 
 type ProjectStatus = "pending" | "accepted" | "rejected"
 
@@ -114,11 +114,20 @@ export default function CSRAgentPage() {
     "Other",
   ]
 
+  const todayDate = useMemo(() => {
+    const now = new Date()
+    const year = now.getFullYear()
+    const month = String(now.getMonth() + 1).padStart(2, "0")
+    const day = String(now.getDate()).padStart(2, "0")
+    return `${year}-${month}-${day}`
+  }, [])
+
   const parsedBudget = Number(formData.budget)
-  const isDateRangeValid =
-    formData.startDate.trim().length > 0 &&
-    formData.endDate.trim().length > 0 &&
-    new Date(formData.startDate) < new Date(formData.endDate)
+  const hasStartDate = formData.startDate.trim().length > 0
+  const hasEndDate = formData.endDate.trim().length > 0
+  const isStartDateValid = hasStartDate && formData.startDate >= todayDate
+  const isEndDateValid = hasEndDate && hasStartDate && formData.endDate >= formData.startDate
+  const isDateRangeValid = isStartDateValid && isEndDateValid
 
   const areMilestonesComplete = useMemo(() => {
     if (milestoneInputs.length === 0) return false
@@ -129,6 +138,22 @@ export default function CSRAgentPage() {
     })
   }, [milestoneInputs])
 
+  const totalMilestoneBudget = useMemo(
+    () =>
+      milestoneInputs.reduce((total, milestone) => {
+        const milestoneBudget = Number(milestone.budgetTarget)
+        return total + (Number.isFinite(milestoneBudget) ? milestoneBudget : 0)
+      }, 0),
+    [milestoneInputs]
+  )
+
+  const isMilestoneBudgetEqualToOriginalBudget = useMemo(() => {
+    if (!Number.isFinite(parsedBudget) || parsedBudget <= 0) return false
+    if (!areMilestonesComplete) return false
+
+    return totalMilestoneBudget === parsedBudget
+  }, [parsedBudget, areMilestonesComplete, totalMilestoneBudget])
+
   const canSubmit = useMemo(() => {
     return (
       formData.campaignName.trim() &&
@@ -138,9 +163,10 @@ export default function CSRAgentPage() {
       parsedBudget > 0 &&
       isDateRangeValid &&
       areMilestonesComplete &&
+      isMilestoneBudgetEqualToOriginalBudget &&
       formData.requirementDetails.trim()
     )
-  }, [formData, parsedBudget, isDateRangeValid, areMilestonesComplete])
+  }, [formData, parsedBudget, isDateRangeValid, areMilestonesComplete, isMilestoneBudgetEqualToOriginalBudget])
 
   const handleAddMilestone = () => {
     setMilestoneInputs((previousRows) => [...previousRows, { description: "", budgetTarget: "" }])
@@ -156,6 +182,10 @@ export default function CSRAgentPage() {
         currentIndex === rowIndex ? { ...row, [field]: value } : row
       )
     )
+  }
+
+  const handleDeleteMilestone = (rowIndex: number) => {
+    setMilestoneInputs((previousRows) => previousRows.filter((_, currentIndex) => currentIndex !== rowIndex))
   }
 
   const handleFormSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -373,6 +403,7 @@ export default function CSRAgentPage() {
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-gray-700">Campaign Name</label>
                   <Input
+                    name="campaignName"
                     value={formData.campaignName}
                     onChange={(event) =>
                       setFormData((previous) => ({ ...previous, campaignName: event.target.value }))
@@ -384,6 +415,7 @@ export default function CSRAgentPage() {
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-gray-700">CSR Category</label>
                   <select
+                    name="category"
                     value={formData.category}
                     onChange={(event) => setFormData((previous) => ({ ...previous, category: event.target.value }))}
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none"
@@ -400,6 +432,7 @@ export default function CSRAgentPage() {
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-gray-700">Project Location</label>
                   <Input
+                    name="location"
                     value={formData.location}
                     onChange={(event) => setFormData((previous) => ({ ...previous, location: event.target.value }))}
                     placeholder="Ex: Nagpur, Maharashtra"
@@ -409,9 +442,11 @@ export default function CSRAgentPage() {
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-gray-700">Budget (INR)</label>
                   <Input
+                    name="budget"
                     type="number"
                     min="1"
                     step="1"
+                    className="max-w-sm"
                     value={formData.budget}
                     onChange={(event) => setFormData((previous) => ({ ...previous, budget: event.target.value }))}
                     placeholder="Ex: 1000000"
@@ -428,20 +463,25 @@ export default function CSRAgentPage() {
                   >
                     + Add Milestone
                   </Button>
+                  {milestoneInputs.length === 0 && (
+                    <p className="text-sm text-red-600">Add at least one milestone.</p>
+                  )}
                 </div>
 
                 {milestoneInputs.length > 0 && (
                   <div className="space-y-3 md:col-span-2 rounded-md border border-gray-200 p-4">
                     <p className="text-sm font-semibold text-udaan-navy">Milestone Planning Inputs</p>
-                    <div className="grid gap-3 text-xs font-medium text-gray-600 md:grid-cols-[80px_1fr_1fr]">
+                    <div className="grid gap-3 text-xs font-medium text-gray-600 md:grid-cols-[80px_1fr_220px_100px]">
                       <span>Sno.</span>
                       <span>Description</span>
                       <span>Budget</span>
+                      <span>Action</span>
                     </div>
                     {milestoneInputs.map((milestone, index) => (
-                      <div key={`milestone-${index}`} className="grid items-center gap-3 md:grid-cols-[80px_1fr_1fr]">
+                      <div key={`milestone-${index}`} className="grid items-center gap-3 md:grid-cols-[80px_1fr_220px_100px]">
                         <div className="text-sm font-medium text-udaan-navy">{index + 1}</div>
                         <Input
+                          name={`milestoneDescription-${index}`}
                           value={milestone.description}
                           onChange={(event) =>
                             handleMilestoneInputChange(index, "description", event.target.value)
@@ -449,6 +489,7 @@ export default function CSRAgentPage() {
                           placeholder={`Milestone ${index + 1} description`}
                         />
                         <Input
+                          name={`milestoneBudget-${index}`}
                           type="number"
                           min="1"
                           step="1"
@@ -458,32 +499,77 @@ export default function CSRAgentPage() {
                           }
                           placeholder="Budget (INR)"
                         />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={() => handleDeleteMilestone(index)}
+                          className="h-8 w-8 text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+                          aria-label={`Delete milestone ${index + 1}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     ))}
+                    {!areMilestonesComplete && (
+                      <p className="text-sm text-red-600">
+                        Fill all milestone rows with description and valid budget.
+                      </p>
+                    )}
+
+                    {areMilestonesComplete && !isMilestoneBudgetEqualToOriginalBudget && (
+                      <p className="text-sm text-red-600">
+                        Milestone budget total (INR {totalMilestoneBudget.toLocaleString("en-IN")}) must equal original
+                        budget (INR {parsedBudget.toLocaleString("en-IN")}). Please update the milestone budgets.
+                      </p>
+                    )}
                   </div>
                 )}
 
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-gray-700">Start Date</label>
                   <Input
+                    name="startDate"
                     type="date"
+                    min={todayDate}
                     value={formData.startDate}
-                    onChange={(event) => setFormData((previous) => ({ ...previous, startDate: event.target.value }))}
+                    onChange={(event) =>
+                      setFormData((previous) => {
+                        const nextStartDate = event.target.value
+                        return {
+                          ...previous,
+                          startDate: nextStartDate,
+                          endDate:
+                            previous.endDate && previous.endDate < nextStartDate
+                              ? ""
+                              : previous.endDate,
+                        }
+                      })
+                    }
                   />
+                  {hasStartDate && !isStartDateValid && (
+                    <p className="text-sm text-red-600">Start date cannot be before today.</p>
+                  )}
                 </div>
 
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-gray-700">End Date</label>
                   <Input
+                    name="endDate"
                     type="date"
+                    min={formData.startDate || todayDate}
                     value={formData.endDate}
                     onChange={(event) => setFormData((previous) => ({ ...previous, endDate: event.target.value }))}
                   />
+                  {hasStartDate && hasEndDate && !isEndDateValid && (
+                    <p className="text-sm text-red-600">End date cannot be before start date.</p>
+                  )}
                 </div>
 
                 <div className="space-y-2 md:col-span-2">
                   <label className="text-sm font-medium text-gray-700">Requirement Details</label>
                   <Textarea
+                    name="requirementDetails"
                     value={formData.requirementDetails}
                     onChange={(event) =>
                       setFormData((previous) => ({ ...previous, requirementDetails: event.target.value }))
@@ -503,15 +589,6 @@ export default function CSRAgentPage() {
                   </Button>
                 </div>
 
-                {!isDateRangeValid && formData.startDate && formData.endDate && (
-                  <p className="md:col-span-2 text-sm text-red-600">End date must be later than start date.</p>
-                )}
-
-                {!areMilestonesComplete && (
-                  <p className="md:col-span-2 text-sm text-red-600">
-                    Add at least one milestone, then fill all milestone rows with description and valid budget.
-                  </p>
-                )}
               </form>
             </CardContent>
           </Card>
