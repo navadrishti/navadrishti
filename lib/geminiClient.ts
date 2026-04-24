@@ -53,7 +53,7 @@ export async function GeminiChat(messages: ChatMessage[], retryCount = 0): Promi
   // 4. TIMEOUT (AbortController)
   // Stops the request if the API hangs for > 20s to prevent server resource leaks.
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 50000);
+  const timeoutId = setTimeout(() => controller.abort(), 60000);
 
   try {
     const res = await fetch(URL, {

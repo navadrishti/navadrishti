@@ -19,7 +19,7 @@ export async function GET() {
           description,
           category,
           created_at,
-          requester:users!requester_id (
+          requester:users!ngo_id (
             id,
             name,
             profile_image,

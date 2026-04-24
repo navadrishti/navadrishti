@@ -56,7 +56,7 @@ export async function GET(
       return NextResponse.json({ error: 'Service offer not found' }, { status: 404 });
     }
 
-    if (offer.creator_id !== ownerUserId) {
+    if ((offer.creator_id ?? offer.ngo_id) !== ownerUserId) {
       return NextResponse.json({ error: 'You can only view applicants for your own offers' }, { status: 403 });
     }
 
@@ -127,7 +127,7 @@ export async function POST(
 
     // Prevent self-response to own capability offer
     const offer = await db.serviceOffers.getById(offerId);
-    if (offer && offer.creator_id === client_id) {
+    if (offer && (offer.creator_id ?? offer.ngo_id) === client_id) {
       return NextResponse.json(
         { error: 'You cannot respond to your own capability offer' },
         { status: 400 }

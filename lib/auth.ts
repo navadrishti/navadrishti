@@ -2,13 +2,16 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { NextRequest, NextResponse } from 'next/server';
 
-// Use a consistent JWT secret and ensure it's available
-// Note: Next.js automatically loads .env files, so no need for dotenv.config()
-export const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret_dev_only';
-
-if (!process.env.JWT_SECRET) {
-  console.warn('WARNING: Using fallback JWT_SECRET. Set JWT_SECRET in your .env file for production.');
+// Use a consistent JWT secret and ensure it's available.
+const jwtSecretFromEnv = String(process.env.JWT_SECRET || '').trim();
+if (!jwtSecretFromEnv) {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('JWT_SECRET is required in production');
+  }
+  console.warn('WARNING: Using fallback JWT_SECRET for non-production environment.');
 }
+
+export const JWT_SECRET = jwtSecretFromEnv || 'fallback_secret_dev_only';
 
 // Interface for user data
 export interface UserData {

@@ -57,6 +57,22 @@ type SupportTicketMessage = {
   };
 };
 
+type DeliveryTrackingEvent = {
+  status?: string | null;
+  timestamp?: string | null;
+  location?: string | null;
+  details?: string | null;
+};
+
+type DeliveryTrackingSnapshot = {
+  provider: string;
+  trackingId: string;
+  currentStatus?: string | null;
+  lastEventAt?: string | null;
+  lastLocation?: string | null;
+  events?: DeliveryTrackingEvent[];
+};
+
 const statusLabels: Record<SupportTicketStatus, string> = {
   open: 'Open',
   in_progress: 'In Progress',
@@ -93,6 +109,9 @@ export default function AdminSupportPage() {
   const [refundPaymentId, setRefundPaymentId] = useState('');
   const [refundAmount, setRefundAmount] = useState('');
   const [refundReason, setRefundReason] = useState('admin_support_refund');
+  const [trackingLookupId, setTrackingLookupId] = useState('');
+  const [trackingLookupLoading, setTrackingLookupLoading] = useState(false);
+  const [trackingSnapshot, setTrackingSnapshot] = useState<DeliveryTrackingSnapshot | null>(null);
 
   const fetchTickets = async () => {
     try {
@@ -165,7 +184,40 @@ export default function AdminSupportPage() {
     setRefundPaymentId('');
     setRefundAmount('');
     setRefundReason('admin_support_refund');
+    setTrackingLookupId('');
+    setTrackingSnapshot(null);
     loadTicketDetails(ticket.ticket_id);
+  };
+
+  const lookupDeliveryTracking = async () => {
+    const trackingId = trackingLookupId.trim();
+    if (!trackingId) {
+      toast({ title: 'Tracking ID required', description: 'Enter a Delhivery tracking ID first.', variant: 'destructive' });
+      return;
+    }
+
+    try {
+      setTrackingLookupLoading(true);
+      const response = await fetch('/api/admin/delivery/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ trackingId })
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.error || 'Failed to fetch tracking status');
+      }
+
+      setTrackingSnapshot(data.data || null);
+      toast({ title: 'Tracking synced', description: 'Latest Delhivery status fetched successfully.' });
+    } catch (error: any) {
+      toast({ title: 'Tracking lookup failed', description: error?.message || 'Could not fetch Delhivery tracking', variant: 'destructive' });
+      setTrackingSnapshot(null);
+    } finally {
+      setTrackingLookupLoading(false);
+    }
   };
 
   const sendReply = async () => {
@@ -454,6 +506,63 @@ export default function AdminSupportPage() {
                         </div>
                       </div>
                       <Button variant="destructive" onClick={initiateRefund} disabled={refunding}>{refunding ? 'Initiating refund...' : 'Initiate Refund'}</Button>
+                    </div>
+
+                    <div className="space-y-3 rounded-lg border bg-blue-50 p-4">
+                      <p className="text-sm font-semibold text-blue-900">Delhivery Tracking Lookup</p>
+                      <p className="text-xs text-blue-800">Use this to fetch live shipment status for donor-to-NGO deliveries.</p>
+                      <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+                        <Input
+                          value={trackingLookupId}
+                          onChange={(e) => setTrackingLookupId(e.target.value)}
+                          placeholder="Enter Delhivery tracking ID"
+                        />
+                        <Button onClick={lookupDeliveryTracking} disabled={trackingLookupLoading}>
+                          {trackingLookupLoading ? 'Checking...' : 'Track Shipment'}
+                        </Button>
+                      </div>
+
+                      {trackingSnapshot ? (
+                        <div className="space-y-2 rounded-md border bg-white p-3 text-sm">
+                          <p>
+                            <span className="font-medium text-gray-600">Provider:</span> {trackingSnapshot.provider || 'delhivery'}
+                          </p>
+                          <p>
+                            <span className="font-medium text-gray-600">Tracking ID:</span> {trackingSnapshot.trackingId || 'N/A'}
+                          </p>
+                          <p>
+                            <span className="font-medium text-gray-600">Current Status:</span> {trackingSnapshot.currentStatus || 'N/A'}
+                          </p>
+                          <p>
+                            <span className="font-medium text-gray-600">Last Location:</span> {trackingSnapshot.lastLocation || 'N/A'}
+                          </p>
+                          <p>
+                            <span className="font-medium text-gray-600">Last Event:</span>{' '}
+                            {trackingSnapshot.lastEventAt
+                              ? new Date(trackingSnapshot.lastEventAt).toLocaleString('en-IN', { timeZone: 'UTC' })
+                              : 'N/A'}
+                          </p>
+
+                          {Array.isArray(trackingSnapshot.events) && trackingSnapshot.events.length > 0 ? (
+                            <div className="mt-3 space-y-2">
+                              <p className="font-medium text-gray-700">Recent Events</p>
+                              <div className="max-h-48 space-y-2 overflow-auto pr-1">
+                                {trackingSnapshot.events.slice(0, 6).map((event, index) => (
+                                  <div key={`${event.timestamp || 'event'}-${index}`} className="rounded border bg-slate-50 p-2 text-xs">
+                                    <p className="font-medium text-slate-800">{event.status || 'Update'}</p>
+                                    <p className="text-slate-600">{event.location || 'Unknown location'}</p>
+                                    <p className="text-slate-500">
+                                      {event.timestamp
+                                        ? new Date(event.timestamp).toLocaleString('en-IN', { timeZone: 'UTC' })
+                                        : 'Unknown time'}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </div>
 
                     <div className="grid gap-3 sm:grid-cols-2">
