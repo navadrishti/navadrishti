@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Loader2, Plus, Sparkles, CheckCircle2 } from 'lucide-react'
+import { ArrowLeft, Loader2, Plus, CheckCircle2 } from 'lucide-react'
 
 import { Header } from '@/components/header'
 import ProtectedRoute from '@/components/protected-route'
@@ -473,14 +473,18 @@ export default function CreateServiceRequestPage() {
           rationale
         }
       })
-      .filter((recommendation) => recommendation.score >= 45)
+      .filter((recommendation) => {
+        if (!expectedOfferType) return false
+        return String(recommendation.offer.offer_type || '').toLowerCase() === expectedOfferType
+      })
       .sort((a, b) => b.score - a.score)
-      .slice(0, 8)
   }
 
   const activeNeed = needs[recommendationNeedIndex] ?? createEmptyNeed()
   const activeNeedRecommendations = getNeedRecommendations(activeNeed)
   const activeSelectedOfferIds = selectedOffersByNeed[recommendationNeedIndex] || []
+  const activeNeedOfferIds = activeNeedRecommendations.map((recommendation) => recommendation.offer.id)
+  const allRelatedInvitedForActiveNeed = activeNeedRecommendations.length > 0 && activeNeedRecommendations.every((recommendation) => activeSelectedOfferIds.includes(recommendation.offer.id))
 
   const combinedCoverageForActiveNeed = activeNeedRecommendations
     .filter((recommendation) => activeSelectedOfferIds.includes(recommendation.offer.id))
@@ -502,20 +506,25 @@ export default function CreateServiceRequestPage() {
         }
       }
 
-      const existingCoverage = activeNeedRecommendations
-        .filter((item) => selectedIds.includes(item.offer.id))
-        .reduce((sum, item) => sum + (item.coverageRatio || 0), 0)
-
-      const coverageReached = existingCoverage >= 1
-      if (coverageReached) {
-        return prev
-      }
-
       return {
         ...prev,
         [recommendationNeedIndex]: [...selectedIds, offerId]
       }
     })
+  }
+
+  const inviteAllRelatedOffersForActiveNeed = () => {
+    setSelectedOffersByNeed((prev) => ({
+      ...prev,
+      [recommendationNeedIndex]: activeNeedOfferIds
+    }))
+  }
+
+  const clearInvitedOffersForActiveNeed = () => {
+    setSelectedOffersByNeed((prev) => ({
+      ...prev,
+      [recommendationNeedIndex]: []
+    }))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1059,11 +1068,10 @@ export default function CreateServiceRequestPage() {
                     <aside className="space-y-4 lg:sticky lg:top-24">
                       <div className="rounded-lg border bg-background p-4">
                         <div className="mb-3 flex items-center gap-2">
-                          <Sparkles size={16} className="text-primary" />
-                          <h3 className="font-semibold">Recommended Capability Offers</h3>
+                          <h3 className="font-semibold">Related Service Offers</h3>
                         </div>
                         <p className="text-xs text-muted-foreground">
-                          Suggested offers that can fulfill this need partially or fully. You can select multiple offers when one is not enough.
+                          Showing all active offers related to the selected need type. Invite one or more offers, or open an offer and apply directly.
                         </p>
 
                         <div className="mt-4 space-y-3">
@@ -1080,6 +1088,26 @@ export default function CreateServiceRequestPage() {
                               ))}
                             </SelectContent>
                           </Select>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={inviteAllRelatedOffersForActiveNeed}
+                              disabled={activeNeedRecommendations.length === 0 || allRelatedInvitedForActiveNeed}
+                            >
+                              {allRelatedInvitedForActiveNeed ? 'All Invited' : 'Invite All Related'}
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              onClick={clearInvitedOffersForActiveNeed}
+                              disabled={activeSelectedOfferIds.length === 0}
+                            >
+                              Clear Invites
+                            </Button>
+                          </div>
                         </div>
 
                         <div className="mt-3 rounded-md border bg-muted/40 p-2 text-xs text-muted-foreground">
@@ -1088,9 +1116,14 @@ export default function CreateServiceRequestPage() {
                             <span> • Estimated coverage: {Math.round(combinedCoverageForActiveNeed * 100)}%</span>
                           )}
                         </div>
+                        {allRelatedInvitedForActiveNeed && (
+                          <div className="mt-2 rounded-md border border-emerald-200 bg-emerald-50 p-2 text-xs text-emerald-700">
+                            All related offers are invited for this need.
+                          </div>
+                        )}
                         {activeCoverageCapReached && (
                           <div className="mt-2 rounded-md border border-emerald-200 bg-emerald-50 p-2 text-xs text-emerald-700">
-                            Coverage target reached. Deselect one offer to pick a different recommendation.
+                            Coverage target reached. You can still invite more offers if needed.
                           </div>
                         )}
 
@@ -1101,18 +1134,14 @@ export default function CreateServiceRequestPage() {
                               Loading offers...
                             </div>
                           ) : activeNeedRecommendations.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">No strong matches yet. Update title, type, or description to improve suggestions.</p>
+                            <p className="text-sm text-muted-foreground">No related active offers found for this need type yet.</p>
                           ) : (
                             activeNeedRecommendations.map((recommendation) => {
                               const isSelected = activeSelectedOfferIds.includes(recommendation.offer.id)
-                              const selectionLocked = activeCoverageCapReached && !isSelected
                               return (
-                                <button
+                                <div
                                   key={recommendation.offer.id}
-                                  type="button"
-                                  onClick={() => toggleRecommendedOfferSelection(recommendation.offer.id)}
-                                  disabled={selectionLocked}
-                                  className={`w-full rounded-md border p-3 text-left transition-colors ${isSelected ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40'} ${selectionLocked ? 'cursor-not-allowed opacity-60' : ''}`}
+                                  className={`w-full rounded-md border p-3 text-left transition-colors ${isSelected ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40'}`}
                                 >
                                   <div className="flex items-start justify-between gap-2">
                                     <div>
@@ -1128,7 +1157,18 @@ export default function CreateServiceRequestPage() {
                                     <span className="text-muted-foreground">Score {recommendation.score}</span>
                                   </div>
                                   <p className="mt-2 text-xs text-muted-foreground">{recommendation.rationale}</p>
-                                </button>
+
+                                  <div className="mt-3 flex items-center gap-2">
+                                    <Button type="button" variant={isSelected ? 'default' : 'outline'} size="sm" onClick={() => toggleRecommendedOfferSelection(recommendation.offer.id)}>
+                                      {isSelected ? 'Invited' : 'Invite For This Need'}
+                                    </Button>
+                                    <Button type="button" variant="ghost" size="sm" asChild>
+                                      <Link href={`/service-offers/${recommendation.offer.id}`}>
+                                        Apply
+                                      </Link>
+                                    </Button>
+                                  </div>
+                                </div>
                               )
                             })
                           )}

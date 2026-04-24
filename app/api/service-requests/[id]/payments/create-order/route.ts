@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
 import Razorpay from 'razorpay';
-import { db } from '@/lib/db';
+import { db, supabase } from '@/lib/db';
 import { JWT_SECRET } from '@/lib/auth';
 
 interface JWTPayload {
@@ -109,6 +109,44 @@ export async function POST(
         contributor_id: String(decoded.id)
       }
     });
+
+    // Dual-write: persist normalized order record while keeping existing flow unchanged.
+    try {
+      const ngoUserId = Number(serviceRequest.ngo_id || serviceRequest.requester_id || serviceRequest.requester?.id || 0);
+
+      const { data: assignment } = await supabase
+        .from('service_volunteers')
+        .select('id, status')
+        .eq('service_request_id', requestId)
+        .eq('volunteer_id', decoded.id)
+        .in('status', ['accepted', 'active', 'completed'])
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const nowIso = new Date().toISOString();
+      const orderPayload: Record<string, any> = {
+        service_request_id: requestId,
+        volunteer_assignment_id: assignment?.id || null,
+        contribution_id: null,
+        payer_user_id: decoded.id,
+        ngo_user_id: ngoUserId > 0 ? ngoUserId : decoded.id,
+        razorpay_order_id: String(order.id),
+        receipt: String(order.receipt || `sr_${requestId}`),
+        amount_inr: Number(contributionInr.toFixed(2)),
+        amount_paise: Math.round(contributionInr * 100),
+        currency: String(order.currency || 'INR'),
+        order_status: 'created',
+        order_notes: order.notes || {},
+        updated_at: nowIso
+      };
+
+      await supabase
+        .from('razorpay_payment_orders')
+        .upsert(orderPayload, { onConflict: 'razorpay_order_id' });
+    } catch (dualWriteError) {
+      console.error('Razorpay order dual-write skipped:', dualWriteError);
+    }
 
     return NextResponse.json({
       success: true,

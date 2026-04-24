@@ -97,11 +97,6 @@ export async function POST(
       // Don't fail the request, just log the error
     }
 
-    if (updateError) {
-      console.error('Error updating service offer:', updateError);
-      return NextResponse.json({ error: 'Failed to update service offer' }, { status: 500 });
-    }
-
     // Send notification email to the organization
     try {
       const isApproved = action === 'approve';
@@ -138,21 +133,6 @@ export async function POST(
         </div>
       `;
 
-      // Create notification record before sending
-      const { data: notificationRecord } = await supabase
-        .from('service_offer_notifications')
-        .insert({
-          service_offer_id: parseInt(offerId),
-          notification_type: isApproved ? 'approval' : 'rejection',
-          recipient_email: serviceOffer.organization.email,
-          recipient_user_id: serviceOffer.organization.id,
-          subject: subject,
-          email_body: emailBody,
-          delivery_status: 'pending'
-        })
-        .select()
-        .single();
-
       // Send the email
       const emailResult = await emailService.sendEmail({
         to: serviceOffer.organization.email,
@@ -160,36 +140,20 @@ export async function POST(
         html: emailBody
       });
 
-      // Update notification record with delivery status
-      if (notificationRecord) {
+      if (emailResult) {
         await supabase
-          .from('service_offer_notifications')
+          .from('service_offer_reviews')
           .update({
-            sent_at: new Date().toISOString(),
-            delivery_status: 'sent',
-            email_service_response: emailResult || {}
+            review_category: isApproved ? 'approval_email_sent' : 'rejection_email_sent'
           })
-          .eq('id', notificationRecord.id);
+          .eq('service_offer_id', parseInt(offerId))
+          .eq('review_action', action === 'approve' ? 'approved' : 'rejected')
+          .order('created_at', { ascending: false })
+          .limit(1);
       }
 
     } catch (emailError) {
       console.error('Error sending notification email:', emailError);
-      
-      // Update notification record with failure status if record exists
-      try {
-        await supabase
-          .from('service_offer_notifications')
-          .update({
-            delivery_status: 'failed',
-            failure_reason: emailError instanceof Error ? emailError.message : 'Unknown email error'
-          })
-          .eq('service_offer_id', parseInt(offerId))
-          .eq('delivery_status', 'pending')
-          .order('created_at', { ascending: false })
-          .limit(1);
-      } catch (updateError) {
-        console.error('Error updating notification status:', updateError);
-      }
       
       // Don't fail the entire operation if email fails
     }

@@ -31,6 +31,13 @@ const isAdminRequest = (request: NextRequest) => {
   }
 };
 
+const normalizeRefundStatus = (status: unknown): 'processed' | 'pending' | 'failed' => {
+  const normalized = String(status || '').toLowerCase();
+  if (normalized === 'processed') return 'processed';
+  if (normalized === 'failed') return 'failed';
+  return 'pending';
+};
+
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ ticketId: string }> }) {
   try {
     const admin = isAdminRequest(request);
@@ -194,6 +201,34 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const paidInr = parseAmountToInr(paymentEntry.amount_inr);
     const refundInr = requestedRefundInr > 0 ? Math.min(requestedRefundInr, paidInr) : paidInr;
 
+    const { data: existingNormalizedPayment } = await supabase
+      .from('razorpay_payments')
+      .select('id')
+      .eq('razorpay_payment_id', refundPaymentId)
+      .maybeSingle();
+
+    if (existingNormalizedPayment?.id) {
+      const { data: existingRefund } = await supabase
+        .from('razorpay_refunds')
+        .select('id, refund_status, amount_paise')
+        .eq('payment_id', existingNormalizedPayment.id)
+        .in('refund_status', ['pending', 'processed'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existingRefund?.id && Number(existingRefund.amount_paise || 0) === Math.round(refundInr * 100)) {
+        return NextResponse.json({
+          success: true,
+          data: {
+            message: existingRefund.refund_status === 'processed' ? 'Refund already processed' : 'Refund already initiated',
+            refunded_amount_inr: refundInr,
+            refund_status: existingRefund.refund_status,
+          }
+        });
+      }
+    }
+
     const refundPayload: any = {
       notes: {
         service_request_id: String(serviceRequestId),
@@ -206,22 +241,127 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     const refund = await razorpay.payments.refund(refundPaymentId, refundPayload);
+    const normalizedRefundStatus = normalizeRefundStatus(refund?.status);
+    const refundProcessed = normalizedRefundStatus === 'processed';
+
+    try {
+      const nowIso = new Date().toISOString();
+      const ngoUserId = Number(serviceRequest.ngo_id || serviceRequest.requester_id || serviceRequest.requester?.id || 0);
+      const adminUserId = Number(admin.id) > 0 ? Number(admin.id) : null;
+      const existingOrderId = String(paymentEntry?.razorpay_order_id || '').trim();
+
+      if (existingOrderId) {
+        await supabase
+          .from('razorpay_payment_orders')
+          .upsert({
+            service_request_id: serviceRequestId,
+            volunteer_assignment_id: null,
+            contribution_id: null,
+            payer_user_id: Number(paymentEntry?.contributor_id || 0) > 0 ? Number(paymentEntry.contributor_id) : (ngoUserId > 0 ? ngoUserId : null),
+            ngo_user_id: ngoUserId > 0 ? ngoUserId : Number(paymentEntry?.contributor_id || 0),
+            razorpay_order_id: existingOrderId,
+            receipt: `sr_${serviceRequestId}`,
+            amount_inr: Number(parseAmountToInr(paymentEntry?.amount_inr || 0).toFixed(2)),
+            amount_paise: Math.round(parseAmountToInr(paymentEntry?.amount_inr || 0) * 100),
+            currency: 'INR',
+            order_status: 'paid',
+            order_notes: {
+              source: 'admin_refund_dual_write',
+              service_request_id: String(serviceRequestId)
+            },
+            updated_at: nowIso
+          }, { onConflict: 'razorpay_order_id' });
+      }
+
+      const { data: paymentRow } = await supabase
+        .from('razorpay_payments')
+        .select('id, order_id')
+        .eq('razorpay_payment_id', refundPaymentId)
+        .maybeSingle();
+
+      let normalizedPaymentId: string | null = paymentRow?.id || null;
+
+      if (!normalizedPaymentId && existingOrderId) {
+        const { data: orderRow } = await supabase
+          .from('razorpay_payment_orders')
+          .select('id')
+          .eq('razorpay_order_id', existingOrderId)
+          .maybeSingle();
+
+        if (orderRow?.id) {
+          const { data: insertedPayment } = await supabase
+            .from('razorpay_payments')
+            .upsert({
+              order_id: orderRow.id,
+              razorpay_order_id: existingOrderId,
+              razorpay_payment_id: refundPaymentId,
+              razorpay_signature: null,
+              amount_inr: Number(parseAmountToInr(paymentEntry?.amount_inr || refundInr).toFixed(2)),
+              amount_paise: Math.round(parseAmountToInr(paymentEntry?.amount_inr || refundInr) * 100),
+              currency: 'INR',
+              payment_status: 'partially_refunded',
+              payment_method: null,
+              paid_at: String(paymentEntry?.paid_at || nowIso),
+              provider_payload: {
+                source: 'admin_refund_dual_write',
+                service_request_id: serviceRequestId
+              },
+              updated_at: nowIso
+            }, { onConflict: 'razorpay_payment_id' })
+            .select('id')
+            .single();
+
+          normalizedPaymentId = insertedPayment?.id || null;
+        }
+      }
+
+      if (normalizedPaymentId) {
+        await supabase
+          .from('razorpay_payments')
+          .update({
+            payment_status: refundInr < paidInr ? 'partially_refunded' : 'refunded',
+            updated_at: nowIso
+          })
+          .eq('id', normalizedPaymentId);
+
+        await supabase
+          .from('razorpay_refunds')
+          .insert({
+            payment_id: normalizedPaymentId,
+            service_request_id: serviceRequestId,
+            initiated_by_admin_id: adminUserId,
+            support_ticket_id: ticketId,
+            razorpay_refund_id: refund?.id || null,
+            refund_reason: refundReason,
+            amount_inr: Number(refundInr.toFixed(2)),
+            amount_paise: Math.round(refundInr * 100),
+            refund_status: normalizedRefundStatus,
+            provider_payload: refund || {},
+            initiated_at: nowIso,
+            processed_at: refundProcessed ? nowIso : null,
+            updated_at: nowIso
+          });
+      }
+    } catch (dualWriteError) {
+      console.error('Razorpay refund dual-write skipped:', dualWriteError);
+    }
 
     const updatedTransactions = previousPayments.map((item: any) => {
       if (item?.razorpay_payment_id !== refundPaymentId) return item;
       return {
         ...item,
-        refund_status: 'processed',
+        refund_status: normalizedRefundStatus,
         refund_id: refund?.id || null,
         refund_reason: refundReason,
-        refunded_amount_inr: refundInr,
-        refunded_at: new Date().toISOString(),
+        refunded_amount_inr: refundProcessed ? refundInr : Number(item?.refunded_amount_inr || 0),
+        refunded_at: refundProcessed ? new Date().toISOString() : item?.refunded_at || null,
+        refund_initiated_at: new Date().toISOString(),
         refunded_by_admin_id: admin.id
       };
     });
 
     const currentRaisedInr = parseAmountToInr(requirements?.funds_raised_inr);
-    const nextRaisedInr = Math.max(0, currentRaisedInr - refundInr);
+    const nextRaisedInr = refundProcessed ? Math.max(0, currentRaisedInr - refundInr) : currentRaisedInr;
     const targetInr = parseAmountToInr(requirements?.funding_target_inr ?? requirements?.estimated_budget ?? requirements?.budget);
 
     const nextRequirements = {
@@ -231,11 +371,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       financial_transactions: updatedTransactions
     };
 
-    await db.serviceRequests.update(serviceRequestId, {
+    const serviceRequestUpdatePayload: Record<string, any> = {
       requirements: JSON.stringify(nextRequirements),
-      status: nextRaisedInr > 0 ? 'in_progress' : 'active',
       updated_at: new Date().toISOString()
-    });
+    };
+
+    if (refundProcessed) {
+      serviceRequestUpdatePayload.status = nextRaisedInr > 0 ? 'in_progress' : 'active';
+    }
+
+    await db.serviceRequests.update(serviceRequestId, serviceRequestUpdatePayload);
 
     const { data: ticketRow } = await supabase
       .from('support_tickets')
@@ -261,8 +406,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       await supabase
         .from('support_tickets')
         .update({
-          status: 'resolved',
-          resolved_at: new Date().toISOString(),
+          status: refundProcessed ? 'resolved' : 'in_progress',
+          resolved_at: refundProcessed ? new Date().toISOString() : null,
           admin_notes: updatedNotes,
           updated_at: new Date().toISOString(),
         })
@@ -272,9 +417,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({
       success: true,
       data: {
-        message: 'Refund initiated successfully',
+        message: refundProcessed ? 'Refund processed successfully' : 'Refund initiated successfully',
         refund_id: refund?.id || null,
         refunded_amount_inr: refundInr,
+        refund_status: normalizedRefundStatus,
         fundsRaisedInr: Number(nextRaisedInr.toFixed(2)),
         targetInr
       }
