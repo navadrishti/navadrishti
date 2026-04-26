@@ -115,6 +115,7 @@ const normalizeOffer = (offer: any) => {
 
   return {
     ...offer,
+    ngo_id: offer.ngo_id ?? offer.creator_id,
     offer_type: normalizedOfferType,
     transaction_type: transactionType,
     sell_amount: details.sell_amount ?? (transactionType === 'sell' ? fallbackPriceAmount : null),

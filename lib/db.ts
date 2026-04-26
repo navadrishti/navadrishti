@@ -379,11 +379,15 @@ export const db = {
         // Add application counts to offers
         return data.map((offer: any) => ({
           ...offer,
+          ngo_id: offer.creator_id,
           applications_count: hireCounts[offer.id] || 0
         }));
       }
       
-      return data;
+      return (data || []).map((offer: any) => ({
+        ...offer,
+        ngo_id: offer.creator_id
+      }));
     },
 
     async getById(id: number) {
@@ -397,7 +401,7 @@ export const db = {
         .single();
       
       if (error && error.code !== 'PGRST116') throw error;
-      return data;
+      return data ? { ...data, ngo_id: data.creator_id } : data;
     },
 
     async create(offerData: any) {
