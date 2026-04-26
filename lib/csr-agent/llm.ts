@@ -135,15 +135,15 @@ REAL-WORLD RULES
 
 3. **Execution Realism (Concise)**
 Each campaign must clearly state:
-- Beneficiary identification method
+- Beneficiary identification method and should be a whole integer.
 - Delivery model (NGO partner, camps, direct build, etc.)
 - 2-3 specific ground execution steps in ${location}
 - Description max 40 words per campaign
 
 4. **Milestone Enhancement**
 For each milestone:
-- Assign logical duration_weeks
-- Define exactly 3 clear, measurable deliverables
+- Assign logical duration_weeks and duration_days (7 days = 1 week)
+- Define upto 3 clear, measurable deliverables
 
 5. **Diversity (Zero Overlap)**
 Generate EXACTLY 3 campaigns, each solving the problem through a different operational "Lever":
@@ -198,6 +198,7 @@ OUTPUT FORMAT
         {
           "title": "string",
           "description": "max 35 words: specific action",
+          "duration_days": 0,
           "duration_weeks": 0,
           "budget_allocated": 0,
           "deliverables": ["string", "string", "string"]

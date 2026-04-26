@@ -18,7 +18,7 @@ import { StyledSelect } from '@/components/ui/styled-select'
 import { Textarea } from '@/components/ui/textarea'
 
 type OfferType = 'financial' | 'material' | 'service' | 'infrastructure'
-type TransactionType = 'sell' | 'rent' | 'volunteer'
+type TransactionType = 'sell' | 'rent' | 'volunteer' | 'donate'
 
 type FormData = {
   title: string
@@ -40,7 +40,8 @@ const OFFER_TYPES: { value: OfferType; label: string }[] = [
 const TRANSACTION_TYPES: { value: TransactionType; label: string }[] = [
   { value: 'sell', label: 'Sell' },
   { value: 'rent', label: 'Rent' },
-  { value: 'volunteer', label: 'Volunteer' }
+  { value: 'volunteer', label: 'Volunteer' },
+  { value: 'donate', label: 'Donate' }
 ]
 
 export default function CreateServiceOfferPage() {

@@ -417,6 +417,7 @@ export default function CSRAgentPage() {
                   <select
                     name="category"
                     value={formData.category}
+                    aria-label = "CSR Category"
                     onChange={(event) => setFormData((previous) => ({ ...previous, category: event.target.value }))}
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none"
                   >
@@ -597,8 +598,8 @@ export default function CSRAgentPage() {
             <div className="space-y-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>Section 1</CardTitle>
-                  <CardDescription>Intentionally left blank for now</CardDescription>
+                  <CardTitle>Section 1: Capability Offers</CardTitle>
+                  <CardDescription>Recommended capabilities to include in your CSR initiatives.</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="min-h-20 rounded-lg border border-dashed border-gray-200" />
@@ -607,8 +608,8 @@ export default function CSRAgentPage() {
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Section 2: Similar Services</CardTitle>
-                  <CardDescription>Services aligned to your requirement</CardDescription>
+                  <CardTitle>Section 2: Existing NGO Requests </CardTitle>
+                  <CardDescription>Requests aligned to your requirement</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {serviceSuggestions.map((service) => (
