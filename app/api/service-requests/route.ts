@@ -168,17 +168,29 @@ function getTargetCoverageForRequestType(requestType: string, payload: Record<st
 }
 
 function getOfferCapacityForRequestType(requestType: string, offer: Record<string, any>): number | null {
+  const requirements = safeParseJson(offer.requirements);
+  const requirementAmount = requirements.amount ?? requirements.sell_amount ?? requirements.price_amount;
+  const requirementQuantity = requirements.quantity ?? requirements.target_quantity;
+  const requirementCapacity = requirements.capacity;
+
   if (requestType === 'Financial Need') {
-    return parseAmount(offer.amount ?? offer.sell_amount ?? offer.price_amount);
+    return parseAmount(offer.amount ?? offer.sell_amount ?? offer.price_amount ?? requirementAmount);
   }
   if (requestType === 'Material Need') {
-    return parseAmount(offer.quantity);
+    return parseAmount(offer.quantity ?? requirementQuantity);
   }
   if (requestType === 'Skill / Service Need') {
-    return parseAmount(offer.capacity);
+    return parseAmount(offer.capacity ?? requirementCapacity);
   }
   if (requestType === 'Infrastructure Project') {
-    return parseAmount(offer.amount ?? offer.sell_amount ?? offer.capacity ?? offer.price_amount);
+    return parseAmount(
+      offer.amount ??
+      offer.sell_amount ??
+      offer.capacity ??
+      offer.price_amount ??
+      requirementAmount ??
+      requirementCapacity
+    );
   }
   return null;
 }
@@ -500,6 +512,7 @@ export async function POST(request: NextRequest) {
         title, 
         description, 
         category,
+        project_category,
         request_type,
         location,
         timeline,
@@ -618,9 +631,9 @@ export async function POST(request: NextRequest) {
       if (expectedOfferType) {
         const { data: matchingOffers, error: matchingOffersError } = await supabase
           .from('service_offers')
-          .select('id, status, offer_type, amount, sell_amount, quantity, capacity, price_amount')
+          .select('id, status, offer_type, price_amount, requirements')
           .eq('offer_type', expectedOfferType)
-          .not('status', 'in', '(inactive,closed,completed,cancelled,archived,rejected,expired)')
+          .eq('status', 'active')
           .limit(60);
 
         if (matchingOffersError) throw matchingOffersError;

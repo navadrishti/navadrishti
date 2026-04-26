@@ -148,6 +148,12 @@ export async function PUT(
       (nextMeta as any).delivery_tracking_id = trackingId;
       (nextMeta as any).delivery_provider = 'delhivery';
       (nextMeta as any).delivery_tracking_updated_at = new Date().toISOString();
+      (nextMeta as any).delivery_tracking_last_status = (nextMeta as any).delivery_tracking_last_status || null;
+      (nextMeta as any).delivery_tracking_last_location = (nextMeta as any).delivery_tracking_last_location || null;
+      (nextMeta as any).delivery_tracking_last_event_at = (nextMeta as any).delivery_tracking_last_event_at || null;
+      (nextMeta as any).delivery_tracking_events = Array.isArray((nextMeta as any).delivery_tracking_events)
+        ? (nextMeta as any).delivery_tracking_events
+        : [];
     }
 
     const updatePayload: Record<string, any> = {

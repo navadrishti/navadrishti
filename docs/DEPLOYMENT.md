@@ -113,9 +113,22 @@ SESSION_SECRET=production_session_secret_32_chars
 # Services
 CLOUDINARY_CLOUD_NAME=production_cloud_name
 
-# Optional future donations
-RAZORPAY_KEY_ID=rzp_live_production_key
+# Payments and tracking
+NEXT_PUBLIC_RAZORPAY_KEY_ID=rzp_live_production_key
+RAZORPAY_KEY_SECRET=your_live_razorpay_secret
+RAZORPAY_WEBHOOK_SECRET=your_live_webhook_secret
+DELHIVERY_API_TOKEN=your_delhivery_token
+DELHIVERY_API_BASE_URL=https://track.delhivery.com
+DELHIVERY_API_TIMEOUT_MS=10000
 ```
+
+**Webhook setup required for production**
+- Razorpay webhook endpoint: `/api/webhooks/razorpay`
+- Subscribe to events: `payment.captured`, `refund.created`, `refund.processed`, `refund.failed`
+- Use the same secret value as `RAZORPAY_WEBHOOK_SECRET`
+
+**DB hardening step (recommended)**
+- Run [reference/production_hardening.sql](../reference/production_hardening.sql) on staging, then production.
 
 ### Vercel Deployment Workflow
 ```bash
