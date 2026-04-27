@@ -12,9 +12,14 @@ import { SkeletonServiceCard, SkeletonCTA } from '@/components/ui/skeleton';
 import { Search, ArrowRight, Plus } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/hooks/use-toast';
-import { getServiceOfferTypesWithAll } from '@/lib/categories';
 
-const types = getServiceOfferTypesWithAll();
+const types = [
+  { value: 'All Types', label: 'All Types' },
+  { value: 'financial', label: 'Financial' },
+  { value: 'material', label: 'Material' },
+  { value: 'service', label: 'Service / Skill' },
+  { value: 'infrastructure', label: 'Infrastructure' }
+];
 
 export default function ServiceOffersPage() {
   const { user } = useAuth();
@@ -23,7 +28,7 @@ export default function ServiceOffersPage() {
 
   const [mounted, setMounted] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedType, setSelectedType] = useState('All Categories');
+  const [selectedType, setSelectedType] = useState('All Types');
   const [locationFilter, setLocationFilter] = useState('');
 
   const [serviceOffers, setServiceOffers] = useState<any[]>([]);
@@ -96,7 +101,7 @@ export default function ServiceOffersPage() {
       setError('');
 
       const params = new URLSearchParams();
-      if (selectedType !== 'All Categories') {
+      if (selectedType !== 'All Types') {
         params.append('offer_type', selectedType);
       }
       if (searchTerm) {
@@ -274,7 +279,7 @@ export default function ServiceOffersPage() {
                 variant="outline"
                 onClick={() => {
                   setSearchTerm('');
-                  setSelectedType('All Categories');
+                  setSelectedType('All Types');
                 }}
               >
                 Clear Filters
