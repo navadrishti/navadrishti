@@ -56,6 +56,28 @@ Notes:
 - `service_requests` stores need-level records under an optional project.
 - `service_volunteers` is currently reused for assignment and fulfillment tracking.
 
+### D.1) Service offers canonical column policy (current)
+
+Current owner relationship and review fields must remain stable:
+- owner key: `creator_id` (legacy `provider_id` should not be reintroduced)
+- review/ops fields: `admin_status`, `admin_reviewed_at`, `admin_reviewed_by`, `admin_comments`, `submitted_for_review_at`
+
+Core columns used across product flows:
+- `id`, `creator_id`, `title`, `description`, `offer_type`
+- `category`, `location`, `status`
+- `price_type`, `price_amount`, `price_description`
+- `requirements`, `transaction_type`
+- `created_at`, `updated_at`
+
+Columns currently retained for admin/UI compatibility:
+- `wage_info`, `employment_type`, `experience_requirements`, `skills_required`, `duration`
+
+Drop-candidate columns (only after explicit code cleanup and migration validation):
+- `images`, `tags`, and other legacy fields already migrated into `requirements` JSON where applicable
+
+Safety rule for schema reductions:
+- avoid dropping `service_offers` columns while endpoints still use broad selects; convert to explicit column lists first.
+
 ### E) Payments, refunds, provider webhooks
 - razorpay_payment_orders
 - razorpay_payments
@@ -145,6 +167,7 @@ Notes:
 3. Decide whether `service_volunteers` remains a shared assignment table or is split.
 4. Confirm purpose boundaries for `post_reactions` vs `post_interactions`.
 5. Build missing indexes and unique constraints identified by audit queries.
+6. Complete `service_offers` column reduction in batches only after explicit select migration and admin flow validation.
 
 ## Relationship Summary (high level)
 
