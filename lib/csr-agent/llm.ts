@@ -30,7 +30,8 @@ export const generateCampaignsInputSchema = z.object({
   budget:         z.number().positive(),
   milestones:     z.number().int().min(1).max(10),
   category:       z.string().min(1),
-  location:       z.string().min(1),
+  city:           z.string().min(1),
+  state_province: z.string().min(1),
   start_date:     z.string().min(1),
   end_date:       z.string().min(1),
   milestone_info: z.array(requestMilestoneSchema).optional(),
@@ -107,13 +108,16 @@ function buildPrompt(input: GenerateCampaignsInput): string {
   const {
     budget,
     category,
-    location,
+    city,
+    state_province,
     start_date,
     end_date,
     milestones,
     milestone_info,
     requirementDetails,
   } = input;
+
+  const locationStr = `${city}${state_province ? `, ${state_province}` : ""}`;
 
   return `
 You are a CSR strategy expert helping Indian companies design practical, real-world CSR campaign drafts.
@@ -128,7 +132,7 @@ COMPANY REQUIREMENTS
 -----------------------------------
 - Budget: ₹${budget}
 - Category: ${category}
-- Location: ${location}
+- Location: ${locationStr}
 - Start Date: ${start_date}
 - End Date: ${end_date}
 - Milestones: ${milestones}
@@ -152,7 +156,7 @@ REAL-WORLD RULES
 Each campaign must clearly state:
 - Beneficiary identification method and should be a whole integer.
 - Delivery model (NGO partner, camps, direct build, etc.)
-- 2-3 specific ground execution steps in ${location}
+- 2-3 specific ground execution steps in ${locationStr}
 - Description max 40 words per campaign
 
 4. **Milestone Enhancement**
@@ -186,9 +190,9 @@ OUTPUT FORMAT
   "campaigns": [
     {
       "title": "string",
-      "description": "max 40 words: execution method, beneficiary ID, ground steps in ${location} with respect to ${requirementDetails}",
+      "description": "max 40 words: execution method, beneficiary ID, ground steps in ${locationStr} with respect to ${requirementDetails}",
       "category": "${category}",
-      "location": "${location}",
+      "location": "${locationStr}",
       "budget_inr": ${budget},
 
       "budget_breakdown": {
