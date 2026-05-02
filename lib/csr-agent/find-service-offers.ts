@@ -9,7 +9,8 @@ export const InputSchema = z.object({
     title: z.string(),
     description: z.string(),
     category: z.string(),
-    location: z.string(),
+    city: z.string(),
+    state_province: z.string(),
     budget: z.number().positive(),
     start_date: z.coerce.date(),
     end_date: z.coerce.date(),
@@ -50,11 +51,9 @@ const scoreMatch = ( match: Omit<CapabilityMatch, 'score'> , input: InputSchemaT
     if (match.impact_area?.includes(input.category.toLowerCase())) {
         score += 20
     }
-    //******************************************************(change  loaction input of Campaign)**************************************************************************
-    // location match — fix: safe split
-    const parts = input.location?.split(',') ?? []
-    const inputCity = parts[0]?.trim().toLowerCase()
-    const inputState = parts[1]?.trim().toLowerCase()
+    //******************************************************(use city/state from input schema)**************************************************************************
+    const inputCity = (input.city || '').trim().toLowerCase()
+    const inputState = (input.state_province || '').trim().toLowerCase()
 
     if (inputCity && match.city?.toLowerCase() === inputCity) score += 15
     else if (inputState && match.state_province?.toLowerCase() === inputState) score += 8
@@ -120,7 +119,19 @@ export const findServiceOffers = async (input: InputSchemaType): Promise<Capabil
     if (capabilityIds.length === 0) return []
 
     // embedding + vector search
-    const queryText = makeServiceOfferQuery(input)
+    // makeServiceOfferQuery expects a `location` string — compose from city/state
+    const queryPayload = {
+        title: input.title,
+        description: input.description,
+        category: input.category,
+        city: input.city,
+        state_province: input.state_province,
+        budget: input.budget,
+        start_date: input.start_date,
+        end_date: input.end_date,
+        requirementDetails: input.requirementDetails,
+    }
+    const queryText = makeServiceOfferQuery(queryPayload)
     const embedding = await embedText(queryText)
 
     const { data: vectorMatches, error: vectorError } = await supabase
