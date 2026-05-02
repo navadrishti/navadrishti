@@ -13,7 +13,8 @@ export interface ServiceOfferQueryPayload {
   title: string;
   description: string;
   category: string;
-  location: string;
+  city: string;
+  state_province?: string;
   budget: number;
   start_date: Date;
   end_date: Date;
@@ -35,7 +36,7 @@ export function makeServiceOfferQuery(payload: ServiceOfferQueryPayload): string
     payload.title,
     payload.description,
     payload.category,
-    payload.location,
+    `${payload.city}${payload.state_province ? `, ${payload.state_province}` : ""}`,
     payload.requirementDetails,
     `${payload.start_date} to ${payload.end_date}`,
   ].filter(Boolean).join(" | ");
