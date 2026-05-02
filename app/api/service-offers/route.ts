@@ -10,6 +10,7 @@ import {
   isTransactionType,
   OfferType,
   sanitizeTextArray,
+  parseCsvToStringArray,
   toNullableNumber,
   toNullablePositiveNumber
 } from '@/lib/service-offers'
@@ -42,6 +43,59 @@ const safeParseJson = (value: unknown): Record<string, any> => {
   }
 
   return {}
+}
+
+// Try insert with fallback: if Supabase complains about a missing column
+// remove that key and retry up to 3 times. Returns { data, error } from Supabase.
+const insertWithSchemaFallback = async (table: string, payload: Record<string, any>) => {
+  let attempts = 0
+  let current = { ...payload }
+  while (attempts < 3) {
+    const { data, error } = await supabase.from(table).insert(current).select().single()
+    if (!error) {
+      if (!data) return { data: null, error: { message: 'Insert succeeded but returned no data' } }
+      return { data, error: null }
+    }
+
+    const msg = String(error.message || '')
+    const m = msg.match(/Could not find the '([^']+)' column/)
+    if (m) {
+      const col = m[1]
+      if (col in current) {
+        delete (current as any)[col]
+        attempts++
+        continue
+      }
+    }
+
+    return { data: null, error }
+  }
+
+  return { data: null, error: { message: 'Insert retries exhausted due to missing columns' } }
+}
+
+const updateWithSchemaFallback = async (table: string, id: number | string, payload: Record<string, any>) => {
+  let attempts = 0
+  let current = { ...payload }
+  while (attempts < 3) {
+    const { data, error } = await supabase.from(table).update(current).eq('id', id).select().single()
+    if (!error) return { data, error: null }
+
+    const msg = String(error.message || '')
+    const m = msg.match(/Could not find the '([^']+)' column/)
+    if (m) {
+      const col = m[1]
+      if (col in current) {
+        delete (current as any)[col]
+        attempts++
+        continue
+      }
+    }
+
+    return { data: null, error }
+  }
+
+  return { data: null, error: { message: 'Update retries exhausted due to missing columns' } }
 }
 
 const buildPriceInfo = (offerType: string, transactionType: string, body: Record<string, any>) => {
@@ -79,36 +133,6 @@ const normalizeOfferDetailsForStorage = (offerType: string, transactionType: str
   }
 
   return details
-}
-
-const buildBackendCapabilities = (offer: Record<string, any>) => {
-  const capabilityKind = offer.offer_type === 'financial'
-    ? 'financial'
-    : offer.offer_type === 'service'
-      ? 'skill'
-      : offer.offer_type === 'material'
-        ? 'item'
-        : 'asset'
-
-  const unit = offer.offer_type === 'financial'
-    ? 'offer'
-    : offer.offer_type === 'service'
-      ? 'service'
-      : offer.offer_type === 'material'
-        ? 'item'
-        : 'asset'
-
-  return [{
-    service_offer_id: Number(offer.id),
-    capability_name: String(offer.title || '').trim(),
-    capability_kind: capabilityKind,
-    capability_description: String(offer.description || '').trim() || null,
-    synonyms: sanitizeTextArray(offer.tags),
-    unit,
-    min_qty: 1,
-    max_qty: 1,
-    is_active: true
-  }]
 }
 
 const normalizeOffer = (offer: any) => {
@@ -193,6 +217,58 @@ const validateIncomingBody = (body: Record<string, any>) => {
   }
 
   return null
+}
+
+// Coerce flexible client inputs into normalized shapes the backend expects.
+const coerceIncomingBody = (body: Record<string, any>) => {
+  // impact_area: accept CSV string, single value, or array
+  if (!Array.isArray(body.impact_area)) {
+    if (typeof body.impact_area === 'string') {
+      body.impact_area = parseCsvToStringArray(body.impact_area)
+    } else if (body.impact_area && typeof body.impact_area === 'object') {
+      body.impact_area = Array.isArray(body.impact_area) ? body.impact_area : []
+    } else if (body.impact_area) {
+      body.impact_area = [String(body.impact_area)]
+    } else {
+      body.impact_area = []
+    }
+  } else {
+    body.impact_area = sanitizeTextArray(body.impact_area)
+  }
+
+  // tags: accept CSV or array
+  if (!Array.isArray(body.tags)) {
+    if (typeof body.tags === 'string') body.tags = parseCsvToStringArray(body.tags)
+    else if (!body.tags) body.tags = []
+    else body.tags = sanitizeTextArray(body.tags)
+  } else {
+    body.tags = sanitizeTextArray(body.tags)
+  }
+
+  // offer_details: ensure object (parse JSON strings)
+  if (typeof body.offer_details === 'string') {
+    try { body.offer_details = JSON.parse(body.offer_details) } catch { body.offer_details = {} }
+  }
+  if (!body.offer_details || typeof body.offer_details !== 'object') body.offer_details = {}
+
+  // requirements: if object merge into offer_details, if array keep as array, if string keep as string
+  if (Array.isArray(body.requirements)) {
+    body.requirements = sanitizeTextArray(body.requirements)
+  } else if (body.requirements && typeof body.requirements === 'object') {
+    body.offer_details = { ...body.offer_details, ...body.requirements }
+    body.requirements = null
+  } else if (typeof body.requirements === 'string') {
+    body.requirements = body.requirements.trim() || null
+  } else {
+    body.requirements = null
+  }
+
+  // state/province mapping from clients that send alternate key
+  if (!body.state_province && body['state/province']) {
+    body.state_province = body['state/province']
+  }
+
+  return body
 }
 
 // GET - Fetch service offers with enhanced filtering
@@ -358,7 +434,9 @@ export async function GET(request: NextRequest) {
 
 // POST - Create capability offer
 export async function POST(request: NextRequest) {
+  console.log('===== SERVICE OFFER CREATE START =====')
   try {
+    console.log('Step 1: Checking authentication')
     const authHeader = request.headers.get('authorization')
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
@@ -373,6 +451,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid authentication token' }, { status: 401 })
     }
 
+    console.log('Step 2: Getting user details')
     const { id: userId, verification_status, user_type } = decoded
 
     const { data: currentUser, error: currentUserError } = await supabase
@@ -385,6 +464,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'User account not found' }, { status: 404 })
     }
 
+    console.log('Step 3: Checking user type and verification')
     const effectiveUserType = currentUser.user_type || user_type
     const effectiveVerificationStatus = currentUser.verification_status || verification_status || 'unverified'
 
@@ -399,12 +479,23 @@ export async function POST(request: NextRequest) {
       }, { status: 403 })
     }
 
-    const body = await request.json()
+    console.log('Step 4: Parsing request body')
+    let body: Record<string, any>
+    try {
+      body = coerceIncomingBody(await request.json())
+    } catch (jsonError) {
+      console.error('JSON parse error:', jsonError)
+      return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 })
+    }
+
+    console.log('Step 5: Validating body', { title: body.title, offer_type: body.offer_type, transaction_type: body.transaction_type, impact_area_count: body.impact_area?.length })
     const validationError = validateIncomingBody(body)
     if (validationError) {
+      console.error('Validation error:', validationError)
       return NextResponse.json({ error: validationError }, { status: 400 })
     }
 
+    console.log('Step 6: Building offer data')
     const offerType = body.offer_type as OfferType
     const transactionType = body.transaction_type as import('@/lib/service-offers').TransactionType
 
@@ -418,10 +509,9 @@ export async function POST(request: NextRequest) {
       description: String(body.description || '').trim(),
       offer_type: offerType,
       transaction_type: transactionType,
-      category: CATEGORY_BY_OFFER_TYPE[offerType],
       impact_area: sanitizeTextArray(body.impact_area),
       tags: sanitizeTextArray(body.tags),
-      requirements: String(body.requirements || '').trim() || null,
+      requirements: Array.isArray(body.requirements) ? sanitizeTextArray(body.requirements) : (typeof body.requirements === 'string' && body.requirements.trim() ? [body.requirements.trim()] : null),
       city: String(body.city || '').trim() || null,
       state_province: String(body.state_province || '').trim() || null,
       pincode: String(body.pincode || '').trim() || null,
@@ -430,48 +520,84 @@ export async function POST(request: NextRequest) {
       price_type: priceInfo.price_type,
       price_amount: priceInfo.price_amount,
       price_description: priceInfo.price_description,
-      status: 'draft',
+      status: 'inactive',
       admin_status: 'pending',
       admin_reviewed_at: null,
       admin_reviewed_by: null,
       admin_comments: null
     }
 
-    const { data: offer, error: offerError } = await supabase
-      .from('service_offers')
-      .insert(offerData)
-      .select()
-      .single()
+    console.log('Step 7: Inserting offer into database')
+    const { data: offer, error: offerError } = await insertWithSchemaFallback('service_offers', offerData)
 
-    if (offerError || !offer) {
-      return NextResponse.json({ error: 'Failed to create service offer' }, { status: 500 })
+    if (offerError) {
+      console.error('Offer insert error:', offerError)
+      return NextResponse.json({ error: `Failed to create offer: ${offerError.message || offerError}` }, { status: 500 })
     }
 
-    const capabilitiesPayload = buildBackendCapabilities({
-      ...offer,
-      ...body,
-      offer_type: offerType,
-      title: String(body.title || '').trim(),
-      description: String(body.description || '').trim(),
-      tags: body.tags
-    })
-    const { error: capabilitiesError } = await supabase
-      .from('offer_capabilities')
-      .insert(capabilitiesPayload)
+    if (!offer) {
+      console.error('Offer insert returned no data')
+      return NextResponse.json({ error: 'Failed to create service offer: no data returned' }, { status: 500 })
+    }
 
-    if (capabilitiesError) {
-      await supabase.from('service_offers').delete().eq('id', offer.id)
-      return NextResponse.json({ error: 'Failed to save capability details' }, { status: 500 })
+    console.log('Step 8: Inserting capability')
+    const capabilityData = {
+      service_offer_id: offer.id,
+      capability_name: String(body.title || '').trim(),
+      capability_kind: offerType === 'financial' ? 'financial' : offerType === 'service' ? 'skill' : offerType === 'material' ? 'item' : 'asset',
+      capability_description: String(body.description || '').trim() || null,
+      synonyms: sanitizeTextArray(body.tags || []),
+      unit: offerType === 'financial' ? 'offer' : offerType === 'service' ? 'service' : offerType === 'material' ? 'item' : 'asset',
+      min_qty: 1,
+      max_qty: 1,
+      is_active: true
+    }
+
+    console.log('Capability payload:', capabilityData)
+
+    let capabilityWarning: string | null = null
+    let capabilityId: number | null = null
+    
+    try {
+      const { data: capability, error: capabilitiesError } = await supabase
+        .from('offer_capabilities')
+        .insert(capabilityData)
+        .select()
+        .single()
+
+      if (capabilitiesError) {
+        console.error('Failed to create offer capability:', capabilitiesError)
+        capabilityWarning = 'Capability offer created, but capability indexing could not be saved. Please contact support if you need recommendations.'
+      } else if (capability) {
+        capabilityId = capability.id
+        console.log('Capability created successfully:', capabilityId)
+      }
+    } catch (capabilitiesException) {
+      console.error('Exception creating offer capability:', capabilitiesException)
+      capabilityWarning = 'Capability offer created, but capability indexing could not be saved. Please contact support if you need recommendations.'
+    }
+
+    console.log('Step 9: Returning success')
+    const responseData: any = {
+      id: offer.id,
+      message: 'Capability offer created successfully and submitted for approval'
+    }
+    
+    if (capabilityWarning) {
+      responseData.warning = capabilityWarning
+    }
+    
+    if (capabilityId) {
+      responseData.capability_id = capabilityId
     }
 
     return NextResponse.json({
       success: true,
-      data: {
-        id: offer.id,
-        message: 'Capability offer created successfully and submitted for approval'
-      }
+      data: responseData
     }, { status: 201 })
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to create service offer' }, { status: 500 })
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    console.error('===== SERVICE OFFER CREATE ERROR =====', errorMessage, error)
+    return NextResponse.json({ error: `Failed to create service offer: ${errorMessage}` }, { status: 500 })
   }
 }

@@ -11,6 +11,7 @@ import {
   isTransactionType,
   OfferType,
   sanitizeTextArray,
+  parseCsvToStringArray,
   TransactionType,
   toNullableNumber,
   toNullablePositiveNumber
@@ -43,6 +44,30 @@ const safeParseJson = (value: unknown): Record<string, any> => {
   }
 
   return {}
+}
+
+const updateWithSchemaFallback = async (table: string, id: number | string, payload: Record<string, any>) => {
+  let attempts = 0
+  let current = { ...payload }
+  while (attempts < 3) {
+    const { data, error } = await supabase.from(table).update(current).eq('id', id).select().single()
+    if (!error) return { data, error: null }
+
+    const msg = String(error.message || '')
+    const m = msg.match(/Could not find the '([^']+)' column/)
+    if (m) {
+      const col = m[1]
+      if (col in current) {
+        delete (current as any)[col]
+        attempts++
+        continue
+      }
+    }
+
+    return { data: null, error }
+  }
+
+  return { data: null, error: { message: 'Update retries exhausted due to missing columns' } }
 }
 
 const buildPriceInfo = (offerType: string, transactionType: string, body: Record<string, any>) => {
@@ -193,6 +218,45 @@ const validateIncomingBody = (body: Record<string, any>) => {
   return null
 }
 
+const coerceIncomingBody = (body: Record<string, any>) => {
+  if (!Array.isArray(body.impact_area)) {
+    if (typeof body.impact_area === 'string') body.impact_area = parseCsvToStringArray(body.impact_area)
+    else if (body.impact_area && typeof body.impact_area === 'object') body.impact_area = Array.isArray(body.impact_area) ? body.impact_area : []
+    else if (body.impact_area) body.impact_area = [String(body.impact_area)]
+    else body.impact_area = []
+  } else {
+    body.impact_area = sanitizeTextArray(body.impact_area)
+  }
+
+  if (!Array.isArray(body.tags)) {
+    if (typeof body.tags === 'string') body.tags = parseCsvToStringArray(body.tags)
+    else if (!body.tags) body.tags = []
+    else body.tags = sanitizeTextArray(body.tags)
+  } else {
+    body.tags = sanitizeTextArray(body.tags)
+  }
+
+  if (typeof body.offer_details === 'string') {
+    try { body.offer_details = JSON.parse(body.offer_details) } catch { body.offer_details = {} }
+  }
+  if (!body.offer_details || typeof body.offer_details !== 'object') body.offer_details = {}
+
+  if (Array.isArray(body.requirements)) {
+    body.requirements = sanitizeTextArray(body.requirements)
+  } else if (body.requirements && typeof body.requirements === 'object') {
+    body.offer_details = { ...body.offer_details, ...body.requirements }
+    body.requirements = null
+  } else if (typeof body.requirements === 'string') {
+    body.requirements = body.requirements.trim() || null
+  } else {
+    body.requirements = null
+  }
+
+  if (!body.state_province && body['state/province']) body.state_province = body['state/province']
+
+  return body
+}
+
 // GET - Fetch single service offer
 export async function GET(
   request: NextRequest,
@@ -248,7 +312,7 @@ export async function PUT(
     const { id: userId } = decoded
 
     const offerId = parseInt(id)
-    const body = await request.json()
+    const body = coerceIncomingBody(await request.json())
 
     const validationError = validateIncomingBody(body)
     if (validationError) {
@@ -276,10 +340,9 @@ export async function PUT(
       description: String(body.description || '').trim(),
       offer_type: offerType,
       transaction_type: transactionType,
-      category: CATEGORY_BY_OFFER_TYPE[offerType],
       impact_area: sanitizeTextArray(body.impact_area),
       tags: sanitizeTextArray(body.tags),
-      requirements: String(body.requirements || '').trim() || null,
+      requirements: Array.isArray(body.requirements) ? sanitizeTextArray(body.requirements) : (typeof body.requirements === 'string' && body.requirements.trim() ? [body.requirements.trim()] : null),
       city: String(body.city || '').trim() || null,
       state_province: String(body.state_province || '').trim() || null,
       pincode: String(body.pincode || '').trim() || null,
@@ -291,7 +354,11 @@ export async function PUT(
       updated_at: new Date().toISOString()
     }
 
-    await db.serviceOffers.update(offerId, updateData)
+    const { data: updated, error: updateError } = await updateWithSchemaFallback('service_offers', offerId, updateData)
+    if (updateError) {
+      console.error('Offer update error:', updateError)
+      return NextResponse.json({ error: `Failed to update offer: ${updateError.message || updateError}` }, { status: 500 })
+    }
 
     await supabase
       .from('offer_capabilities')
