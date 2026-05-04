@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { MultiSelectDropdown } from '@/components/ui/multi-select-dropdown'
 import { StyledSelect } from '@/components/ui/styled-select'
 import { Textarea } from '@/components/ui/textarea'
 import {
@@ -179,15 +180,6 @@ export default function CreateServiceOfferPage() {
       transaction_type: transactionType,
       price_type: transactionType === 'rent' || transactionType === 'sell' ? 'fixed' : 'free',
       price_amount: transactionType === 'rent' || transactionType === 'sell' ? prev.price_amount : ''
-    }))
-  }
-
-  const toggleImpactArea = (impactArea: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      impact_area: prev.impact_area.includes(impactArea)
-        ? prev.impact_area.filter((area) => area !== impactArea)
-        : [...prev.impact_area, impactArea]
     }))
   }
 
@@ -406,21 +398,12 @@ export default function CreateServiceOfferPage() {
                 <CardDescription>Select one or more SDG-based impact areas.</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="flex flex-wrap gap-2">
-                  {IMPACT_AREA_OPTIONS.map((option) => {
-                    const selected = formData.impact_area.includes(option.value)
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => toggleImpactArea(option.value)}
-                        className={`rounded-full border px-3 py-1.5 text-sm transition ${selected ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'}`}
-                      >
-                        {option.label}
-                      </button>
-                    )
-                  })}
-                </div>
+                  <MultiSelectDropdown
+                    value={formData.impact_area}
+                    options={IMPACT_AREA_OPTIONS}
+                    placeholder="Select impact areas"
+                    onValueChange={(impactArea) => setField('impact_area', impactArea)}
+                  />
               </CardContent>
             </Card>
 
