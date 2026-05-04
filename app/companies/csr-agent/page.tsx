@@ -38,6 +38,18 @@ interface ServiceSuggestion {
   score: number
 }
 
+interface RecommendationApiResponse {
+  success: boolean
+  data?: unknown
+  error?: string
+  details?: Record<string, string[]>
+  debug?: {
+    reason?: "coercion_validation_failed" | "input_validation_failed" | "matcher_error" | "fallback_ok" | "empty_results" | "ok" | "route_error"
+    message?: string
+    details?: unknown
+  }
+}
+
 interface MilestoneInput {
   description: string
   budgetTarget: string
@@ -95,6 +107,9 @@ export default function CSRAgentPage() {
   })
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [serviceSuggestions, setServiceSuggestions] = useState<ServiceSuggestion[]>([])
+  const [recommendationError, setRecommendationError] = useState<string | null>(null)
+  const [recommendationDebug, setRecommendationDebug] = useState<string | null>(null)
+  const [isFetchingRecommendations, setIsFetchingRecommendations] = useState(false)
   const [projects, setProjects] = useState<CSRProject[]>([])
   const [isGeneratingProjects, setIsGeneratingProjects] = useState(false)
   const [generateError, setGenerateError] = useState<string | null>(null)
@@ -196,6 +211,106 @@ export default function CSRAgentPage() {
     setMilestoneInputs((previousRows) => previousRows.filter((_, currentIndex) => currentIndex !== rowIndex))
   }
 
+  const toNumber = (value: unknown): number => {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : 0
+  }
+
+  const toSafeString = (value: unknown): string => {
+    if (value === null || value === undefined) return ""
+    return String(value)
+  }
+
+  const normalizeSuggestion = (item: unknown): ServiceSuggestion | null => {
+    if (!item || typeof item !== "object") return null
+    const raw = item as Record<string, unknown>
+    const serviceOfferId = Number(raw.service_offer_id)
+    const capabilityId = Number(raw.capability_id)
+
+    if (!Number.isFinite(serviceOfferId) || serviceOfferId <= 0) return null
+
+    return {
+      capability_id: Number.isFinite(capabilityId) ? capabilityId : serviceOfferId,
+      capability_name: toSafeString(raw.capability_name) || "Capability Offer",
+      similarity: Math.max(0, Math.min(1, toNumber(raw.similarity))),
+      service_offer_id: serviceOfferId,
+      offer_type: toSafeString(raw.offer_type) || "unknown",
+      transaction_type: toSafeString(raw.transaction_type) || "unknown",
+      impact_area: Array.isArray(raw.impact_area)
+        ? raw.impact_area.map((entry) => toSafeString(entry)).filter((entry) => entry.length > 0)
+        : [],
+      city: toSafeString(raw.city),
+      state_province: toSafeString(raw.state_province),
+      price_amount: toNumber(raw.price_amount),
+      price_type: toSafeString(raw.price_type) || "unknown",
+      score: Math.round(toNumber(raw.score)),
+    }
+  }
+
+  const buildRecommendationPayload = () => ({
+    title: formData.category,
+    description: formData.requirementDetails,
+    category: formData.category,
+    city: formData.city,
+    state_province: formData.state,
+    budget: Number(parsedBudget),
+    start_date: formData.startDate,
+    end_date: formData.endDate,
+    requirementDetails: formData.requirementDetails,
+  })
+
+  const fetchRecommendations = async (): Promise<ServiceSuggestion[]> => {
+    setIsFetchingRecommendations(true)
+    setRecommendationError(null)
+    setRecommendationDebug(null)
+
+    try {
+      const response = await fetch("/api/csr-agent/get-recommendations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildRecommendationPayload()),
+      })
+
+      const result = (await response.json()) as RecommendationApiResponse
+
+      if (process.env.NODE_ENV !== "production" && result?.debug?.reason) {
+        const debugSuffix = result.debug.message ? `: ${result.debug.message}` : ""
+        setRecommendationDebug(`Debug (${result.debug.reason})${debugSuffix}`)
+      }
+
+      if (!response.ok || !result?.success) {
+        const detailText = result?.details && typeof result.details === "object"
+          ? Object.entries(result.details)
+              .map(([key, values]) => `${key}: ${Array.isArray(values) ? values.join(", ") : "invalid"}`)
+              .join(" | ")
+          : ""
+
+        const debugText = result?.debug?.reason
+          ? `debug_reason: ${result.debug.reason}${result?.debug?.message ? ` (${result.debug.message})` : ""}`
+          : ""
+
+        const message = [result?.error || "Failed to fetch recommendations", detailText, debugText]
+          .filter(Boolean)
+          .join(". ")
+
+        setRecommendationError(message)
+        return []
+      }
+
+      const normalized = Array.isArray(result.data)
+        ? result.data.map(normalizeSuggestion).filter((item): item is ServiceSuggestion => Boolean(item))
+        : []
+
+      return normalized
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to fetch recommendations"
+      setRecommendationError(message)
+      return []
+    } finally {
+      setIsFetchingRecommendations(false)
+    }
+  }
+
   const handleFormSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!canSubmit) return
@@ -204,36 +319,8 @@ export default function CSRAgentPage() {
     setProjects([])
     setIsSubmitted(true)
 
-    // Fetch recommendations based on CSR requirement
-    try {
-      const todayDate = new Date()
-      const locationForRecommendation = `${formData.city}${formData.state ? `, ${formData.state}` : ""}`
-
-      const recommendationPayload = {
-        title: formData.category,
-        description: formData.requirementDetails,
-        category: formData.category,
-        city: formData.city,
-        state_province: formData.state,
-        budget: parsedBudget,
-        start_date: new Date(formData.startDate),
-        end_date: new Date(formData.endDate),
-        requirementDetails: formData.requirementDetails,
-      }
-
-      const response = await fetch("/api/csr-agent/get-recommendations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(recommendationPayload),
-      })
-
-      const result = await response.json()
-      if (result?.success && Array.isArray(result?.data)) {
-        setServiceSuggestions(result.data)
-      }
-    } catch (error) {
-      console.error("Failed to fetch capability recommendations:", error)
-    }
+    const suggestions = await fetchRecommendations()
+    setServiceSuggestions(suggestions)
   }
 
   const handleGenerateProjects = async () => {
@@ -250,34 +337,8 @@ export default function CSRAgentPage() {
       // ensure recommendations exist and include them in the generate payload
       let recommendationsToSend = serviceSuggestions
       if (!recommendationsToSend || recommendationsToSend.length === 0) {
-        try {
-          const locationForRecommendation = `${formData.city}${formData.state ? `, ${formData.state}` : ""}`
-
-          const recPayload = {
-            title: formData.category,
-            description: formData.requirementDetails,
-            category: formData.category,
-            city: formData.city,
-            state_province: formData.state,
-            budget: parsedBudget,
-            start_date: new Date(formData.startDate),
-            end_date: new Date(formData.endDate),
-            requirementDetails: formData.requirementDetails,
-          }
-
-          const recResp = await fetch("/api/csr-agent/get-recommendations", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(recPayload),
-          })
-          const recResult = await recResp.json()
-          if (recResult?.success && Array.isArray(recResult?.data)) {
-            recommendationsToSend = recResult.data
-            setServiceSuggestions(recResult.data)
-          }
-        } catch (err) {
-          console.error("Failed to fetch recommendations before generate:", err)
-        }
+        recommendationsToSend = await fetchRecommendations()
+        setServiceSuggestions(recommendationsToSend)
       }
 
       const locationForRecommendation = `${formData.city}${formData.state ? `, ${formData.state}` : ""}`
@@ -666,7 +727,20 @@ export default function CSRAgentPage() {
                   <CardDescription>Recommended capabilities to include in your CSR initiatives.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {serviceSuggestions.length === 0 ? (
+                  {process.env.NODE_ENV !== "production" && recommendationDebug && (
+                    <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-700">
+                      {recommendationDebug}
+                    </div>
+                  )}
+                  {isFetchingRecommendations ? (
+                    <div className="rounded-lg border border-dashed border-gray-200 p-6 text-sm text-gray-500">
+                      Loading recommendations...
+                    </div>
+                  ) : recommendationError ? (
+                    <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-sm text-red-700">
+                      {recommendationError}
+                    </div>
+                  ) : serviceSuggestions.length === 0 ? (
                     <div className="rounded-lg border border-dashed border-gray-200 p-6 text-sm text-gray-500">
                       No matching service offers found. Check the database for available capabilities or refine your requirements.
                     </div>

@@ -1,7 +1,5 @@
 import {supabase} from '@/lib/db';
 import {z} from "zod";
-import { embedText } from "@/lib/embeddings/embedding";
-import { makeServiceOfferQuery } from "@/lib/embeddings/queryMaker";
 
 /* ───────────────── SCHEMAS ───────────────── */
 
@@ -39,24 +37,148 @@ export type CapabilityMatch = {
     score: number
 }
 
+type ServiceOfferRow = {
+    id: number
+    title: string | null
+    description: string | null
+    offer_type: string | null
+    transaction_type: string | null
+    impact_area: unknown
+    city: string | null
+    state_province: string | null
+    price_amount: number | string | null
+    price_type: string | null
+    requirements: unknown
+    tags: unknown
+}
+
+const toNumber = (value: unknown): number => {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : 0
+}
+
+const normalizeText = (value: unknown): string => {
+    if (value === null || value === undefined) return ''
+    if (Array.isArray(value)) return value.map(normalizeText).filter(Boolean).join(' ')
+    if (typeof value === 'object') {
+        try {
+            return JSON.stringify(value)
+        } catch {
+            return ''
+        }
+    }
+    return String(value)
+}
+
+const tokenize = (value: string): string[] =>
+    value
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter((token) => token.length > 2)
+
+const splitToList = (value: unknown): string[] => {
+    const text = normalizeText(value)
+    if (!text) return []
+
+    return text
+        .split(/[;,|]/)
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+}
+
+const overlapRatio = (haystack: string, tokens: string[]): number => {
+    if (tokens.length === 0) return 0
+
+    let hits = 0
+    for (const token of tokens) {
+        if (haystack.includes(token)) hits += 1
+    }
+
+    return hits / tokens.length
+}
+
+const computeCategoryScore = (offer: ServiceOfferRow, input: InputSchemaType, categoryTokens: string[]): number => {
+    const categoryNeedle = input.category.trim().toLowerCase()
+    const impactList = splitToList(offer.impact_area).map((s) => s.toLowerCase())
+    const reqList = splitToList(offer.requirements).map((s) => s.toLowerCase())
+    const tagList = splitToList(offer.tags).map((s) => s.toLowerCase())
+    const offerTitle = normalizeText(offer.title).toLowerCase()
+
+    if (impactList.some((v) => v === categoryNeedle)) return 1
+    if (impactList.some((v) => v.includes(categoryNeedle))) return 0.9
+    if (reqList.some((v) => v.includes(categoryNeedle))) return 0.7
+    if (tagList.some((v) => v.includes(categoryNeedle))) return 0.6
+    if (offerTitle.includes(categoryNeedle)) return 0.6
+
+    return overlapRatio(normalizeText([offer.title, offer.description, offer.impact_area, offer.requirements, offer.tags]).toLowerCase(), categoryTokens)
+}
+
+const buildSimilarity = (
+    offer: ServiceOfferRow,
+    input: InputSchemaType,
+    titleTokens: string[],
+    descriptionTokens: string[],
+    requirementTokens: string[],
+    categoryTokens: string[]
+): number => {
+    const offerTitle = normalizeText(offer.title).toLowerCase()
+    const offerText = normalizeText([
+        offer.title,
+        offer.description,
+        offer.impact_area,
+        offer.requirements,
+        offer.tags,
+    ]).toLowerCase()
+
+    const titleOverlap = overlapRatio(offerTitle, titleTokens)
+    const descriptionOverlap = overlapRatio(offerText, descriptionTokens)
+    const requirementOverlap = overlapRatio(offerText, requirementTokens)
+    const categoryOverlap = overlapRatio(offerText, categoryTokens)
+
+    const titlePhrase = input.title.trim().toLowerCase()
+    const requirementPhrase = input.requirementDetails.trim().toLowerCase()
+
+    const exactTitleBonus = titlePhrase && offerTitle.includes(titlePhrase) ? 0.08 : 0
+    const exactRequirementBonus = requirementPhrase && offerText.includes(requirementPhrase) ? 0.06 : 0
+
+    // CategoryScore will be computed by the helper below when needed by caller.
+    // Use categoryOverlap here as a fallback signal when structured fields are absent.
+    const rawSimilarity =
+        (categoryOverlap * 0.65) +
+        (titleOverlap * 0.18) +
+        (requirementOverlap * 0.09) +
+        (descriptionOverlap * 0.02) +
+        exactTitleBonus +
+        exactRequirementBonus
+
+    return Math.min(0.95, Math.max(0.2, 0.2 + rawSimilarity))
+}
+
 /* ───────────────── SCORING ───────────────── */
 
 const scoreMatch = ( match: Omit<CapabilityMatch, 'score'> , input: InputSchemaType): number => {
     let score = 0
 
-    // similarity from vector search (0-1) — weight 40%
-    score += match.similarity * 40
+    // similarity from direct text matching (0-1) — use 23 as the multiplier
+    score += match.similarity * 23
 
-    // impact_area match
-    if (match.impact_area?.includes(input.category.toLowerCase())) {
-        score += 20
+    // small explicit category boost (most category influence is in similarity)
+    const normalizedImpactAreas = (match.impact_area || []).map((area) => String(area).trim().toLowerCase())
+    const categoryNeedle = input.category.trim().toLowerCase()
+    if (normalizedImpactAreas.includes(categoryNeedle) || normalizedImpactAreas.some((area) => area.includes(categoryNeedle))) {
+        score += 10
     }
-    //******************************************************(use city/state from input schema)**************************************************************************
+
+    // Location weighting: city then state, give them strong influence
     const inputCity = (input.city || '').trim().toLowerCase()
     const inputState = (input.state_province || '').trim().toLowerCase()
 
-    if (inputCity && match.city?.toLowerCase() === inputCity) score += 15
-    else if (inputState && match.state_province?.toLowerCase() === inputState) score += 8
+    const offerCity = (match.city || '').trim().toLowerCase()
+    const offerState = (match.state_province || '').trim().toLowerCase()
+
+    if (inputCity && offerCity === inputCity) score += 30
+    if (inputState && offerState === inputState) score += 20
+    if (inputCity && inputState && offerCity === inputCity && offerState === inputState) score += 10
 
     // price within budget — fix: handle free, negotiable, null
     const price = match.price_amount ?? 0 
@@ -65,13 +187,13 @@ const scoreMatch = ( match: Omit<CapabilityMatch, 'score'> , input: InputSchemaT
     else if (price <= input.budget) score += 10
     else score -= 20
 
-    // generic keyword boost
+    // generic keyword boost (smaller influence)
     const titleWords = input.title.toLowerCase().split(' ')
     const capName = match.capability_name.toLowerCase()
     const keywordMatch = titleWords.some(word =>
         word.length > 4 && capName.includes(word)
     )
-    if (keywordMatch) score += 5
+    if (keywordMatch) score += 3
 
     return Math.round(score)
 }
@@ -82,11 +204,20 @@ export const findServiceOffers = async (input: InputSchemaType): Promise<Capabil
 
     // validation done in route handler. Input is valid
 
-    // SQL filters - change kar sakte hain bad me for more complex logic (e.g. location parsing, category hierarchy)
+    const queryText = `${input.title} ${input.description} ${input.category} ${input.requirementDetails}`
+    const queryTokens = tokenize(queryText)
+    const titleTokens = tokenize(input.title)
+    const descriptionTokens = tokenize(input.description)
+    const requirementTokens = tokenize(input.requirementDetails)
+    const categoryTokens = tokenize(input.category)
+
+    // Directly query service_offers because the table stores impact_area as text.
     const { data: filteredOffers, error: filterError } = await supabase
         .from('service_offers')
         .select(`
             id,
+            title,
+            description,
             offer_type,
             transaction_type,
             impact_area,
@@ -94,97 +225,78 @@ export const findServiceOffers = async (input: InputSchemaType): Promise<Capabil
             state_province,
             price_amount,
             price_type,
-            offer_capabilities ( id )
+            requirements,
+            tags
         `)
         .eq('status', 'active')
         .eq('admin_status', 'approved')
-        .overlaps('impact_area', [input.category.toLowerCase()])
         .or(`price_type.neq.fixed,price_amount.lte.${input.budget}`)
+        .limit(200)
 
     if (filterError) {
         throw new Error(`Error fetching service offers: ${filterError.message}`)
     }
     if (!filteredOffers || filteredOffers.length === 0) {
         console.log("No offers passed initial filters")
-        return []}
-
-    // build capability → offer lookup map (O(1)) + extract ids
-    const capabilityToOffer = new Map<number, typeof filteredOffers[0]>()
-    filteredOffers.forEach(offer => {
-        (offer.offer_capabilities as { id: number }[]).forEach(c => {
-            capabilityToOffer.set(c.id, offer)
-        })
-    })
-    // only these ids will be used in vector search to limit scope and cost
-    const capabilityIds = Array.from(capabilityToOffer.keys())
-
-    if (capabilityIds.length === 0) {
-        console.log("No matching capabilities found")
         return []
     }
 
-    // embedding + vector search
-    // makeServiceOfferQuery expects a `location` string — compose from city/state
-    const queryPayload = {
-        title: input.title,
-        description: input.description,
-        category: input.category,
-        city: input.city,
-        state_province: input.state_province,
-        budget: input.budget,
-        start_date: input.start_date,
-        end_date: input.end_date,
-        requirementDetails: input.requirementDetails,
-    }
-    const queryText = makeServiceOfferQuery(queryPayload)
-    const embedding = await embedText(queryText)
+    const categoryNeedle = input.category.trim().toLowerCase()
+    const cityNeedle = input.city.trim().toLowerCase()
+    const stateNeedle = input.state_province.trim().toLowerCase()
 
-    const { data: vectorMatches, error: vectorError } = await supabase
-        .rpc('match_capabilities', {
-            query_embedding: embedding,
-            match_count: 20,
-            filter_ids: capabilityIds
-        })
+    const scored: CapabilityMatch[] = (filteredOffers as ServiceOfferRow[])
+        .map((offer) => {
+            const impactAreas = splitToList(offer.impact_area)
+            const requirements = splitToList(offer.requirements)
+            const tags = splitToList(offer.tags)
+            const similarity = buildSimilarity(
+                offer,
+                input,
+                titleTokens,
+                descriptionTokens,
+                requirementTokens,
+                categoryTokens
+            )
 
-    if (vectorError) {
-        throw new Error(`Error during vector search: ${vectorError.message}`)
-    }
-    if (!vectorMatches || vectorMatches.length === 0) {
-        console.log("No vector matches found")
-        return []
-    }
-
-    // guardrail: drop low similarity results
-    const guardrailed = vectorMatches.filter((m: any) => m.similarity > 0.4)
-
-    if (guardrailed.length === 0) {
-        console.log("No guardrailed matches found")
-        return []
-    }
-
-    // scoring + re-rank
-    const scored: CapabilityMatch[] = guardrailed
-        .map((match: any) => {
-            const parentOffer = capabilityToOffer.get(match.capability_id)
-            if (!parentOffer) return null
-
-            const raw: Omit<CapabilityMatch, 'score'> = {
-                capability_id:    match.capability_id,
-                capability_name:  match.capability_name,
-                similarity:       match.similarity,
-                service_offer_id: parentOffer.id,
-                offer_type:       parentOffer.offer_type,
-                transaction_type: parentOffer.transaction_type,
-                impact_area:      parentOffer.impact_area,
-                city:             parentOffer.city,
-                state_province:   parentOffer.state_province,
-                price_amount:     parentOffer.price_amount ?? 0,
-                price_type:       parentOffer.price_type,
+            const categoryScore = computeCategoryScore(offer, input, categoryTokens)
+            if (process.env.NODE_ENV !== 'production') {
+                console.log(`recommendation-debug offer=${offer.id} title="${offer.title}" similarity=${similarity.toFixed(3)} categoryScore=${categoryScore}`)
             }
 
-            return {...raw , score: scoreMatch(raw, input)}
+            const raw: Omit<CapabilityMatch, 'score'> = {
+                capability_id: offer.id,
+                capability_name: offer.title || 'Capability Offer',
+                similarity,
+                service_offer_id: offer.id,
+                offer_type: offer.offer_type || 'unknown',
+                transaction_type: offer.transaction_type || 'unknown',
+                impact_area: impactAreas,
+                city: offer.city || '',
+                state_province: offer.state_province || '',
+                price_amount: toNumber(offer.price_amount),
+                price_type: offer.price_type || 'unknown',
+            }
+
+            // additive boosts — keep these smaller so primary ordering remains:
+            // category influence already applied; keep title/location boosts modest
+            // boost based on computed categoryScore to ensure category drives ordering
+            const categoryBoost = categoryScore >= 0.95 ? 40 : categoryScore >= 0.9 ? 30 : categoryScore >= 0.7 ? 15 : categoryScore >= 0.6 ? 8 : 0
+            const score = scoreMatch(raw, input) +
+                categoryBoost +
+                Math.round(overlapRatio(normalizeText(offer.title).toLowerCase(), titleTokens) * 6) +
+                Math.round(overlapRatio(normalizeText(offer.description).toLowerCase(), requirementTokens) * 3) +
+                (requirements.some((value) => value.toLowerCase().includes(categoryNeedle)) ? 6 : 0) +
+                (tags.some((value) => value.toLowerCase().includes(categoryNeedle)) ? 4 : 0) +
+                ((cityNeedle && offer.city?.toLowerCase() === cityNeedle) ? 4 : 0) +
+                ((stateNeedle && offer.state_province?.toLowerCase() === stateNeedle) ? 2 : 0)
+
+            return { ...raw, score }
         })
-        .filter(Boolean) as CapabilityMatch[]
+        .filter((item) => {
+            const text = `${item.capability_name} ${item.impact_area.join(' ')} ${item.city} ${item.state_province}`.toLowerCase()
+            return text.includes(categoryNeedle) || item.score >= 40 || queryTokens.some((token) => text.includes(token))
+        })
 
     // sort by final score descending
     const ranked = scored.sort((a, b) => b.score - a.score)
