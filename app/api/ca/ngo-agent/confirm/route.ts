@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
 
     // Save to service_requests table
     const { data: requestData, error: requestError } = await supabase
-      .from("service_requests")
+      .from("service_requesQts")
       .insert({
         ngo_id,
         title:              structured.title,
