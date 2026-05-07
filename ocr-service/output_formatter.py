@@ -32,6 +32,7 @@ ENTITY_TYPE_MAP = {
     "aadhaar":                      "individual",
     "voter_id":                     "individual",
     "driving_license":              "individual",
+    "bank_statement":              "individual_or_ngo_or_company",
     "registration_certificate":     "ngo",
     "fcra":                         "ngo",
     "trust_deed":                   "ngo",
