@@ -47,13 +47,7 @@ const nextConfig = {
     root: process.cwd(),
   },
   async redirects() {
-    return [
-      {
-        source: '/',
-        destination: '/home',
-        permanent: false,
-      },
-    ]
+    return []
   },
 }
 

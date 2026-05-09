@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { verifyToken, type UserData } from '@/lib/auth';
+import { verifyNavadrishtCAToken, type NavadrishtCATokenPayload } from '@/lib/navadrishti-ca-auth';
 
 function extractBearerToken(authHeader: string | null): string | null {
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -11,34 +12,51 @@ function extractBearerToken(authHeader: string | null): string | null {
 }
 
 function extractCAToken(request: NextRequest): string | null {
-  const fromCookie = request.cookies.get('ca-token')?.value;
-  if (fromCookie) {
-    return fromCookie;
+  // Try Navadrishti CA token first
+  const navadrishtCAToken = request.cookies.get('navadrishti-ca-token')?.value;
+  if (navadrishtCAToken) {
+    return navadrishtCAToken;
+  }
+
+  // Fallback to old ca-token for backwards compatibility
+  const oldCAToken = request.cookies.get('ca-token')?.value;
+  if (oldCAToken) {
+    return oldCAToken;
   }
 
   return extractBearerToken(request.headers.get('authorization'));
 }
 
-export function getCAFromRequest(request: NextRequest): UserData {
+export function getCAFromRequest(request: NextRequest): NavadrishtCATokenPayload | null {
   const token = extractCAToken(request);
 
   if (!token) {
-    throw new Error('CA authentication required');
+    return null;
   }
 
-  const actor = verifyToken(token);
-  if (!actor || actor.id !== -2) {
-    throw new Error('Invalid CA token');
+  // Try Navadrishti CA token
+  const payload = verifyNavadrishtCAToken(token);
+  if (payload) {
+    return payload;
   }
 
-  return actor;
+  // Fallback to old token verification for backwards compatibility
+  const oldPayload = verifyToken(token);
+  if (oldPayload && oldPayload.id === -2) {
+    // Convert to new format for consistency
+    return {
+      id: oldPayload.id,
+      ca_id: 'legacy',
+      username: 'ca',
+      email: oldPayload.email,
+      display_name: oldPayload.name || 'CA Console User',
+    };
+  }
+
+  return null;
 }
 
 export function isCARequest(request: NextRequest): boolean {
-  try {
-    getCAFromRequest(request);
-    return true;
-  } catch {
-    return false;
-  }
+  return getCAFromRequest(request) !== null;
 }
+

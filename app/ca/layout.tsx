@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -38,10 +38,31 @@ export default function CALayout({ children }: { children: React.ReactNode }) {
         }
 
         const data = await response.json();
-        setCaUser({
-          username: data?.ca?.username || 'CA User',
-          icai_membership_number: data?.ca?.icai_membership_number || '123456'
-        });
+        // If the per-tab session flag is missing, force re-login (cleared on tab close)
+        try {
+          const hasTab = typeof window !== 'undefined' && sessionStorage.getItem('ca_tab_session');
+          if (!hasTab) {
+            setIsAuthenticated(false);
+            router.push('/ca/login');
+            setIsLoading(false);
+            return;
+          }
+        } catch (e) {
+          // ignore
+        }
+
+        // Handle both new and old response formats
+        if (data?.account) {
+          setCaUser({
+            username: data.account.username || 'CA User',
+            icai_membership_number: data.account.display_name || '123456'
+          });
+        } else if (data?.ca) {
+          setCaUser({
+            username: data.ca.username || 'CA User',
+            icai_membership_number: data.ca.icai_membership_number || '123456'
+          });
+        }
         setIsAuthenticated(true);
       } catch (error) {
         setIsAuthenticated(false);
@@ -53,28 +74,6 @@ export default function CALayout({ children }: { children: React.ReactNode }) {
 
     verifyCAAuth();
   }, [isLoginRoute, router]);
-
-  // Keep login page public while all other CA routes stay protected
-  if (isLoginRoute) {
-    return <>{children}</>;
-  }
-
-  // Show loading while checking authentication
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-blue-50 flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-blue-600 mx-auto" />
-          <p className="mt-4 text-blue-600">Loading CA Console...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Don't render content if not authenticated
-  if (!isAuthenticated) {
-    return null;
-  }
 
   const handleLogout = async () => {
     try {
@@ -90,6 +89,64 @@ export default function CALayout({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // Keep login page public while all other CA routes stay protected
+  if (isLoginRoute) {
+    return <>{children}</>;
+  }
+
+  // Show skeleton loaders while checking authentication
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-blue-50">
+        {/* Header skeleton */}
+        <header className="bg-blue-600 border-b border-blue-700 sticky top-0 z-50">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between h-16">
+              <div className="flex items-center space-x-3">
+                <div className="h-6 w-48 bg-blue-400/40 rounded animate-pulse" />
+              </div>
+              <div className="hidden md:flex items-center space-x-4">
+                <div className="h-6 w-24 bg-blue-400/40 rounded animate-pulse" />
+                <div className="h-6 w-20 bg-blue-400/40 rounded animate-pulse" />
+              </div>
+              <div className="flex items-center space-x-4">
+                <div className="h-8 w-32 bg-orange-400/60 rounded animate-pulse" />
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Main skeleton content */}
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="space-y-6">
+            <div className="h-6 w-1/3 bg-slate-200 rounded animate-pulse" />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="h-48 bg-white rounded shadow-sm animate-pulse" />
+              <div className="h-48 bg-white rounded shadow-sm animate-pulse" />
+            </div>
+            <div className="h-40 bg-white rounded shadow-sm animate-pulse" />
+            <div className="h-20 bg-white rounded shadow-sm animate-pulse" />
+          </div>
+        </main>
+
+        {/* Footer skeleton */}
+        <footer className="bg-blue-600 border-t border-blue-700 mt-12">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div className="flex items-center justify-between text-sm text-blue-100">
+              <div className="h-4 w-48 bg-blue-400/40 rounded animate-pulse" />
+              <div className="h-4 w-32 bg-blue-400/40 rounded animate-pulse" />
+            </div>
+          </div>
+        </footer>
+      </div>
+    );
+  }
+
+  // Don't render content if not authenticated
+  if (!isAuthenticated) {
+    return null;
+  }
+
   return (
     <div className="min-h-screen bg-blue-50">
       {/* CA Console Header */}
@@ -99,8 +156,8 @@ export default function CALayout({ children }: { children: React.ReactNode }) {
             {/* Logo & Title */}
             <div className="flex items-center space-x-3">
               <div>
-                <h1 className="text-xl font-bold text-white">CA Console</h1>
-                <p className="text-xs text-blue-100">Chartered Accountant Verification Portal</p>
+                <h1 className="text-xl font-bold text-white">Navadrishti CA Console</h1>
+                <p className="text-xs text-blue-100">Chartered Accountant Login Portal</p>
               </div>
             </div>
 

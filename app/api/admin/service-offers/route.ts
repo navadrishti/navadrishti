@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { verifyToken } from '@/lib/auth';
+import { autoRejectExpiredServiceOffers } from '@/lib/admin-offer-automation';
 
 export async function GET(request: NextRequest) {
   try {
@@ -20,6 +21,8 @@ export async function GET(request: NextRequest) {
     } catch (error) {
       return NextResponse.json({ error: 'Invalid admin token' }, { status: 401 });
     }
+
+    await autoRejectExpiredServiceOffers();
 
     // Fetch all service offers with organization details for admin review
     // Handle case where admin approval columns might not exist yet

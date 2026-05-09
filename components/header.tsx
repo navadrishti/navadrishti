@@ -31,9 +31,8 @@ interface NavigationItem {
 }
 
 export function Header() {
-  const { user, logout, refreshUser } = useAuth()
+  const { user, loading, logout } = useAuth()
   const router = useRouter()
-  const [mounted, setMounted] = useState(false)
   const [mobileSheetOpen, setMobileSheetOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<ProfileSearchResult[]>([])
@@ -41,10 +40,14 @@ export function Header() {
   const [showResults, setShowResults] = useState(false)
   const [showAllResults, setShowAllResults] = useState(false)
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const profileMenuTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
-  useEffect(() => { setMounted(true) }, [])
+  // Prevent hydration mismatch by only rendering user-dependent content after mount
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   useEffect(() => {
     return () => {
@@ -55,9 +58,8 @@ export function Header() {
   }, [])
 
   useEffect(() => {
-    if (!mounted) return
     window.dispatchEvent(new CustomEvent('nd-mobile-menu-state', { detail: { open: mobileSheetOpen } }))
-  }, [mobileSheetOpen, mounted])
+  }, [mobileSheetOpen])
 
   const openProfileMenu = () => {
     if (profileMenuTimeoutRef.current) {
@@ -116,7 +118,7 @@ export function Header() {
 
   const handleLogout = async () => {
     logout()
-    await smoothNavigate(router, '/home', { delay: 100 })
+    await smoothNavigate(router, '/', { delay: 100 })
   }
 
   const getInitials = (name: string) => {
@@ -146,14 +148,14 @@ export function Header() {
   const profileTriggerLabel = user?.name || 'Profile'
 
   const serviceRequestDescription = () => {
-    if (!user) return 'Browse NGO needs'
+    if (!mounted || !user) return 'Browse NGO needs'
     if (user.user_type === 'individual') return 'Volunteer for NGO needs'
     if (user.user_type === 'company') return 'Browse NGO needs to fulfil'
     return 'Manage your posted needs'
   }
 
   const serviceOfferDescription = () => {
-    if (!user) return 'Browse capability offers'
+    if (!mounted || !user) return 'Browse capability offers'
     if (user.user_type === 'individual') return 'Browse & post your skills/services'
     if (user.user_type === 'company') return 'Browse & post your capabilities'
     return 'Browse & post capability offers'
@@ -190,26 +192,21 @@ export function Header() {
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-udaan-blue text-white">
       <div className="udaan-container flex h-16 items-center px-4 md:px-6">
-        <Link href="/home" className="flex shrink-0 items-center font-bold text-xl">
+        <Link href="/" className="flex shrink-0 items-center font-bold text-xl">
           <img src="/photos/logo.svg" alt="Navadrishti" className="h-36 w-36 shrink-0" />
         </Link>
         <div className="hidden md:flex md:flex-1 md:items-center md:justify-end md:gap-4 lg:gap-6">
           <nav className="order-2 flex items-center justify-end gap-1.5 lg:gap-2">
-            {mounted && (
-              <>
-                {desktopNavItems.map((item) => (
-                  <Link
-                    key={`desktop-nav-${item.href}`}
-                    href={item.href}
-                    className="whitespace-nowrap rounded-md px-2.5 py-1.5 text-sm font-medium text-white hover:text-udaan-orange focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors"
-                    title={item.description}
-                  >
-                    {item.label}
-                  </Link>
-                ))}
-
-              </>
-            )}
+            {desktopNavItems.map((item) => (
+              <Link
+                key={`desktop-nav-${item.href}`}
+                href={item.href}
+                className="whitespace-nowrap rounded-md px-2.5 py-1.5 text-sm font-medium text-white hover:text-udaan-orange focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors"
+                title={item.description}
+              >
+                {item.label}
+              </Link>
+            ))}
           </nav>
           <div className="relative order-1 mr-auto hidden md:block">
             <div className="relative flex items-center z-50">
@@ -410,7 +407,7 @@ export function Header() {
                 </div>
               )}
             </div>
-          ) : mounted ? (
+          ) : (
             <div className="order-3 flex shrink-0 items-center gap-3">
               <Link href="/login">
                 <Button variant="ghost" className="flex items-center gap-2 text-white hover:text-udaan-orange hover:bg-white/10">
@@ -421,7 +418,7 @@ export function Header() {
                 <Button className="bg-udaan-orange hover:bg-udaan-orange/90 border-none text-white">Get Started</Button>
               </Link>
             </div>
-          ) : null}
+          )}
         </div>
         <div className="flex md:hidden flex-1 items-center justify-end gap-2">
           {/* Mobile Menu Sheet */}
@@ -447,7 +444,7 @@ export function Header() {
                 {/* Fixed Header */}
                 <div className="flex-shrink-0 py-2 px-3 border-b border-white/20 bg-udaan-blue">
                   <div className="flex items-center justify-between h-12">
-                    <Link href="/home" className="flex items-center font-bold text-xl text-white -my-8">
+                    <Link href="/" className="flex items-center font-bold text-xl text-white -my-8">
                       <img src="/photos/logo.svg" alt="Navadrishti" className="h-32 w-32" />
                     </Link>
                     
@@ -591,7 +588,7 @@ export function Header() {
 
                   {/* User Section */}
                   <div className="border-t border-white/20 pt-6">
-                    {mounted && user ? (
+                    {user ? (
                       <div>
                         <div className="flex items-center gap-4 mb-6">
                           <Avatar className="h-12 w-12">

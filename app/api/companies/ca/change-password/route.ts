@@ -49,6 +49,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to change password' }, { status: 500 });
     }
 
+    // Mark must_change_password as false after successful password change
+    await supabase
+      .from('company_ca_identities')
+      .update({ must_change_password: false, updated_at: new Date().toISOString() })
+      .eq('id', companyCA.identity.id);
+
     await supabase.from('csr_audit_log').insert({
       entity_type: 'company_ca_identity',
       entity_id: companyCA.identity.id,

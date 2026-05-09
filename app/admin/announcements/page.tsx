@@ -119,23 +119,23 @@ export default function AdminAnnouncementsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-100">
       <div className="max-w-4xl mx-auto px-4 py-8">
         <div className="mb-8">
           <Button
             onClick={() => router.back()}
             variant="outline"
-            className="mb-4 hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0"
+            className="mb-4 border-blue-200 bg-white text-blue-700 hover:bg-blue-50"
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back
           </Button>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Manage Announcements</h1>
-          <p className="text-gray-600">Add, edit, or delete platform announcements and changelogs</p>
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">Manage Announcements</h1>
+          <p className="text-slate-600">Add, edit, or delete platform announcements and changelogs</p>
         </div>
 
         {/* Add New Announcement */}
-        <Card className="mb-6">
+        <Card className="mb-6 border-blue-200 shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
               <span>Add New Announcement</span>

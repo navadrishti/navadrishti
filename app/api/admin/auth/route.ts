@@ -13,8 +13,6 @@ export async function POST(request: NextRequest) {
     const adminUsername = process.env.ADMIN_USERNAME || 'admin';
     const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
     
-    console.log('Admin auth attempt:', { username, adminUsername }); // Debug log
-    
     // Check credentials
     if (username !== adminUsername || password !== adminPassword) {
       return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
@@ -38,11 +36,19 @@ export async function POST(request: NextRequest) {
       }
     });
 
+    response.cookies.set('admin-token', '', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      expires: new Date(0),
+      path: '/api/admin',
+    });
+
     response.cookies.set('admin-token', adminToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
-      maxAge: 30 * 60 // 30 minutes only
+      path: '/',
     });
 
     return response;

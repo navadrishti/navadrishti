@@ -325,6 +325,8 @@ export async function GET(request: NextRequest) {
       }
 
       const requirementsObj = safeParseJson(request.requirements);
+      const projectContextObj = safeParseJson(request.project_context);
+      
       // Prefer direct DB columns, fall back to requirements JSON for legacy rows
       request.request_type = request.request_type || requirementsObj.request_type || (SERVICE_REQUEST_TYPES.includes(request.category) ? request.category : 'Skill / Service Need');
       request.category = requirementsObj.project_category || requirementsObj?.project?.category || request.category || 'Uncategorized';
@@ -335,6 +337,26 @@ export async function GET(request: NextRequest) {
       request.impact_score = computeImpactScore(request);
       request.proof_strength = computeProofStrength(request);
       request.completion_rate = request.status === 'completed' ? 100 : 0;
+      
+      // Ensure project object is properly structured for card rendering
+      if (request.project) {
+        request.project = {
+          id: String(request.project.id || ''),
+          title: String(request.project.title || projectContextObj?.project_title || 'Project'),
+          location: String(request.project.location || request.project.exact_address || projectContextObj?.project_location || ''),
+          timeline: String(request.project.timeline || projectContextObj?.project_timeline || ''),
+          category: String(request.project.category || projectContextObj?.project_category || request.category || '')
+        };
+      } else if (projectContextObj && projectContextObj.project) {
+        // Fallback to project_context if project isn't hydrated
+        request.project = {
+          id: String(projectContextObj.project.id || ''),
+          title: String(projectContextObj.project_title || projectContextObj.project.title || ''),
+          location: String(projectContextObj.project_location || projectContextObj.project.exact_address || ''),
+          timeline: String(projectContextObj.project_timeline || projectContextObj.project.timeline || ''),
+          category: String(projectContextObj.project_category || projectContextObj.project.category || '')
+        };
+      }
       
       // Handle old concatenated description format
       if (request.description && (request.description.includes('Budget:') || request.description.includes('Requirements:'))) {

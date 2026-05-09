@@ -143,6 +143,14 @@ CORS_ORIGIN=http://localhost:3000 # Allowed CORS origins
 # Admin Security
 ADMIN_SECRET_KEY=admin_secret_key_for_admin_access
 CRON_SECRET=optional_cron_job_secret_key
+
+# Navadrishti CA (Certification Authority) Configuration
+# NOTE: `ca_id` is provided by the Navadrishti admin when creating CA accounts via the Admin UI.
+# You only need to set the following env var(s) for token configuration:
+CA_JWT_EXPIRES_IN=12h                    # CA token expiration time
+
+# Government Admin Configuration
+GOVT_ADMIN_JWT_EXPIRES_IN=12h            # Government admin token expiration
 ```
 
 ### 🎨 File Storage (Cloudinary)

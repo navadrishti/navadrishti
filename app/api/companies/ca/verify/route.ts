@@ -8,6 +8,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       role: 'company_ca',
+      identity: {
+        id: context.identity.id,
+        must_change_password: context.identity.must_change_password || false
+      },
       company_ca: {
         identity_id: context.identity.id,
         company_user_id: context.identity.company_user_id,

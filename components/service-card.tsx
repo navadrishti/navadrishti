@@ -453,20 +453,20 @@ export function ServiceCard({
 
   return (
     <Card className="h-full flex flex-col hover:shadow-xl transition-all duration-300 border-2 border-gray-200 hover:border-blue-500">
-      <CardHeader className="space-y-3 pb-4">
+      <CardHeader className="space-y-3 pb-4 h-32 flex flex-col">
         {type === 'request' && projectContext?.title && (
           <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900 shadow-sm">
             <div className="flex items-start justify-between gap-2">
-              <div>
+              <div className="min-w-0 flex-1">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-600">Project</p>
-                <p className="text-sm font-bold leading-snug text-blue-950">{projectContext.title}</p>
+                <p className="text-sm font-bold leading-snug text-blue-950 line-clamp-1 truncate">{projectContext.title}</p>
                 {projectCategory && (
-                  <p className="mt-1 text-xs font-medium text-blue-700">Project Category: {projectCategory}</p>
+                  <p className="mt-1 text-xs font-medium text-blue-700 line-clamp-1 truncate">Project Category: {projectCategory}</p>
                 )}
               </div>
               {projectContext?.id ? (
                 <Link href={`/service-requests/projects/${projectContext.id}`}>
-                  <Button variant="outline" size="sm" className="h-7 border-blue-300 bg-white px-2 text-[11px] text-blue-800 hover:bg-blue-100">
+                  <Button variant="outline" size="sm" className="h-7 border-blue-300 bg-white px-2 text-[11px] text-blue-800 hover:bg-blue-100 flex-shrink-0">
                     Project Details
                   </Button>
                 </Link>
@@ -476,22 +476,6 @@ export function ServiceCard({
         )}
 
         {/* Title */}
-        {type === 'request' && (
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-800">
-              Need #{id}
-            </Badge>
-            <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-700">
-              {requestType}
-            </Badge>
-            {effectiveRequestUrgency && (
-              <Badge variant="outline" className={`${getPriorityTextColor(String(effectiveRequestUrgency))} border-current/30`}>
-                {String(effectiveRequestUrgency).toUpperCase()}
-              </Badge>
-            )}
-          </div>
-        )}
-
         <h3 
           className="cursor-pointer text-lg font-bold leading-tight text-gray-900 transition-colors hover:text-blue-600 sm:text-xl line-clamp-2 [overflow-wrap:anywhere]" 
           onClick={handleCardClick}
@@ -499,62 +483,45 @@ export function ServiceCard({
           {title}
         </h3>
 
-        <p className="text-sm text-gray-700 leading-relaxed line-clamp-3 [overflow-wrap:anywhere]">
+        <p className="text-sm text-gray-700 leading-relaxed line-clamp-2 [overflow-wrap:anywhere] flex-1">
           {description}
         </p>
       </CardHeader>
 
-      <CardContent className="space-y-4 flex-1 pb-4">
-        {isFinancialNeed && Number.isFinite(fundingTargetInr) && fundingTargetInr > 0 && (
-          <div className="space-y-3 rounded-lg border p-4">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-sm font-semibold">Funding Progress</p>
-              <Badge className={status === 'completed' ? 'bg-green-100 text-green-800 border-green-200' : 'bg-blue-100 text-blue-800 border-blue-200'}>
-                {status === 'completed' ? 'Fulfilled' : `${fundingProgress}% Funded`}
-              </Badge>
-            </div>
-            <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
-              <div className="h-full bg-emerald-500" style={{ width: `${fundingProgress}%` }} />
-            </div>
-            <div className="text-xs text-gray-600">
-              INR {Math.max(fundsRaisedInr, 0).toLocaleString('en-IN')} raised of INR {fundingTargetInr.toLocaleString('en-IN')}
-            </div>
-          </div>
-        )}
-
+      <CardContent className="space-y-4 flex-1 pb-4 flex flex-col">
         {/* Key Information Grid */}
         <div className="grid grid-cols-1 gap-3 pt-2 sm:grid-cols-2 sm:grid-flow-row-dense">
-          <div className="space-y-1">
+          <div className="space-y-1 h-14 flex flex-col justify-between">
             <div className="flex items-center gap-1.5 text-gray-500">
               <Calendar size={14} />
               <span className="text-xs font-medium">Posted</span>
             </div>
-            <p className="text-sm font-semibold text-gray-900">{requestMetricValue.posted}</p>
+            <p className="text-sm font-semibold text-gray-900 line-clamp-1">{requestMetricValue.posted}</p>
           </div>
 
-          <div className="space-y-1">
+          <div className="space-y-1 h-14 flex flex-col justify-between">
             <div className="flex items-center gap-1.5 text-gray-500">
               <MapPin size={14} />
               <span className="text-xs font-medium">Location</span>
             </div>
-            <p className="text-sm font-semibold text-gray-900 truncate">{requestMetricValue.location}</p>
+            <p className="text-sm font-semibold text-gray-900 line-clamp-1">{requestMetricValue.location}</p>
           </div>
 
-          <div className="space-y-1">
+          <div className="space-y-1 h-14 flex flex-col justify-between">
             <div className="flex items-center gap-1.5 text-gray-500">
               <Target size={14} />
               <span className="text-xs font-medium">{categoryLabel}</span>
             </div>
-            <p className="text-sm font-semibold text-blue-700 truncate">{requestMetricValue.needType}</p>
+            <p className="text-sm font-semibold text-blue-700 line-clamp-1">{requestMetricValue.needType}</p>
           </div>
 
           {type === 'request' && (
-            <div className="space-y-1">
+            <div className="space-y-1 h-14 flex flex-col justify-between">
               <div className="flex items-center gap-1.5 text-gray-500">
                 <Clock size={14} />
                 <span className="text-xs font-medium">Urgency</span>
               </div>
-              <p className={`text-sm font-semibold truncate ${getPriorityTextColor(String(requestMetricValue.urgency))}`}>
+              <p className={`text-sm font-semibold line-clamp-1 ${getPriorityTextColor(String(requestMetricValue.urgency))}`}>
                 {requestMetricValue.urgency}
               </p>
             </div>
@@ -562,73 +529,86 @@ export function ServiceCard({
 
           {/* Service Request Specific Fields */}
           {type === 'request' && (
-            <div className="space-y-1">
+            <div className="space-y-1 h-14 flex flex-col justify-between">
               <div className="flex items-center gap-1.5 text-gray-500">
                 <Users size={14} />
                 <span className="text-xs font-medium">Beneficiaries</span>
               </div>
-              <p className="text-sm font-semibold text-gray-900">{requestMetricValue.beneficiaries}</p>
+              <p className="text-sm font-semibold text-gray-900 line-clamp-1">{requestMetricValue.beneficiaries}</p>
             </div>
           )}
 
           {type === 'request' && (
-            <div className="space-y-1">
+            <div className="space-y-1 h-14 flex flex-col justify-between">
               <div className="flex items-center gap-1.5 text-gray-500">
                 <IndianRupee size={14} />
                 <span className="text-xs font-medium">Budget</span>
               </div>
-              <p className="text-sm font-semibold text-gray-900 truncate">{requestMetricValue.budget}</p>
+              <p className="text-sm font-semibold text-gray-900 line-clamp-1">{requestMetricValue.budget}</p>
             </div>
           )}
 
           {type === 'request' && (
-            <div className="space-y-1">
+            <div className="space-y-1 h-14 flex flex-col justify-between">
               <div className="flex items-center gap-1.5 text-gray-500">
                 <Clock size={14} />
                 <span className="text-xs font-medium">Deadline</span>
               </div>
-              <p className="text-sm font-semibold text-gray-900 truncate">{requestMetricValue.deadline}</p>
+              <p className="text-sm font-semibold text-gray-900 line-clamp-1">{requestMetricValue.deadline}</p>
             </div>
           )}
 
           {type === 'request' && (
-            <div className="space-y-1">
+            <div className="space-y-1 h-14 flex flex-col justify-between">
               <div className="flex items-center gap-1.5 text-gray-500">
                 <Target size={14} />
                 <span className="text-xs font-medium">Impact Score</span>
               </div>
-              <p className="text-sm font-semibold text-gray-900">{requestMetricValue.impact}</p>
+              <p className="text-sm font-semibold text-gray-900 line-clamp-1">{requestMetricValue.impact}</p>
+            </div>
+          )}
+
+          {isFinancialNeed && Number.isFinite(fundingTargetInr) && fundingTargetInr > 0 && (
+            <div className="space-y-1 rounded-md bg-emerald-50 p-2 sm:col-span-2">
+              <div className="flex items-center gap-1.5 text-emerald-700">
+                <IndianRupee size={14} />
+                <span className="text-xs font-medium">Funding Progress</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-emerald-900">{fundingProgress}% Funded</p>
+                <p className="text-xs text-emerald-700">INR {Math.max(fundsRaisedInr, 0).toLocaleString('en-IN')} of INR {fundingTargetInr.toLocaleString('en-IN')}</p>
+              </div>
             </div>
           )}
 
           {/* Service Offer Specific Fields */}
           {type === 'offer' && capacityLimit && (
-            <div className="space-y-1 sm:col-span-2">
+            <div className="space-y-1 sm:col-span-2 h-14 flex flex-col justify-between">
               <div className="flex items-center gap-1.5 text-gray-500">
                 <Target size={14} />
                 <span className="text-xs font-medium">Capacity</span>
               </div>
-              <p className="text-sm font-bold text-blue-700">{capacityLimit}</p>
+              <p className="text-sm font-bold text-blue-700 line-clamp-1">{capacityLimit}</p>
             </div>
           )}
 
           {type === 'offer' && coverageArea && (
-            <div className="space-y-1">
+            <div className="space-y-1 h-14 flex flex-col justify-between">
               <div className="flex items-center gap-1.5 text-gray-500">
                 <MapPin size={14} />
                 <span className="text-xs font-medium">Coverage</span>
               </div>
-              <p className="text-sm font-semibold text-gray-900 truncate">{coverageArea}</p>
+              <p className="text-sm font-semibold text-gray-900 line-clamp-1">{coverageArea}</p>
             </div>
           )}
 
           {type === 'offer' && status && (
-            <div className="space-y-1">
+            <div className="space-y-1 h-14 flex flex-col justify-between">
               <div className="flex items-center gap-1.5 text-gray-500">
                 <Clock size={14} />
                 <span className="text-xs font-medium">Status</span>
               </div>
-              <p className="text-sm font-semibold text-gray-900 capitalize">{String(status)}</p>
+              <p className="text-sm font-semibold text-gray-900 capitalize line-clamp-1">{String(status)}</p>
             </div>
           )}
 
@@ -667,12 +647,12 @@ export function ServiceCard({
           )}
 
           {type === 'offer' && offerType === 'material' && item && (
-            <div className="space-y-1">
+            <div className="space-y-1 h-14 flex flex-col justify-between">
               <div className="flex items-center gap-1.5 text-gray-500">
                 <Briefcase size={14} />
                 <span className="text-xs font-medium">Material</span>
               </div>
-              <p className="text-sm font-semibold text-gray-900">
+              <p className="text-sm font-semibold text-gray-900 line-clamp-1">
                 {item}
                 {quantity ? ` (${quantity})` : ''}
               </p>
@@ -680,51 +660,55 @@ export function ServiceCard({
           )}
 
           {type === 'offer' && offerType === 'service' && skill && (
-            <div className="space-y-1">
+            <div className="space-y-1 h-14 flex flex-col justify-between">
               <div className="flex items-center gap-1.5 text-gray-500">
                 <Briefcase size={14} />
                 <span className="text-xs font-medium">Skill Offered</span>
               </div>
-              <p className="text-sm font-semibold text-gray-900">{skill}</p>
+              <p className="text-sm font-semibold text-gray-900 line-clamp-1">{skill}</p>
             </div>
           )}
 
           {type === 'offer' && offerType === 'infrastructure' && scope && (
-            <div className="space-y-1">
+            <div className="space-y-1 h-14 flex flex-col justify-between">
               <div className="flex items-center gap-1.5 text-gray-500">
                 <Target size={14} />
                 <span className="text-xs font-medium">Infrastructure Scope</span>
               </div>
-              <p className="text-sm font-semibold text-gray-900 line-clamp-2">{scope}</p>
+              <p className="text-sm font-semibold text-gray-900 line-clamp-1">{scope}</p>
             </div>
           )}
+        </div>
 
-          <div className="space-y-1 sm:col-span-2">
-            <div className="flex items-center gap-1.5 text-gray-500">
-              <User size={14} />
-              <span className="text-xs font-medium">{type === 'request' ? 'Requesting Body' : 'Offering Entity'}</span>
-            </div>
-            <Link
-              href={ownerProfileId ? `/profile/${ownerProfileId}` : '#'}
-              className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 transition-colors hover:border-blue-300 hover:bg-blue-50"
-            >
-              <div className="w-9 h-9 rounded-full flex items-center justify-center bg-blue-600 text-white font-bold text-xs flex-shrink-0 shadow-sm">
-                {getInitials(providerDisplayName)}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <p className="font-semibold text-gray-900 text-sm truncate">{providerDisplayName}</p>
-                  {verified && (
-                    <VerificationBadge status="verified" size="sm" showText={false} />
-                  )}
-                </div>
-                <p className="text-xs text-gray-600 flex items-center gap-1">
-                  {getProviderIcon(providerDisplayType)}
-                  {getProviderLabel(providerDisplayType)}
-                </p>
-              </div>
-            </Link>
+        {/* Spacer to ensure Requesting Body is always at same position */}
+        <div className="flex-1" />
+
+        {/* Requesting Body / Offering Entity - Always at same vertical position */}
+        <div className="space-y-1 pt-3">
+          <div className="flex items-center gap-1.5 text-gray-500">
+            <User size={14} />
+            <span className="text-xs font-medium">{type === 'request' ? 'Requesting Body' : 'Offering Entity'}</span>
           </div>
+          <Link
+            href={ownerProfileId ? `/profile/${ownerProfileId}` : '#'}
+            className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 transition-colors hover:border-blue-300 hover:bg-blue-50"
+          >
+            <div className="w-9 h-9 rounded-full flex items-center justify-center bg-blue-600 text-white font-bold text-xs flex-shrink-0 shadow-sm">
+              {getInitials(providerDisplayName)}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <p className="font-semibold text-gray-900 text-sm truncate">{providerDisplayName}</p>
+                {verified && (
+                  <VerificationBadge status="verified" size="sm" showText={false} />
+                )}
+              </div>
+              <p className="text-xs text-gray-600 flex items-center gap-1">
+                {getProviderIcon(providerDisplayType)}
+                {getProviderLabel(providerDisplayType)}
+              </p>
+            </div>
+          </Link>
         </div>
 
         {/* Skills for Service Offers */}
@@ -759,7 +743,7 @@ export function ServiceCard({
         {type === 'offer' && duration && (
           <div className="space-y-2 pt-2">
             <p className="text-xs font-medium text-gray-500">Duration</p>
-            <p className="text-sm text-gray-700">{duration}</p>
+            <p className="text-sm text-gray-700 line-clamp-1">{duration}</p>
           </div>
         )}
 

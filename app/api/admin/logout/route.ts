@@ -12,7 +12,16 @@ export async function POST(request: NextRequest) {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
-      maxAge: 0 // Immediately expire
+      expires: new Date(0),
+      path: '/api/admin',
+    });
+
+    response.cookies.set('admin-token', '', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 0, // Immediately expire
+      path: '/',
     });
 
     return response;

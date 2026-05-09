@@ -139,6 +139,27 @@ export const db = {
 
       if (error) throw error;
       return data;
+    },
+
+    async delete(id: string | number) {
+      const { data: linkedRequests, error: linkedRequestsError } = await supabase
+        .from('service_requests')
+        .select('id')
+        .eq('project_id', id);
+
+      if (linkedRequestsError) throw linkedRequestsError;
+
+      for (const request of linkedRequests || []) {
+        await db.serviceRequests.delete(request.id);
+      }
+
+      const { error } = await supabase
+        .from('service_request_projects')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      return true;
     }
   },
 
