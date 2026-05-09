@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { verifyToken } from '@/lib/auth';
 
+function toDateKey(value: unknown): string {
+  if (!value) return 'unknown';
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return 'unknown';
+  return date.toISOString().split('T')[0];
+}
+
 export async function GET(request: NextRequest) {
   try {
     // Check for admin token authentication
@@ -27,61 +34,64 @@ export async function GET(request: NextRequest) {
     startDate.setDate(startDate.getDate() - parseInt(period));
 
     // Get comprehensive analytics data
-    const [
-      reviewStatsResult,
-      serviceOfferStatsResult,
-      emailStatsResult,
-      performanceStatsResult
-    ] = await Promise.all([
-      // Review statistics by date
-      supabase
-        .from('admin_review_statistics')
-        .select('*')
-        .gte('review_date', startDate.toISOString().split('T')[0])
-        .order('review_date', { ascending: true }),
-
-      // Service offer trends
+    const [serviceOfferStatsResult, performanceStatsResult] = await Promise.all([
       supabase
         .from('service_offers')
         .select(`
-          id, 
-          admin_status, 
-          created_at, 
-          admin_reviewed_at, 
+          id,
+          admin_status,
+          created_at,
+          admin_reviewed_at,
           submitted_for_review_at,
           category
         `)
         .gte('created_at', startDate.toISOString()),
 
-      // Email delivery statistics
-      supabase
-        .from('service_offer_notifications')
-        .select(`
-          notification_type,
-          delivery_status,
-          sent_at,
-          delivered_at,
-          failed_at: bounced_at,
-          created_at
-        `)
-        .gte('created_at', startDate.toISOString()),
-
-      // Performance metrics
       supabase
         .from('service_offer_reviews')
         .select(`
-          reviewed_at,
-          review_priority,
-          review_category,
+          *,
           service_offer:service_offers(created_at, submitted_for_review_at)
         `)
         .gte('reviewed_at', startDate.toISOString())
     ]);
 
-    const reviewStats = reviewStatsResult.data || [];
     const serviceOfferStats = serviceOfferStatsResult.data || [];
-    const emailStats = emailStatsResult.data || [];
     const performanceStats = performanceStatsResult.data || [];
+    const reviewStats = performanceStats.reduce((acc: Record<string, any>, review: any) => {
+      const dateKey = toDateKey(review.reviewed_at || review.review_date || review.created_at);
+      if (!acc[dateKey]) {
+        acc[dateKey] = {
+          date: dateKey,
+          total_reviewed: 0,
+          approved_count: 0,
+          rejected_count: 0,
+          avg_review_time_hours: 0,
+          _review_times: [] as number[]
+        };
+      }
+
+      const bucket = acc[dateKey];
+      bucket.total_reviewed += 1;
+
+      const decision = String(review.review_action || review.decision || '').toLowerCase();
+      if (decision === 'approved' || decision === 'accept' || decision === 'accepted') bucket.approved_count += 1;
+      if (decision === 'rejected' || decision === 'declined' || decision === 'decline') bucket.rejected_count += 1;
+
+      const submittedAt = review.service_offer?.submitted_for_review_at || review.service_offer?.created_at;
+      const reviewedAt = review.reviewed_at || review.review_date;
+      if (submittedAt && reviewedAt) {
+        const submitted = new Date(submittedAt);
+        const reviewed = new Date(reviewedAt);
+        if (!Number.isNaN(submitted.getTime()) && !Number.isNaN(reviewed.getTime())) {
+          bucket._review_times.push((reviewed.getTime() - submitted.getTime()) / (1000 * 60 * 60));
+        }
+      }
+
+      return acc;
+    }, {});
+
+    const emailStats: any[] = [];
 
     // Calculate key metrics
     const totalServiceOffers = serviceOfferStats.length;
@@ -116,8 +126,8 @@ export async function GET(request: NextRequest) {
 
     // Email delivery metrics
     const totalEmails = emailStats.length;
-    const deliveredEmails = emailStats.filter(e => e.delivery_status === 'delivered').length;
-    const failedEmails = emailStats.filter(e => e.delivery_status === 'failed').length;
+    const deliveredEmails = emailStats.filter((e: any) => e.delivery_status === 'delivered').length;
+    const failedEmails = emailStats.filter((e: any) => e.delivery_status === 'failed').length;
     const emailDeliveryRate = totalEmails > 0 ? (deliveredEmails / totalEmails) * 100 : 0;
 
     // Category breakdown
@@ -132,13 +142,17 @@ export async function GET(request: NextRequest) {
     }, {} as Record<string, any>);
 
     // Daily trends for charts
-    const dailyTrends = reviewStats.map(stat => ({
-      date: stat.review_date,
-      total_reviewed: stat.total_reviewed || 0,
-      approved: stat.approved_count || 0,
-      rejected: stat.rejected_count || 0,
-      avg_review_time: stat.avg_review_time_hours || 0
-    }));
+    const dailyTrends = Object.values(reviewStats)
+      .map((stat: any) => ({
+        date: stat.date,
+        total_reviewed: stat.total_reviewed || 0,
+        approved: stat.approved_count || 0,
+        rejected: stat.rejected_count || 0,
+        avg_review_time: stat._review_times.length > 0
+          ? stat._review_times.reduce((sum: number, time: number) => sum + time, 0) / stat._review_times.length
+          : 0
+      }))
+      .sort((a: any, b: any) => String(a.date).localeCompare(String(b.date)));
 
     // Priority breakdown
     const priorityStats = performanceStats.reduce((acc, review) => {

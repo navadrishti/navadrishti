@@ -87,6 +87,7 @@ class RuleEngine:
         flags += self._check_expiry(extracted_docs)
         flags += self._check_name_consistency(extracted_docs)
         flags += self._check_date_logic(extracted_docs)
+        flags += self._check_bank_statement(extracted_docs)
 
         errors   = [f for f in flags if f.severity == "ERROR"]
         warnings = [f for f in flags if f.severity == "WARNING"]
@@ -376,3 +377,92 @@ class RuleEngine:
         elif errors > 0:
             return f"❌ {errors} error(s) found — must review before approving"
         return f"⚠️ {warnings} warning(s) — should verify manually"
+
+
+# ─────────────────────────────────────────────
+# bank statement rules — added to RuleEngine
+# ─────────────────────────────────────────────
+
+def _check_bank_statement(self, docs):
+    flags = []
+    bs    = docs.get("bank_statement")
+    if not bs:
+        return flags
+
+    today = datetime.today()
+
+    # required fields
+    for field in ["account_holder", "account_number", "bank_name", "ifsc_code", "statement_to"]:
+        if not bs.get(field):
+            flags.append(Flag("ERROR", "BANK_STATEMENT_REQUIRED", f"Could not extract '{field}' from bank statement", field, "bank_statement"))
+
+    # IFSC format check
+    ifsc = bs.get("ifsc_code")
+    if ifsc:
+        if not re.match(r"^[A-Z]{4}0[A-Z0-9]{6}$", ifsc):
+            flags.append(Flag("ERROR", "IFSC_FORMAT", f"IFSC '{ifsc}' is not valid format (ABCD0123456)", "ifsc_code", "bank_statement"))
+        else:
+            flags.append(Flag("INFO", "IFSC_FORMAT", f"IFSC '{ifsc}' format is valid", "ifsc_code", "bank_statement"))
+
+    # statement period — must be within last 6 months
+    stmt_to = bs.get("statement_to")
+    if stmt_to:
+        try:
+            from dateutil import parser as dateparser
+            to_date   = dateparser.parse(stmt_to, dayfirst=True)
+            days_diff = (today - to_date).days
+            if days_diff > 180:
+                flags.append(Flag("ERROR", "BANK_STATEMENT_PERIOD",
+                    f"Bank statement is older than 6 months (end date: {stmt_to})",
+                    "statement_to", "bank_statement"))
+            else:
+                flags.append(Flag("INFO", "BANK_STATEMENT_PERIOD",
+                    f"Bank statement is within 6 months (end date: {stmt_to})",
+                    "statement_to", "bank_statement"))
+        except Exception:
+            flags.append(Flag("WARNING", "BANK_STATEMENT_PERIOD",
+                f"Could not parse statement end date '{stmt_to}' — verify manually",
+                "statement_to", "bank_statement"))
+
+    # statement from must be before to
+    stmt_from = bs.get("statement_from")
+    if stmt_from and stmt_to:
+        try:
+            from dateutil import parser as dateparser
+            from_date = dateparser.parse(stmt_from, dayfirst=True)
+            to_date   = dateparser.parse(stmt_to,   dayfirst=True)
+            if from_date >= to_date:
+                flags.append(Flag("ERROR", "BANK_STATEMENT_PERIOD",
+                    "Bank statement 'from' date is after or same as 'to' date — invalid",
+                    "statement_from", "bank_statement"))
+        except Exception:
+            pass
+
+    # name consistency — account holder vs other docs
+    holder = bs.get("account_holder")
+    if holder:
+        name_fields = {
+            "pan":                          "name",
+            "aadhaar":                      "name",
+            "voter_id":                     "name",
+            "driving_license":              "name",
+            "registration_certificate":     "organisation_name",
+            "fcra":                         "organisation_name",
+            "certificate_of_incorporation": "company_name",
+            "gst_certificate":              "legal_name",
+        }
+        for doc_type, field in name_fields.items():
+            other = docs.get(doc_type, {})
+            if other and other.get(field):
+                similarity = _embedding_similarity(holder.upper(), other[field].upper())
+                label      = doc_type.replace("_", " ").title()
+                if similarity < self.NAME_MATCH_THRESHOLD_MIN:
+                    flags.append(Flag("ERROR", "NAME_MISMATCH",
+                        f"Bank account holder '{holder}' vs {label} name '{other[field]}' — {similarity}% match",
+                        "account_holder", f"bank_statement vs {doc_type}"))
+                elif similarity < self.NAME_MATCH_THRESHOLD_MAX:
+                    flags.append(Flag("WARNING", "NAME_MISMATCH",
+                        f"Slight name variation: bank account holder vs {label} — {similarity}% match — verify manually",
+                        "account_holder", f"bank_statement vs {doc_type}"))
+
+    return flags

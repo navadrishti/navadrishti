@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { verifyToken } from '@/lib/auth';
 
+function toDateKey(value: unknown): string {
+  if (!value) return 'unknown';
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return 'unknown';
+  return date.toISOString().split('T')[0];
+}
+
 export async function GET(request: NextRequest) {
   try {
     // Check for admin token authentication
@@ -26,13 +33,11 @@ export async function GET(request: NextRequest) {
     const offset = parseInt(url.searchParams.get('offset') || '0');
     const serviceOfferId = url.searchParams.get('serviceOfferId');
 
-    // Build query for review history
     let query = supabase
       .from('service_offer_reviews')
       .select(`
         *,
-        service_offer:service_offers(id, title, category, created_at),
-        service_offer_review_history(*)
+        service_offer:service_offers(id, title, category, created_at)
       `)
       .order('reviewed_at', { ascending: false });
 
@@ -40,70 +45,104 @@ export async function GET(request: NextRequest) {
       query = query.eq('service_offer_id', parseInt(serviceOfferId));
     }
 
-    const { data: reviews, error: reviewsError } = await query
-      .range(offset, offset + limit - 1);
+    const { data: reviews, error: reviewsError } = await query.range(offset, offset + limit - 1);
 
     if (reviewsError) {
       console.error('Error fetching review history:', reviewsError);
       return NextResponse.json({ error: 'Failed to fetch review history' }, { status: 500 });
     }
 
-    // Get statistics for the admin dashboard
-    const { data: stats, error: statsError } = await supabase
-      .from('admin_review_statistics')
-      .select('*')
-      .order('review_date', { ascending: false })
-      .limit(30); // Last 30 days
+    const reviewRows = reviews || [];
+    const totalReviews = reviewRows.length;
+    const approvedCount = reviewRows.filter((review: any) => {
+      const decision = String(review.review_action || review.decision || '').toLowerCase();
+      return decision === 'approved' || decision === 'accept' || decision === 'accepted';
+    }).length;
+    const rejectedCount = reviewRows.filter((review: any) => {
+      const decision = String(review.review_action || review.decision || '').toLowerCase();
+      return decision === 'rejected' || decision === 'declined' || decision === 'decline';
+    }).length;
+    const pendingCount = reviewRows.filter((review: any) => {
+      const decision = String(review.review_action || review.decision || 'pending').toLowerCase();
+      return decision === 'pending' || decision === 'in_review';
+    }).length;
 
-    if (statsError) {
-      console.error('Error fetching statistics:', statsError);
-    }
+    const reviewTimes = reviewRows.map((review: any) => {
+      const createdAt = review.service_offer?.created_at;
+      const reviewedAt = review.reviewed_at || review.review_date;
+      if (!createdAt || !reviewedAt) return null;
+      const created = new Date(createdAt);
+      const reviewed = new Date(reviewedAt);
+      if (Number.isNaN(created.getTime()) || Number.isNaN(reviewed.getTime())) return null;
+      return (reviewed.getTime() - created.getTime()) / (1000 * 60 * 60);
+    }).filter((value: number | null): value is number => value !== null);
 
-    // Get notification delivery status
-    const { data: notifications, error: notificationsError } = await supabase
-      .from('service_offer_notifications')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(100);
-
-    if (notificationsError) {
-      console.error('Error fetching notifications:', notificationsError);
-    }
-
-    // Calculate aggregate statistics
-    const totalReviews = reviews?.length || 0;
-    const approvedCount = reviews?.filter(r => r.review_action === 'approved').length || 0;
-    const rejectedCount = reviews?.filter(r => r.review_action === 'rejected').length || 0;
-    const pendingCount = reviews?.filter(r => r.review_action === 'pending').length || 0;
-
-    // Calculate average review time
-    const reviewTimes = reviews?.map(review => {
-      if (review.service_offer?.created_at && review.reviewed_at) {
-        const created = new Date(review.service_offer.created_at);
-        const reviewed = new Date(review.reviewed_at);
-        return (reviewed.getTime() - created.getTime()) / (1000 * 60 * 60); // Hours
-      }
-      return null;
-    }).filter(Boolean) || [];
-
-    const avgReviewTimeHours = reviewTimes.length > 0 
-      ? reviewTimes.reduce((sum, time) => sum + time, 0) / reviewTimes.length 
+    const avgReviewTimeHours = reviewTimes.length > 0
+      ? reviewTimes.reduce((sum, time) => sum + time, 0) / reviewTimes.length
       : 0;
 
-    // Email delivery statistics
+    const statsByDate = reviewRows.reduce((acc: Record<string, any>, review: any) => {
+      const dateKey = toDateKey(review.reviewed_at || review.review_date || review.created_at);
+      if (!acc[dateKey]) {
+        acc[dateKey] = {
+          review_date: dateKey,
+          total_reviewed: 0,
+          approved_count: 0,
+          rejected_count: 0,
+          pending_count: 0,
+          avg_review_time_hours: 0,
+          _review_times: [] as number[]
+        };
+      }
+
+      const bucket = acc[dateKey];
+      bucket.total_reviewed += 1;
+
+      const decision = String(review.review_action || review.decision || 'pending').toLowerCase();
+      if (decision === 'approved' || decision === 'accept' || decision === 'accepted') bucket.approved_count += 1;
+      else if (decision === 'rejected' || decision === 'declined' || decision === 'decline') bucket.rejected_count += 1;
+      else bucket.pending_count += 1;
+
+      const createdAt = review.service_offer?.created_at;
+      const reviewedAt = review.reviewed_at || review.review_date;
+      if (createdAt && reviewedAt) {
+        const created = new Date(createdAt);
+        const reviewed = new Date(reviewedAt);
+        if (!Number.isNaN(created.getTime()) && !Number.isNaN(reviewed.getTime())) {
+          bucket._review_times.push((reviewed.getTime() - created.getTime()) / (1000 * 60 * 60));
+        }
+      }
+
+      return acc;
+    }, {});
+
+    const stats = Object.values(statsByDate)
+      .map((entry: any) => ({
+        review_date: entry.review_date,
+        total_reviewed: entry.total_reviewed,
+        approved_count: entry.approved_count,
+        rejected_count: entry.rejected_count,
+        pending_count: entry.pending_count,
+        avg_review_time_hours: entry._review_times.length > 0
+          ? entry._review_times.reduce((sum: number, time: number) => sum + time, 0) / entry._review_times.length
+          : 0
+      }))
+      .sort((a: any, b: any) => String(a.review_date).localeCompare(String(b.review_date)));
+
+    const notifications: any[] = [];
     const emailStats = {
-      total_sent: notifications?.filter(n => n.delivery_status === 'sent').length || 0,
-      total_delivered: notifications?.filter(n => n.delivery_status === 'delivered').length || 0,
-      total_failed: notifications?.filter(n => n.delivery_status === 'failed').length || 0,
-      total_pending: notifications?.filter(n => n.delivery_status === 'pending').length || 0,
+      total_sent: 0,
+      total_delivered: 0,
+      total_failed: 0,
+      total_pending: 0,
     };
 
     return NextResponse.json({
       success: true,
       data: {
-        reviews: reviews || [],
-        statistics: stats || [],
-        notifications: notifications || [],
+          reviews: reviewRows,
+          statistics: stats,
+          notifications,
         aggregates: {
           total_reviews: totalReviews,
           approved_count: approvedCount,

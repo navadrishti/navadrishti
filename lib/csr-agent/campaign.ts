@@ -3,26 +3,41 @@ import { z } from "zod";
 
 // ----------- Schemas -----------
 
+function coerceInteger(schema: z.ZodNumber) {
+  return z.preprocess((value) => {
+    if (typeof value === "number") {
+      return Number.isFinite(value) ? Math.round(value) : value;
+    }
+
+    if (typeof value === "string") {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? Math.round(parsed) : value;
+    }
+
+    return value;
+  }, schema);
+}
+
 const CampaignDraftSchema = z.object({
   title:            z.string().min(1),
   description:      z.string().min(1),
   category:         z.string().min(1),
   location:         z.string().min(1),
-  budget_inr:       z.number().int().nonnegative(),
+  budget_inr:       coerceInteger(z.number().int().nonnegative()),
   budget_breakdown: z.record(z.number()),
   schedule_vii:     z.string().min(1),
-  sdg_alignment:    z.array(z.number().int()),
+  sdg_alignment:    z.array(coerceInteger(z.number().int().positive())),
   start_date:       z.string(),
   end_date:         z.string(),
   impact_metrics: z.object({
-    beneficiaries: z.number().int(),
+    beneficiaries: coerceInteger(z.number().int().nonnegative()),
     duration:      z.string(),
   }),
   milestones: z.array(
     z.object({
       title:            z.string(),
       description:      z.string(),
-      duration_weeks:   z.number().int(),
+      duration_weeks:   coerceInteger(z.number().int().nonnegative()),
       budget_allocated: z.number(),
       deliverables:     z.array(z.string()),
     })

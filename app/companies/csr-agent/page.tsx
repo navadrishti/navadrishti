@@ -15,7 +15,8 @@ type ProjectStatus = "pending" | "accepted" | "rejected"
 interface AgentFormData {
   campaignName: string
   category: string
-  location: string
+  city: string
+  state: string
   budget: string
   startDate: string
   endDate: string
@@ -23,11 +24,30 @@ interface AgentFormData {
 }
 
 interface ServiceSuggestion {
-  id: string
-  serviceName: string
-  organization: string
-  matchReason: string
-  estimatedCost: string
+  capability_id: number
+  capability_name: string
+  similarity: number
+  service_offer_id: number
+  offer_type: string
+  transaction_type: string
+  impact_area: string[]
+  city: string
+  state_province: string
+  price_amount: number
+  price_type: string
+  score: number
+}
+
+interface RecommendationApiResponse {
+  success: boolean
+  data?: unknown
+  error?: string
+  details?: Record<string, string[]>
+  debug?: {
+    reason?: "coercion_validation_failed" | "input_validation_failed" | "matcher_error" | "fallback_ok" | "empty_results" | "ok" | "route_error"
+    message?: string
+    details?: unknown
+  }
 }
 
 interface MilestoneInput {
@@ -78,7 +98,8 @@ export default function CSRAgentPage() {
   const [formData, setFormData] = useState<AgentFormData>({
     campaignName: "",
     category: "",
-    location: "",
+    city: "",
+    state: "",
     budget: "",
     startDate: "",
     endDate: "",
@@ -86,6 +107,9 @@ export default function CSRAgentPage() {
   })
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [serviceSuggestions, setServiceSuggestions] = useState<ServiceSuggestion[]>([])
+  const [recommendationError, setRecommendationError] = useState<string | null>(null)
+  const [recommendationDebug, setRecommendationDebug] = useState<string | null>(null)
+  const [isFetchingRecommendations, setIsFetchingRecommendations] = useState(false)
   const [projects, setProjects] = useState<CSRProject[]>([])
   const [isGeneratingProjects, setIsGeneratingProjects] = useState(false)
   const [generateError, setGenerateError] = useState<string | null>(null)
@@ -158,7 +182,6 @@ export default function CSRAgentPage() {
     return (
       formData.campaignName.trim() &&
       formData.category.trim() &&
-      formData.location.trim() &&
       Number.isFinite(parsedBudget) &&
       parsedBudget > 0 &&
       isDateRangeValid &&
@@ -188,37 +211,116 @@ export default function CSRAgentPage() {
     setMilestoneInputs((previousRows) => previousRows.filter((_, currentIndex) => currentIndex !== rowIndex))
   }
 
-  const handleFormSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const toNumber = (value: unknown): number => {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : 0
+  }
+
+  const toSafeString = (value: unknown): string => {
+    if (value === null || value === undefined) return ""
+    return String(value)
+  }
+
+  const normalizeSuggestion = (item: unknown): ServiceSuggestion | null => {
+    if (!item || typeof item !== "object") return null
+    const raw = item as Record<string, unknown>
+    const serviceOfferId = Number(raw.service_offer_id)
+    const capabilityId = Number(raw.capability_id)
+
+    if (!Number.isFinite(serviceOfferId) || serviceOfferId <= 0) return null
+
+    return {
+      capability_id: Number.isFinite(capabilityId) ? capabilityId : serviceOfferId,
+      capability_name: toSafeString(raw.capability_name) || "Capability Offer",
+      similarity: Math.max(0, Math.min(1, toNumber(raw.similarity))),
+      service_offer_id: serviceOfferId,
+      offer_type: toSafeString(raw.offer_type) || "unknown",
+      transaction_type: toSafeString(raw.transaction_type) || "unknown",
+      impact_area: Array.isArray(raw.impact_area)
+        ? raw.impact_area.map((entry) => toSafeString(entry)).filter((entry) => entry.length > 0)
+        : [],
+      city: toSafeString(raw.city),
+      state_province: toSafeString(raw.state_province),
+      price_amount: toNumber(raw.price_amount),
+      price_type: toSafeString(raw.price_type) || "unknown",
+      score: Math.round(toNumber(raw.score)),
+    }
+  }
+
+  const buildRecommendationPayload = () => ({
+    title: formData.category,
+    description: formData.requirementDetails,
+    category: formData.category,
+    city: formData.city,
+    state_province: formData.state,
+    budget: Number(parsedBudget),
+    start_date: formData.startDate,
+    end_date: formData.endDate,
+    requirementDetails: formData.requirementDetails,
+  })
+
+  const fetchRecommendations = async (): Promise<ServiceSuggestion[]> => {
+    setIsFetchingRecommendations(true)
+    setRecommendationError(null)
+    setRecommendationDebug(null)
+
+    try {
+      const response = await fetch("/api/csr-agent/get-recommendations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildRecommendationPayload()),
+      })
+
+      const result = (await response.json()) as RecommendationApiResponse
+
+      if (process.env.NODE_ENV !== "production" && result?.debug?.reason) {
+        const debugSuffix = result.debug.message ? `: ${result.debug.message}` : ""
+        setRecommendationDebug(`Debug (${result.debug.reason})${debugSuffix}`)
+      }
+
+      if (!response.ok || !result?.success) {
+        const detailText = result?.details && typeof result.details === "object"
+          ? Object.entries(result.details)
+              .map(([key, values]) => `${key}: ${Array.isArray(values) ? values.join(", ") : "invalid"}`)
+              .join(" | ")
+          : ""
+
+        const debugText = result?.debug?.reason
+          ? `debug_reason: ${result.debug.reason}${result?.debug?.message ? ` (${result.debug.message})` : ""}`
+          : ""
+
+        const message = [result?.error || "Failed to fetch recommendations", detailText, debugText]
+          .filter(Boolean)
+          .join(". ")
+
+        setRecommendationError(message)
+        return []
+      }
+
+      const normalized = Array.isArray(result.data)
+        ? result.data.map(normalizeSuggestion).filter((item): item is ServiceSuggestion => Boolean(item))
+        : []
+
+      return normalized
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to fetch recommendations"
+      setRecommendationError(message)
+      return []
+    } finally {
+      setIsFetchingRecommendations(false)
+    }
+  }
+
+  const handleFormSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!canSubmit) return
 
-    const suggestions: ServiceSuggestion[] = [
-      {
-        id: "svc-1",
-        serviceName: `${formData.category} Field Program Support`,
-        organization: "Sunrise Social Foundation",
-        matchReason: "Aligned with your project goals and on-ground implementation requirements",
-        estimatedCost: `INR ${Math.round(parsedBudget * 0.45).toLocaleString("en-IN")}`,
-      },
-      {
-        id: "svc-2",
-        serviceName: `${formData.category} Impact Monitoring`,
-        organization: "Impact Ledger Collective",
-        matchReason: "Strong outcomes reporting and beneficiary tracking capacity",
-        estimatedCost: `INR ${Math.round(parsedBudget * 0.22).toLocaleString("en-IN")}`,
-      },
-      {
-        id: "svc-3",
-        serviceName: `${formData.category} Community Engagement`,
-        organization: "Seva Reach Network",
-        matchReason: `Proven local partnerships in ${formData.location} with measurable participation models`,
-        estimatedCost: `INR ${Math.round(parsedBudget * 0.31).toLocaleString("en-IN")}`,
-      },
-    ]
-
-    setServiceSuggestions(suggestions)
+    setServiceSuggestions([])
     setProjects([])
     setIsSubmitted(true)
+
+    const suggestions = await fetchRecommendations()
+    setServiceSuggestions(suggestions)
   }
 
   const handleGenerateProjects = async () => {
@@ -232,12 +334,22 @@ export default function CSRAgentPage() {
     setIsGeneratingProjects(true)
 
     try {
+      // ensure recommendations exist and include them in the generate payload
+      let recommendationsToSend = serviceSuggestions
+      if (!recommendationsToSend || recommendationsToSend.length === 0) {
+        recommendationsToSend = await fetchRecommendations()
+        setServiceSuggestions(recommendationsToSend)
+      }
+
+      const locationForRecommendation = `${formData.city}${formData.state ? `, ${formData.state}` : ""}`
+
       const payload = {
         company_id: String(user.id),
         budget: parsedBudget,
         milestones: milestoneInputs.length,
         category: formData.category,
-        location: formData.location,
+        city: formData.city,
+        state_province: formData.state,
         start_date: formData.startDate,
         end_date: formData.endDate,
         milestone_info: milestoneInputs.map((milestone) => ({
@@ -245,6 +357,7 @@ export default function CSRAgentPage() {
           budget_allocated: Number(milestone.budgetTarget),
         })),
         requirementDetails: formData.requirementDetails,
+        recommendations: recommendationsToSend,
       }
 
       const response = await fetch("/api/csr-agent/generate-campaigns", {
@@ -417,6 +530,7 @@ export default function CSRAgentPage() {
                   <select
                     name="category"
                     value={formData.category}
+                    aria-label = "CSR Category"
                     onChange={(event) => setFormData((previous) => ({ ...previous, category: event.target.value }))}
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none"
                   >
@@ -429,13 +543,25 @@ export default function CSRAgentPage() {
                   </select>
                 </div>
 
+
+
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-gray-700">Project Location</label>
+                  <label className="text-sm font-medium text-gray-700">City</label>
                   <Input
-                    name="location"
-                    value={formData.location}
-                    onChange={(event) => setFormData((previous) => ({ ...previous, location: event.target.value }))}
-                    placeholder="Ex: Nagpur, Maharashtra"
+                    name="city"
+                    value={formData.city}
+                    onChange={(event) => setFormData((previous) => ({ ...previous, city: event.target.value }))}
+                    placeholder="Ex: Nagpur"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-gray-700">State / Province</label>
+                  <Input
+                    name="state"
+                    value={formData.state}
+                    onChange={(event) => setFormData((previous) => ({ ...previous, state: event.target.value }))}
+                    placeholder="Ex: Maharashtra"
                   />
                 </div>
 
@@ -597,26 +723,95 @@ export default function CSRAgentPage() {
             <div className="space-y-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>Section 1</CardTitle>
-                  <CardDescription>Intentionally left blank for now</CardDescription>
+                  <CardTitle>Section 1: Capability Offers</CardTitle>
+                  <CardDescription>Recommended capabilities to include in your CSR initiatives.</CardDescription>
                 </CardHeader>
-                <CardContent>
-                  <div className="min-h-20 rounded-lg border border-dashed border-gray-200" />
+                <CardContent className="space-y-4">
+                  {process.env.NODE_ENV !== "production" && recommendationDebug && (
+                    <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-700">
+                      {recommendationDebug}
+                    </div>
+                  )}
+                  {isFetchingRecommendations ? (
+                    <div className="rounded-lg border border-dashed border-gray-200 p-6 text-sm text-gray-500">
+                      Loading recommendations...
+                    </div>
+                  ) : recommendationError ? (
+                    <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-sm text-red-700">
+                      {recommendationError}
+                    </div>
+                  ) : serviceSuggestions.length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-gray-200 p-6 text-sm text-gray-500">
+                      No matching service offers found. Check the database for available capabilities or refine your requirements.
+                    </div>
+                  ) : (
+                    serviceSuggestions.map((service) => (
+                      <div key={service.service_offer_id} className="rounded-lg border p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <h3 className="text-lg font-semibold text-udaan-navy">{service.capability_name}</h3>
+                            <p className="text-sm text-gray-500 mt-1">
+                              Offer #{service.service_offer_id} • {service.offer_type} • {service.transaction_type}
+                            </p>
+                          </div>
+                          <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">
+                            Score {service.score}
+                          </span>
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap gap-2 text-xs text-gray-600">
+                          <span className="rounded-full border px-2 py-1">Similarity {Math.round(service.similarity * 100)}%</span>
+                          <span className="rounded-full border px-2 py-1">{service.city || 'Any city'}</span>
+                          <span className="rounded-full border px-2 py-1">{service.state_province || 'Any state'}</span>
+                          <span className="rounded-full border px-2 py-1">{service.price_type}</span>
+                        </div>
+
+                        <p className="mt-3 text-sm text-gray-700">
+                          Impact areas: {service.impact_area.length > 0 ? service.impact_area.join(', ') : 'Not specified'}
+                        </p>
+                        <p className="mt-1 text-sm text-gray-700">
+                          Price signal: INR {service.price_amount.toLocaleString('en-IN')}
+                        </p>
+                      </div>
+                    ))
+                  )}
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Section 2: Similar Services</CardTitle>
-                  <CardDescription>Services aligned to your requirement</CardDescription>
+                  <CardTitle>Section 2: Existing NGO Requests</CardTitle>
+                  <CardDescription>Requests aligned to your requirement</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {serviceSuggestions.map((service) => (
-                    <div key={service.id} className="rounded-lg border p-4">
-                      <h3 className="text-lg font-semibold text-udaan-navy">{service.serviceName}</h3>
-                      <p className="text-sm text-gray-500 mt-1">{service.organization}</p>
-                      <p className="text-sm text-gray-700 mt-3">{service.matchReason}</p>
-                      <p className="text-sm font-medium text-udaan-orange mt-3">Estimated Cost: {service.estimatedCost}</p>
+                  {[
+                    {
+                      id: "ngo-1",
+                      name: `${formData.category} Field Support`,
+                      org: "Sunrise Social Foundation",
+                      reason: "Aligned with your project goals and on-ground implementation",
+                      cost: `INR ${Math.round(parsedBudget * 0.45).toLocaleString("en-IN")}`,
+                    },
+                    {
+                      id: "ngo-2",
+                      name: `${formData.category} Impact Monitoring`,
+                      org: "Impact Ledger Collective",
+                      reason: "Strong outcomes reporting and beneficiary tracking",
+                      cost: `INR ${Math.round(parsedBudget * 0.22).toLocaleString("en-IN")}`,
+                    },
+                    {
+                      id: "ngo-3",
+                      name: `${formData.category} Community Engagement`,
+                      org: "Seva Reach Network",
+                      reason: `Proven local partnerships in ${formData.city || ''}${formData.state ? ', ' + formData.state : ''} with measurable participation`,
+                      cost: `INR ${Math.round(parsedBudget * 0.31).toLocaleString("en-IN")}`,
+                    },
+                  ].map((req) => (
+                    <div key={req.id} className="rounded-lg border p-4">
+                      <h3 className="text-lg font-semibold text-udaan-navy">{req.name}</h3>
+                      <p className="text-sm text-gray-500 mt-1">{req.org}</p>
+                      <p className="text-sm text-gray-700 mt-3">{req.reason}</p>
+                      <p className="text-sm font-medium text-udaan-orange mt-3">Estimated Cost: {req.cost}</p>
                     </div>
                   ))}
                 </CardContent>

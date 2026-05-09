@@ -1,278 +1,320 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/db';
-import jwt from 'jsonwebtoken';
-import { JWT_SECRET } from '@/lib/auth';
+import { NextRequest, NextResponse } from 'next/server'
+import { supabase } from '@/lib/db'
+import jwt from 'jsonwebtoken'
+import { JWT_SECRET } from '@/lib/auth'
+import {
+  CATEGORY_BY_OFFER_TYPE,
+  IMPACT_AREAS,
+  isOfferType,
+  isTransactionAllowedForOfferType,
+  isTransactionType,
+  OfferType,
+  sanitizeTextArray,
+  parseCsvToStringArray,
+  toNullableNumber,
+  toNullablePositiveNumber
+} from '@/lib/service-offers'
 
-// Interface for JWT payload
 interface JWTPayload {
-  id: number;
-  user_type: string;
-  email: string;
-  name: string;
-  verification_status?: string;
+  id: number
+  user_type: string
+  email: string
+  name: string
+  verification_status?: string
 }
 
-const OFFER_TYPES = [
-  'financial',
-  'material',
-  'service',
-  'infrastructure'
-];
-
-const TRANSACTION_TYPES = ['sell', 'rent', 'volunteer'];
-
-const OFFER_TYPE_TO_CATEGORY: Record<string, string> = {
-  financial: 'Funding Capacity',
-  material: 'Material Supply',
-  service: 'Skill / Expertise',
-  infrastructure: 'Execution Capability'
-};
-
-const CATEGORY_TO_OFFER_TYPE: Record<string, string> = {
+const LEGACY_CATEGORY_TO_OFFER_TYPE: Record<string, string> = {
   'Funding Capacity': 'financial',
   'Material Supply': 'material',
   'Skill / Expertise': 'service',
   'Execution Capability': 'infrastructure'
-};
+}
 
 const safeParseJson = (value: unknown): Record<string, any> => {
-  if (!value) return {};
-  if (typeof value === 'object') return value as Record<string, any>;
+  if (!value) return {}
+  if (typeof value === 'object') return value as Record<string, any>
 
   if (typeof value === 'string') {
     try {
-      return JSON.parse(value);
+      return JSON.parse(value)
     } catch {
-      return {};
+      return {}
     }
   }
 
-  return {};
-};
+  return {}
+}
 
-const toNonNegativeNumber = (value: unknown): number | null => {
-  if (value === null || value === undefined || value === '') return null;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 0) return null;
-  return parsed;
-};
+// Try insert with fallback: if Supabase complains about a missing column
+// remove that key and retry up to 3 times. Returns { data, error } from Supabase.
+const insertWithSchemaFallback = async (table: string, payload: Record<string, any>) => {
+  let attempts = 0
+  let current = { ...payload }
+  while (attempts < 3) {
+    const { data, error } = await supabase.from(table).insert(current).select().single()
+    if (!error) {
+      if (!data) return { data: null, error: { message: 'Insert succeeded but returned no data' } }
+      return { data, error: null }
+    }
 
-const buildTransactionDetails = (body: Record<string, any>) => {
-  const transactionType = body.transaction_type;
-  const normalizedAmount = toNonNegativeNumber(body.amount ?? body.sell_amount ?? body.rent_per_day);
+    const msg = String(error.message || '')
+    const m = msg.match(/Could not find the '([^']+)' column/)
+    if (m) {
+      const col = m[1]
+      if (col in current) {
+        delete (current as any)[col]
+        attempts++
+        continue
+      }
+    }
 
-  if (!TRANSACTION_TYPES.includes(transactionType)) {
-    return {};
+    return { data: null, error }
   }
 
-  if (transactionType === 'volunteer') {
-    return {
-      transaction_type: 'volunteer',
-      sell_amount: 0,
-      rent_per_day: 0
-    };
+  return { data: null, error: { message: 'Insert retries exhausted due to missing columns' } }
+}
+
+const updateWithSchemaFallback = async (table: string, id: number | string, payload: Record<string, any>) => {
+  let attempts = 0
+  let current = { ...payload }
+  while (attempts < 3) {
+    const { data, error } = await supabase.from(table).update(current).eq('id', id).select().single()
+    if (!error) return { data, error: null }
+
+    const msg = String(error.message || '')
+    const m = msg.match(/Could not find the '([^']+)' column/)
+    if (m) {
+      const col = m[1]
+      if (col in current) {
+        delete (current as any)[col]
+        attempts++
+        continue
+      }
+    }
+
+    return { data: null, error }
   }
 
-  if (transactionType === 'rent') {
-    return {
-      transaction_type: 'rent',
-      sell_amount: null,
-      rent_per_day: normalizedAmount
-    };
-  }
+  return { data: null, error: { message: 'Update retries exhausted due to missing columns' } }
+}
 
-  return {
-    transaction_type: 'sell',
-    sell_amount: normalizedAmount,
-    rent_per_day: 0
-  };
-};
-
-const inferTransactionType = (offer: any, details: Record<string, any>) => {
-  if (TRANSACTION_TYPES.includes(details.transaction_type)) {
-    return details.transaction_type;
-  }
-
-  const priceType = String(offer.price_type || '').toLowerCase();
-  const priceDescription = String(offer.price_description || '').toLowerCase();
-
-  if (priceType === 'free' || priceType === 'donation') {
-    return 'volunteer';
-  }
-
-  if (priceDescription.includes('per day') || priceDescription.includes('/day')) {
-    return 'rent';
-  }
-
-  return 'sell';
-};
-
-const normalizeOffer = (offer: any) => {
-  const details = safeParseJson(offer.requirements);
-  const normalizedOfferType = offer.offer_type || details.offer_type || CATEGORY_TO_OFFER_TYPE[offer.category] || 'service';
-  const transactionType = inferTransactionType(offer, details);
-  const fallbackPriceAmount = toNonNegativeNumber(offer.price_amount);
-
-  return {
-    ...offer,
-    offer_type: normalizedOfferType,
-    transaction_type: transactionType,
-    sell_amount: details.sell_amount ?? (transactionType === 'sell' ? fallbackPriceAmount : null),
-    rent_per_day: details.rent_per_day ?? (transactionType === 'rent' ? fallbackPriceAmount : null),
-    amount: details.amount ?? null,
-    location_scope: details.location_scope ?? null,
-    conditions: details.conditions ?? null,
-    item: details.item ?? null,
-    quantity: details.quantity ?? null,
-    delivery_scope: details.delivery_scope ?? null,
-    skill: details.skill ?? null,
-    capacity: details.capacity ?? null,
-    duration: details.duration ?? null,
-    scope: details.scope ?? null,
-    budget_range: details.budget_range ?? null
-  };
-};
-
-const buildOfferDetails = (body: Record<string, any>) => {
-  const offerType = body.offer_type;
-  const transactionDetails = buildTransactionDetails(body);
-  const resolvedAmount = toNonNegativeNumber(body.amount ?? (
-    transactionDetails.transaction_type === 'volunteer'
-      ? 0
-      : transactionDetails.transaction_type === 'rent'
-        ? (transactionDetails.rent_per_day ?? null)
-        : (transactionDetails.sell_amount ?? null)
-  ));
-  const offerDetails: Record<string, any> = {
-    offer_type: offerType,
-    amount: resolvedAmount,
-    location_scope: String(body.location_scope || '').trim() || null,
-    conditions: String(body.conditions || '').trim() || null
-  };
-
-  return {
-    ...offerDetails,
-    ...transactionDetails
-  };
-};
-
-const hasRequiredOfferFields = (_offerType: string, details: Record<string, any>) => {
-  return String(details.location_scope || '').trim().length > 0;
-};
-
-const hasRequiredTransactionFields = (details: Record<string, any>) => {
-  const transactionType = details.transaction_type;
-  const amount = Number(details.amount ?? details.sell_amount ?? details.rent_per_day ?? 0);
-
-  if (transactionType === 'volunteer') {
-    return true;
-  }
-
-  if (transactionType === 'rent') {
-    return Number.isFinite(amount) && amount > 0;
-  }
-
-  if (transactionType === 'sell') {
-    return Number.isFinite(amount) && amount > 0;
-  }
-
-  return false;
-};
-
-const getLegacyPricing = (offerType: string, details: Record<string, any>) => {
-  const amount = Number(details.amount || details.sell_amount || details.rent_per_day || 0);
-  if (amount > 0) {
-    return {
-      price_type: 'fixed',
-      price_amount: amount,
-      price_description: details.location_scope || `${offerType} support`
-    };
-  }
-
-  return {
-    price_type: 'negotiable',
-    price_amount: 0,
-    price_description: `${offerType} support`
-  };
-};
-
-const getTransactionPricing = (details: Record<string, any>, fallbackPricing: Record<string, any>) => {
-  if (details.transaction_type === 'volunteer') {
+const buildPriceInfo = (offerType: string, transactionType: string, body: Record<string, any>) => {
+  if (offerType === 'financial' || transactionType === 'volunteer' || transactionType === 'donate') {
     return {
       price_type: 'free',
       price_amount: 0,
-      price_description: 'Volunteer support (no charges)'
-    };
+      price_description: transactionType === 'donate' ? 'Donation support' : transactionType === 'volunteer' ? 'Volunteer support' : 'Funding support'
+    }
   }
 
-  if (details.transaction_type === 'rent') {
-    const rentPerDay = Number(details.rent_per_day || 0);
+  const priceType = body.price_type === 'negotiable' ? 'negotiable' : 'fixed'
+  const priceAmount = toNullablePositiveNumber(body.price_amount)
+
+  return {
+    price_type: priceType,
+    price_amount: priceAmount ?? 0,
+    price_description: transactionType === 'rent' ? 'per day' : 'per unit / per kit'
+  }
+}
+
+const normalizeOfferDetailsForStorage = (offerType: string, transactionType: string, details: Record<string, any>) => {
+  if (offerType === 'material') {
     return {
-      price_type: 'fixed',
-      price_amount: rentPerDay,
-      price_description: `Rent: ₹${rentPerDay.toLocaleString('en-IN')} per day`
-    };
+      ...details,
+      available_to: transactionType === 'sell' ? null : (details.available_to ?? null)
+    }
   }
 
-  if (details.transaction_type === 'sell') {
-    const sellAmount = Number(details.sell_amount || 0);
+  if (offerType === 'infrastructure') {
     return {
-      price_type: 'fixed',
-      price_amount: sellAmount,
-      price_description: `Sell: ₹${sellAmount.toLocaleString('en-IN')}`
-    };
+      ...details,
+      available_to: transactionType === 'sell' ? null : (details.available_to ?? null)
+    }
   }
 
-  return fallbackPricing;
-};
+  return details
+}
+
+const normalizeOffer = (offer: any) => {
+  const details = safeParseJson(offer.offer_details)
+  const fallbackDetails = safeParseJson(offer.requirements)
+  const mergedDetails = Object.keys(details).length > 0 ? details : fallbackDetails
+
+  const normalizedOfferType = isOfferType(offer.offer_type)
+    ? offer.offer_type
+    : LEGACY_CATEGORY_TO_OFFER_TYPE[offer.category] || 'service'
+
+  const inferredTransactionType = isTransactionType(offer.transaction_type)
+    ? offer.transaction_type
+    : offer.price_type === 'free'
+      ? 'donate'
+      : offer.price_description?.toLowerCase().includes('day')
+        ? 'rent'
+        : 'sell'
+
+  const skillsRequired = sanitizeTextArray(mergedDetails.skills_required)
+  const facilities = sanitizeTextArray(mergedDetails.facilities)
+
+  return {
+    ...offer,
+    ngo_id: offer.ngo_id ?? offer.creator_id,
+    offer_type: normalizedOfferType,
+    transaction_type: inferredTransactionType,
+    impact_area: Array.isArray(offer.impact_area) ? offer.impact_area : [],
+    offer_details: mergedDetails,
+
+    // Legacy compatibility fields consumed by cards/details.
+    amount: toNullableNumber(offer.price_amount),
+    location_scope: offer.coverage_area ?? null,
+    conditions: typeof offer.requirements === 'string' ? offer.requirements : null,
+    item: mergedDetails.unit ?? null,
+    quantity: toNullableNumber(mergedDetails.quantity),
+    delivery_scope: offer.coverage_area ?? null,
+    skill: skillsRequired[0] ?? null,
+    capacity: toNullableNumber(mergedDetails.capacity),
+    duration: mergedDetails.duration ?? null,
+    scope: facilities.length > 0 ? facilities.join(', ') : null,
+    budget_range: mergedDetails.budget_amount ?? null,
+    skills_required: skillsRequired
+  }
+}
+
+const validateIncomingBody = (body: Record<string, any>) => {
+  if (!body.title || !body.description || !body.offer_type || !body.transaction_type) {
+    return 'Missing required fields: title, description, offer_type, transaction_type.'
+  }
+
+  if (!isOfferType(body.offer_type)) {
+    return 'offer_type must be one of: financial, material, service, infrastructure.'
+  }
+
+  if (!isTransactionType(body.transaction_type)) {
+    return 'transaction_type must be one of: volunteer, donate, rent, sell.'
+  }
+
+  if (!isTransactionAllowedForOfferType(body.offer_type, body.transaction_type)) {
+    return `transaction_type ${body.transaction_type} is not allowed for offer_type ${body.offer_type}.`
+  }
+
+  if (!Array.isArray(body.impact_area) || body.impact_area.length === 0) {
+    return 'Please select at least one impact area.'
+  }
+
+  const invalidImpactArea = body.impact_area.some((area: string) => !(IMPACT_AREAS as readonly string[]).includes(area))
+  if (invalidImpactArea) {
+    return 'impact_area contains invalid values.'
+  }
+
+  const requiresPricing = body.transaction_type === 'rent' || body.transaction_type === 'sell'
+  if (requiresPricing) {
+    if (!['fixed', 'negotiable'].includes(String(body.price_type || ''))) {
+      return 'price_type must be fixed or negotiable for rent/sell offers.'
+    }
+
+    if (toNullablePositiveNumber(body.price_amount) === null) {
+      return 'price_amount must be a positive number for rent/sell offers.'
+    }
+  }
+
+  return null
+}
+
+// Coerce flexible client inputs into normalized shapes the backend expects.
+const coerceIncomingBody = (body: Record<string, any>) => {
+  // impact_area: accept CSV string, single value, or array
+  if (!Array.isArray(body.impact_area)) {
+    if (typeof body.impact_area === 'string') {
+      body.impact_area = parseCsvToStringArray(body.impact_area)
+    } else if (body.impact_area && typeof body.impact_area === 'object') {
+      body.impact_area = Array.isArray(body.impact_area) ? body.impact_area : []
+    } else if (body.impact_area) {
+      body.impact_area = [String(body.impact_area)]
+    } else {
+      body.impact_area = []
+    }
+  } else {
+    body.impact_area = sanitizeTextArray(body.impact_area)
+  }
+
+  // tags: accept CSV or array
+  if (!Array.isArray(body.tags)) {
+    if (typeof body.tags === 'string') body.tags = parseCsvToStringArray(body.tags)
+    else if (!body.tags) body.tags = []
+    else body.tags = sanitizeTextArray(body.tags)
+  } else {
+    body.tags = sanitizeTextArray(body.tags)
+  }
+
+  // offer_details: ensure object (parse JSON strings)
+  if (typeof body.offer_details === 'string') {
+    try { body.offer_details = JSON.parse(body.offer_details) } catch { body.offer_details = {} }
+  }
+  if (!body.offer_details || typeof body.offer_details !== 'object') body.offer_details = {}
+
+  // requirements: if object merge into offer_details, if array keep as array, if string keep as string
+  if (Array.isArray(body.requirements)) {
+    body.requirements = sanitizeTextArray(body.requirements)
+  } else if (body.requirements && typeof body.requirements === 'object') {
+    body.offer_details = { ...body.offer_details, ...body.requirements }
+    body.requirements = null
+  } else if (typeof body.requirements === 'string') {
+    body.requirements = body.requirements.trim() || null
+  } else {
+    body.requirements = null
+  }
+
+  // state/province mapping from clients that send alternate key
+  if (!body.state_province && body['state/province']) {
+    body.state_province = body['state/province']
+  }
+
+  return body
+}
 
 // GET - Fetch service offers with enhanced filtering
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const category = searchParams.get('category');
-    const search = searchParams.get('search');
-    const rawView = searchParams.get('view');
-    const view = rawView === 'hired' ? 'my-responses' : rawView;
-    const location = searchParams.get('location');
-    const offer_type = searchParams.get('offer_type');
+    const { searchParams } = new URL(request.url)
+    const category = searchParams.get('category')
+    const search = searchParams.get('search')
+    const rawView = searchParams.get('view')
+    const view = rawView === 'hired' ? 'my-responses' : rawView
+    const location = searchParams.get('location')
+    const offerTypeFilter = searchParams.get('offer_type')
 
-    // For my-offers view, authenticate user
-    let authenticatedUserId = null;
+    let authenticatedUserId = null
     if (view === 'my-offers' || view === 'my-responses') {
-      const authHeader = request.headers.get('authorization');
+      const authHeader = request.headers.get('authorization')
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return NextResponse.json({ error: 'Authentication required for this view' }, { status: 401 });
+        return NextResponse.json({ error: 'Authentication required for this view' }, { status: 401 })
       }
 
-      const token = authHeader.substring(7);
+      const token = authHeader.substring(7)
       try {
-        const payload = jwt.verify(token, JWT_SECRET) as JWTPayload;
-        authenticatedUserId = payload.id;
+        const payload = jwt.verify(token, JWT_SECRET) as JWTPayload
+        authenticatedUserId = payload.id
       } catch {
-        return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+        return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
       }
     }
 
-    let responseOfferIds: number[] | null = null;
+    let responseOfferIds: number[] | null = null
     if (view === 'my-responses' && authenticatedUserId) {
       const { data: serviceClients, error: serviceClientsError } = await supabase
         .from('service_clients')
         .select('service_offer_id')
-        .eq('client_id', authenticatedUserId);
+        .eq('client_id', authenticatedUserId)
 
       if (serviceClientsError) {
-        console.error('Error fetching responded offers:', serviceClientsError);
-        return NextResponse.json({ error: 'Failed to fetch responded offers' }, { status: 500 });
+        return NextResponse.json({ error: 'Failed to fetch responded offers' }, { status: 500 })
       }
 
-      responseOfferIds = [...new Set((serviceClients || []).map((row: any) => row.service_offer_id))];
+      responseOfferIds = [...new Set((serviceClients || []).map((row: any) => row.service_offer_id))]
       if (responseOfferIds.length === 0) {
-        return NextResponse.json({ success: true, data: [] });
+        return NextResponse.json({ success: true, data: [] })
       }
     }
 
-    // Build query with enhanced fields including admin approval fields
     let query = supabase
       .from('service_offers')
       .select(`
@@ -290,263 +332,272 @@ export async function GET(request: NextRequest) {
           profile_image
         )
       `)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
 
-    // For public view, only show approved offers
     if (view === 'all' || !view) {
-      query = query.or('admin_status.eq.approved,admin_status.is.null')
-              .eq('status', 'active');
-    } else if (view === 'my-offers') {
-      // For my-offers view, show all offers by the user across statuses
+      query = query.or('admin_status.eq.approved,admin_status.is.null').eq('status', 'active')
     } else if (view === 'my-responses') {
-      query = query.in('id', responseOfferIds || []);
-    }
-
-    // Apply filters
-    if (category && category !== 'All Categories') {
-      query = query.eq('category', category);
+      query = query.in('id', responseOfferIds || [])
     }
 
     if (view === 'my-offers' && authenticatedUserId) {
-      query = query.eq('creator_id', authenticatedUserId);
+      query = query.eq('creator_id', authenticatedUserId)
     }
 
-    const { data: offers, error } = await query;
+    if (offerTypeFilter && offerTypeFilter !== 'All Types') {
+      query = query.eq('offer_type', offerTypeFilter)
+    }
+
+    if (category && category !== 'All Categories') {
+      query = query.contains('impact_area', [category])
+    }
+
+    const { data: offers, error } = await query
 
     if (error) {
-      console.error('Database error:', error);
-      return NextResponse.json({ error: 'Failed to fetch service offers' }, { status: 500 });
+      return NextResponse.json({ error: 'Failed to fetch service offers' }, { status: 500 })
     }
 
-    // Apply additional filters that require processing
-    let filteredOffers = (offers || []).map(normalizeOffer);
-
-    if (offer_type) {
-      filteredOffers = filteredOffers.filter((offer) => offer.offer_type === offer_type);
-    }
+    let filteredOffers = (offers || []).map(normalizeOffer)
 
     if (search) {
-      const searchLower = search.toLowerCase();
-      filteredOffers = filteredOffers.filter(offer =>
-        offer.title?.toLowerCase().includes(searchLower) ||
-        offer.description?.toLowerCase().includes(searchLower) ||
-        offer.category?.toLowerCase().includes(searchLower) ||
-        offer.offer_type?.toLowerCase().includes(searchLower) ||
-        offer.skill?.toLowerCase().includes(searchLower) ||
-        offer.item?.toLowerCase().includes(searchLower) ||
-        offer.scope?.toLowerCase().includes(searchLower) ||
-        offer.tags?.some((tag: string) => tag.toLowerCase().includes(searchLower))
-      );
+      const searchLower = search.toLowerCase()
+      filteredOffers = filteredOffers.filter((offer) => {
+        const details = safeParseJson(offer.offer_details)
+        const detailsText = JSON.stringify(details).toLowerCase()
+
+        return offer.title?.toLowerCase().includes(searchLower)
+          || offer.description?.toLowerCase().includes(searchLower)
+          || offer.category?.toLowerCase().includes(searchLower)
+          || offer.offer_type?.toLowerCase().includes(searchLower)
+          || (offer.impact_area || []).some((area: string) => area.toLowerCase().includes(searchLower))
+          || (offer.tags || []).some((tag: string) => tag.toLowerCase().includes(searchLower))
+          || detailsText.includes(searchLower)
+      })
     }
 
     if (location) {
-      const locationLower = location.toLowerCase();
-      filteredOffers = filteredOffers.filter(offer =>
-        offer.city?.toLowerCase().includes(locationLower) ||
-        offer.state_province?.toLowerCase().includes(locationLower) ||
-        offer.location?.toLowerCase().includes(locationLower)
-      );
+      const locationLower = location.toLowerCase()
+      filteredOffers = filteredOffers.filter((offer) =>
+        offer.city?.toLowerCase().includes(locationLower)
+          || offer.state_province?.toLowerCase().includes(locationLower)
+          || offer.coverage_area?.toLowerCase().includes(locationLower)
+      )
     }
 
     filteredOffers = filteredOffers.map((offer: any) => {
-      const providerName = offer.ngo?.name || offer.ngo_name;
-      const providerType = offer.ngo?.user_type || 'ngo';
+      const providerName = offer.ngo?.name || offer.ngo_name
+      const providerType = offer.ngo?.user_type || 'ngo'
 
       return {
         ...offer,
         ngo_name: providerName,
         provider_name: providerName,
         provider_type: providerType
-      };
-    });
+      }
+    })
 
-    // Get application counts for each offer
-    if (filteredOffers && filteredOffers.length > 0) {
-      const offerIds = filteredOffers.map(offer => offer.id);
+    if (filteredOffers.length > 0) {
+      const offerIds = filteredOffers.map((offer) => offer.id)
 
-      const { data: clients, error: clientsError } = await supabase
+      const { data: clients } = await supabase
         .from('service_clients')
         .select('service_offer_id, status')
-        .in('service_offer_id', offerIds);
+        .in('service_offer_id', offerIds)
 
-      if (!clientsError && clients) {
+      if (clients) {
         const counts = clients.reduce((acc: Record<number, any>, client) => {
           if (!acc[client.service_offer_id]) {
-            acc[client.service_offer_id] = { total: 0, accepted: 0, pending: 0 };
+            acc[client.service_offer_id] = { total: 0, accepted: 0, pending: 0 }
           }
-          acc[client.service_offer_id].total++;
-          if (client.status === 'accepted') acc[client.service_offer_id].accepted++;
-          if (client.status === 'pending') acc[client.service_offer_id].pending++;
-          return acc;
-        }, {});
 
-        // Add counts to offers
+          acc[client.service_offer_id].total += 1
+          if (client.status === 'accepted') acc[client.service_offer_id].accepted += 1
+          if (client.status === 'pending') acc[client.service_offer_id].pending += 1
+          return acc
+        }, {})
+
         filteredOffers.forEach((offer: any) => {
-          const offerCounts = counts[offer.id] || { total: 0, accepted: 0, pending: 0 };
-          offer.applications_count = offerCounts.total;
-          offer.pending_applications = offerCounts.pending;
-          offer.isAssigned = offerCounts.accepted > 0;
-        });
+          const offerCounts = counts[offer.id] || { total: 0, accepted: 0, pending: 0 }
+          offer.applications_count = offerCounts.total
+          offer.pending_applications = offerCounts.pending
+          offer.isAssigned = offerCounts.accepted > 0
+        })
       }
     }
 
-    return NextResponse.json({ success: true, data: filteredOffers });
-
+    return NextResponse.json({ success: true, data: filteredOffers })
   } catch (error) {
-    console.error('Error fetching service offers:', error);
-    return NextResponse.json({ error: 'Failed to fetch service offers' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to fetch service offers' }, { status: 500 })
   }
 }
 
-// POST - Create new enhanced service offer
+// POST - Create capability offer
 export async function POST(request: NextRequest) {
+  console.log('===== SERVICE OFFER CREATE START =====')
   try {
-    console.log('POST /api/service-offers - Enhanced version starting');
-
-    // Authenticate user
-    const authHeader = request.headers.get('authorization');
+    console.log('Step 1: Checking authentication')
+    const authHeader = request.headers.get('authorization')
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
 
-    const token = authHeader.split(' ')[1];
-    let decoded: JWTPayload;
+    const token = authHeader.split(' ')[1]
+    let decoded: JWTPayload
 
     try {
-      decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
-    } catch (jwtError) {
-      return NextResponse.json({ error: 'Invalid authentication token' }, { status: 401 });
+      decoded = jwt.verify(token, JWT_SECRET) as JWTPayload
+    } catch {
+      return NextResponse.json({ error: 'Invalid authentication token' }, { status: 401 })
     }
 
-    const { id: userId, verification_status, user_type } = decoded;
+    console.log('Step 2: Getting user details')
+    const { id: userId, verification_status, user_type } = decoded
 
-    // Read the latest account state from DB to avoid stale token claims.
     const { data: currentUser, error: currentUserError } = await supabase
       .from('users')
       .select('id, user_type, verification_status')
       .eq('id', userId)
-      .single();
+      .single()
 
     if (currentUserError || !currentUser) {
-      return NextResponse.json({ error: 'User account not found' }, { status: 404 });
+      return NextResponse.json({ error: 'User account not found' }, { status: 404 })
     }
 
-    const effectiveUserType = currentUser.user_type || user_type;
-    const effectiveVerificationStatus = currentUser.verification_status || verification_status || 'unverified';
+    console.log('Step 3: Checking user type and verification')
+    const effectiveUserType = currentUser.user_type || user_type
+    const effectiveVerificationStatus = currentUser.verification_status || verification_status || 'unverified'
 
-    console.log('=== Service Offers Debug ===');
-    console.log('User ID:', userId);
-    console.log('User type from token:', user_type);
-    console.log('Verification status from token:', verification_status);
-    console.log('User type from DB:', currentUser.user_type);
-    console.log('Verification status from DB:', currentUser.verification_status);
-
-    const allowedCreatorTypes = ['ngo', 'company', 'individual'];
-    if (!allowedCreatorTypes.includes(effectiveUserType)) {
-      return NextResponse.json({
-        error: 'Only verified NGO, company, or individual accounts can create capability offers.'
-      }, { status: 403 });
+    if (!['ngo', 'company', 'individual'].includes(effectiveUserType)) {
+      return NextResponse.json({ error: 'Only verified NGO, company, or individual accounts can create capability offers.' }, { status: 403 })
     }
 
     if (effectiveVerificationStatus !== 'verified') {
-      return NextResponse.json({ 
+      return NextResponse.json({
         error: 'You need to complete verification before creating capability offers.',
-        requiresVerification: true,
-        debug: {
-          tokenVerificationStatus: verification_status,
-          dbVerificationStatus: currentUser.verification_status,
-          userId: userId
-        }
-      }, { status: 403 });
+        requiresVerification: true
+      }, { status: 403 })
     }
 
-    const body = await request.json();
-    console.log('Enhanced service offer data received');
-
-    // Validate required fields
-    const requiredFields = ['title', 'description', 'offer_type', 'transaction_type'];
-    for (const field of requiredFields) {
-      if (!body[field]) {
-        return NextResponse.json(
-          { error: `Missing required field: ${field}` },
-          { status: 400 }
-        );
-      }
+    console.log('Step 4: Parsing request body')
+    let body: Record<string, any>
+    try {
+      body = coerceIncomingBody(await request.json())
+    } catch (jsonError) {
+      console.error('JSON parse error:', jsonError)
+      return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 })
     }
 
-    if (!OFFER_TYPES.includes(body.offer_type)) {
-      return NextResponse.json(
-        { error: 'offer_type must be one of: financial, material, service, infrastructure.' },
-        { status: 400 }
-      );
+    console.log('Step 5: Validating body', { title: body.title, offer_type: body.offer_type, transaction_type: body.transaction_type, impact_area_count: body.impact_area?.length })
+    const validationError = validateIncomingBody(body)
+    if (validationError) {
+      console.error('Validation error:', validationError)
+      return NextResponse.json({ error: validationError }, { status: 400 })
     }
 
-    if (!TRANSACTION_TYPES.includes(body.transaction_type)) {
-      return NextResponse.json(
-        { error: 'transaction_type must be one of: sell, rent, volunteer.' },
-        { status: 400 }
-      );
-    }
+    console.log('Step 6: Building offer data')
+    const offerType = body.offer_type as OfferType
+    const transactionType = body.transaction_type as import('@/lib/service-offers').TransactionType
 
-    const offerDetails = buildOfferDetails(body);
-    if (!hasRequiredOfferFields(body.offer_type, offerDetails)) {
-      return NextResponse.json({ error: 'Please complete all required offer details for selected offer_type.' }, { status: 400 });
-    }
+    const priceInfo = buildPriceInfo(offerType, transactionType, body)
 
-    if (!hasRequiredTransactionFields(offerDetails)) {
-      return NextResponse.json({ error: 'Please complete all required pricing fields for selected transaction_type.' }, { status: 400 });
-    }
-
-    const legacyPricing = getLegacyPricing(body.offer_type, offerDetails);
-    const resolvedPricing = getTransactionPricing(offerDetails, legacyPricing);
+    const normalizedOfferDetails = normalizeOfferDetailsForStorage(offerType, transactionType, body.offer_details && typeof body.offer_details === 'object' ? body.offer_details : {})
 
     const offerData = {
       creator_id: userId,
-      title: body.title,
-      description: body.description,
-      offer_type: body.offer_type,
-      category: OFFER_TYPE_TO_CATEGORY[body.offer_type] || body.offer_type,
-      location: body.location || null,
-      price_type: resolvedPricing.price_type,
-      price_amount: resolvedPricing.price_amount,
-      price_description: resolvedPricing.price_description,
-      requirements: offerDetails,
-      status: 'active',
+      title: String(body.title || '').trim(),
+      description: String(body.description || '').trim(),
+      offer_type: offerType,
+      transaction_type: transactionType,
+      impact_area: sanitizeTextArray(body.impact_area),
+      tags: sanitizeTextArray(body.tags),
+      requirements: Array.isArray(body.requirements) ? sanitizeTextArray(body.requirements) : (typeof body.requirements === 'string' && body.requirements.trim() ? [body.requirements.trim()] : null),
+      city: String(body.city || '').trim() || null,
+      state_province: String(body.state_province || '').trim() || null,
+      pincode: String(body.pincode || '').trim() || null,
+      coverage_area: String(body.coverage_area || '').trim() || null,
+      offer_details: normalizedOfferDetails,
+      price_type: priceInfo.price_type,
+      price_amount: priceInfo.price_amount,
+      price_description: priceInfo.price_description,
+      status: 'inactive',
       admin_status: 'pending',
       admin_reviewed_at: null,
       admin_reviewed_by: null,
       admin_comments: null
-    };
+    }
 
-    console.log('Inserting philanthropic offer data:', offerData);
+    console.log('Step 7: Inserting offer into database')
+    const { data: offer, error: offerError } = await insertWithSchemaFallback('service_offers', offerData)
 
-    const { data: offer, error } = await supabase
-      .from('service_offers')
-      .insert(offerData)
-      .select()
-      .single();
+    if (offerError) {
+      console.error('Offer insert error:', offerError)
+      return NextResponse.json({ error: `Failed to create offer: ${offerError.message || offerError}` }, { status: 500 })
+    }
 
-    if (error) {
-      console.error('Database error:', error);
-      return NextResponse.json({ error: 'Failed to create service offer' }, { status: 500 });
+    if (!offer) {
+      console.error('Offer insert returned no data')
+      return NextResponse.json({ error: 'Failed to create service offer: no data returned' }, { status: 500 })
+    }
+
+    console.log('Step 8: Inserting capability')
+    const capabilityData = {
+      service_offer_id: offer.id,
+      capability_name: String(body.title || '').trim(),
+      capability_kind: offerType === 'financial' ? 'financial' : offerType === 'service' ? 'skill' : offerType === 'material' ? 'item' : 'asset',
+      capability_description: String(body.description || '').trim() || null,
+      synonyms: sanitizeTextArray(body.tags || []),
+      unit: offerType === 'financial' ? 'offer' : offerType === 'service' ? 'service' : offerType === 'material' ? 'item' : 'asset',
+      min_qty: 1,
+      max_qty: 1,
+      is_active: true
+    }
+
+    console.log('Capability payload:', capabilityData)
+
+    let capabilityWarning: string | null = null
+    let capabilityId: number | null = null
+    
+    try {
+      const { data: capability, error: capabilitiesError } = await supabase
+        .from('offer_capabilities')
+        .insert(capabilityData)
+        .select()
+        .single()
+
+      if (capabilitiesError) {
+        console.error('Failed to create offer capability:', capabilitiesError)
+        capabilityWarning = 'Capability offer created, but capability indexing could not be saved. Please contact support if you need recommendations.'
+      } else if (capability) {
+        capabilityId = capability.id
+        console.log('Capability created successfully:', capabilityId)
+      }
+    } catch (capabilitiesException) {
+      console.error('Exception creating offer capability:', capabilitiesException)
+      capabilityWarning = 'Capability offer created, but capability indexing could not be saved. Please contact support if you need recommendations.'
+    }
+
+    console.log('Step 9: Returning success')
+    const responseData: any = {
+      id: offer.id,
+      message: 'Capability offer created successfully and submitted for approval'
+    }
+    
+    if (capabilityWarning) {
+      responseData.warning = capabilityWarning
+    }
+    
+    if (capabilityId) {
+      responseData.capability_id = capabilityId
     }
 
     return NextResponse.json({
       success: true,
-      data: {
-        id: offer.id,
-        message: 'Capability offer created successfully and submitted for approval'
-      }
-    }, { status: 201 });
-
+      data: responseData
+    }, { status: 201 })
   } catch (error) {
-    console.error('Error creating enhanced service offer:', error);
-    return NextResponse.json(
-      { 
-        error: 'Failed to create service offer',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      },
-      { status: 500 }
-    );
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    console.error('===== SERVICE OFFER CREATE ERROR =====', errorMessage, error)
+    return NextResponse.json({ error: `Failed to create service offer: ${errorMessage}` }, { status: 500 })
   }
 }
