@@ -432,6 +432,17 @@ export function ServiceCard({
 
     return text;
   };
+
+  const requestMetricValue = {
+    posted: formatDate(created_at),
+    location: location ? String(location) : 'Not specified',
+    needType: type === 'request' ? String(requestType || 'Not specified') : String(category || 'Not specified'),
+    urgency: type === 'request' && effectiveRequestUrgency ? String(effectiveRequestUrgency).toUpperCase() : 'MEDIUM',
+    beneficiaries: beneficiaryCount > 0 ? String(beneficiaryCount) : 'Not specified',
+    budget: estimatedBudget ? formatInrValue(estimatedBudget) : 'Not specified',
+    deadline: formattedRequestDeadline ? String(formattedRequestDeadline) : 'Not specified',
+    impact: impactScore > 0 ? `${impactScore}/100` : 'Not scored'
+  };
   
   // Check if user types can interact
   const isNGO = user?.user_type === 'ngo';
@@ -465,6 +476,22 @@ export function ServiceCard({
         )}
 
         {/* Title */}
+        {type === 'request' && (
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-800">
+              Need #{id}
+            </Badge>
+            <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-700">
+              {requestType}
+            </Badge>
+            {effectiveRequestUrgency && (
+              <Badge variant="outline" className={`${getPriorityTextColor(String(effectiveRequestUrgency))} border-current/30`}>
+                {String(effectiveRequestUrgency).toUpperCase()}
+              </Badge>
+            )}
+          </div>
+        )}
+
         <h3 
           className="cursor-pointer text-lg font-bold leading-tight text-gray-900 transition-colors hover:text-blue-600 sm:text-xl line-clamp-2 [overflow-wrap:anywhere]" 
           onClick={handleCardClick}
@@ -502,77 +529,75 @@ export function ServiceCard({
               <Calendar size={14} />
               <span className="text-xs font-medium">Posted</span>
             </div>
-            <p className="text-sm font-semibold text-gray-900">{formatDate(created_at)}</p>
+            <p className="text-sm font-semibold text-gray-900">{requestMetricValue.posted}</p>
           </div>
-          
-          {location && (
-            <div className="space-y-1">
-              <div className="flex items-center gap-1.5 text-gray-500">
-                <MapPin size={14} />
-                <span className="text-xs font-medium">Location</span>
-              </div>
-              <p className="text-sm font-semibold text-gray-900 truncate">{location}</p>
+
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5 text-gray-500">
+              <MapPin size={14} />
+              <span className="text-xs font-medium">Location</span>
             </div>
-          )}
+            <p className="text-sm font-semibold text-gray-900 truncate">{requestMetricValue.location}</p>
+          </div>
 
           <div className="space-y-1">
             <div className="flex items-center gap-1.5 text-gray-500">
               <Target size={14} />
               <span className="text-xs font-medium">{categoryLabel}</span>
             </div>
-            <p className="text-sm font-semibold text-blue-700 truncate">{type === 'request' ? requestType : category}</p>
+            <p className="text-sm font-semibold text-blue-700 truncate">{requestMetricValue.needType}</p>
           </div>
 
-          {type === 'request' && effectiveRequestUrgency && (
+          {type === 'request' && (
             <div className="space-y-1">
               <div className="flex items-center gap-1.5 text-gray-500">
                 <Clock size={14} />
                 <span className="text-xs font-medium">Urgency</span>
               </div>
-              <p className={`text-sm font-semibold truncate ${getPriorityTextColor(String(effectiveRequestUrgency))}`}>
-                {String(effectiveRequestUrgency).toUpperCase()}
+              <p className={`text-sm font-semibold truncate ${getPriorityTextColor(String(requestMetricValue.urgency))}`}>
+                {requestMetricValue.urgency}
               </p>
             </div>
           )}
 
           {/* Service Request Specific Fields */}
-          {type === 'request' && beneficiaryCount > 0 && (
+          {type === 'request' && (
             <div className="space-y-1">
               <div className="flex items-center gap-1.5 text-gray-500">
                 <Users size={14} />
                 <span className="text-xs font-medium">Beneficiaries</span>
               </div>
-              <p className="text-sm font-semibold text-gray-900">{beneficiaryCount}</p>
+              <p className="text-sm font-semibold text-gray-900">{requestMetricValue.beneficiaries}</p>
             </div>
           )}
 
-          {type === 'request' && estimatedBudget && (
+          {type === 'request' && (
             <div className="space-y-1">
               <div className="flex items-center gap-1.5 text-gray-500">
                 <IndianRupee size={14} />
                 <span className="text-xs font-medium">Budget</span>
               </div>
-              <p className="text-sm font-semibold text-gray-900 truncate">{formatInrValue(estimatedBudget)}</p>
+              <p className="text-sm font-semibold text-gray-900 truncate">{requestMetricValue.budget}</p>
             </div>
           )}
 
-          {type === 'request' && formattedRequestDeadline && (
+          {type === 'request' && (
             <div className="space-y-1">
               <div className="flex items-center gap-1.5 text-gray-500">
                 <Clock size={14} />
                 <span className="text-xs font-medium">Deadline</span>
               </div>
-              <p className="text-sm font-semibold text-gray-900 truncate">{String(formattedRequestDeadline)}</p>
+              <p className="text-sm font-semibold text-gray-900 truncate">{requestMetricValue.deadline}</p>
             </div>
           )}
 
-          {type === 'request' && impactScore > 0 && (
+          {type === 'request' && (
             <div className="space-y-1">
               <div className="flex items-center gap-1.5 text-gray-500">
                 <Target size={14} />
                 <span className="text-xs font-medium">Impact Score</span>
               </div>
-              <p className="text-sm font-semibold text-gray-900">{impactScore}/100</p>
+              <p className="text-sm font-semibold text-gray-900">{requestMetricValue.impact}</p>
             </div>
           )}
 
@@ -786,7 +811,7 @@ export function ServiceCard({
         {/* Action Button */}
         <Link href={`/${type === 'request' ? 'service-requests' : 'service-offers'}/${id}`} className="w-full">
           <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 transition-all shadow-md hover:shadow-lg">
-            View Full Details
+            {type === 'request' ? 'View Need Details' : 'View Full Details'}
             <ArrowRight size={16} className="ml-2" />
           </Button>
         </Link>

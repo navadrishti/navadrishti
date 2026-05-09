@@ -4,6 +4,21 @@ import { parseJson } from "./json-parser";
 
 /* ───────────────── SCHEMAS ───────────────── */
 
+function coerceInteger(schema: z.ZodNumber) {
+  return z.preprocess((value) => {
+    if (typeof value === "number") {
+      return Number.isFinite(value) ? Math.round(value) : value;
+    }
+
+    if (typeof value === "string") {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? Math.round(parsed) : value;
+    }
+
+    return value;
+  }, schema);
+}
+
 // Milestone defined by the user in the request
 export const requestMilestoneSchema = z.object({
   description:      z.string().min(1),
@@ -15,7 +30,8 @@ export const generateCampaignsInputSchema = z.object({
   budget:         z.number().positive(),
   milestones:     z.number().int().min(1).max(10),
   category:       z.string().min(1),
-  location:       z.string().min(1),
+  city:           z.string().min(1),
+  state_province: z.string().min(1),
   start_date:     z.string().min(1),
   end_date:       z.string().min(1),
   milestone_info: z.array(requestMilestoneSchema).optional(),
@@ -26,7 +42,7 @@ export const generateCampaignsInputSchema = z.object({
 export const responseMilestoneSchema = z.object({
   title:            z.string(),
   description:      z.string(),
-  duration_weeks:   z.number().int(),
+  duration_weeks:   coerceInteger(z.number().int().nonnegative()),
   budget_allocated: z.number(),
   deliverables:     z.array(z.string()),
 });
@@ -47,12 +63,12 @@ export const campaignSchema = z.object({
   }),
 
   schedule_vii:  z.string(),
-  sdg_alignment: z.array(z.number()),
+  sdg_alignment: z.array(coerceInteger(z.number().int().positive())),
   start_date:    z.string(),
   end_date:      z.string(),
 
   impact_metrics: z.object({
-    beneficiaries: z.number().int(),
+    beneficiaries: coerceInteger(z.number().int().nonnegative()),
     duration:      z.string(),
   }),
 
@@ -92,13 +108,16 @@ function buildPrompt(input: GenerateCampaignsInput): string {
   const {
     budget,
     category,
-    location,
+    city,
+    state_province,
     start_date,
     end_date,
     milestones,
     milestone_info,
     requirementDetails,
   } = input;
+
+  const locationStr = `${city}${state_province ? `, ${state_province}` : ""}`;
 
   return `
 You are a CSR strategy expert helping Indian companies design practical, real-world CSR campaign drafts.
@@ -113,7 +132,7 @@ COMPANY REQUIREMENTS
 -----------------------------------
 - Budget: ₹${budget}
 - Category: ${category}
-- Location: ${location}
+- Location: ${locationStr}
 - Start Date: ${start_date}
 - End Date: ${end_date}
 - Milestones: ${milestones}
@@ -135,15 +154,15 @@ REAL-WORLD RULES
 
 3. **Execution Realism (Concise)**
 Each campaign must clearly state:
-- Beneficiary identification method
+- Beneficiary identification method and should be a whole integer.
 - Delivery model (NGO partner, camps, direct build, etc.)
-- 2-3 specific ground execution steps in ${location}
+- 2-3 specific ground execution steps in ${locationStr}
 - Description max 40 words per campaign
 
 4. **Milestone Enhancement**
 For each milestone:
-- Assign logical duration_weeks
-- Define exactly 3 clear, measurable deliverables
+- Assign logical duration_weeks and duration_days (7 days = 1 week)
+- Define upto 3 clear, measurable deliverables
 
 5. **Diversity (Zero Overlap)**
 Generate EXACTLY 3 campaigns, each solving the problem through a different operational "Lever":
@@ -171,9 +190,9 @@ OUTPUT FORMAT
   "campaigns": [
     {
       "title": "string",
-      "description": "max 40 words: execution method, beneficiary ID, ground steps in ${location} with respect to ${requirementDetails}",
+      "description": "max 40 words: execution method, beneficiary ID, ground steps in ${locationStr} with respect to ${requirementDetails}",
       "category": "${category}",
-      "location": "${location}",
+      "location": "${locationStr}",
       "budget_inr": ${budget},
 
       "budget_breakdown": {
@@ -198,6 +217,7 @@ OUTPUT FORMAT
         {
           "title": "string",
           "description": "max 35 words: specific action",
+          "duration_days": 0,
           "duration_weeks": 0,
           "budget_allocated": 0,
           "deliverables": ["string", "string", "string"]

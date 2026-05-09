@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { supabase } from "@/lib/db";
 import { embedText } from "@/lib/embeddings/embedding";
-import { makeQuery } from "@/lib/embeddings/queryMaker";
+import { makeCampaignQuery } from "@/lib/embeddings/queryMaker";
 
 /* ───────────────── SCHEMAS ───────────────── */
 
@@ -39,7 +39,7 @@ export type CheckNGOInput = z.infer<typeof CheckNGOInputSchema>;
 /* ───────────────── SERVICE ───────────────── */
 
 export async function searchNGOs(input: CheckNGOInput): Promise<NGOMatch[]> {
-  const queryText = makeQuery(input);
+  const queryText = makeCampaignQuery(input);
   const embedding = await embedText(queryText);
 
   const MATCH_THRESHOLD = Number(process.env.MATCH_THRESHOLD ?? 0.7);
@@ -60,7 +60,7 @@ export async function searchNGOs(input: CheckNGOInput): Promise<NGOMatch[]> {
   const parsed = NGOMatchArraySchema.safeParse(data);
 
   if (!parsed.success) {
-    throw new Error("Invalid DB response shape");
+    throw new Error(`Invalid DB response shape: ${parsed.error.message}`);
   }
 
   return parsed.data;

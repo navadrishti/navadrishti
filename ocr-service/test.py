@@ -51,6 +51,7 @@ VALID_DOC_TYPES = [
     "board_resolution",
     "voter_id",
     "driving_license",
+    "bank_statement",
 ]
 
 engine      = PaddleOCREngine()

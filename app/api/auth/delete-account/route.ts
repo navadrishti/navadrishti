@@ -27,7 +27,7 @@ async function deleteUserData(userId: number, userEmail: string) {
     const serviceRequests = await supabase
       .from('service_requests')
       .select('id')
-      .or(`ngo_id.eq.${userId},company_id.eq.${userId}`);
+      .eq('ngo_id', userId);
     
     if (serviceRequests.data && serviceRequests.data.length > 0) {
       const requestIds = serviceRequests.data.map((req: any) => req.id);
@@ -42,7 +42,7 @@ async function deleteUserData(userId: number, userEmail: string) {
       await supabase
         .from('service_requests')
         .delete()
-        .or(`ngo_id.eq.${userId},company_id.eq.${userId}`);
+        .eq('ngo_id', userId);
     }
     
     // Delete service offers created by user (NGOs)

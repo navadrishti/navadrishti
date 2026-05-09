@@ -79,6 +79,18 @@ interface VolunteerApplication {
     ngo_decision_at?: string
     individual_done_at?: string | null
     ngo_confirmed_at?: string | null
+    delivery_tracking_id?: string | null
+    delivery_provider?: string | null
+    delivery_tracking_last_status?: string | null
+    delivery_tracking_last_location?: string | null
+    delivery_tracking_last_event_at?: string | null
+    delivery_tracking_synced_at?: string | null
+    delivery_tracking_events?: Array<{
+      status?: string | null
+      timestamp?: string | null
+      location?: string | null
+      details?: string | null
+    }>
   }
   fulfillment_amount?: number | null
   fulfillment_quantity?: number | null
@@ -101,6 +113,18 @@ interface ApplicantEntry {
     ngo_decision_at?: string
     individual_done_at?: string | null
     ngo_confirmed_at?: string | null
+    delivery_tracking_id?: string | null
+    delivery_provider?: string | null
+    delivery_tracking_last_status?: string | null
+    delivery_tracking_last_location?: string | null
+    delivery_tracking_last_event_at?: string | null
+    delivery_tracking_synced_at?: string | null
+    delivery_tracking_events?: Array<{
+      status?: string | null
+      timestamp?: string | null
+      location?: string | null
+      details?: string | null
+    }>
   }
   volunteer?: {
     id?: number
@@ -132,6 +156,13 @@ const formatDate = (value?: string | null) => {
   return date.toLocaleDateString('en-IN', { timeZone: 'UTC' })
 }
 
+const formatDateTime = (value?: string | null) => {
+  if (!value) return 'N/A'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'N/A'
+  return date.toLocaleString('en-IN', { timeZone: 'UTC' })
+}
+
 export default function ServiceRequestDetailPage() {
   const params = useParams()
   const router = useRouter()
@@ -160,6 +191,8 @@ export default function ServiceRequestDetailPage() {
   const [individualReceiptFile, setIndividualReceiptFile] = useState<File | null>(null)
   const [individualCompletionNote, setIndividualCompletionNote] = useState('')
   const [individualDeliveryTrackingId, setIndividualDeliveryTrackingId] = useState('')
+  const [syncingApplicantTrackingId, setSyncingApplicantTrackingId] = useState<number | null>(null)
+  const [syncingOwnTracking, setSyncingOwnTracking] = useState(false)
 
   const requestId = params.id as string
   const isAuthenticated = !!(user && token)
@@ -553,6 +586,84 @@ export default function ServiceRequestDetailPage() {
       fetchApplicants()
     } catch (error: any) {
       toast({ title: 'Update failed', description: error?.message || 'Could not confirm fulfillment', variant: 'destructive' })
+    }
+  }
+
+  const syncApplicantDelivery = async (applicant: ApplicantEntry) => {
+    if (!token) return
+
+    const trackingId = (ngoDeliveryTrackingByApplicant[applicant.id] || applicant.response_meta?.delivery_tracking_id || '').trim()
+    if (!trackingId) {
+      toast({ title: 'Tracking ID required', description: 'Enter or save a Delhivery tracking ID first.', variant: 'destructive' })
+      return
+    }
+
+    setSyncingApplicantTrackingId(applicant.id)
+    try {
+      const response = await fetch(`/api/service-requests/${requestId}/volunteers/${applicant.id}/delivery/sync`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ trackingId })
+      })
+
+      const data = await response.json()
+      if (!response.ok || !data?.success) {
+        toast({ title: 'Sync failed', description: data?.error || 'Could not fetch Delhivery status', variant: 'destructive' })
+        return
+      }
+
+      const updatedAssignment = data?.data?.assignment
+      if (updatedAssignment) {
+        setApplicants((prev) => prev.map((entry) => (entry.id === applicant.id ? updatedAssignment : entry)))
+      }
+
+      toast({ title: 'Tracking synced', description: 'Latest Delhivery shipment status has been updated.' })
+    } catch (error: any) {
+      toast({ title: 'Sync failed', description: error?.message || 'Could not fetch Delhivery status', variant: 'destructive' })
+    } finally {
+      setSyncingApplicantTrackingId(null)
+    }
+  }
+
+  const syncOwnDelivery = async () => {
+    if (!userApplication || !token) return
+
+    const trackingId = (individualDeliveryTrackingId || userApplication.response_meta?.delivery_tracking_id || '').trim()
+    if (!trackingId) {
+      toast({ title: 'Tracking ID required', description: 'Enter or save a Delhivery tracking ID first.', variant: 'destructive' })
+      return
+    }
+
+    setSyncingOwnTracking(true)
+    try {
+      const response = await fetch(`/api/service-requests/${requestId}/volunteers/${userApplication.id}/delivery/sync`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ trackingId })
+      })
+
+      const data = await response.json()
+      if (!response.ok || !data?.success) {
+        toast({ title: 'Sync failed', description: data?.error || 'Could not fetch Delhivery status', variant: 'destructive' })
+        return
+      }
+
+      const updatedAssignment = data?.data?.assignment
+      if (updatedAssignment) {
+        setUserApplication(updatedAssignment)
+      }
+
+      toast({ title: 'Tracking synced', description: 'Latest Delhivery shipment status has been updated.' })
+    } catch (error: any) {
+      toast({ title: 'Sync failed', description: error?.message || 'Could not fetch Delhivery status', variant: 'destructive' })
+    } finally {
+      setSyncingOwnTracking(false)
     }
   }
 
@@ -1202,7 +1313,7 @@ export default function ServiceRequestDetailPage() {
                                     </div>
                                   </div>
                                   {isMaterialNeed && (
-                                    <div>
+                                    <div className="space-y-2">
                                       <Label htmlFor={`ngo-tracking-${applicant.id}`}>Delhivery Tracking ID</Label>
                                       <Input
                                         id={`ngo-tracking-${applicant.id}`}
@@ -1215,6 +1326,34 @@ export default function ServiceRequestDetailPage() {
                                         }
                                         placeholder="Optional tracking id"
                                       />
+                                      {(ngoDeliveryTrackingByApplicant[applicant.id] || applicant.response_meta?.delivery_tracking_id) && (
+                                        <div className="space-y-2 rounded border bg-white p-2 text-xs text-muted-foreground">
+                                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                            <span>
+                                              Status: <span className="font-medium text-foreground">{applicant.response_meta?.delivery_tracking_last_status || 'Not synced yet'}</span>
+                                            </span>
+                                            <Button
+                                              type="button"
+                                              variant="outline"
+                                              size="sm"
+                                              onClick={() => syncApplicantDelivery(applicant)}
+                                              disabled={syncingApplicantTrackingId === applicant.id}
+                                            >
+                                              {syncingApplicantTrackingId === applicant.id ? (
+                                                <><Loader2 className="mr-2 h-3 w-3 animate-spin" /> Syncing...</>
+                                              ) : (
+                                                'Sync Delhivery Status'
+                                              )}
+                                            </Button>
+                                          </div>
+                                          <div>
+                                            Last location: {applicant.response_meta?.delivery_tracking_last_location || 'N/A'}
+                                          </div>
+                                          <div>
+                                            Last event: {formatDateTime(applicant.response_meta?.delivery_tracking_last_event_at || applicant.response_meta?.delivery_tracking_synced_at)}
+                                          </div>
+                                        </div>
+                                      )}
                                     </div>
                                   )}
                                 </div>
@@ -1357,7 +1496,7 @@ export default function ServiceRequestDetailPage() {
                                 </div>
                               </div>
                               {isMaterialNeed && (
-                                <div>
+                                <div className="space-y-2">
                                   <Label htmlFor="individual-tracking">Delhivery Tracking ID</Label>
                                   <Input
                                     id="individual-tracking"
@@ -1365,6 +1504,28 @@ export default function ServiceRequestDetailPage() {
                                     onChange={(e) => setIndividualDeliveryTrackingId(e.target.value)}
                                     placeholder="Optional tracking id"
                                   />
+                                  {(individualDeliveryTrackingId || userApplication.response_meta?.delivery_tracking_id) && (
+                                    <div className="space-y-2 rounded border bg-white p-2 text-xs text-muted-foreground">
+                                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                        <span>
+                                          Status: <span className="font-medium text-foreground">{userApplication.response_meta?.delivery_tracking_last_status || 'Not synced yet'}</span>
+                                        </span>
+                                        <Button type="button" variant="outline" size="sm" onClick={syncOwnDelivery} disabled={syncingOwnTracking}>
+                                          {syncingOwnTracking ? (
+                                            <><Loader2 className="mr-2 h-3 w-3 animate-spin" /> Syncing...</>
+                                          ) : (
+                                            'Sync Delhivery Status'
+                                          )}
+                                        </Button>
+                                      </div>
+                                      <div>
+                                        Last location: {userApplication.response_meta?.delivery_tracking_last_location || 'N/A'}
+                                      </div>
+                                      <div>
+                                        Last event: {formatDateTime(userApplication.response_meta?.delivery_tracking_last_event_at || userApplication.response_meta?.delivery_tracking_synced_at)}
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                               )}
                               <Button onClick={handleMarkIndividualDone} className="w-full">
