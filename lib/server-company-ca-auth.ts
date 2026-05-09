@@ -28,6 +28,7 @@ export interface CompanyCAContext {
     company_user_id: number;
     status: string;
     permissions: Record<string, any>;
+    must_change_password?: boolean;
   };
 }
 
@@ -45,7 +46,7 @@ export async function getCompanyCAFromRequest(request: NextRequest): Promise<Com
 
   const { data: identity, error } = await supabase
     .from('company_ca_identities')
-    .select('id, user_id, company_user_id, status, permissions')
+    .select('id, user_id, company_user_id, status, permissions, must_change_password')
     .eq('user_id', user.id)
     .single();
 
@@ -64,7 +65,8 @@ export async function getCompanyCAFromRequest(request: NextRequest): Promise<Com
       user_id: identity.user_id,
       company_user_id: identity.company_user_id,
       status: identity.status,
-      permissions: identity.permissions ?? {}
+      permissions: identity.permissions ?? {},
+      must_change_password: identity.must_change_password || false
     }
   };
 }

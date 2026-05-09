@@ -1,50 +1,63 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateToken } from '@/lib/auth';
+import { supabase } from '@/lib/db';
+import { generateNavadrishtCAToken } from '@/lib/navadrishti-ca-auth';
+import { verifyNavadrishtCAPassword } from '@/lib/navadrishti-ca-auth';
 
 export async function POST(request: NextRequest) {
   try {
     const { username, password } = await request.json();
 
     if (!username || !password) {
-      return NextResponse.json({ error: 'ID and password required' }, { status: 400 });
+      return NextResponse.json({ error: 'username and password required' }, { status: 400 });
     }
 
-    // Get CA console credentials from environment variables
-    const caUsername = process.env.CA_USERNAME || 'ca';
-    const caPassword = process.env.CA_PASSWORD || 'ca123';
+    // Look up CA account by username (no CA ID required)
+    const { data: account, error } = await supabase
+      .from('navadrishti_ca_accounts')
+      .select('*')
+      .eq('username', username)
+      .eq('active', true)
+      .single();
 
-    // Check credentials
-    if (username !== caUsername || password !== caPassword) {
-      return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
+    if (error || !account) {
+      return NextResponse.json({ error: 'Invalid username or password' }, { status: 401 });
     }
 
-    // Generate CA console session token
-    const caToken = generateToken({
-      id: -2, // Special CA console ID
-      email: 'ca@system.local',
-      name: 'CA Console User',
-      user_type: 'company' as any
-    });
+    // Verify password
+    const isValid = await verifyNavadrishtCAPassword(account.id, password);
+    if (!isValid) {
+      return NextResponse.json({ error: 'Invalid username or password' }, { status: 401 });
+    }
+
+    // Generate CA token
+    const token = generateNavadrishtCAToken(account);
+
+    // Update last_login_at
+    await supabase
+      .from('navadrishti_ca_accounts')
+      .update({ last_login_at: new Date().toISOString() })
+      .eq('id', account.id);
 
     const response = NextResponse.json({
       success: true,
       message: 'CA login successful',
-      role: 'ca',
-      ca: {
-        username: caUsername,
-        icai_membership_number: process.env.CA_MEMBERSHIP_NUMBER || '123456'
-      }
+      must_change_password: account.must_change_password,
+      account: {
+        id: account.id,
+        username: account.username,
+        display_name: account.display_name,
+      },
     });
 
-    response.cookies.set('ca-token', caToken, {
+    response.cookies.set('navadrishti-ca-token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
-      maxAge: 30 * 60 // 30 minutes
+      path: '/',
     });
 
     return response;
-  } catch (error) {
+  } catch (error: any) {
     console.error('CA login error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

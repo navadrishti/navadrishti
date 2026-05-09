@@ -75,26 +75,25 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to update service offer' }, { status: 500 });
     }
 
-    // Create detailed audit record in service_offer_reviews table
+    // Best-effort audit record. Some environments do not have the review table yet.
     const { error: auditError } = await supabase
       .from('service_offer_reviews')
       .insert({
         service_offer_id: parseInt(offerId),
         review_action: action === 'approve' ? 'approved' : 'rejected',
         admin_comments: comments.trim(),
-        offer_snapshot: serviceOffer, // Store complete offer data for audit
+        offer_snapshot: serviceOffer,
         admin_username: 'admin',
-        admin_ip_address: request.headers.get('x-forwarded-for') || 
-                         request.headers.get('x-real-ip') || 
+        admin_ip_address: request.headers.get('x-forwarded-for') ||
+                         request.headers.get('x-real-ip') ||
                          '127.0.0.1',
         admin_user_agent: request.headers.get('user-agent'),
-        review_priority: 3, // Default priority
+        review_priority: 3,
         review_category: 'standard_review'
       });
 
-    if (auditError) {
+    if (auditError && auditError.code !== 'PGRST205') {
       console.error('Error creating audit record:', auditError);
-      // Don't fail the request, just log the error
     }
 
     // Send notification email to the organization
@@ -141,7 +140,7 @@ export async function POST(
       });
 
       if (emailResult) {
-        await supabase
+        const { error: updateReviewError } = await supabase
           .from('service_offer_reviews')
           .update({
             review_category: isApproved ? 'approval_email_sent' : 'rejection_email_sent'
@@ -150,6 +149,10 @@ export async function POST(
           .eq('review_action', action === 'approve' ? 'approved' : 'rejected')
           .order('created_at', { ascending: false })
           .limit(1);
+
+        if (updateReviewError && updateReviewError.code !== 'PGRST205') {
+          console.error('Error updating review audit record:', updateReviewError);
+        }
       }
 
     } catch (emailError) {

@@ -80,6 +80,16 @@ const ShimmerCard = () => (
           return;
         }
 
+        try {
+          const hasTab = typeof window !== 'undefined' && sessionStorage.getItem('company_ca_tab_session');
+          if (!hasTab) {
+            router.push('/companies/ca/login');
+            return;
+          }
+        } catch (e) {
+          // ignore
+        }
+
         setContext(verifyPayload.company_ca);
 
         const projectsResponse = await fetch('/api/csr-projects', {
@@ -105,11 +115,22 @@ const ShimmerCard = () => (
   };
 
   const logout = async () => {
-    await fetch('/api/companies/ca/logout', {
-      method: 'POST',
-      credentials: 'include'
-    });
-    router.push('/companies/ca/login');
+    try {
+      await fetch('/api/companies/ca/logout', {
+        method: 'POST',
+        credentials: 'include'
+      });
+    } catch (e) {
+      // ignore
+    } finally {
+      try {
+        const authCookieNames = ['token', 'user', 'ca-token', 'company-ca-token', 'navadrishti-ca-token', 'admin-token', 'govt-admin-token'];
+        authCookieNames.forEach((name) => {
+          document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Lax;`;
+        });
+      } catch (e) {}
+      router.push('/companies/ca/login');
+    }
   };
 
   const handleChangePassword = () => {

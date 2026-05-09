@@ -3,7 +3,7 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Building, CheckCircle, HandHeart, MailCheck, Phone, Loader2, XCircle } from 'lucide-react';
+import { Building, CheckCircle, HandHeart, MailCheck, Phone, Loader2, XCircle, Power, Trash2 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import ProtectedRoute from '@/components/protected-route';
 import { Header } from '@/components/header';
@@ -161,9 +161,10 @@ function CompanyDashboardContent() {
   const [companyCAAccounts, setCompanyCAAccounts] = useState<any[]>([]);
   const [loadingCompanyCAAccounts, setLoadingCompanyCAAccounts] = useState(false);
   const [creatingCompanyCA, setCreatingCompanyCA] = useState(false);
-  const [companyCAForm, setCompanyCAForm] = useState({ name: '', email: '', password: '' });
+  const [companyCAForm, setCompanyCAForm] = useState({ name: '', email: '', password: '', ca_id: '', auto_generate_ca_id: true });
   const [companyCAFeedback, setCompanyCAFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-  const [lastCreatedCompanyCA, setLastCreatedCompanyCA] = useState<{ email: string; password: string } | null>(null);
+  const [lastCreatedCompanyCA, setLastCreatedCompanyCA] = useState<{ email: string; password: string; ca_id: string } | null>(null);
+  const [availableCompanyCaIds, setAvailableCompanyCaIds] = useState<any[]>([]);
   const highlightedRequestId = Number(searchParams.get('requestId') || '');
 
   useEffect(() => {
@@ -529,6 +530,23 @@ function CompanyDashboardContent() {
     }
   };
 
+  const fetchAvailableCompanyCaIds = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      const response = await fetch('/api/companies/ca/accounts?query=available-ca-ids', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await response.json();
+      if (data.success) {
+        setAvailableCompanyCaIds(Array.isArray(data.data) ? data.data : []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch available CA IDs:', error);
+    }
+  };
+
   const fetchCompanyCAAccounts = async () => {
     try {
       setLoadingCompanyCAAccounts(true);
@@ -568,6 +586,11 @@ function CompanyDashboardContent() {
       return;
     }
 
+    if (!companyCAForm.auto_generate_ca_id && !companyCAForm.ca_id) {
+      setCompanyCAFeedback({ type: 'error', message: 'Please select a CA ID or enable auto-generation.' });
+      return;
+    }
+
     try {
       setCreatingCompanyCA(true);
       const token = localStorage.getItem('token');
@@ -583,7 +606,13 @@ function CompanyDashboardContent() {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(companyCAForm)
+        body: JSON.stringify({
+          name: companyCAForm.name,
+          email: companyCAForm.email,
+          password: companyCAForm.password,
+          ca_id: companyCAForm.auto_generate_ca_id ? undefined : companyCAForm.ca_id,
+          auto_generate_ca_id: companyCAForm.auto_generate_ca_id
+        })
       });
 
       const payload = await response.json();
@@ -593,9 +622,9 @@ function CompanyDashboardContent() {
         return;
       }
 
-      setLastCreatedCompanyCA({ email: companyCAForm.email, password: companyCAForm.password });
+      setLastCreatedCompanyCA({ email: companyCAForm.email, password: companyCAForm.password, ca_id: payload.data.identity.ca_id });
       setCompanyCAFeedback({ type: 'success', message: 'Company CA account created successfully.' });
-      setCompanyCAForm({ name: '', email: '', password: '' });
+      setCompanyCAForm({ name: '', email: '', password: '', ca_id: '', auto_generate_ca_id: true });
       await fetchCompanyCAAccounts();
     } catch (error) {
       setCompanyCAFeedback({ type: 'error', message: 'Failed to create Company CA account.' });
@@ -638,6 +667,47 @@ function CompanyDashboardContent() {
       await fetchCompanyCAAccounts();
     } catch {
       setCompanyCAFeedback({ type: 'error', message: 'Failed to update Company CA status.' });
+    }
+  };
+
+  const deleteCompanyCAAccount = async (identityId: string, caName: string) => {
+    const confirmed = window.confirm(
+      `⚠️ PERMANENTLY DELETE Company CA account "${caName}"?\n\nThis action cannot be undone. All data associated with this account will be permanently removed.`
+    );
+    if (!confirmed) return;
+
+    setCompanyCAFeedback(null);
+
+    if (!identityId) {
+      setCompanyCAFeedback({ type: 'error', message: 'Invalid Company CA identity.' });
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setCompanyCAFeedback({ type: 'error', message: 'Please login again to continue.' });
+        return;
+      }
+
+      const response = await fetch(`/api/companies/ca/accounts/${encodeURIComponent(identityId)}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const payload = await response.json();
+      if (!response.ok || !payload?.success) {
+        setCompanyCAFeedback({ type: 'error', message: payload?.error || 'Failed to delete Company CA account.' });
+        return;
+      }
+
+      setCompanyCAFeedback({ type: 'success', message: 'Company CA account permanently deleted.' });
+      await fetchCompanyCAAccounts();
+    } catch {
+      setCompanyCAFeedback({ type: 'error', message: 'Failed to delete Company CA account.' });
     }
   };
 
@@ -1228,37 +1298,91 @@ function CompanyDashboardContent() {
                         Create a scoped Company CA login for your internal compliance reviewer.
                       </p>
 
-                      <form className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3" onSubmit={createCompanyCAAccount}>
-                        <div className="space-y-1">
-                          <Label htmlFor="company-ca-name">Name</Label>
-                          <Input
-                            id="company-ca-name"
-                            value={companyCAForm.name}
-                            onChange={(event) => setCompanyCAForm((prev) => ({ ...prev, name: event.target.value }))}
-                            placeholder="Compliance Officer"
-                          />
+                      <form className="mt-4 space-y-4" onSubmit={createCompanyCAAccount}>
+                        <div className="space-y-3 rounded-lg border border-slate-200 p-4">
+                          <p className="text-sm font-medium text-slate-700">CA ID Assignment</p>
+                          <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-6">
+                            <label className="flex items-center gap-2 text-sm font-medium text-slate-800">
+                              <input
+                                type="radio"
+                                checked={companyCAForm.auto_generate_ca_id}
+                                onChange={() => {
+                                  setCompanyCAForm((prev) => ({ ...prev, auto_generate_ca_id: true, ca_id: '' }));
+                                }}
+                              />
+                              Auto-generate CA ID
+                            </label>
+                            <label className="flex items-center gap-2 text-sm font-medium text-slate-800">
+                              <input
+                                type="radio"
+                                checked={!companyCAForm.auto_generate_ca_id}
+                                onChange={() => {
+                                  setCompanyCAForm((prev) => ({ ...prev, auto_generate_ca_id: false }));
+                                  fetchAvailableCompanyCaIds();
+                                }}
+                              />
+                              Use existing CA ID
+                            </label>
+                          </div>
+                          <p className="text-xs text-slate-600">
+                            {companyCAForm.auto_generate_ca_id
+                              ? 'A unique CA ID will be generated by the backend.'
+                              : 'Select an existing CA ID to assign the same ID to this new CA account (for succession).'}
+                          </p>
                         </div>
-                        <div className="space-y-1">
-                          <Label htmlFor="company-ca-email">Email (login ID)</Label>
-                          <Input
-                            id="company-ca-email"
-                            type="email"
-                            value={companyCAForm.email}
-                            onChange={(event) => setCompanyCAForm((prev) => ({ ...prev, email: event.target.value }))}
-                            placeholder="ca@yourcompany.com"
-                          />
+
+                        {!companyCAForm.auto_generate_ca_id && (
+                          <div className="space-y-2">
+                            <Label htmlFor="company-ca-id-select">Select CA ID</Label>
+                            <select
+                              id="company-ca-id-select"
+                              value={companyCAForm.ca_id}
+                              onChange={(e) => setCompanyCAForm((prev) => ({ ...prev, ca_id: e.target.value }))}
+                              className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm text-slate-900 outline-none"
+                            >
+                              <option value="">-- Select a CA ID --</option>
+                              {availableCompanyCaIds.map((caIdEntry: any) => (
+                                <option key={caIdEntry.ca_id} value={caIdEntry.ca_id}>
+                                  {caIdEntry.ca_id} ({caIdEntry.users?.name || 'Unknown'})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+
+                        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                          <div className="space-y-1">
+                            <Label htmlFor="company-ca-name">Name</Label>
+                            <Input
+                              id="company-ca-name"
+                              value={companyCAForm.name}
+                              onChange={(event) => setCompanyCAForm((prev) => ({ ...prev, name: event.target.value }))}
+                              placeholder="CA Name"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label htmlFor="company-ca-email">Email</Label>
+                            <Input
+                              id="company-ca-email"
+                              type="email"
+                              value={companyCAForm.email}
+                              onChange={(event) => setCompanyCAForm((prev) => ({ ...prev, email: event.target.value }))}
+                              placeholder="ca@yourcompany.com"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label htmlFor="company-ca-password">Password</Label>
+                            <Input
+                              id="company-ca-password"
+                              type="password"
+                              value={companyCAForm.password}
+                              onChange={(event) => setCompanyCAForm((prev) => ({ ...prev, password: event.target.value }))}
+                              placeholder="Minimum 8 characters"
+                            />
+                          </div>
                         </div>
-                        <div className="space-y-1">
-                          <Label htmlFor="company-ca-password">Temporary Password</Label>
-                          <Input
-                            id="company-ca-password"
-                            type="password"
-                            value={companyCAForm.password}
-                            onChange={(event) => setCompanyCAForm((prev) => ({ ...prev, password: event.target.value }))}
-                            placeholder="Minimum 8 characters"
-                          />
-                        </div>
-                        <div className="md:col-span-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                           <Button type="submit" disabled={creatingCompanyCA} className="w-full sm:w-auto">
                             {creatingCompanyCA ? 'Creating...' : 'Create Company CA Credentials'}
                           </Button>
@@ -1278,7 +1402,8 @@ function CompanyDashboardContent() {
 
                       {lastCreatedCompanyCA && (
                         <div className="mt-3 rounded-md bg-green-50 p-3 text-sm text-green-800">
-                          <p>Generated credentials:</p>
+                          <p className="font-medium">Generated credentials:</p>
+                          <p>CA ID: {lastCreatedCompanyCA.ca_id}</p>
                           <p>Email: {lastCreatedCompanyCA.email}</p>
                           <p>Password: {lastCreatedCompanyCA.password}</p>
                           <p className="mt-1">Panel URL: /companies/ca/login</p>
@@ -1304,14 +1429,25 @@ function CompanyDashboardContent() {
                                 <Badge variant="outline">{account.status}</Badge>
                               </div>
                               <p className="text-slate-600">{account.users?.email || 'No email'}</p>
-                              <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+                              {account.ca_id && <p className="mt-1 font-mono text-xs text-slate-500">CA ID: {account.ca_id}</p>}
+                              <div className="mt-2 flex items-center gap-2">
                                 <Button
-                                  variant="outline"
+                                  type="button"
                                   size="sm"
-                                  className="w-full sm:w-auto"
+                                  variant="ghost"
+                                  className="h-8 w-8 p-0 text-slate-500 hover:bg-orange-50 hover:text-orange-600"
                                   onClick={() => updateCompanyCAStatus(String(account.id ?? ''), 'inactive')}
                                 >
-                                  Deactivate
+                                  <Power className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-8 w-8 p-0 text-slate-500 hover:bg-red-50 hover:text-red-600"
+                                  onClick={() => deleteCompanyCAAccount(String(account.id ?? ''), account.users?.name || 'Company CA')}
+                                >
+                                  <Trash2 className="h-4 w-4" />
                                 </Button>
                               </div>
                             </div>
@@ -1330,14 +1466,25 @@ function CompanyDashboardContent() {
                                   <Badge variant="outline">{account.status}</Badge>
                                 </div>
                                 <p className="text-slate-600">{account.users?.email || 'No email'}</p>
-                                <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+                                {account.ca_id && <p className="mt-1 font-mono text-xs text-slate-500">CA ID: {account.ca_id}</p>}
+                                <div className="mt-2 flex items-center gap-2">
                                   <Button
-                                    variant="outline"
+                                    type="button"
                                     size="sm"
-                                    className="w-full sm:w-auto"
+                                    variant="ghost"
+                                    className="h-8 w-8 p-0 text-slate-500 hover:bg-orange-50 hover:text-orange-600"
                                     onClick={() => updateCompanyCAStatus(String(account.id ?? ''), 'active')}
                                   >
-                                    Activate
+                                    <Power className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-8 w-8 p-0 text-slate-500 hover:bg-red-50 hover:text-red-600"
+                                    onClick={() => deleteCompanyCAAccount(String(account.id ?? ''), account.users?.name || 'Company CA')}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
                                   </Button>
                                 </div>
                               </div>

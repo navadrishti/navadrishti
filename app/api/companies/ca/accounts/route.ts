@@ -3,13 +3,16 @@ import { z } from 'zod';
 import { supabase, db } from '@/lib/db';
 import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth';
 import { hashPassword } from '@/lib/auth';
+import { generateUniqueCompanyCaId } from '@/lib/company-ca-id-helper';
 
 const createCompanyCASchema = z.object({
   name: z.string().min(2),
   email: z.string().email(),
   password: z.string().min(8),
   permissions: z.record(z.any()).optional(),
-  status: z.enum(['active', 'inactive']).optional()
+  status: z.enum(['active', 'inactive']).optional(),
+  ca_id: z.string().optional(),
+  auto_generate_ca_id: z.boolean().default(true)
 });
 
 export async function GET(request: NextRequest) {
@@ -17,9 +20,30 @@ export async function GET(request: NextRequest) {
     const user = getAuthUserFromRequest(request);
     assertUserType(user, ['company']);
 
+    const url = new URL(request.url);
+    const query = url.searchParams.get('query');
+
+    // Get available CA IDs for succession assignment
+    if (query === 'available-ca-ids') {
+      const { data, error } = await supabase
+        .from('company_ca_identities')
+        .select('ca_id, user_id, users:user_id(id, name)')
+        .eq('company_user_id', user.id)
+        .not('ca_id', 'is', null)
+        .order('ca_id', { ascending: true });
+
+      if (error) {
+        console.error('Failed to fetch available CA IDs:', error);
+        return NextResponse.json({ error: 'Failed to fetch available CA IDs' }, { status: 500 });
+      }
+
+      return NextResponse.json({ success: true, data: data ?? [] });
+    }
+
+    // Default: get all company CA identities
     const { data, error } = await supabase
       .from('company_ca_identities')
-      .select('id, user_id, company_user_id, status, permissions, created_at, users:user_id(id, name, email)')
+      .select('id, ca_id, user_id, company_user_id, status, permissions, created_at, users:user_id(id, name, email)')
       .eq('company_user_id', user.id)
       .order('created_at', { ascending: false });
 
@@ -55,7 +79,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: parsed.error.issues[0]?.message || 'Invalid payload' }, { status: 400 });
     }
 
-    const { name, email, password, permissions, status } = parsed.data;
+    const { name, email, password, permissions, status, ca_id, auto_generate_ca_id } = parsed.data;
+
+    // Determine the CA ID to use
+    let assignedCaId = ca_id;
+    if (auto_generate_ca_id) {
+      assignedCaId = await generateUniqueCompanyCaId(user.id);
+    } else if (!ca_id) {
+      return NextResponse.json({ error: 'CA ID must be provided or auto-generation must be enabled' }, { status: 400 });
+    }
 
     const existing = await db.users.findByEmail(email);
     if (existing) {
@@ -83,6 +115,7 @@ export async function POST(request: NextRequest) {
       .insert({
         user_id: newUser.id,
         company_user_id: user.id,
+        ca_id: assignedCaId,
         status: status ?? 'active',
         permissions: permissions ?? {
           can_review_evidence: true,
@@ -107,7 +140,9 @@ export async function POST(request: NextRequest) {
       event_payload: {
         company_user_id: user.id,
         company_ca_user_id: newUser.id,
-        company_ca_email: email
+        company_ca_email: email,
+        company_ca_id: assignedCaId,
+        auto_generated: auto_generate_ca_id
       },
       created_by: user.id
     });

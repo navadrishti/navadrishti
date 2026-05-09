@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
+import { cookies } from 'next/headers'
 import './globals.css'
 import '@/styles/colors.css'
 import { AuthProvider } from '@/lib/auth-context'
@@ -10,6 +11,7 @@ import { Toaster } from 'sonner'
 import Script from 'next/script'
 import { Analytics } from '@vercel/analytics/next'
 import { SpeedInsights } from '@vercel/speed-insights/next'
+import { verifyToken } from '@/lib/auth'
 
 export const metadata: Metadata = {
   title: 'Navadrishti',
@@ -23,12 +25,15 @@ export const metadata: Metadata = {
   },
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
   const shouldInjectProtectionScript = process.env.NODE_ENV === 'production'
+  const cookieStore = await cookies()
+  const token = cookieStore.get('token')?.value || null
+  const initialUser = token ? verifyToken(token) : null
 
   return (
     <html lang="en">
@@ -111,7 +116,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-screen bg-background text-foreground">
         <ThemeProvider>
-          <AuthProvider>
+          <AuthProvider initialToken={token} initialUser={initialUser}>
             <Suspense fallback={null}>
               <PageTransition>
                 {children}

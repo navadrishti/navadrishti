@@ -846,6 +846,10 @@ export default function NGOAIAgentPage() {
         const relatedOfferIds = new Set(relatedOffers.map((item) => item.offer.id))
         const invitedOfferIds = (selectedOfferIdsByNeed[index] || []).filter((id) => relatedOfferIds.has(id))
         const selectedOfferIds = invitedOfferIds.length > 0 ? invitedOfferIds : pickRecommendedOfferIds(need, activeOffers)
+        
+        // Normalize urgency and timeline for consistent data storage
+        const normalizedTimeline = String(need.timeline || '').trim().toLowerCase() === 'anytime' ? 'Anytime (No expiry)' : need.timeline
+        
         const response = await fetch('/api/service-requests', {
           method: 'POST',
           headers: {
@@ -861,7 +865,7 @@ export default function NGOAIAgentPage() {
             category: draft.project.category,
             project_category: draft.project.category,
             location: draft.project.location,
-            timeline: need.timeline,
+            timeline: normalizedTimeline,
             budget: need.budget,
             estimated_budget: need.estimated_budget,
             beneficiary_count: need.beneficiary_count,

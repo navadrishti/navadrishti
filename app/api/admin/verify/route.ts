@@ -13,6 +13,7 @@ export async function GET(request: NextRequest) {
     // Verify admin token
     try {
       const decoded = verifyToken(adminToken);
+
       if (!decoded || decoded.id !== -1) {
         return NextResponse.json({ error: 'Invalid admin token' }, { status: 401 });
       }

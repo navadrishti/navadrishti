@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status') || undefined;
     const search = searchParams.get('q') || undefined;
+    const limit = Math.min(Number(searchParams.get('limit') || '50'), 100);
 
     let query = supabase
       .from('support_tickets')
@@ -42,6 +43,8 @@ export async function GET(request: NextRequest) {
       const term = search.trim();
       query = query.or(`title.ilike.%${term}%,description.ilike.%${term}%,ticket_id.ilike.%${term}%`);
     }
+
+    query = query.limit(limit);
 
     const { data, error } = await query;
     if (error) throw error;

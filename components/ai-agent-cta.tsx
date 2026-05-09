@@ -2,28 +2,55 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { useEffect, useState } from "react"
 import { Sparkles } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
 
 export function AIAgentCTA() {
   const { user } = useAuth()
   const pathname = usePathname()
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
 
-  const aiAgentCta = user?.user_type === 'company'
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    const handleMobileMenuState = (event: Event) => {
+      const customEvent = event as CustomEvent<{ open?: boolean }>
+      setIsMobileMenuOpen(Boolean(customEvent.detail?.open))
+    }
+
+    window.addEventListener('nd-mobile-menu-state', handleMobileMenuState as EventListener)
+    return () => window.removeEventListener('nd-mobile-menu-state', handleMobileMenuState as EventListener)
+  }, [])
+
+  const aiAgentCta = !mounted || !user ? null : (user.user_type === 'company'
     ? {
         href: '/companies/csr-agent',
         title: 'AI CSR Agent',
         description: 'Build CSR campaigns with AI',
       }
-    : user?.user_type === 'ngo'
+    : user.user_type === 'ngo'
     ? {
         href: '/ngos/ai-agent',
         title: 'NGO AI Agent',
         description: 'Draft service requests with AI',
       }
-    : null
+    : null)
 
   if (!aiAgentCta) return null
+  // Hide AI CTA everywhere inside privileged consoles (including login routes)
+  if (
+    pathname.startsWith('/ca') ||
+    pathname.startsWith('/companies/ca') ||
+    pathname.startsWith('/admin') ||
+    pathname.startsWith('/government-admin')
+  ) {
+    return null
+  }
+  if (isMobileMenuOpen) return null
   if (pathname === aiAgentCta.href) return null
 
   return (
