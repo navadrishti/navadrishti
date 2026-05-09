@@ -15,7 +15,7 @@ async function isFullyVerifiedCompany(userId: number): Promise<boolean> {
     .from('users')
     .select('email_verified, phone_verified, verification_status')
     .eq('id', userId)
-    .single()
+    .maybeSingle()
 
   if (error || !data) return false
 
@@ -361,26 +361,105 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'projectId is required' }, { status: 400 })
       }
 
-      const { data: project, error: projectError } = await supabase
+      console.log(`[project-detail] Loading project: ${projectId}`)
+
+      // First, try to fetch project with ngo join
+      let { data: project, error: projectError } = await supabase
         .from('service_request_projects')
         .select('id, ngo_id, title, description, location, exact_address, timeline, status, updated_at, created_at, ngo:users!ngo_id(id, name, email, location, city, state_province, country, phone, ngo_size, industry, pincode, profile_data)')
         .eq('id', projectId)
-        .single()
+        .maybeSingle()
 
-      if (projectError) throw projectError
-      if (!project) {
-        return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+      // If there's an error (likely due to broken foreign key), try without the ngo join
+      if (projectError || !project) {
+        if (projectError) console.log(`[project-detail] Error with ngo join: ${projectError.message}`)
+        
+        const { data: projectWithoutNgo, error: projectErrorWithoutNgo } = await supabase
+          .from('service_request_projects')
+          .select('id, ngo_id, title, description, location, exact_address, timeline, status, updated_at, created_at')
+          .eq('id', projectId)
+          .maybeSingle()
+
+        if (projectErrorWithoutNgo) {
+          console.error(`[project-detail] Error fetching project: ${projectErrorWithoutNgo.message}`)
+          throw projectErrorWithoutNgo
+        }
+        
+        if (!projectWithoutNgo) {
+          console.log(`[project-detail] Project row missing, will try to synthesize from linked needs: ${projectId}`)
+        }
+
+        project = projectWithoutNgo as any
+        if (project) {
+          console.log(`[project-detail] Project loaded (without ngo): ${projectId}`)
+        }
+
+        // Now fetch the ngo separately
+        if (project?.ngo_id) {
+          const { data: ngo, error: ngoError } = await supabase
+            .from('users')
+            .select('id, name, email, location, city, state_province, country, phone, ngo_size, industry, pincode, profile_data')
+            .eq('id', project.ngo_id)
+            .maybeSingle()
+
+          if (!ngoError && ngo) {
+            project.ngo = ngo
+            console.log(`[project-detail] NGO loaded: ${ngo.name}`)
+          }
+        }
+      } else {
+        console.log(`[project-detail] Project loaded with ngo join: ${projectId}`)
       }
 
       const { data: needs, error: needsError } = await supabase
         .from('service_requests')
-        .select('id, ngo_id, title, status, request_type, category, estimated_budget, target_amount, target_quantity, beneficiary_count, location, timeline, created_at, updated_at')
+        .select('id, ngo_id, title, description, status, request_type, category, estimated_budget, target_amount, target_quantity, beneficiary_count, location, timeline, project_context, created_at, updated_at')
         .eq('project_id', projectId)
         .order('created_at', { ascending: true })
 
-      if (needsError) throw needsError
+      if (needsError) {
+        console.error(`[project-detail] Error fetching needs: ${needsError.message}`)
+        throw needsError
+      }
 
       const needsList = Array.isArray(needs) ? needs : []
+      console.log(`[project-detail] Needs loaded: ${needsList.length}`)
+
+      if (!project && needsList.length > 0) {
+        const firstNeed = needsList[0] as any
+        const projectContext = safeJsonObject(firstNeed?.project_context)
+        const fallbackNgoId = Number(firstNeed?.ngo_id || 0) || null
+        const fallbackProject = {
+          id: projectId,
+          ngo_id: fallbackNgoId,
+          title: String(projectContext.project_title || firstNeed.title || 'Project'),
+          description: String(projectContext.project_description || firstNeed.description || ''),
+          location: String(projectContext.project_location || firstNeed.location || ''),
+          exact_address: String(projectContext.project_location || firstNeed.location || ''),
+          timeline: String(projectContext.project_timeline || firstNeed.timeline || ''),
+          status: String(projectContext.project_status || 'active'),
+          created_at: firstNeed.created_at,
+          updated_at: firstNeed.updated_at,
+          ngo: null
+        }
+
+        if (fallbackNgoId) {
+          const { data: fallbackNgo, error: fallbackNgoError } = await supabase
+            .from('users')
+            .select('id, name, email, location, city, state_province, country, phone, ngo_size, industry, pincode, profile_data')
+            .eq('id', fallbackNgoId)
+            .maybeSingle()
+
+          if (!fallbackNgoError && fallbackNgo) {
+            fallbackProject.ngo = fallbackNgo
+            console.log(`[project-detail] Fallback NGO loaded: ${fallbackNgo.name}`)
+          }
+        }
+
+        project = fallbackProject as any
+        console.log(`[project-detail] Synthesized project payload from first need: ${projectId}`)
+      }
+
       const needIds = needsList.map((item: any) => item.id)
       const anchorNeedId = needIds[0] || null
 
@@ -392,7 +471,10 @@ export async function GET(request: NextRequest) {
             .eq('contribution_type', COMPANY_PROJECT_CONTRIBUTION_TYPE)
         : { data: [], error: null as any }
 
-      if (applicationsError) throw applicationsError
+      if (applicationsError) {
+        console.error(`[project-detail] Error fetching applications: ${applicationsError.message}`)
+        throw applicationsError
+      }
 
       const { data: leadInvites, error: leadInvitesError } = await supabase
         .from('service_request_contributions')
@@ -401,7 +483,10 @@ export async function GET(request: NextRequest) {
         .eq('meta->>project_id', projectId)
         .order('created_at', { ascending: false })
 
-      if (leadInvitesError) throw leadInvitesError
+      if (leadInvitesError) {
+        console.error(`[project-detail] Error fetching lead invites: ${leadInvitesError.message}`)
+        throw leadInvitesError
+      }
 
       const { data: fulfillmentRows, error: fulfillmentRowsError } = needIds.length > 0
         ? await supabase
@@ -410,7 +495,10 @@ export async function GET(request: NextRequest) {
             .in('service_request_id', needIds)
         : { data: [], error: null as any }
 
-      if (fulfillmentRowsError) throw fulfillmentRowsError
+      if (fulfillmentRowsError) {
+        console.error(`[project-detail] Error fetching fulfillment rows: ${fulfillmentRowsError.message}`)
+        throw fulfillmentRowsError
+      }
 
       const hasIndividualFulfillment = (fulfillmentRows || []).some((row: any) => {
         const isIndividual = String(row?.volunteer?.user_type || '').toLowerCase() === 'individual'
@@ -467,6 +555,13 @@ export async function GET(request: NextRequest) {
         csr_project_eligible_for_company_apply: !hasIndividualFulfillment,
         csr_project_ineligible_reason: hasIndividualFulfillment ? 'One or more needs in this project were already fulfilled by individuals.' : ''
       }
+
+      console.log(`[project-detail] Returning payload for ${projectId}:`, {
+        projectTitle: project?.title,
+        needsCount: needsList.length,
+        applicationsCount: Object.keys(groupedApplicationsByCompany).length,
+        invitesCount: (leadInvites || []).length
+      })
 
       return NextResponse.json({ success: true, data: responsePayload })
     }
@@ -778,8 +873,16 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ error: 'Unsupported user type' }, { status: 403 })
   } catch (error) {
-    console.error('Error fetching assignments:', error)
-    return NextResponse.json({ error: 'Failed to fetch assignments' }, { status: 500 })
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    console.error('Error fetching assignments:', {
+      error: errorMessage,
+      stack: error instanceof Error ? error.stack : undefined,
+      timestamp: new Date().toISOString()
+    })
+    return NextResponse.json({ 
+      error: 'Failed to fetch assignments',
+      details: process.env.NODE_ENV === 'development' ? errorMessage : undefined
+    }, { status: 500 })
   }
 }
 
@@ -1070,7 +1173,7 @@ export async function PUT(request: NextRequest) {
         .select('id, contributor_id, status, meta')
         .eq('id', inviteId)
         .eq('contribution_type', LEAD_NGO_INVITE_CONTRIBUTION_TYPE)
-        .single()
+        .maybeSingle()
 
       if (inviteError) throw inviteError
       if (!invite || Number(invite.contributor_id) !== Number(userId)) {

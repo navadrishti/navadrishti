@@ -10,7 +10,7 @@
 
 "use client"
 
-import { usePathname, useSearchParams } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { ReactNode, useEffect, useState, useRef } from 'react';
 
 interface PageTransitionProps {
@@ -20,7 +20,6 @@ interface PageTransitionProps {
 // Navigation Progress Bar Component (integrated)
 function NavigationProgress() {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const [isNavigating, setIsNavigating] = useState(false);
   const [progress, setProgress] = useState(0);
 
@@ -56,7 +55,7 @@ function NavigationProgress() {
       cancelAnimationFrame(animationFrame);
       clearTimeout(completeTimer);
     };
-  }, [pathname, searchParams]);
+  }, [pathname]);
 
   if (!isNavigating) return null;
 

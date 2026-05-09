@@ -1,7 +1,7 @@
 // Authentication context for client-side
 'use client';
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { notify } from './notifications';
 
 // Types
@@ -54,6 +54,8 @@ interface SignupData {
 
 interface AuthProviderProps {
   children: ReactNode;
+  initialUser?: User | null;
+  initialToken?: string | null;
 }
 
 // Create context
@@ -92,13 +94,44 @@ const getFriendlySignupErrorMessage = (data: any, status: number) => {
 };
 
 // Create provider
-export function AuthProvider({ children }: AuthProviderProps) {
-  const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+export function AuthProvider({ children, initialUser = null, initialToken = null }: AuthProviderProps) {
+  const [user, setUser] = useState<User | null>(initialUser);
+  const [token, setToken] = useState<string | null>(initialToken);
+  const [loading, setLoading] = useState<boolean>(!initialUser && !initialToken);
   const [error, setError] = useState<string | null>(null);
+  const initialUserRef = useRef<User | null>(initialUser);
 
-  const hydrateUserFromServer = async (authToken: string, fallbackUser?: User | null) => {
+  const persistAuthSnapshot = useCallback((nextToken: string | null, nextUser: User | null) => {
+    if (nextToken) {
+      localStorage.setItem('token', nextToken);
+      sessionStorage.setItem('token', nextToken);
+    } else {
+      localStorage.removeItem('token');
+      sessionStorage.removeItem('token');
+    }
+
+    if (nextUser) {
+      const serializedUser = JSON.stringify(nextUser);
+      localStorage.setItem('user', serializedUser);
+      sessionStorage.setItem('user', serializedUser);
+    } else {
+      localStorage.removeItem('user');
+      sessionStorage.removeItem('user');
+    }
+  }, []);
+
+  const persistUserSnapshot = useCallback((nextUser: User | null) => {
+    if (nextUser) {
+      const serializedUser = JSON.stringify(nextUser);
+      localStorage.setItem('user', serializedUser);
+      sessionStorage.setItem('user', serializedUser);
+    } else {
+      localStorage.removeItem('user');
+      sessionStorage.removeItem('user');
+    }
+  }, []);
+
+  const hydrateUserFromServer = useCallback(async (authToken: string, fallbackUser?: User | null) => {
     try {
       const response = await fetch('/api/auth/me', {
         headers: {
@@ -109,7 +142,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       if (response.ok) {
         const data = await response.json();
         setUser(data.user);
-        localStorage.setItem('user', JSON.stringify(data.user));
+        persistAuthSnapshot(authToken, data.user);
         return data.user as User;
       }
     } catch (err) {
@@ -118,61 +151,85 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     if (fallbackUser) {
       setUser(fallbackUser);
-      localStorage.setItem('user', JSON.stringify(fallbackUser));
+      persistAuthSnapshot(authToken, fallbackUser);
       return fallbackUser;
     }
 
     return null;
-  };
+  }, []);
+
+  const hydrateUserFromCookie = useCallback(async () => {
+    try {
+      const response = await fetch('/api/auth/me', {
+        credentials: 'include'
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setUser(data.user);
+        persistUserSnapshot(data.user);
+        return data.user as User;
+      }
+    } catch (err) {
+      console.error('Cookie hydration error:', err);
+    }
+
+    return null;
+  }, []);
+
+  const syncAuthFromStorage = useCallback(async () => {
+    try {
+      setLoading(true);
+
+      const storedToken = sessionStorage.getItem('token') || localStorage.getItem('token') || token;
+      const storedUser = sessionStorage.getItem('user') || localStorage.getItem('user');
+
+      if (storedToken && storedToken !== 'undefined' && storedToken !== 'null') {
+        const cleanToken = storedToken.replace(/["']/g, '').trim();
+
+        if (!cleanToken || cleanToken === 'undefined' || cleanToken === 'null') {
+          persistAuthSnapshot(null, null);
+          setToken(null);
+          setUser(null);
+          setLoading(false);
+          return;
+        }
+
+        setToken(cleanToken);
+
+        if (storedUser && storedUser !== 'undefined' && storedUser !== 'null') {
+          try {
+            const parsedUser = JSON.parse(storedUser);
+            setUser(parsedUser);
+            setLoading(false);
+            return;
+          } catch (parseError) {
+            console.error('Error parsing stored user:', parseError);
+          }
+        }
+
+        await hydrateUserFromServer(cleanToken);
+        setLoading(false);
+        return;
+      }
+
+      const cookieUser = await hydrateUserFromCookie();
+      if (cookieUser) {
+        setLoading(false);
+        return;
+      }
+
+      setUser(initialUserRef.current);
+      setLoading(false);
+    } catch (error) {
+      console.error('Error syncing auth state:', error);
+      setLoading(false);
+    }
+  }, [hydrateUserFromCookie, hydrateUserFromServer, token]);
 
   // Load user from localStorage on initial render
   useEffect(() => {
-    let needsServerHydration = false;
-
-    try {
-      const storedToken = localStorage.getItem('token');
-      const storedUser = localStorage.getItem('user');
-      
-      // Check if token exists and is not the string "undefined" or "null"
-        if (storedToken && 
-          storedToken !== 'undefined' && 
-          storedToken !== 'null') {
-        
-        // Clean the token of any quotes or extra characters
-        const cleanToken = storedToken.replace(/[\"']/g, '').trim();
-        
-        if (cleanToken.length > 0 && cleanToken !== 'undefined' && cleanToken !== 'null') {
-          setToken(cleanToken);
-          if (storedUser && storedUser !== 'undefined' && storedUser !== 'null') {
-            try {
-              const parsedUser = JSON.parse(storedUser);
-              setUser(parsedUser);
-            } catch (parseError) {
-              // Keep token and let /api/auth/me rehydrate user snapshot.
-              localStorage.removeItem('user');
-              needsServerHydration = true;
-            }
-          } else {
-            needsServerHydration = true;
-          }
-        } else {
-          localStorage.removeItem('token');
-          localStorage.removeItem('user');
-        }
-      } else {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-      }
-    } catch (error) {
-      console.error('Error loading auth data from localStorage:', error);
-      // Clear potentially corrupted data
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-    }
-
-    if (!needsServerHydration) {
-      setLoading(false);
-    }
+    syncAuthFromStorage();
   }, []);
 
   // Verify token and fetch current user
@@ -186,7 +243,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         
         if (!cleanToken || cleanToken.length === 0) {
           console.error('Token is empty after cleaning');
-          logout();
+          setLoading(false);
           return;
         }
 
@@ -200,19 +257,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
           const data = await response.json();
           setUser(data.user);
           // Update localStorage with fresh user data
-          localStorage.setItem('user', JSON.stringify(data.user));
+          persistAuthSnapshot(cleanToken, data.user);
         } else if (response.status === 401) {
-          // Token is invalid, expired, or malformed
-          console.log('Token verification failed with 401');
-          notify.error('Your session has expired. Please log in again.');
-          logout();
+          setToken(null);
+          setUser(null);
+          persistAuthSnapshot(null, null);
         } else {
-          // Keep existing local session for non-auth failures (e.g., transient server error).
-          console.log('Token verification failed with non-401 status:', response.status);
+          console.error('Token verification failed with status:', response.status);
         }
       } catch (error) {
         console.error('Token verification error:', error);
-        // Keep local session during transient network failures.
       } finally {
         setLoading(false);
       }
@@ -221,7 +275,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     if (token) {
       verifyTokenAsync();
     }
-  }, [token]);
+  }, [hydrateUserFromCookie, persistAuthSnapshot, token]);
 
   // Login function
   const login = async (email: string, password: string) => {
@@ -248,7 +302,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       
       // Save token and user to state and localStorage
       setToken(data.token);
-      localStorage.setItem('token', data.token);
+      persistAuthSnapshot(data.token, null);
 
       await hydrateUserFromServer(data.token, data.user);
       
@@ -289,7 +343,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       
       // Save token and user to state and localStorage
       setToken(data.token);
-      localStorage.setItem('token', data.token);
+      persistAuthSnapshot(data.token, null);
 
       await hydrateUserFromServer(data.token, data.user);
       
@@ -317,10 +371,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setError(null);
     
     // Clear all auth-related data from storage
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    sessionStorage.removeItem('token');
-    sessionStorage.removeItem('user');
+    persistAuthSnapshot(null, null);
+    initialUserRef.current = null;
     
     // Clear auth cookies if they exist
     document.cookie = 'token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
@@ -339,7 +391,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     if (user) {
       const updatedUser = { ...user, ...userData };
       setUser(updatedUser);
-      localStorage.setItem('user', JSON.stringify(updatedUser));
+      persistAuthSnapshot(token, updatedUser);
     }
   };
 
@@ -357,7 +409,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       if (response.ok) {
         const data = await response.json();
         setUser(data.user);
-        localStorage.setItem('user', JSON.stringify(data.user));
+        persistAuthSnapshot(token, data.user);
       } else {
         notify.error('Failed to refresh user data');
       }
@@ -365,6 +417,25 @@ export function AuthProvider({ children }: AuthProviderProps) {
       notify.error('Failed to refresh user data');
     }
   };
+
+  // Rehydrate only on cross-tab storage changes
+  useEffect(() => {
+    const rehydrateHandler = () => {
+      void syncAuthFromStorage();
+    };
+
+    const storageListener = (e: StorageEvent) => {
+      if (e.key === 'token' || e.key === 'user') {
+        rehydrateHandler();
+      }
+    };
+
+    window.addEventListener('storage', storageListener);
+
+    return () => {
+      window.removeEventListener('storage', storageListener);
+    };
+  }, [syncAuthFromStorage]);
 
   return (
     <AuthContext.Provider

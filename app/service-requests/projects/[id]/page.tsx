@@ -248,16 +248,29 @@ export default function ServiceRequestProjectDetailPage() {
     return renderProjectLoadingSkeleton();
   }
 
+  const primaryNeed = payload.needs[0] || null;
+  const projectData = payload.project || {
+    id: projectId,
+    ngo_id: Number(primaryNeed?.ngo_id || 0),
+    title: primaryNeed?.title || 'Project',
+    description: primaryNeed?.description || '',
+    location: primaryNeed?.location || 'Location not set',
+    exact_address: primaryNeed?.location || 'Location not set',
+    timeline: primaryNeed?.timeline || '',
+    status: 'active',
+    ngo: undefined
+  };
+
   const canShowApplicationTab = user.user_type === 'company';
   const projectVisibleTabCount = canShowApplicationTab ? 3 : 2;
   const showProjectTabList = projectVisibleTabCount > 1;
   const canCompanyApply = user.user_type === 'company' && payload.csr_project_eligible_for_company_apply;
   const canCompanyManageCsr = user.user_type === 'company' && allVerified;
-  const ngo = payload.project.ngo;
+  const ngo = projectData.ngo;
   const ngoProfileData = ngo?.profile_data || {};
   const ngoLocation = ngo?.city && ngo?.state_province
     ? `${ngo.city}, ${ngo.state_province}${ngo.country ? `, ${ngo.country}` : ''}`
-    : ngo?.location || payload.project.exact_address || payload.project.location || 'Location not set';
+    : ngo?.location || projectData.exact_address || projectData.location || 'Location not set';
   const ngoPhone = ngo?.phone || 'Phone not set';
   const ngoSize = String(ngo?.ngo_size || ngoProfileData.ngo_size || 'NGO size not set');
   const ngoSector = String(ngoProfileData.sector || ngo?.industry || 'Sector not set');
@@ -321,8 +334,8 @@ export default function ServiceRequestProjectDetailPage() {
 
                 <div className="space-y-1 text-sm">
                   <p className="font-medium text-gray-500">Project Status</p>
-                  <Badge className={`capitalize ${statusBadgeClass(payload.project.status || 'active')}`}>
-                    {String(payload.project.status || 'active').replace('_', ' ')}
+                  <Badge className={`capitalize ${statusBadgeClass(projectData.status || 'active')}`}>
+                    {String(projectData.status || 'active').replace('_', ' ')}
                   </Badge>
                 </div>
               </CardContent>
@@ -344,7 +357,7 @@ export default function ServiceRequestProjectDetailPage() {
                   <TabsContent value="details" className={`${showProjectTabList ? 'mt-4' : ''} space-y-4`}>
                     <div className="space-y-2">
                       <p className="text-sm font-medium text-gray-500">Project Title</p>
-                      <p className="font-semibold text-lg">{payload.project.title}</p>
+                      <p className="font-semibold text-lg">{projectData.title}</p>
                     </div>
 
                     <div className="space-y-2">
@@ -354,7 +367,7 @@ export default function ServiceRequestProjectDetailPage() {
 
                     <div className="space-y-2">
                       <p className="text-sm font-medium text-gray-500">Description</p>
-                      <p className="text-sm text-muted-foreground">{payload.project.description || 'No description provided.'}</p>
+                      <p className="text-sm text-muted-foreground">{projectData.description || 'No description provided.'}</p>
                     </div>
 
                     <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-3">

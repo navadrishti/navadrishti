@@ -55,9 +55,9 @@ export function DashboardQuickSidebar({
   const getButtonClassName = (isActive: boolean) =>
     [
       'w-full justify-start',
-      'border text-left shadow-none',
+      'border text-left shadow-none truncate',
       isActive
-        ? '!border-[#0067b9] !bg-[#0067b9] !text-white hover:!bg-[#0067b9] hover:!text-white'
+        ? '!border-blue-600 !bg-blue-600 !text-white hover:!bg-blue-600 hover:!text-white'
         : 'border-slate-200 bg-white text-slate-900 hover:bg-slate-50 hover:text-slate-900',
     ].join(' ')
 
@@ -66,17 +66,17 @@ export function DashboardQuickSidebar({
       <div className={`fixed left-0 top-[15rem] z-[1000] ${headerMenuOpen ? 'hidden' : ''}`}>
         <Button
           type="button"
-          className="group h-32 w-10 rounded-r-2xl border-2 border-[#0067b9] bg-transparent p-0 text-[#0067b9] shadow-none backdrop-blur-0 transition-all hover:border-[#0067b9] hover:bg-transparent"
+          className="group h-32 w-10 rounded-r-2xl border-2 border-blue-600 bg-transparent p-0 text-blue-600 shadow-none backdrop-blur-0 transition-all hover:border-blue-600 hover:bg-transparent"
           onClick={() => setMobileOpen((prev) => !prev)}
         >
           <span className="flex h-full w-full flex-col items-center justify-center gap-2">
             <span className="relative flex h-4 w-4 items-center justify-center">
             <span
-              className={`absolute h-2.5 w-2.5 border-b-[1.75px] border-r-[1.75px] border-[#0067b9] transition-transform duration-200 ${mobileOpen ? '-rotate-135 translate-x-[1px]' : 'rotate-315 -translate-x-[1px]'} group-hover:border-[#0067b9]`}
+              className={`absolute h-2.5 w-2.5 border-b-[1.75px] border-r-[1.75px] border-blue-600 transition-transform duration-200 ${mobileOpen ? '-rotate-135 translate-x-[1px]' : 'rotate-315 -translate-x-[1px]'} group-hover:border-blue-600`}
             />
             <span className="absolute h-0.5 w-0.5 rounded-full bg-[#0067b9] transition-colors group-hover:bg-[#0067b9]" />
             </span>
-            <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#0067b9] [writing-mode:vertical-rl] [text-orientation:mixed] rotate-180">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-blue-600 [writing-mode:vertical-rl] [text-orientation:mixed] rotate-180">
               Sections
             </span>
           </span>
@@ -98,19 +98,19 @@ export function DashboardQuickSidebar({
                 <p className="text-sm font-semibold text-slate-900">{triggerLabel}</p>
                 <p className="text-xs text-slate-500">Quick navigation</p>
               </div>
-              <Button
+                <Button
                 type="button"
-                className="group h-9 w-9 rounded-full border border-slate-200 bg-white p-0 text-slate-900 shadow-sm hover:bg-slate-50"
+                  className="group h-9 w-9 rounded-full border border-slate-200 bg-white p-0 text-slate-900 shadow-sm hover:bg-slate-50"
                 onClick={() => setMobileOpen(false)}
               >
                 <span className="relative flex h-4 w-4 items-center justify-center">
-                  <span className="absolute h-2.5 w-2.5 border-l-[1.75px] border-t-[1.75px] border-slate-700 transition-colors group-hover:border-[#0067b9]" />
-                  <span className="absolute h-0.5 w-0.5 rounded-full bg-slate-700/70 transition-colors group-hover:bg-[#0067b9]" />
+                  <span className="absolute h-2.5 w-2.5 border-l-[1.75px] border-t-[1.75px] border-slate-700 transition-colors group-hover:border-blue-600" />
+                  <span className="absolute h-0.5 w-0.5 rounded-full bg-slate-700/70 transition-colors group-hover:bg-blue-600" />
                 </span>
                 <span className="sr-only">Close {triggerLabel}</span>
               </Button>
             </div>
-            <div className="flex-1 space-y-3 overflow-y-auto p-4">
+            <div className="flex-1 space-y-3 overflow-y-auto overflow-x-hidden p-4">
               {items.map((item) => (
                 <Button
                   key={item.value}
@@ -131,7 +131,7 @@ export function DashboardQuickSidebar({
   return (
     <>
       <div className={`hidden lg:block ${desktopClassName}`}>
-        <Card className="lg:sticky lg:top-20">
+        <Card className="lg:sticky lg:top-20 border-slate-200 bg-white">
           <CardContent className="space-y-3 pt-6">
             {items.map((item) => (
               <Button
