@@ -73,6 +73,15 @@ export function PermissionGate({
   showError = true 
 }: PermissionGateProps) {
   const { user } = useAuth();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  
+  if (!mounted) {
+    return fallback ? <>{fallback}</> : null;
+  }
   
   if (hasPermission(user, permission)) {
     return <>{children}</>;

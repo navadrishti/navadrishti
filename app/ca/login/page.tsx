@@ -61,10 +61,17 @@ export default function CALoginPage() {
 
       if (response.ok) {
         toast.success('CA login successful');
+        try { sessionStorage.setItem('ca_tab_session', Date.now().toString()); } catch (e) {}
         setUsername('');
         setPassword('');
         setError('');
-        router.push('/ca');
+        
+        // Check if password change is mandatory
+        if (data.must_change_password) {
+          router.push('/ca/change-password');
+        } else {
+          router.push('/ca');
+        }
       } else {
         setError(data.error || 'Login failed');
         toast.error(data.error || 'Login failed');
@@ -94,9 +101,6 @@ export default function CALoginPage() {
       <div className="w-full max-w-md">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-full mb-4">
-            <Shield className="h-8 w-8 text-white" />
-          </div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">CA Console</h1>
           <p className="text-gray-600">Chartered Accountant Verification Portal</p>
         </div>
@@ -118,12 +122,14 @@ export default function CALoginPage() {
                 </Alert>
               )}
 
+              {/* CA ID removed - login by username and password only */}
+
               <div className="space-y-2">
-                <Label htmlFor="username">CA ID</Label>
+                <Label htmlFor="username">Username</Label>
                 <Input
                   id="username"
                   type="text"
-                  placeholder="Enter CA ID"
+                  placeholder="Enter your username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   required
@@ -169,14 +175,7 @@ export default function CALoginPage() {
           </CardContent>
         </Card>
 
-        {/* Demo Credentials Notice */}
-        <Card className="mt-4 bg-blue-50 border-blue-200">
-          <CardContent className="pt-4">
-            <p className="text-sm text-blue-900 text-center">
-              <strong>Configuration:</strong> Use CA ID/password from env (CA_USERNAME and CA_PASSWORD)
-            </p>
-          </CardContent>
-        </Card>
+        {/* Demo Credentials Notice removed (CA ID not required) */}
 
         {/* Footer */}
         <div className="text-center mt-6 text-sm text-gray-600">
@@ -191,7 +190,6 @@ export default function CALoginPage() {
             />
             Navadrishti Platform
           </p>
-          <p className="mt-1">ICAI Empanelled CA Portal</p>
         </div>
       </div>
     </div>

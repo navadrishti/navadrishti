@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
 
     const { data: identity, error: identityError } = await supabase
       .from('company_ca_identities')
-      .select('id, user_id, company_user_id, status, permissions')
+      .select('id, user_id, company_user_id, status, permissions, must_change_password')
       .eq('user_id', user.id)
       .single();
 
@@ -62,6 +62,7 @@ export async function POST(request: NextRequest) {
       success: true,
       role: 'company_ca',
       token,
+      must_change_password: identity.must_change_password || false,
       company_ca: {
         identity_id: identity.id,
         company_user_id: identity.company_user_id,
@@ -78,7 +79,7 @@ export async function POST(request: NextRequest) {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
-      maxAge: 60 * 60 * 8
+      path: '/'
     });
 
     return response;

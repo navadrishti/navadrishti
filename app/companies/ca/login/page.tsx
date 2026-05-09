@@ -36,7 +36,13 @@ export default function CompanyCAPanelLoginPage() {
         return;
       }
 
-      router.push('/companies/ca');
+      try { sessionStorage.setItem('company_ca_tab_session', Date.now().toString()); } catch (e) {}
+      // Check if password change is mandatory on first login
+      if (payload.must_change_password) {
+        router.push('/companies/ca/change-password');
+      } else {
+        router.push('/companies/ca');
+      }
     } catch {
       setError('Unable to login. Please try again.');
     } finally {
