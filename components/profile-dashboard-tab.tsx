@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { User } from 'lucide-react'
+// User icon removed from heading
 import { useAuth } from '@/lib/auth-context'
 import { useOtpSender } from '@/hooks/use-otp-sender'
 import { Button } from '@/components/ui/button'
@@ -326,7 +326,6 @@ export function ProfileDashboardTab() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <User className="h-5 w-5" />
               Basic Information
             </CardTitle>
             <CardDescription>Manage your profile information for this account.</CardDescription>
