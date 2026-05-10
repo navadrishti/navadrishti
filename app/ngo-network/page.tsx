@@ -71,35 +71,29 @@ export default function NGONetworkPage() {
   return (
     <>
       <Header />
-      <main className="min-h-screen bg-slate-100">
-        <section className="bg-udaan-blue px-4 pb-10 pt-12">
-          <div className="mx-auto max-w-6xl">
-            <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-              <div>
-                <p className="text-sm font-medium uppercase tracking-[0.18em] text-white/70">Verified Directory</p>
-                <h1 className="mt-2 text-4xl font-extrabold leading-tight text-white md:text-5xl">NGO Network</h1>
-                <p className="mt-3 max-w-2xl text-base text-white/80 md:text-lg">
-                  Discover trusted NGOs with complete verification checks and connect directly.
-                </p>
+      <main className="min-h-screen bg-slate-50">
+        <section className="udaan-container px-0 lg:px-2 py-8">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight text-udaan-navy">NGO Network</h1>
+            <p className="mt-2 text-sm text-slate-600 max-w-2xl">Discover trusted NGOs with complete verification checks and connect directly.</p>
+          </div>
+
+          <div className="mt-6">
+            <div className="mb-6 grid gap-6 md:grid-cols-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search NGOs, city, or sector"
+                  className="h-11 pl-8"
+                />
               </div>
 
-            </div>
-
-            <div className="mt-8 rounded-2xl border border-white/15 bg-white/95 p-4 shadow-xl shadow-black/15">
-              <div className="flex flex-col gap-3 md:flex-row md:items-center">
+              <div className="flex gap-4">
                 <div className="relative flex-1">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <Input
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Search by NGO name, city, state or sector"
-                    className="h-11 border-slate-200 bg-white pl-9 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
-                  />
-                </div>
-
-                {sectors.length > 0 && (
                   <Select value={selectedSector} onValueChange={setSelectedSector}>
-                    <SelectTrigger className="h-11 w-full border-slate-200 bg-white text-slate-900 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 md:w-56">
+                    <SelectTrigger className="h-11 w-full">
                       <SelectValue placeholder="All sectors" />
                     </SelectTrigger>
                     <SelectContent>
@@ -109,19 +103,21 @@ export default function NGONetworkPage() {
                       ))}
                     </SelectContent>
                   </Select>
-                )}
+                </div>
 
                 {hasActiveFilters ? (
-                  <Button type="button" variant="outline" className="h-11 border-slate-200" onClick={clearFilters}>
-                    Clear Filters
-                  </Button>
+                  <div className="flex items-center">
+                    <Button type="button" variant="outline" size="sm" onClick={clearFilters}>
+                      Clear
+                    </Button>
+                  </div>
                 ) : null}
               </div>
             </div>
           </div>
         </section>
 
-        <section className="mx-auto max-w-6xl px-4 py-8">
+        <section className="udaan-container px-0 lg:px-2 py-8">
           <div className="mb-5 flex items-center justify-between">
             <p className="text-sm text-slate-600">
               Showing <span className="font-semibold text-slate-900">{ngos.length}</span> verified NGO{ngos.length !== 1 ? "s" : ""}
@@ -161,10 +157,10 @@ export default function NGONetworkPage() {
               {ngos.map((ngo, index) => (
                 <Card
                   key={ngo.id}
-                  className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg"
+                  className="rounded-lg border border-slate-200 bg-white"
                   style={{ animationDelay: `${index * 40}ms` }}
                 >
-                  <CardContent className="flex h-full flex-col p-5">
+                  <CardContent className="flex h-full flex-col p-4">
                     <div className="mb-4 flex items-start gap-4">
                       <Avatar className="h-14 w-14 flex-shrink-0 border-2 border-udaan-orange/25">
                         {ngo.profile_image ? (

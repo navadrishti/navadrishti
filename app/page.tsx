@@ -161,16 +161,16 @@ function HeroContent() {
               </Button>
             </Link>
             <div className="sm:col-span-3 flex flex-col gap-2 sm:flex-row sm:justify-center sm:gap-3">
-              <Link href="/government-admin/district-dashboard" className="w-full sm:w-64">
-                <Button className="hero-button h-10 px-5 text-xs text-white font-semibold shadow-lg hover:shadow-xl hover:opacity-90 w-full" style={{ backgroundColor: '#0067b9' }}>
-                  District Analytics
-                </Button>
-              </Link>
-              <Link href="/government-admin/state-dashboard" className="w-full sm:w-64">
-                <Button className="hero-button h-10 px-5 text-xs text-white font-semibold shadow-lg hover:shadow-xl hover:opacity-90 w-full" style={{ backgroundColor: '#F47B20' }}>
-                  State Analytics
-                </Button>
-              </Link>
+                 <Link href="/government-admin/district-dashboard" className="w-full sm:w-64">
+                   <Button className="hero-button h-10 px-5 text-xs bg-udaan-blue text-white font-semibold shadow-lg hover:shadow-xl hover:bg-udaan-orange/90 w-full">
+                     District Analytics Portal
+                   </Button>
+                 </Link>
+                 <Link href="/government-admin/state-dashboard" className="w-full sm:w-64">
+                   <Button className="hero-button h-10 px-5 text-xs bg-udaan-orange text-white font-semibold shadow-lg hover:shadow-xl hover:bg-udaan-orange/90 w-full">
+                     State Analytics Portal
+                   </Button>
+                 </Link>
             </div>
           </div>
         </div>
