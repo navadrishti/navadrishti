@@ -34,6 +34,7 @@ export async function POST(request: NextRequest) {
         ca_id: updatedAccount.ca_id,
         username: updatedAccount.username,
         display_name: updatedAccount.display_name,
+        must_change_password: updatedAccount.must_change_password,
       },
     });
 
