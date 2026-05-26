@@ -1,118 +1,276 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getNavadrishtCAFromRequest } from '@/lib/navadrishti-ca-auth';
 import { supabase } from '@/lib/db';
-import { getCAFromRequest } from '@/lib/server-ca-auth';
 
 export async function GET(request: NextRequest) {
   try {
-    getCAFromRequest(request);
+    // 1️⃣ Verify CA authentication
+    const caAccount = await getNavadrishtCAFromRequest(request);
 
-    const [projectsResult, milestonesResult, paymentsResult] = await Promise.all([
+    if (!caAccount) {
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      );
+    }
+
+    // 2️⃣ Run all dashboard queries in parallel
+    const [
+      individualsPendingResult,
+      companiesPendingResult,
+      ngosPendingResult,
+
+      individualsVerifiedResult,
+      companiesVerifiedResult,
+      ngosVerifiedResult,
+
+      individualsRejectedResult,
+      companiesRejectedResult,
+      ngosRejectedResult,
+    ] = await Promise.all([
+
+      // =========================
+      // PENDING / UNVERIFIED
+      // =========================
+
       supabase
-        .from('csr_projects')
-        .select('id, title, company_user_id, ngo_user_id, region, progress_percentage, total_budget, updated_at')
-        .order('updated_at', { ascending: false }),
+        .from('individual_verifications')
+        .select(`
+          id,
+          user_id,
+          verification_status,
+          created_at,
+          updated_at,
+          users (
+            id,
+            name,
+            email,
+            profile_image
+          )
+        `)
+        .eq('verification_status', 'unverified')
+        .limit(10)
+        .order('created_at', { ascending: false }),
+
       supabase
-        .from('csr_project_milestones')
-        .select('id, project_id, title, status, due_date, milestone_order, amount, updated_at')
-        .order('updated_at', { ascending: false }),
+        .from('company_verifications')
+        .select(`
+          id,
+          user_id,
+          verification_status,
+          company_name,
+          gst_number,
+          registration_number,
+          created_at,
+          updated_at,
+          users (
+            id,
+            name,
+            email,
+            profile_image
+          )
+        `)
+        .eq('verification_status', 'unverified')
+        .limit(10)
+        .order('created_at', { ascending: false }),
+
       supabase
-        .from('csr_payment_confirmations')
-        .select('id, project_id, milestone_id, payment_reference, amount, payment_status, confirmed_at, created_at')
-        .order('created_at', { ascending: false })
+        .from('ngo_verifications')
+        .select(`
+          id,
+          user_id,
+          verification_status,
+          ngo_name,
+          registration_number,
+          registration_type,
+          fcra_number,
+          created_at,
+          updated_at,
+          users (
+            id,
+            name,
+            email,
+            profile_image
+          )
+        `)
+        .eq('verification_status', 'unverified')
+        .limit(10)
+        .order('created_at', { ascending: false }),
+
+      // =========================
+      // VERIFIED COUNTS
+      // =========================
+
+      supabase
+        .from('individual_verifications')
+        .select('*')
+        .eq('verification_status', 'verified'),
+
+      supabase
+        .from('company_verifications')
+        .select('*')
+        .eq('verification_status', 'verified'),
+
+      supabase
+        .from('ngo_verifications')
+        .select('*')
+        .eq('verification_status', 'verified'),
+
+      // =========================
+      // REJECTED COUNTS
+      // =========================
+
+      supabase
+        .from('individual_verifications')
+        .select('*')
+        .eq('verification_status', 'rejected'),
+
+      supabase
+        .from('company_verifications')
+        .select('*')
+        .eq('verification_status', 'rejected'),
+
+      supabase
+        .from('ngo_verifications')
+        .select('*')
+        .eq('verification_status', 'rejected'),
     ]);
 
-    if (projectsResult.error || milestonesResult.error || paymentsResult.error) {
-      console.error('CA dashboard query error:', {
-        projectsError: projectsResult.error,
-        milestonesError: milestonesResult.error,
-        paymentsError: paymentsResult.error
-      });
+    // =========================
+    // 3️⃣ HANDLE ERRORS
+    // =========================
+
+    if (individualsPendingResult.error) {
+      console.error(
+        'Individuals query failed:',
+        individualsPendingResult.error
+      );
+
       return NextResponse.json(
-        { error: 'Failed to fetch CA dashboard data' },
+        { error: 'Failed to fetch individuals' },
         { status: 500 }
       );
     }
 
-    const projects = projectsResult.data ?? [];
-    const milestones = milestonesResult.data ?? [];
-    const payments = paymentsResult.data ?? [];
+    if (companiesPendingResult.error) {
+      console.error(
+        'Companies query failed:',
+        companiesPendingResult.error
+      );
 
-    const pendingEvidenceQueue = milestones
-      .filter((item: any) => item.status === 'submitted')
-      .slice(0, 10)
-      .map((item: any) => {
-        const project = projects.find((projectItem: any) => projectItem.id === item.project_id);
-        return {
-          milestone_id: item.id,
-          milestone_title: item.title,
-          project_id: item.project_id,
-          project_title: project?.title ?? 'Project',
-          due_date: item.due_date,
-          amount: item.amount,
-          milestone_order: item.milestone_order,
-          updated_at: item.updated_at
-        };
-      });
+      return NextResponse.json(
+        { error: 'Failed to fetch companies' },
+        { status: 500 }
+      );
+    }
 
-    const pendingPayments = payments
-      .filter((item: any) => item.payment_status === 'pending')
-      .slice(0, 10)
-      .map((item: any) => {
-        const project = projects.find((projectItem: any) => projectItem.id === item.project_id);
-        return {
-          payment_id: item.id,
-          payment_reference: item.payment_reference,
-          amount: item.amount,
-          project_id: item.project_id,
-          project_title: project?.title ?? 'Project',
-          milestone_id: item.milestone_id,
-          created_at: item.created_at
-        };
-      });
+    if (ngosPendingResult.error) {
+      console.error(
+        'NGOs query failed:',
+        ngosPendingResult.error
+      );
 
-    const today = new Date();
-    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString();
+      return NextResponse.json(
+        { error: 'Failed to fetch NGOs' },
+        { status: 500 }
+      );
+    }
 
-    const confirmedToday = payments.filter(
-      (item: any) => item.payment_status === 'confirmed' && item.confirmed_at && item.confirmed_at >= todayStart
-    ).length;
+    // =========================
+    // 4️⃣ CLEAN RESPONSE SHAPING
+    // =========================
 
-    const totalConfirmedFunds = payments
-      .filter((item: any) => item.payment_status === 'confirmed')
-      .reduce((sum: number, item: any) => sum + Number(item.amount || 0), 0);
+    const transformVerification = (item: any) => ({
+      verification_id: item.id,
+      user_id: item.user_id,
 
-    const overallProgress = projects.length > 0
-      ? Math.round(
-          projects.reduce((sum: number, item: any) => sum + Number(item.progress_percentage || 0), 0) /
-            projects.length
-        )
-      : 0;
+      name: item.users?.name || 'Unknown',
+      email: item.users?.email || 'N/A',
+      profile_image: item.users?.profile_image || null,
+
+      verification_status: item.verification_status,
+
+      created_at: item.created_at,
+      updated_at: item.updated_at,
+    });
+
+    const individuals =
+      (individualsPendingResult.data || []).map(transformVerification);
+
+    const companies =
+      (companiesPendingResult.data || []).map((item: any) => ({
+        ...transformVerification(item),
+
+        company_name: item.company_name,
+        gst_number: item.gst_number,
+        registration_number: item.registration_number,
+      }));
+
+    const ngos =
+      (ngosPendingResult.data || []).map((item: any) => ({
+        ...transformVerification(item),
+
+        ngo_name: item.ngo_name,
+        registration_number: item.registration_number,
+        registration_type: item.registration_type,
+        fcra_number: item.fcra_number,
+      }));
+
+    // =========================
+    // 5️⃣ RETURN DASHBOARD DATA
+    // =========================
 
     return NextResponse.json({
       success: true,
-      stats: {
-        total_projects: projects.length,
-        pending_evidence_reviews: pendingEvidenceQueue.length,
-        pending_payment_confirmations: pendingPayments.length,
-        payments_confirmed_today: confirmedToday,
-        total_confirmed_funds: totalConfirmedFunds,
-        overall_progress_percentage: overallProgress
+
+      ca: {
+        id: caAccount.id,
+        username: caAccount.username,
+        display_name: caAccount.display_name,
       },
-      pendingEvidenceQueue,
-      pendingPayments
+
+      stats: {
+        individuals: {
+          unverified: individuals.length,
+          verified: individualsVerifiedResult.data?.length || 0,
+          rejected: individualsRejectedResult.data?.length || 0,
+          total:
+            individuals.length +
+            (individualsVerifiedResult.data?.length || 0) +
+            (individualsRejectedResult.data?.length || 0),
+        },
+
+        companies: {
+          unverified: companies.length,
+          verified: companiesVerifiedResult.data?.length || 0,
+          rejected: companiesRejectedResult.data?.length || 0,
+          total:
+            companies.length +
+            (companiesVerifiedResult.data?.length || 0) +
+            (companiesRejectedResult.data?.length || 0),
+        },
+
+        ngos: {
+          unverified: ngos.length,
+          verified: ngosVerifiedResult.data?.length || 0,
+          rejected: ngosRejectedResult.data?.length || 0,
+          total:
+            ngos.length +
+            (ngosVerifiedResult.data?.length || 0) +
+            (ngosRejectedResult.data?.length || 0),
+        },
+      },
+
+      individuals,
+      companies,
+      ngos,
     });
 
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      (error.message === 'CA authentication required' || error.message === 'Invalid CA token')
-    ) {
-      return NextResponse.json({ error: error.message }, { status: 401 });
-    }
-
+  } catch (error: any) {
     console.error('CA dashboard error:', error);
+
     return NextResponse.json(
-      { error: 'Failed to fetch dashboard data' },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }
