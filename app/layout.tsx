@@ -1,8 +1,6 @@
 import type { Metadata } from 'next'
-import { Suspense } from 'react'
 import { cookies } from 'next/headers'
 import './globals.css'
-import '@/styles/colors.css'
 import { AuthProvider } from '@/lib/auth-context'
 import { ThemeProvider } from '@/components/theme-provider'
 import { PageTransition } from '@/components/page-transition'
@@ -117,11 +115,9 @@ export default async function RootLayout({
       <body className="min-h-screen bg-background text-foreground">
         <ThemeProvider>
           <AuthProvider initialToken={token} initialUser={initialUser}>
-            <Suspense fallback={null}>
-              <PageTransition>
-                {children}
-              </PageTransition>
-            </Suspense>
+            <PageTransition>
+              {children}
+            </PageTransition>
             <Toaster 
               position="top-right" 
               richColors={false}

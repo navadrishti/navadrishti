@@ -13,10 +13,11 @@ const buttonVariants = cva(
         destructive:
           "bg-destructive text-destructive-foreground hover:bg-destructive/90 hover:text-destructive-foreground",
         outline:
-          "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
+          "border border-input bg-background hover:bg-slate-100 hover:text-slate-900",
         secondary:
           "bg-secondary text-secondary-foreground hover:bg-secondary/80 hover:text-secondary-foreground",
-        ghost: "hover:bg-accent hover:text-accent-foreground",
+        ghost: "hover:bg-slate-50 hover:text-slate-900",
+        "ghost-no-bg": "bg-transparent text-blue-600 hover:!text-black",
         link: "text-primary underline-offset-4 hover:underline",
         // Add Udaan specific button variants
         "udaan-primary": "bg-udaan-orange text-white hover:bg-udaan-orange/90 hover:text-white",

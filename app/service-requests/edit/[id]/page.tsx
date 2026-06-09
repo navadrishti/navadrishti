@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect, use } from 'react'
+import React, { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Loader2, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, Loader2 } from 'lucide-react'
 
 import { Header } from '@/components/header'
 import { useAuth } from '@/lib/auth-context'
@@ -31,6 +31,7 @@ type RequestProject = {
 type NeedDraft = {
   title: string
   description: string
+  images: string
   request_type: string
   category: string
   location: string
@@ -51,9 +52,16 @@ type NeedDraft = {
   infrastructure_scope: string
 }
 
+type UploadProgressState = {
+  active: boolean
+  current: number
+  total: number
+}
+
 const createEmptyNeed = (): NeedDraft => ({
   title: '',
   description: '',
+  images: '',
   request_type: '',
   category: '',
   location: '',
@@ -74,7 +82,7 @@ const createEmptyNeed = (): NeedDraft => ({
   infrastructure_scope: ''
 })
 
-const timelinePattern = /^(?:anytime|\d+\s*(?:day|days|week|weeks|month|months|year|years)|\d{4}-\d{2}-\d{2})$/i
+const timelinePattern = /^(?:\d+\s*(?:day|days|week|weeks|month|months|year|years)|\d{4}-\d{2}-\d{2})$/i
 
 const isValidTimelineValue = (value: string) => timelinePattern.test(value.trim())
 const isValidPositiveInteger = (value: string) => /^\d+$/.test(value.trim()) && Number(value) > 0
@@ -88,14 +96,19 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [loadingProjects, setLoadingProjects] = useState(false)
-  const [projectMode, setProjectMode] = useState<'new' | 'existing'>('existing')
+  const [projectMode] = useState<'existing'>('existing')
+  const [projectAvailableForCsr, setProjectAvailableForCsr] = useState(true)
   const [projects, setProjects] = useState<RequestProject[]>([])
   const [additionalNeeds, setAdditionalNeeds] = useState<NeedDraft[]>([])
+  const [mainUploadProgress, setMainUploadProgress] = useState<UploadProgressState | null>(null)
+  const [additionalUploadProgress, setAdditionalUploadProgress] = useState<Record<number, UploadProgressState>>({})
   const [formData, setFormData] = useState({
     projectId: '',
     project_title: '',
     project_description: '',
     project_location: '',
+    project_expected_beneficiaries: '',
+    project_valid_until: '',
     project_timeline: '',
     project_category: '',
     title: '',
@@ -193,9 +206,8 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
         const projectCategory = req.category || requirements?.project_category || requestProject?.category || ''
 
         if (requestProject?.id) {
-          setProjectMode('existing')
-        } else {
-          setProjectMode('new')
+          // keep projectMode as 'existing' — edit page does not allow creating a new project
+          // projectMode remains fixed to 'existing'
         }
 
         setFormData({
@@ -204,9 +216,12 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
           project_description: requestProject?.description || '',
           project_location: requestProject?.exact_address || requestProject?.location || req.location || '',
           project_timeline: requestProject?.timeline || requirements.timeline || req.timeline || '',
+          project_expected_beneficiaries: String(requestProject?.expected_beneficiaries || requirements?.beneficiary_count || ''),
+          project_valid_until: requestProject?.valid_until || requirements?.project_valid_until || '',
           project_category: projectCategory,
           title: req.title || '',
           description: req.description || '',
+          images: Array.isArray(req.images) ? req.images.join('\n') : String(req.images || requirements?.images || req.image_url || ''),
           request_type: requirements.request_type || req.category || '',
           category: req.category || '',
           location: req.location || '',
@@ -248,6 +263,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
                   return {
                     title: item.title || '',
                     description: item.description || '',
+                    images: Array.isArray(item.images) ? item.images.join('\n') : String(item.images || relatedRequirements?.images || item.image_url || ''),
                     request_type: relatedRequirements.request_type || item.category || '',
                     category: item.category || '',
                     location: item.location || requestProject.exact_address || requestProject.location || '',
@@ -290,19 +306,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
     setFormData((prev) => ({ ...prev, [field]: value }))
   }
 
-  const handleProjectSelect = (projectId: string) => {
-    const selectedProject = projects.find((project) => project.id === projectId)
-    setFormData((prev) => ({
-      ...prev,
-      projectId,
-      project_title: selectedProject?.title || prev.project_title,
-      project_description: selectedProject?.description || prev.project_description,
-      project_location: selectedProject?.exact_address || selectedProject?.location || prev.project_location,
-      project_timeline: selectedProject?.timeline || prev.project_timeline,
-      location: selectedProject?.exact_address || selectedProject?.location || prev.location,
-      timeline: selectedProject?.timeline || prev.timeline
-    }))
-  }
+  // project selection is not editable on the edit-need page; keep existing project assignment only
 
   const activeProjectLocation = projectMode === 'existing'
     ? projects.find((project) => project.id === formData.projectId)?.exact_address || projects.find((project) => project.id === formData.projectId)?.location || formData.project_location
@@ -322,6 +326,114 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
 
   const updateAdditionalNeed = (index: number, field: keyof NeedDraft, value: string) => {
     setAdditionalNeeds((prev) => prev.map((need, needIndex) => (needIndex === index ? { ...need, [field]: value } : need)))
+  }
+
+  const parseImageUrls = (value: string) => {
+    return value
+      .split(/[\n,]/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+  }
+
+  const appendImageUrls = (currentValue: string, urls: string[]) => {
+    if (urls.length === 0) return currentValue
+    return [...parseImageUrls(currentValue), ...urls].join('\n')
+  }
+
+  const removeImageUrl = (currentValue: string, urlToRemove: string) => {
+    return parseImageUrls(currentValue).filter((url) => url !== urlToRemove).join('\n')
+  }
+
+  const handleUpload = async (
+    files: FileList | null,
+    onProgress?: (current: number, total: number) => void
+  ) => {
+    if (!files || files.length === 0) return { urls: [] as string[], failures: [] as string[] }
+
+    const token = localStorage.getItem('token')
+    const urls: string[] = []
+    const failures: string[] = []
+    const total = Array.from(files).length
+    let completed = 0
+
+    for (const file of Array.from(files)) {
+      try {
+        const uploadData = new FormData()
+        uploadData.append('file', file)
+
+        const response = await fetch('/api/upload', {
+          method: 'POST',
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          body: uploadData
+        })
+
+        const data = await response.json()
+        if (!response.ok || !data.success || !data.data?.url) {
+          throw new Error(data.error || 'Failed to upload image')
+        }
+
+        urls.push(data.data.url)
+      } catch {
+        failures.push(file.name)
+      } finally {
+        completed += 1
+        onProgress?.(completed, total)
+      }
+    }
+
+    return { urls, failures }
+  }
+
+  const handleMainNeedUpload = async (files: FileList | null) => {
+    const total = files?.length || 0
+    if (total > 0) {
+      setMainUploadProgress({ active: true, current: 0, total })
+    }
+
+    const result = await handleUpload(files, (current, totalCount) => {
+      setMainUploadProgress({ active: true, current, total: totalCount })
+    })
+
+    if (total > 0) {
+      setMainUploadProgress({ active: false, current: total, total })
+    }
+    if (result.urls.length > 0) {
+      setFormData((prev) => ({ ...prev, images: appendImageUrls(prev.images, result.urls) }))
+    }
+    if (result.failures.length > 0) {
+      toast({ title: 'Partial Upload Failure', description: `${result.failures.length} image(s) could not be uploaded for the main need.`, variant: 'destructive' })
+    }
+  }
+
+  const handleAdditionalNeedUpload = async (index: number, files: FileList | null) => {
+    const total = files?.length || 0
+    if (total > 0) {
+      setAdditionalUploadProgress((prev) => ({
+        ...prev,
+        [index]: { active: true, current: 0, total }
+      }))
+    }
+
+    const result = await handleUpload(files, (current, totalCount) => {
+      setAdditionalUploadProgress((prev) => ({
+        ...prev,
+        [index]: { active: true, current, total: totalCount }
+      }))
+    })
+
+    if (total > 0) {
+      setAdditionalUploadProgress((prev) => ({
+        ...prev,
+        [index]: { active: false, current: total, total }
+      }))
+    }
+
+    if (result.urls.length > 0) {
+      setAdditionalNeeds((prev) => prev.map((need, needIndex) => needIndex === index ? { ...need, images: appendImageUrls(need.images, result.urls) } : need))
+    }
+    if (result.failures.length > 0) {
+      toast({ title: 'Partial Upload Failure', description: `${result.failures.length} image(s) could not be uploaded for Additional need ${index + 1}.`, variant: 'destructive' })
+    }
   }
 
   const addAdditionalNeed = () => {
@@ -347,16 +459,13 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
       if (isBlank(need.request_type)) return `${label}: need type is required.`
       if (!SERVICE_REQUEST_CATEGORIES.includes(need.request_type)) return `${label}: select a valid need type.`
 
-      if (isBlank(need.timeline)) return `${label}: timeline / deadline is required.`
-      if (!isValidTimelineValue(need.timeline)) return `${label}: timeline must be Anytime, a duration like 4 weeks, or a date like 2026-05-15.`
 
       if (isBlank(need.budget)) return `${label}: budget range is required.`
       if (!['Under INR 25,000', 'INR 25,000 - INR 1,00,000', 'INR 1,00,000 - INR 5,00,000', 'INR 5,00,000+', 'Not specified'].includes(need.budget)) {
         return `${label}: select a valid budget range.`
       }
 
-      if (isBlank(need.beneficiary_count)) return `${label}: beneficiary count is required.`
-      if (!isValidPositiveInteger(need.beneficiary_count)) return `${label}: beneficiary count must be a positive whole number.`
+      // beneficiary_count and timeline inherited from project; do not validate here
 
       if (isBlank(need.impact_description)) return `${label}: impact description is required.`
       if (String(need.impact_description).trim().length < 20) return `${label}: impact description must be at least 20 characters.`
@@ -386,7 +495,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
       return null
     }
 
-    if ([formData.title, formData.description, formData.request_type, formData.timeline, formData.budget, formData.beneficiary_count, formData.impact_description, formData.contactInfo].some(isBlank)) {
+    if ([formData.title, formData.description, formData.request_type, formData.budget, formData.impact_description, formData.contactInfo].some(isBlank)) {
       toast({ title: 'Validation Error', description: 'Every main need field must be filled.', variant: 'destructive' })
       return
     }
@@ -402,7 +511,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
     }
 
     if (!isValidTimelineValue(formData.timeline)) {
-      toast({ title: 'Validation Error', description: 'Timeline must be Anytime, a duration like 4 weeks, or a date like 2026-05-15.', variant: 'destructive' })
+      toast({ title: 'Validation Error', description: 'Timeline must be a duration like 4 weeks or a date like 2026-05-15.', variant: 'destructive' })
       return
     }
 
@@ -416,50 +525,12 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
       return
     }
 
-    if (projectMode === 'new' && [formData.project_title, formData.project_description, formData.project_location, formData.project_timeline].some(isBlank)) {
-      toast({ title: 'Validation Error', description: 'Project title, description, exact address, and timeline are required.', variant: 'destructive' })
-      return
-    }
+    // Project creation/validation is not allowed from the edit need page.
+    // Edit page only validates need-level fields.
 
-    if (isBlank(formData.project_category) || !CSR_SCHEDULE_VII_CATEGORIES.includes(formData.project_category)) {
-      toast({ title: 'Validation Error', description: 'Select a valid project category.', variant: 'destructive' })
-      return
-    }
+    // projectMode is fixed to 'existing' on edit page; assume formData.projectId is already set.
 
-    if (projectMode === 'new') {
-      if (String(formData.project_title).trim().length < 3) {
-        toast({ title: 'Validation Error', description: 'Project title must be at least 3 characters.', variant: 'destructive' })
-        return
-      }
-
-      if (String(formData.project_description).trim().length < 20) {
-        toast({ title: 'Validation Error', description: 'Project description must be at least 20 characters.', variant: 'destructive' })
-        return
-      }
-
-      if (String(formData.project_location).trim().length < 10) {
-        toast({ title: 'Validation Error', description: 'Project exact address must be detailed enough to locate the project.', variant: 'destructive' })
-        return
-      }
-
-      if (!isValidTimelineValue(formData.project_timeline)) {
-        toast({ title: 'Validation Error', description: 'Project timeline must be Anytime, a duration like 4 weeks, or a date like 2026-05-15.', variant: 'destructive' })
-        return
-      }
-    }
-
-    if (projectMode === 'existing' && !formData.projectId) {
-      toast({ title: 'Validation Error', description: 'Select an existing project or switch to creating a new one.', variant: 'destructive' })
-      return
-    }
-
-    for (const [index, need] of additionalNeeds.entries()) {
-      const validationError = validateNeed(need, `Additional need ${index + 1}`)
-      if (validationError) {
-        toast({ title: 'Validation Error', description: validationError, variant: 'destructive' })
-        return
-      }
-    }
+    // additionalNeeds are not created from the edit need page
 
     setSubmitting(true)
 
@@ -470,16 +541,8 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
       infrastructure_scope: formData.infrastructure_scope
     }
 
-    const projectPayload = projectMode === 'new'
-      ? {
-          title: formData.project_title,
-          description: formData.project_description,
-          location: formData.project_location,
-          exact_address: formData.project_location,
-          timeline: formData.project_timeline,
-          category: formData.project_category
-        }
-      : null
+    // On edit page we don't create new projects; projectPayload is null
+    const projectPayload = null
 
     try {
       const token = localStorage.getItem('token')
@@ -513,6 +576,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
         },
         body: JSON.stringify({
           ...formData,
+          images: parseImageUrls(formData.images),
           category: formData.project_category,
           project_category: formData.project_category,
           projectId: activeProjectId || undefined,
@@ -523,61 +587,12 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
       })
 
       const data = await response.json()
-      if (data.success) {
-        for (const need of additionalNeeds) {
-          const createResponse = await fetch('/api/service-requests', {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              projectId: activeProjectId || undefined,
-              title: need.title,
-              description: need.description,
-              request_type: need.request_type,
-              category: formData.project_category,
-              project_category: formData.project_category,
-              location: activeProjectLocation,
-              urgency: need.urgency,
-              timeline: need.timeline,
-              budget: need.budget,
-              estimated_budget: need.budget,
-              beneficiary_count: need.beneficiary_count,
-              impact_description: need.impact_description,
-              contactInfo: need.contactInfo,
-              target_amount: need.target_amount,
-              target_quantity: need.target_quantity,
-              current_amount: need.current_amount,
-              current_quantity: need.current_quantity,
-              project_context: {
-                project_title: formData.project_title,
-                project_location: formData.project_location,
-                project_description: formData.project_description,
-                project_timeline: formData.project_timeline,
-                project_category: formData.project_category
-              },
-              details: {
-                material_items: need.material_items,
-                skill_role: need.skill_role,
-                skill_duration: need.skill_duration,
-                infrastructure_scope: need.infrastructure_scope
-              }
-            })
-          })
-
-          const createData = await createResponse.json()
-          if (!createResponse.ok || !createData.success) {
-            toast({ title: 'Partial Update', description: createData.error || 'Main need saved, but one additional need failed to create.', variant: 'destructive' })
-            break
-          }
+        if (data.success) {
+          toast({ title: 'Success', description: 'Need updated successfully' })
+          router.push('/service-requests?view=my-requests')
+        } else {
+          toast({ title: 'Error', description: data.error || 'Failed to update need', variant: 'destructive' })
         }
-
-        toast({ title: 'Success', description: 'Need updated successfully' })
-        router.push('/service-requests?view=my-requests')
-      } else {
-        toast({ title: 'Error', description: data.error || 'Failed to update need', variant: 'destructive' })
-      }
     } catch {
       toast({ title: 'Error', description: 'Failed to update need', variant: 'destructive' })
     } finally {
@@ -615,105 +630,6 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="space-y-4 rounded-lg border p-4 bg-muted/30">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <h3 className="font-semibold">Project Context</h3>
-                      <p className="text-sm text-muted-foreground">Keep the need attached to the correct initiative.</p>
-                    </div>
-                    <div className="flex w-full flex-wrap rounded-md border bg-background p-1 text-sm sm:w-auto">
-                      <button type="button" onClick={() => setProjectMode('new')} className={`flex-1 rounded px-3 py-1.5 sm:flex-none ${projectMode === 'new' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'}`}>
-                        New Project
-                      </button>
-                      <button type="button" onClick={() => setProjectMode('existing')} className={`flex-1 rounded px-3 py-1.5 sm:flex-none ${projectMode === 'existing' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'}`}>
-                        Existing Project
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    <Label htmlFor="project_category">Project Category *</Label>
-                    <StyledSelect
-                      value={formData.project_category}
-                      options={CSR_SCHEDULE_VII_CATEGORIES}
-                      placeholder="Select project category"
-                      onValueChange={(value) => handleInput('project_category', value)}
-                    />
-                  </div>
-
-                  {projectMode === 'existing' ? (
-                    <div className="space-y-3">
-                      <Label htmlFor="projectId">Select Project</Label>
-                      <Select value={formData.projectId} onValueChange={handleProjectSelect}>
-                        <SelectTrigger>
-                          <SelectValue placeholder={loadingProjects ? 'Loading projects...' : 'Choose a project'} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {projects.length === 0 ? (
-                            <SelectItem value="__no_projects__" disabled>
-                              No projects available
-                            </SelectItem>
-                          ) : (
-                            projects.map((project) => (
-                              <SelectItem key={project.id} value={project.id}>
-                                {project.title} - {project.exact_address || project.location}
-                              </SelectItem>
-                            ))
-                          )}
-                        </SelectContent>
-                      </Select>
-                      {projects.length === 0 && !loadingProjects && (
-                        <p className="text-xs text-muted-foreground">No projects found yet. Switch to New Project to create one.</p>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div>
-                        <Label htmlFor="project_title">Project Title *</Label>
-                        <Input id="project_title" value={formData.project_title} onChange={(e) => handleInput('project_title', e.target.value)} placeholder="e.g., Rural Classroom Setup" required />
-                      </div>
-                      <div>
-                        <Label htmlFor="project_location">Project Exact Address *</Label>
-                        <Input id="project_location" value={formData.project_location} onChange={(e) => handleInput('project_location', e.target.value)} placeholder="Street, area, city, state, pincode" required />
-                      </div>
-                      <div className="md:col-span-2">
-                        <Label htmlFor="project_description">Project Description *</Label>
-                        <Textarea id="project_description" value={formData.project_description} onChange={(e) => handleInput('project_description', e.target.value)} rows={3} placeholder="Describe the broader initiative and objective." required />
-                      </div>
-                      <div className="md:col-span-2">
-                        <Label htmlFor="project_timeline">Project Timeline *</Label>
-                        <Input id="project_timeline" value={formData.project_timeline} onChange={(e) => handleInput('project_timeline', e.target.value)} placeholder="Anytime, 4 weeks, 2026-05-15" required />
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="rounded-lg border bg-background p-4 shadow-sm">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Project Summary</p>
-                      <h3 className="text-lg font-semibold">{activeProjectSummary?.title || 'Project not set yet'}</h3>
-                      <p className="text-sm text-muted-foreground">
-                        {activeProjectSummary?.location || 'Add an exact address to keep the need group consistent.'}
-                      </p>
-                    </div>
-                    <div className="grid gap-2 text-sm sm:text-right">
-                      <div>
-                        <span className="font-medium">Total needs:</span> {totalNeeds}
-                      </div>
-                      <div>
-                        <span className="font-medium">Additional needs:</span> {additionalNeeds.length}
-                      </div>
-                      <div>
-                        <span className="font-medium">Timeline:</span> {activeProjectSummary?.timeline || 'Not set'}
-                      </div>
-                    </div>
-                  </div>
-                  {activeProjectSummary?.description && (
-                    <p className="mt-3 text-sm text-muted-foreground">{activeProjectSummary.description}</p>
-                  )}
-                </div>
-
                 <div>
                   <Label htmlFor="title">Need Title *</Label>
                   <Input id="title" value={formData.title} onChange={(e) => handleInput('title', e.target.value)} required />
@@ -722,6 +638,49 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
                 <div>
                   <Label htmlFor="description">Description *</Label>
                   <Textarea id="description" value={formData.description} onChange={(e) => handleInput('description', e.target.value)} rows={4} required />
+                </div>
+
+                <div>
+                  <Label htmlFor="images">Images</Label>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+                    <label className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-400">
+                      Choose files
+                      <input id="main-need-images" type="file" accept="image/*" multiple className="sr-only" onChange={(event) => void handleMainNeedUpload(event.target.files)} />
+                    </label>
+                    <div className="flex min-w-0 flex-1 flex-col gap-1">
+                      <span className="text-sm text-gray-600">{parseImageUrls(formData.images).length > 0 ? `${parseImageUrls(formData.images).length} file(s) selected` : 'No files chosen'}</span>
+                      {mainUploadProgress?.active && (
+                        <div className="flex items-center gap-2">
+                          <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200 sm:w-40">
+                            <div
+                              className="h-full rounded-full bg-blue-600 transition-all"
+                              style={{ width: `${Math.max(5, (mainUploadProgress.current / Math.max(1, mainUploadProgress.total)) * 100)}%` }}
+                            />
+                          </div>
+                          <span className="shrink-0 text-xs text-gray-500">{mainUploadProgress.current}/{mainUploadProgress.total}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {parseImageUrls(formData.images).length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-3">
+                      {parseImageUrls(formData.images).map((url) => (
+                        <div key={url} className="relative h-20 w-20 overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
+                          <img src={url} alt="uploaded" className="h-full w-full object-cover" />
+                          <button
+                            type="button"
+                            onClick={() => setFormData((prev) => ({ ...prev, images: removeImageUrl(prev.images, url) }))}
+                            className="absolute right-1 top-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-white hover:bg-red-600"
+                            aria-label="Remove image"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <p className="mt-1 text-xs text-muted-foreground">Leave blank to show the no-image placeholder on request cards.</p>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -739,16 +698,8 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
                   </div>
 
                   <div>
-                    <Label htmlFor="beneficiary_count">Beneficiary Count *</Label>
-                    <Input
-                      id="beneficiary_count"
-                      type="number"
-                      min="1"
-                      step="1"
-                      value={formData.beneficiary_count}
-                      onChange={(e) => handleInput('beneficiary_count', e.target.value)}
-                      required
-                    />
+                    <Label>Beneficiary Count</Label>
+                    <div className="mt-1 text-sm text-muted-foreground">Inherited from project: {formData.project_expected_beneficiaries || 'Not set'}</div>
                   </div>
                 </div>
 
@@ -763,22 +714,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
                   />
                 </div>
 
-                <div>
-                  <Label htmlFor="timeline">Timeline / Deadline *</Label>
-                  <div className="mt-2 flex gap-2">
-                    <Input
-                      id="timeline"
-                      value={formData.timeline}
-                      onChange={(e) => handleInput('timeline', e.target.value)}
-                      placeholder="Anytime, 4 weeks, 2026-05-15"
-                      required
-                    />
-                    <Button type="button" variant="outline" onClick={() => handleInput('timeline', 'Anytime')}>
-                      Anytime
-                    </Button>
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground">Use Anytime, a duration like 4 weeks, or a date like 2026-05-15.</p>
-                </div>
+                {/* Timeline is inherited from project; do not edit per new UX */}
 
                 {formData.request_type === 'Material Need' && (
                   <div className="rounded-lg border p-4 space-y-4">
@@ -829,141 +765,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
                   </div>
                 )}
 
-                <div className="space-y-4 rounded-lg border p-4 bg-muted/30">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <h3 className="font-semibold">Additional Needs</h3>
-                      <p className="text-sm text-muted-foreground">Add other needs under the same project.</p>
-                    </div>
-                    <Button type="button" variant="outline" onClick={addAdditionalNeed} className="w-full sm:w-auto">
-                      <Plus size={16} className="mr-2" />
-                      Add Need
-                    </Button>
-                  </div>
-
-                  <div className="space-y-4">
-                    {additionalNeeds.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">No additional needs added yet.</p>
-                    ) : (
-                      additionalNeeds.map((need, index) => (
-                        <div key={index} className="rounded-lg border bg-background p-4 space-y-4">
-                          <div className="flex items-center justify-between gap-3">
-                            <div>
-                              <h4 className="font-semibold">Extra Need {index + 1}</h4>
-                              <p className="text-sm text-muted-foreground">This will be created as a separate need entry.</p>
-                            </div>
-                            <Button type="button" variant="ghost" onClick={() => removeAdditionalNeed(index)} className="text-red-600 hover:text-red-700 hover:bg-red-50">
-                              <Trash2 size={16} className="mr-2" />
-                              Remove
-                            </Button>
-                          </div>
-
-                          <div className="grid gap-4">
-                            <div>
-                              <Label htmlFor={`extra_title-${index}`}>Need Title *</Label>
-                              <Input id={`extra_title-${index}`} value={need.title} onChange={(e) => updateAdditionalNeed(index, 'title', e.target.value)} placeholder="e.g., Desk and chair support" required />
-                            </div>
-
-                            <div>
-                              <Label htmlFor={`extra_description-${index}`}>Need Description *</Label>
-                              <Textarea id={`extra_description-${index}`} value={need.description} onChange={(e) => updateAdditionalNeed(index, 'description', e.target.value)} rows={4} placeholder="Describe this need in detail." required />
-                            </div>
-
-                            <div className="grid gap-4 md:grid-cols-2">
-                              <div>
-                                <Label htmlFor={`extra_request_type-${index}`}>Need Type *</Label>
-                                <Select value={need.request_type} onValueChange={(value) => {
-                                  updateAdditionalNeed(index, 'request_type', value)
-                                  updateAdditionalNeed(index, 'category', value)
-                                }}>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select need type" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {SERVICE_REQUEST_CATEGORIES.map((category) => (
-                                      <SelectItem key={category} value={category}>{category}</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-
-                            </div>
-
-                            <div className="grid gap-4 md:grid-cols-2">
-                              <div>
-                                <Label htmlFor={`extra_beneficiary_count-${index}`}>Beneficiary Count *</Label>
-                                <Input id={`extra_beneficiary_count-${index}`} type="number" min="1" step="1" value={need.beneficiary_count} onChange={(e) => updateAdditionalNeed(index, 'beneficiary_count', e.target.value)} placeholder="e.g., 100" required />
-                              </div>
-                            </div>
-
-                            <div className="grid gap-4 md:grid-cols-2">
-                              <div>
-                                <Label htmlFor={`extra_impact-${index}`}>Impact Description *</Label>
-                                <Textarea id={`extra_impact-${index}`} value={need.impact_description} onChange={(e) => updateAdditionalNeed(index, 'impact_description', e.target.value)} rows={3} placeholder="What changes after this need is fulfilled?" required />
-                              </div>
-                              <div>
-                                <Label htmlFor={`extra_timeline-${index}`}>Timeline / Deadline *</Label>
-                                <Input id={`extra_timeline-${index}`} value={need.timeline} onChange={(e) => updateAdditionalNeed(index, 'timeline', e.target.value)} placeholder="Anytime, 4 weeks, 2026-05-15" required />
-                              </div>
-                            </div>
-
-                            {need.request_type === 'Material Need' && (
-                              <div className="rounded-lg border p-4 space-y-4">
-                                <div>
-                                  <h4 className="font-semibold">Material Details</h4>
-                                </div>
-                                <div className="grid gap-4 md:grid-cols-2">
-                                  <div>
-                                    <Label htmlFor={`extra_material_items-${index}`}>Items Needed *</Label>
-                                    <Input id={`extra_material_items-${index}`} value={need.material_items} onChange={(e) => updateAdditionalNeed(index, 'material_items', e.target.value)} placeholder="e.g., books, notebooks" required />
-                                  </div>
-                                  <div>
-                                    <Label htmlFor={`extra_material_quantity-${index}`}>Quantity *</Label>
-                                    <Input id={`extra_material_quantity-${index}`} value={need.target_quantity} onChange={(e) => updateAdditionalNeed(index, 'target_quantity', e.target.value)} placeholder="e.g., 100" required />
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-
-                            {need.request_type === 'Skill / Service Need' && (
-                              <div className="rounded-lg border p-4 space-y-4">
-                                <div>
-                                  <h4 className="font-semibold">Skill / Service Details</h4>
-                                </div>
-                                <div className="grid gap-4 md:grid-cols-2">
-                                  <div>
-                                    <Label htmlFor={`extra_skill_role-${index}`}>Role Needed *</Label>
-                                    <Input id={`extra_skill_role-${index}`} value={need.skill_role} onChange={(e) => updateAdditionalNeed(index, 'skill_role', e.target.value)} placeholder="e.g., Mathematics teacher" required />
-                                  </div>
-                                  <div>
-                                    <Label htmlFor={`extra_skill_people-${index}`}>People Needed *</Label>
-                                    <Input id={`extra_skill_people-${index}`} value={need.target_quantity} onChange={(e) => updateAdditionalNeed(index, 'target_quantity', e.target.value)} placeholder="e.g., 3" required />
-                                  </div>
-                                  <div className="md:col-span-2">
-                                    <Label htmlFor={`extra_skill_duration-${index}`}>Duration *</Label>
-                                    <Input id={`extra_skill_duration-${index}`} value={need.skill_duration} onChange={(e) => updateAdditionalNeed(index, 'skill_duration', e.target.value)} placeholder="e.g., 1 month" required />
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-
-                            {need.request_type === 'Infrastructure Project' && (
-                              <div className="rounded-lg border p-4 space-y-4">
-                                <div>
-                                  <h4 className="font-semibold">Infrastructure Scope</h4>
-                                </div>
-                                <div className="md:col-span-2">
-                                  <Label htmlFor={`extra_infrastructure_scope-${index}`}>Scope *</Label>
-                                  <Textarea id={`extra_infrastructure_scope-${index}`} value={need.infrastructure_scope} onChange={(e) => updateAdditionalNeed(index, 'infrastructure_scope', e.target.value)} rows={3} placeholder="e.g., Build two classrooms and one washroom block." required />
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
+                
 
                 <div className="flex flex-col gap-3 pt-4 sm:flex-row">
                   <Button type="submit" disabled={submitting} className="w-full flex-1">

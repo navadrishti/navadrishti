@@ -46,6 +46,15 @@ function safeNoteFromMeta(meta: any): string {
   return String(meta.note || '').trim()
 }
 
+function isProjectAvailableForCsr(requestItem: any): boolean {
+  const projectContext = safeJsonObject(requestItem?.project_context)
+  const assignment = safeJsonObject(projectContext?.csr_assignment)
+  if (projectContext?.csr_project_available_for_csr === false) return false
+  if (assignment?.mode === 'company_project_handoff') return false
+  if (Number(assignment?.assigned_company_id || 0) > 0) return false
+  return true
+}
+
 function safeJsonObject(value: any): Record<string, any> {
   if (!value) return {}
   if (typeof value === 'object') return value
@@ -157,16 +166,19 @@ export async function GET(request: NextRequest) {
       const grouped = new Map<string, any>()
 
       for (const need of listingRequests) {
+        const normalizedNeed = need as any
+        const normalizedProject = Array.isArray(normalizedNeed.project) ? normalizedNeed.project[0] : normalizedNeed.project
+        const normalizedRequester = Array.isArray(normalizedNeed.requester) ? normalizedNeed.requester[0] : normalizedNeed.requester
         const projectId = String(need.project_id)
         const existing = grouped.get(projectId) || {
           project_id: projectId,
-          project_title: need.project?.title || 'Project',
-          project_description: need.project?.description || '',
-          project_location: need.project?.exact_address || need.project?.location || need.location || '',
-          project_timeline: need.project?.timeline || need.timeline || '',
+          project_title: normalizedProject?.title || 'Project',
+          project_description: normalizedProject?.description || '',
+          project_location: normalizedProject?.exact_address || normalizedProject?.location || need.location || '',
+          project_timeline: normalizedProject?.timeline || need.timeline || '',
           ngo_id: need.ngo_id,
-          ngo_name: need.requester?.name || 'NGO',
-          ngo_email: need.requester?.email || '',
+          ngo_name: normalizedRequester?.name || 'NGO',
+          ngo_email: normalizedRequester?.email || '',
           needs: [],
           company_application_status: 'none',
           company_application_eligible: true,
@@ -220,8 +232,11 @@ export async function GET(request: NextRequest) {
 
       for (const [projectId, payload] of grouped.entries()) {
         if (hasIndividualFulfillmentByProject[projectId]) {
-          payload.company_application_eligible = false
-          payload.company_application_reason = 'One or more needs in this project were already fulfilled by individuals. CSR full-project assignment is blocked.'
+          // If individual volunteers have partially or fully fulfilled one or more needs
+          // in this project, we still allow companies to apply to take the entire project
+          // for CSR. The partial fulfillment remains credited to the individual/NGO
+          // and the company will be expected to cover the remaining needs/amounts.
+          payload.company_application_reason = 'One or more needs in this project show individual fulfillment; project remains eligible for CSR — company will cover remaining needs.'
         }
 
         const entries = applicationsByProject[projectId] || []
@@ -313,18 +328,22 @@ export async function GET(request: NextRequest) {
         const need = needsById.get(item.service_request_id)
         if (!need) continue
 
+        const normalizedNeed = need as any
+        const normalizedProject = Array.isArray(normalizedNeed.project) ? normalizedNeed.project[0] : normalizedNeed.project
+        const normalizedContributor = Array.isArray(item.contributor) ? item.contributor[0] : item.contributor
+
         const projectId = String(need.project_id)
         const companyId = Number(item.contributor_id)
         const key = `${projectId}::${companyId}`
 
         const existing = grouped.get(key) || {
           project_id: projectId,
-          project_title: need.project?.title || 'Project',
-          project_location: need.project?.exact_address || need.project?.location || '',
-          project_timeline: need.project?.timeline || '',
+          project_title: normalizedProject?.title || 'Project',
+          project_location: normalizedProject?.exact_address || normalizedProject?.location || '',
+          project_timeline: normalizedProject?.timeline || '',
           company_id: companyId,
-          company_name: item.contributor?.name || 'Company',
-          company_email: item.contributor?.email || '',
+          company_name: normalizedContributor?.name || 'Company',
+          company_email: normalizedContributor?.email || '',
           status: String(item.status || 'pending').toLowerCase(),
           note: safeNoteFromMeta(item.meta) || String(item.reference_text || ''),
           created_at: item.created_at,
@@ -361,18 +380,27 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'projectId is required' }, { status: 400 })
       }
 
-      console.log(`[project-detail] Loading project: ${projectId}`)
+      // project-detail: loading project (logs suppressed)
 
       // First, try to fetch project with ngo join
-      let { data: project, error: projectError } = await supabase
-        .from('service_request_projects')
-        .select('id, ngo_id, title, description, location, exact_address, timeline, status, updated_at, created_at, ngo:users!ngo_id(id, name, email, location, city, state_province, country, phone, ngo_size, industry, pincode, profile_data)')
-        .eq('id', projectId)
-        .maybeSingle()
+      let project: any = null
+      let projectError: any = null
+      {
+        const response = await supabase
+          .from('service_request_projects')
+          .select('id, ngo_id, title, description, location, exact_address, timeline, status, updated_at, created_at, ngo:users!ngo_id(id, name, email, location, city, state_province, country, phone, ngo_volunteer_capacity, industry, pincode, profile_data)')
+          .eq('id', projectId)
+          .maybeSingle()
+
+        project = response.data
+        projectError = response.error
+      }
 
       // If there's an error (likely due to broken foreign key), try without the ngo join
       if (projectError || !project) {
-        if (projectError) console.log(`[project-detail] Error with ngo join: ${projectError.message}`)
+        if (projectError) {
+          // project-detail: ngo join error suppressed
+        }
         
         const { data: projectWithoutNgo, error: projectErrorWithoutNgo } = await supabase
           .from('service_request_projects')
@@ -381,49 +409,49 @@ export async function GET(request: NextRequest) {
           .maybeSingle()
 
         if (projectErrorWithoutNgo) {
-          console.error(`[project-detail] Error fetching project: ${projectErrorWithoutNgo.message}`)
+          // project-detail: project fetch error suppressed
           throw projectErrorWithoutNgo
         }
         
         if (!projectWithoutNgo) {
-          console.log(`[project-detail] Project row missing, will try to synthesize from linked needs: ${projectId}`)
+          // project-detail: project row missing; will synthesize from linked needs
         }
 
         project = projectWithoutNgo as any
         if (project) {
-          console.log(`[project-detail] Project loaded (without ngo): ${projectId}`)
+          // project-detail: project loaded (without ngo)
         }
 
         // Now fetch the ngo separately
         if (project?.ngo_id) {
           const { data: ngo, error: ngoError } = await supabase
             .from('users')
-            .select('id, name, email, location, city, state_province, country, phone, ngo_size, industry, pincode, profile_data')
+            .select('id, name, email, location, city, state_province, country, phone, ngo_volunteer_capacity, industry, pincode, profile_data')
             .eq('id', project.ngo_id)
             .maybeSingle()
 
           if (!ngoError && ngo) {
             project.ngo = ngo
-            console.log(`[project-detail] NGO loaded: ${ngo.name}`)
+            // project-detail: NGO loaded
           }
         }
       } else {
-        console.log(`[project-detail] Project loaded with ngo join: ${projectId}`)
+        // project-detail: project loaded with ngo join
       }
 
       const { data: needs, error: needsError } = await supabase
         .from('service_requests')
-        .select('id, ngo_id, title, description, status, request_type, category, estimated_budget, target_amount, target_quantity, beneficiary_count, location, timeline, project_context, created_at, updated_at')
+        .select('id, ngo_id, title, description, image_url, status, request_type, category, estimated_budget, target_amount, target_quantity, beneficiary_count, location, timeline, project_context, created_at, updated_at')
         .eq('project_id', projectId)
         .order('created_at', { ascending: true })
 
       if (needsError) {
-        console.error(`[project-detail] Error fetching needs: ${needsError.message}`)
+        // project-detail: needs fetch error suppressed
         throw needsError
       }
 
       const needsList = Array.isArray(needs) ? needs : []
-      console.log(`[project-detail] Needs loaded: ${needsList.length}`)
+      // project-detail: needs loaded
 
       if (!project && needsList.length > 0) {
         const firstNeed = needsList[0] as any
@@ -446,18 +474,18 @@ export async function GET(request: NextRequest) {
         if (fallbackNgoId) {
           const { data: fallbackNgo, error: fallbackNgoError } = await supabase
             .from('users')
-            .select('id, name, email, location, city, state_province, country, phone, ngo_size, industry, pincode, profile_data')
+            .select('id, name, email, location, city, state_province, country, phone, ngo_volunteer_capacity, industry, pincode, profile_data')
             .eq('id', fallbackNgoId)
             .maybeSingle()
 
           if (!fallbackNgoError && fallbackNgo) {
-            fallbackProject.ngo = fallbackNgo
-            console.log(`[project-detail] Fallback NGO loaded: ${fallbackNgo.name}`)
+            ;(fallbackProject as any).ngo = fallbackNgo
+            // project-detail: fallback NGO loaded
           }
         }
 
         project = fallbackProject as any
-        console.log(`[project-detail] Synthesized project payload from first need: ${projectId}`)
+        // project-detail: synthesized project payload from first need
       }
 
       const needIds = needsList.map((item: any) => item.id)
@@ -472,7 +500,7 @@ export async function GET(request: NextRequest) {
         : { data: [], error: null as any }
 
       if (applicationsError) {
-        console.error(`[project-detail] Error fetching applications: ${applicationsError.message}`)
+        // project-detail: applications fetch error suppressed
         throw applicationsError
       }
 
@@ -484,7 +512,7 @@ export async function GET(request: NextRequest) {
         .order('created_at', { ascending: false })
 
       if (leadInvitesError) {
-        console.error(`[project-detail] Error fetching lead invites: ${leadInvitesError.message}`)
+        // project-detail: lead invites fetch error suppressed
         throw leadInvitesError
       }
 
@@ -496,7 +524,7 @@ export async function GET(request: NextRequest) {
         : { data: [], error: null as any }
 
       if (fulfillmentRowsError) {
-        console.error(`[project-detail] Error fetching fulfillment rows: ${fulfillmentRowsError.message}`)
+        // project-detail: fulfillment rows fetch error suppressed
         throw fulfillmentRowsError
       }
 
@@ -556,12 +584,7 @@ export async function GET(request: NextRequest) {
         csr_project_ineligible_reason: hasIndividualFulfillment ? 'One or more needs in this project were already fulfilled by individuals.' : ''
       }
 
-      console.log(`[project-detail] Returning payload for ${projectId}:`, {
-        projectTitle: project?.title,
-        needsCount: needsList.length,
-        applicationsCount: Object.keys(groupedApplicationsByCompany).length,
-        invitesCount: (leadInvites || []).length
-      })
+      // project-detail: returning payload for project
 
       return NextResponse.json({ success: true, data: responsePayload })
     }
@@ -684,17 +707,6 @@ export async function GET(request: NextRequest) {
 
       const allUserIds = [...new Set([...companyIds, ...selectedLeadNgoIds])]
 
-      const { data: users, error: usersError } = allUserIds.length > 0
-        ? await supabase
-            .from('users')
-            .select('id, name, email')
-            .in('id', allUserIds)
-        : { data: [], error: null as any }
-
-      if (usersError) throw usersError
-
-      const companyById = new Map<number, any>((users || []).map((item: any) => [Number(item.id), item]))
-
       const { data: allLeadInvites, error: allLeadInvitesError } = await supabase
         .from('service_request_contributions')
         .select('id, contributor_id, status, reference_text, meta, created_at, updated_at')
@@ -702,6 +714,21 @@ export async function GET(request: NextRequest) {
         .order('created_at', { ascending: false })
 
       if (allLeadInvitesError) throw allLeadInvitesError
+
+      const inviteNgoIds = [...new Set((allLeadInvites || []).map((inv: any) => Number(inv.contributor_id)).filter((v: number) => Number.isFinite(v) && v > 0))]
+
+      const combinedUserIds = [...new Set([...(allUserIds || []), ...inviteNgoIds])]
+
+      const { data: users, error: usersError } = combinedUserIds.length > 0
+        ? await supabase
+            .from('users')
+            .select('id, name, email')
+            .in('id', combinedUserIds)
+        : { data: [], error: null as any }
+
+      if (usersError) throw usersError
+
+      const companyById = new Map<number, any>((users || []).map((item: any) => [Number(item.id), item]))
       const requestById = new Map<number, any>((requests || []).map((item: any) => [Number(item.id), item]))
       const grouped = new Map<string, any>()
 
@@ -785,6 +812,38 @@ export async function GET(request: NextRequest) {
             updated_at: invite.updated_at
           }
         })
+
+        // Ensure we have user records for any invite NGO IDs not present in companyById
+        const missingNgoIds = payload.lead_ngo_invites
+          .map((i: any) => Number(i.ngo_id || 0))
+          .filter((id: number, idx: number, arr: number[]) => Number.isFinite(id) && id > 0 && !companyById.has(id))
+
+        if (missingNgoIds.length > 0) {
+          try {
+            const { data: missingUsers, error: missingUsersError } = await supabase
+              .from('users')
+              .select('id, name, email')
+              .in('id', missingNgoIds)
+
+            if (!missingUsersError && Array.isArray(missingUsers)) {
+              for (const u of missingUsers) {
+                companyById.set(Number(u.id), u)
+              }
+
+              // Replace placeholders with fetched user info
+              payload.lead_ngo_invites = payload.lead_ngo_invites.map((inv: any) => {
+                const ref = companyById.get(Number(inv.ngo_id))
+                return {
+                  ...inv,
+                  ngo_name: ref?.name || inv.ngo_name,
+                  ngo_email: ref?.email || inv.ngo_email
+                }
+              })
+            }
+          } catch (e) {
+            // ignore - keep existing placeholders
+          }
+        }
       }
 
       return NextResponse.json({ success: true, data: Array.from(grouped.values()) })
@@ -939,6 +998,13 @@ export async function POST(request: NextRequest) {
     const needIds = activeNeeds.map((item: any) => item.id)
 
     if (action === 'apply-project') {
+      const unavailableNeeds = activeNeeds.filter((item: any) => !isProjectAvailableForCsr(item))
+      if (unavailableNeeds.length > 0) {
+        return NextResponse.json({
+          error: 'This project is locked for CSR and cannot accept new company applications.'
+        }, { status: 409 })
+      }
+
       const { data: existingAcceptedRows, error: existingAcceptedRowsError } = await supabase
         .from('service_request_contributions')
         .select('id, contributor_id, service_request_id')
@@ -980,9 +1046,9 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'invite-lead-ngo') {
-      const ngoIds = Array.isArray(body.ngoIds)
+      const ngoIds = (Array.isArray(body.ngoIds)
         ? [...new Set(body.ngoIds.map((value: any) => Number(value)).filter((value: number) => Number.isFinite(value) && value > 0))]
-        : []
+        : []) as number[]
 
       if (ngoIds.length === 0) {
         return NextResponse.json({ error: 'At least one NGO id is required' }, { status: 400 })
@@ -1273,6 +1339,20 @@ export async function PUT(request: NextRequest) {
 
           if (updateNeedError) throw updateNeedError
         }
+
+        // Also update project record to set selected lead NGO
+        try {
+          const { error: updateProjectError } = await supabase
+            .from('service_request_projects')
+            .update({ selected_lead_ngo_id: userId, assignment_status: 'lead_selected', updated_at: new Date().toISOString() })
+            .eq('id', projectId)
+
+          if (updateProjectError) {
+            console.error('Error updating project selected_lead_ngo:', updateProjectError)
+          }
+        } catch (e) {
+          console.error('Error while updating project selected_lead_ngo:', e)
+        }
       }
 
       return NextResponse.json({ success: true, data: { inviteId, decision } })
@@ -1453,6 +1533,34 @@ export async function PUT(request: NextRequest) {
     }
 
     if (decision === 'accepted') {
+      // Capacity check: ensure NGO has sufficient volunteer capacity if configured
+      try {
+        const { data: volunteerRows, error: volunteerRowsError } = await supabase
+          .from('service_requests')
+          .select('volunteers_needed')
+          .eq('project_id', projectId)
+          .not('status', 'in', '(completed,cancelled)')
+
+        if (volunteerRowsError) throw volunteerRowsError
+
+        const totalVolunteersNeeded = (volunteerRows || []).reduce((acc: number, r: any) => acc + (Number(r.volunteers_needed || 0)), 0)
+
+        const { data: ngoUser, error: ngoUserError } = await supabase
+          .from('users')
+          .select('id, ngo_volunteer_capacity')
+          .eq('id', userId)
+          .single()
+
+        if (!ngoUserError && ngoUser && Number.isFinite(Number(ngoUser.ngo_volunteer_capacity))) {
+          const capacity = Number(ngoUser.ngo_volunteer_capacity || 0)
+          if (capacity > 0 && totalVolunteersNeeded > capacity) {
+            return NextResponse.json({ error: `NGO volunteer capacity (${capacity}) is less than required volunteers (${totalVolunteersNeeded}). Please review before accepting.` }, { status: 409 })
+          }
+        }
+      } catch (e) {
+        // on error, do not block acceptance; continue
+        console.warn('Capacity check failed:', e)
+      }
       const { error: expireOtherApplicationsError } = await supabase
         .from('service_request_contributions')
         .update({
@@ -1494,6 +1602,57 @@ export async function PUT(request: NextRequest) {
           .eq('id', need.id)
 
         if (requestUpdateError) throw requestUpdateError
+      }
+
+      // Atomically set project-level assignment columns only if not already assigned to another company
+      try {
+        // Try to set assigned_company_user_id only when it's currently NULL
+        const { data: updated, error: projUpdateError } = await supabase
+          .from('service_request_projects')
+          .update({
+            status: 'in_progress',
+            selected_lead_ngo_id: userId,
+            assigned_company_user_id: companyId,
+            assignment_status: 'accepted',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', projectId)
+          .is('assigned_company_user_id', null)
+          .select()
+          .single()
+
+        if (projUpdateError) throw projUpdateError
+
+        if (!updated) {
+          // No row updated — check current assignment to decide outcome
+          const { data: currentProject, error: currErr } = await supabase
+            .from('service_request_projects')
+            .select('id, assigned_company_user_id')
+            .eq('id', projectId)
+            .maybeSingle()
+
+          if (currErr) throw currErr
+
+          if (currentProject && Number(currentProject.assigned_company_user_id || 0) > 0 && Number(currentProject.assigned_company_user_id) !== Number(companyId)) {
+            return NextResponse.json({ error: 'Project already assigned to another company' }, { status: 409 })
+          }
+
+          // If assigned_company_user_id equals companyId (idempotent), attempt to ensure status and lead NGO are set
+          const { error: idempotentSetError } = await supabase
+            .from('service_request_projects')
+            .update({
+              status: 'in_progress',
+              selected_lead_ngo_id: userId,
+              assignment_status: 'accepted',
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', projectId)
+
+          if (idempotentSetError) throw idempotentSetError
+        }
+      } catch (e) {
+        console.warn('Failed to atomically update project-level assignment columns:', e)
+        return NextResponse.json({ error: 'Failed to finalize project assignment' }, { status: 500 })
       }
     }
 

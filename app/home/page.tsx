@@ -193,7 +193,7 @@ export default function HomePage() {
                           {suggestedUser.profile_image && (
                             <AvatarImage src={suggestedUser.profile_image} />
                           )}
-                          <AvatarFallback className="bg-gradient-to-br from-blue-400 to-indigo-500 text-white font-semibold">
+                          <AvatarFallback className="bg-udaan-orange text-white font-semibold">
                             {getInitials(suggestedUser.name)}
                           </AvatarFallback>
                         </Avatar>

@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent } from "@/components/ui/card"
 import { MapPin, Mail, Search, Building2, Loader2 } from "lucide-react"
+import { SkeletonProfileCard } from '@/components/ui/skeleton'
 import { VerificationBadge } from "@/components/verification-badge"
 
 interface NGO {
@@ -69,55 +70,54 @@ export default function NGONetworkPage() {
   }
 
   return (
-    <>
+    <div className="flex min-h-screen flex-col">
       <Header />
-      <main className="min-h-screen bg-slate-50">
-        <section className="udaan-container px-0 lg:px-2 py-8">
+
+      <main className="flex-1 px-6 py-8 md:px-10">
+        <div className="mb-8">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight text-udaan-navy">NGO Network</h1>
-            <p className="mt-2 text-sm text-slate-600 max-w-2xl">Discover trusted NGOs with complete verification checks and connect directly.</p>
+            <h1 className="text-3xl font-bold tracking-tight">NGO Network</h1>
+            <p className="mt-2 text-muted-foreground">Discover trusted NGOs with complete verification checks and connect directly.</p>
+          </div>
+        </div>
+
+        <div className="mb-6 grid gap-6 md:grid-cols-2">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground pointer-events-none" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search NGOs, city, or sector"
+              className="h-11 pl-8"
+            />
           </div>
 
-          <div className="mt-6">
-            <div className="mb-6 grid gap-6 md:grid-cols-2">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                <Input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search NGOs, city, or sector"
-                  className="h-11 pl-8"
-                />
-              </div>
-
-              <div className="flex gap-4">
-                <div className="relative flex-1">
-                  <Select value={selectedSector} onValueChange={setSelectedSector}>
-                    <SelectTrigger className="h-11 w-full">
-                      <SelectValue placeholder="All sectors" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All sectors</SelectItem>
-                      {sectors.map((s) => (
-                        <SelectItem key={s} value={s}>{s}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {hasActiveFilters ? (
-                  <div className="flex items-center">
-                    <Button type="button" variant="outline" size="sm" onClick={clearFilters}>
-                      Clear
-                    </Button>
-                  </div>
-                ) : null}
-              </div>
+          <div className="flex gap-4">
+            <div className="relative flex-1">
+              <Select value={selectedSector} onValueChange={setSelectedSector}>
+                <SelectTrigger className="h-11 w-full">
+                  <SelectValue placeholder="All sectors" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All sectors</SelectItem>
+                  {sectors.map((s) => (
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-          </div>
-        </section>
 
-        <section className="udaan-container px-0 lg:px-2 py-8">
+            {hasActiveFilters ? (
+              <div className="flex items-center">
+                <Button type="button" variant="outline" size="sm" onClick={clearFilters}>
+                  Clear
+                </Button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <div>
           <div className="mb-5 flex items-center justify-between">
             <p className="text-sm text-slate-600">
               Showing <span className="font-semibold text-slate-900">{ngos.length}</span> verified NGO{ngos.length !== 1 ? "s" : ""}
@@ -131,14 +131,8 @@ export default function NGONetworkPage() {
 
           {loading ? (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {[1, 2, 3, 4, 5, 6].map((idx) => (
-                <div key={idx} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                  <div className="mb-4 h-14 w-14 animate-pulse rounded-full bg-slate-200" />
-                  <div className="mb-2 h-5 w-3/4 animate-pulse rounded bg-slate-200" />
-                  <div className="mb-4 h-4 w-1/2 animate-pulse rounded bg-slate-100" />
-                  <div className="mb-6 h-4 w-2/3 animate-pulse rounded bg-slate-100" />
-                  <div className="h-10 w-full animate-pulse rounded-lg bg-slate-200" />
-                </div>
+              {Array.from({ length: 6 }).map((_, i) => (
+                <SkeletonProfileCard key={i} />
               ))}
             </div>
           ) : ngos.length === 0 ? (
@@ -166,7 +160,7 @@ export default function NGONetworkPage() {
                         {ngo.profile_image ? (
                           <AvatarImage src={ngo.profile_image} alt={ngo.name} />
                         ) : null}
-                        <AvatarFallback className="bg-gradient-to-br from-udaan-navy via-blue-600 to-cyan-500 text-lg font-bold text-white">
+                        <AvatarFallback className="bg-udaan-orange text-lg font-bold text-white">
                           {getInitials(ngo.name)}
                         </AvatarFallback>
                       </Avatar>
@@ -220,8 +214,8 @@ export default function NGONetworkPage() {
               ))}
             </div>
           )}
-        </section>
+        </div>
       </main>
-    </>
+    </div>
   )
 }

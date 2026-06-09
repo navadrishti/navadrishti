@@ -1,3 +1,5 @@
+"use client"
+
 import React, { useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from './button'
@@ -133,19 +135,18 @@ export function ImageCarousel({
 
   return (
     <div 
-      className={cn("relative group", className)}
+      className={cn("relative", className)}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       tabIndex={enableKeyboardNav ? 0 : -1}
     >
       {/* Main Image */}
-      <div className="relative overflow-hidden bg-gray-100">
+      <div className="relative h-full w-full overflow-hidden bg-gray-100">
         <img 
           src={currentImage} 
           alt={`${alt} - Image ${currentIndex + 1}`}
           className={cn(
-            "w-full h-full object-cover transition-all duration-500",
-            isHovered ? "scale-105" : "scale-100"
+            "h-full w-full object-cover"
           )}
         />
         
@@ -157,7 +158,7 @@ export function ImageCarousel({
             <Button
               variant="ghost"
               size="icon"
-              className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white/90 opacity-0 group-hover:opacity-100 transition-opacity duration-200 h-8 w-8 shadow-md"
+              className="absolute left-2 top-1/2 -translate-y-1/2 h-8 w-8 bg-transparent text-black shadow-none hover:bg-transparent hover:text-black active:bg-transparent focus-visible:bg-transparent"
               onClick={goToPrevious}
               aria-label="Previous image"
             >
@@ -167,7 +168,7 @@ export function ImageCarousel({
             <Button
               variant="ghost"
               size="icon"
-              className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white/90 opacity-0 group-hover:opacity-100 transition-opacity duration-200 h-8 w-8 shadow-md"
+              className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 bg-transparent text-black shadow-none hover:bg-transparent hover:text-black active:bg-transparent focus-visible:bg-transparent"
               onClick={goToNext}
               aria-label="Next image"
             >
@@ -178,7 +179,7 @@ export function ImageCarousel({
 
         {/* Image Counter */}
         {validImages.length > 1 && showImageCount && (
-          <div className="absolute top-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded-full backdrop-blur-sm transition-opacity duration-200">
+          <div className="absolute top-2 right-2 bg-transparent text-black text-xs px-2 py-1 rounded-full backdrop-blur-[2px] transition-opacity duration-200">
             {currentIndex + 1} / {validImages.length}
           </div>
         )}

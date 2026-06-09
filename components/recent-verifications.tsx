@@ -92,7 +92,7 @@ export function RecentVerifications() {
               >
                 <Avatar className="w-10 h-10">
                   <AvatarImage src={verification.profile_image} alt={verification.name} />
-                  <AvatarFallback className="bg-gradient-to-br from-green-500 to-teal-600 text-white">
+                  <AvatarFallback className="bg-udaan-orange text-white">
                     {getInitials(verification.name)}
                   </AvatarFallback>
                 </Avatar>

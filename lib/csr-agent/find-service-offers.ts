@@ -50,6 +50,7 @@ type ServiceOfferRow = {
     price_type: string | null
     requirements: unknown
     tags: unknown
+    valid_until?: string | null
 }
 
 const toNumber = (value: unknown): number => {
@@ -226,7 +227,8 @@ export const findServiceOffers = async (input: InputSchemaType): Promise<Capabil
             price_amount,
             price_type,
             requirements,
-            tags
+            tags,
+            valid_until
         `)
         .eq('status', 'active')
         .eq('admin_status', 'approved')
@@ -241,11 +243,24 @@ export const findServiceOffers = async (input: InputSchemaType): Promise<Capabil
         return []
     }
 
+    const now = Date.now()
+    const activeOffers = (filteredOffers as ServiceOfferRow[]).filter((offer) => {
+        const expiryValue = (offer as any).valid_until
+        if (!expiryValue) return true
+        const expiryMs = Date.parse(String(expiryValue))
+        if (Number.isNaN(expiryMs)) return true
+        return expiryMs >= now
+    })
+
+    if (activeOffers.length === 0) {
+        return []
+    }
+
     const categoryNeedle = input.category.trim().toLowerCase()
     const cityNeedle = input.city.trim().toLowerCase()
     const stateNeedle = input.state_province.trim().toLowerCase()
 
-    const scored: CapabilityMatch[] = (filteredOffers as ServiceOfferRow[])
+    const scored: CapabilityMatch[] = activeOffers
         .map((offer) => {
             const impactAreas = splitToList(offer.impact_area)
             const requirements = splitToList(offer.requirements)

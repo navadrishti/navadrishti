@@ -3,6 +3,7 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { createClient as createSupabaseClient } from '@/lib/supabase';
 import { Building, CheckCircle, HandHeart, MailCheck, Phone, Loader2, XCircle, Power, Trash2 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import ProtectedRoute from '@/components/protected-route';
@@ -19,10 +20,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { ProfileDashboardTab } from '@/components/profile-dashboard-tab';
 import { DashboardQuickSidebar } from '@/components/dashboard-quick-sidebar';
 import { useToast } from '@/hooks/use-toast';
-
 interface OfferRequestItem {
   id: number;
   service_offer_id: number;
+  service_request_id?: number;
+  assignment_id?: string;
   offer_title: string;
   client?: {
     name?: string;
@@ -30,6 +32,22 @@ interface OfferRequestItem {
     user_type?: string;
   };
   message?: string;
+  response_meta?: Record<string, any> | null;
+  assigned_at?: string | null;
+  accepted_at?: string | null;
+  valid_until?: string | null;
+  billing_cycle?: string | null;
+  payment_mode?: string | null;
+  payment_required?: boolean | null;
+  payment_amount_inr?: number | null;
+  selected_need_summary?: Array<{
+    id: number;
+    title: string;
+    estimated_budget?: number | null;
+    target_amount?: number | null;
+    target_quantity?: number | null;
+    beneficiary_count?: number | null;
+  }>;
   status: 'pending' | 'accepted' | 'rejected' | 'active' | 'completed' | 'cancelled';
   isAssigned: boolean;
 }
@@ -59,6 +77,78 @@ interface CompanyProjectOpportunity {
   latest_application_at?: string | null;
   note?: string;
 }
+
+const getOfferRequestBucket = (request: OfferRequestItem) => {
+  const status = String(request.status || '').trim().toLowerCase();
+  if (['accepted', 'active', 'in_progress'].includes(status) || request.isAssigned) return 'in-progress';
+  if (['rejected', 'completed', 'cancelled', 'closed', 'expired'].includes(status)) return 'history';
+  return 'pending';
+};
+
+const formatSelectedNeeds = (request: OfferRequestItem) => {
+  const summaryNeeds = Array.isArray(request.selected_need_summary) ? request.selected_need_summary : [];
+  if (summaryNeeds.length > 0) {
+    return summaryNeeds.map((need: any) => {
+      const title = String(need?.title || 'Need');
+      const amount = Number(need?.estimated_budget ?? need?.target_amount ?? 0);
+      return amount > 0 ? `${title} | INR ${amount.toLocaleString('en-IN')}` : title;
+    });
+  }
+
+  const meta = request.response_meta && typeof request.response_meta === 'object' ? request.response_meta : {};
+  const selectedNeeds = Array.isArray(meta.selected_needs) ? meta.selected_needs : [];
+
+  if (selectedNeeds.length > 0) {
+    return selectedNeeds
+      .map((need: any) => {
+        const title = String(need?.title || 'Need');
+        const amount = Number(need?.estimated_budget ?? need?.target_amount ?? 0);
+        return amount > 0 ? `${title} | INR ${amount.toLocaleString('en-IN')}` : title;
+      })
+      .slice(0, 3);
+  }
+
+  const selectedNeedIds = Array.isArray(meta.selected_need_ids) ? meta.selected_need_ids : [];
+  if (selectedNeedIds.length > 0) {
+    return selectedNeedIds.slice(0, 3).map((id: any) => `Need #${id}`);
+  }
+
+  const fallbackRequestId = Number(meta.service_request_id || 0);
+  return fallbackRequestId > 0 ? [`Need #${fallbackRequestId}`] : [];
+};
+
+const formatInrAmount = (value: unknown): string => {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) return 'Free';
+  return `INR ${amount.toLocaleString('en-IN')}`;
+};
+
+const formatDisplayDate = (value?: string | null): string => {
+  if (!value) return 'Not set';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Not set';
+  return date.toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric'
+  });
+};
+
+const getOfferRequestBillingDetails = (request: OfferRequestItem) => {
+  const meta = request.response_meta && typeof request.response_meta === 'object' ? request.response_meta : {};
+  const assignmentMeta = meta.assignment_meta && typeof meta.assignment_meta === 'object' ? meta.assignment_meta : {};
+  const paymentAmount = Number(meta.payment_amount_inr ?? assignmentMeta.payment_amount_inr ?? assignmentMeta.rate_per_unit ?? request.payment_amount_inr ?? 0);
+  const paymentRequired = Boolean(meta.payment_required ?? assignmentMeta.payment_required ?? request.payment_required ?? paymentAmount > 0);
+
+  return {
+    assignedAt: String(meta.accepted_at || meta.assigned_at || assignmentMeta.assigned_at || request.assigned_at || request.accepted_at || ''),
+    validUntil: String(meta.valid_until || assignmentMeta.valid_until || request.valid_until || ''),
+    billingCycle: String(meta.billing_cycle || assignmentMeta.billing_cycle || request.billing_cycle || ''),
+    paymentMode: String(meta.payment_mode || assignmentMeta.payment_mode || request.payment_mode || ''),
+    paymentAmount,
+    paymentRequired
+  };
+};
 
 interface CSRTrackingAssignment {
   project_id: string;
@@ -92,6 +182,22 @@ interface CSRTrackingAssignment {
     status: string;
     request_type?: string;
   }>;
+}
+
+interface PublishedCsrCampaign {
+  id: string;
+  title: string | null;
+  description: string | null;
+  category: string | null;
+  location: string | null;
+  budget_inr: number | null;
+  schedule_vii: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  status?: string | null;
+  impact_metrics?: Record<string, any> | null;
+  company_id?: number | null;
+  created_at?: string | null;
 }
 
 interface NgoDirectoryItem {
@@ -143,6 +249,7 @@ function CompanyDashboardContent() {
   const [loadingOfferRequests, setLoadingOfferRequests] = useState(false);
   const [updatingOfferRequestId, setUpdatingOfferRequestId] = useState<number | null>(null);
   const [capabilityOffersTab, setCapabilityOffersTab] = useState<'your-capabilities' | 'your-applications' | 'requests'>('your-capabilities');
+  const [offerRequestsTab, setOfferRequestsTab] = useState<'pending' | 'in-progress' | 'history'>('pending');
   const [csrProjects, setCsrProjects] = useState<any[]>([]);
   const [projectEvidenceById, setProjectEvidenceById] = useState<Record<string, any>>({});
   const [loadingEvidenceProjectId, setLoadingEvidenceProjectId] = useState<string | null>(null);
@@ -152,6 +259,8 @@ function CompanyDashboardContent() {
   const [projectApplicationNote, setProjectApplicationNote] = useState('');
   const [csrTrackingAssignments, setCsrTrackingAssignments] = useState<CSRTrackingAssignment[]>([]);
   const [loadingCSRTrackingAssignments, setLoadingCSRTrackingAssignments] = useState(false);
+  const [publishedCsrCampaigns, setPublishedCsrCampaigns] = useState<PublishedCsrCampaign[]>([]);
+  const [loadingPublishedCsrCampaigns, setLoadingPublishedCsrCampaigns] = useState(false);
   const [ngoDirectory, setNgoDirectory] = useState<NgoDirectoryItem[]>([]);
   const [loadingNgoDirectory, setLoadingNgoDirectory] = useState(false);
   const [inviteSearchByProject, setInviteSearchByProject] = useState<Record<string, string>>({});
@@ -260,6 +369,30 @@ function CompanyDashboardContent() {
       setCsrTrackingAssignments([]);
     } finally {
       setLoadingCSRTrackingAssignments(false);
+    }
+  };
+
+  const fetchPublishedCsrCampaigns = async () => {
+    try {
+      setLoadingPublishedCsrCampaigns(true);
+      const token = localStorage.getItem('token');
+      if (!token || !user?.id) {
+        setPublishedCsrCampaigns([]);
+        return;
+      }
+
+      const response = await fetch(`/api/campaigns?company_id=${user.id}`);
+      const payload = await response.json();
+      if (response.ok && payload?.success) {
+        setPublishedCsrCampaigns(Array.isArray(payload.data) ? payload.data : []);
+      } else {
+        setPublishedCsrCampaigns([]);
+      }
+    } catch (error) {
+      console.error('Failed to fetch published CSR campaigns:', error);
+      setPublishedCsrCampaigns([]);
+    } finally {
+      setLoadingPublishedCsrCampaigns(false);
     }
   };
 
@@ -391,6 +524,10 @@ function CompanyDashboardContent() {
     }
   };
 
+  const pendingOfferRequests = offerRequests.filter((request) => getOfferRequestBucket(request) === 'pending');
+  const inProgressOfferRequests = offerRequests.filter((request) => getOfferRequestBucket(request) === 'in-progress');
+  const historyOfferRequests = offerRequests.filter((request) => getOfferRequestBucket(request) === 'history');
+
   const fetchOfferApplications = async () => {
     try {
       setLoadingOfferApplications(true);
@@ -431,6 +568,14 @@ function CompanyDashboardContent() {
       });
 
       const payload = await response.json();
+      console.debug('fetchOfferRequests payload:', payload);
+      if (!payload?.success) {
+        console.debug('fetchOfferRequests returned no success flag', payload);
+      }
+      if (payload?.success && Array.isArray(payload.data) && payload.data.length === 0) {
+        console.debug('fetchOfferRequests: owner has 0 requests (payload.data empty)');
+      }
+
       setOfferRequests(payload.success ? (payload.data || []) : []);
     } catch {
       setOfferRequests([]);
@@ -577,6 +722,52 @@ function CompanyDashboardContent() {
     }
   };
 
+  const refreshDashboardData = async () => {
+    if (!user?.id) return;
+
+    await Promise.all([
+      fetchServiceOffers(),
+      fetchOfferApplications(),
+      fetchOfferRequests(),
+      fetchProjectOpportunities(),
+      fetchCSRTrackingAssignments(),
+      fetchPublishedCsrCampaigns(),
+      fetchCSRProjects(),
+      fetchNgoDirectory(),
+      fetchCompanyCAAccounts()
+    ]);
+  };
+
+  // Realtime subscriptions (Supabase) — update lists when relevant DB tables change
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const realtime = createSupabaseClient();
+    const channel = realtime.channel('realtime-dashboard');
+
+    const handleChange = (table: string) => {
+      if (table === 'csr_projects') fetchCSRProjects();
+      else if (table === 'service_request_projects') fetchProjectOpportunities();
+      else if (table === 'service_engagement_assignments') fetchCSRTrackingAssignments();
+      else if (table === 'campaigns') fetchPublishedCsrCampaigns();
+    }
+
+    ['csr_projects', 'service_request_projects', 'service_engagement_assignments', 'campaigns'].forEach((table) => {
+      channel.on('postgres_changes', { event: '*', schema: 'public', table }, () => handleChange(table));
+    });
+
+    // subscribe
+    void channel.subscribe();
+
+    return () => {
+      try {
+        realtime.removeChannel(channel);
+      } catch (e) {
+        // ignore
+      }
+    };
+  }, [user?.id]);
+
   const createCompanyCAAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     setCompanyCAFeedback(null);
@@ -712,16 +903,11 @@ function CompanyDashboardContent() {
   };
 
   useEffect(() => {
-    if (user?.id) {
-      fetchServiceOffers();
-      fetchOfferApplications();
-      fetchOfferRequests();
-      fetchCSRProjects();
-      fetchProjectOpportunities();
-      fetchCSRTrackingAssignments();
-      fetchNgoDirectory();
-      fetchCompanyCAAccounts();
-    }
+    if (!user?.id) return;
+
+    // Run a single refresh on mount / when highlightedRequestId changes.
+    // Removed frequent background refresh (focus/visibility listeners) to avoid noisy polling.
+    refreshDashboardData();
   }, [user?.id, highlightedRequestId]);
 
   const allVerified = Boolean(
@@ -810,7 +996,7 @@ function CompanyDashboardContent() {
                       <TabsList className="grid w-full grid-cols-3 h-auto">
                         <TabsTrigger value="your-capabilities">Your Capabilities</TabsTrigger>
                         <TabsTrigger value="your-applications">Your Applications</TabsTrigger>
-                        <TabsTrigger value="requests">Requests</TabsTrigger>
+                        <TabsTrigger value="requests">Offer Applications</TabsTrigger>
                       </TabsList>
 
                       <TabsContent value="your-capabilities" className="mt-4 space-y-3">
@@ -841,6 +1027,7 @@ function CompanyDashboardContent() {
                                 <Button variant="outline" size="sm">Edit</Button>
                               </Link>
                             </div>
+                              <div className="text-xs text-slate-500">Valid until: {formatDisplayDate(offer.valid_until)}</div>
                           </div>
                         ))}
                       </TabsContent>
@@ -851,7 +1038,7 @@ function CompanyDashboardContent() {
                         ) : offerApplications.length === 0 ? (
                           <div className="p-8 text-center text-muted-foreground">
                             <p className="text-lg font-medium mb-2">No applications yet</p>
-                            <p className="text-sm mb-4">Applications on capability offers will appear here.</p>
+                            <p className="text-sm mb-4">Your applications on capability offers will appear here.</p>
                             <Link href="/service-offers">
                               <Button variant="outline">Browse Capability Offers</Button>
                             </Link>
@@ -875,65 +1062,219 @@ function CompanyDashboardContent() {
                       </TabsContent>
 
                       <TabsContent value="requests" className="mt-4 space-y-3">
-                        {loadingOfferRequests ? (
-                          <div className="flex items-center justify-center py-12">
-                            <Loader2 className="h-6 w-6 animate-spin" />
-                          </div>
-                        ) : offerRequests.length === 0 ? (
-                          <div className="p-8 text-center text-muted-foreground">
-                            <p className="text-lg font-medium mb-2">No requests yet</p>
-                            <p className="text-sm">Incoming requests on your capability offers will appear here.</p>
-                          </div>
-                        ) : offerRequests.map((request) => (
-                          <div key={request.id} className="rounded-md border bg-white p-4 space-y-3">
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <p className="font-semibold">{request.offer_title}</p>
-                                <p className="text-sm text-muted-foreground">
-                                  Requester: {request.client?.name || 'Unknown'} ({request.client?.user_type || 'participant'})
-                                </p>
-                                <p className="text-sm text-muted-foreground">{request.client?.email || 'No email available'}</p>
+                        <Tabs value={offerRequestsTab} onValueChange={(value) => setOfferRequestsTab(value as 'pending' | 'in-progress' | 'history')} className="w-full">
+                          <TabsList className="grid w-full grid-cols-3">
+                            <TabsTrigger value="pending">Pending</TabsTrigger>
+                            <TabsTrigger value="in-progress">In Progress</TabsTrigger>
+                            <TabsTrigger value="history">History</TabsTrigger>
+                          </TabsList>
+
+                          <TabsContent value="pending" className="mt-4 space-y-3">
+                            {loadingOfferRequests ? (
+                              <div className="flex items-center justify-center py-12">
+                                <Loader2 className="h-6 w-6 animate-spin" />
                               </div>
-                              <Badge variant="outline" className="capitalize">{request.status}</Badge>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              <Link href={`/service-offers/${request.service_offer_id}`}>
-                                <Button size="sm" variant="outline">View Offer</Button>
-                              </Link>
-                              <Button
-                                size="sm"
-                                onClick={() => handleOfferRequestStatusUpdate(request.id, 'accepted')}
-                                disabled={updatingOfferRequestId === request.id || request.status === 'accepted'}
-                                className="bg-green-600 hover:bg-green-700"
-                              >
-                                {updatingOfferRequestId === request.id ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <>
-                                    <CheckCircle size={14} className="mr-1" />
-                                    Accept
-                                  </>
-                                )}
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => handleOfferRequestStatusUpdate(request.id, 'rejected')}
-                                disabled={updatingOfferRequestId === request.id || request.status === 'rejected'}
-                                className="border-red-300 text-red-600 hover:bg-red-50"
-                              >
-                                {updatingOfferRequestId === request.id ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <>
-                                    <XCircle size={14} className="mr-1" />
-                                    Reject
-                                  </>
-                                )}
-                              </Button>
-                            </div>
-                          </div>
-                        ))}
+                            ) : pendingOfferRequests.length === 0 ? (
+                              <div className="p-8 text-center text-muted-foreground">
+                                <p className="text-lg font-medium mb-2">No pending requests</p>
+                                <p className="text-sm">Incoming requests on your capability offers will appear here.</p>
+                              </div>
+                            ) : pendingOfferRequests.map((request) => (
+                              <div key={request.id} className="rounded-md border bg-white p-4 space-y-3">
+                                <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                                  <div>
+                                    <p className="font-semibold">{request.offer_title}</p>
+                                    <p className="text-sm text-muted-foreground">
+                                      Requester: {request.client?.name || 'Unknown'} ({request.client?.user_type || 'participant'})
+                                    </p>
+                                    <p className="text-sm text-muted-foreground">{request.client?.email || 'No email available'}</p>
+                                    {request.message ? (
+                                      <div className="mt-2 rounded-md bg-muted p-3 text-sm text-foreground">
+                                        {request.message}
+                                      </div>
+                                    ) : null}
+                                    {formatSelectedNeeds(request).length > 0 ? (
+                                      <div className="mt-3 rounded-md bg-slate-50 p-3">
+                                        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Selected needs</p>
+                                        <div className="mt-2 flex flex-wrap gap-2">
+                                          {formatSelectedNeeds(request).map((needLabel) => (
+                                            <Badge key={needLabel} variant="secondary" className="rounded-full bg-white text-slate-700 border border-slate-200">
+                                              {needLabel}
+                                            </Badge>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <Badge variant="outline" className="capitalize">{request.status}</Badge>
+                                    <Badge className={request.isAssigned ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}>
+                                      {request.isAssigned ? 'Assigned' : 'Not Assigned'}
+                                    </Badge>
+                                  </div>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleOfferRequestStatusUpdate(request.id, 'accepted')}
+                                    disabled={updatingOfferRequestId === request.id || request.status !== 'pending'}
+                                    className="bg-green-600 hover:bg-green-700"
+                                  >
+                                    {updatingOfferRequestId === request.id ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <>
+                                        <CheckCircle size={14} className="mr-1" />
+                                        Accept
+                                      </>
+                                    )}
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleOfferRequestStatusUpdate(request.id, 'rejected')}
+                                    disabled={updatingOfferRequestId === request.id || request.status !== 'pending'}
+                                    className="border-red-300 text-red-600 hover:bg-red-50"
+                                  >
+                                    {updatingOfferRequestId === request.id ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <>
+                                        <XCircle size={14} className="mr-1" />
+                                        Reject
+                                      </>
+                                    )}
+                                  </Button>
+                                </div>
+                              </div>
+                            ))}
+                          </TabsContent>
+
+                          <TabsContent value="in-progress" className="mt-4 space-y-3">
+                            {loadingOfferRequests ? (
+                              <div className="flex items-center justify-center py-12">
+                                <Loader2 className="h-6 w-6 animate-spin" />
+                              </div>
+                            ) : inProgressOfferRequests.length === 0 ? (
+                              <div className="p-8 text-center text-muted-foreground">
+                                <p className="text-lg font-medium mb-2">No active requests</p>
+                                <p className="text-sm">Accepted requests that are now in progress will appear here.</p>
+                              </div>
+                            ) : inProgressOfferRequests.map((request) => {
+                              const billing = getOfferRequestBillingDetails(request);
+
+                              return (
+                                <div key={request.id} className="rounded-md border bg-white p-4 space-y-3">
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0 flex-1">
+                                      <p className="truncate font-semibold">{request.offer_title}</p>
+                                      <p className="truncate text-sm text-muted-foreground">
+                                        {request.client?.name || 'Unknown'} · {request.client?.user_type || 'participant'}
+                                      </p>
+                                      <p className="truncate text-sm text-muted-foreground">{request.client?.email || 'No email available'}</p>
+                                    </div>
+                                    <div className="flex shrink-0 items-center gap-2">
+                                      <Badge variant="outline" className="capitalize whitespace-nowrap">{request.status}</Badge>
+                                      <Badge className={`${request.isAssigned ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'} whitespace-nowrap`}>
+                                        {request.isAssigned ? 'Assigned' : 'Not Assigned'}
+                                      </Badge>
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-1 gap-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 sm:grid-cols-2 lg:grid-cols-3">
+                                    <div className="min-w-0">
+                                      <p className="text-xs uppercase tracking-wide text-slate-500">Assigned</p>
+                                      <p className="truncate">{formatDisplayDate(billing.assignedAt)}</p>
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="text-xs uppercase tracking-wide text-slate-500">Billing</p>
+                                      <p className="truncate">{billing.billingCycle || 'one_time'} · {billing.paymentMode || 'prepaid'}</p>
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="text-xs uppercase tracking-wide text-slate-500">Amount</p>
+                                      <p className="truncate">{formatInrAmount(billing.paymentAmount)} · {billing.paymentRequired ? 'Due' : 'No payment'}</p>
+                                    </div>
+                                  </div>
+
+                                  {request.message ? <p className="text-sm text-slate-600 break-words">{request.message}</p> : null}
+                                  {formatSelectedNeeds(request).length > 0 ? (
+                                    <p className="text-xs text-slate-500 break-words">
+                                      Needs: {formatSelectedNeeds(request).join(' · ')}
+                                    </p>
+                                  ) : null}
+
+                                  <div className="space-y-1 text-sm text-slate-600">
+                                    <p>This decision is final. Use tracking screens to manage the engagement.</p>
+                                    <p className="text-xs text-slate-500">Request ID: {request.id}</p>
+                                    {request.service_request_id ? (
+                                      <p className="text-xs text-slate-500">Linked service request: {request.service_request_id}</p>
+                                    ) : null}
+                                    {request.assignment_id ? (
+                                      <p className="text-xs text-slate-500">Assignment ID: {request.assignment_id}</p>
+                                    ) : null}
+                                  </div>
+
+                                  <div className="flex flex-wrap gap-2">
+                                    <Link href={request.assignment_id ? `/service-request-assignments/${request.assignment_id}` : `/service-requests/${request.id ?? request.service_request_id}`}>
+                                      <Button size="sm" variant="outline">Track engagement</Button>
+                                    </Link>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </TabsContent>
+
+                          <TabsContent value="history" className="mt-4 space-y-3">
+                            {loadingOfferRequests ? (
+                              <div className="flex items-center justify-center py-12">
+                                <Loader2 className="h-6 w-6 animate-spin" />
+                              </div>
+                            ) : historyOfferRequests.length === 0 ? (
+                              <div className="p-8 text-center text-muted-foreground">
+                                <p className="text-lg font-medium mb-2">No history yet</p>
+                                <p className="text-sm">Rejected, completed, or cancelled requests will appear here.</p>
+                              </div>
+                            ) : historyOfferRequests.map((request) => (
+                              <div key={request.id} className="rounded-md border bg-white p-4 space-y-3">
+                                <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                                  <div>
+                                    <p className="font-semibold">{request.offer_title}</p>
+                                    <p className="text-sm text-muted-foreground">
+                                      Requester: {request.client?.name || 'Unknown'} ({request.client?.user_type || 'participant'})
+                                    </p>
+                                    <p className="text-sm text-muted-foreground">{request.client?.email || 'No email available'}</p>
+                                    {request.message ? (
+                                      <div className="mt-2 rounded-md bg-muted p-3 text-sm text-foreground">
+                                        {request.message}
+                                      </div>
+                                    ) : null}
+                                    {formatSelectedNeeds(request).length > 0 ? (
+                                      <div className="mt-3 rounded-md bg-slate-50 p-3">
+                                        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Selected needs</p>
+                                        <div className="mt-2 flex flex-wrap gap-2">
+                                          {formatSelectedNeeds(request).map((needLabel) => (
+                                            <Badge key={needLabel} variant="secondary" className="rounded-full bg-white text-slate-700 border border-slate-200">
+                                              {needLabel}
+                                            </Badge>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <Badge variant="outline" className="capitalize">{request.status}</Badge>
+                                    <Badge className={request.isAssigned ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}>
+                                      {request.isAssigned ? 'Assigned' : 'Not Assigned'}
+                                    </Badge>
+                                  </div>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  {/* View Offer removed for pending requests */}
+                                </div>
+                              </div>
+                            ))}
+                          </TabsContent>
+                        </Tabs>
                       </TabsContent>
                     </Tabs>
                   </TabsContent>
@@ -1027,7 +1368,7 @@ function CompanyDashboardContent() {
                     <div className="rounded-md border bg-slate-50 p-4 space-y-3">
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                          <p className="font-semibold text-slate-900">Service Request CSR Tracking</p>
+                          <p className="font-semibold text-slate-900">NGO Project CSR Tracking</p>
                           <p className="text-sm text-slate-600">Approved project handoffs are tracked here with lead NGO visibility.</p>
                         </div>
                         <Button variant="outline" size="sm" onClick={fetchCSRTrackingAssignments}>Refresh Tracking</Button>
@@ -1099,9 +1440,9 @@ function CompanyDashboardContent() {
 
                                       return (
                                     <div key={`${assignment.project_id}-${ngo.id}`} className="flex items-center justify-between gap-3 rounded-md border bg-white p-3 hover:bg-[#eaf4ff] transition-colors">
-                                      <div className="flex min-w-0 items-center gap-3">
+                                      <Link href={`/profile/${ngo.id}`} target="_blank" className="flex min-w-0 items-center gap-3 no-underline">
                                         <Avatar className="h-9 w-9">
-                                          <AvatarFallback className="bg-gradient-to-br from-blue-400 to-indigo-500 text-white text-xs font-semibold">
+                                          <AvatarFallback className="bg-udaan-orange text-white text-xs font-semibold">
                                             {getInitials(ngo.name || 'NGO')}
                                           </AvatarFallback>
                                         </Avatar>
@@ -1109,9 +1450,9 @@ function CompanyDashboardContent() {
                                           <p className="truncate text-sm font-medium text-slate-900">{ngo.name}</p>
                                           <p className="truncate text-xs text-slate-500">{ngo.email || 'No email'}</p>
                                         </div>
-                                      </div>
+                                      </Link>
                                       <div className="flex items-center gap-2">
-                                        {alreadyInvited ? (
+                                        {alreadyInvited && !['pending','invited','pending_acceptance','awaiting_acceptance'].includes(inviteStatus) ? (
                                           <Badge variant="outline" className={getStatusBadgeClass(inviteStatus)}>
                                             {formatStatusLabel(inviteStatus)}
                                           </Badge>
@@ -1162,7 +1503,7 @@ function CompanyDashboardContent() {
                                           {!term && suggestedNgos.length > 0 ? (
                                             <div className="space-y-2">
                                               <p className="text-xs font-medium text-slate-600">Suggested NGOs</p>
-                                              <div className="space-y-2">{suggestedNgos.map(renderNgoRow)}</div>
+                                              <div className="space-y-2">{suggestedNgos.slice(0,5).map(renderNgoRow)}</div>
                                             </div>
                                           ) : null}
 
@@ -1186,29 +1527,29 @@ function CompanyDashboardContent() {
                                   );
                                 })()}
 
-                                <Textarea
-                                  rows={2}
-                                  placeholder="Optional note"
-                                  value={inviteNoteByProject[assignment.project_id] || ''}
-                                  onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) =>
-                                    setInviteNoteByProject((prev) => ({
-                                      ...prev,
-                                      [assignment.project_id]: event.target.value
-                                    }))
-                                  }
-                                />
+                                {/* Optional note removed per product request */}
                               </div>
 
-                              {(assignment.lead_ngo_invites || []).length > 0 ? (
+                                {(assignment.lead_ngo_invites || []).length > 0 ? (
                                 <div className="rounded-md border bg-slate-50 p-3 space-y-2">
-                                  <p className="text-sm font-medium text-slate-900">Lead NGO Invite Responses</p>
+                                  <p className="text-sm font-medium text-slate-900">Lead NGO Invitation Status</p>
                                   {(assignment.lead_ngo_invites || []).map((invite) => {
+                                    const ngoFromDirectory = ngoDirectory.find(n => Number(n.id) === Number(invite.ngo_id));
+                                    const displayName = invite.ngo_name || ngoFromDirectory?.name || 'NGO';
+                                    const displayEmail = invite.ngo_email || ngoFromDirectory?.email || 'No email';
                                     return (
-                                      <div key={invite.id} className="flex flex-col gap-2 rounded-md border bg-white p-2 md:flex-row md:items-center md:justify-between">
-                                        <div>
-                                          <p className="text-xs font-medium text-slate-900">{invite.ngo_name}</p>
-                                          <p className="text-xs text-slate-500">{invite.ngo_email || 'No email'}</p>
-                                        </div>
+                                      <div key={invite.id} className="flex items-center justify-between gap-3 rounded-md border bg-white p-3 hover:bg-[#eaf4ff] transition-colors">
+                                        <Link href={`/profile/${invite.ngo_id}`} target="_blank" className="flex min-w-0 items-center gap-3 no-underline">
+                                          <Avatar className="h-9 w-9">
+                                            <AvatarFallback className="bg-udaan-orange text-white text-xs font-semibold">
+                                              {getInitials(displayName)}
+                                            </AvatarFallback>
+                                          </Avatar>
+                                          <div className="min-w-0">
+                                            <p className="truncate text-sm font-medium text-slate-900">{displayName}</p>
+                                            <p className="truncate text-xs text-slate-500">{displayEmail}</p>
+                                          </div>
+                                        </Link>
                                         <div className="flex items-center gap-2">
                                           <Badge variant="outline" className={getStatusBadgeClass(invite.status)}>
                                             {formatStatusLabel(invite.status)}
@@ -1232,63 +1573,59 @@ function CompanyDashboardContent() {
                       )}
                     </div>
 
-                    {loadingCSRProjects ? (
-                      <div className="p-8 text-center text-muted-foreground">Loading CSR projects...</div>
-                    ) : csrProjects.length === 0 ? (
-                      <div className="p-8 text-center">
-                        <div className="text-muted-foreground">
-                          <p className="text-lg font-medium mb-2">No CSR projects yet</p>
-                          <p className="text-sm mb-4">Create campaigns and convert them into active projects to track milestones and evidence.</p>
+                    <div className="rounded-md border bg-white p-4 space-y-3">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="font-semibold text-slate-900">Published CSR Campaigns</p>
+                          <p className="text-sm text-slate-600">Campaigns created in the CSR AI Agent and published into the campaigns table.</p>
                         </div>
+                        <Button variant="outline" size="sm" onClick={fetchPublishedCsrCampaigns}>Refresh Campaigns</Button>
                       </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {csrProjects.map((project) => (
-                          <div key={project.id} className="rounded-md border bg-white p-4">
-                            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                              <div>
-                                <p className="font-semibold">{project.title}</p>
-                                <p className="text-sm text-muted-foreground">{project.region || 'Region not set'}</p>
-                              </div>
-                              <Badge variant="outline" className="w-fit">{project.project_status}</Badge>
-                            </div>
-                            <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-muted-foreground md:grid-cols-4">
-                              <p>Progress: {project.progress_percentage ?? 0}%</p>
-                              <p>Budget: Rs {project.total_budget ?? 0}</p>
-                              <p>Milestones: {project.completed_milestones_count ?? 0}/{project.milestones_count ?? 0}</p>
-                              <p>Beneficiaries: {project.latest_impact?.beneficiaries ?? 0}</p>
-                            </div>
-                            <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-muted-foreground md:grid-cols-3">
-                              <p>Next Milestone: {project.next_milestone?.title || 'N/A'}</p>
-                              <p>Deadline: {project.deadline_at || 'N/A'}</p>
-                              <p>Confirmed Funds: Rs {project.confirmed_funds ?? 0}</p>
-                            </div>
-                            <div className="mt-3">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => fetchProjectEvidenceTimeline(project.id)}
-                                disabled={loadingEvidenceProjectId === project.id}
-                              >
-                                {loadingEvidenceProjectId === project.id ? 'Loading Timeline...' : 'View Evidence Timeline'}
-                              </Button>
-                            </div>
 
-                            {projectEvidenceById[project.id] && (
-                              <div className="mt-4 rounded-md border bg-slate-50 p-3">
-                                <p className="text-sm font-medium text-slate-900">Evidence Timeline Snapshot</p>
-                                <div className="mt-2 grid grid-cols-1 gap-2 text-xs text-slate-600 md:grid-cols-4">
-                                  <p>Total Milestones: {projectEvidenceById[project.id]?.summary?.total_milestones ?? 0}</p>
-                                  <p>Completed: {projectEvidenceById[project.id]?.summary?.completed_milestones ?? 0}</p>
-                                  <p>Confirmed Funds: Rs {projectEvidenceById[project.id]?.summary?.confirmed_funds ?? 0}</p>
-                                  <p>Upcoming: {projectEvidenceById[project.id]?.summary?.next_milestone?.title || 'N/A'}</p>
+                      {loadingPublishedCsrCampaigns ? (
+                        <div className="flex items-center justify-center py-6 text-sm text-slate-600">
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                          Loading campaigns...
+                        </div>
+                      ) : publishedCsrCampaigns.length === 0 ? (
+                        <p className="text-sm text-slate-600">No published CSR campaigns yet.</p>
+                      ) : (
+                        <div className="space-y-3">
+                          {publishedCsrCampaigns.map((campaign) => {
+                            const volunteerRequirement = String(campaign.impact_metrics?.volunteer_requirement || 'Not set');
+                            const invitedOffers = Array.isArray(campaign.impact_metrics?.invited_offer_ids) ? campaign.impact_metrics?.invited_offer_ids.length : 0;
+
+                            return (
+                              <div key={campaign.id} className="rounded-md border bg-slate-50 p-4">
+                                <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                                  <div className="min-w-0">
+                                    <p className="font-semibold text-slate-900">{campaign.title || campaign.category || 'CSR Campaign'}</p>
+                                    <p className="text-sm text-slate-600 break-words">{campaign.description || 'No description provided.'}</p>
+                                  </div>
+                                  <Badge variant="outline" className="w-fit">{campaign.status || 'draft'}</Badge>
+                                </div>
+                                <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-slate-600 md:grid-cols-4">
+                                  <p>Location: {campaign.location || 'Not set'}</p>
+                                  <p>Budget: INR {Number(campaign.budget_inr || 0).toLocaleString('en-IN')}</p>
+                                  <p>Volunteers: {volunteerRequirement}</p>
+                                  <p>Offers invited: {invitedOffers}</p>
+                                </div>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  <Button size="sm" asChild>
+                                    <Link href={`/csr-campaigns/${campaign.id}`}>Open Detail</Link>
+                                  </Button>
+                                  <Button size="sm" variant="outline" asChild>
+                                    <Link href="/companies/csr-agent">Open CSR Agent</Link>
+                                  </Button>
                                 </div>
                               </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Active CSR Projects block removed per request */}
                   </TabsContent>
 
                   <TabsContent value="company-ca" className="mt-4 space-y-4">

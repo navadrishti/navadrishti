@@ -100,6 +100,16 @@ export const db = {
         query = query.eq('status', filters.status);
       }
 
+      if (filters.q) {
+        const qStr = `%${String(filters.q)}%`
+        // search common text fields for the query
+        query = query.or(`title.ilike.${qStr},description.ilike.${qStr},location.ilike.${qStr},exact_address.ilike.${qStr}`)
+      }
+
+      if (filters.limit && Number(filters.limit) > 0) {
+        query = query.limit(Number(filters.limit))
+      }
+
       const { data, error } = await query.order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -138,6 +148,46 @@ export const db = {
         .single();
 
       if (error) throw error;
+
+      // If valid_until was updated, propagate the canonical valid_until to active linked service_requests
+      try {
+        if (projectData && projectData.valid_until) {
+          const { data: needs, error: needsError } = await supabase
+            .from('service_requests')
+            .select('id, project_context')
+            .eq('project_id', id)
+            .not('status', 'in', '(completed,cancelled)');
+
+          if (!needsError && Array.isArray(needs) && needs.length > 0) {
+            const now = new Date().toISOString();
+            for (const need of needs) {
+              try {
+                const existingCtx = need.project_context && typeof need.project_context === 'object'
+                  ? need.project_context
+                  : (typeof need.project_context === 'string' ? JSON.parse(need.project_context || '{}') : {});
+
+                const nextCtx = {
+                  ...existingCtx,
+                  project: {
+                    ...(existingCtx.project && typeof existingCtx.project === 'object' ? existingCtx.project : {}),
+                    valid_until: projectData.valid_until
+                  }
+                };
+
+                await supabase
+                  .from('service_requests')
+                  .update({ project_context: nextCtx, updated_at: now })
+                  .eq('id', need.id);
+              } catch (e) {
+                console.warn('Failed to propagate valid_until to need', need.id, e);
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Error while propagating valid_until to linked needs:', e);
+      }
+
       return data;
     },
 
@@ -246,7 +296,7 @@ export const db = {
         const [{ data: requester }, { data: project }] = await Promise.all([
           supabase
             .from('users')
-            .select('id, name, email, user_type, location, city, state_province, country, phone, pincode, ngo_size, profile_image, profile_data, industry, verification_status')
+            .select('id, name, email, user_type, location, city, state_province, country, phone, pincode, ngo_volunteer_capacity, profile_image, profile_data, industry, verification_status')
             .eq('id', data.ngo_id)
             .single(),
           data.project_id
@@ -271,6 +321,37 @@ export const db = {
     },
 
     async create(requestData: any) {
+      // If requestData includes project_id, try to inherit canonical project fields
+      if (requestData.project_id) {
+        try {
+          const { data: projectRow } = await supabase
+            .from('service_request_projects')
+            .select('id, expected_beneficiaries, location, exact_address, timeline, description, title, valid_until')
+            .eq('id', String(requestData.project_id))
+            .single();
+
+          if (projectRow) {
+            requestData.beneficiary_count = requestData.beneficiary_count ?? projectRow.expected_beneficiaries ?? requestData.beneficiary_count;
+            requestData.location = requestData.location || projectRow.exact_address || projectRow.location || requestData.location;
+            requestData.impact_description = requestData.impact_description || projectRow.description || requestData.impact_description;
+            requestData.timeline = requestData.timeline || projectRow.timeline || requestData.timeline;
+            // Ensure project_context contains canonical project reference
+            const existingCtx = requestData.project_context && typeof requestData.project_context === 'object' ? requestData.project_context : {};
+            requestData.project_context = {
+              ...existingCtx,
+              project: {
+                id: projectRow.id,
+                title: projectRow.title || existingCtx.project?.title || null,
+                exact_address: projectRow.exact_address || projectRow.location || existingCtx.project?.exact_address || null,
+                valid_until: projectRow.valid_until || existingCtx.project?.valid_until || null
+              }
+            };
+          }
+        } catch (e) {
+          console.warn('Failed to inherit project fields for service_requests.create:', e);
+        }
+      }
+
       const { data, error } = await supabase
         .from('service_requests')
         .insert(requestData)
@@ -282,18 +363,117 @@ export const db = {
     },
 
     async update(id: string | number, requestData: any) {
+      // If updating project_id, try to inherit project canonical fields when missing
+      if (requestData.project_id) {
+        try {
+          const { data: projectRow } = await supabase
+            .from('service_request_projects')
+            .select('id, expected_beneficiaries, location, exact_address, timeline, description, title, valid_until')
+            .eq('id', String(requestData.project_id))
+            .single();
+
+          if (projectRow) {
+            if (requestData.beneficiary_count === undefined || requestData.beneficiary_count === null) {
+              requestData.beneficiary_count = projectRow.expected_beneficiaries ?? requestData.beneficiary_count;
+            }
+            requestData.location = requestData.location || projectRow.exact_address || projectRow.location || requestData.location;
+            requestData.impact_description = requestData.impact_description || projectRow.description || requestData.impact_description;
+            requestData.timeline = requestData.timeline || projectRow.timeline || requestData.timeline;
+
+            const existingCtx = requestData.project_context && typeof requestData.project_context === 'object' ? requestData.project_context : {};
+            requestData.project_context = {
+              ...existingCtx,
+              project: {
+                id: projectRow.id,
+                title: projectRow.title || existingCtx.project?.title || null,
+                exact_address: projectRow.exact_address || projectRow.location || existingCtx.project?.exact_address || null,
+                valid_until: projectRow.valid_until || existingCtx.project?.valid_until || null
+              }
+            };
+          }
+        } catch (e) {
+          console.warn('Failed to inherit project fields for service_requests.update:', e);
+        }
+      }
+
+      // Enforce: service_requests cannot be set to 'expired' individually unless
+      // their parent project's valid_until has passed. This central guard prevents
+      // accidental single-need expiry outside the project expiry flow.
+      if (String(requestData.status || '').toLowerCase() === 'expired') {
+        try {
+          // Fetch the request's project_id if not provided
+          let projectId = requestData.project_id
+          if (!projectId) {
+            const { data: currentRow } = await supabase
+              .from('service_requests')
+              .select('id, project_id')
+              .eq('id', id)
+              .maybeSingle();
+
+            projectId = currentRow?.project_id
+          }
+
+          if (!projectId) {
+            throw new Error('Cannot expire a standalone need without a parent project')
+          }
+
+          const { data: projectRow } = await supabase
+            .from('service_request_projects')
+            .select('id, valid_until')
+            .eq('id', String(projectId))
+            .maybeSingle();
+
+          const validUntil = projectRow?.valid_until ? new Date(String(projectRow.valid_until)).getTime() : null
+          const now = Date.now()
+          if (!validUntil || validUntil > now) {
+            throw new Error('Project valid_until has not passed; cannot expire individual needs')
+          }
+        } catch (e) {
+          console.warn('Blocked individual need expiry:', e)
+          throw e
+        }
+      }
+
       const { data, error } = await supabase
         .from('service_requests')
         .update(requestData)
         .eq('id', id)
         .select()
         .single();
-      
+
       if (error) throw error;
       return data;
     },
 
     async updateStatus(id: number, status: string) {
+      // Prevent setting status to 'expired' for a single need unless project validity passed
+      if (String(status || '').toLowerCase() === 'expired') {
+        const { data: reqRow, error: reqErr } = await supabase
+          .from('service_requests')
+          .select('id, project_id')
+          .eq('id', id)
+          .maybeSingle();
+
+        if (reqErr) throw reqErr
+
+        const projectId = reqRow?.project_id
+        if (!projectId) throw new Error('Cannot expire a standalone need without a parent project')
+
+        const { data: projectRow, error: projErr } = await supabase
+          .from('service_request_projects')
+          .select('valid_until')
+          .eq('id', String(projectId))
+          .maybeSingle();
+
+        if (projErr) throw projErr
+
+        const validUntil = projectRow?.valid_until ? new Date(String(projectRow.valid_until)).getTime() : null
+        const now = Date.now()
+        if (!validUntil || validUntil > now) {
+          throw new Error('Project valid_until has not passed; cannot expire individual needs')
+        }
+      }
+
       const { data, error } = await supabase
         .from('service_requests')
         .update({ 
@@ -303,7 +483,7 @@ export const db = {
         .eq('id', id)
         .select()
         .single();
-      
+
       if (error) throw error;
       return data;
     },
@@ -380,10 +560,22 @@ export const db = {
       const { data, error } = await query.order('created_at', { ascending: false });
       
       if (error) throw error;
+
+      const includeExpired = Boolean(filters.includeExpired)
+      const now = Date.now()
+      const nonExpiredOffers = includeExpired
+        ? (data || [])
+        : (data || []).filter((offer: any) => {
+            const expiryValue = offer.valid_until || offer.expires_at
+            if (!expiryValue) return true
+            const expiryMs = Date.parse(String(expiryValue))
+            if (Number.isNaN(expiryMs)) return true
+            return expiryMs >= now
+          })
       
       // Fetch application counts for each service offer
-      if (data && data.length > 0) {
-        const offerIds = data.map((item: any) => item.id);
+      if (nonExpiredOffers && nonExpiredOffers.length > 0) {
+        const offerIds = nonExpiredOffers.map((item: any) => item.id);
         
         const { data: hires } = await supabase
           .from('service_clients') // Correct table name
@@ -398,14 +590,14 @@ export const db = {
         }, {});
         
         // Add application counts to offers
-        return data.map((offer: any) => ({
+        return nonExpiredOffers.map((offer: any) => ({
           ...offer,
           ngo_id: offer.creator_id,
           applications_count: hireCounts[offer.id] || 0
         }));
       }
       
-      return (data || []).map((offer: any) => ({
+      return nonExpiredOffers.map((offer: any) => ({
         ...offer,
         ngo_id: offer.creator_id
       }));
