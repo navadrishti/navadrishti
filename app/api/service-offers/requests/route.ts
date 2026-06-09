@@ -7,6 +7,51 @@ interface JWTPayload {
   id: number;
 }
 
+function parseSelectedNeeds(meta: Record<string, any>) {
+  const rawNeeds = meta.selected_needs;
+  if (Array.isArray(rawNeeds)) {
+    return rawNeeds.filter((need) => need && typeof need === 'object');
+  }
+
+  if (typeof rawNeeds === 'string') {
+    try {
+      const parsed = JSON.parse(rawNeeds);
+      return Array.isArray(parsed) ? parsed.filter((need) => need && typeof need === 'object') : [];
+    } catch {
+      return [];
+    }
+  }
+
+  return [];
+}
+
+function buildSelectedNeedSummary(meta: Record<string, any>) {
+  const selectedNeeds = parseSelectedNeeds(meta);
+  if (selectedNeeds.length > 0) {
+    return selectedNeeds.slice(0, 3).map((need: any) => ({
+      id: Number(need.id),
+      title: String(need.title || 'Need'),
+      estimated_budget: need.estimated_budget != null ? Number(need.estimated_budget) : null,
+      target_amount: need.target_amount != null ? Number(need.target_amount) : null,
+      target_quantity: need.target_quantity != null ? Number(need.target_quantity) : null,
+      beneficiary_count: need.beneficiary_count != null ? Number(need.beneficiary_count) : null
+    }));
+  }
+
+  const selectedNeedIds = Array.isArray(meta.selected_need_ids)
+    ? meta.selected_need_ids.map((item: any) => Number(item)).filter((id: number) => Number.isFinite(id) && id > 0)
+    : [];
+
+  return selectedNeedIds.slice(0, 3).map((id: number) => ({
+    id,
+    title: `Need #${id}`,
+    estimated_budget: null,
+    target_amount: null,
+    target_quantity: null,
+    beneficiary_count: null
+  }));
+}
+
 export async function GET(request: NextRequest) {
   try {
     const authHeader = request.headers.get('authorization');
@@ -20,7 +65,7 @@ export async function GET(request: NextRequest) {
 
     const { data: offers, error: offersError } = await supabase
       .from('service_offers')
-      .select('id, title')
+      .select('id, title, creator_id')
       .eq('creator_id', ownerId)
       .order('created_at', { ascending: false });
 
@@ -46,7 +91,7 @@ export async function GET(request: NextRequest) {
         client:users!client_id(name, email, user_type)
       `)
       .in('service_offer_id', offerIds)
-      .order('created_at', { ascending: false });
+      .order('applied_at', { ascending: false });
 
     if (requestsError) {
       return NextResponse.json({ error: 'Failed to fetch requests' }, { status: 500 });
@@ -55,6 +100,7 @@ export async function GET(request: NextRequest) {
     const normalizedRequests = (requests || []).map((request: any) => {
       const meta = request?.response_meta && typeof request.response_meta === 'object' ? request.response_meta : {};
       const isAssigned = typeof meta.isAssigned === 'boolean' ? meta.isAssigned : request.status === 'accepted';
+      const selectedNeedSummary = buildSelectedNeedSummary(meta);
 
       return {
         id: request.id,
@@ -62,6 +108,8 @@ export async function GET(request: NextRequest) {
         client: request.client,
         message: request.message,
         status: request.status,
+        response_meta: meta,
+        selected_need_summary: selectedNeedSummary,
         offer_title: offerTitleMap.get(request.service_offer_id) || `Offer #${request.service_offer_id}`,
         isAssigned
       };

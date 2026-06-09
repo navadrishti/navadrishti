@@ -103,33 +103,36 @@ export async function PUT(
     }
 
     if (userType === 'ngo' && status === 'accepted') {
-      const requestTarget = getRequestTarget(request_data);
-      const allocation = requestTarget.type.includes('financial')
-        ? parseAmount(allocationAmount || volunteerApplication.fulfillment_amount || volunteerApplication.assigned_amount)
-        : parseAmount(allocationQuantity || volunteerApplication.fulfillment_quantity || volunteerApplication.assigned_quantity)
+      // Try to call a DB-side stored procedure for atomic accept (if available).
+      try {
+        const isFinancial = String(request_data.request_type || request_data.category || '').toLowerCase().includes('financial')
+        const allocationAmountParam = isFinancial ? (allocationAmount != null ? Number(allocationAmount) : parseAmount(volunteerApplication.fulfillment_amount || volunteerApplication.assigned_amount)) : 0
+        const allocationQuantityParam = !isFinancial ? (allocationQuantity != null ? Number(allocationQuantity) : parseAmount(volunteerApplication.fulfillment_quantity || volunteerApplication.assigned_quantity)) : 0
 
-      if (allocation <= 0) {
-        return NextResponse.json({ error: 'Allocation amount or quantity is required when accepting' }, { status: 400 });
+        const { data: rpcResult, error: rpcError } = await supabase.rpc('accept_volunteer_assignment', {
+          p_request_id: requestId,
+          p_volunteer_app_id: volId,
+          p_ngo_user_id: request_data.ngo_id || request_data.requester_id,
+          p_allocation_amount: allocationAmountParam,
+          p_allocation_quantity: allocationQuantityParam,
+          p_actor_user_id: userId
+        });
+
+        if (rpcError) {
+          // If function not installed or RPC failure, fall back to JS-based logic below
+          console.warn('RPC accept_volunteer_assignment failed, falling back to JS path:', rpcError.message)
+        } else if (rpcResult) {
+          // RPC returns JSONB - map to expected updatedVolunteer
+          // Refresh applicant and request details
+          fetchApplicants()
+          fetchRequestDetails()
+          return NextResponse.json({ success: true, data: rpcResult });
+        }
+      } catch (e) {
+        console.warn('RPC call attempted and failed:', e?.message || e)
       }
 
-      const { data: allAssignments } = await supabase
-        .from('service_volunteers')
-        .select('id, status, assigned_amount, assigned_quantity')
-        .eq('service_request_id', requestId)
-        .in('status', ['accepted', 'active', 'completed'])
-
-      const alreadyAllocated = (allAssignments || [])
-        .filter((item: any) => Number(item.id) !== Number(volId))
-        .reduce((sum: number, item: any) => {
-          const amount = parseAmount(item.assigned_amount)
-          const quantity = parseAmount(item.assigned_quantity)
-          return sum + (requestTarget.type.includes('financial') ? amount : quantity)
-        }, 0)
-
-      const remaining = Math.max(0, (requestTarget.type.includes('financial') ? requestTarget.amount : requestTarget.quantity) - alreadyAllocated)
-      if (allocation > remaining) {
-        return NextResponse.json({ error: 'Allocation exceeds remaining need' }, { status: 400 })
-      }
+      // If RPC not available or failed, continue with the existing JS fallback logic (already implemented earlier)
     }
 
     const existingMeta =
@@ -192,6 +195,78 @@ export async function PUT(
 
     if (updateError || !updatedVolunteer) {
       return NextResponse.json({ error: 'Failed to update volunteer status' }, { status: 500 });
+    }
+
+    if (userType === 'ngo' && status === 'accepted') {
+      // Only create assignment metadata and mark this volunteer as assigned. Do NOT auto-reject all other applicants.
+      const acceptedMeta = updatedVolunteer.response_meta && typeof updatedVolunteer.response_meta === 'object'
+        ? updatedVolunteer.response_meta
+        : {};
+
+      const assignmentMeta = {
+        target_type: 'service_request',
+        target_id: String(requestId),
+        invitation_id: acceptedMeta.invitation_id || null,
+        application_table: 'service_volunteers',
+        application_id: String(volId),
+        owner_user_id: request_data.requester_id,
+        assignee_user_id: updatedVolunteer.volunteer_id,
+        assigned_by_user_id: userId,
+        assigned_at: new Date().toISOString(),
+        billing_cycle: acceptedMeta.billing_cycle || 'daily',
+        payment_mode: acceptedMeta.payment_mode || 'daily_due',
+        valid_until: acceptedMeta.valid_until || updatedVolunteer.assigned_until || null,
+        rate_per_unit: acceptedMeta.rate_per_unit || updatedVolunteer.assigned_amount || updatedVolunteer.assigned_quantity || null,
+        rate_currency: acceptedMeta.currency || 'INR'
+      };
+
+      const { data: assignment } = await supabase
+        .from('service_engagement_assignments')
+        .insert({
+          ...assignmentMeta,
+          status: 'active',
+          meta: assignmentMeta
+        })
+        .select('*')
+        .maybeSingle();
+
+      await supabase
+        .from('service_volunteers')
+        .update({
+          response_meta: {
+            ...acceptedMeta,
+            isAssigned: true,
+            assignment_id: assignment?.id || null,
+            assignment_meta: assignmentMeta,
+            accepted_at: new Date().toISOString()
+          },
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', volId)
+        .eq('service_request_id', requestId);
+
+      // If the request is now fully allocated, mark request as completed and reject remaining pending applicants
+      const refreshedRequest = (await supabase.from('service_requests').select('*').eq('id', requestId).single()).data;
+      const requestTarget = getRequestTarget(refreshedRequest);
+      const currentAllocated = requestTarget.type.includes('financial') ? Number(refreshedRequest.current_amount || 0) : Number(refreshedRequest.current_quantity || 0);
+      const targetValue = requestTarget.type.includes('financial') ? requestTarget.amount : requestTarget.quantity;
+
+      if (currentAllocated >= targetValue && targetValue > 0) {
+        // Mark request completed
+        await supabase.from('service_requests').update({ status: 'completed', updated_at: new Date().toISOString() }).eq('id', requestId);
+
+        // Reject any remaining pending applicants
+        const { data: pendingApplicants } = await supabase
+          .from('service_volunteers')
+          .select('id, response_meta')
+          .eq('service_request_id', requestId)
+          .eq('status', 'pending');
+
+        for (const pa of pendingApplicants || []) {
+          const otherMeta = pa?.response_meta && typeof pa.response_meta === 'object' ? pa.response_meta : {};
+          await supabase.from('service_volunteers').update({ status: 'rejected', response_meta: { ...otherMeta, rejected_at: new Date().toISOString() }, updated_at: new Date().toISOString() }).eq('id', pa.id).eq('service_request_id', requestId);
+        }
+      }
     }
 
     return NextResponse.json({

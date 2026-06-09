@@ -165,7 +165,7 @@ export function PlatformActivityFeed() {
                         {activity.user.profile_image && (
                           <AvatarImage src={activity.user.profile_image} />
                         )}
-                        <AvatarFallback className="bg-gradient-to-br from-blue-400 to-indigo-500 text-white text-sm">
+                        <AvatarFallback className="bg-udaan-orange text-white text-sm">
                           {getInitials(activity.user.name)}
                         </AvatarFallback>
                       </Avatar>

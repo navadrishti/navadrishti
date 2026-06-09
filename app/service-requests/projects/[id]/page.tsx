@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Building } from 'lucide-react';
+import { ArrowLeft, Building, ChevronDown } from 'lucide-react';
 import { Header } from '@/components/header';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,6 +17,9 @@ import { useToast } from '@/hooks/use-toast';
 type NeedItem = {
   id: number;
   title: string;
+  description?: string;
+  images?: string[];
+  image_url?: string | null;
   status: string;
   request_type?: string;
   category?: string;
@@ -33,7 +36,7 @@ type ProjectDetailPayload = {
     exact_address?: string;
     timeline?: string;
     status?: string;
-    ngo?: {
+      ngo?: {
       id: number;
       name: string;
       email?: string;
@@ -42,7 +45,7 @@ type ProjectDetailPayload = {
       state_province?: string;
       country?: string;
       phone?: string;
-      ngo_size?: string;
+      ngo_volunteer_capacity?: number;
       industry?: string;
       pincode?: string;
       profile_data?: Record<string, any>;
@@ -80,6 +83,14 @@ const statusBadgeClass = (status: string) => {
   return 'bg-slate-100 text-slate-700 border-slate-200';
 };
 
+const getInitials = (name?: string) => {
+  if (!name) return 'NG';
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return 'NG';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+};
+
 export default function ServiceRequestProjectDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -92,10 +103,16 @@ export default function ServiceRequestProjectDetailPage() {
   const [loading, setLoading] = useState(true);
   const [payload, setPayload] = useState<ProjectDetailPayload | null>(null);
   const [applyLoading, setApplyLoading] = useState(false);
+  const [expandedNeedGroups, setExpandedNeedGroups] = useState<Record<'ongoing' | 'fulfilled' | 'removed', boolean>>({
+    ongoing: false,
+    fulfilled: false,
+    removed: false
+  });
   const allVerified = Boolean(user?.email_verified && user?.phone_verified && user?.verification_status === 'verified');
 
-  const fetchProjectDetail = async () => {
+  const fetchProjectDetail = async (options?: { silent?: boolean }) => {
     if (!token || !projectId) return;
+    const silent = Boolean(options?.silent);
 
     try {
       setLoading(true);
@@ -105,13 +122,17 @@ export default function ServiceRequestProjectDetailPage() {
 
       const data = await response.json();
       if (!response.ok || !data?.success) {
-        toast({ title: 'Error', description: data?.error || 'Failed to load project', variant: 'destructive' });
+        if (!silent) {
+          toast({ title: 'Error', description: data?.error || 'Failed to load project', variant: 'destructive' });
+        }
         return;
       }
 
       setPayload(data.data);
     } catch (error) {
-      toast({ title: 'Error', description: 'Failed to load project', variant: 'destructive' });
+      if (!silent) {
+        toast({ title: 'Error', description: 'Failed to load project', variant: 'destructive' });
+      }
     } finally {
       setLoading(false);
     }
@@ -124,6 +145,16 @@ export default function ServiceRequestProjectDetailPage() {
   useEffect(() => {
     if (!user || !token) return;
     fetchProjectDetail();
+  }, [user?.id, token, projectId]);
+
+  useEffect(() => {
+    if (!user || !token) return;
+
+    const interval = window.setInterval(() => {
+      void fetchProjectDetail({ silent: true });
+    }, 20000);
+
+    return () => window.clearInterval(interval);
   }, [user?.id, token, projectId]);
 
   const currentCompanyApplication = useMemo(() => {
@@ -173,50 +204,35 @@ export default function ServiceRequestProjectDetailPage() {
       <Header />
       <div className="mx-auto max-w-7xl px-4 py-8">
         <div className="mb-6">
-          <Skeleton className="h-9 w-24" />
+          <Skeleton className="h-9 w-24 rounded-md" />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          <div className="lg:col-span-4">
-            <Card className="lg:sticky lg:top-20">
-              <CardHeader>
-                <Skeleton className="h-6 w-44" />
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <Skeleton className="h-28 w-28 md:h-32 md:w-32 rounded-lg mx-auto" />
-                <div className="space-y-2">
-                  <Skeleton className="h-5 w-40" />
-                  <Skeleton className="h-4 w-52" />
-                </div>
-                <div className="space-y-3">
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-5/6" />
-                  <Skeleton className="h-6 w-24" />
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="lg:col-span-8">
+          <div className="lg:col-span-12">
             <Card>
-              <CardHeader>
-                <Skeleton className="h-6 w-56" />
-              </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="pt-6 space-y-4">
                 <div className="grid w-full grid-cols-3 gap-2">
-                  <Skeleton className="h-10" />
-                  <Skeleton className="h-10" />
-                  <Skeleton className="h-10" />
+                  <Skeleton className="h-10 rounded-md" />
+                  <Skeleton className="h-10 rounded-md" />
+                  <Skeleton className="h-10 rounded-md" />
                 </div>
                 <div className="space-y-3">
-                  <Skeleton className="h-5 w-48" />
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-11/12" />
-                  <Skeleton className="h-4 w-9/12" />
+                  <Skeleton className="h-5 w-48 rounded-md" />
+                  <Skeleton className="h-4 w-full rounded-md" />
+                  <Skeleton className="h-4 w-11/12 rounded-md" />
+                  <Skeleton className="h-4 w-9/12 rounded-md" />
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    <Skeleton className="h-12" />
-                    <Skeleton className="h-12" />
-                    <Skeleton className="h-12" />
+                    <Skeleton className="h-12 rounded-md" />
+                    <Skeleton className="h-12 rounded-md" />
+                    <Skeleton className="h-12 rounded-md" />
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                      <div key={i} className="rounded-md border border-slate-200 p-4 space-y-2">
+                        <Skeleton className="h-3 w-24 rounded-md" />
+                        <Skeleton className="h-5 w-4/5 rounded-md" />
+                      </div>
+                    ))}
                   </div>
                 </div>
               </CardContent>
@@ -262,8 +278,6 @@ export default function ServiceRequestProjectDetailPage() {
   };
 
   const canShowApplicationTab = user.user_type === 'company';
-  const projectVisibleTabCount = canShowApplicationTab ? 3 : 2;
-  const showProjectTabList = projectVisibleTabCount > 1;
   const canCompanyApply = user.user_type === 'company' && payload.csr_project_eligible_for_company_apply;
   const canCompanyManageCsr = user.user_type === 'company' && allVerified;
   const ngo = projectData.ngo;
@@ -272,92 +286,54 @@ export default function ServiceRequestProjectDetailPage() {
     ? `${ngo.city}, ${ngo.state_province}${ngo.country ? `, ${ngo.country}` : ''}`
     : ngo?.location || projectData.exact_address || projectData.location || 'Location not set';
   const ngoPhone = ngo?.phone || 'Phone not set';
-  const ngoSize = String(ngo?.ngo_size || ngoProfileData.ngo_size || 'NGO size not set');
+  const ngoSize = String(
+    (typeof ngo?.ngo_volunteer_capacity === 'number' && ngo?.ngo_volunteer_capacity >= 0)
+      ? `${ngo.ngo_volunteer_capacity} people`
+      : (typeof ngoProfileData?.ngo_volunteer_capacity === 'number' && ngoProfileData?.ngo_volunteer_capacity >= 0)
+        ? `${ngoProfileData.ngo_volunteer_capacity} people`
+        : 'NGO size not set'
+  );
   const ngoSector = String(ngoProfileData.sector || ngo?.industry || 'Sector not set');
   const ngoFounded = String(ngoProfileData.founded || ngoProfileData.founded_year || 'Founded year not set');
   const ngoPincode = ngo?.pincode || 'Pincode not set';
+  const ngoProfileImage = String(ngoProfileData.profile_image || ngoProfileData.logo_url || '').trim();
   const projectCategory = payload.needs.map((need) => String(need.category || '').trim()).find(Boolean) || 'Not specified';
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div className="min-h-screen overflow-x-hidden bg-gradient-to-br from-blue-50 to-indigo-100">
       <Header />
       <div className="mx-auto max-w-7xl px-4 py-8">
-        <div className="mb-6">
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <Button variant="ghost" className="w-full justify-start px-0 text-blue-600 hover:text-blue-800 hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0 sm:w-auto" onClick={() => router.back()}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back
           </Button>
+          {user?.user_type === 'ngo' && Number(user?.id) === Number(payload?.project?.ngo?.id || projectId) && (
+            <Link href={`/service-requests/projects/${projectId}/edit`}>
+              <Button variant="outline" className="w-full sm:w-auto">Edit Project</Button>
+            </Link>
+          )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          <div className="lg:col-span-4">
-            <Card className="lg:sticky lg:top-20">
-              <CardHeader>
-                <CardTitle>Requesting Organization</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="h-28 w-28 md:h-32 md:w-32 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden mx-auto">
-                  <Building className="h-12 w-12 text-gray-400" />
-                </div>
-
-                <div>
-                  <h3 className="text-lg font-semibold">{ngo?.name || 'NGO'}</h3>
-                  <p className="text-sm text-gray-500">{ngo?.email || 'Email not set'}</p>
-                </div>
-
-                <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
-                  <div>
-                    <p className="font-medium text-gray-500">Location</p>
-                    <p>{ngoLocation}</p>
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-500">Phone</p>
-                    <p>{ngoPhone}</p>
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-500">NGO Size</p>
-                    <p>{ngoSize}</p>
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-500">Sector</p>
-                    <p>{ngoSector}</p>
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-500">Founded Year</p>
-                    <p>{ngoFounded}</p>
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-500">Pincode</p>
-                    <p>{ngoPincode}</p>
-                  </div>
-                </div>
-
-                <div className="space-y-1 text-sm">
-                  <p className="font-medium text-gray-500">Project Status</p>
-                  <Badge className={`capitalize ${statusBadgeClass(projectData.status || 'active')}`}>
-                    {String(projectData.status || 'active').replace('_', ' ')}
-                  </Badge>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="lg:col-span-8">
+          <div className="lg:col-span-12 min-w-0">
             <Card>
               <CardContent className="pt-6">
                 <Tabs defaultValue="details" className="w-full">
-                  {showProjectTabList ? (
-                    <TabsList className={`grid w-full ${canShowApplicationTab ? 'grid-cols-3' : 'grid-cols-2'}`}>
-                      <TabsTrigger value="details">Project Details</TabsTrigger>
-                      <TabsTrigger value="needs">Project Needs</TabsTrigger>
-                      {canShowApplicationTab ? <TabsTrigger value="application">Application</TabsTrigger> : null}
-                    </TabsList>
-                  ) : null}
+                  <TabsList className="flex w-full gap-2 overflow-x-auto pb-1">
+                    <TabsTrigger value="details" className="shrink-0 whitespace-nowrap">Project Details</TabsTrigger>
+                    <TabsTrigger value="needs" className="shrink-0 whitespace-nowrap">Project Needs</TabsTrigger>
+                    <TabsTrigger value="requester" className="shrink-0 whitespace-nowrap">Requesting Organization</TabsTrigger>
+                    {canShowApplicationTab ? <TabsTrigger value="application" className="shrink-0 whitespace-nowrap">Application</TabsTrigger> : null}
+                  </TabsList>
 
-                  <TabsContent value="details" className={`${showProjectTabList ? 'mt-4' : ''} space-y-4`}>
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium text-gray-500">Project Title</p>
-                      <p className="font-semibold text-lg">{projectData.title}</p>
+                  <TabsContent value="details" className="mt-4 space-y-4">
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium text-gray-500">Project Title</p>
+                        <p className="font-semibold text-lg text-blue-600">{projectData.title}</p>
+                      </div>
+                      { /* Edit Project button moved to page top for alignment; no duplicate here */ }
                     </div>
 
                     <div className="space-y-2">
@@ -367,7 +343,28 @@ export default function ServiceRequestProjectDetailPage() {
 
                     <div className="space-y-2">
                       <p className="text-sm font-medium text-gray-500">Description</p>
-                      <p className="text-sm text-muted-foreground">{projectData.description || 'No description provided.'}</p>
+                      <p className="text-sm leading-6 text-muted-foreground whitespace-pre-wrap break-words">
+                        {projectData.description || 'No description provided.'}
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-3">
+                      <div>
+                        <p className="text-sm font-medium text-gray-500">Total Project Time</p>
+                        <p className="font-semibold">{projectData.timeline ? String(projectData.timeline) : 'Not specified'}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-500">Validity</p>
+                        <p className="font-semibold text-blue-600">{projectData.valid_until ? String(projectData.valid_until) : 'Open-ended'}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-500">Expected Beneficiaries</p>
+                        <p className="font-semibold text-blue-600">{projectData.expected_beneficiaries ?? 'Not specified'}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-500">Selected Lead NGO</p>
+                        <p className="font-semibold">{projectData.selected_lead_ngo_name || 'Not selected'}</p>
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-3">
@@ -387,40 +384,146 @@ export default function ServiceRequestProjectDetailPage() {
 
                   </TabsContent>
 
-                  <TabsContent value="needs" className={`${showProjectTabList ? 'mt-4' : ''} space-y-4`}>
+                  <TabsContent value="needs" className="mt-4 space-y-4">
                     {[
                       { key: 'ongoing', title: 'Ongoing Needs', items: payload.need_breakdown.ongoing },
                       { key: 'fulfilled', title: 'Fulfilled Needs', items: payload.need_breakdown.fulfilled },
                       { key: 'removed', title: 'Removed Needs', items: payload.need_breakdown.removed }
-                    ].map((group) => (
+                    ].map((group) => {
+                      const groupKey = group.key as 'ongoing' | 'fulfilled' | 'removed';
+                      const sortedItems = [...group.items].sort((a, b) => Number(b.id) - Number(a.id));
+                      const isExpanded = expandedNeedGroups[groupKey];
+                      const visibleItems = isExpanded ? sortedItems : sortedItems.slice(0, 5);
+                      const remainingCount = Math.max(0, sortedItems.length - visibleItems.length);
+
+                      return (
                       <div key={group.key} className="space-y-2">
                         <p className="text-sm font-semibold text-slate-900">{group.title} ({group.items.length})</p>
                         {group.items.length === 0 ? (
                           <p className="text-xs text-slate-500">No needs in this section.</p>
                         ) : (
                           <div className="space-y-2">
-                            {group.items.map((need) => (
-                              <div key={need.id} className="flex items-center justify-between rounded-md border bg-white p-2">
-                                <div>
-                                  <p className="text-sm font-medium">#{need.id} {need.title}</p>
-                                  <p className="text-xs text-slate-500">{need.request_type || need.category || 'Need'}</p>
+                            {visibleItems.map((need) => {
+                              const needImage = Array.isArray(need.images) && need.images.length > 0
+                                ? need.images[0]
+                                : need.image_url || ''
+
+                              return (
+                                <div key={need.id} className="rounded-md border border-slate-200 bg-white p-3">
+                                  <div className="flex items-start gap-3">
+                                    <div className="h-14 w-14 flex-shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-100">
+                                      {needImage ? (
+                                        <img src={needImage} alt={need.title} className="h-full w-full object-cover" loading="lazy" />
+                                      ) : (
+                                        <div className="flex h-full w-full items-center justify-center text-[10px] font-medium text-slate-500">
+                                          No Image
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    <div className="min-w-0 flex-1 space-y-2">
+                                      <div className="flex items-start justify-between gap-2">
+                                        <p className="line-clamp-1 text-sm font-semibold text-slate-950">{need.title}</p>
+                                        <Badge className={`capitalize ${statusBadgeClass(need.status)}`}>{String(need.status || '').replace('_', ' ')}</Badge>
+                                      </div>
+
+                                      <p className="line-clamp-1 text-xs text-slate-600">{need.description || 'No description provided.'}</p>
+
+                                      <div className="flex items-center justify-between gap-2">
+                                        <div className="min-w-0 rounded-md border border-slate-200 bg-slate-50 px-2 py-1">
+                                          <p className="truncate text-xs font-medium text-slate-800">{need.request_type || need.category || 'Need'}</p>
+                                        </div>
+                                        <Link href={`/service-requests/${need.id}`}>
+                                          <Button variant="outline" size="sm" className="h-7 rounded-md border-slate-300 px-3 text-xs font-medium text-slate-700">
+                                            View
+                                          </Button>
+                                        </Link>
+                                      </div>
+                                    </div>
+                                  </div>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                  <Badge className={`capitalize ${statusBadgeClass(need.status)}`}>{String(need.status || '').replace('_', ' ')}</Badge>
-                                  <Link href={`/service-requests/${need.id}`}>
-                                    <Button variant="outline" size="sm">Need Detail</Button>
-                                  </Link>
-                                </div>
+                              )
+                            })}
+
+                            {sortedItems.length > 5 ? (
+                              <div className="pt-1">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  className="h-8 px-2 text-xs text-slate-700 hover:text-slate-900"
+                                  onClick={() =>
+                                    setExpandedNeedGroups((prev) => ({
+                                      ...prev,
+                                      [groupKey]: !prev[groupKey]
+                                    }))
+                                  }
+                                >
+                                  <span>{isExpanded ? 'Show recent 5' : `Show all (${sortedItems.length})`}</span>
+                                  <ChevronDown className={`ml-1 h-4 w-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                  {!isExpanded && remainingCount > 0 ? <span className="ml-1 text-[11px] text-slate-500">+{remainingCount}</span> : null}
+                                </Button>
                               </div>
-                            ))}
+                            ) : null}
                           </div>
                         )}
                       </div>
-                    ))}
+                      );
+                    })}
+                  </TabsContent>
+
+                  <TabsContent value="requester" className="mt-4 space-y-5">
+                    <div className="flex items-start gap-4 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+                      <div className="h-16 w-16 shrink-0 rounded-md bg-gray-100 flex items-center justify-center overflow-hidden">
+                        {ngoProfileImage ? (
+                          <img src={ngoProfileImage} alt={ngo?.name || 'NGO'} className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="h-full w-full flex items-center justify-center bg-gray-200">
+                            <span className="text-lg font-semibold text-gray-700">{getInitials(ngo?.name || 'NGO')}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="min-w-0">
+                        <h3 className="text-lg font-semibold leading-tight truncate">{ngo?.name || 'NGO'}</h3>
+                        <p className="mt-1 text-sm text-gray-500 break-all">{ngo?.email || 'Email not set'}</p>
+                        <div className="mt-2">
+                          <Badge className={`capitalize ${statusBadgeClass(projectData.status || 'active')}`}>
+                            {String(projectData.status || 'active').replace('_', ' ')}
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div className="rounded-lg border border-slate-200 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Location</p>
+                        <p className="mt-1 text-sm font-medium text-slate-800">{ngoLocation}</p>
+                      </div>
+                      <div className="rounded-lg border border-slate-200 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Phone</p>
+                        <p className="mt-1 text-sm font-medium text-slate-800">{ngoPhone}</p>
+                      </div>
+                      <div className="rounded-lg border border-slate-200 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">NGO Size</p>
+                        <p className="mt-1 text-sm font-medium text-slate-800">{ngoSize}</p>
+                      </div>
+                      <div className="rounded-lg border border-slate-200 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Sector</p>
+                        <p className="mt-1 text-sm font-medium text-slate-800">{ngoSector}</p>
+                      </div>
+                      <div className="rounded-lg border border-slate-200 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Founded Year</p>
+                        <p className="mt-1 text-sm font-medium text-slate-800">{ngoFounded}</p>
+                      </div>
+                      <div className="rounded-lg border border-slate-200 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pincode</p>
+                        <p className="mt-1 text-sm font-medium text-slate-800">{ngoPincode}</p>
+                      </div>
+                    </div>
                   </TabsContent>
 
                   {canShowApplicationTab ? (
-                  <TabsContent value="application" className={`${showProjectTabList ? 'mt-4' : ''}`}>
+                  <TabsContent value="application" className="mt-4">
                     {user.user_type !== 'company' ? (
                       <Alert>
                         <AlertDescription>

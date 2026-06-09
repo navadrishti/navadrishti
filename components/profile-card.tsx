@@ -72,7 +72,7 @@ export function ProfileCard({
         <div className="flex justify-between -mt-12">
           <Avatar className="h-20 w-20 border-4 border-background shadow-lg transition-transform duration-500 ease-out group-hover:scale-105 group-hover:shadow-xl">
             <AvatarImage src={profileImage} alt={displayName} />
-            <AvatarFallback className="bg-gradient-to-br from-blue-400 to-indigo-500 text-white font-semibold">{getInitials(displayName)}</AvatarFallback>
+            <AvatarFallback className="bg-udaan-orange text-white font-semibold">{getInitials(displayName)}</AvatarFallback>
           </Avatar>
           {!footer && (
             <Button 

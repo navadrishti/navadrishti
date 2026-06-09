@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import React from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
@@ -35,6 +36,7 @@ import {
 type FormData = {
   title: string
   description: string
+  images: string
   offer_type: OfferType
   transaction_type: TransactionType
   impact_area: string[]
@@ -44,8 +46,12 @@ type FormData = {
   state_province: string
   pincode: string
   coverage_area: string
+  valid_until: string
   price_type: PriceType
   price_amount: number | ''
+  unit_rate: number | ''
+  billing_cycle: string
+  rate_currency: string
 
   funding_type: string
   budget_amount: number | ''
@@ -79,6 +85,7 @@ type FormData = {
 const initialFormData: FormData = {
   title: '',
   description: '',
+  images: '',
   offer_type: 'financial',
   transaction_type: getDefaultTransactionType('financial'),
   impact_area: [],
@@ -88,6 +95,7 @@ const initialFormData: FormData = {
   state_province: '',
   pincode: '',
   coverage_area: '',
+  valid_until: '',
   price_type: 'free',
   price_amount: '',
 
@@ -119,6 +127,9 @@ const initialFormData: FormData = {
   infra_available_from: '',
   infra_available_to: '',
 
+  unit_rate: '',
+  billing_cycle: 'daily',
+  rate_currency: 'INR',
 }
 
 export default function CreateServiceOfferPage() {
@@ -139,10 +150,56 @@ export default function CreateServiceOfferPage() {
     setFormData((prev) => ({ ...prev, [name]: value }))
   }
 
+  const imagesTextareaRef = React.useRef<HTMLTextAreaElement | null>(null)
+
+  const parseImageUrls = (value: string) => {
+    return value
+      .split(/[\n,]/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+  }
+
+  const appendImageUrls = (currentValue: string, urls: string[]) => {
+    if (urls.length === 0) return currentValue
+    return [...parseImageUrls(currentValue), ...urls].join('\n')
+  }
+
+  const handleUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0) return { urls: [] as string[], failures: [] as string[] }
+
+    const urls: string[] = []
+    const failures: string[] = []
+
+    for (const file of Array.from(files)) {
+      try {
+        const uploadData = new FormData()
+        uploadData.append('file', file)
+
+        const response = await fetch('/api/upload', {
+          method: 'POST',
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          body: uploadData
+        })
+
+        const data = await response.json()
+        if (!response.ok || !data.success || !data.data?.url) {
+          throw new Error(data.error || 'Failed to upload image')
+        }
+
+        urls.push(data.data.url)
+      } catch {
+        failures.push(file.name)
+      }
+    }
+
+    return { urls, failures }
+  }
+
   const handleTextInput = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
     const numericFields = new Set([
       'price_amount',
+      'unit_rate',
       'budget_amount',
       'wage_per_day',
       'hours_per_day',
@@ -186,6 +243,7 @@ export default function CreateServiceOfferPage() {
   const buildOfferDetails = () => {
     if (formData.offer_type === 'financial') {
       return {
+        images: parseImageUrls(formData.images),
         funding_type: formData.funding_type || null,
         budget_amount: toNullablePositiveNumber(formData.budget_amount),
         disbursement_schedule: formData.disbursement_schedule || null,
@@ -197,6 +255,7 @@ export default function CreateServiceOfferPage() {
 
     if (formData.offer_type === 'service') {
       return {
+        images: parseImageUrls(formData.images),
         skills_required: parseCsvToStringArray(formData.skills_required),
         experience_requirements: formData.experience_requirements.trim() || null,
         employment_type: formData.employment_type || null,
@@ -209,6 +268,7 @@ export default function CreateServiceOfferPage() {
 
     if (formData.offer_type === 'material') {
       return {
+        images: parseImageUrls(formData.images),
         condition: formData.condition || null,
         stock_status: formData.stock_status || null,
         quantity: toNullablePositiveNumber(formData.material_quantity),
@@ -219,6 +279,7 @@ export default function CreateServiceOfferPage() {
     }
 
     return {
+      images: parseImageUrls(formData.images),
       infra_type: formData.infra_type || null,
       capacity: toNullablePositiveNumber(formData.infra_capacity),
       facilities: parseCsvToStringArray(formData.facilities),
@@ -240,6 +301,11 @@ export default function CreateServiceOfferPage() {
       return 'Please select at least one impact area.'
     }
 
+    // Validity is mandatory for all new offers
+    if (!formData.valid_until) {
+      return 'Please select a validity end date for this offer.'
+    }
+
     if (requiresPricing) {
       if (!['fixed', 'negotiable'].includes(formData.price_type)) {
         return 'For rent/sell offers, choose fixed or negotiable pricing.'
@@ -248,6 +314,15 @@ export default function CreateServiceOfferPage() {
       if (toNullablePositiveNumber(formData.price_amount) === null) {
         return 'Please enter a valid price amount for rent/sell offers.'
       }
+
+      if (formData.transaction_type === 'rent' && toNullablePositiveNumber(formData.unit_rate) === null) {
+        return 'Please enter a valid unit rate for rent offers (e.g., 10 per day).'
+      }
+
+      if (formData.transaction_type === 'rent' && !formData.billing_cycle) {
+        return 'Please select a billing cycle for rent offers.'
+      }
+
     }
 
     return null
@@ -274,6 +349,7 @@ export default function CreateServiceOfferPage() {
     const payload = {
       title: formData.title.trim(),
       description: formData.description.trim(),
+      images: parseImageUrls(formData.images),
       offer_type: formData.offer_type,
       transaction_type: formData.transaction_type,
       impact_area: formData.impact_area,
@@ -283,8 +359,12 @@ export default function CreateServiceOfferPage() {
       state_province: formData.state_province.trim() || null,
       pincode: formData.pincode.trim() || null,
       coverage_area: formData.coverage_area.trim() || null,
+      valid_until: formData.valid_until || null,
       price_type: priceType,
       price_amount: priceAmount,
+      unit_rate: toNullablePositiveNumber(formData.unit_rate),
+      billing_cycle: formData.billing_cycle || null,
+      rate_currency: formData.rate_currency || 'INR',
       offer_details: buildOfferDetails()
     }
 
@@ -344,10 +424,78 @@ export default function CreateServiceOfferPage() {
                   <Label htmlFor="title">Offer Title *</Label>
                   <Input id="title" name="title" value={formData.title} onChange={handleTextInput} required />
                 </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <Label htmlFor="unit_rate">Unit Rate (e.g., 10)</Label>
+                    <Input id="unit_rate" name="unit_rate" type="number" min="0" value={formData.unit_rate} onChange={handleTextInput} />
+                  </div>
+                  <div>
+                    <Label>Billing Cycle</Label>
+                    <StyledSelect
+                      value={formData.billing_cycle}
+                      options={[{ value: 'daily', label: 'Daily' }, { value: 'monthly', label: 'Monthly' }, { value: 'one_time', label: 'One-time' }]}
+                      onValueChange={(value) => setField('billing_cycle', value)}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="rate_currency">Currency</Label>
+                    <Input id="rate_currency" name="rate_currency" value={formData.rate_currency} onChange={handleTextInput} />
+                  </div>
+                </div>
 
                 <div>
                   <Label htmlFor="description">Description *</Label>
                   <Textarea id="description" name="description" value={formData.description} onChange={handleTextInput} rows={4} required />
+                </div>
+
+                <div>
+                  <Label htmlFor="offer-images">Images</Label>
+                  <div className="flex items-center gap-4">
+                    <label className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md cursor-pointer hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400">
+                      Choose files
+                      <input
+                        id="offer-images-upload"
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="sr-only"
+                        onChange={(event) => void handleUpload(event.target.files).then((result) => {
+                          if (result.urls.length > 0) {
+                            setField('images', appendImageUrls(formData.images, result.urls))
+                          }
+                        })}
+                      />
+                    </label>
+                    <span className="text-sm text-gray-600">{parseImageUrls(formData.images).length > 0 ? `${parseImageUrls(formData.images).length} file(s) selected` : 'No files chosen'}</span>
+                  </div>
+
+                  {/* Hidden textarea keeps the actual URLs for the form, but users paste into the visible preview area */}
+                  <textarea
+                    id="offer-images"
+                    value={formData.images}
+                    onChange={(e) => setField('images', e.target.value)}
+                    className="sr-only"
+                    ref={imagesTextareaRef}
+                    rows={3}
+                  />
+
+                  <div
+                    onClick={() => imagesTextareaRef.current?.focus()}
+                    className="mt-3 min-h-[80px] border border-gray-200 rounded-md p-3 bg-white cursor-text"
+                  >
+                    {parseImageUrls(formData.images).length === 0 ? (
+                      <p className="text-gray-400">Uploaded Cloudinary images appear here. Click to paste image URLs, one per line.</p>
+                    ) : (
+                      <div className="grid grid-cols-4 gap-2">
+                        {parseImageUrls(formData.images).map((url) => (
+                          <div key={url} className="w-full h-20 rounded overflow-hidden border border-gray-200 bg-gray-50">
+                            <img src={url} alt="uploaded" className="w-full h-full object-cover" />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">Leave blank to show the no-image placeholder on request cards.</p>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -436,6 +584,18 @@ export default function CreateServiceOfferPage() {
                     />
                   </div>
                 </div>
+                  <div>
+                    <Label htmlFor="valid_until">Validity End Date *</Label>
+                    <Input
+                      id="valid_until"
+                      name="valid_until"
+                      type="date"
+                      value={formData.valid_until}
+                      onChange={handleTextInput}
+                      required={true}
+                    />
+                    <p className="mt-1 text-xs text-gray-500">This offer will automatically expire at the end of the selected date.</p>
+                  </div>
               </CardContent>
             </Card>
 

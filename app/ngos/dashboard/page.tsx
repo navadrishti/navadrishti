@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
+import { createClient as createSupabaseClient } from '@/lib/supabase';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import ProtectedRoute from '@/components/protected-route';
@@ -20,6 +21,8 @@ import { DashboardQuickSidebar } from '@/components/dashboard-quick-sidebar';
 interface OfferRequestItem {
   id: number;
   service_offer_id: number;
+  service_request_id?: number;
+  assignment_id?: string;
   offer_title: string;
   client?: {
     name?: string;
@@ -27,9 +30,97 @@ interface OfferRequestItem {
     user_type?: string;
   };
   message?: string;
+  response_meta?: Record<string, any> | null;
+  assigned_at?: string | null;
+  accepted_at?: string | null;
+  valid_until?: string | null;
+  billing_cycle?: string | null;
+  payment_mode?: string | null;
+  payment_required?: boolean | null;
+  payment_amount_inr?: number | null;
+  selected_need_summary?: Array<{
+    id: number;
+    title: string;
+    estimated_budget?: number | null;
+    target_amount?: number | null;
+    target_quantity?: number | null;
+    beneficiary_count?: number | null;
+  }>;
   status: 'pending' | 'accepted' | 'rejected' | 'active' | 'completed' | 'cancelled';
   isAssigned: boolean;
 }
+
+const getOfferRequestBucket = (request: OfferRequestItem) => {
+  const status = String(request.status || '').trim().toLowerCase();
+  if (['accepted', 'active', 'in_progress'].includes(status) || request.isAssigned) return 'in-progress';
+  if (['rejected', 'completed', 'cancelled', 'closed', 'expired'].includes(status)) return 'history';
+  return 'pending';
+};
+
+const formatSelectedNeeds = (request: OfferRequestItem) => {
+  const summaryNeeds = Array.isArray(request.selected_need_summary) ? request.selected_need_summary : [];
+  if (summaryNeeds.length > 0) {
+    return summaryNeeds.map((need: any) => {
+      const title = String(need?.title || 'Need');
+      const amount = Number(need?.estimated_budget ?? need?.target_amount ?? 0);
+      return amount > 0 ? `${title} | INR ${amount.toLocaleString('en-IN')}` : title;
+    });
+  }
+
+  const meta = request.response_meta && typeof request.response_meta === 'object' ? request.response_meta : {};
+  const selectedNeeds = Array.isArray(meta.selected_needs) ? meta.selected_needs : [];
+
+  if (selectedNeeds.length > 0) {
+    return selectedNeeds
+      .map((need: any) => {
+        const title = String(need?.title || 'Need');
+        const amount = Number(need?.estimated_budget ?? need?.target_amount ?? 0);
+        return amount > 0 ? `${title} | INR ${amount.toLocaleString('en-IN')}` : title;
+      })
+      .slice(0, 3);
+  }
+
+  const selectedNeedIds = Array.isArray(meta.selected_need_ids) ? meta.selected_need_ids : [];
+  if (selectedNeedIds.length > 0) {
+    return selectedNeedIds.slice(0, 3).map((id: any) => `Need #${id}`);
+  }
+
+  const fallbackRequestId = Number(meta.service_request_id || 0);
+  return fallbackRequestId > 0 ? [`Need #${fallbackRequestId}`] : [];
+};
+
+const formatInrAmount = (value: unknown): string => {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) return 'Free';
+  return `INR ${amount.toLocaleString('en-IN')}`;
+};
+
+const formatDisplayDate = (value?: string | null): string => {
+  if (!value) return 'Not set';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Not set';
+  return date.toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric'
+  });
+};
+
+const getOfferRequestBillingDetails = (request: OfferRequestItem) => {
+  const meta = request.response_meta && typeof request.response_meta === 'object' ? request.response_meta : {};
+  const assignmentMeta = meta.assignment_meta && typeof meta.assignment_meta === 'object' ? meta.assignment_meta : {};
+  const paymentAmount = Number(meta.payment_amount_inr ?? assignmentMeta.payment_amount_inr ?? assignmentMeta.rate_per_unit ?? request.payment_amount_inr ?? 0);
+  const paymentRequired = Boolean(meta.payment_required ?? assignmentMeta.payment_required ?? request.payment_required ?? paymentAmount > 0);
+
+  return {
+    assignedAt: String(meta.accepted_at || meta.assigned_at || assignmentMeta.assigned_at || request.assigned_at || request.accepted_at || ''),
+    validUntil: String(meta.valid_until || assignmentMeta.valid_until || request.valid_until || ''),
+    billingCycle: String(meta.billing_cycle || assignmentMeta.billing_cycle || request.billing_cycle || ''),
+    paymentMode: String(meta.payment_mode || assignmentMeta.payment_mode || request.payment_mode || ''),
+    paymentAmount,
+    paymentRequired
+  };
+};
 
 interface CompanyProjectApplication {
   project_id: string;
@@ -126,6 +217,9 @@ function NGODashboardContent() {
   const [reviewingCompanyApplicationKey, setReviewingCompanyApplicationKey] = useState<string | null>(null);
   const [csrTrackingAssignments, setCsrTrackingAssignments] = useState<CSRTrackingAssignment[]>([]);
   const [loadingCSRTrackingAssignments, setLoadingCSRTrackingAssignments] = useState(false);
+  const [csrAttendanceAssignments, setCsrAttendanceAssignments] = useState<any[]>([]);
+  const [loadingCSRAttendanceAssignments, setLoadingCSRAttendanceAssignments] = useState(false);
+  const [markingAttendanceId, setMarkingAttendanceId] = useState<string | null>(null);
   const [leadNgoInvitations, setLeadNgoInvitations] = useState<LeadNgoInvitation[]>([]);
   const [loadingLeadNgoInvitations, setLoadingLeadNgoInvitations] = useState(false);
   const [respondingLeadInviteId, setRespondingLeadInviteId] = useState<string | null>(null);
@@ -140,6 +234,7 @@ function NGODashboardContent() {
   const [loadingOfferRequests, setLoadingOfferRequests] = useState(false);
   const [updatingOfferRequestId, setUpdatingOfferRequestId] = useState<number | null>(null);
   const [capabilityOffersTab, setCapabilityOffersTab] = useState<'your-capabilities' | 'your-applications' | 'requests'>('your-capabilities');
+  const [offerRequestsTab, setOfferRequestsTab] = useState<'pending' | 'in-progress' | 'history'>('pending');
   const [yourNeedsTab, setYourNeedsTab] = useState<'ongoing-needs' | 'history-needs'>('ongoing-needs');
   const [trackingTab, setTrackingTab] = useState<'ongoing-projects' | 'history-projects' | 'ongoing-needs' | 'history-needs'>('ongoing-needs');
   const [csrProjectsTab, setCsrProjectsTab] = useState<'invitations' | 'ongoing' | 'completed'>('invitations');
@@ -310,6 +405,10 @@ function NGODashboardContent() {
       setLoadingOfferRequests(false);
     }
   };
+
+  const pendingOfferRequests = offerRequests.filter((request) => getOfferRequestBucket(request) === 'pending');
+  const inProgressOfferRequests = offerRequests.filter((request) => getOfferRequestBucket(request) === 'in-progress');
+  const historyOfferRequests = offerRequests.filter((request) => getOfferRequestBucket(request) === 'history');
 
   const fetchCompanyProjectApplications = async () => {
     try {
@@ -586,6 +685,146 @@ function NGODashboardContent() {
     }
   };
 
+  const fetchCSRAttendanceAssignments = async () => {
+    try {
+      setLoadingCSRAttendanceAssignments(true);
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setCsrAttendanceAssignments([]);
+        return;
+      }
+
+      const response = await fetch('/api/service-assignments?role=assigned&targetType=csr_project', {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      const data = await response.json();
+      if (response.ok && data?.success) {
+        setCsrAttendanceAssignments(Array.isArray(data.data) ? data.data : []);
+      } else {
+        setCsrAttendanceAssignments([]);
+      }
+    } catch (error) {
+      console.error('Error fetching CSR attendance assignments:', error);
+      setCsrAttendanceAssignments([]);
+    } finally {
+      setLoadingCSRAttendanceAssignments(false);
+    }
+  };
+
+  const getLocalDateString = (reference: Date = new Date()) => {
+    const year = reference.getFullYear();
+    const month = String(reference.getMonth() + 1).padStart(2, '0');
+    const day = String(reference.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const getNgoAttendanceUnits = () => {
+    const profileData = (user as any)?.profile_data || {};
+    const capacity = Number(
+      (user as any)?.ngo_volunteer_capacity ??
+      profileData.ngo_volunteer_capacity ??
+      profileData.team_strength ??
+      0
+    );
+    return Number.isFinite(capacity) && capacity > 0 ? capacity : 1;
+  };
+
+  const handleMarkCSRAttendance = async (assignment: any) => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      toast({ title: 'Authentication required', description: 'Please sign in again to mark attendance.', variant: 'destructive' });
+      return;
+    }
+
+    const today = getLocalDateString();
+    const attendanceSummary = assignment?.meta?.attendance_summary || {};
+    if (String(attendanceSummary.last_attendance_at || '') === today) {
+      toast({ title: 'Already marked', description: "Today's attendance has already been submitted." });
+      return;
+    }
+
+    const location = await new Promise<{ latitude: number; longitude: number; accuracy?: number } | null>((resolve) => {
+      if (typeof navigator === 'undefined' || !navigator.geolocation) {
+        resolve(null);
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => resolve({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy
+        }),
+        () => resolve(null),
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    });
+
+    if (!location) {
+      toast({
+        title: 'Location required',
+        description: 'Please share your location to mark NGO attendance.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    try {
+      setMarkingAttendanceId(String(assignment.id));
+      const response = await fetch(`/api/service-assignments/${assignment.id}/attendance`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          attendanceStatus: 'present',
+          attendanceSource: 'ngo_dashboard',
+          attendanceDate: today,
+          locationLatitude: location.latitude,
+          locationLongitude: location.longitude,
+          locationAccuracy: location.accuracy,
+          units: getNgoAttendanceUnits()
+        })
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.success) {
+        throw new Error(payload?.error || 'Failed to mark attendance');
+      }
+
+      toast({ title: 'Attendance marked', description: `Attendance saved for ${getNgoAttendanceUnits()} people.` });
+      await fetchCSRAttendanceAssignments();
+    } catch (error) {
+      toast({
+        title: 'Attendance failed',
+        description: error instanceof Error ? error.message : 'Could not mark attendance.',
+        variant: 'destructive'
+      });
+    } finally {
+      setMarkingAttendanceId(null);
+    }
+  };
+
+  const refreshDashboardData = async () => {
+    if (!user?.id) return;
+
+    await Promise.all([
+      fetchServiceOffers(),
+      fetchServiceRequests(),
+      fetchOfferApplications(),
+      fetchOfferRequests(),
+      fetchCompanyProjectApplications(),
+      fetchCSRTrackingAssignments(),
+      fetchCSRAttendanceAssignments(),
+      fetchLeadNgoInvitations(),
+      fetchCSRProjects()
+    ]);
+  };
+
   const fetchProjectEvidenceTimeline = async (projectId: string) => {
     try {
       setLoadingEvidenceProjectId(projectId);
@@ -613,48 +852,55 @@ function NGODashboardContent() {
 
   // Fetch all real data when component mounts
   useEffect(() => {
-    const fetchAllData = async () => {
-      if (user) {
-        console.log('NGO Dashboard: Starting to fetch all data for user:', user.id);
-        setLoadingData(true);
-        
-        // Auto-update service request statuses before fetching data
-        console.log('🔄 Running automatic status update check...');
-        try {
-          const token = localStorage.getItem('token');
-          if (token) {
-            const autoUpdateResponse = await fetch('/api/auto-update-statuses', {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-              }
-            });
-            const autoUpdateData = await autoUpdateResponse.json();
-            console.log('🔄 Auto-update result:', autoUpdateData);
+    if (!user?.id) return;
+
+    const runAutoUpdate = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+
+        await fetch('/api/auto-update-statuses', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
           }
-        } catch (autoUpdateError) {
-          console.error('Auto-update error (non-critical):', autoUpdateError);
-        }
-        
-        await Promise.all([
-          fetchServiceOffers(),
-          fetchServiceRequests(),
-          fetchOfferApplications(),
-          fetchOfferRequests(),
-          fetchCompanyProjectApplications(),
-          fetchCSRTrackingAssignments(),
-          fetchLeadNgoInvitations(),
-          fetchCSRProjects()
-        ]);
-        setLoadingData(false);
-        console.log('NGO Dashboard: Finished fetching all data');
-      } else {
-        console.log('NGO Dashboard: No user found, skipping data fetch');
+        });
+      } catch (autoUpdateError) {
+        console.error('Auto-update error (non-critical):', autoUpdateError);
       }
     };
 
-    fetchAllData();
+    const loadData = async () => {
+      console.log('NGO Dashboard: Starting to fetch all data for user:', user.id);
+      setLoadingData(true);
+      await runAutoUpdate();
+      await refreshDashboardData();
+      setLoadingData(false);
+      console.log('NGO Dashboard: Finished fetching all data');
+    };
+
+    loadData();
+
+    // Realtime subscriptions (Supabase) for NGO dashboard
+    const realtime = createSupabaseClient();
+    const channel = realtime.channel('realtime-ngo-dashboard');
+
+    const handleChange = (table: string) => {
+      if (table === 'service_request_projects') fetchCSRProjects();
+      else if (table === 'service_requests') fetchServiceRequests();
+      else if (table === 'service_offers') { fetchServiceOffers(); fetchOfferRequests(); }
+      else if (table === 'service_engagement_assignments') { fetchCSRTrackingAssignments(); fetchCSRAttendanceAssignments(); }
+    }
+
+    ['service_request_projects', 'service_requests', 'service_offers', 'service_engagement_assignments'].forEach((table) => {
+      channel.on('postgres_changes', { event: '*', schema: 'public', table }, () => handleChange(table));
+    });
+    void channel.subscribe();
+
+    return () => {
+      try { realtime.removeChannel(channel); } catch (e) { /* ignore */ }
+    };
   }, [user?.id]);
 
   const allVerified = Boolean(
@@ -776,7 +1022,7 @@ function NGODashboardContent() {
                       <TabsList className="grid w-full grid-cols-3 h-auto">
                         <TabsTrigger value="your-capabilities">Your Capabilities</TabsTrigger>
                         <TabsTrigger value="your-applications">Your Applications</TabsTrigger>
-                        <TabsTrigger value="requests">Requests</TabsTrigger>
+                        <TabsTrigger value="requests">Offer Applications</TabsTrigger>
                       </TabsList>
 
                       <TabsContent value="your-capabilities" className="mt-4">
@@ -836,7 +1082,7 @@ function NGODashboardContent() {
                         ) : offerApplications.length === 0 ? (
                           <div className="p-8 text-center text-muted-foreground">
                             <p className="text-lg font-medium mb-2">No applications yet</p>
-                            <p className="text-sm">Applications you have made on capability offers will appear here.</p>
+                            <p className="text-sm">Your applications on capability offers will appear here.</p>
                           </div>
                         ) : offerApplications.map((offer) => (
                           <div key={offer.id} className="rounded-md border bg-white p-4 space-y-3">
@@ -852,82 +1098,227 @@ function NGODashboardContent() {
                                 <Button variant="outline" size="sm">View Offer</Button>
                               </Link>
                             </div>
+                              <div className="text-xs text-slate-500">Valid until: {formatDisplayDate(offer.valid_until)}</div>
                           </div>
                         ))}
                       </TabsContent>
 
                       <TabsContent value="requests" className="mt-4 space-y-3">
-                        {loadingOfferRequests ? (
-                          <div className="flex items-center justify-center py-12">
-                            <Loader2 className="h-6 w-6 animate-spin" />
-                          </div>
-                        ) : offerRequests.length === 0 ? (
-                          <div className="p-8 text-center text-muted-foreground">
-                            <p className="text-lg font-medium mb-2">No requests yet</p>
-                            <p className="text-sm">Incoming requests on your offers will appear here.</p>
-                          </div>
-                        ) : (
-                          offerRequests.map((request) => (
-                            <div key={request.id} className="rounded-md border bg-white p-4 space-y-3">
-                              <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                                <div>
-                                  <p className="font-semibold">{request.offer_title}</p>
-                                  <p className="text-sm text-muted-foreground">
-                                    Requester: {request.client?.name || 'Unknown'} ({request.client?.user_type || 'participant'})
-                                  </p>
-                                  <p className="text-sm text-muted-foreground">{request.client?.email || 'No email available'}</p>
-                                  {request.message ? (
-                                    <div className="mt-2 rounded-md bg-muted p-3 text-sm text-foreground">
-                                      {request.message}
+                        <Tabs value={offerRequestsTab} onValueChange={(value) => setOfferRequestsTab(value as 'pending' | 'in-progress' | 'history')} className="w-full">
+                          <TabsList className="grid w-full grid-cols-3">
+                            <TabsTrigger value="pending">Pending</TabsTrigger>
+                            <TabsTrigger value="in-progress">In Progress</TabsTrigger>
+                            <TabsTrigger value="history">History</TabsTrigger>
+                          </TabsList>
+
+                          <TabsContent value="pending" className="mt-4 space-y-3">
+                            {loadingOfferRequests ? (
+                              <div className="flex items-center justify-center py-12">
+                                <Loader2 className="h-6 w-6 animate-spin" />
+                              </div>
+                            ) : pendingOfferRequests.length === 0 ? (
+                              <div className="p-8 text-center text-muted-foreground">
+                                <p className="text-lg font-medium mb-2">No pending requests</p>
+                                <p className="text-sm">Incoming requests on your offers will appear here.</p>
+                              </div>
+                            ) : pendingOfferRequests.map((request) => (
+                              <div key={request.id} className="rounded-md border bg-white p-4 space-y-3">
+                                <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                                  <div>
+                                    <p className="font-semibold">{request.offer_title}</p>
+                                    <p className="text-sm text-muted-foreground">
+                                      Requester: {request.client?.name || 'Unknown'} ({request.client?.user_type || 'participant'})
+                                    </p>
+                                    <p className="text-sm text-muted-foreground">{request.client?.email || 'No email available'}</p>
+                                    {request.message ? (
+                                      <div className="mt-2 rounded-md bg-muted p-3 text-sm text-foreground">
+                                        {request.message}
+                                      </div>
+                                    ) : null}
+                                    {formatSelectedNeeds(request).length > 0 ? (
+                                      <div className="mt-3 rounded-md bg-slate-50 p-3">
+                                        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Selected needs</p>
+                                        <div className="mt-2 flex flex-wrap gap-2">
+                                          {formatSelectedNeeds(request).map((needLabel) => (
+                                            <Badge key={needLabel} variant="secondary" className="rounded-full bg-white text-slate-700 border border-slate-200">
+                                              {needLabel}
+                                            </Badge>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <Badge variant="outline" className="capitalize">{request.status}</Badge>
+                                    <Badge className={request.isAssigned ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}>
+                                      {request.isAssigned ? 'Assigned' : 'Not Assigned'}
+                                    </Badge>
+                                  </div>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleOfferRequestStatusUpdate(request.id, 'accepted')}
+                                    disabled={updatingOfferRequestId === request.id}
+                                    className="bg-green-600 hover:bg-green-700"
+                                  >
+                                    {updatingOfferRequestId === request.id ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <>
+                                        <CheckCircle size={14} className="mr-1" />
+                                        Accept
+                                      </>
+                                    )}
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleOfferRequestStatusUpdate(request.id, 'rejected')}
+                                    disabled={updatingOfferRequestId === request.id}
+                                    className="border-red-300 text-red-600 hover:bg-red-50"
+                                  >
+                                    {updatingOfferRequestId === request.id ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <>
+                                        <XCircle size={14} className="mr-1" />
+                                        Reject
+                                      </>
+                                    )}
+                                  </Button>
+                                </div>
+                              </div>
+                            ))}
+                          </TabsContent>
+
+                          <TabsContent value="in-progress" className="mt-4 space-y-3">
+                            {loadingOfferRequests ? (
+                              <div className="flex items-center justify-center py-12">
+                                <Loader2 className="h-6 w-6 animate-spin" />
+                              </div>
+                            ) : inProgressOfferRequests.length === 0 ? (
+                              <div className="p-8 text-center text-muted-foreground">
+                                <p className="text-lg font-medium mb-2">No active requests</p>
+                                <p className="text-sm">Accepted requests that are now in progress will appear here.</p>
+                              </div>
+                            ) : inProgressOfferRequests.map((request) => {
+                              const billing = getOfferRequestBillingDetails(request);
+
+                              return (
+                                <div key={request.id} className="rounded-md border bg-white p-4 space-y-3">
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0 flex-1">
+                                      <p className="truncate font-semibold">{request.offer_title}</p>
+                                      <p className="truncate text-sm text-muted-foreground">
+                                        {request.client?.name || 'Unknown'} · {request.client?.user_type || 'participant'}
+                                      </p>
+                                      <p className="truncate text-sm text-muted-foreground">{request.client?.email || 'No email available'}</p>
                                     </div>
+                                    <div className="flex shrink-0 items-center gap-2">
+                                      <Badge variant="outline" className="capitalize whitespace-nowrap">{request.status}</Badge>
+                                      <Badge className={`${request.isAssigned ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'} whitespace-nowrap`}>
+                                        {request.isAssigned ? 'Assigned' : 'Not Assigned'}
+                                      </Badge>
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-1 gap-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 sm:grid-cols-2 lg:grid-cols-3">
+                                    <div className="min-w-0">
+                                      <p className="text-xs uppercase tracking-wide text-slate-500">Assigned</p>
+                                      <p className="truncate">{formatDisplayDate(billing.assignedAt)}</p>
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="text-xs uppercase tracking-wide text-slate-500">Billing</p>
+                                      <p className="truncate">{billing.billingCycle || 'one_time'} · {billing.paymentMode || 'prepaid'}</p>
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="text-xs uppercase tracking-wide text-slate-500">Amount</p>
+                                      <p className="truncate">{formatInrAmount(billing.paymentAmount)} · {billing.paymentRequired ? 'Due' : 'No payment'}</p>
+                                    </div>
+                                  </div>
+
+                                  {request.message ? <p className="text-sm text-slate-600 break-words">{request.message}</p> : null}
+                                  {formatSelectedNeeds(request).length > 0 ? (
+                                    <p className="text-xs text-slate-500 break-words">
+                                      Needs: {formatSelectedNeeds(request).join(' · ')}
+                                    </p>
                                   ) : null}
+
+                                  <div className="space-y-1 text-sm text-slate-600">
+                                    <p>This decision is final. Use tracking and project screens to manage the engagement.</p>
+                                    <p className="text-xs text-slate-500">Request ID: {request.id}</p>
+                                    {request.service_request_id ? (
+                                      <p className="text-xs text-slate-500">Linked service request: {request.service_request_id}</p>
+                                    ) : null}
+                                    {request.assignment_id ? (
+                                      <p className="text-xs text-slate-500">Assignment ID: {request.assignment_id}</p>
+                                    ) : null}
+                                  </div>
+
+                                  <div className="flex flex-wrap gap-2">
+                                    <Link href={request.assignment_id ? `/service-request-assignments/${request.assignment_id}` : `/service-requests/${request.id ?? request.service_request_id}`}>
+                                      <Button size="sm" variant="outline">Track engagement</Button>
+                                    </Link>
+                                  </div>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                  <Badge variant="outline" className="capitalize">{request.status}</Badge>
-                                  <Badge className={request.isAssigned ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}>
-                                    {request.isAssigned ? 'Assigned' : 'Not Assigned'}
-                                  </Badge>
+                              );
+                            })}
+                          </TabsContent>
+
+                          <TabsContent value="history" className="mt-4 space-y-3">
+                            {loadingOfferRequests ? (
+                              <div className="flex items-center justify-center py-12">
+                                <Loader2 className="h-6 w-6 animate-spin" />
+                              </div>
+                            ) : historyOfferRequests.length === 0 ? (
+                              <div className="p-8 text-center text-muted-foreground">
+                                <p className="text-lg font-medium mb-2">No history yet</p>
+                                <p className="text-sm">Rejected, completed, or cancelled requests will appear here.</p>
+                              </div>
+                            ) : historyOfferRequests.map((request) => (
+                              <div key={request.id} className="rounded-md border bg-white p-4 space-y-3">
+                                <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                                  <div>
+                                    <p className="font-semibold">{request.offer_title}</p>
+                                    <p className="text-sm text-muted-foreground">
+                                      Requester: {request.client?.name || 'Unknown'} ({request.client?.user_type || 'participant'})
+                                    </p>
+                                    <p className="text-sm text-muted-foreground">{request.client?.email || 'No email available'}</p>
+                                    {request.message ? (
+                                      <div className="mt-2 rounded-md bg-muted p-3 text-sm text-foreground">
+                                        {request.message}
+                                      </div>
+                                    ) : null}
+                                    {formatSelectedNeeds(request).length > 0 ? (
+                                      <div className="mt-3 rounded-md bg-slate-50 p-3">
+                                        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Selected needs</p>
+                                        <div className="mt-2 flex flex-wrap gap-2">
+                                          {formatSelectedNeeds(request).map((needLabel) => (
+                                            <Badge key={needLabel} variant="secondary" className="rounded-full bg-white text-slate-700 border border-slate-200">
+                                              {needLabel}
+                                            </Badge>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <Badge variant="outline" className="capitalize">{request.status}</Badge>
+                                    <Badge className={request.isAssigned ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}>
+                                      {request.isAssigned ? 'Assigned' : 'Not Assigned'}
+                                    </Badge>
+                                  </div>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  <Link href={`/service-offers/${request.service_offer_id}`}>
+                                    <Button size="sm" variant="outline">View Offer</Button>
+                                  </Link>
                                 </div>
                               </div>
-                              <div className="flex flex-wrap gap-2">
-                                <Link href={`/service-offers/${request.service_offer_id}`}>
-                                  <Button size="sm" variant="outline">View Offer</Button>
-                                </Link>
-                                <Button
-                                  size="sm"
-                                  onClick={() => handleOfferRequestStatusUpdate(request.id, 'accepted')}
-                                  disabled={updatingOfferRequestId === request.id || request.status === 'accepted'}
-                                  className="bg-green-600 hover:bg-green-700"
-                                >
-                                  {updatingOfferRequestId === request.id ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                  ) : (
-                                    <>
-                                      <CheckCircle size={14} className="mr-1" />
-                                      Accept
-                                    </>
-                                  )}
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handleOfferRequestStatusUpdate(request.id, 'rejected')}
-                                  disabled={updatingOfferRequestId === request.id || request.status === 'rejected'}
-                                  className="border-red-300 text-red-600 hover:bg-red-50"
-                                >
-                                  {updatingOfferRequestId === request.id ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                  ) : (
-                                    <>
-                                      <XCircle size={14} className="mr-1" />
-                                      Reject
-                                    </>
-                                  )}
-                                </Button>
-                              </div>
-                            </div>
-                          ))
-                        )}
+                            ))}
+                          </TabsContent>
+                        </Tabs>
                       </TabsContent>
                     </Tabs>
                   </TabsContent>
@@ -1167,7 +1558,7 @@ function NGODashboardContent() {
                     <div className="rounded-md border bg-slate-50 p-4 space-y-3">
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                          <p className="font-semibold text-slate-900">Service Request CSR Tracking</p>
+                          <p className="font-semibold text-slate-900">NGO Project CSR Tracking</p>
                           <p className="text-sm text-slate-600">Accepted full-project handoffs are tracked here and removed from Your Needs.</p>
                         </div>
                         <Button variant="outline" size="sm" onClick={fetchCSRTrackingAssignments}>Refresh Tracking</Button>
@@ -1329,6 +1720,46 @@ function NGODashboardContent() {
                             </div>
                           ) : ongoingCSRProjects.map((project) => (
                             <div key={project.id} className="rounded-md border bg-white p-4">
+                              {(() => {
+                                const attendanceAssignment = csrAttendanceAssignments.find((assignment) => String(assignment.target_id) === String(project.id));
+                                const attendanceSummary = attendanceAssignment?.meta?.attendance_summary || {};
+                                const today = getLocalDateString();
+                                const alreadyMarkedToday = String(attendanceSummary.last_attendance_at || '') === today;
+                                const attendanceCount = getNgoAttendanceUnits();
+
+                                return (
+                                  <div className="mb-4 rounded-md border border-slate-200 bg-slate-50 p-3">
+                                    <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                                      <div>
+                                          <p className="font-medium text-slate-900">Self attendance</p>
+                                        <p className="text-sm text-slate-600">
+                                          {alreadyMarkedToday
+                                              ? `Marked today for ${attendanceCount} people`
+                                              : 'Pending today. Share your location to record this day.'}
+                                        </p>
+                                      </div>
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <Badge variant="outline" className={alreadyMarkedToday ? 'border-green-300 bg-green-50 text-green-700' : 'border-amber-300 bg-amber-50 text-amber-700'}>
+                                          {alreadyMarkedToday ? 'Marked' : 'Pending'}
+                                        </Badge>
+                                        <Button
+                                          size="sm"
+                                          onClick={() => attendanceAssignment && handleMarkCSRAttendance(attendanceAssignment)}
+                                          disabled={!attendanceAssignment || alreadyMarkedToday || markingAttendanceId === String(attendanceAssignment?.id || '')}
+                                        >
+                                          {markingAttendanceId === String(attendanceAssignment?.id || '') ? 'Marking…' : 'Mark Attendance'}
+                                        </Button>
+                                      </div>
+                                    </div>
+                                    <div className="mt-2 grid grid-cols-1 gap-2 text-xs text-slate-500 md:grid-cols-3">
+                                      <p>Counts as: {attendanceCount} people</p>
+                                      <p>Last marked: {attendanceSummary.last_attendance_at || 'Not yet'}</p>
+                                      <p>Days attended: {attendanceSummary.days_attended ?? attendanceSummary.total_entries ?? 0}</p>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+
                               <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                                 <div>
                                   <p className="font-semibold">{project.title}</p>
@@ -1397,6 +1828,16 @@ function NGODashboardContent() {
                               <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-muted-foreground md:grid-cols-2">
                                 <p>Deadline: {project.deadline_at || 'N/A'}</p>
                                 <p>Confirmed Funds: Rs {project.confirmed_funds ?? 0}</p>
+                              </div>
+                              <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                                <p className="font-medium text-slate-900">Attendance</p>
+                                <p className="mt-1 text-slate-600">Days attended: {project.days_attended ?? 0}</p>
+                                <p className="text-slate-600">Last marked: {project.last_attendance_at || 'Not yet'}</p>
+                              </div>
+                              <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                                <p className="font-medium text-slate-900">Attendance</p>
+                                <p className="mt-1 text-slate-600">Days attended: {project.days_attended ?? 0}</p>
+                                <p className="text-slate-600">Last marked: {project.last_attendance_at || 'Not yet'}</p>
                               </div>
                               <div className="mt-3">
                                 <Button

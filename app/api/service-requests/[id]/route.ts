@@ -24,6 +24,23 @@ function safeParseJson(value: unknown): Record<string, any> {
   }
 }
 
+function parseImageArray(value: unknown): string[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.map((item) => String(item || '').trim()).filter(Boolean);
+  if (typeof value === 'string') {
+    const text = value.trim();
+    if (!text) return [];
+    try {
+      const parsed = JSON.parse(text);
+      if (Array.isArray(parsed)) return parsed.map((item) => String(item || '').trim()).filter(Boolean);
+    } catch {
+      // fall through
+    }
+    return text.split(/[\n,]/).map((item) => item.trim()).filter(Boolean);
+  }
+  return [];
+}
+
 function parseAmount(value: unknown): number | null {
   if (value === null || value === undefined) return null;
   const text = String(value).trim();
@@ -34,7 +51,7 @@ function parseAmount(value: unknown): number | null {
 
 function parseTimelineToDeadlineMs(timeline: unknown, baseMs: number): number | null {
   const text = String(timeline || '').trim();
-  if (!text || /^(anytime|not specified|none|n\/a)$/i.test(text)) return null;
+  if (!text || /^(not specified|none|n\/a)$/i.test(text)) return null;
 
   const directDate = new Date(text);
   if (!Number.isNaN(directDate.getTime())) {
@@ -95,6 +112,12 @@ function buildProgressFields(body: Record<string, any>, existing?: Record<string
   };
 }
 
+function isLockedCsrProject(request: Record<string, any>): boolean {
+  const projectContext = safeParseJson(request?.project_context)
+  const assignment = safeParseJson(projectContext?.csr_assignment)
+  return projectContext?.csr_project_available_for_csr === false || assignment?.mode === 'company_project_handoff' || Number(assignment?.assigned_company_id || 0) > 0
+}
+
 // GET - Fetch single service request
 export async function GET(
   request: NextRequest,
@@ -121,6 +144,10 @@ export async function GET(
     }
 
     const requirements = safeParseJson(serviceRequest.requirements);
+    const requirementImages = parseImageArray(requirements.images);
+    serviceRequest.images = requirementImages.length > 0
+      ? requirementImages
+      : parseImageArray(serviceRequest.images || serviceRequest.image_url);
     // Prefer direct DB columns, fall back to requirements JSON for legacy rows
     serviceRequest.request_type = serviceRequest.request_type || requirements.request_type || (SERVICE_REQUEST_TYPES.includes(serviceRequest.category) ? serviceRequest.category : 'Skill / Service Need');
     serviceRequest.category = requirements.project_category || requirements?.project?.category || serviceRequest.category || 'Uncategorized';
@@ -192,6 +219,7 @@ export async function PUT(
       current_amount,
       current_quantity,
       project_context,
+      images,
       details
     } = body;
 
@@ -207,6 +235,12 @@ export async function PUT(
 
     const normalizedRequestType = request_type;
     const normalizedProjectCategory = project_category || category;
+    const projectAvailabilityRaw = body.csr_project_available_for_csr ?? project?.csr_project_available_for_csr ?? project_context?.csr_project_available_for_csr;
+    const projectAvailableForCsr = typeof projectAvailabilityRaw === 'boolean'
+      ? projectAvailabilityRaw
+      : projectAvailabilityRaw == null
+        ? undefined
+        : String(projectAvailabilityRaw).toLowerCase() !== 'false';
 
     if (!SERVICE_REQUEST_TYPES.includes(normalizedRequestType)) {
       return NextResponse.json({ error: 'Invalid request_type. Use one of Financial Need, Material Need, Skill / Service Need, Infrastructure Project.' }, { status: 400 });
@@ -232,6 +266,10 @@ export async function PUT(
       return NextResponse.json({ error: 'You can only update your own requests' }, { status: 403 });
     }
 
+    if (isLockedCsrProject(existingRequest)) {
+      return NextResponse.json({ error: 'This need is locked because the parent project is already assigned to a company.' }, { status: 409 });
+    }
+
     let resolvedProjectId: string | null = projectId || existingRequest.project_id || null;
     let resolvedProjectLocation = String(location || existingRequest.location || '').trim();
     const projectPayload = project && typeof project === 'object' ? project : null;
@@ -250,6 +288,20 @@ export async function PUT(
         return NextResponse.json({ error: 'Project title, description, exact address, and timeline are required' }, { status: 400 });
       }
 
+      // Validate canonical project fields for nested project creation
+      const rawExpected = projectPayload.expected_beneficiaries ?? null;
+      const parsedExpected = rawExpected != null ? Number(rawExpected) : (Number(beneficiary_count) || null);
+      const expectedBeneficiaries = Number.isFinite(parsedExpected) && parsedExpected > 0 ? parsedExpected : null;
+      const validUntil = projectPayload.valid_until ? String(projectPayload.valid_until).trim() : null;
+
+      if (!expectedBeneficiaries) {
+        return NextResponse.json({ error: 'expected_beneficiaries must be provided and greater than 0 for project creation' }, { status: 400 });
+      }
+
+      if (!validUntil || Number.isNaN(new Date(validUntil).getTime())) {
+        return NextResponse.json({ error: 'valid_until must be a valid date string for project creation' }, { status: 400 });
+      }
+
       const createdProject = await db.requestProjects.create({
         ngo_id: userId,
         title: projectTitle,
@@ -257,6 +309,8 @@ export async function PUT(
         location: projectLocation,
         exact_address: projectLocation,
         timeline: projectTimeline || null,
+        expected_beneficiaries: expectedBeneficiaries,
+        valid_until: validUntil || null,
         status: 'active'
       });
 
@@ -287,9 +341,12 @@ export async function PUT(
     const projectContext = {
       ...(safeParseJson(project_context) || {}),
       project_category: normalizedProjectCategory,
+      ...(projectAvailableForCsr === undefined ? {} : { csr_project_available_for_csr: projectAvailableForCsr }),
       project: resolvedProjectId
-        ? { id: resolvedProjectId, exact_address: resolvedProjectLocation, category: normalizedProjectCategory }
-        : projectPayload || null
+        ? { id: resolvedProjectId, exact_address: resolvedProjectLocation, category: normalizedProjectCategory, ...(projectAvailableForCsr === undefined ? {} : { csr_project_available_for_csr: projectAvailableForCsr }) }
+        : projectPayload
+          ? { ...projectPayload, ...(projectAvailableForCsr === undefined ? {} : { csr_project_available_for_csr: projectAvailableForCsr }) }
+          : null
     };
 
     const createdAtMs = Number(new Date(existingRequest.created_at || Date.now()));
@@ -297,16 +354,19 @@ export async function PUT(
     const mappedUrgency = deriveAutoUrgency(timeline, safeCreatedAtMs);
 
     // Prepare requirements JSON
+    const parsedImages = parseImageArray(images);
+
     const requirementsData = {
       request_type: normalizedRequestType,
       estimated_budget: estimated_budget || budget || 'Not specified',
-      beneficiary_count: Number(beneficiary_count || 0),
+      beneficiary_count: Number(beneficiary_count ?? (projectRecord?.expected_beneficiaries ?? 0)),
       impact_description: String(impact_description || '').trim(),
       budget: budget || estimated_budget || 'Not specified',
       contactInfo: contactInfo || 'Not specified',
       timeline: timelineLabel,
       project: projectContext,
-      category_details: details || {}
+      category_details: details || {},
+      images: parsedImages
     };
 
     const progressFields = buildProgressFields({
@@ -329,11 +389,12 @@ export async function PUT(
       location: resolvedProjectLocation || location,
       urgency_level: mappedUrgency,
       requirements: JSON.stringify(requirementsData),
+      image_url: parsedImages[0] || null,
       updated_at: new Date().toISOString(),
       // Direct schema columns
       request_type: normalizedRequestType,
       estimated_budget: parseFloat(String(estimated_budget || budget || '')) || null,
-      beneficiary_count: Number(beneficiary_count || 0),
+      beneficiary_count: Number(beneficiary_count ?? (projectRecord?.expected_beneficiaries ?? 0)),
       impact_description: String(impact_description || '').trim(),
       timeline: storedTimeline,
       contact_info: contactInfo || null,
@@ -394,6 +455,10 @@ export async function DELETE(
 
     if (existingRequest.requester_id !== userId) {
       return NextResponse.json({ error: 'You can only delete your own service requests' }, { status: 403 });
+    }
+
+    if (isLockedCsrProject(existingRequest)) {
+      return NextResponse.json({ error: 'This need is locked because the parent project is already assigned to a company.' }, { status: 409 });
     }
 
     const applicants = await db.serviceVolunteers.getByRequestId(requestId);

@@ -187,6 +187,105 @@ const ShimmerCard = () => (
       .filter(Boolean);
   });
 
+  const [caPendingPayments, setCaPendingPayments] = useState<any[]>([]);
+
+  const fetchCaPendingPayments = async () => {
+    try {
+      const res = await fetch('/api/payments/pending', { credentials: 'include' })
+      const payload = await res.json()
+      if (res.ok && payload?.success) {
+        setCaPendingPayments([...payload.data.attendance, ...(payload.data.contributions || [])])
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  useEffect(() => {
+    if (!useMockData) fetchCaPendingPayments()
+  }, [useMockData])
+
+  // Load Razorpay script helper
+  const loadRazorpay = () => new Promise<void>((resolve, reject) => {
+    if (typeof window === 'undefined') return reject(new Error('No window'))
+    if ((window as any).Razorpay) return resolve()
+    const script = document.createElement('script')
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js'
+    script.async = true
+    script.onload = () => resolve()
+    script.onerror = reject
+    document.head.appendChild(script)
+  })
+
+  const groupByRequest = (items: any[]) => {
+    const map: Record<string, any[]> = {}
+    items.forEach((it: any) => {
+      const req = String(it.service_request_id || it.request_id || it.service_request || 'unknown')
+      if (!map[req]) map[req] = []
+      map[req].push(it)
+    })
+    return map
+  }
+
+  const handlePayGroup = async (items: any[]) => {
+    if (!items || items.length === 0) return
+    setActionLoadingKey('ca-pay-group')
+    setPanelMessage('')
+    try {
+      // collect attendance entry ids only for now
+      const attendanceEntryIds = items.filter((i: any) => i?.id && i?.attendance_date).map((i: any) => i.id)
+
+      await loadRazorpay()
+
+      const res = await fetch('/api/companies/ca/payments/create-order', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ attendanceEntryIds })
+      })
+
+      const payload = await res.json()
+      if (!res.ok || !payload?.success) {
+        setPanelMessage(payload?.error || 'Failed to create order')
+        return
+      }
+
+      const order = payload.data
+      const razorpay = new (window as any).Razorpay({
+        key: order.keyId,
+        amount: Math.round(order.amount * 100),
+        currency: order.currency || 'INR',
+        name: 'Navadrishti',
+        description: `Payment for Request ${order.serviceRequestId || ''}`,
+        order_id: order.orderId,
+        theme: { color: '#2563eb' },
+        handler: async (response: any) => {
+          const verifyRes = await fetch('/api/companies/ca/payments/verify', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(response)
+          })
+          const verifyPayload = await verifyRes.json()
+          if (!verifyRes.ok || !verifyPayload?.success) {
+            setPanelMessage(verifyPayload?.error || 'Verification failed')
+            return
+          }
+
+          setPanelMessage('Payment successful')
+          await fetchCaPendingPayments()
+          await loadPanel()
+        }
+      })
+
+      razorpay.open()
+    } catch (e: any) {
+      setPanelMessage(e?.message || 'Payment failed')
+    } finally {
+      setActionLoadingKey(null)
+    }
+  }
+
   const handlePaymentConfirm = async (item: any) => {
     setActionLoadingKey(`payment-${item.milestoneId}`);
     setPanelMessage('');
@@ -342,6 +441,55 @@ const ShimmerCard = () => (
                   </div>
                 ))}
               </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Pending Offer / Attendance Payments */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Pending Offer / Attendance Payments</CardTitle>
+            <CardDescription>Payments requested from company CA for offers, attendance, or contributions.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {caPendingPayments.length === 0 ? (
+              <p className="text-sm text-slate-600">No pending offer/attendance payments.</p>
+            ) : (
+              (() => {
+                const groups = groupByRequest(caPendingPayments)
+                return (
+                  <div className="space-y-3">
+                    {Object.entries(groups).map(([reqId, items]) => {
+                      const total = items.reduce((s: number, it: any) => s + Number(it.amount_due ?? it.amount ?? 0), 0)
+                      return (
+                        <div key={reqId} className="rounded-md border bg-slate-50 p-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="font-medium text-slate-900">Request #{reqId}</p>
+                              <p className="text-xs text-slate-500">{items.length} pending item(s)</p>
+                            </div>
+                            <Badge variant="outline">Rs {total.toFixed(2)}</Badge>
+                          </div>
+                          <div className="mt-3 flex gap-2">
+                            <Button size="sm" onClick={() => router.push(`/service-requests/${reqId}`)}>Open Request</Button>
+                            <Button size="sm" onClick={() => handlePayGroup(items)} disabled={actionLoadingKey === 'ca-pay-group'}>
+                              {actionLoadingKey === 'ca-pay-group' ? 'Processing...' : `Pay Now • Rs ${total.toFixed(2)}`}
+                            </Button>
+                          </div>
+                          <div className="mt-3 grid gap-2">
+                            {items.map((it: any) => (
+                              <div key={it.id} className="flex items-center justify-between text-xs text-slate-600">
+                                <div>{it.attendance_date || it.created_at || 'N/A'} — {it.title || it.service_request_title || (it.amount ? 'Attendance' : 'Contribution')}</div>
+                                <div>Rs {Number(it.amount_due ?? it.amount ?? 0).toFixed(2)}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )
+              })()
             )}
           </CardContent>
         </Card>

@@ -142,7 +142,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const { ticketId } = await params;
     const body = await request.json();
-    const serviceRequestId = Number(body?.service_request_id);
+    let serviceRequestId = Number(body?.service_request_id);
     const refundPaymentId = String(body?.razorpay_payment_id || '').trim();
     const requestedRefundInr = parseAmountToInr(body?.amount);
     const refundReason = String(body?.reason || 'admin_support_refund').trim();
@@ -188,9 +188,84 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       ? requirements.financial_transactions
       : [];
 
-    const paymentEntry = previousPayments.find((item: any) => item?.razorpay_payment_id === refundPaymentId);
+    let paymentEntry = previousPayments.find((item: any) => item?.razorpay_payment_id === refundPaymentId);
+
+    // If payment not found in request's recorded transactions, try to discover it from normalized tables
+    let discoveredOrderRow: any = null;
+    let discoveredPaymentRow: any = null;
     if (!paymentEntry) {
-      return NextResponse.json({ error: 'Payment record not found in this request' }, { status: 404 });
+      const { data: paymentRow } = await supabase
+        .from('razorpay_payments')
+        .select(`id, order_id, razorpay_order_id, amount_inr, amount_paise, provider_payload`)
+        .eq('razorpay_payment_id', refundPaymentId)
+        .maybeSingle();
+
+      if (paymentRow?.id) {
+        discoveredPaymentRow = paymentRow;
+        if (paymentRow.order_id) {
+          const { data: orderRow } = await supabase
+            .from('razorpay_payment_orders')
+            .select('id, service_request_id, razorpay_order_id, amount_inr')
+            .eq('id', paymentRow.order_id)
+            .maybeSingle();
+          discoveredOrderRow = orderRow || null;
+        } else if (paymentRow.razorpay_order_id) {
+          const { data: orderRow } = await supabase
+            .from('razorpay_payment_orders')
+            .select('id, service_request_id, razorpay_order_id, amount_inr')
+            .eq('razorpay_order_id', paymentRow.razorpay_order_id)
+            .maybeSingle();
+          discoveredOrderRow = orderRow || null;
+        }
+      } else {
+        // Try to find an order row directly by searching the orders table for the razorpay_order_id present in request tx notes
+        // (less common, but keep defensive)
+        const { data: orderByNote } = await supabase
+          .from('razorpay_payment_orders')
+          .select('id, service_request_id, razorpay_order_id, amount_inr')
+          .eq('razorpay_order_id', refundPaymentId)
+          .maybeSingle();
+        if (orderByNote?.id) discoveredOrderRow = orderByNote;
+      }
+
+      if (discoveredOrderRow || discoveredPaymentRow) {
+        // If provider_payload contains a service_request_id, prefer that
+        if (!serviceRequestId && discoveredPaymentRow?.provider_payload) {
+          try {
+            const payload = discoveredPaymentRow.provider_payload;
+            const candidate = payload?.service_request_id || payload?.serviceRequestId || payload?.service_request || null;
+            if (candidate) {
+              const parsed = Number(candidate);
+              if (Number.isFinite(parsed) && parsed > 0) {
+                serviceRequestId = parsed;
+              }
+            }
+          } catch (e) {
+            // ignore
+          }
+        }
+        // Build a synthetic paymentEntry for the flow below
+        paymentEntry = {
+          razorpay_payment_id: refundPaymentId,
+          razorpay_order_id: discoveredOrderRow?.razorpay_order_id || discoveredPaymentRow?.razorpay_order_id || null,
+          amount_inr: discoveredPaymentRow?.amount_inr ?? discoveredOrderRow?.amount_inr ?? null,
+          paid_at: discoveredPaymentRow?.paid_at || null,
+          contributor_id: null,
+          refund_status: null
+        };
+
+        // If the requester didn't supply a serviceRequestId, use discovered one
+        if ((!Number.isFinite(serviceRequestId) || serviceRequestId <= 0) && discoveredOrderRow?.service_request_id) {
+          // override local variable for the flow below
+          // eslint-disable-next-line no-restricted-syntax
+          // @ts-ignore
+          serviceRequestId = Number(discoveredOrderRow.service_request_id);
+        }
+      }
+
+      if (!paymentEntry) {
+        return NextResponse.json({ error: 'Payment record not found in this request' }, { status: 404 });
+      }
     }
 
     if (paymentEntry?.refund_status === 'processed') {

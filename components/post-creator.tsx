@@ -247,7 +247,7 @@ export function PostCreator({ onPostCreated, className }: PostCreatorProps) {
                 />
               ) : null;
             })()}
-            <AvatarFallback className="bg-gradient-to-br from-blue-400 to-indigo-500 text-white font-semibold">
+            <AvatarFallback className="bg-udaan-orange text-white font-semibold">
               {getInitials(user.name || user.email || 'U')}
             </AvatarFallback>
           </Avatar>

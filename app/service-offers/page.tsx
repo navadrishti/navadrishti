@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ServiceCard } from '@/components/service-card';
 import { StyledSelect } from '@/components/ui/styled-select';
-import { SkeletonServiceCard, SkeletonCTA } from '@/components/ui/skeleton';
+import { SkeletonServiceCard, SkeletonCTA, SkeletonServiceOffer } from '@/components/ui/skeleton';
 import { Search, ArrowRight, Plus } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/hooks/use-toast';
@@ -170,7 +170,7 @@ export default function ServiceOffersPage() {
         {loading ? (
           canCreateOffers && <SkeletonCTA />
         ) : canCreateOffers && (
-          <div className="mb-8 p-8 bg-white rounded-2xl border-2 border-black shadow-sm relative overflow-hidden">
+          <div className="mb-8 p-8 bg-white rounded-md border-2 border-black shadow-sm relative overflow-hidden">
             <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
               <div className="text-center md:text-left">
                 <h2 className="text-2xl font-bold text-black mb-3">
@@ -218,13 +218,13 @@ export default function ServiceOffersPage() {
 
         <div className="min-h-[400px]">
           {loading ? (
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <SkeletonServiceCard key={i} />
-              ))}
-            </div>
-          ) : filteredOffers.length > 0 ? (
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <SkeletonServiceOffer key={i} />
+                ))}
+              </div>
+            ) : filteredOffers.length > 0 ? (
+              <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {filteredOffers.map((offer) => (
                     <ServiceCard
                       key={offer.id}

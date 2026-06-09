@@ -201,14 +201,29 @@ export function ServiceCard({
     
     try {
       if (Array.isArray(imgs)) {
-        return imgs.filter(img => img && typeof img === 'string' && img.trim() !== '');
+        return imgs
+          .flatMap((img) => typeof img === 'string' ? img.split(/[\n,]/) : [])
+          .map((img) => img.trim())
+          .filter((img) => img !== '');
       }
       
       if (typeof imgs === 'string' && imgs.trim() !== '' && imgs !== '[]') {
-        const parsed = JSON.parse(imgs);
-        if (Array.isArray(parsed)) {
-          return parsed.filter(img => img && typeof img === 'string' && img.trim() !== '');
+        const trimmed = imgs.trim();
+
+        if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+          const parsed = JSON.parse(trimmed);
+          if (Array.isArray(parsed)) {
+            return parsed
+              .flatMap((img) => typeof img === 'string' ? img.split(/[\n,]/) : [])
+              .map((img) => img.trim())
+              .filter((img) => img !== '');
+          }
         }
+
+        return trimmed
+          .split(/[\n,]/)
+          .map((img) => img.trim())
+          .filter((img) => img !== '');
       }
     } catch (e) {
       console.warn('Failed to parse images:', e);
@@ -218,6 +233,7 @@ export function ServiceCard({
   };
 
   const imageArray = parseImages(images);
+  const primaryImage = imageArray[0] || '';
 
   // Parse tags safely
   const parseTags = (tagData?: string[] | string): string[] => {
@@ -320,17 +336,17 @@ export function ServiceCard({
   const projectContext = project || requirementsData?.project?.project || null;
   const projectCategory = String(requirementsData?.project_category || projectContext?.category || category || '').trim();
   const categoryLabel = type === 'request' ? 'Need Type' : 'Type';
-  const beneficiaryCount = Number(requirementsData?.beneficiary_count || 0);
+  // Prefer canonical project-level fields when available
+  const projectExpectedBeneficiaries = Number(projectContext?.expected_beneficiaries || 0);
+  const beneficiaryCount = projectExpectedBeneficiaries > 0 ? projectExpectedBeneficiaries : Number(requirementsData?.beneficiary_count || 0);
   const estimatedBudget = requirementsData?.estimated_budget || requirementsData?.budget;
   const fundingTargetInr = isFinancialNeed ? Number(String(requirementsData?.funding_target_inr || estimatedBudget || '').replace(/[^\d.-]/g, '')) : 0;
   const fundsRaisedInr = isFinancialNeed ? Number(String(requirementsData?.funds_raised_inr || 0).replace(/[^\d.-]/g, '')) : 0;
   const fundingProgress = isFinancialNeed && Number.isFinite(fundingTargetInr) && fundingTargetInr > 0
     ? Math.min(100, Math.round((Math.max(fundsRaisedInr, 0) / fundingTargetInr) * 100))
     : 0;
-  const requestDeadline = deadline || timeline || requirementsData?.timeline;
-  const formattedRequestDeadline = String(requestDeadline || '').trim().toLowerCase() === 'anytime'
-    ? 'Anytime (No expiry)'
-    : requestDeadline;
+  const requestDeadline = projectContext?.valid_until || deadline || timeline || requirementsData?.timeline;
+  const formattedRequestDeadline = requestDeadline || 'Not specified';
   const liveUrgency = isHydrated && type === 'request'
     ? getRequestUrgencyLevel({
         createdAt: created_at,
@@ -415,6 +431,8 @@ export function ServiceCard({
     && !isDuplicateOfferDescriptorPriceDescription
     && !isGenericFallbackPriceDescription;
 
+  const requestDescription = description.length > 160 ? `${description.slice(0, 157).trimEnd()}...` : description;
+
   const formatInrValue = (value: unknown): string => {
     if (value === null || value === undefined) return '';
     const text = String(value).trim();
@@ -443,6 +461,10 @@ export function ServiceCard({
     deadline: formattedRequestDeadline ? String(formattedRequestDeadline) : 'Not specified',
     impact: impactScore > 0 ? `${impactScore}/100` : 'Not scored'
   };
+
+  // Show selected lead NGO info if available on project context
+  const selectedLeadNgoName = projectContext?.selected_lead_ngo_name || null;
+  const assignedCompanyName = projectContext?.assigned_company_name || projectContext?.assigned_company_user_name || null;
   
   // Check if user types can interact
   const isNGO = user?.user_type === 'ngo';
@@ -450,45 +472,190 @@ export function ServiceCard({
   const isCompany = user?.user_type === 'company';
   const canVolunteer = isIndividual || isCompany;
   const canHireServices = isIndividual || isCompany;
+  const chipButtonClassName = "inline-flex items-center gap-2 text-sm font-medium text-slate-900";
+  const projectButtonClassName = "inline-flex items-center gap-2 text-sm font-medium text-slate-900";
 
-  return (
-    <Card className="h-full flex flex-col hover:shadow-xl transition-all duration-300 border-2 border-gray-200 hover:border-blue-500">
-      <CardHeader className="space-y-3 pb-4 h-32 flex flex-col">
-        {type === 'request' && projectContext?.title && (
-          <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900 shadow-sm">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0 flex-1">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-600">Project</p>
-                <p className="text-sm font-bold leading-snug text-blue-950 line-clamp-1 truncate">{projectContext.title}</p>
-                {projectCategory && (
-                  <p className="mt-1 text-xs font-medium text-blue-700 line-clamp-1 truncate">Project Category: {projectCategory}</p>
-                )}
+  if (type === 'request') {
+    return (
+      <Card className="h-full w-full max-w-[360px] overflow-hidden rounded-md border-2 border-slate-200 bg-white shadow-[0_18px_40px_-24px_rgba(15,23,42,0.35)]">
+        <CardContent className="flex h-full flex-col p-2">
+          {projectContext?.title && (
+            <div className="mb-3 flex items-center justify-between gap-2 rounded-md border-b border-slate-200 px-0 py-2">
+              <div className="min-w-0 flex-1 px-2">
+                <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-500">Project</p>
+                <p className="truncate text-[15px] font-medium leading-tight text-slate-900">{projectContext.title}</p>
               </div>
               {projectContext?.id ? (
-                <Link href={`/service-requests/projects/${projectContext.id}`}>
-                  <Button variant="outline" size="sm" className="h-7 border-blue-300 bg-white px-2 text-[11px] text-blue-800 hover:bg-blue-100 flex-shrink-0">
-                    Project Details
-                  </Button>
+                <Link href={`/service-requests/projects/${projectContext.id}`} className={projectButtonClassName} onClick={(e) => e.stopPropagation()}>
+                  <span>View Project</span>
+                  <ArrowRight size={13} className="text-slate-900" />
                 </Link>
               ) : null}
             </div>
+          )}
+
+          <div className="overflow-hidden rounded-md border border-slate-200 bg-slate-100">
+            <div className="aspect-[4/3] w-full">
+              <ImageCarousel
+                images={imageArray}
+                alt={title}
+                className="h-full w-full"
+                autoplay={true}
+                autoplayInterval={3500}
+                showThumbnails={false}
+                showImageCount={true}
+                enableKeyboardNav={false}
+              />
+            </div>
           </div>
-        )}
 
-        {/* Title */}
-        <h3 
-          className="cursor-pointer text-lg font-bold leading-tight text-gray-900 transition-colors hover:text-blue-600 sm:text-xl line-clamp-2 [overflow-wrap:anywhere]" 
-          onClick={handleCardClick}
-        >
-          {title}
-        </h3>
+          <div className="border-t border-slate-200 mt-2 pt-2">
+            <div className="space-y-1">
+              <h3
+                className="cursor-pointer text-base font-medium leading-tight text-slate-800 line-clamp-1"
+                onClick={handleCardClick}
+              >
+                {title}
+              </h3>
+              <p className="text-sm text-muted-foreground truncate">{requestDescription}</p>
+            </div>
+          </div>
+          <div className="border-t border-slate-200 mt-3 mb-2" />
 
-        <p className="text-sm text-gray-700 leading-relaxed line-clamp-2 [overflow-wrap:anywhere] flex-1">
-          {description}
-        </p>
-      </CardHeader>
+            <div className="mt-auto pt-2">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <Link
+                href={ownerProfileId ? `/profile/${ownerProfileId}` : '#'}
+                className="flex min-w-0 flex-1 items-center gap-2"
+              >
+                <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-udaan-orange text-[11px] font-medium text-white shadow-sm">
+                  {getInitials(providerDisplayName)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-slate-800">{providerDisplayName}</p>
+                  <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                    {getProviderIcon(providerDisplayType)}
+                    {getProviderLabel(providerDisplayType)}
+                  </p>
+                </div>
+              </Link>
 
-      <CardContent className="space-y-4 flex-1 pb-4 flex flex-col">
+              <Link
+                href={`/${type === 'request' ? 'service-requests' : 'service-offers'}/${id}`}
+                className={`${chipButtonClassName} self-start whitespace-nowrap sm:self-center`}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <span>Explore More</span>
+                <ArrowRight size={13} className="text-slate-900" />
+              </Link>
+            </div>
+
+            {type === 'request' && (isOwner || showDeleteButton) ? (
+              <div className="mt-3 flex gap-3">
+                {isOwner ? (
+                  <Link href={`/service-requests/edit/${id}`} className="flex-1">
+                    <div className="w-full text-left text-sm font-medium text-slate-900 py-2 px-1">
+                      <Edit size={14} className="inline-block mr-2 align-middle" />
+                      Edit Request
+                    </div>
+                  </Link>
+                ) : null}
+
+                {showDeleteButton && onDelete ? (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!isDeleting) onDelete();
+                    }}
+                    disabled={isDeleting}
+                    className="flex-1 text-left text-sm font-medium text-red-600 py-2 px-1 disabled:opacity-60"
+                    aria-disabled={isDeleting}
+                  >
+                    {isDeleting ? (
+                      <>
+                        <span className="inline-block mr-2 h-3 w-3 animate-spin rounded-full border-2 border-red-600 border-t-transparent" />
+                        Deleting...
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 size={14} className="inline-block mr-2 align-middle" />
+                        Delete Request
+                      </>
+                    )}
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // Simplified card layout for Service Offers (match service request visual style)
+  if (type === 'offer') {
+    return (
+      <Card className="h-full w-full max-w-[360px] overflow-hidden rounded-md border-2 border-slate-200 bg-white shadow-[0_18px_40px_-24px_rgba(15,23,42,0.35)]">
+        <CardContent className="flex h-full flex-col p-2">
+          {/* Image */}
+          <div className="overflow-hidden rounded-md border border-slate-200 bg-slate-100">
+            <div className="aspect-[4/3] w-full">
+              <ImageCarousel
+                images={imageArray}
+                alt={title}
+                className="h-full w-full"
+                autoplay={false}
+                showThumbnails={false}
+                showImageCount={false}
+                enableKeyboardNav={false}
+              />
+            </div>
+          </div>
+          <div className="border-t border-slate-200 mt-2 pt-2">
+            <div className="space-y-1">
+              <h3 className="cursor-pointer text-base font-medium leading-tight text-slate-800 line-clamp-1" onClick={handleCardClick}>
+                {title}
+              </h3>
+              <p className="text-sm text-muted-foreground truncate">{description}</p>
+            </div>
+          </div>
+          <div className="border-t border-slate-200 mt-3 mb-2" />
+
+          {/* Footer with provider button and explore link */}
+          <div className="mt-auto pt-2">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <Link
+                href={ownerProfileId ? `/profile/${ownerProfileId}` : '#'}
+                className="flex min-w-0 flex-1 items-center gap-2.5"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-udaan-orange text-[11px] font-medium text-white">
+                  {getInitials(providerDisplayName)}
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-slate-900">{providerDisplayName}</p>
+                </div>
+              </Link>
+
+              <Link
+                href={`/service-offers/${id}`}
+                className={chipButtonClassName}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <span>Explore More</span>
+                <ArrowRight size={13} className="text-slate-900" />
+              </Link>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+    return (
+      <Card className="h-full flex flex-col transition-all duration-150 rounded-md border-2 border-slate-200 bg-white">
+      <CardHeader className="space-y-3 pb-4 h-32 flex flex-col">
         {/* Key Information Grid */}
         <div className="grid grid-cols-1 gap-3 pt-2 sm:grid-cols-2 sm:grid-flow-row-dense">
           <div className="space-y-1 h-14 flex flex-col justify-between">
@@ -496,15 +663,15 @@ export function ServiceCard({
               <Calendar size={14} />
               <span className="text-xs font-medium">Posted</span>
             </div>
-            <p className="text-sm font-semibold text-gray-900 line-clamp-1">{requestMetricValue.posted}</p>
+            <p className="text-sm font-medium text-slate-800 line-clamp-1">{requestMetricValue.posted}</p>
           </div>
 
-          <div className="space-y-1 h-14 flex flex-col justify-between">
+            <div className="space-y-1 h-14 flex flex-col justify-between">
             <div className="flex items-center gap-1.5 text-gray-500">
               <MapPin size={14} />
               <span className="text-xs font-medium">Location</span>
             </div>
-            <p className="text-sm font-semibold text-gray-900 line-clamp-1">{requestMetricValue.location}</p>
+            <p className="text-sm font-medium text-slate-800 line-clamp-1">{requestMetricValue.location}</p>
           </div>
 
           <div className="space-y-1 h-14 flex flex-col justify-between">
@@ -512,7 +679,7 @@ export function ServiceCard({
               <Target size={14} />
               <span className="text-xs font-medium">{categoryLabel}</span>
             </div>
-            <p className="text-sm font-semibold text-blue-700 line-clamp-1">{requestMetricValue.needType}</p>
+            <p className="text-sm font-medium text-slate-800 line-clamp-1">{requestMetricValue.needType}</p>
           </div>
 
           {type === 'request' && (
@@ -521,7 +688,7 @@ export function ServiceCard({
                 <Clock size={14} />
                 <span className="text-xs font-medium">Urgency</span>
               </div>
-              <p className={`text-sm font-semibold line-clamp-1 ${getPriorityTextColor(String(requestMetricValue.urgency))}`}>
+              <p className={`text-sm font-medium line-clamp-1 ${getPriorityTextColor(String(requestMetricValue.urgency))}`}>
                 {requestMetricValue.urgency}
               </p>
             </div>
@@ -534,7 +701,7 @@ export function ServiceCard({
                 <Users size={14} />
                 <span className="text-xs font-medium">Beneficiaries</span>
               </div>
-              <p className="text-sm font-semibold text-gray-900 line-clamp-1">{requestMetricValue.beneficiaries}</p>
+              <p className="text-sm font-medium text-slate-800 line-clamp-1">{requestMetricValue.beneficiaries}</p>
             </div>
           )}
 
@@ -544,7 +711,7 @@ export function ServiceCard({
                 <IndianRupee size={14} />
                 <span className="text-xs font-medium">Budget</span>
               </div>
-              <p className="text-sm font-semibold text-gray-900 line-clamp-1">{requestMetricValue.budget}</p>
+              <p className="text-sm font-medium text-slate-800 line-clamp-1">{requestMetricValue.budget}</p>
             </div>
           )}
 
@@ -554,7 +721,7 @@ export function ServiceCard({
                 <Clock size={14} />
                 <span className="text-xs font-medium">Deadline</span>
               </div>
-              <p className="text-sm font-semibold text-gray-900 line-clamp-1">{requestMetricValue.deadline}</p>
+              <p className="text-sm font-medium text-slate-800 line-clamp-1">{requestMetricValue.deadline}</p>
             </div>
           )}
 
@@ -564,19 +731,19 @@ export function ServiceCard({
                 <Target size={14} />
                 <span className="text-xs font-medium">Impact Score</span>
               </div>
-              <p className="text-sm font-semibold text-gray-900 line-clamp-1">{requestMetricValue.impact}</p>
+              <p className="text-sm font-medium text-slate-800 line-clamp-1">{requestMetricValue.impact}</p>
             </div>
           )}
 
           {isFinancialNeed && Number.isFinite(fundingTargetInr) && fundingTargetInr > 0 && (
-            <div className="space-y-1 rounded-md bg-emerald-50 p-2 sm:col-span-2">
-              <div className="flex items-center gap-1.5 text-emerald-700">
+            <div className="space-y-1 rounded-md bg-slate-50 p-2 sm:col-span-2">
+              <div className="flex items-center gap-1.5 text-slate-600">
                 <IndianRupee size={14} />
                 <span className="text-xs font-medium">Funding Progress</span>
               </div>
               <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-emerald-900">{fundingProgress}% Funded</p>
-                <p className="text-xs text-emerald-700">INR {Math.max(fundsRaisedInr, 0).toLocaleString('en-IN')} of INR {fundingTargetInr.toLocaleString('en-IN')}</p>
+                <p className="text-sm font-medium text-slate-800">{fundingProgress}% Funded</p>
+                <p className="text-xs text-muted-foreground">INR {Math.max(fundsRaisedInr, 0).toLocaleString('en-IN')} of INR {fundingTargetInr.toLocaleString('en-IN')}</p>
               </div>
             </div>
           )}
@@ -588,7 +755,7 @@ export function ServiceCard({
                 <Target size={14} />
                 <span className="text-xs font-medium">Capacity</span>
               </div>
-              <p className="text-sm font-bold text-blue-700 line-clamp-1">{capacityLimit}</p>
+              <p className="text-sm font-medium text-slate-800 line-clamp-1">{capacityLimit}</p>
             </div>
           )}
 
@@ -598,7 +765,7 @@ export function ServiceCard({
                 <MapPin size={14} />
                 <span className="text-xs font-medium">Coverage</span>
               </div>
-              <p className="text-sm font-semibold text-gray-900 line-clamp-1">{coverageArea}</p>
+              <p className="text-sm font-medium text-slate-800 line-clamp-1">{coverageArea}</p>
             </div>
           )}
 
@@ -608,7 +775,7 @@ export function ServiceCard({
                 <Clock size={14} />
                 <span className="text-xs font-medium">Status</span>
               </div>
-              <p className="text-sm font-semibold text-gray-900 capitalize line-clamp-1">{String(status)}</p>
+              <p className="text-sm font-medium text-slate-800 capitalize line-clamp-1">{String(status)}</p>
             </div>
           )}
 
@@ -618,7 +785,7 @@ export function ServiceCard({
                 <IndianRupee size={14} />
                 <span className="text-xs font-medium">Price Details</span>
               </div>
-              <p className="text-sm font-bold text-green-700">
+              <p className="text-sm font-medium text-slate-800">
                 {isVolunteerPricing ? 'Volunteer' : ''}
                 {!isVolunteerPricing && hasPriceAmount ? formatPrice(normalizedPriceAmount) : ''}
                 {!isVolunteerPricing && !hasPriceAmount && hasOfferAmount ? formatPrice(normalizedOfferAmount) : ''}
@@ -693,12 +860,12 @@ export function ServiceCard({
             href={ownerProfileId ? `/profile/${ownerProfileId}` : '#'}
             className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 transition-colors hover:border-blue-300 hover:bg-blue-50"
           >
-            <div className="w-9 h-9 rounded-full flex items-center justify-center bg-blue-600 text-white font-bold text-xs flex-shrink-0 shadow-sm">
+            <div className="w-9 h-9 rounded-full flex items-center justify-center bg-udaan-orange text-white font-medium text-xs flex-shrink-0 shadow-sm">
               {getInitials(providerDisplayName)}
             </div>
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <p className="font-semibold text-gray-900 text-sm truncate">{providerDisplayName}</p>
+                <div className="flex items-center gap-2">
+                <p className="font-medium text-gray-900 text-sm truncate">{providerDisplayName}</p>
                 {verified && (
                   <VerificationBadge status="verified" size="sm" showText={false} />
                 )}
@@ -782,19 +949,19 @@ export function ServiceCard({
               Application {volunteer_application.status}
             </Badge>
             {volunteer_application.status === 'rejected' && volunteer_application.response_meta?.ngo_decision_comment && (
-              <div className="mt-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800 whitespace-pre-wrap">
-                <p className="font-semibold">Reason from NGO</p>
+                <div className="mt-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800 whitespace-pre-wrap">
+                <p className="font-medium">Reason from NGO</p>
                 <p>{volunteer_application.response_meta.ngo_decision_comment}</p>
               </div>
             )}
           </div>
         )}
-      </CardContent>
+      </CardHeader>
 
       <CardFooter className="pt-0 pb-5 flex-col gap-2">
         {/* Action Button */}
-        <Link href={`/${type === 'request' ? 'service-requests' : 'service-offers'}/${id}`} className="w-full">
-          <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 transition-all shadow-md hover:shadow-lg">
+          <Link href={`/${type === 'request' ? 'service-requests' : 'service-offers'}/${id}`} className="w-full">
+          <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 transition-all shadow-sm hover:shadow-md">
             {type === 'request' ? 'View Need Details' : 'View Full Details'}
             <ArrowRight size={16} className="ml-2" />
           </Button>
@@ -811,28 +978,31 @@ export function ServiceCard({
 
         {/* Delete button for owners */}
         {showDeleteButton && onDelete && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete();
-            }}
-            disabled={isDeleting}
-            className="w-full border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 font-medium transition-colors"
-          >
-            {isDeleting ? (
-              <>
-                <div className="h-3 w-3 animate-spin rounded-full border-2 border-red-600 border-t-transparent mr-2" />
-                Deleting...
-              </>
-            ) : (
-              <>
-                <Trash2 size={14} className="mr-2" />
-                Delete {type === 'request' ? 'Request' : 'Offer'}
-              </>
-            )}
-          </Button>
+          <>
+            <div className="w-full border-t border-slate-200" />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+              disabled={isDeleting}
+              className="w-full border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 font-medium transition-colors"
+            >
+              {isDeleting ? (
+                <>
+                  <div className="h-3 w-3 animate-spin rounded-full border-2 border-red-600 border-t-transparent mr-2" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 size={14} className="mr-2" />
+                  Delete {type === 'request' ? 'Request' : 'Offer'}
+                </>
+              )}
+            </Button>
+          </>
         )}
       </CardFooter>
     </Card>

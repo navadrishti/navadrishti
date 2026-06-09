@@ -4,13 +4,13 @@ import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = getAuthUserFromRequest(request);
     assertUserType(user, ['company']);
 
-    const projectId = params.id;
+    const { id: projectId } = await params;
     const body = await request.json();
     const ngoUserId = Number(body.ngo_user_id);
 

@@ -104,7 +104,8 @@ const signupSchema = z.object({
   state_province: z.string().optional(),
   pincode: z.string().optional(),
   country: z.string().optional(),
-  profile_data: z.record(z.any()).optional()
+  profile_data: z.record(z.any()).optional(),
+  ngo_volunteer_capacity: z.union([z.number().int(), z.string()]).optional()
 });
 
 const getFriendlySignupError = (error: unknown): string => {
@@ -142,8 +143,15 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
     
-    const { email, password, name, user_type, phone, city, state_province, pincode, country, profile_data } = validationResult.data;
+    const { email, password, name, user_type, phone, city, state_province, pincode, country, profile_data, ngo_volunteer_capacity } = validationResult.data;
     const profile = profile_data || {};
+    const parsedNgoCapacity = (() => {
+      if (ngo_volunteer_capacity === undefined || ngo_volunteer_capacity === null) return null;
+      if (typeof ngo_volunteer_capacity === 'number') return Math.max(0, Math.trunc(ngo_volunteer_capacity));
+      const match = String(ngo_volunteer_capacity).trim().match(/\d+/);
+      if (!match) return null;
+      return Math.max(0, Number(match[0]));
+    })();
 
     const profileValidationError = validateProfileRequirements(user_type, profile);
     if (profileValidationError) {
@@ -178,7 +186,9 @@ export async function POST(req: NextRequest) {
       state_province,
       pincode,
       country,
-      profile_data: profile
+      profile_data: profile,
+      // include top-level column if provided
+      ...(parsedNgoCapacity !== null ? { ngo_volunteer_capacity: parsedNgoCapacity } : {})
     };
     
     const newUser = await db.users.create(userData);

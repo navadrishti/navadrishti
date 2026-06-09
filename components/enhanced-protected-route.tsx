@@ -26,6 +26,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Shield, AlertTriangle, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
+import { SkeletonHeader, SkeletonBigBox, SkeletonGrid, SkeletonCTA } from '@/components/ui/skeleton'
 
 // Shared skeleton loader component
 function PageSkeleton() {
@@ -34,21 +35,15 @@ function PageSkeleton() {
       <div className="p-4 md:p-6 lg:p-8">
         <div className="mx-auto max-w-7xl space-y-8">
           <div className="space-y-3">
-            <div className="h-10 w-52 rounded-lg bg-white shadow-sm animate-pulse" />
-            <div className="h-5 w-80 max-w-[90%] rounded-md bg-white shadow-sm animate-pulse" />
+            <SkeletonHeader />
           </div>
 
           <div className="rounded-xl border bg-white p-6 shadow-sm">
-            <div className="space-y-4">
-              <div className="h-6 w-56 rounded-md bg-slate-100 animate-pulse" />
-              <div className="h-40 rounded-lg bg-slate-100 animate-pulse" />
-              <div className="h-10 w-40 rounded-lg bg-slate-100 animate-pulse" />
-            </div>
+            <SkeletonBigBox />
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="h-28 rounded-xl border bg-white shadow-sm animate-pulse" />
-            <div className="h-28 rounded-xl border bg-white shadow-sm animate-pulse" />
+          <div>
+            <SkeletonGrid items={2} />
           </div>
         </div>
       </div>

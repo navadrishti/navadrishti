@@ -89,16 +89,10 @@ export function verifyToken(token: string): UserData | null {
   } catch (error) {
     console.error('Token verification failed:', error);
     console.error('Token causing error:', token);
-    
-    // Clear invalid token from browser storage
-    if (typeof window !== 'undefined') {
-      console.log('Clearing corrupted token from browser storage');
-      document.cookie = 'token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      sessionStorage.removeItem('token');
-      sessionStorage.removeItem('user');
-    }
+    // Do NOT manipulate browser globals from a module that may run on the server.
+    // Client-side code (for example in the auth context or logout flow) should
+    // clear cookies/localStorage/sessionStorage when a corrupted token is
+    // detected on the client.
     return null;
   }
 }

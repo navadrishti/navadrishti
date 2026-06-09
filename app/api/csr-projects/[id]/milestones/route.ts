@@ -19,7 +19,7 @@ async function getProjectById(projectId: string) {
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const caMode = isCARequest(request);
@@ -29,7 +29,7 @@ export async function GET(
       assertUserType(user, ['company', 'ngo']);
     }
 
-    const projectId = params.id;
+    const { id: projectId } = await params;
 
     const project = await getProjectById(projectId);
     if (!project) {
@@ -78,13 +78,13 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = getAuthUserFromRequest(request);
     assertUserType(user, ['company']);
 
-    const projectId = params.id;
+    const { id: projectId } = await params;
     const project = await getProjectById(projectId);
 
     if (!project || project.company_user_id !== user.id) {

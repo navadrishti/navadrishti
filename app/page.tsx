@@ -2,10 +2,7 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { useEffect, useState } from 'react';
 import { Header } from '@/components/header';
-import { Button } from '@/components/ui/button';
-import { useAuth } from '@/lib/auth-context';
 
 // Photo grid - using public images
 const photos = [
@@ -42,6 +39,16 @@ const mobileRows = [
 ];
 
 const repeatRow = <T,>(row: T[]) => [...row, ...row];
+
+const rootSubnavItems = [
+  { label: 'Government Administrator', href: '/government-admin' },
+  { label: 'Evidence Verification Portal', href: '/companies/ca' },
+  { label: 'Navadrishti CA Portal', href: '/ca' },
+  { label: 'District Analytics Portal', href: '/government-admin/district-dashboard' },
+  { label: 'State Analytics Portal', href: '/government-admin/state-dashboard' },
+  { label: 'About Us', href: '/about' },
+  { label: 'Contact Us', href: 'mailto:connect@navadrishti.in' },
+]
 
 // Animation keyframes
 const scrollAnimations = `
@@ -98,91 +105,37 @@ const scrollAnimations = `
   }
 `;
 
-function HeroContent() {
-  const { user } = useAuth();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  const getDashboardLink = () => {
-    if (!mounted || !user) return '/login';
-    if (user.user_type === 'company') return '/companies/dashboard';
-    if (user.user_type === 'ngo') return '/ngos/dashboard';
-    return '/individuals/dashboard';
-  };
-
+function RootSubNavbar() {
   return (
-    <>
-      {/* Hero Content */}
-      <div className="relative z-10 flex flex-col items-center justify-center px-4 py-16 md:py-20">
-        <div className="text-center max-w-3xl hero-text-bg">
-          <h1 className="text-5xl md:text-6xl font-bold text-white mb-3" style={{ textShadow: '0 4px 12px rgba(0, 0, 0, 0.5)' }}>
-            Navadrishti
-          </h1>
-
-          <p className="text-lg md:text-xl mb-4 font-semibold" style={{ color: '#F47B20', textShadow: '0 2px 8px rgba(0, 0, 0, 0.5)' }}>
-            Where Impact Meets Connection
-          </p>
-
-          <p className="text-sm md:text-base text-white max-w-2xl mx-auto mb-8 leading-relaxed" style={{ textShadow: '0 2px 8px rgba(0, 0, 0, 0.5)' }}>
-            A platform for people and organizations to collaborate on meaningful social impact, share opportunities, and drive change together.
-          </p>
-
-          {/* CTA Buttons */}
-          <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <Link href={getDashboardLink()}>
-              <Button className="hero-button h-11 px-7 text-sm bg-udaan-blue text-white font-semibold shadow-lg hover:shadow-xl hover:opacity-90">
-                User Dashboard
-              </Button>
-            </Link>
-            <a href="https://navadrishti.in" target="_blank" rel="noopener noreferrer">
-              <Button variant="outline" className="hero-button h-11 px-7 text-sm border-2 border-white text-white bg-transparent hover:bg-white/20 font-semibold shadow-lg hover:shadow-xl">
-                About Navadrishti
-              </Button>
-            </a>
-          </div>
-
-          <div className="mt-4 flex flex-col gap-2 sm:grid sm:grid-cols-3 sm:gap-3 border-t border-white/30 pt-4 sm:max-w-2xl sm:mx-auto">
-            <Link href="/government-admin">
-              <Button className="hero-button h-10 px-5 text-xs bg-udaan-orange text-white font-semibold shadow-lg hover:shadow-xl hover:opacity-90 w-full">
-                Government Administrator
-              </Button>
-            </Link>
-            <Link href="/companies/ca">
-              <Button className="hero-button h-10 px-5 text-xs bg-udaan-blue text-white font-semibold shadow-lg hover:shadow-xl hover:opacity-90 w-full">
-                Evidence Verification Portal
-              </Button>
-            </Link>
-            <Link href="/ca">
-              <Button className="hero-button h-10 px-5 text-xs bg-udaan-blue/80 text-white font-semibold shadow-lg hover:shadow-xl hover:opacity-90 w-full">
-                Navadrishti CA Portal
-              </Button>
-            </Link>
-            <div className="sm:col-span-3 flex flex-col gap-2 sm:flex-row sm:justify-center sm:gap-3">
-              <Link href="/government-admin/district-dashboard" className="w-full sm:w-64">
-                <Button className="hero-button h-10 px-5 text-xs text-white font-semibold shadow-lg hover:shadow-xl hover:opacity-90 w-full" style={{ backgroundColor: '#0067b9' }}>
-                  District Analytics
-                </Button>
+    <div className="sticky top-0 z-[9999] text-white">
+      {/* mobile opaque overlay (matches bg-udaan-blue/90 visually, blocks carousel flicker) */}
+      <div className="absolute inset-x-0 top-0 h-full pointer-events-none md:hidden">
+        <div className="h-full bg-udaan-blue/90" />
+      </div>
+      <div className="relative bg-transparent md:bg-udaan-blue/90 md:backdrop-blur supports-[backdrop-filter]:md:bg-udaan-blue/85">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-wrap items-center justify-start gap-2 py-2 text-[11px] font-medium sm:justify-end sm:overflow-x-auto sm:whitespace-nowrap sm:gap-3 sm:text-xs">
+            {rootSubnavItems.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="px-1 py-1 text-white/90 transition-colors hover:text-udaan-orange whitespace-nowrap"
+              >
+                {item.label}
               </Link>
-              <Link href="/government-admin/state-dashboard" className="w-full sm:w-64">
-                <Button className="hero-button h-10 px-5 text-xs text-white font-semibold shadow-lg hover:shadow-xl hover:opacity-90 w-full" style={{ backgroundColor: '#F47B20' }}>
-                  State Analytics
-                </Button>
-              </Link>
-            </div>
+            ))}
           </div>
         </div>
       </div>
-    </>
-  );
+    </div>
+  )
 }
 
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-white flex flex-col">
       <style>{scrollAnimations}</style>
+      <RootSubNavbar />
       <Header />
 
       {/* Photo Grid Background Container */}
@@ -249,7 +202,6 @@ export default function LandingPage() {
           ))}
         </div>
 
-        <HeroContent />
       </div>
 
       {/* Footer - exact navbar color */}

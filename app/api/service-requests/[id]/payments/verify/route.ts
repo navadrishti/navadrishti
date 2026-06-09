@@ -373,8 +373,15 @@ export async function POST(
 
     const updatePayload: Record<string, any> = {
       requirements: JSON.stringify(nextRequirements),
+      current_amount: Number(nextRaisedInr.toFixed(2)),
+      remaining_amount: Number(Math.max(0, targetInr - nextRaisedInr).toFixed(2)),
       updated_at: new Date().toISOString()
     };
+
+    if (typeof serviceRequest.current_quantity === 'number' || serviceRequest.current_quantity != null) {
+      updatePayload.current_quantity = serviceRequest.current_quantity;
+      updatePayload.remaining_quantity = serviceRequest.remaining_quantity ?? null;
+    }
 
     if (reachedTarget) {
       updatePayload.status = 'completed';

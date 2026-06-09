@@ -76,7 +76,7 @@ interface ServiceDetailsProps {
     country?: string
     phone?: string
     pincode?: string
-    ngo_size?: string
+    ngo_volunteer_capacity?: number
     profile_image?: string
     profile_data?: Record<string, any>
     industry?: string
@@ -230,7 +230,11 @@ export function ServiceDetails({
     requesterProfileData.founded || requesterProfileData.founded_year || 'Founded year not set'
   );
   const requesterOrgSize = String(
-    requester_profile?.ngo_size || requesterProfileData.ngo_size || requesterProfileData.organization_size || 'NGO size not set'
+    (typeof requester_profile?.ngo_volunteer_capacity === 'number' && requester_profile?.ngo_volunteer_capacity >= 0)
+      ? `${requester_profile.ngo_volunteer_capacity} people`
+      : (typeof requesterProfileData?.ngo_volunteer_capacity === 'number' && requesterProfileData?.ngo_volunteer_capacity >= 0)
+        ? `${requesterProfileData.ngo_volunteer_capacity} people`
+        : requesterProfileData.organization_size || 'NGO size not set'
   );
   const requesterLocation = requester_profile?.city && requester_profile?.state_province
     ? `${requester_profile.city}, ${requester_profile.state_province}${requester_profile.country ? `, ${requester_profile.country}` : ''}`
@@ -317,13 +321,13 @@ export function ServiceDetails({
     return (
       <div className="space-y-6">
         <div className="space-y-3">
-          <h2 className="text-2xl font-semibold text-gray-900">{title}</h2>
+          <h2 className="text-xl font-medium text-slate-800">{title}</h2>
         </div>
 
         <div className="space-y-6">
           <section className="space-y-3">
             <h3 className="text-sm font-medium text-gray-500">Description</h3>
-            <p className="text-sm text-gray-700 leading-relaxed">{description}</p>
+            <p className="text-sm text-muted-foreground whitespace-pre-wrap break-words">{description}</p>
           </section>
 
           <section className="space-y-4">
@@ -332,44 +336,44 @@ export function ServiceDetails({
             <div className="grid grid-cols-1 gap-x-12 gap-y-6 md:grid-cols-2">
               <div>
                 <p className="text-sm text-gray-500">Capability Type</p>
-                <p className="text-base font-semibold text-gray-900">{category}</p>
+                <p className="text-sm font-medium text-slate-800">{category}</p>
               </div>
 
               {location && (
                 <div>
                   <p className="text-sm text-gray-500">Location</p>
-                  <p className="text-base font-semibold text-gray-900">{location}</p>
+                  <p className="text-sm font-medium text-slate-800">{location}</p>
                 </div>
               )}
 
               {coverageArea && (
                 <div>
                   <p className="text-sm text-gray-500">Coverage Area</p>
-                  <p className="text-base font-semibold text-gray-900">{coverageArea}</p>
+                  <p className="text-sm font-medium text-slate-800">{coverageArea}</p>
                 </div>
               )}
 
               {capacityLimit && (
                 <div>
                   <p className="text-sm text-gray-500">Capacity Limit</p>
-                  <p className="text-base font-semibold text-gray-900">{capacityLimit}</p>
+                  <p className="text-sm font-medium text-slate-800">{capacityLimit}</p>
                 </div>
               )}
 
               {status && (
                 <div>
                   <p className="text-sm text-gray-500">Status</p>
-                  <p className="text-base font-semibold text-gray-900 capitalize">{status}</p>
+                  <p className="text-sm font-medium text-slate-800 capitalize">{status}</p>
                 </div>
               )}
 
               {hasOfferPricingInfo && (
                 <div>
                   <p className="text-sm text-gray-500">Price</p>
-                  <p className="text-base font-semibold text-gray-900">
+                  <p className="text-sm font-medium text-slate-800">
                     {primaryOfferPriceText}
                     {pricingModeLabel && !isVolunteerPricing && (
-                      <span className="ml-1 font-normal text-gray-500">{pricingModeLabel}</span>
+                      <span className="ml-1 font-normal text-muted-foreground">{pricingModeLabel}</span>
                     )}
                   </p>
                 </div>
@@ -385,42 +389,42 @@ export function ServiceDetails({
                 {categoryFocus && (
                   <div>
                     <p className="text-sm text-gray-500">Conditions</p>
-                    <p className="text-sm text-gray-700">{categoryFocus}</p>
+                    <p className="text-sm text-gray-700 break-words">{categoryFocus}</p>
                   </div>
                 )}
 
                 {validityPeriod && (
                   <div>
                     <p className="text-sm text-gray-500">Duration</p>
-                    <p className="text-sm text-gray-700">{String(validityPeriod).replaceAll('_', ' ')}</p>
+                    <p className="text-sm text-gray-700 break-words">{String(validityPeriod).replaceAll('_', ' ')}</p>
                   </div>
                 )}
 
                 {item && (
                   <div>
                     <p className="text-sm text-gray-500">Material Item</p>
-                    <p className="text-sm text-gray-700">{item}{quantity ? ` (Quantity: ${quantity})` : ''}</p>
+                    <p className="text-sm text-gray-700 break-words">{item}{quantity ? ` (Quantity: ${quantity})` : ''}</p>
                   </div>
                 )}
 
                 {skill && (
                   <div>
                     <p className="text-sm text-gray-500">Skill Offered</p>
-                    <p className="text-sm text-gray-700">{skill}</p>
+                    <p className="text-sm text-gray-700 break-words">{skill}</p>
                   </div>
                 )}
 
                 {scope && (
                   <div>
                     <p className="text-sm text-gray-500">Infrastructure Scope</p>
-                    <p className="text-sm text-gray-700">{scope}</p>
+                    <p className="text-sm text-gray-700 break-words">{scope}</p>
                   </div>
                 )}
 
                 {contact_info && (
                   <div>
                     <p className="text-sm text-gray-500">Contact Information</p>
-                    <p className="text-sm text-gray-700">{contact_info}</p>
+                    <p className="text-sm text-gray-700 break-words">{contact_info}</p>
                   </div>
                 )}
               </div>
@@ -491,11 +495,11 @@ export function ServiceDetails({
               </div>
 
               <div>
-                <h3 className="text-lg font-semibold flex items-center gap-2">
-                  <span>{ngo_name}</span>
+                <h3 className="text-lg font-medium flex items-center gap-2">
+                  <span className="text-slate-800">{ngo_name}</span>
                   <VerificationBadge status={verified ? 'verified' : 'unverified'} size="sm" showText={false} />
                 </h3>
-                <p className="text-sm text-gray-500">{requesterEmail}</p>
+                <p className="text-sm text-muted-foreground">{requesterEmail}</p>
               </div>
 
               <div className="grid grid-cols-1 gap-4 text-sm">
@@ -531,10 +535,10 @@ export function ServiceDetails({
               </div>
 
               <div className="bg-gray-50 rounded-lg p-3 space-y-2">
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-muted-foreground">
                   <strong>Posted:</strong> {formattedCreatedDate}
                 </p>
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-muted-foreground">
                   <strong>Type:</strong> {providerLabel}
                 </p>
                 {contact_info && (
@@ -569,13 +573,13 @@ export function ServiceDetails({
           <Card>
             <CardHeader>
               <div className="flex items-start gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl shadow-md bg-blue-600">
-                  <HeartHandshake size={20} className="text-white" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg shadow-sm bg-blue-600">
+                  <HeartHandshake size={18} className="text-white" />
                 </div>
 
                 <div className="flex-1">
-                  <CardTitle className="text-2xl mb-2">{title}</CardTitle>
-                  <CardDescription className="text-base">Need Description</CardDescription>
+                  <CardTitle className="text-xl mb-1 text-slate-800">{title}</CardTitle>
+                  <CardDescription className="text-sm text-muted-foreground">Need Description</CardDescription>
                 </div>
 
                 {liveRequestUrgency && (
@@ -590,8 +594,8 @@ export function ServiceDetails({
             </CardHeader>
 
             <CardContent>
-              <div className="bg-gray-50 rounded-lg p-4">
-                <p className="text-gray-700 leading-relaxed">{description}</p>
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-sm text-muted-foreground">{description}</p>
               </div>
             </CardContent>
           </Card>
