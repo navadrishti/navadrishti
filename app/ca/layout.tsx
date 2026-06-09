@@ -102,10 +102,3 @@ export default function CALayout({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
-/div>
-          </div>
-        </div>
-      </footer>
-    </div>
-  );
-}
