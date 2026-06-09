@@ -46,21 +46,15 @@ export default function CALayout({ children }: { children: React.ReactNode }) {
 
             {/* Navigation */}
             <nav className="hidden md:flex items-center space-x-4">
-              <Link href="/ca">
-                <Button variant="ghost" size="sm" className="text-white hover:bg-blue-700 hover:text-white">
-                  Dashboard
-                </Button>
-              </Link>
-              <Link href="/ca/cases">
-                <Button variant="ghost" size="sm" className="text-white hover:bg-blue-700 hover:text-white">
-                  History
-                </Button>
-              </Link>
-              <Link href="/ca/change-password">
-                <Button variant="ghost" size="sm" className="text-white hover:bg-blue-700 hover:text-white">
-                  Change Password
-                </Button>
-              </Link>
+              <Button asChild variant="ghost" size="sm" className="text-white hover:bg-blue-700 hover:text-white">
+                <Link href="/ca">Dashboard</Link>
+              </Button>
+              <Button asChild variant="ghost" size="sm" className="text-white hover:bg-blue-700 hover:text-white">
+                <Link href="/ca/cases">History</Link>
+              </Button>
+              <Button asChild variant="ghost" size="sm" className="text-white hover:bg-blue-700 hover:text-white">
+                <Link href="/ca/change-password">Change Password</Link>
+              </Button>
             </nav>
 
             {/* Logout */}
