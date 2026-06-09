@@ -17,10 +17,12 @@ export async function GET(request: NextRequest) {
     const ngoId = searchParams.get('ngoId');
     const status = searchParams.get('status');
     const includeEmpty = searchParams.get('includeEmpty') === 'true';
+    const q = String(searchParams.get('q') || '').trim();
 
     const projects = await db.requestProjects.getAll({
       ngo_id: ngoId ? Number(ngoId) : undefined,
-      status: status || undefined
+      status: status || undefined,
+      q: q || undefined,
     });
 
     if (includeEmpty || projects.length === 0) {
@@ -48,7 +50,38 @@ export async function GET(request: NextRequest) {
 
     const filteredProjects = projects.filter((project: any) => validProjectIds.has(project.id));
 
-    return NextResponse.json({ success: true, data: filteredProjects });
+    // remove obvious demo rows
+    const nonDemo = filteredProjects.filter((p: any) => {
+      const title = String(p.title || '').toLowerCase()
+      return !title.includes('demo') && !title.includes('sample')
+    })
+
+    if (!q) {
+      return NextResponse.json({ success: true, data: nonDemo });
+    }
+
+    const tokens = q.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).filter((t) => t.length > 2)
+
+    const scored = nonDemo.map((p: any) => {
+      let score = 0
+      const hay = `${p.title || ''} ${p.description || ''} ${p.location || ''} ${p.timeline || ''}`.toLowerCase()
+      for (const t of tokens) {
+        if (hay.includes(t)) score += 8
+      }
+      // prefer projects with location matching query terms
+      for (const t of tokens) {
+        if ((p.location || '').toLowerCase().includes(t)) score += 12
+      }
+      // prefer recent projects
+      if (p.created_at) {
+        const ageDays = (Date.now() - new Date(p.created_at).getTime()) / (1000 * 60 * 60 * 24)
+        if (ageDays < 30) score += 6
+        else if (ageDays < 90) score += 3
+      }
+      return { project: p, score }
+    }).sort((a: any, b: any) => b.score - a.score)
+
+    return NextResponse.json({ success: true, data: scored.map((s: any) => s.project) });
   } catch (error) {
     console.error('Failed to fetch service request projects:', error);
     return NextResponse.json({ error: 'Failed to fetch service request projects' }, { status: 500 });
@@ -79,6 +112,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Project title and exact address are required' }, { status: 400 });
     }
 
+    const volunteersNeeded = Number(body.volunteers_needed) || null;
+    const expectedBeneficiaries = body.expected_beneficiaries != null ? (Number(body.expected_beneficiaries) || null) : null;
+    const validUntil = body.valid_until ? String(body.valid_until).trim() : null;
+
+    if (!volunteersNeeded || volunteersNeeded <= 0) {
+      return NextResponse.json({ error: 'volunteers_needed must be provided and greater than 0' }, { status: 400 });
+    }
+
+    if (!validUntil || Number.isNaN(new Date(validUntil).getTime())) {
+      return NextResponse.json({ error: 'valid_until must be a valid date string' }, { status: 400 });
+    }
+
     const project = await db.requestProjects.create({
       ngo_id: decoded.id,
       title,
@@ -86,6 +131,9 @@ export async function POST(request: NextRequest) {
       location: exactAddress,
       exact_address: exactAddress,
       timeline: timeline || null,
+      volunteers_needed: volunteersNeeded,
+      expected_beneficiaries: expectedBeneficiaries,
+      valid_until: validUntil || null,
       status: 'active'
     });
 

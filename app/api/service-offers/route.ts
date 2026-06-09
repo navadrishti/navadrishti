@@ -6,9 +6,11 @@ import {
   CATEGORY_BY_OFFER_TYPE,
   IMPACT_AREAS,
   isOfferType,
+  isOfferExpired,
   isTransactionAllowedForOfferType,
   isTransactionType,
   OfferType,
+  normalizeDateOnlyToEndOfDayIso,
   sanitizeTextArray,
   parseCsvToStringArray,
   toNullableNumber,
@@ -154,12 +156,14 @@ const normalizeOffer = (offer: any) => {
 
   const skillsRequired = sanitizeTextArray(mergedDetails.skills_required)
   const facilities = sanitizeTextArray(mergedDetails.facilities)
+  const expires_at = mergedDetails.expires_at ?? mergedDetails.valid_until ?? offer.expires_at ?? offer.valid_until ?? null
 
   return {
     ...offer,
     ngo_id: offer.ngo_id ?? offer.creator_id,
     offer_type: normalizedOfferType,
     transaction_type: inferredTransactionType,
+    is_expired: isOfferExpired(offer),
     impact_area: Array.isArray(offer.impact_area) ? offer.impact_area : [],
     offer_details: mergedDetails,
 
@@ -205,15 +209,20 @@ const validateIncomingBody = (body: Record<string, any>) => {
     return 'impact_area contains invalid values.'
   }
 
-  const requiresPricing = body.transaction_type === 'rent' || body.transaction_type === 'sell'
-  if (requiresPricing) {
-    if (!['fixed', 'negotiable'].includes(String(body.price_type || ''))) {
-      return 'price_type must be fixed or negotiable for rent/sell offers.'
-    }
+  // Require a validity end date for all new offers
+  if (!body.valid_until && !body.expires_at && !(body.offer_details && body.offer_details.valid_until)) {
+    return 'valid_until is required for all new offers.'
+  }
 
-    if (toNullablePositiveNumber(body.price_amount) === null) {
-      return 'price_amount must be a positive number for rent/sell offers.'
-    }
+  const validUntilValue = body.valid_until || body.expires_at || (body.offer_details && body.offer_details.valid_until)
+  const validUntilIso = normalizeDateOnlyToEndOfDayIso(validUntilValue)
+  const validUntilMs = validUntilIso ? Date.parse(validUntilIso) : Number.NaN
+  if (Number.isNaN(validUntilMs)) {
+    return 'valid_until must be a valid date.'
+  }
+
+  if (validUntilMs < Date.now()) {
+    return 'valid_until must be in the future.'
   }
 
   return null
@@ -281,6 +290,7 @@ export async function GET(request: NextRequest) {
     const view = rawView === 'hired' ? 'my-responses' : rawView
     const location = searchParams.get('location')
     const offerTypeFilter = searchParams.get('offer_type')
+    const includeExpired = searchParams.get('include_expired') === 'true'
 
     let authenticatedUserId = null
     if (view === 'my-offers' || view === 'my-responses') {
@@ -359,6 +369,17 @@ export async function GET(request: NextRequest) {
     }
 
     let filteredOffers = (offers || []).map(normalizeOffer)
+
+    // Server-side: remove expired offers based on expires_at if present
+    filteredOffers = filteredOffers.filter((offer: any) => {
+      if (!offer) return false
+      if (includeExpired) return true
+      const exp = offer.expires_at || offer.valid_until
+      if (!exp) return true
+      const ms = Date.parse(String(exp))
+      if (isNaN(ms)) return true
+      return ms >= Date.now()
+    })
 
     if (search) {
       const searchLower = search.toLowerCase()
@@ -520,6 +541,8 @@ export async function POST(request: NextRequest) {
       price_type: priceInfo.price_type,
       price_amount: priceInfo.price_amount,
       price_description: priceInfo.price_description,
+      validity_days: toNullablePositiveNumber(body.validity_days),
+      valid_until: normalizeDateOnlyToEndOfDayIso(body.valid_until || body.expires_at || normalizedOfferDetails.valid_until || null),
       status: 'inactive',
       admin_status: 'pending',
       admin_reviewed_at: null,

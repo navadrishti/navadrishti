@@ -225,6 +225,61 @@ export async function GET(request: NextRequest) {
 
     console.log('✅ Hashtag cleanup completed. Stats:', hashtagStats);
 
+    // ========== TASK 3: EXPIRE PROJECTS AND THEIR NEEDS ==========
+    console.log('\n⏳ Task 3: Expiring projects and associated needs past valid_until...');
+    try {
+      const nowIso = new Date().toISOString();
+      const { data: expiredProjects, error: expiredProjectsError } = await supabase
+        .from('service_request_projects')
+        .select('id, title, valid_until')
+        .lt('valid_until', nowIso)
+        .neq('status', 'expired')
+        .limit(1000);
+
+      if (expiredProjectsError) {
+        console.error('Error fetching expired projects:', expiredProjectsError);
+      } else if (expiredProjects && expiredProjects.length > 0) {
+        console.log(`Found ${expiredProjects.length} projects to expire`);
+        let expiredProjectCount = 0;
+
+        for (const proj of expiredProjects) {
+          try {
+            const { error: updateProjErr } = await supabase
+              .from('service_request_projects')
+              .update({ status: 'expired', updated_at: nowIso })
+              .eq('id', proj.id);
+
+            if (updateProjErr) {
+              console.error(`Error expiring project ${proj.id}:`, updateProjErr);
+              continue;
+            }
+
+            // Expire related needs
+            const { error: updateNeedsErr } = await supabase
+              .from('service_requests')
+              .update({ status: 'expired', updated_at: nowIso })
+              .eq('project_id', proj.id)
+              .neq('status', 'expired');
+
+            if (updateNeedsErr) {
+              console.error(`Error expiring needs for project ${proj.id}:`, updateNeedsErr);
+            }
+
+            expiredProjectCount++;
+            console.log(`✅ Expired project ${proj.id} (${proj.title}) and its needs`);
+          } catch (procErr) {
+            console.error('Error processing project expiry:', procErr);
+          }
+        }
+
+        console.log(`Expired ${expiredProjectCount} projects during this run`);
+      } else {
+        console.log('✅ No projects to expire');
+      }
+    } catch (expireErr) {
+      console.error('Error in project expiry task:', expireErr);
+    }
+
     // ========== FINAL SUMMARY ==========
     console.log('\n🎉 Daily cleanup process complete!');
 

@@ -101,3 +101,32 @@ export const toNullableNumber = (value: unknown): number | null => {
   if (!Number.isFinite(parsed)) return null
   return parsed
 }
+
+export const normalizeDateOnlyToEndOfDayIso = (value: unknown): string | null => {
+  if (value === null || value === undefined || value === '') return null
+
+  const raw = String(value).trim()
+  if (!raw) return null
+
+  const dateOnlyMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (dateOnlyMatch) {
+    const [, year, month, day] = dateOnlyMatch
+    const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), 23, 59, 59, 999))
+    return date.toISOString()
+  }
+
+  const parsed = new Date(raw)
+  if (Number.isNaN(parsed.getTime())) return null
+  return parsed.toISOString()
+}
+
+export const isOfferExpired = (offer: { valid_until?: unknown; expires_at?: unknown } | null | undefined, now = new Date()): boolean => {
+  if (!offer) return false
+
+  const expiresAt = offer.expires_at ?? offer.valid_until
+  if (!expiresAt) return false
+
+  const parsed = new Date(String(expiresAt))
+  if (Number.isNaN(parsed.getTime())) return false
+  return parsed.getTime() < now.getTime()
+}

@@ -54,6 +54,8 @@ export async function GET(request: NextRequest) {
 
     const projects = (data ?? []).map((project: any) => ({
       ...project,
+      days_attended: Number(project?.metadata?.attendance_summary?.days_attended ?? project?.metadata?.attendance_summary?.total_entries ?? 0),
+      last_attendance_at: project?.metadata?.attendance_summary?.last_attendance_at ?? null,
       milestones_count: Array.isArray(project.csr_project_milestones)
         ? project.csr_project_milestones.length
         : 0,

@@ -22,7 +22,7 @@ export default function NGORegister() {
     phone: '',
     password: '',
     confirmPassword: '',
-    ngoSize: '',
+    ngoVolunteerCapacity: '',
     city: '',
     state: '',
     pincode: '',
@@ -136,8 +136,10 @@ export default function NGORegister() {
       errors.confirmPassword = 'Passwords do not match'
     }
     
-    if (!formData.ngoSize) {
-      errors.ngoSize = 'NGO size is required'
+    if (!formData.ngoVolunteerCapacity) {
+      errors.ngoVolunteerCapacity = 'Exact NGO size is required'
+    } else if (!/^[0-9]+$/.test(String(formData.ngoVolunteerCapacity).trim())) {
+      errors.ngoVolunteerCapacity = 'Please enter a valid whole number for NGO size'
     }
     
     if (!formData.city.trim()) {
@@ -235,9 +237,10 @@ export default function NGORegister() {
         state_province: formData.state,
         pincode: formData.pincode,
         country: formData.country,
+        // exact capacity stored at top-level so DB column `ngo_volunteer_capacity` is set
+        ngo_volunteer_capacity: formData.ngoVolunteerCapacity ? Number(String(formData.ngoVolunteerCapacity).replace(/[^0-9]/g, '')) : undefined,
         profile_data: {
           ngo_name: formData.ngoName,
-          ngo_size: formData.ngoSize,
           founded: formData.founded,
           sector: formData.sector,
           registration_date: formData.registrationDate,
@@ -309,20 +312,19 @@ export default function NGORegister() {
                 </div>
                 
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="ngoSize">NGO Size</Label>
-                  <Select value={formData.ngoSize} onValueChange={(value) => handleSelectChange('ngoSize', value)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select NGO size" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="1-10">1-10 members</SelectItem>
-                      <SelectItem value="11-50">11-50 members</SelectItem>
-                      <SelectItem value="51-200">51-200 members</SelectItem>
-                      <SelectItem value="201-500">201-500 members</SelectItem>
-                      <SelectItem value="501+">501+ members</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {formErrors.ngoSize && <p className="text-sm text-red-500">{formErrors.ngoSize}</p>}
+                  <Label htmlFor="ngoVolunteerCapacity">Exact NGO size</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="ngoVolunteerCapacity"
+                      name="ngoVolunteerCapacity"
+                      value={formData.ngoVolunteerCapacity}
+                      onChange={handleChange}
+                      placeholder="Enter total staff/active volunteers (e.g. 42)"
+                      inputMode="numeric"
+                    />
+                    <span className="text-sm text-gray-600 self-center">people</span>
+                  </div>
+                  {formErrors.ngoVolunteerCapacity && <p className="text-sm text-red-500">{formErrors.ngoVolunteerCapacity}</p>}
                 </div>
               </div>
             </div>

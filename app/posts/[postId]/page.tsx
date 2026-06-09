@@ -383,7 +383,7 @@ export default function PostPage({ params }: PostPageProps) {
                       alt={post.author.name} 
                     />
                   )}
-                  <AvatarFallback className="bg-blue-600 text-white font-semibold">{getInitials(post.author.name)}</AvatarFallback>
+                  <AvatarFallback className="bg-udaan-orange text-white font-semibold">{getInitials(post.author.name)}</AvatarFallback>
                 </Avatar>
                 <div>
                   <div className="flex items-center space-x-2">

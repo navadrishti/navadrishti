@@ -25,6 +25,32 @@ function safeParseJson(value: unknown): Record<string, any> {
   }
 }
 
+function parseImageArray(value: unknown): string[] {
+  if (!value) return [];
+
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item || '').trim()).filter(Boolean);
+  }
+
+  if (typeof value === 'string') {
+    const text = value.trim();
+    if (!text) return [];
+
+    try {
+      const parsed = JSON.parse(text);
+      if (Array.isArray(parsed)) {
+        return parsed.map((item) => String(item || '').trim()).filter(Boolean);
+      }
+    } catch {
+      // Fall through to plain text handling.
+    }
+
+    return text.split(/[\n,]/).map((item) => item.trim()).filter(Boolean);
+  }
+
+  return [];
+}
+
 function isCompanyAssignedNeed(request: Record<string, any>): boolean {
   const projectContext = safeParseJson(request?.project_context);
   const requirements = safeParseJson(request?.requirements);
@@ -326,6 +352,10 @@ export async function GET(request: NextRequest) {
 
       const requirementsObj = safeParseJson(request.requirements);
       const projectContextObj = safeParseJson(request.project_context);
+      const requirementImages = parseImageArray(requirementsObj.images);
+      request.images = requirementImages.length > 0
+        ? requirementImages
+        : parseImageArray(request.images || request.image_url);
       
       // Prefer direct DB columns, fall back to requirements JSON for legacy rows
       request.request_type = request.request_type || requirementsObj.request_type || (SERVICE_REQUEST_TYPES.includes(request.category) ? request.category : 'Skill / Service Need');
@@ -402,8 +432,14 @@ export async function GET(request: NextRequest) {
     // Filter out completed requests from "All Requests" view
     let finalRequests = processedRequests;
 
+    const isProjectLocked = (item: any) => {
+      const projectContext = safeParseJson(item?.project_context);
+      const assignment = safeParseJson(projectContext?.csr_assignment);
+      return projectContext?.csr_project_available_for_csr === false || assignment?.mode === 'company_project_handoff' || Number(assignment?.assigned_company_id || 0) > 0;
+    };
+
     if (view === 'my-requests' && authenticatedUserId) {
-      const baseFiltered = processedRequests.filter((item: any) => !isCompanyAssignedNeed(item));
+      const baseFiltered = processedRequests.filter((item: any) => !isCompanyAssignedNeed(item) && !isProjectLocked(item));
       const filteredIds = baseFiltered
         .map((item: any) => Number(item.id))
         .filter((id: number) => Number.isFinite(id) && id > 0);
@@ -426,6 +462,10 @@ export async function GET(request: NextRequest) {
       } else {
         finalRequests = baseFiltered;
       }
+    }
+
+    if (view === 'all') {
+      finalRequests = processedRequests.filter((item: any) => !isCompanyAssignedNeed(item) && !isProjectLocked(item));
     }
 
     if (view === 'all') {
@@ -596,6 +636,20 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: 'Project title, description, exact address, and timeline are required' }, { status: 400 });
         }
 
+        // Validate canonical project fields are provided and valid when creating nested project
+          const rawExpected = projectPayload.expected_beneficiaries ?? null;
+          const parsedExpected = rawExpected != null ? Number(rawExpected) : (Number(beneficiary_count) || null);
+          const expectedBeneficiaries = parsedExpected != null && Number.isFinite(parsedExpected) && parsedExpected > 0 ? parsedExpected : null;
+        const validUntil = projectPayload.valid_until ? String(projectPayload.valid_until).trim() : null;
+
+        if (!expectedBeneficiaries) {
+          return NextResponse.json({ error: 'expected_beneficiaries must be provided and greater than 0 for project creation' }, { status: 400 });
+        }
+
+        if (!validUntil || Number.isNaN(new Date(validUntil).getTime())) {
+          return NextResponse.json({ error: 'valid_until must be a valid date string for project creation' }, { status: 400 });
+        }
+
         const createdProject = await db.requestProjects.create({
           ngo_id: userId,
           title: projectTitle,
@@ -603,6 +657,8 @@ export async function POST(request: NextRequest) {
           location: projectLocation,
           exact_address: projectLocation,
           timeline: projectTimeline || null,
+          expected_beneficiaries: expectedBeneficiaries,
+          valid_until: validUntil || null,
           status: 'active'
         });
 
@@ -610,8 +666,9 @@ export async function POST(request: NextRequest) {
         resolvedProjectLocation = projectLocation;
       }
 
+      let projectRecord: any = null
       if (resolvedProjectId) {
-        const projectRecord = await db.requestProjects.getById(String(resolvedProjectId));
+        projectRecord = await db.requestProjects.getById(String(resolvedProjectId));
         if (projectRecord && projectRecord.ngo_id !== userId) {
           return NextResponse.json({ error: 'Project ownership mismatch' }, { status: 403 });
         }
@@ -628,9 +685,11 @@ export async function POST(request: NextRequest) {
       };
 
       const trimmedTimeline = typeof timeline === 'string' ? timeline.trim() : '';
-      const isAnytimeTimeline = trimmedTimeline.toLowerCase() === 'anytime';
-      const storedTimeline = trimmedTimeline && !isAnytimeTimeline ? trimmedTimeline : null;
-      const timelineLabel = isAnytimeTimeline ? 'Anytime' : (trimmedTimeline || 'Not specified');
+      if (trimmedTimeline.toLowerCase() === 'anytime') {
+        return NextResponse.json({ error: 'Timeline cannot be "Anytime"; provide an actual duration or a date.' }, { status: 400 });
+      }
+      const storedTimeline = trimmedTimeline || null;
+      const timelineLabel = trimmedTimeline || 'Not specified';
 
       const mappedUrgency = deriveAutoUrgency(timeline, Date.now());
 
@@ -667,52 +726,28 @@ export async function POST(request: NextRequest) {
         }));
         const directlyFulfillableOffers = offersWithCoverage.filter((offer: any) => (offer.capacity ?? 0) > 0);
 
-        if (directlyFulfillableOffers.length > 0 && selectedRecommendedOfferIds.length === 0) {
-          return NextResponse.json(
-            {
-              error: 'Matching capability offers found. Select one or more capability offers before creating this need.',
-              requiresOfferSelection: true,
-              matching_offer_ids: directlyFulfillableOffers.map((offer: any) => offer.id)
-            },
-            { status: 400 }
-          );
-        }
-
         if (selectedRecommendedOfferIds.length > 0) {
           const selectedOffers = offersWithCoverage.filter((offer: any) => selectedRecommendedOfferIds.includes(Number(offer.id)));
 
           if (selectedOffers.length !== selectedRecommendedOfferIds.length) {
             return NextResponse.json({ error: 'One or more selected capability offers are invalid for this need.' }, { status: 400 });
           }
-
-          if (coverageTarget && coverageTarget > 0) {
-            const combinedCoverage = selectedOffers.reduce((sum: number, offer: any) => sum + (offer.capacity || 0), 0);
-            if (combinedCoverage < coverageTarget) {
-              return NextResponse.json(
-                {
-                  error: 'Selected capability offers do not fully cover the need target. Select additional offers to reach full coverage.',
-                  requiresOfferSelection: true,
-                  coverage_target: coverageTarget,
-                  combined_coverage: combinedCoverage
-                },
-                { status: 400 }
-              );
-            }
-          }
         }
       }
 
       // Prepare requirements JSON
+      const images = parseImageArray(body.images);
       const requirementsData = {
         request_type: normalizedRequestType,
         estimated_budget: estimated_budget || budget || 'Not specified',
-        beneficiary_count: Number(beneficiary_count || 0),
+        beneficiary_count: Number(beneficiary_count ?? (projectRecord?.expected_beneficiaries ?? 0)),
         impact_description: String(impact_description || '').trim(),
         budget: budget || estimated_budget || 'Not specified',
         contactInfo: contactInfo || 'Not specified',
         timeline: timelineLabel,
         project: projectContext,
-        category_details: details || {}
+        category_details: details || {},
+        images
       };
 
       const progressFields = buildProgressFields({
@@ -738,11 +773,12 @@ export async function POST(request: NextRequest) {
         volunteers_needed: 1, // default volunteers_needed
         tags: JSON.stringify([]), // empty tags array
         requirements: JSON.stringify(requirementsData),
+        image_url: images[0] || null,
         status: 'active',
         // Direct schema columns
         request_type: normalizedRequestType,
         estimated_budget: parseFloat(String(estimated_budget || budget || '')) || null,
-        beneficiary_count: Number(beneficiary_count || 0),
+        beneficiary_count: Number(beneficiary_count ?? (projectRecord?.expected_beneficiaries ?? 0)),
         impact_description: String(impact_description || '').trim(),
         timeline: storedTimeline,
         contact_info: contactInfo || null,

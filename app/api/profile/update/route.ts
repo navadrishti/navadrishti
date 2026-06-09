@@ -22,6 +22,8 @@ const updateProfileSchema = z.object({
   timezone: z.string().optional(),
   skills: z.string().optional(),
   interests: z.string().optional()
+  ,
+  ngo_volunteer_capacity: z.union([z.number().int(), z.string()]).optional()
 });
 
 export async function POST(request: NextRequest) {
@@ -168,6 +170,13 @@ export async function PUT(request: NextRequest) {
     const updateData = validationResult.data;
     
     // Remove undefined values
+    // Coerce ngo_volunteer_capacity to integer when present
+    if (updateData.ngo_volunteer_capacity !== undefined && updateData.ngo_volunteer_capacity !== null) {
+      const raw = updateData.ngo_volunteer_capacity;
+      const parsed = typeof raw === 'number' ? Math.trunc(raw) : (String(raw).match(/\d+/) ? Number(String(raw).match(/\d+/)![0]) : null);
+      updateData.ngo_volunteer_capacity = parsed;
+    }
+
     const cleanUpdateData = Object.fromEntries(
       Object.entries(updateData).filter(([_, value]) => value !== undefined)
     );
