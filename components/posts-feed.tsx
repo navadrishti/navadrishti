@@ -1071,7 +1071,7 @@ function PostCard({
                   />
                 ) : null;
               })()}
-              <AvatarFallback className="bg-gradient-to-br from-blue-400 to-indigo-500 text-white font-semibold">
+              <AvatarFallback className="bg-udaan-orange text-white font-semibold">
                 {getInitials(post.user.name || post.user.email || 'U')}
               </AvatarFallback>
             </Avatar>
@@ -1278,7 +1278,7 @@ function PostCard({
                         <AvatarImage src={img} onError={(e) => e.currentTarget.style.display = 'none'} />
                       ) : null;
                     })()}
-                    <AvatarFallback className="bg-gradient-to-br from-blue-400 to-indigo-500 text-white text-xs font-semibold">
+                    <AvatarFallback className="bg-udaan-orange text-white text-xs font-semibold">
                       {getInitials(comment.author?.name || 'U')}
                     </AvatarFallback>
                   </Avatar>
@@ -1325,7 +1325,7 @@ function PostCard({
                       <AvatarImage src={img} onError={(e) => e.currentTarget.style.display = 'none'} />
                     ) : null;
                   })()}
-                  <AvatarFallback className="bg-gradient-to-br from-blue-400 to-indigo-500 text-white text-xs font-semibold">
+                  <AvatarFallback className="bg-udaan-orange text-white text-xs font-semibold">
                     {getInitials(currentUser?.name || currentUser?.email || 'U')}
                   </AvatarFallback>
                 </Avatar>

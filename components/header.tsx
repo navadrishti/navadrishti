@@ -30,7 +30,7 @@ interface NavigationItem {
   description: string;
 }
 
-export function Header() {
+export function Header({ className = '' }: { className?: string } = {}) {
   const { user, loading, logout } = useAuth()
   const router = useRouter()
   const [mobileSheetOpen, setMobileSheetOpen] = useState(false)
@@ -190,7 +190,7 @@ export function Header() {
   ]
   
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-udaan-blue text-white">
+    <header className={`sticky top-0 z-50 w-full border-b bg-udaan-blue text-white ${className}`}>
       <div className="udaan-container flex h-16 items-center px-4 md:px-6">
         <Link href="/" className="flex shrink-0 items-center font-bold text-xl">
           <img src="/photos/logo.svg" alt="Navadrishti" className="h-36 w-36 shrink-0" />
@@ -294,7 +294,7 @@ export function Header() {
                                         {profile.profile_image && (
                                           <AvatarImage src={profile.profile_image} alt={profile.name} />
                                         )}
-                                        <AvatarFallback className="text-xs bg-gradient-to-br from-blue-400 to-indigo-500 text-white font-semibold">
+                                        <AvatarFallback className="text-xs bg-udaan-orange text-white font-semibold">
                                           {getInitials(profile.name)}
                                         </AvatarFallback>
                                       </Avatar>
@@ -515,7 +515,7 @@ export function Header() {
                                               {profile.profile_image && (
                                                 <AvatarImage src={profile.profile_image} alt={profile.name} />
                                               )}
-                                              <AvatarFallback className="text-xs bg-gradient-to-br from-blue-400 to-indigo-500 text-white font-semibold">
+                                              <AvatarFallback className="text-xs bg-udaan-orange text-white font-semibold">
                                                 {getInitials(profile.name)}
                                               </AvatarFallback>
                                             </Avatar>

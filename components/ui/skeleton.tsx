@@ -15,16 +15,16 @@ function Skeleton({
 // Skeleton for generic card layouts
 function SkeletonCard() {
   return (
-    <div className="rounded-lg border p-4 space-y-4">
-      <Skeleton className="h-48 w-full rounded-md" />
+    <div className="rounded-md border-2 border-slate-200 p-3 space-y-3 bg-white">
+      <Skeleton className="h-44 w-full rounded-md" />
       <div className="space-y-2">
-        <Skeleton className="h-4 w-3/4" />
-        <Skeleton className="h-4 w-1/2" />
-        <Skeleton className="h-6 w-1/4" />
+        <Skeleton className="h-4 w-3/4 rounded-md" />
+        <Skeleton className="h-4 w-1/2 rounded-md" />
+        <Skeleton className="h-6 w-1/4 rounded-md" />
       </div>
       <div className="flex justify-between">
-        <Skeleton className="h-8 w-16" />
-        <Skeleton className="h-8 w-20" />
+        <Skeleton className="h-8 w-16 rounded-md" />
+        <Skeleton className="h-8 w-20 rounded-md" />
       </div>
     </div>
   )
@@ -33,52 +33,87 @@ function SkeletonCard() {
 // Skeleton for service cards
 function SkeletonServiceCard() {
   return (
-    <div className="relative bg-white rounded-xl border-2 border-gray-200 p-4 h-full flex flex-col shadow-sm space-y-3">      
-      {/* Header with category and badge */}
-      <div className="flex items-center justify-between">
-        <Skeleton className="h-6 w-16 rounded-full" />
-        <Skeleton className="h-6 w-20 rounded-full" />
+    <div className="w-[320px] h-[480px] bg-white rounded-md border-2 border-slate-200 p-0 flex flex-col shadow-sm overflow-hidden">
+      {/* Top project bar - simplified */}
+      <div className="flex items-center justify-between px-2 py-2 border-b border-slate-200">
+        <div className="px-2">
+          <p className="sr-only">Project</p>
+          <Skeleton className="h-4 w-36 rounded-md" />
+        </div>
+        <Skeleton className="h-6 w-16 rounded-md" />
       </div>
 
-      {/* Title in highlighted box */}
-      <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-        <Skeleton className="h-5 w-3/4 rounded-md" />
-        </div>
+      {/* Image area */}
+      <div className="w-full">
+        <Skeleton className="h-[180px] w-full" />
+      </div>
 
-        {/* Description skeleton */}
-        <div className="space-y-2 flex-grow">
+      {/* Content area */}
+      <div className="p-3 flex-1 flex flex-col">
+        <div className="space-y-2">
+          <Skeleton className="h-5 w-3/4 rounded-md" />
           <Skeleton className="h-3 w-full rounded-md" />
           <Skeleton className="h-3 w-4/5 rounded-md" />
         </div>
 
-        {/* Provider info in highlighted box */}
-        <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-          <div className="flex items-center gap-2">
-            <Skeleton className="h-8 w-8 rounded-full" />
+        <div className="mt-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Skeleton className="h-7 w-7 rounded-md" />
             <div className="space-y-1">
-              <Skeleton className="h-4 w-24 rounded-md" />
+              <Skeleton className="h-4 w-28 rounded-md" />
               <Skeleton className="h-3 w-20 rounded-md" />
             </div>
           </div>
-        </div>
 
-        {/* Simple info grid */}
-        <div className="grid grid-cols-2 gap-2">
-          <div className="text-center space-y-1">
-            <Skeleton className="h-3 w-12 rounded-md mx-auto" />
-            <Skeleton className="h-4 w-16 rounded-md mx-auto" />
+          <div className="flex gap-2">
+            <Skeleton className="h-8 w-20 rounded-md" />
+            <Skeleton className="h-8 w-20 rounded-md" />
           </div>
-          <div className="text-center space-y-1">
-            <Skeleton className="h-3 w-14 rounded-md mx-auto" />
-            <Skeleton className="h-4 w-18 rounded-md mx-auto" />
-          </div>
-        </div>
-
-        {/* Simple action button */}
-        <div className="mt-auto">
-          <Skeleton className="h-10 w-full rounded-md" />
         </div>
       </div>
+    </div>
+  )
+}
+
+// Skeleton that matches the simplified Service Offer card layout
+function SkeletonServiceOffer() {
+  return (
+    <div className="w-full max-w-[360px] bg-white rounded-md border-2 border-slate-200 p-0 flex flex-col shadow-[0_18px_40px_-24px_rgba(15,23,42,0.35)] overflow-hidden">
+      <div className="p-2 flex-1 flex flex-col">
+        <div className="overflow-hidden rounded-md border border-slate-200 bg-slate-100">
+          <div className="aspect-[4/3] w-full">
+            <Skeleton className="h-full w-full rounded-md" />
+          </div>
+        </div>
+
+        {/* Title/description inside a top-bordered block like ServiceCard */}
+        <div className="border-t border-slate-200 mt-2 pt-2">
+          <div className="space-y-1">
+            <Skeleton className="h-4 w-3/4 rounded" />
+            <Skeleton className="h-3 w-full rounded" />
+          </div>
+        </div>
+
+        {/* Divider before footer */}
+        <div className="border-t border-slate-200 mt-3 mb-2" />
+
+        {/* Footer: provider info left, Explore pill right */}
+        <div className="mt-auto pt-2">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <Skeleton className="h-7 w-7 flex-shrink-0 rounded-full" />
+              <div className="min-w-0 flex-1">
+                <Skeleton className="h-3 w-28 rounded" />
+              </div>
+            </div>
+
+            <div className="self-start sm:self-center">
+              <Skeleton className="h-8 w-28 rounded-full" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -302,16 +337,16 @@ function SkeletonGrid({ items = 4 }: { items?: number }) {
 // CTA Skeleton
 function SkeletonCTA() {
   return (
-    <div className="mb-8 p-8 bg-white rounded-2xl border-2 border-black shadow-sm relative overflow-hidden">
+    <div className="mb-8 p-6 bg-white rounded-md border-2 border-slate-200 shadow-sm relative overflow-hidden">
       
       <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
         <div className="text-center md:text-left">
-          <Skeleton className="h-8 w-48 mb-3 bg-gray-200" />
-          <Skeleton className="h-4 w-80 bg-gray-200" />
+          <Skeleton className="h-8 w-48 mb-3 rounded-md" />
+          <Skeleton className="h-4 w-80 rounded-md" />
         </div>
         <div className="flex flex-col sm:flex-row gap-4">
-          <Skeleton className="h-12 w-40 rounded-lg bg-gray-200" />
-          <Skeleton className="h-12 w-48 rounded-lg bg-gray-200" />
+          <Skeleton className="h-12 w-40 rounded-md" />
+          <Skeleton className="h-12 w-48 rounded-md" />
         </div>
       </div>
     </div>
@@ -322,6 +357,7 @@ export {
   Skeleton,
   SkeletonCard,
   SkeletonServiceCard,
+  SkeletonServiceOffer,
   SkeletonProfileCard,
   SkeletonOrderItem,
   SkeletonListItem,

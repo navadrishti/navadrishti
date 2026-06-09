@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
-import { ArrowLeft, AlertTriangle, CheckCircle, FileText, Shield, Upload, User } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, CheckCircle, FileText, Shield, Upload } from 'lucide-react';
 
 type VerificationCategory = 'individual' | 'ngo' | 'company';
 type Step = 1 | 2;
@@ -22,6 +22,7 @@ type FormErrors = Record<string, string>;
 type DocumentKey =
   | 'individualAadhaar'
   | 'individualPanCard'
+  | 'bankStatement'
   | 'ngoRegistrationCertificate'
   | 'ngoPanCard'
   | 'ngoAddressProof'
@@ -30,12 +31,12 @@ type DocumentKey =
   | 'companyIncorporationCertificate'
   | 'companyPanCard'
   | 'companyGstCertificate'
-  | 'companyAddressProof'
-  | 'companyBoardResolution';
+  | 'companyAddressProof';
 
 const documentLabels: Record<DocumentKey, string> = {
   individualAadhaar: 'Aadhaar Card',
   individualPanCard: 'PAN Card',
+  bankStatement: 'Bank Statement (Last 6 months)',
   ngoRegistrationCertificate: 'Registration Certificate (Trust / Society / Section 8)',
   ngoPanCard: 'PAN Card of NGO',
   ngoAddressProof: 'Address Proof (utility bill / rent agreement / bank letter)',
@@ -44,8 +45,7 @@ const documentLabels: Record<DocumentKey, string> = {
   companyIncorporationCertificate: 'Certificate of Incorporation',
   companyPanCard: 'PAN Card of Company',
   companyGstCertificate: 'GST Certificate (if applicable)',
-  companyAddressProof: 'Company Address Proof',
-  companyBoardResolution: 'Board Resolution (optional for large CSR projects)'
+  companyAddressProof: 'Company Address Proof'
 };
 
 interface VerificationFormData {
@@ -66,6 +66,7 @@ interface VerificationFormData {
 const allDocumentKeys: DocumentKey[] = [
   'individualAadhaar',
   'individualPanCard',
+  'bankStatement',
   'ngoRegistrationCertificate',
   'ngoPanCard',
   'ngoAddressProof',
@@ -74,8 +75,7 @@ const allDocumentKeys: DocumentKey[] = [
   'companyIncorporationCertificate',
   'companyPanCard',
   'companyGstCertificate',
-  'companyAddressProof',
-  'companyBoardResolution'
+  'companyAddressProof'
 ];
 
 export default function VerificationPage() {
@@ -208,7 +208,7 @@ export default function VerificationPage() {
 
   const requiredDocs = useMemo(() => {
     if (formData.category === 'individual') {
-      return ['individualAadhaar', 'individualPanCard'] as DocumentKey[];
+      return ['individualAadhaar', 'individualPanCard', 'bankStatement'] as DocumentKey[];
     }
 
     if (formData.category === 'ngo') {
@@ -217,7 +217,8 @@ export default function VerificationPage() {
         'ngoPanCard',
         'ngoAddressProof',
         'ngoTrustOrMoaAoa',
-        'ngoFcraPhoto'
+        'ngoFcraPhoto',
+        'bankStatement'
       ] as DocumentKey[];
     }
 
@@ -225,13 +226,14 @@ export default function VerificationPage() {
       'companyIncorporationCertificate',
       'companyPanCard',
       'companyAddressProof',
+      'bankStatement',
       ...(formData.companyGstApplicable ? (['companyGstCertificate'] as DocumentKey[]) : [])
     ] as DocumentKey[];
   }, [formData.category, formData.companyGstApplicable]);
 
   const visibleDocs = useMemo(() => {
     if (formData.category === 'individual') {
-      return ['individualAadhaar', 'individualPanCard'] as DocumentKey[];
+      return ['individualAadhaar', 'individualPanCard', 'bankStatement'] as DocumentKey[];
     }
 
     if (formData.category === 'ngo') {
@@ -240,7 +242,8 @@ export default function VerificationPage() {
         'ngoPanCard',
         'ngoAddressProof',
         'ngoTrustOrMoaAoa',
-        'ngoFcraPhoto'
+        'ngoFcraPhoto',
+        'bankStatement'
       ] as DocumentKey[];
     }
 
@@ -248,8 +251,8 @@ export default function VerificationPage() {
       'companyIncorporationCertificate',
       'companyPanCard',
       'companyAddressProof',
-      ...(formData.companyGstApplicable ? (['companyGstCertificate'] as DocumentKey[]) : []),
-      'companyBoardResolution'
+      'bankStatement',
+      ...(formData.companyGstApplicable ? (['companyGstCertificate'] as DocumentKey[]) : [])
     ] as DocumentKey[];
   }, [formData.category, formData.companyGstApplicable]);
 
@@ -305,12 +308,12 @@ export default function VerificationPage() {
       return false;
     }
 
-    if (formData.category === 'individual') {
-      if (!isEmailVerified) {
-        setError('Email verification is mandatory for individual verification. Please verify your email first.');
-        return false;
-      }
+    if (!isEmailVerified) {
+      setError('Email verification is mandatory for all verification types. Please verify your email first.');
+      return false;
+    }
 
+    if (formData.category === 'individual') {
       return true;
     }
 
@@ -328,8 +331,8 @@ export default function VerificationPage() {
       return true;
     }
 
-    if (!formData.panNumber || !formData.registrationNumber) {
-      setError('Please fill company registration number and PAN number.');
+    if (!formData.panNumber || !formData.registrationNumber || !formData.companyCinNumber) {
+      setError('Please fill company registration number, PAN number, and CIN number.');
       return false;
     }
 
@@ -549,7 +552,6 @@ export default function VerificationPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <User className="h-5 w-5" />
               Add Details
             </CardTitle>
             <CardDescription>
@@ -677,11 +679,7 @@ export default function VerificationPage() {
               </div>
             </div>
 
-            {formData.category === 'individual' && (
-              <div className="rounded-md border bg-blue-50 p-3 text-sm text-blue-800">
-                Aadhaar Card and PAN Card are mandatory for individual verification.
-              </div>
-            )}
+            {/* Message removed as requested */}
 
             {formData.category === 'ngo' && (
               <>
@@ -788,7 +786,7 @@ export default function VerificationPage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="companyCinNumber">CIN Number (Optional / Advanced)</Label>
+                    <Label htmlFor="companyCinNumber">CIN Number *</Label>
                     <Input
                       id="companyCinNumber"
                       value={formData.companyCinNumber}

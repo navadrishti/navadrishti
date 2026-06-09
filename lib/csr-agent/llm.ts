@@ -34,6 +34,8 @@ export const generateCampaignsInputSchema = z.object({
   state_province: z.string().min(1),
   start_date:     z.string().min(1),
   end_date:       z.string().min(1),
+  beneficiaries:  z.string().trim().optional(),
+  volunteerRequirement: z.string().trim().optional(),
   milestone_info: z.array(requestMilestoneSchema).optional(),
   requirementDetails: z.string().trim().optional(),
 });
@@ -83,6 +85,8 @@ export type RequestMilestone      = z.infer<typeof requestMilestoneSchema>;
 export type GenerateCampaignsInput = z.infer<typeof generateCampaignsInputSchema>;
 export type ResponseMilestone     = z.infer<typeof responseMilestoneSchema>;
 export type Campaign               = z.infer<typeof campaignSchema>;
+
+type CampaignLever = "Direct Implementation" | "Capacity Building" | "Access & Distribution"
 
 /* ───────────────── CONSTANTS ───────────────── */
 
@@ -251,9 +255,150 @@ export async function generateCampaigns(input: GenerateCampaignsInput): Promise<
   } catch (err) {
     if (err instanceof GeminiError) {
       console.error("Gemini API error:", err.message);
+      throw new Error(`Gemini API ${err.status}: ${err.message}`);
     } 
+
+    if (err instanceof Error && err.message) {
+      if (err.message.includes("GEMINI_API_KEY is missing")) {
+        throw err;
+      }
+
+      if (err.message.includes("API Key not found") || err.message.includes("API_KEY_INVALID")) {
+        throw new Error("Gemini API key is invalid or missing");
+      }
+    }
 
     console.error("JSON parse failed:", err);
     throw new Error("Failed to parse LLM response");
   }
+}
+
+const safeNumber = (value: number, fallback = 0) => (Number.isFinite(value) ? value : fallback)
+
+const splitBudget = (total: number, percentages: [number, number, number, number, number]) => {
+  const normalized = percentages.map((percent) => Math.max(0, percent))
+  const sum = normalized.reduce((acc, value) => acc + value, 0) || 1
+  const raw = normalized.map((percent) => Math.round((total * percent) / sum))
+  const used = raw.reduce((acc, value) => acc + value, 0)
+  raw[raw.length - 1] += total - used
+
+  return {
+    infrastructure: raw[0],
+    training: raw[1],
+    materials: raw[2],
+    monitoring: raw[3],
+    contingency: raw[4],
+  }
+}
+
+const distributeMilestoneBudget = (total: number, count: number, preferred?: number[]) => {
+  if (count <= 0) return []
+
+  const cleanPreferred = (preferred || []).map((value) => Math.max(0, Math.round(safeNumber(value)))).slice(0, count)
+  while (cleanPreferred.length < count) cleanPreferred.push(0)
+
+  const preferredSum = cleanPreferred.reduce((acc, value) => acc + value, 0)
+  if (preferredSum > 0) {
+    const scaled = cleanPreferred.map((value) => Math.round((value / preferredSum) * total))
+    const used = scaled.reduce((acc, value) => acc + value, 0)
+    scaled[scaled.length - 1] += total - used
+    return scaled
+  }
+
+  const base = Math.floor(total / count)
+  const remainder = total - base * count
+  return Array.from({ length: count }, (_, index) => base + (index < remainder ? 1 : 0))
+}
+
+const buildMilestoneDescription = (lever: CampaignLever, sourceDescription: string, location: string) => {
+  if (lever === "Direct Implementation") return sourceDescription
+  if (lever === "Capacity Building") {
+    return `Train local stakeholders and institutions in ${location} to operationalize: ${sourceDescription}`
+  }
+  return `Deliver resources and last-mile access in ${location} to realize: ${sourceDescription}`
+}
+
+export function buildFallbackCampaigns(input: GenerateCampaignsInput): Campaign[] {
+  const location = `${input.city}${input.state_province ? `, ${input.state_province}` : ""}`
+  const campaignCategory = input.category
+  const budget = Math.max(1, Math.round(input.budget))
+  const milestoneCount = Math.max(1, Math.min(10, Math.round(input.milestones || 1)))
+  const requirementText = (input.requirementDetails || "community impact").trim()
+    const volunteerRequirement = (input.volunteerRequirement || "cross-functional volunteer support").trim()
+  const beneficiaryCount = Math.max(1, Math.round(Number(input.beneficiaries || Math.max(1, Math.round(budget / 5000))) || Math.max(1, Math.round(budget / 5000))))
+  const sourceMilestones = Array.isArray(input.milestone_info) ? input.milestone_info : []
+
+  const defaultMilestones = Array.from({ length: milestoneCount }, (_, index) => ({
+    description: `Phase ${index + 1} implementation for ${requirementText}`,
+    budget_allocated: 0,
+  }))
+
+  const seedMilestones = sourceMilestones.length > 0
+    ? sourceMilestones.slice(0, milestoneCount)
+    : defaultMilestones
+
+  const levers: Array<{ lever: CampaignLever; titlePrefix: string; breakdown: [number, number, number, number, number] }> = [
+    {
+      lever: "Direct Implementation",
+      titlePrefix: "Infrastructure-first",
+      breakdown: [45, 15, 20, 12, 8],
+    },
+    {
+      lever: "Capacity Building",
+      titlePrefix: "Capability-first",
+      breakdown: [20, 40, 15, 15, 10],
+    },
+    {
+      lever: "Access & Distribution",
+      titlePrefix: "Access-first",
+      breakdown: [18, 12, 45, 15, 10],
+    },
+  ]
+
+  return levers.map((config, campaignIndex) => {
+    const preferredBudgets = config.lever === "Direct Implementation"
+      ? seedMilestones.map((milestone) => safeNumber(milestone.budget_allocated))
+      : undefined
+    const milestoneBudgets = distributeMilestoneBudget(budget, seedMilestones.length, preferredBudgets)
+
+    const milestones: ResponseMilestone[] = seedMilestones.map((source, index) => {
+      const weeks = Math.max(1, Math.floor((index + 1 + milestoneCount) / milestoneCount))
+      const titleBase = source.description || `Milestone ${index + 1}`
+      const milestoneTitle = config.lever === "Direct Implementation"
+        ? `Milestone ${index + 1}: Execution`
+        : config.lever === "Capacity Building"
+          ? `Milestone ${index + 1}: Training Enablement`
+          : `Milestone ${index + 1}: Access Delivery`
+
+      return {
+        title: milestoneTitle,
+        description: buildMilestoneDescription(config.lever, titleBase, location),
+        duration_weeks: weeks,
+        budget_allocated: milestoneBudgets[index] || 0,
+        deliverables: [
+          `${config.lever} plan approved for stage ${index + 1}`,
+          `Execution evidence recorded for ${location}`,
+          `KPI checkpoint completed for phase ${index + 1}`,
+        ],
+      }
+    })
+
+    return {
+      title: `${config.titlePrefix} ${campaignCategory} Program ${campaignIndex + 1}`,
+      description: `Ground execution in ${location} for ${requirementText}. Volunteer requirement: ${volunteerRequirement}. Uses a ${config.lever.toLowerCase()} lever with measurable beneficiaries and monitored delivery.`,
+      category: campaignCategory,
+      location,
+      budget_inr: budget,
+      budget_breakdown: splitBudget(budget, config.breakdown),
+      schedule_vii: campaignCategory,
+      sdg_alignment: campaignIndex === 0 ? [1, 6, 11] : campaignIndex === 1 ? [4, 5, 8] : [3, 10, 12],
+      start_date: input.start_date,
+      end_date: input.end_date,
+      impact_metrics: {
+        beneficiaries: Math.max(50, Math.round(budget / 5000) + (campaignIndex * 25)),
+        duration: `${input.start_date} to ${input.end_date}`,
+      },
+      milestones,
+    }
+  })
 }

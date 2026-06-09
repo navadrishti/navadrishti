@@ -50,7 +50,7 @@ function parseDateValue(value?: string | number | Date | null, baseTimeMs?: numb
   }
 
   const text = String(value).trim()
-  if (!text || /^(anytime|not specified|none|n\/a)$/i.test(text)) return null
+  if (!text || /^(not specified|none|n\/a)$/i.test(text)) return null
 
   const directDate = new Date(text)
   if (!Number.isNaN(directDate.getTime())) {

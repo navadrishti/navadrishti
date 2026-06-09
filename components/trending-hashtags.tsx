@@ -3,7 +3,7 @@
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useTrendingHashtags } from '@/hooks/use-realtime-hashtags'
-import { Activity, Hash, TrendingUp, Wifi, WifiOff } from 'lucide-react'
+import { Activity, TrendingUp, Wifi, WifiOff } from 'lucide-react'
 import { useEffect } from 'react'
 
 interface TrendingHashtagsProps {
@@ -56,7 +56,7 @@ export function TrendingHashtags({
     } else {
       // Default behavior: could navigate to hashtag search page
       // For now, just log or copy to clipboard
-      navigator.clipboard?.writeText(`#${tag}`)
+      navigator.clipboard?.writeText(tag)
     }
   }
 
@@ -87,8 +87,7 @@ export function TrendingHashtags({
     return (
       <Card className="h-full flex flex-col">
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Hash className="h-5 w-5" />
+            <CardTitle className="text-lg flex items-center gap-2">
             Trending Hashtags
             <div className="ml-auto flex items-center gap-1">
               {getConnectionIcon()}
@@ -113,8 +112,7 @@ export function TrendingHashtags({
     return (
       <Card className="h-full flex flex-col">
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Hash className="h-5 w-5" />
+            <CardTitle className="text-lg flex items-center gap-2">
             Trending Hashtags
           </CardTitle>
         </CardHeader>
@@ -140,8 +138,7 @@ export function TrendingHashtags({
     return (
       <Card className="h-full flex flex-col">
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Hash className="h-5 w-5" />
+            <CardTitle className="text-lg flex items-center gap-2">
             Trending Hashtags
             <div className="ml-auto flex items-center gap-1">
               {getConnectionIcon()}
@@ -167,7 +164,6 @@ export function TrendingHashtags({
     <Card className="h-full flex flex-col">
       <CardHeader className="pb-3">
         <CardTitle className="text-lg flex items-center gap-2">
-          <Hash className="h-5 w-5" />
           Trending Hashtags
           <div className="ml-auto flex items-center gap-2">
             {trendingHashtags.length > 0 && (
@@ -183,7 +179,7 @@ export function TrendingHashtags({
           {trendingHashtags.map((hashtag, index) => (
             <div
               key={hashtag.id}
-              className="flex items-center justify-between p-3 rounded-lg border"
+              className="flex items-center justify-between p-3 rounded-lg"
             >
               <div className="flex items-center gap-3 min-w-0 flex-1">
                 {/* Ranking number */}
@@ -197,7 +193,7 @@ export function TrendingHashtags({
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-sm">
-                      #{hashtag.tag}
+                      {hashtag.tag}
                     </span>
                     {hashtag.is_trending && getTrendingIcon(hashtag.trending_score)}
                   </div>

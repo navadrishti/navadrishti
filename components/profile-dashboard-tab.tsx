@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { User } from 'lucide-react'
+// User icon removed from heading
 import { useAuth } from '@/lib/auth-context'
 import { useOtpSender } from '@/hooks/use-otp-sender'
 import { Button } from '@/components/ui/button'
@@ -35,7 +35,7 @@ export function ProfileDashboardTab() {
   const [website, setWebsite] = useState('')
   const [industry, setIndustry] = useState('')
   const [companySize, setCompanySize] = useState('')
-  const [ngoSize, setNgoSize] = useState('')
+  const [ngoVolunteerCapacity, setNgoVolunteerCapacity] = useState('')
   const [age, setAge] = useState('')
   const [formErrors, setFormErrors] = useState<FormErrors>({})
   const [otpInput, setOtpInput] = useState({ email: '', phone: '' })
@@ -131,7 +131,7 @@ export function ProfileDashboardTab() {
       setWebsite(userProfile.website || userProfile.company_website || userProfile.organization_website || '')
       setIndustry(userProfile.industry || '')
       setCompanySize(userProfile.company_size || '')
-      setNgoSize(userProfile.ngo_size || '')
+      setNgoVolunteerCapacity(String(freshUser?.ngo_volunteer_capacity ?? userProfile.ngo_volunteer_capacity ?? ''))
       setAge(userProfile.age || '')
       setProfileImageUrl(freshUser?.profile_image || '')
     } catch (error) {
@@ -274,7 +274,10 @@ export function ProfileDashboardTab() {
       }
 
       if (user.user_type === 'ngo') {
-        profileData.profile_data.ngo_size = ngoSize
+        // Persist exact NGO volunteer capacity as top-level column if provided
+        if (ngoVolunteerCapacity) {
+          profileData.ngo_volunteer_capacity = parseInt(String(ngoVolunteerCapacity))
+        }
         profileData.profile_data.sector = sector
         if (foundedYear) profileData.profile_data.founded = parseInt(foundedYear)
         profileData.profile_data.ngo_name = editableName || user?.name
@@ -326,7 +329,6 @@ export function ProfileDashboardTab() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <User className="h-5 w-5" />
               Basic Information
             </CardTitle>
             <CardDescription>Manage your profile information for this account.</CardDescription>
@@ -469,18 +471,13 @@ export function ProfileDashboardTab() {
             {user.user_type === 'ngo' && (
               <>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Legacy NGO size ranges removed in favor of exact volunteer capacity */}
                   <div>
-                    <Label>NGO Size</Label>
-                    <Select value={ngoSize} onValueChange={setNgoSize}>
-                      <SelectTrigger><SelectValue placeholder="Select NGO size" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1-10">1-10 members</SelectItem>
-                        <SelectItem value="11-50">11-50 members</SelectItem>
-                        <SelectItem value="51-200">51-200 members</SelectItem>
-                        <SelectItem value="201-500">201-500 members</SelectItem>
-                        <SelectItem value="501+">501+ members</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <Label>Exact volunteer capacity</Label>
+                    <div className="flex gap-2">
+                      <Input type="number" min="0" placeholder="e.g., 42" value={ngoVolunteerCapacity} onChange={(e) => setNgoVolunteerCapacity(e.target.value)} />
+                      <span className="text-sm text-gray-600 self-center">people</span>
+                    </div>
                   </div>
                   <div>
                     <Label>Founded Year</Label>

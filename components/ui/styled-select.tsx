@@ -47,8 +47,8 @@ export function StyledSelect({
           <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-60" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-1">
-        <div className="max-h-72 overflow-auto">
+      <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-1 overscroll-contain">
+        <div className="max-h-72 overflow-auto overscroll-contain">
           {normalizedOptions.map((option) => {
             const isActive = option.value === value
             return (
@@ -57,7 +57,7 @@ export function StyledSelect({
                 type="button"
                 className={cn(
                   "flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-left text-sm transition-colors",
-                  isActive ? "bg-accent text-accent-foreground" : "hover:bg-muted"
+                  isActive ? "bg-slate-100 text-slate-900" : "hover:bg-slate-50"
                 )}
                 onClick={() => {
                   onValueChange(option.value)

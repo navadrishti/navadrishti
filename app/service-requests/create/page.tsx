@@ -11,6 +11,7 @@ import { useAuth } from '@/lib/auth-context'
 import { CSR_SCHEDULE_VII_CATEGORIES, SERVICE_REQUEST_CATEGORIES } from '@/lib/categories'
 
 import { Button } from '@/components/ui/button'
+import { useToast } from '@/hooks/use-toast'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -51,11 +52,16 @@ type NeedRecommendation = {
   coverageRatio: number | null
   coverageLabel: 'full' | 'partial' | 'possible'
   rationale: string
+  matched_keywords?: string[]
+  matched_phrases?: string[]
+  matched_fields?: string[]
+  vector_similarity?: number
 }
 
 type NeedDraft = {
   title: string
   description: string
+  images: string
   request_type: string
   category: string
   location: string
@@ -89,9 +95,16 @@ type AIGeneratedDraft = {
   needs?: Partial<NeedDraft>[]
 }
 
+type UploadProgressState = {
+  active: boolean
+  current: number
+  total: number
+}
+
 const createEmptyNeed = (): NeedDraft => ({
   title: '',
   description: '',
+  images: '',
   request_type: '',
   category: '',
   location: '',
@@ -121,11 +134,12 @@ const budgetRanges = [
 ]
 
 const moneyPattern = /^(?:₹|INR)?\s*\d[\d,]*(?:\.\d{1,2})?$/i
-const timelinePattern = /^(?:anytime|\d+\s*(?:day|days|week|weeks|month|months|year|years)|\d{4}-\d{2}-\d{2})$/i
+const timelinePattern = /^.{2,}$/
 
 const isValidMoneyValue = (value: string) => moneyPattern.test(value.trim())
 const isValidTimelineValue = (value: string) => timelinePattern.test(value.trim())
 const isValidPositiveInteger = (value: string) => /^\d+$/.test(value.trim()) && Number(value) > 0
+const isBlank = (value: unknown) => !String(value ?? '').trim()
 
 const toNumber = (value: unknown): number | null => {
   if (value === null || value === undefined) return null
@@ -160,11 +174,14 @@ export default function CreateServiceRequestPage() {
   const [loadingProjects, setLoadingProjects] = useState(false)
   const [error, setError] = useState('')
   const [projectMode, setProjectMode] = useState<'new' | 'existing'>('new')
+  const [projectAvailableForCsr, setProjectAvailableForCsr] = useState(true)
   const [projects, setProjects] = useState<RequestProject[]>([])
   const [needs, setNeeds] = useState<NeedDraft[]>([createEmptyNeed()])
-  const [recommendationNeedIndex, setRecommendationNeedIndex] = useState(0)
   const [serviceOffers, setServiceOffers] = useState<ServiceOfferLite[]>([])
   const [offersLoading, setOffersLoading] = useState(false)
+  const [serverRecommendations, setServerRecommendations] = useState<Record<number, NeedRecommendation[]>>({})
+  const [recPageByNeed, setRecPageByNeed] = useState<Record<number, number>>({})
+  const [needUploadProgress, setNeedUploadProgress] = useState<Record<number, UploadProgressState>>({})
   const [selectedOffersByNeed, setSelectedOffersByNeed] = useState<Record<number, number[]>>({})
   const [formData, setFormData] = useState({
     projectId: '',
@@ -211,6 +228,7 @@ export default function CreateServiceRequestPage() {
         ? draft.needs.map((need) => ({
             ...createEmptyNeed(),
             ...need,
+            images: Array.isArray((need as any)?.images) ? (need as any).images.join('\n') : String((need as any)?.images || ''),
             category: need?.request_type || need?.category || ''
           }))
         : []
@@ -330,6 +348,90 @@ export default function CreateServiceRequestPage() {
     setNeeds((prev) => prev.map((need, needIndex) => (needIndex === index ? { ...need, [field]: value } : need)))
   }
 
+  const parseImageUrls = (value: string) => {
+    return value
+      .split(/[\n,]/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+  }
+
+  const appendNeedImageUrls = (index: number, urls: string[]) => {
+    if (urls.length === 0) return
+
+    setNeeds((prev) => prev.map((need, needIndex) => {
+      if (needIndex !== index) return need
+      const existingUrls = parseImageUrls(need.images)
+      return {
+        ...need,
+        images: [...existingUrls, ...urls].join('\n')
+      }
+    }))
+  }
+
+  const removeNeedImageUrl = (index: number, urlToRemove: string) => {
+    setNeeds((prev) => prev.map((need, needIndex) => {
+      if (needIndex !== index) return need
+      return {
+        ...need,
+        images: parseImageUrls(need.images).filter((url) => url !== urlToRemove).join('\n')
+      }
+    }))
+  }
+
+  const handleNeedImageFiles = async (index: number, files: FileList | null) => {
+    if (!files || files.length === 0) return
+
+    const token = localStorage.getItem('token')
+    const uploadedUrls: string[] = []
+    const failedFiles: string[] = []
+    const total = Array.from(files).length
+
+    setNeedUploadProgress((prev) => ({
+      ...prev,
+      [index]: { active: true, current: 0, total }
+    }))
+
+    let completed = 0
+    for (const file of Array.from(files)) {
+      try {
+        const uploadData = new FormData()
+        uploadData.append('file', file)
+
+        const response = await fetch('/api/upload', {
+          method: 'POST',
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          body: uploadData
+        })
+
+        const data = await response.json()
+        if (!response.ok || !data.success || !data.data?.url) {
+          throw new Error(data.error || 'Failed to upload image')
+        }
+
+        uploadedUrls.push(data.data.url)
+      } catch {
+        failedFiles.push(file.name)
+      } finally {
+        completed += 1
+        setNeedUploadProgress((prev) => ({
+          ...prev,
+          [index]: { active: true, current: completed, total }
+        }))
+      }
+    }
+
+    appendNeedImageUrls(index, uploadedUrls)
+
+    setNeedUploadProgress((prev) => ({
+      ...prev,
+      [index]: { active: false, current: total, total }
+    }))
+
+    if (failedFiles.length > 0) {
+      setError(`Could not upload ${failedFiles.length} image(s) for Need ${index + 1}.`)
+    }
+  }
+
   const addNeed = () => {
     setNeeds((prev) => [...prev, createEmptyNeed()])
   }
@@ -380,10 +482,24 @@ export default function CreateServiceRequestPage() {
       project_description: selectedProject?.description || prev.project_description,
       project_location: selectedProject?.exact_address || selectedProject?.location || prev.project_location,
       project_timeline: selectedProject?.timeline || prev.project_timeline,
+      project_category: selectedProject?.category || CSR_SCHEDULE_VII_CATEGORIES[0] || prev.project_category,
       location: selectedProject?.exact_address || selectedProject?.location || prev.location,
       timeline: selectedProject?.timeline || prev.timeline
     }))
   }
+
+  useEffect(() => {
+    // Reset project-related form data when switching modes
+    setFormData((prev) => ({
+      ...prev,
+      projectId: '',
+      project_title: '',
+      project_description: '',
+      project_location: '',
+      project_timeline: '',
+      project_category: ''
+    }))
+  }, [projectMode])
 
   const activeProjectLocation = projectMode === 'existing'
     ? projects.find((project) => project.id === formData.projectId)?.exact_address || projects.find((project) => project.id === formData.projectId)?.location || formData.project_location
@@ -480,51 +596,106 @@ export default function CreateServiceRequestPage() {
       .sort((a, b) => b.score - a.score)
   }
 
-  const activeNeed = needs[recommendationNeedIndex] ?? createEmptyNeed()
-  const activeNeedRecommendations = getNeedRecommendations(activeNeed)
-  const activeSelectedOfferIds = selectedOffersByNeed[recommendationNeedIndex] || []
-  const activeNeedOfferIds = activeNeedRecommendations.map((recommendation) => recommendation.offer.id)
-  const allRelatedInvitedForActiveNeed = activeNeedRecommendations.length > 0 && activeNeedRecommendations.every((recommendation) => activeSelectedOfferIds.includes(recommendation.offer.id))
+  // Map server-side recommendation shape into NeedRecommendation shape used by the UI
+  const mapServerToNeedRecommendation = (rec: any): NeedRecommendation => {
+    const coverageRatio = typeof rec.coverageRatio === 'number' ? rec.coverageRatio : null
+    const coverageLabel: NeedRecommendation['coverageLabel'] = coverageRatio === null ? 'possible' : coverageRatio >= 1 ? 'full' : 'partial'
+    const offer: ServiceOfferLite = {
+      id: Number(rec.id),
+      title: rec.title,
+      provider_name: rec.provider_name || null
+    }
+    return {
+      offer,
+      score: Number(rec.score) || 0,
+      coverageRatio,
+      coverageLabel,
+      rationale: rec.rationale || '',
+      matched_keywords: Array.isArray(rec.matched_keywords) ? rec.matched_keywords : [],
+      matched_phrases: Array.isArray(rec.matched_phrases) ? rec.matched_phrases : [],
+      matched_fields: Array.isArray(rec.matched_fields) ? rec.matched_fields : [],
+      vector_similarity: typeof rec.vector_similarity === 'number' ? rec.vector_similarity : undefined
+    }
+  }
 
-  const combinedCoverageForActiveNeed = activeNeedRecommendations
-    .filter((recommendation) => activeSelectedOfferIds.includes(recommendation.offer.id))
-    .reduce((sum, recommendation) => sum + (recommendation.coverageRatio || 0), 0)
-  const activeCoverageCapReached = combinedCoverageForActiveNeed >= 1
+  // Fetch server recommendations for all needs when needs change
+  useEffect(() => {
+    const fetchRecs = async (index: number, need: NeedDraft, page = 0) => {
+      try {
+        const response = await fetch('/api/service-requests/recommend', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            request_type: need.request_type,
+            title: need.title,
+            description: need.description,
+            material_items: need.material_items,
+            skill_role: need.skill_role,
+            infrastructure_scope: need.infrastructure_scope,
+            target_amount: need.target_amount,
+            target_quantity: need.target_quantity,
+            beneficiary_count: need.beneficiary_count,
+            estimated_budget: need.estimated_budget,
+            budget: need.budget
+            , offset: page * 2
+            , limit: 6
+          })
+        })
 
-  const toggleRecommendedOfferSelection = (offerId: number) => {
-    const recommendation = activeNeedRecommendations.find((item) => item.offer.id === offerId)
-    if (!recommendation) return
+        if (!response.ok) return
+        const result = await response.json()
+        if (!result?.success || !result?.data) return
 
-    setSelectedOffersByNeed((prev) => {
-      const selectedIds = prev[recommendationNeedIndex] || []
-      const alreadySelected = selectedIds.includes(offerId)
-
-      if (alreadySelected) {
-        return {
-          ...prev,
-          [recommendationNeedIndex]: selectedIds.filter((id) => id !== offerId)
-        }
+        const recs = Array.isArray(result.data.recommendations) ? result.data.recommendations.map(mapServerToNeedRecommendation) : []
+        setServerRecommendations((prev) => ({ ...prev, [index]: recs }))
+      } catch (err) {
+        // ignore and keep client-side fallback
       }
+    }
 
-      return {
-        ...prev,
-        [recommendationNeedIndex]: [...selectedIds, offerId]
-      }
+    // Trigger fetch for every need index (use page state per need)
+    needs.forEach((need, index) => {
+      const page = recPageByNeed[index] || 0
+      void fetchRecs(index, need, page)
     })
-  }
+  }, [needs.map(n => `${n.title}|${n.description}|${n.material_items}|${n.skill_role}|${n.infrastructure_scope}|${n.target_amount}|${n.target_quantity}|${n.beneficiary_count}|${n.estimated_budget}|${n.budget}`).join('||'), JSON.stringify(recPageByNeed)])
 
-  const inviteAllRelatedOffersForActiveNeed = () => {
+  const { toast } = useToast()
+
+  const applyOfferToNeed = async (offerId: number, needIndex: number, createdNeedId?: number) => {
+    // Mark as selected in UI
     setSelectedOffersByNeed((prev) => ({
       ...prev,
-      [recommendationNeedIndex]: activeNeedOfferIds
+      [needIndex]: Array.from(new Set([...(prev[needIndex] || []), offerId]))
     }))
-  }
 
-  const clearInvitedOffersForActiveNeed = () => {
-    setSelectedOffersByNeed((prev) => ({
-      ...prev,
-      [recommendationNeedIndex]: []
-    }))
+    // If we have an existing need id (editing or after create), call the offer apply endpoint
+    const needId = Number(createdNeedId || 0)
+    if (!Number.isFinite(needId) || needId <= 0) return
+
+    try {
+      const response = await fetch(`/api/service-offers/${offerId}/clients`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          client_id: user?.id,
+          client_type: user?.user_type,
+          selected_need_ids: [needId],
+          message: `Applying for need ${needId}`
+        })
+      })
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}))
+        toast({ title: 'Apply failed', description: err.error || 'Could not apply to offer', variant: 'destructive' })
+        return
+      }
+
+      toast({ title: 'Applied', description: 'Application submitted to the offer owner.' })
+    } catch (err) {
+      console.error('Error applying to offer:', err)
+      toast({ title: 'Apply failed', description: 'Could not apply to offer', variant: 'destructive' })
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -541,16 +712,20 @@ export default function CreateServiceRequestPage() {
       if (isBlank(need.request_type)) return `Need ${index + 1}: need type is required.`
       if (!SERVICE_REQUEST_CATEGORIES.includes(need.request_type)) return `Need ${index + 1}: select a valid need type.`
 
-      if (isBlank(need.timeline)) return `Need ${index + 1}: timeline / deadline is required.`
-      if (!isValidTimelineValue(need.timeline)) {
-        return `Need ${index + 1}: timeline must be "Anytime", a duration like "4 weeks", or a date like "2026-05-15".`
+      // timeline is inherited from project when attaching to existing project
+      if (!(projectMode === 'existing' && formData.projectId) && isBlank(need.timeline)) return `Need ${index + 1}: timeline / deadline is required.`
+      if (!(projectMode === 'existing' && formData.projectId)) {
+        const tl = String(need.timeline || '').trim()
+        if (tl.toLowerCase() === 'anytime') return `Need ${index + 1}: timeline cannot be 'Anytime'; provide a duration or a date.`
+        if (!isValidTimelineValue(need.timeline)) return `Need ${index + 1}: timeline must be at least 2 characters.`
       }
 
       if (isBlank(need.budget)) return `Need ${index + 1}: budget range is required.`
       if (!budgetRanges.includes(need.budget)) return `Need ${index + 1}: select a valid budget range.`
 
-      if (isBlank(need.beneficiary_count)) return `Need ${index + 1}: beneficiary count is required.`
-      if (!isValidPositiveInteger(need.beneficiary_count)) return `Need ${index + 1}: beneficiary count must be a positive whole number.`
+      // beneficiary count is inherited from project when attaching to existing project
+      if (!(projectMode === 'existing' && formData.projectId) && isBlank(need.beneficiary_count)) return `Need ${index + 1}: beneficiary count is required.`
+      if (!(projectMode === 'existing' && formData.projectId) && !isValidPositiveInteger(need.beneficiary_count)) return `Need ${index + 1}: beneficiary count must be a positive whole number.`
 
       if (isBlank(need.impact_description)) return `Need ${index + 1}: impact description is required.`
       if (String(need.impact_description).trim().length < 20) return `Need ${index + 1}: impact description must be at least 20 characters.`
@@ -588,12 +763,12 @@ export default function CreateServiceRequestPage() {
       return
     }
 
-    if (projectMode === 'new' && [formData.project_title, formData.project_description, formData.project_location, formData.project_timeline].some(isBlank)) {
-      setError('Project title, description, exact address, and timeline are required.')
+    if (projectMode === 'new' && [formData.project_title, formData.project_description, formData.project_location, formData.project_timeline, formData.project_expected_beneficiaries, formData.project_valid_until].some(isBlank)) {
+      setError('Project title, description, exact address, timeline, expected beneficiaries and validity date are required.')
       return
     }
 
-    if (isBlank(formData.project_category) || !CSR_SCHEDULE_VII_CATEGORIES.includes(formData.project_category)) {
+    if (projectMode === 'new' && (isBlank(formData.project_category) || !CSR_SCHEDULE_VII_CATEGORIES.includes(formData.project_category))) {
       setError('Select a valid project category.')
       return
     }
@@ -618,6 +793,19 @@ export default function CreateServiceRequestPage() {
         setError('Project timeline is required.')
         return
       }
+      if (String(formData.project_timeline || '').trim().toLowerCase() === 'anytime') {
+        setError('Project timeline cannot be "Anytime"; please provide an actual duration or date.')
+        return
+      }
+      if (!/^[0-9]+$/.test(String(formData.project_expected_beneficiaries || ''))) {
+        setError('Expected beneficiaries must be a positive whole number.')
+        return
+      }
+
+      if (!formData.project_valid_until || Number.isNaN(new Date(String(formData.project_valid_until)).getTime())) {
+        setError('Valid until must be a valid date.')
+        return
+      }
     }
 
     if (projectMode === 'existing' && !formData.projectId) {
@@ -632,30 +820,8 @@ export default function CreateServiceRequestPage() {
         return
       }
 
-      const recommendations = getNeedRecommendations(need)
-      if (recommendations.length > 0) {
-        const selectedOfferIds = selectedOffersByNeed[index] || []
-        if (selectedOfferIds.length === 0) {
-          setError(`Need ${index + 1}: matching capability offers exist. Select one or more offers before creating this need.`)
-          setRecommendationNeedIndex(index)
-          return
-        }
-
-        const selectedRecommendations = recommendations.filter((item) => selectedOfferIds.includes(item.offer.id))
-        const targetCoverage = getTargetCoverageValue(need)
-        if (targetCoverage && targetCoverage > 0) {
-          const selectedCoverage = selectedRecommendations.reduce((sum, item) => {
-            const ratio = item.coverageRatio || 0
-            return sum + (ratio * targetCoverage)
-          }, 0)
-
-          if (selectedCoverage < targetCoverage) {
-            setError(`Need ${index + 1}: selected capability offers do not fully cover this need. Add more offers to reach full coverage.`)
-            setRecommendationNeedIndex(index)
-            return
-          }
-        }
-      }
+      // Note: do not block submission if selected offers partially cover the need.
+      // Users may proceed without inviting offers or with partial coverage; fulfillment is finalized when offers accept applications.
     }
 
     setLoading(true)
@@ -668,7 +834,10 @@ export default function CreateServiceRequestPage() {
           location: formData.project_location,
           exact_address: formData.project_location,
           timeline: formData.project_timeline,
-          category: formData.project_category
+          category: formData.project_category,
+          csr_project_available_for_csr: projectAvailableForCsr,
+          expected_beneficiaries: Number(formData.project_expected_beneficiaries),
+          valid_until: formData.project_valid_until
         }
       : null
 
@@ -713,14 +882,16 @@ export default function CreateServiceRequestPage() {
             projectId: activeProjectId || undefined,
             title: need.title,
             description: need.description,
+            images: parseImageUrls(need.images),
             request_type: need.request_type,
             category: formData.project_category,
             project_category: formData.project_category,
-            location: activeProjectLocation,
+              location: activeProjectLocation,
             urgency: need.urgency || 'medium',
             timeline: need.timeline,
             budget: need.budget,
-            estimated_budget: need.budget,
+              estimated_budget: need.budget,
+                        // category and project_category come from formData (set when selecting an existing project)
             beneficiary_count: need.beneficiary_count,
             impact_description: need.impact_description,
             contactInfo: need.contactInfo,
@@ -733,7 +904,8 @@ export default function CreateServiceRequestPage() {
               project_location: formData.project_location,
               project_description: formData.project_description,
                 project_timeline: formData.project_timeline,
-                project_category: formData.project_category
+                project_category: formData.project_category,
+                csr_project_available_for_csr: projectAvailableForCsr
             },
             details: {
               material_items: need.material_items,
@@ -761,6 +933,21 @@ export default function CreateServiceRequestPage() {
         if (!response.ok || !data.success) {
           creationResults.push({ ok: false, error: data.error || data.message || `Failed on need ${index + 1}` })
           break
+        }
+
+        // After successfully creating the need, attempt to apply to selected offers for this need
+        const createdId = Number(data?.data?.id || data?.id || 0)
+        if (Number.isFinite(createdId) && createdId > 0 && Array.isArray(selectedOfferIds) && selectedOfferIds.length > 0) {
+          for (const offerId of selectedOfferIds) {
+            try {
+              // call helper to mark selection and apply
+              // ensure we await to surface errors but do not block overall creation
+              // eslint-disable-next-line no-await-in-loop
+              await applyOfferToNeed(offerId, index, createdId)
+            } catch (err) {
+              console.error('Error applying to offer after create:', err)
+            }
+          }
         }
 
         creationResults.push({ ok: true, data })
@@ -833,16 +1020,7 @@ export default function CreateServiceRequestPage() {
 
                     {projectMode === 'existing' ? (
                       <div className="space-y-3">
-                        <div>
-                          <Label htmlFor="project_category">Project Category *</Label>
-                          <StyledSelect
-                            value={formData.project_category}
-                            options={CSR_SCHEDULE_VII_CATEGORIES}
-                            placeholder="Select project category"
-                            onValueChange={(value) => handleSelect('project_category', value)}
-                          />
-                        </div>
-                        <Label htmlFor="projectId">Select Project</Label>
+                        <Label htmlFor="projectId">Select Project *</Label>
                         <Select value={formData.projectId} onValueChange={handleProjectSelect}>
                           <SelectTrigger>
                             <SelectValue placeholder={loadingProjects ? 'Loading projects...' : 'Choose a project'} />
@@ -892,9 +1070,38 @@ export default function CreateServiceRequestPage() {
                           <Label htmlFor="project_timeline">Project Timeline *</Label>
                           <Input id="project_timeline" name="project_timeline" value={formData.project_timeline} onChange={handleInput} placeholder="e.g., Q2 2026 or 3 months" required />
                         </div>
+                        <div>
+                          <Label htmlFor="project_expected_beneficiaries">Expected Beneficiaries *</Label>
+                          <Input id="project_expected_beneficiaries" name="project_expected_beneficiaries" type="number" min="1" value={formData.project_expected_beneficiaries || ''} onChange={handleInput} placeholder="e.g., 300" required />
+                        </div>
+
+                        <div>
+                          <Label htmlFor="project_valid_until">Project Valid Until *</Label>
+                          <Input id="project_valid_until" name="project_valid_until" type="date" value={formData.project_valid_until || ''} onChange={handleInput} required />
+                        </div>
+                        <div className="md:col-span-2 flex items-start gap-3 rounded-md border bg-white p-3">
+                          <input
+                            id="project_available_for_csr"
+                            type="checkbox"
+                            checked={projectAvailableForCsr}
+                            onChange={(e) => setProjectAvailableForCsr(e.target.checked)}
+                            className="mt-1 h-4 w-4 rounded border-slate-300"
+                          />
+                          <div>
+                            <Label htmlFor="project_available_for_csr" className="text-sm font-medium">Available for CSR takeover</Label>
+                            <p className="text-xs text-muted-foreground">Disable this if the project should stay NGO-managed and never enter the CSR marketplace.</p>
+                          </div>
+                        </div>
                       </div>
                     )}
                       </div>
+
+                      {projectMode === 'new' && !isBlank(formData.project_category) && (
+                        <p className="text-sm text-muted-foreground">This need will be grouped under "<strong>{formData.project_title}</strong>" project.</p>
+                      )}
+                      {projectMode === 'existing' && formData.projectId && (
+                        <p className="text-sm text-muted-foreground">This need will be added to the selected project.</p>
+                      )}
 
                       <div className="space-y-6">
                         <div className="rounded-lg border p-4 bg-muted/30">
@@ -948,6 +1155,59 @@ export default function CreateServiceRequestPage() {
                                   <Textarea id={`description-${index}`} value={need.description} onChange={(e) => updateNeed(index, 'description', e.target.value)} placeholder="Describe the exact need and context." rows={4} required />
                                 </div>
 
+                                <div>
+                                  <Label htmlFor={`need-images-${index}`}>Images</Label>
+                                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+                                    <label className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-400">
+                                      Choose files
+                                      <input
+                                        id={`need-images-${index}`}
+                                        type="file"
+                                        accept="image/*"
+                                        multiple
+                                        className="sr-only"
+                                        onChange={(event) => void handleNeedImageFiles(index, event.target.files)}
+                                      />
+                                    </label>
+                                    <div className="flex min-w-0 flex-1 flex-col gap-1">
+                                      <span className="text-sm text-gray-600">{parseImageUrls(need.images).length > 0 ? `${parseImageUrls(need.images).length} file(s) selected` : 'No files chosen'}</span>
+                                      {needUploadProgress[index]?.active && (
+                                        <div className="flex items-center gap-2">
+                                          <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200 sm:w-40">
+                                            <div
+                                              className="h-full rounded-full bg-blue-600 transition-all"
+                                              style={{ width: `${Math.max(5, (needUploadProgress[index].current / Math.max(1, needUploadProgress[index].total)) * 100)}%` }}
+                                            />
+                                          </div>
+                                          <span className="shrink-0 text-xs text-gray-500">
+                                            {needUploadProgress[index].current}/{needUploadProgress[index].total}
+                                          </span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {parseImageUrls(need.images).length > 0 && (
+                                    <div className="mt-3 flex flex-wrap gap-3">
+                                      {parseImageUrls(need.images).map((url) => (
+                                        <div key={url} className="relative h-20 w-20 overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
+                                          <img src={url} alt="uploaded" className="h-full w-full object-cover" />
+                                          <button
+                                            type="button"
+                                            onClick={() => removeNeedImageUrl(index, url)}
+                                            className="absolute right-1 top-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-white hover:bg-red-600"
+                                            aria-label="Remove image"
+                                          >
+                                            ×
+                                          </button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+
+                                  <p className="mt-1 text-xs text-muted-foreground">Add one or more images for this need. Cards will show the uploaded images or the no-image placeholder.</p>
+                                </div>
+
                                 <div className="grid gap-4 md:grid-cols-2">
                                                       <div>
                                                         <Label htmlFor={`request_type-${index}`}>Need Type *</Label>
@@ -963,12 +1223,14 @@ export default function CreateServiceRequestPage() {
                                                       </div>
                                 </div>
 
-                                <div className="grid gap-4 md:grid-cols-2">
-                                  <div>
-                                    <Label htmlFor={`beneficiary_count-${index}`}>Beneficiary Count *</Label>
-                                    <Input id={`beneficiary_count-${index}`} type="number" min="1" step="1" value={need.beneficiary_count} onChange={(e) => updateNeed(index, 'beneficiary_count', e.target.value)} placeholder="e.g., 300" required />
+                                {(projectMode === 'new' || !formData.projectId) && (
+                                  <div className="grid gap-4 md:grid-cols-2">
+                                    <div>
+                                      <Label htmlFor={`beneficiary_count-${index}`}>Beneficiary Count *</Label>
+                                      <Input id={`beneficiary_count-${index}`} type="number" min="1" step="1" value={need.beneficiary_count} onChange={(e) => updateNeed(index, 'beneficiary_count', e.target.value)} placeholder="e.g., 300" required />
+                                    </div>
                                   </div>
-                                </div>
+                                )}
 
                                 <div className="grid gap-4 md:grid-cols-2">
                                   <div>
@@ -994,16 +1256,20 @@ export default function CreateServiceRequestPage() {
                                   <Textarea id={`impact_description-${index}`} value={need.impact_description} onChange={(e) => updateNeed(index, 'impact_description', e.target.value)} placeholder="Who benefits? How many? What measurable change occurs after execution?" rows={3} required />
                                 </div>
 
-                                <div>
-                                  <Label htmlFor={`timeline-${index}`}>Timeline / Deadline *</Label>
-                                  <div className="mt-2 flex gap-2">
-                                    <Input id={`timeline-${index}`} value={need.timeline} onChange={(e) => updateNeed(index, 'timeline', e.target.value)} placeholder="Anytime, 4 weeks, 2026-05-15" required />
-                                    <Button type="button" variant="outline" onClick={() => updateNeed(index, 'timeline', 'Anytime')}>
-                                      Anytime
-                                    </Button>
+                                {(projectMode === 'new' || !formData.projectId) ? (
+                                  <div>
+                                    <Label htmlFor={`timeline-${index}`}>Timeline / Deadline *</Label>
+                                    <div className="mt-2">
+                                      <Input id={`timeline-${index}`} value={need.timeline} onChange={(e) => updateNeed(index, 'timeline', e.target.value)} placeholder="e.g., 4 weeks, 2026-05-15" required />
+                                    </div>
+                                    <p className="mt-1 text-xs text-muted-foreground">Provide a duration like "4 weeks" or an exact date like "2026-05-15".</p>
                                   </div>
-                                  <p className="mt-1 text-xs text-muted-foreground">Use Anytime, a duration like 4 weeks, or a date like 2026-05-15.</p>
-                                </div>
+                                ) : (
+                                  <div>
+                                    <Label>Validity</Label>
+                                    <div className="mt-1 text-sm text-muted-foreground">Inherited from project</div>
+                                  </div>
+                                )}
 
                                 <div>
                                   <Label htmlFor={`contactInfo-${index}`}>Contact Information *</Label>
@@ -1074,100 +1340,81 @@ export default function CreateServiceRequestPage() {
                           Showing all active offers related to the selected need type. Invite one or more offers, or open an offer and apply directly.
                         </p>
 
-                        <div className="mt-4 space-y-3">
-                          <Label htmlFor="recommendation_need_index">Need to match</Label>
-                          <Select value={String(recommendationNeedIndex)} onValueChange={(value) => setRecommendationNeedIndex(Number(value))}>
-                            <SelectTrigger id="recommendation_need_index">
-                              <SelectValue placeholder="Choose need" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {needs.map((_, index) => (
-                                <SelectItem key={`need-selector-${index}`} value={String(index)}>
-                                  Need {index + 1}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <div className="flex items-center gap-2">
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              onClick={inviteAllRelatedOffersForActiveNeed}
-                              disabled={activeNeedRecommendations.length === 0 || allRelatedInvitedForActiveNeed}
-                            >
-                              {allRelatedInvitedForActiveNeed ? 'All Invited' : 'Invite All Related'}
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              onClick={clearInvitedOffersForActiveNeed}
-                              disabled={activeSelectedOfferIds.length === 0}
-                            >
-                              Clear Invites
-                            </Button>
-                          </div>
+                        <div className="mt-3 text-xs text-muted-foreground">
+                          {/* Total selected across all needs */}
+                          Selected offers: {Object.values(selectedOffersByNeed).reduce((sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0), 0)}
                         </div>
 
-                        <div className="mt-3 rounded-md border bg-muted/40 p-2 text-xs text-muted-foreground">
-                          Selected offers: {activeSelectedOfferIds.length}
-                          {combinedCoverageForActiveNeed > 0 && (
-                            <span> • Estimated coverage: {Math.round(combinedCoverageForActiveNeed * 100)}%</span>
-                          )}
-                        </div>
-                        {allRelatedInvitedForActiveNeed && (
-                          <div className="mt-2 rounded-md border border-emerald-200 bg-emerald-50 p-2 text-xs text-emerald-700">
-                            All related offers are invited for this need.
-                          </div>
-                        )}
-                        {activeCoverageCapReached && (
-                          <div className="mt-2 rounded-md border border-emerald-200 bg-emerald-50 p-2 text-xs text-emerald-700">
-                            Coverage target reached. You can still invite more offers if needed.
-                          </div>
-                        )}
-
-                        <div className="mt-4 space-y-3 max-h-[420px] overflow-auto pr-1">
+                        <div className="mt-4 space-y-4 max-h-[420px] overflow-auto pr-1">
                           {offersLoading ? (
                             <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
                               <Loader2 size={16} className="mr-2 animate-spin" />
                               Loading offers...
                             </div>
-                          ) : activeNeedRecommendations.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">No related active offers found for this need type yet.</p>
                           ) : (
-                            activeNeedRecommendations.map((recommendation) => {
-                              const isSelected = activeSelectedOfferIds.includes(recommendation.offer.id)
-                              return (
-                                <div
-                                  key={recommendation.offer.id}
-                                  className={`w-full rounded-md border p-3 text-left transition-colors ${isSelected ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/40'}`}
-                                >
-                                  <div className="flex items-start justify-between gap-2">
-                                    <div>
-                                      <p className="text-sm font-medium leading-tight">{recommendation.offer.title}</p>
-                                      <p className="text-xs text-muted-foreground mt-1">{recommendation.offer.provider_name || recommendation.offer.ngo_name || 'Offer provider'}</p>
-                                    </div>
-                                    {isSelected && <CheckCircle2 size={16} className="text-primary" />}
-                                  </div>
-                                  <div className="mt-2 flex items-center gap-2 text-xs">
-                                    <span className={`rounded-full px-2 py-0.5 ${recommendation.coverageLabel === 'full' ? 'bg-green-100 text-green-700' : recommendation.coverageLabel === 'partial' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-700'}`}>
-                                      {recommendation.coverageLabel === 'full' ? 'Full' : recommendation.coverageLabel === 'partial' ? 'Partial' : 'Possible'}
-                                    </span>
-                                    <span className="text-muted-foreground">Score {recommendation.score}</span>
-                                  </div>
-                                  <p className="mt-2 text-xs text-muted-foreground">{recommendation.rationale}</p>
+                            // Show top-2 recommendations per need
+                            needs.map((need, idx) => {
+                              const recs = (serverRecommendations[idx] && serverRecommendations[idx].length > 0)
+                                ? serverRecommendations[idx]
+                                : getNeedRecommendations(need)
 
-                                  <div className="mt-3 flex items-center gap-2">
-                                    <Button type="button" variant={isSelected ? 'default' : 'outline'} size="sm" onClick={() => toggleRecommendedOfferSelection(recommendation.offer.id)}>
-                                      {isSelected ? 'Invited' : 'Invite For This Need'}
-                                    </Button>
-                                    <Button type="button" variant="ghost" size="sm" asChild>
-                                      <Link href={`/service-offers/${recommendation.offer.id}`}>
-                                        Apply
-                                      </Link>
-                                    </Button>
+                              const top = recs.slice(0, 2)
+                              return (
+                                <div key={`need-recs-${idx}`} className="rounded-md border p-3">
+                                  <div className="mb-2 flex items-center justify-between">
+                                    <div>
+                                      <p className="text-sm font-medium">Need {idx + 1}: {need.title || '(untitled)'}</p>
+                                      <p className="text-xs text-muted-foreground">Showing top {top.length} recommendation(s)</p>
+                                    </div>
+                                    <div>
+                                      <Button size="sm" variant="outline" onClick={() => setRecPageByNeed(prev => ({ ...prev, [idx]: (prev[idx] || 0) + 1 }))}>
+                                        Refresh
+                                      </Button>
+                                    </div>
                                   </div>
+                                  {top.length === 0 ? (
+                                    <p className="text-sm text-muted-foreground">No recommendations available.</p>
+                                  ) : (
+                                    top.map((recommendation) => {
+                                      const isSelected = (selectedOffersByNeed[idx] || []).includes(recommendation.offer.id)
+                                      return (
+                                        <div key={recommendation.offer.id} className={`w-full rounded-md border p-3 mb-2 text-left ${isSelected ? 'border-primary bg-primary/5' : 'border-border'}`}>
+                                          <div className="flex items-start justify-between gap-2">
+                                            <div>
+                                              <p className="text-sm font-medium leading-tight">{recommendation.offer.title}</p>
+                                              <p className="text-xs text-muted-foreground mt-1">{recommendation.offer.provider_name || 'Offer provider'}</p>
+                                            </div>
+                                            {isSelected && <CheckCircle2 size={16} className="text-primary" />}
+                                          </div>
+                                          <div className="mt-2 flex items-center gap-2 text-xs">
+                                            <span className={`rounded-full px-2 py-0.5 ${recommendation.coverageLabel === 'full' ? 'bg-green-100 text-green-700' : recommendation.coverageLabel === 'partial' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-700'}`}>
+                                              {recommendation.coverageLabel === 'full' ? 'Full' : recommendation.coverageLabel === 'partial' ? 'Partial' : 'Possible'}
+                                            </span>
+                                            <span className="text-muted-foreground">Score {recommendation.score}</span>
+                                          </div>
+                                          <p className="mt-2 text-xs text-muted-foreground">{recommendation.rationale}</p>
+                                          {(recommendation.matched_keywords?.length || recommendation.matched_phrases?.length || recommendation.matched_fields?.length) && (
+                                            <div className="mt-2 flex flex-wrap gap-2">
+                                              {recommendation.matched_phrases?.map((p) => (
+                                                <span key={`phrase-${p}`} className="rounded-full bg-sky-100 px-2 py-0.5 text-xs text-sky-800">{p}</span>
+                                              ))}
+                                              {recommendation.matched_keywords?.map((k) => (
+                                                <span key={`kw-${k}`} className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-800">{k}</span>
+                                              ))}
+                                              {recommendation.matched_fields?.map((f) => (
+                                                <span key={`field-${f}`} className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800">{f}</span>
+                                              ))}
+                                            </div>
+                                          )}
+                                          <div className="mt-3 flex items-center gap-2">
+                                            <Button type="button" variant={isSelected ? 'default' : 'outline'} size="sm" onClick={() => void applyOfferToNeed(recommendation.offer.id, idx)}>
+                                              {isSelected ? 'Applied' : 'Apply Offer'}
+                                            </Button>
+                                          </div>
+                                        </div>
+                                      )
+                                    })
+                                  )}
                                 </div>
                               )
                             })

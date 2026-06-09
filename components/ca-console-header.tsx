@@ -78,7 +78,7 @@ export function CAConsoleHeader({
                   className="flex items-center gap-2 rounded-full border-white/40 bg-blue-600 text-white hover:bg-transparent hover:text-white"
                 >
                   <Avatar className="h-8 w-8">
-                    <AvatarFallback className="bg-orange-500 text-white">{initials}</AvatarFallback>
+                    <AvatarFallback className="bg-udaan-orange text-white">{initials}</AvatarFallback>
                   </Avatar>
                   <span className="max-w-[140px] truncate text-sm text-white">{emailLabel}</span>
                 </Button>

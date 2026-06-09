@@ -19,54 +19,59 @@ const categories = getServiceRequestCategoriesWithAll()
 
 function ServiceRequestCardSkeleton() {
   return (
-    <Card className="h-full flex flex-col border-2 border-gray-200">
-      <CardHeader className="space-y-3 pb-4">
-        <div className="flex items-center justify-between gap-2">
-          <Skeleton className="h-7 w-24 rounded-full" />
-          <Skeleton className="h-7 w-20 rounded-full" />
+    <Card className="h-full w-full overflow-hidden rounded-md border-2 border-slate-200 bg-white shadow-[0_18px_40px_-24px_rgba(15,23,42,0.35)]">
+      <CardContent className="flex h-full flex-col p-2">
+        {/* Possible Project Header Skeleton (project title + action) */}
+        <div className="mb-3 flex items-center justify-between gap-2 rounded-md border-b border-slate-200 px-0 py-2">
+          <div className="min-w-0 flex-1 px-2">
+            <Skeleton className="h-2 w-24 rounded" />
+            <Skeleton className="mt-1 h-4 w-36 rounded" />
+          </div>
+          <Skeleton className="h-6 w-20 rounded" />
         </div>
 
-        <div className="space-y-2">
-          <Skeleton className="h-7 w-[90%]" />
-          <Skeleton className="h-7 w-[72%]" />
-        </div>
-
-        <div className="flex items-center gap-3 pt-2">
-          <Skeleton className="h-10 w-10 rounded-full" />
-          <div className="flex-1 space-y-2">
-            <Skeleton className="h-4 w-32" />
-            <Skeleton className="h-3 w-24" />
+        {/* Image Carousel Skeleton */}
+        <div className="overflow-hidden rounded-md border border-slate-200 bg-slate-100">
+          <div className="aspect-[4/3] w-full">
+            <Skeleton className="h-full w-full rounded-md" />
           </div>
         </div>
-      </CardHeader>
 
-      <CardContent className="space-y-4 flex-1 pb-4">
-        <div className="space-y-2">
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-[94%]" />
-          <Skeleton className="h-4 w-[82%]" />
+        {/* Title and Description (inside border-top like actual card) */}
+        <div className="border-t border-slate-200 mt-2 pt-2">
+          <div className="space-y-1">
+            <Skeleton className="h-4 w-[85%] rounded" />
+            <Skeleton className="h-3 w-full rounded" />
+          </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 pt-2">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="space-y-1">
-              <Skeleton className="h-3 w-20" />
-              <Skeleton className="h-4 w-16" />
+        {/* Divider before footer to match card */}
+        <div className="border-t border-slate-200 mt-3 mb-2" />
+
+        {/* Footer: provider info + Explore More (responsive row) */}
+        <div className="mt-auto pt-2">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <Skeleton className="h-7 w-7 flex-shrink-0 rounded-full" />
+              <div className="min-w-0 flex-1">
+                <Skeleton className="h-3 w-28 rounded" />
+                <Skeleton className="mt-1 h-2 w-20 rounded" />
+              </div>
             </div>
-          ))}
+
+            <div className="self-start sm:self-center">
+              <Skeleton className="h-8 w-28 rounded-full" />
+            </div>
+          </div>
         </div>
       </CardContent>
-
-      <CardFooter className="mt-auto pt-2">
-        <Skeleton className="h-10 w-full" />
-      </CardFooter>
     </Card>
   )
 }
 
 function ServiceRequestCtaSkeleton() {
   return (
-    <div className="mb-8 p-8 bg-white rounded-2xl border-2 border-black shadow-sm relative overflow-hidden">
+    <div className="mb-8 p-8 bg-white rounded-md border-2 border-black shadow-sm relative overflow-hidden">
       <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
         <div className="text-center md:text-left">
           <Skeleton className="h-8 w-72 mb-3" />
@@ -238,7 +243,7 @@ function ServiceRequestsContent() {
         {loading ? (
           user && isNGO && <ServiceRequestCtaSkeleton />
         ) : user && isNGO && (
-          <div className="mb-8 p-8 bg-white rounded-2xl border-2 border-black shadow-sm relative overflow-hidden">
+          <div className="mb-8 p-8 bg-white rounded-md border-2 border-black shadow-sm relative overflow-hidden">
             
             <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
               <div className="text-center md:text-left">
@@ -285,13 +290,13 @@ function ServiceRequestsContent() {
 
         <div className="min-h-[400px]">
           {loading ? (
-            <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {Array.from({ length: 6 }).map((_, i) => (
                 <ServiceRequestCardSkeleton key={i} />
               ))}
             </div>
           ) : filteredRequests.length > 0 ? (
-            <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {filteredRequests.map((request) => (
                 <ServiceCard
                   key={request.id}

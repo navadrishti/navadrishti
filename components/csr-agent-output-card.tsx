@@ -64,7 +64,7 @@ export function CSRAgentOutputCard({
       <CardHeader className="space-y-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <CardTitle className="text-lg text-udaan-navy">{campaign.title}</CardTitle>
+            <CardTitle className="text-lg text-gray-900">{campaign.title}</CardTitle>
             <CardDescription className="mt-1">{campaign.start_date} to {campaign.end_date}</CardDescription>
           </div>
           <Badge
@@ -88,22 +88,22 @@ export function CSRAgentOutputCard({
 
       <CardContent className="space-y-6">
         <div className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-md bg-gray-50 p-3">
+            <div className="rounded-md bg-gray-50 p-3">
             <p className="text-xs uppercase tracking-wide text-gray-500">Budget</p>
             <p className="text-sm font-semibold text-udaan-orange">{formatCurrency(campaign.budget_inr)}</p>
           </div>
           <div className="rounded-md bg-gray-50 p-3">
-            <p className="text-xs uppercase tracking-wide text-gray-500">Beneficiaries</p>
-            <p className="text-sm font-semibold text-udaan-navy">{campaign.impact_metrics.beneficiaries.toLocaleString("en-IN")}</p>
+            <p className="text-xs uppercase tracking-wide text-gray-500">Impact reach</p>
+            <p className="text-sm font-semibold text-gray-900">{campaign.impact_metrics.beneficiaries.toLocaleString("en-IN")}</p>
           </div>
           <div className="rounded-md bg-gray-50 p-3">
             <p className="text-xs uppercase tracking-wide text-gray-500">Duration</p>
-            <p className="text-sm font-semibold text-udaan-navy">{campaign.impact_metrics.duration}</p>
+            <p className="text-sm font-semibold text-gray-900">{campaign.impact_metrics.duration}</p>
           </div>
         </div>
 
         <div className="space-y-2">
-          <h3 className="text-sm font-semibold text-udaan-navy">Budget Breakdown</h3>
+          <h3 className="text-sm font-semibold text-gray-900">Budget Breakdown</h3>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
             <p className="rounded border p-2 text-xs text-gray-700">Infrastructure: {formatCurrency(campaign.budget_breakdown.infrastructure)}</p>
             <p className="rounded border p-2 text-xs text-gray-700">Training: {formatCurrency(campaign.budget_breakdown.training)}</p>
@@ -114,7 +114,7 @@ export function CSRAgentOutputCard({
         </div>
 
         <div className="space-y-2">
-          <h3 className="text-sm font-semibold text-udaan-navy">SDG Alignment</h3>
+          <h3 className="text-sm font-semibold text-gray-900">SDG Alignment</h3>
           <div className="flex flex-wrap gap-2">
             {campaign.sdg_alignment.map((sdg) => (
               <Badge key={`${campaign.title}-sdg-${sdg}`} variant="outline">
@@ -125,11 +125,11 @@ export function CSRAgentOutputCard({
         </div>
 
         <div className="space-y-3">
-          <h3 className="text-sm font-semibold text-udaan-navy">Milestones</h3>
+          <h3 className="text-sm font-semibold text-gray-900">Milestones</h3>
           {campaign.milestones.map((milestone, index) => (
             <div key={`${campaign.title}-milestone-${index}`} className="rounded-lg border border-gray-200 p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm font-semibold text-udaan-navy">{index + 1}. {milestone.title}</p>
+                <p className="text-sm font-semibold text-gray-900">{index + 1}. {milestone.title}</p>
                 <p className="text-xs text-gray-600">
                   {milestone.duration_weeks} weeks • {formatCurrency(milestone.budget_allocated)}
                 </p>

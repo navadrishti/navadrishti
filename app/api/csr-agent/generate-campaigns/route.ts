@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   generateCampaigns,
+  buildFallbackCampaigns,
   generateCampaignsInputSchema,
   type Campaign,
 } from "@/lib/csr-agent/llm";
@@ -9,7 +10,7 @@ import type { CapabilityMatch } from "@/lib/csr-agent/find-service-offers";
 /* ───────────────── TYPES ───────────────── */
 
 type CampaignResponse =
-  | { success: true;  data: Campaign[]; recommendations: CapabilityMatch[]; recommendationMessage: string }
+  | { success: true;  data: Campaign[]; recommendations: CapabilityMatch[]; recommendationMessage: string; degraded?: boolean; warning?: string }
   | { success: false; error: string; details?: unknown };
 
 /* ───────────────── ROUTES ───────────────── */
@@ -44,6 +45,8 @@ export async function POST(request: NextRequest) {
       : [];
 
     let campaigns: Campaign[];
+    let degraded = false;
+    let warning = "";
 
     try {
       campaigns = await generateCampaigns(validation.data);
@@ -51,18 +54,33 @@ export async function POST(request: NextRequest) {
       console.error("LLM error:", err);
 
       const message = err instanceof Error ? err.message : "LLM call failed";
-      const status = message.includes(" 429:") ? 429 : 502;
+      const canFallback =
+        message.includes("GEMINI_API_KEY") ||
+        message.includes("Gemini API key") ||
+        message.includes("API Key not found") ||
+        message.includes("Failed to parse LLM response") ||
+        message.includes("Gemini API 400") ||
+        message.includes("Gemini request timed out")
 
-      return NextResponse.json<CampaignResponse>(
-        { success: false, error: message },
-        { status }
-      );
+      if (!canFallback) {
+        const status = message.includes(" 429:") ? 429 : 502;
+        return NextResponse.json<CampaignResponse>(
+          { success: false, error: message },
+          { status }
+        );
+      }
+
+      campaigns = buildFallbackCampaigns(validation.data);
+      degraded = true;
+      warning = "Generated fallback drafts because the AI model is currently unavailable."
     }
 
     return NextResponse.json<CampaignResponse>({
       success: true,
       data:    campaigns,
       recommendations,
+      degraded,
+      warning: degraded ? warning : undefined,
       recommendationMessage: recommendations.length > 0
         ? "Capability recommendations were matched and used in the CSR draft."
         : "No strong capability matches were found for this CSR request.",

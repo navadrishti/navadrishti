@@ -453,6 +453,21 @@ export default function AdminPage() {
     }
   };
 
+  const discoverPayment = async (paymentId: string) => {
+    if (!paymentId) return;
+    try {
+      const res = await fetch(`/api/admin/payments/discover?paymentId=${encodeURIComponent(paymentId)}`, { credentials: 'include' })
+      const payload = await res.json()
+      if (res.ok && payload?.success && payload.data) {
+        const { service_request_id, amount_inr } = payload.data
+        if (service_request_id) setRefundRequestId(String(service_request_id))
+        if (amount_inr) setRefundAmount(String(amount_inr))
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
   const updateSelectedTicket = async () => {
     if (!selectedTicketDetail) return;
     try {
@@ -1692,7 +1707,7 @@ export default function AdminPage() {
                             </div>
                             <div className="space-y-2">
                               <label className="text-sm font-medium text-gray-700">Razorpay Payment ID</label>
-                              <Input value={refundPaymentId} onChange={(e) => setRefundPaymentId(e.target.value)} placeholder="pay_xxxxx" />
+                              <Input value={refundPaymentId} onChange={(e) => setRefundPaymentId(e.target.value)} onBlur={(e) => discoverPayment(e.target.value)} placeholder="pay_xxxxx" />
                             </div>
                             <div className="space-y-2">
                               <label className="text-sm font-medium text-gray-700">Refund Amount (optional)</label>

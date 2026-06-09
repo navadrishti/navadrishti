@@ -10,6 +10,7 @@ import {
   isTransactionAllowedForOfferType,
   isTransactionType,
   OfferType,
+  normalizeDateOnlyToEndOfDayIso,
   sanitizeTextArray,
   parseCsvToStringArray,
   TransactionType,
@@ -137,6 +138,61 @@ const buildBackendCapabilities = (offer: Record<string, any>) => {
   }]
 }
 
+const validateIncomingOfferBody = (body: Record<string, any>) => {
+  if (!body.title || !body.description || !body.offer_type || !body.transaction_type) {
+    return 'Missing required fields: title, description, offer_type, transaction_type.'
+  }
+
+  if (!isOfferType(body.offer_type)) {
+    return 'offer_type must be one of: financial, material, service, infrastructure.'
+  }
+
+  if (!isTransactionType(body.transaction_type)) {
+    return 'transaction_type must be one of: volunteer, donate, rent, sell.'
+  }
+
+  if (!isTransactionAllowedForOfferType(body.offer_type, body.transaction_type)) {
+    return `transaction_type ${body.transaction_type} is not allowed for offer_type ${body.offer_type}.`
+  }
+
+  if (!Array.isArray(body.impact_area) || body.impact_area.length === 0) {
+    return 'Please select at least one impact area.'
+  }
+
+  const invalidImpactArea = body.impact_area.some((area: string) => !(IMPACT_AREAS as readonly string[]).includes(area))
+  if (invalidImpactArea) {
+    return 'impact_area contains invalid values.'
+  }
+
+  const requiresPricing = body.transaction_type === 'rent' || body.transaction_type === 'sell'
+  if (requiresPricing) {
+    if (!['fixed', 'negotiable'].includes(String(body.price_type || ''))) {
+      return 'price_type must be fixed or negotiable for rent/sell offers.'
+    }
+
+    if (toNullablePositiveNumber(body.price_amount) === null) {
+      return 'price_amount must be a positive number for rent/sell offers.'
+    }
+
+    const validUntilValue = body.valid_until || body.expires_at
+    if (!validUntilValue) {
+      return 'valid_until is required for rent/sell offers.'
+    }
+
+    const validUntilIso = normalizeDateOnlyToEndOfDayIso(validUntilValue)
+    const validUntilMs = validUntilIso ? Date.parse(validUntilIso) : Number.NaN
+    if (Number.isNaN(validUntilMs)) {
+      return 'valid_until must be a valid date.'
+    }
+
+    if (validUntilMs < Date.now()) {
+      return 'valid_until must be in the future.'
+    }
+  }
+
+  return null
+}
+
 const normalizeOffer = (offer: any, capabilities: any[]) => {
   const details = safeParseJson(offer.offer_details)
   const fallbackDetails = safeParseJson(offer.requirements)
@@ -205,6 +261,22 @@ const validateIncomingBody = (body: Record<string, any>) => {
   }
 
   const requiresPricing = body.transaction_type === 'rent' || body.transaction_type === 'sell'
+  // Require validity end date for all offer updates
+  if (!body.valid_until && !body.expires_at && !(body.offer_details && body.offer_details.valid_until)) {
+    return 'valid_until is required for all offers.'
+  }
+
+  const validUntilValue = body.valid_until || body.expires_at || (body.offer_details && body.offer_details.valid_until)
+  const validUntilIso = normalizeDateOnlyToEndOfDayIso(validUntilValue)
+  const validUntilMs = validUntilIso ? Date.parse(validUntilIso) : Number.NaN
+  if (Number.isNaN(validUntilMs)) {
+    return 'valid_until must be a valid date.'
+  }
+
+  if (validUntilMs < Date.now()) {
+    return 'valid_until must be in the future.'
+  }
+
   if (requiresPricing) {
     if (!['fixed', 'negotiable'].includes(String(body.price_type || ''))) {
       return 'price_type must be fixed or negotiable for rent/sell offers.'
@@ -314,7 +386,7 @@ export async function PUT(
     const offerId = parseInt(id)
     const body = coerceIncomingBody(await request.json())
 
-    const validationError = validateIncomingBody(body)
+    const validationError = validateIncomingOfferBody(body)
     if (validationError) {
       return NextResponse.json({ error: validationError }, { status: 400 })
     }
@@ -351,6 +423,8 @@ export async function PUT(
       price_type: priceInfo.price_type,
       price_amount: priceInfo.price_amount,
       price_description: priceInfo.price_description,
+      validity_days: toNullablePositiveNumber(body.validity_days),
+      valid_until: normalizeDateOnlyToEndOfDayIso(body.valid_until || body.expires_at || normalizedOfferDetails.valid_until || null),
       updated_at: new Date().toISOString()
     }
 

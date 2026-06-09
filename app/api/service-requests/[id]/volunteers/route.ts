@@ -81,20 +81,33 @@ export async function POST(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { volunteer_id, message, fulfillment_amount, fulfillment_quantity } = body;
+    let { volunteer_id, message, fulfillment_amount, fulfillment_quantity } = body;
 
-    // Validate required fields
-    if (!volunteer_id || !message) {
-      return NextResponse.json(
-        { error: 'Volunteer ID and message are required' },
-        { status: 400 }
-      );
+    // If an Authorization token is provided, prefer the authenticated user id
+    const authHeader = request.headers.get('authorization');
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      try {
+        const token = authHeader.split(' ')[1];
+        const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
+        // If volunteer_id is provided and differs from token id, reject to avoid impersonation
+        if (volunteer_id && Number(volunteer_id) !== Number(decoded.id)) {
+          return NextResponse.json({ error: 'Volunteer id mismatch with authenticated user' }, { status: 403 });
+        }
+        volunteer_id = Number(decoded.id);
+      } catch (err) {
+        // Ignore token errors here; we'll validate volunteer_id below
+      }
+    }
+
+    // Validate required fields: volunteer id always required. Message is optional.
+    if (!volunteer_id) {
+      return NextResponse.json({ error: 'Volunteer ID is required' }, { status: 400 });
     }
 
     const requestId = parseInt(id);
 
     // Only individuals can volunteer for service requests
-    const user = await db.users.findById(volunteer_id);
+    const user = await db.users.findById(Number(volunteer_id));
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
@@ -124,14 +137,41 @@ export async function POST(
       );
     }
 
-    // Insert the volunteer application using Supabase helper
+    // Fetch request to determine request type and require fulfillment amount/quantity accordingly
+    const requestData = await db.serviceRequests.getById(requestId);
+    const isFinancial = String(requestData?.request_type || requestData?.category || '').toLowerCase().includes('financial')
+
+    if (isFinancial) {
+      if (fulfillment_amount == null || Number(fulfillment_amount) <= 0) {
+        return NextResponse.json({ error: 'Fulfillment amount is required for financial needs' }, { status: 400 });
+      }
+    } else {
+      if (fulfillment_quantity == null || Number(fulfillment_quantity) <= 0) {
+        return NextResponse.json({ error: 'Fulfillment quantity is required for this need' }, { status: 400 });
+      }
+    }
+
+    // Snapshot volunteer profile for audit and display
+    const volunteerProfile = await db.users.findById(volunteer_id);
+
     const volunteerData = {
       service_request_id: requestId,
       volunteer_id: volunteer_id,
-      application_message: message,
+      application_message: message || '',
       status: 'pending',
       fulfillment_amount: fulfillment_amount != null ? Number(fulfillment_amount) : null,
-      fulfillment_quantity: fulfillment_quantity != null ? Number(fulfillment_quantity) : null
+      fulfillment_quantity: fulfillment_quantity != null ? Number(fulfillment_quantity) : null,
+      response_meta: {
+        volunteer_snapshot: {
+          id: volunteerProfile?.id || volunteer_id,
+          name: volunteerProfile?.name || null,
+          email: volunteerProfile?.email || null,
+          phone: volunteerProfile?.phone || null,
+          profile_image: volunteerProfile?.profile_image || null,
+          verification_status: volunteerProfile?.verification_status || null,
+          created_at: new Date().toISOString()
+        }
+      }
     };
 
     const newApplication = await db.serviceVolunteers.create(volunteerData);

@@ -37,10 +37,10 @@ async function canAccessProject(request: NextRequest, project: any): Promise<boo
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const projectId = params.id;
+    const { id: projectId } = await params;
 
     const { data: project, error: projectError } = await supabase
       .from('csr_projects')
