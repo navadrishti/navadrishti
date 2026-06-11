@@ -38,7 +38,31 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch campaigns' }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, data: data ?? [] });
+    const rows = data ?? [];
+    const companyIds = [...new Set(rows.map((row) => Number(row.company_id || 0)).filter((id) => id > 0))];
+    let companyNameById: Record<number, string> = {};
+
+    if (companyIds.length > 0) {
+      const { data: companies, error: companyError } = await supabase
+        .from('users')
+        .select('id, name')
+        .in('id', companyIds);
+
+      if (companyError) {
+        console.error('Failed to fetch campaign company names:', companyError);
+      } else {
+        companyNameById = Object.fromEntries(
+          (companies ?? []).map((company) => [Number(company.id), String(company.name || '').trim()])
+        );
+      }
+    }
+
+    const enriched = rows.map((row) => ({
+      ...row,
+      company_name: row.company_id ? companyNameById[Number(row.company_id)] || null : null,
+    }));
+
+    return NextResponse.json({ success: true, data: enriched });
   } catch (error) {
     console.error('Campaign list error:', error);
     return NextResponse.json({ error: 'Failed to fetch campaigns' }, { status: 500 });

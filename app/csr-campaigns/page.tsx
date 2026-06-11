@@ -9,48 +9,30 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { StyledSelect } from "@/components/ui/styled-select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Search, MapPin, Calendar, Users, Filter, Sparkles, ArrowRight, CheckCircle2, Pencil, Trash2, Building2, UserRound } from "lucide-react"
+import { Search, MapPin, Calendar, Users, Filter, Sparkles, ArrowRight, CheckCircle2, Pencil, Trash2 } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
 import { CSR_SCHEDULE_VII_CATEGORIES } from "@/lib/categories"
 
-const inferScheduleVIICategory = (cause: string) => {
-  const normalized = cause.toLowerCase()
+const getInitials = (name: string) => {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return 'CO'
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return `${parts[0][0] || ''}${parts[parts.length - 1][0] || ''}`.toUpperCase()
+}
 
-  if (/(hunger|poverty|malnutrition|nutrition|food)/.test(normalized)) {
-    return "Eradicating Hunger, Poverty and Malnutrition"
+const formatCampaignDuration = (item: CampaignApiItem) => {
+  if (item.start_date && item.end_date) {
+    return `${item.start_date} → ${item.end_date}`
   }
-  if (/(health|healthcare|hospital|medical|sanitation|swachh|drinking water)/.test(normalized)) {
-    return "Promoting Healthcare and Sanitation"
-  }
-  if (/(education|school|skill|livelihood|training|scholarship|learning)/.test(normalized)) {
-    return "Education and Livelihood Enhancement"
-  }
-  if (/(women|girl|gender|empowerment|orphan|senior|old age|divyang|differently abled)/.test(normalized)) {
-    return "Gender Equality and Women Empowerment"
-  }
-  if (/(environment|climate|tree|forest|river|water conservation|biodiversity|renewable|clean energy)/.test(normalized)) {
-    return "Environmental Sustainability"
-  }
-  if (/(heritage|culture|art|craft|museum|restoration)/.test(normalized)) {
-    return "Protection of Heritage, Art and Culture"
-  }
-  if (/(veteran|armed force|war widow|military)/.test(normalized)) {
-    return "Support for Armed Forces Veterans"
-  }
-  if (/(rural|village|gram|farmer|agri)/.test(normalized)) {
-    return "Rural Development Projects"
-  }
-  if (/(slum|urban poor|informal settlement)/.test(normalized)) {
-    return "Slum Area Development"
-  }
-  if (/(sport|athlete|olympic|paralympic|coach|academy)/.test(normalized)) {
-    return "Sports Promotion"
-  }
-  if (/(disaster|flood|earthquake|cyclone|relief|rehabilitation|calamity)/.test(normalized)) {
-    return "Disaster Management and Relief"
+  if (item.start_date) return `From ${item.start_date}`
+  if (item.end_date) return `Until ${item.end_date}`
+
+  const duration = item.impact_metrics?.duration
+  if (typeof duration === 'string' && duration.trim()) {
+    return duration.trim()
   }
 
-  return "Rural Development Projects"
+  return 'Not set'
 }
 
 interface Campaign {
@@ -61,7 +43,7 @@ interface Campaign {
   location: string
   duration: string
   volunteers: string
-  status: 'open' | 'ongoing' | 'completed'
+  status: string
   description: string
   leadNgo?: string
   volunteerRequirement?: string
@@ -78,11 +60,15 @@ interface CampaignApiItem {
   id: string
   title: string | null
   description: string | null
-  cause: string
-  region: string
-  timeline: number | null
+  category: string | null
+  location: string | null
+  schedule_vii: string | null
+  status: string | null
   company_id: number | null
+  company_name?: string | null
   created_at: string
+  start_date?: string | null
+  end_date?: string | null
   impact_metrics?: Record<string, any> | null
 }
 
@@ -102,22 +88,19 @@ function CSRCampaignCtaSkeleton() {
 
 function CSRCampaignCardSkeleton() {
   return (
-    <Card className="h-full w-full max-w-[360px] overflow-hidden rounded-md border-2 border-slate-200 bg-white shadow-[0_18px_40px_-24px_rgba(15,23,42,0.35)]">
+    <Card className="h-full w-full max-w-[360px] overflow-hidden rounded-md border-2 border-slate-200 bg-white shadow-none">
       <CardContent className="flex h-full flex-col p-2">
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center justify-between gap-2">
           <Skeleton className="h-5 w-20 rounded-full" />
           <Skeleton className="h-5 w-28 rounded-full" />
         </div>
 
-        <div className="mt-1 space-y-1 border-t border-slate-200 pt-1">
+        <div className="mt-3 min-w-0 space-y-1 border-t border-slate-200 pt-3">
           <Skeleton className="h-5 w-3/4 rounded" />
           <Skeleton className="h-3 w-full rounded" />
-          <Skeleton className="h-3 w-[90%] rounded" />
-          <Skeleton className="h-3 w-[80%] rounded" />
-          <Skeleton className="h-3 w-[70%] rounded" />
         </div>
 
-        <div className="mt-1 grid grid-cols-3 gap-2 border-t border-slate-200 pt-1 text-xs text-muted-foreground">
+        <div className="mt-3 grid grid-cols-3 gap-2 border-t border-slate-200 pt-3">
           <div className="min-w-0 space-y-1">
             <Skeleton className="h-3 w-10 rounded" />
             <Skeleton className="h-4 w-full rounded" />
@@ -132,28 +115,21 @@ function CSRCampaignCardSkeleton() {
           </div>
         </div>
 
-        <div className="mt-1 grid gap-1 border-t border-slate-200 pt-1 text-xs">
-          <div className="flex items-center gap-2">
-            <Skeleton className="h-3 w-28 rounded" />
-            <Skeleton className="h-3 w-40 rounded" />
-          </div>
+        <div className="mt-1 border-t border-slate-200 pt-1">
+          <Skeleton className="h-3 w-40 rounded" />
         </div>
 
-        <div className="mt-2 border-t border-slate-200 pt-2">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-2.5 px-1 py-1">
-              <Skeleton className="h-7 w-7 flex-shrink-0 rounded-full" />
+        <div className="mt-1 border-t border-slate-200 pt-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="flex min-w-0 flex-1 items-center gap-2 px-1 py-0.5">
+              <Skeleton className="h-6 w-6 shrink-0 rounded-full" />
               <div className="min-w-0 flex-1 space-y-1">
                 <Skeleton className="h-3.5 w-32 rounded" />
                 <Skeleton className="h-3 w-20 rounded" />
               </div>
             </div>
-            <Skeleton className="h-7 w-24 rounded-md" />
-          </div>
-
-          <div className="mt-2 flex items-center gap-3">
-            <Skeleton className="h-7 w-20 rounded-md" />
-            <Skeleton className="h-7 w-20 rounded-md" />
+            <Skeleton className="h-8 w-px shrink-0 rounded-none" />
+            <Skeleton className="h-4 w-24 shrink-0 rounded" />
           </div>
         </div>
       </CardContent>
@@ -173,7 +149,6 @@ export default function CSRCampaignsPage() {
   const [applyingCampaignId, setApplyingCampaignId] = useState<string | null>(null)
 
   const effectiveUserType = isHydrated ? user?.user_type : undefined
-  const isIndividual = effectiveUserType === 'individual'
   const isCompany = effectiveUserType === 'company'
   const currentUserId = Number(user?.id || 0)
   const isCompanyOwner = (campaignCompanyId?: number | null) => isCompany && Number(campaignCompanyId || 0) === currentUserId
@@ -187,15 +162,17 @@ export default function CSRCampaignsPage() {
       ? applications.some((application: any) => Number(application?.user_id || 0) === currentUserId)
       : false
 
+    const companyName = String(item.company_name || '').trim()
+
     return {
       id: item.id,
-      title: item.title || item.cause,
-      company: item.company_id ? `Company #${item.company_id}` : 'Company',
-      category: inferScheduleVIICategory(item.cause || ''),
-      location: item.region,
-      duration: item.timeline ? `${item.timeline} months` : 'Flexible timeline',
+      title: item.title || item.category || 'Untitled campaign',
+      company: companyName || 'Company',
+      category: item.schedule_vii || item.category || 'Uncategorized',
+      location: item.location || '',
+      duration: formatCampaignDuration(item),
       volunteers: volunteerLimit ? `${volunteerLimit} needed` : 'Not set',
-      status: 'open' as const,
+      status: item.status || 'draft',
       description: item.description || 'No campaign description provided yet.',
       leadNgo: metrics.selected_lead_ngo_name || (metrics.selected_lead_ngo_id ? `NGO #${metrics.selected_lead_ngo_id}` : undefined),
       volunteerRequirement: metrics.volunteer_requirement,
@@ -204,10 +181,9 @@ export default function CSRCampaignsPage() {
       volunteerLimit,
       appliedByCurrentUser,
       companyId: item.company_id,
-      companyInitials: item.company_id ? `C${String(item.company_id).slice(-1)}` : 'CO'
-      ,
-      start_date: (item as any).start_date || null,
-      end_date: (item as any).end_date || null,
+      companyInitials: getInitials(companyName || 'Company'),
+      start_date: item.start_date || null,
+      end_date: item.end_date || null,
       isVolunteerClosed: (() => {
         try {
           const sd = (item as any).start_date
@@ -306,16 +282,23 @@ export default function CSRCampaignsPage() {
     const matchesSearch = campaign.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          campaign.company.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesCategory = selectedCategory === 'all' || campaign.category === selectedCategory
-    const matchesStatus = !isIndividual || campaign.status === 'ongoing'
-    return matchesSearch && matchesCategory && matchesStatus
+    return matchesSearch && matchesCategory
   })
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'open': return 'border-slate-200 bg-slate-50 text-emerald-700 shadow-none'
-      case 'ongoing': return 'border-slate-200 bg-slate-50 text-blue-700 shadow-none'
-      case 'completed': return 'border-slate-200 bg-slate-50 text-gray-700 shadow-none'
-      default: return 'border-slate-200 bg-slate-50 text-slate-900 shadow-none'
+      case 'published':
+      case 'active':
+      case 'open':
+        return 'border-slate-200 bg-slate-50 text-emerald-700 shadow-none'
+      case 'ongoing':
+        return 'border-slate-200 bg-slate-50 text-blue-700 shadow-none'
+      case 'completed':
+        return 'border-slate-200 bg-slate-50 text-gray-700 shadow-none'
+      case 'draft':
+        return 'border-slate-200 bg-slate-50 text-amber-700 shadow-none'
+      default:
+        return 'border-slate-200 bg-slate-50 text-slate-900 shadow-none'
     }
   }
 
@@ -394,83 +377,85 @@ export default function CSRCampaignsPage() {
           ) : filteredCampaigns.length > 0 ? (
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {filteredCampaigns.map(campaign => (
-                <Card key={campaign.id} className="h-full w-full max-w-[360px] overflow-hidden rounded-md border-2 border-slate-200 bg-white shadow-[0_18px_40px_-24px_rgba(15,23,42,0.35)]">
+                <Card key={campaign.id} className="h-full w-full max-w-[360px] overflow-hidden rounded-md border-2 border-slate-200 bg-white shadow-none">
                   <CardContent className="flex h-full flex-col p-2">
-                    <div className="flex items-center justify-between gap-2">
-                                    <div className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${getStatusColor(campaign.status)} border-slate-200`}> 
-                                      {campaign.status}
-                                    </div>
-                                    <div className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold max-w-[190px] truncate border-slate-200 bg-slate-50 text-slate-700 shadow-none">
-                                      {campaign.category}
-                                    </div>
-                                  </div>
+                    <div className="flex min-w-0 items-center justify-between gap-2">
+                      <span className={`inline-flex min-w-0 max-w-[48%] overflow-hidden rounded-full border px-2.5 py-0.5 text-xs font-semibold capitalize ${getStatusColor(campaign.status)} border-slate-200`} title={campaign.status}>
+                        <span className="block truncate">{campaign.status}</span>
+                      </span>
+                      <span className="inline-flex min-w-0 max-w-[52%] overflow-hidden rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-semibold text-slate-700 shadow-none" title={campaign.category}>
+                        <span className="block truncate">{campaign.category}</span>
+                      </span>
+                    </div>
 
-                    <div className="border-t border-slate-200 mt-3 pt-3 space-y-1.5">
-                      <Link href={`/csr-campaigns/${campaign.id}`} className="block">
-                        <CardTitle className="cursor-pointer text-[17px] font-semibold leading-snug text-slate-900 line-clamp-1">
+                    <div className="mt-3 min-w-0 space-y-1 border-t border-slate-200 pt-3">
+                      <Link href={`/csr-campaigns/${campaign.id}`} className="block min-w-0">
+                        <CardTitle className="cursor-pointer truncate text-[17px] font-semibold leading-snug text-slate-900" title={campaign.title}>
                           {campaign.title}
                         </CardTitle>
                       </Link>
-                      <p className="min-h-[6rem] text-[13px] leading-5 text-slate-700 line-clamp-5">
+                      <p className="min-w-0 truncate text-[13px] leading-5 text-slate-700" title={campaign.description}>
                         {campaign.description}
                       </p>
                     </div>
 
                     <div className="mt-3 grid grid-cols-3 gap-2 border-t border-slate-200 pt-3 text-xs text-muted-foreground">
-                      <div className="space-y-1 min-w-0">
-                        <div className="flex items-center gap-1.5 text-slate-500">
-                          <MapPin className="h-3.5 w-3.5" />
-                          <span className="font-medium">Location</span>
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex min-w-0 items-center gap-1.5 text-slate-500">
+                          <MapPin className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate font-medium">Location</span>
                         </div>
-                        <p className="truncate text-[13px] font-semibold text-slate-900">{campaign.location || 'TBD'}</p>
+                        <p className="min-w-0 truncate text-[13px] font-semibold text-slate-900" title={campaign.location || 'TBD'}>{campaign.location || 'TBD'}</p>
                       </div>
-                      <div className="space-y-1 min-w-0">
-                        <div className="flex items-center gap-1.5 text-slate-500">
-                          <Calendar className="h-3.5 w-3.5" />
-                          <span className="font-medium">Duration</span>
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex min-w-0 items-center gap-1.5 text-slate-500">
+                          <Calendar className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate font-medium">Duration</span>
                         </div>
-                        <p className="truncate text-[13px] font-semibold text-slate-900">{campaign.duration}</p>
+                        <p className="min-w-0 truncate text-[13px] font-semibold text-slate-900" title={campaign.duration}>{campaign.duration}</p>
                       </div>
-                      <div className="space-y-1 min-w-0">
-                        <div className="flex items-center gap-1.5 text-slate-500">
-                          <Users className="h-3.5 w-3.5" />
-                          <span className="font-medium">Volunteer count</span>
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex min-w-0 items-center gap-1.5 text-slate-500">
+                          <Users className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate font-medium">Volunteers</span>
                         </div>
-                        <p className="truncate text-[13px] font-semibold text-slate-900">{campaign.volunteerCount ?? 0} applied</p>
+                        <p className="min-w-0 truncate text-[13px] font-semibold text-slate-900" title={`${campaign.volunteerCount ?? 0} applied`}>{campaign.volunteerCount ?? 0} applied</p>
                       </div>
                     </div>
 
-                    <div className="mt-1 border-t border-slate-200 pt-1 text-xs text-slate-900">
-                      <p className="truncate"><span className="font-semibold">Lead NGO:</span> <span className="font-normal">{campaign.leadNgo || 'Not selected yet'}</span></p>
+                    <div className="mt-1 min-w-0 border-t border-slate-200 pt-1 text-xs text-slate-900">
+                      <p className="min-w-0 truncate" title={campaign.leadNgo || 'Not selected yet'}>
+                        <span className="font-semibold">Lead NGO:</span>{' '}
+                        <span className="font-normal">{campaign.leadNgo || 'Not selected yet'}</span>
+                      </p>
                     </div>
 
-                    <div className="mt-1 border-t border-slate-200 pt-1 pb-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <Link href={campaign.companyId ? `/profile/${campaign.companyId}` : '#'} className="flex items-center gap-2 px-1 py-0.5 flex-1">
-                          <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-udaan-orange text-[10px] font-medium text-white shadow-sm">
+                    <div className="mt-1 border-t border-slate-200 pt-1">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <Link href={campaign.companyId ? `/profile/${campaign.companyId}` : '#'} className="flex min-w-0 flex-1 items-center gap-2 px-1 py-0.5">
+                          <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-udaan-orange text-[10px] font-medium text-white">
                             {campaign.companyInitials || 'CO'}
                           </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p className="truncate text-sm font-medium text-slate-900">{campaign.company}</p>
-                            </div>
-                            <p className="text-xs text-slate-700 flex items-center gap-1">
-                              <Building2 size={14} />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium text-slate-900" title={campaign.company}>{campaign.company}</p>
+                            <p className="truncate text-xs text-slate-700">
                               Company
                             </p>
                           </div>
                         </Link>
 
-                        <Link href={`/csr-campaigns/${campaign.id}`} className="inline-flex items-center gap-1 text-sm font-medium text-slate-900" >
+                        <span className="h-8 w-px shrink-0 bg-slate-300" aria-hidden="true" />
+
+                        <Link href={`/csr-campaigns/${campaign.id}`} className="inline-flex shrink-0 items-center gap-1 px-1 py-0.5 text-sm font-medium text-slate-900" >
                           <span>Explore More</span>
                           <ArrowRight size={14} />
                         </Link>
                       </div>
 
                       {isCompanyOwner(campaign.companyId) && (
-                        <div className="mt-1 border-t border-slate-200 pt-1">
+                        <div className="pt-1">
                           <div className="flex items-center gap-2">
-                            <Button asChild variant="ghost" className="h-6 p-0 text-sm font-medium text-black shadow-none transition-colors duration-150 hover:bg-transparent hover:text-blue-600">
+                            <Button asChild variant="ghost" className="h-6 p-0 text-sm font-medium text-black shadow-none hover:bg-transparent hover:text-blue-600">
                               <Link href={`/companies/csr-agent?campaign_id=${campaign.id}`}>
                                 <Pencil size={14} className="mr-1" />
                                 Edit
@@ -479,7 +464,7 @@ export default function CSRCampaignsPage() {
                             <Button
                               type="button"
                               variant="ghost"
-                              className="h-6 p-0 text-sm font-medium text-black shadow-none transition-colors duration-150 hover:bg-transparent hover:text-red-600"
+                              className="h-6 p-0 text-sm font-medium text-black shadow-none hover:bg-transparent hover:text-red-600"
                               onClick={() => handleDeleteCampaign(campaign.id)}
                               disabled={deletingCampaignId === campaign.id}
                             >
@@ -505,7 +490,7 @@ export default function CSRCampaignsPage() {
                               variant="ghost"
                               onClick={() => handleVolunteer(campaign.id)}
                               disabled={applyingCampaignId === campaign.id || !allVerified || Boolean(campaign.isVolunteerClosed) || Boolean(campaign.volunteerLimit && (campaign.volunteerCount ?? 0) >= (campaign.volunteerLimit ?? 0))}
-                              className="h-6 p-0 text-sm font-medium text-black shadow-none transition-colors duration-150 hover:bg-transparent hover:text-blue-600"
+                              className="h-6 p-0 text-sm font-medium text-black shadow-none hover:bg-transparent hover:text-blue-600"
                             >
                               <ArrowRight size={14} className="mr-1" />
                               {applyingCampaignId === campaign.id ? 'Applying...' : (!allVerified ? 'Verify to apply' : (campaign.isVolunteerClosed ? 'Closed' : (Boolean(campaign.volunteerLimit && (campaign.volunteerCount ?? 0) >= (campaign.volunteerLimit ?? 0)) ? 'Full' : 'Volunteer')))}

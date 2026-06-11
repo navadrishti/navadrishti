@@ -41,9 +41,9 @@ const mobileRows = [
 const repeatRow = <T,>(row: T[]) => [...row, ...row];
 
 const rootSubnavItems = [
-  { label: 'Government Administrator', href: '/government-admin' },
-  { label: 'Evidence Verification Portal', href: '/companies/ca' },
-  { label: 'Navadrishti CA Portal', href: '/ca' },
+  { label: 'Government Administrator', href: '/government-admin/login' },
+  { label: 'Evidence Verification Portal', href: '/companies/ca/login' },
+  { label: 'Navadrishti CA Portal', href: '/ca/login' },
   { label: 'District Analytics Portal', href: '/government-admin/district-dashboard' },
   { label: 'State Analytics Portal', href: '/government-admin/state-dashboard' },
   { label: 'About Us', href: '/about' },
@@ -117,7 +117,7 @@ function RootSubNavbar() {
           <div className="flex flex-wrap items-center justify-start gap-2 py-2 text-[11px] font-medium sm:justify-end sm:overflow-x-auto sm:whitespace-nowrap sm:gap-3 sm:text-xs">
             {rootSubnavItems.map((item) => (
               <Link
-                key={item.href}
+                key={item.label}
                 href={item.href}
                 className="px-1 py-1 text-white/90 transition-colors hover:text-udaan-orange whitespace-nowrap"
               >

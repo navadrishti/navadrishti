@@ -1,42 +1,95 @@
 ﻿"use client";
 
+import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
+import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export default function CALayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const [ready, setReady] = useState(false);
   const isLoginRoute = pathname === '/ca/login';
+  const isChangePasswordRoute = pathname === '/ca/change-password';
 
-  // Simple logout handler
+  useEffect(() => {
+    if (isLoginRoute || isChangePasswordRoute) return;
+
+    let cancelled = false;
+
+    const checkAccess = async () => {
+      try {
+        const hasTab =
+          typeof window !== 'undefined' && Boolean(sessionStorage.getItem('ca_tab_session'));
+
+        if (!hasTab) {
+          if (!cancelled) router.replace('/ca/login');
+          return;
+        }
+
+        const response = await fetch('/api/ca/verify', {
+          method: 'GET',
+          credentials: 'include',
+        });
+
+        if (!response.ok) {
+          if (!cancelled) router.replace('/ca/login');
+          return;
+        }
+
+        if (!cancelled) setReady(true);
+      } catch {
+        if (!cancelled) router.replace('/ca/login');
+      }
+    };
+
+    checkAccess();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isChangePasswordRoute, isLoginRoute, router]);
+
   const handleLogout = async () => {
     try {
       await fetch('/api/ca/logout', {
         method: 'POST',
         credentials: 'include'
       });
-    } catch (error) {
+    } catch {
       // Ignore logout API failures
     } finally {
+      try {
+        sessionStorage.removeItem('ca_tab_session');
+      } catch {
+        // Ignore storage access issues
+      }
       router.push('/ca/login');
     }
   };
 
-  // Keep login page public - all other CA routes are protected server-side
-  if (isLoginRoute) {
+  if (isLoginRoute || isChangePasswordRoute) {
     return <>{children}</>;
   }
 
-  // Render CA layout - authentication is handled server-side in page components
+  if (!ready) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-blue-50">
+        <div className="text-center">
+          <Loader2 className="mx-auto h-8 w-8 animate-spin text-blue-600" />
+          <p className="mt-4 text-blue-600">Checking authentication...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-blue-50">
-      {/* CA Console Header */}
-      <header className="bg-blue-600 border-b border-blue-700 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            {/* Logo & Title */}
+      <header className="sticky top-0 z-50 border-b border-blue-700 bg-blue-600">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="flex h-16 items-center justify-between">
             <div className="flex items-center space-x-3">
               <div>
                 <h1 className="text-xl font-bold text-white">Navadrishti CA Console</h1>
@@ -44,22 +97,31 @@ export default function CALayout({ children }: { children: React.ReactNode }) {
               </div>
             </div>
 
-            {/* Navigation */}
-            <nav className="hidden md:flex items-center space-x-4">
-              <Button asChild variant="ghost" size="sm" className="text-white hover:bg-blue-700 hover:text-white">
-                <Link href="/ca">Dashboard</Link>
-              </Button>
-              <Button asChild variant="ghost" size="sm" className="text-white hover:bg-blue-700 hover:text-white">
-                <Link href="/ca/cases">History</Link>
-              </Button>
-              <Button asChild variant="ghost" size="sm" className="text-white hover:bg-blue-700 hover:text-white">
-                <Link href="/ca/change-password">Change Password</Link>
-              </Button>
+            <nav className="hidden items-center space-x-4 md:flex">
+              <Link href="/ca">
+                <Button variant="ghost" size="sm" className="text-white hover:bg-blue-700 hover:text-white">
+                  Dashboard
+                </Button>
+              </Link>
+              <Link href="/ca/cases">
+                <Button variant="ghost" size="sm" className="text-white hover:bg-blue-700 hover:text-white">
+                  History
+                </Button>
+              </Link>
+              <Link href="/ca/change-password">
+                <Button variant="ghost" size="sm" className="text-white hover:bg-blue-700 hover:text-white">
+                  Change Password
+                </Button>
+              </Link>
             </nav>
 
-            {/* Logout */}
             <div className="flex items-center space-x-4">
-              <Button variant="outline" size="sm" onClick={handleLogout} className="bg-orange-500 text-white border-orange-500 hover:bg-orange-600 hover:border-orange-600 hover:text-white hover:shadow-lg hover:shadow-orange-500/50">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleLogout}
+                className="border-orange-500 bg-orange-500 text-white hover:border-orange-600 hover:bg-orange-600 hover:text-white hover:shadow-lg hover:shadow-orange-500/50"
+              >
                 Logout
               </Button>
             </div>
@@ -67,14 +129,12 @@ export default function CALayout({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         {children}
       </main>
 
-      {/* Footer */}
-      <footer className="bg-blue-600 border-t border-blue-700 mt-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+      <footer className="mt-12 border-t border-blue-700 bg-blue-600">
+        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between text-sm text-blue-100">
             <div className="flex items-center gap-2">
               <span>© 2026</span>
