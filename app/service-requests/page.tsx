@@ -19,49 +19,56 @@ const categories = getServiceRequestCategoriesWithAll()
 
 function ServiceRequestCardSkeleton() {
   return (
-    <Card className="h-full w-full overflow-hidden rounded-md border-2 border-slate-200 bg-white shadow-[0_18px_40px_-24px_rgba(15,23,42,0.35)]">
+    <Card className="h-full w-full max-w-[360px] overflow-hidden rounded-md border-2 border-slate-200 bg-white shadow-none">
       <CardContent className="flex h-full flex-col p-2">
-        {/* Possible Project Header Skeleton (project title + action) */}
-        <div className="mb-3 flex items-center justify-between gap-2 rounded-md border-b border-slate-200 px-0 py-2">
-          <div className="min-w-0 flex-1 px-2">
-            <Skeleton className="h-2 w-24 rounded" />
-            <Skeleton className="mt-1 h-4 w-36 rounded" />
-          </div>
-          <Skeleton className="h-6 w-20 rounded" />
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <Skeleton className="h-5 w-20 rounded-full" />
+          <Skeleton className="h-5 w-28 rounded-full" />
         </div>
 
-        {/* Image Carousel Skeleton */}
-        <div className="overflow-hidden rounded-md border border-slate-200 bg-slate-100">
-          <div className="aspect-[4/3] w-full">
-            <Skeleton className="h-full w-full rounded-md" />
+        <div className="mt-2 overflow-hidden rounded-md border border-slate-200 bg-slate-100">
+          <Skeleton className="h-32 w-full rounded-md" />
+        </div>
+
+        <div className="mt-2 min-w-0 space-y-1 border-t border-slate-200 pt-2">
+          <Skeleton className="h-5 w-3/4 rounded" />
+          <Skeleton className="h-3 w-full rounded" />
+        </div>
+
+        <div className="mt-2 grid grid-cols-3 gap-2 border-t border-slate-200 pt-2">
+          <div className="min-w-0 space-y-1">
+            <Skeleton className="h-3 w-10 rounded" />
+            <Skeleton className="h-4 w-full rounded" />
+          </div>
+          <div className="min-w-0 space-y-1">
+            <Skeleton className="h-3 w-12 rounded" />
+            <Skeleton className="h-4 w-full rounded" />
+          </div>
+          <div className="min-w-0 space-y-1">
+            <Skeleton className="h-3 w-12 rounded" />
+            <Skeleton className="h-4 w-full rounded" />
           </div>
         </div>
 
-        {/* Title and Description (inside border-top like actual card) */}
-        <div className="border-t border-slate-200 mt-2 pt-2">
-          <div className="space-y-1">
-            <Skeleton className="h-4 w-[85%] rounded" />
-            <Skeleton className="h-3 w-full rounded" />
+        <div className="mt-1 border-t border-slate-200 pt-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <Skeleton className="h-3 w-32 rounded" />
+            <Skeleton className="h-3 w-px shrink-0 rounded-none" />
+            <Skeleton className="h-3 w-20 shrink-0 rounded" />
           </div>
         </div>
 
-        {/* Divider before footer to match card */}
-        <div className="border-t border-slate-200 mt-3 mb-2" />
-
-        {/* Footer: provider info + Explore More (responsive row) */}
-        <div className="mt-auto pt-2">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 flex-1 items-center gap-2">
-              <Skeleton className="h-7 w-7 flex-shrink-0 rounded-full" />
-              <div className="min-w-0 flex-1">
-                <Skeleton className="h-3 w-28 rounded" />
-                <Skeleton className="mt-1 h-2 w-20 rounded" />
+        <div className="mt-1 border-t border-slate-200 pt-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="flex min-w-0 flex-1 items-center gap-2 px-1 py-0.5">
+              <Skeleton className="h-6 w-6 shrink-0 rounded-full" />
+              <div className="min-w-0 flex-1 space-y-1">
+                <Skeleton className="h-3.5 w-32 rounded" />
+                <Skeleton className="h-3 w-20 rounded" />
               </div>
             </div>
-
-            <div className="self-start sm:self-center">
-              <Skeleton className="h-8 w-28 rounded-full" />
-            </div>
+            <Skeleton className="h-8 w-px shrink-0 rounded-none" />
+            <Skeleton className="h-4 w-24 shrink-0 rounded" />
           </div>
         </div>
       </CardContent>
@@ -290,13 +297,13 @@ function ServiceRequestsContent() {
 
         <div className="min-h-[400px]">
           {loading ? (
-            <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {Array.from({ length: 6 }).map((_, i) => (
                 <ServiceRequestCardSkeleton key={i} />
               ))}
             </div>
           ) : filteredRequests.length > 0 ? (
-            <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {filteredRequests.map((request) => (
                 <ServiceCard
                   key={request.id}

@@ -78,38 +78,48 @@ function SkeletonServiceCard() {
 // Skeleton that matches the simplified Service Offer card layout
 function SkeletonServiceOffer() {
   return (
-    <div className="w-full max-w-[360px] bg-white rounded-md border-2 border-slate-200 p-0 flex flex-col shadow-[0_18px_40px_-24px_rgba(15,23,42,0.35)] overflow-hidden">
-      <div className="p-2 flex-1 flex flex-col">
-        <div className="overflow-hidden rounded-md border border-slate-200 bg-slate-100">
-          <div className="aspect-[4/3] w-full">
-            <Skeleton className="h-full w-full rounded-md" />
+    <div className="h-full w-full max-w-[360px] overflow-hidden rounded-md border-2 border-slate-200 bg-white p-0 shadow-none">
+      <div className="flex h-full flex-col p-2">
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <Skeleton className="h-5 w-20 rounded-full" />
+          <Skeleton className="h-5 w-28 rounded-full" />
+        </div>
+
+        <div className="mt-2 overflow-hidden rounded-md border border-slate-200 bg-slate-100">
+          <Skeleton className="h-32 w-full rounded-md" />
+        </div>
+
+        <div className="mt-2 min-w-0 space-y-1 border-t border-slate-200 pt-2">
+          <Skeleton className="h-5 w-3/4 rounded" />
+          <Skeleton className="h-3 w-full rounded" />
+        </div>
+
+        <div className="mt-2 grid grid-cols-3 gap-2 border-t border-slate-200 pt-2">
+          <div className="min-w-0 space-y-1">
+            <Skeleton className="h-3 w-10 rounded" />
+            <Skeleton className="h-4 w-full rounded" />
+          </div>
+          <div className="min-w-0 space-y-1">
+            <Skeleton className="h-3 w-12 rounded" />
+            <Skeleton className="h-4 w-full rounded" />
+          </div>
+          <div className="min-w-0 space-y-1">
+            <Skeleton className="h-3 w-12 rounded" />
+            <Skeleton className="h-4 w-full rounded" />
           </div>
         </div>
 
-        {/* Title/description inside a top-bordered block like ServiceCard */}
-        <div className="border-t border-slate-200 mt-2 pt-2">
-          <div className="space-y-1">
-            <Skeleton className="h-4 w-3/4 rounded" />
-            <Skeleton className="h-3 w-full rounded" />
-          </div>
-        </div>
-
-        {/* Divider before footer */}
-        <div className="border-t border-slate-200 mt-3 mb-2" />
-
-        {/* Footer: provider info left, Explore pill right */}
-        <div className="mt-auto pt-2">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 flex-1 items-center gap-2">
-              <Skeleton className="h-7 w-7 flex-shrink-0 rounded-full" />
-              <div className="min-w-0 flex-1">
-                <Skeleton className="h-3 w-28 rounded" />
+        <div className="mt-1 border-t border-slate-200 pt-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="flex min-w-0 flex-1 items-center gap-2 px-1 py-0.5">
+              <Skeleton className="h-6 w-6 shrink-0 rounded-full" />
+              <div className="min-w-0 flex-1 space-y-1">
+                <Skeleton className="h-3.5 w-32 rounded" />
+                <Skeleton className="h-3 w-20 rounded" />
               </div>
             </div>
-
-            <div className="self-start sm:self-center">
-              <Skeleton className="h-8 w-28 rounded-full" />
-            </div>
+            <Skeleton className="h-8 w-px shrink-0 rounded-none" />
+            <Skeleton className="h-4 w-24 shrink-0 rounded" />
           </div>
         </div>
       </div>

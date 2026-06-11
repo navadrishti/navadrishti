@@ -24,34 +24,25 @@ export default function LoginPage() {
     return '/individuals/dashboard';
   };
 
-  // Add effect to redirect user when successfully logged in
   useEffect(() => {
     if (user) {
       smoothNavigate(router, getDashboardRoute(user.user_type), {
         delay: 200,
-        beforeNavigate: () => {
-          // Optional: You could show a success message here
-        }
       });
     }
   }, [user, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Clear any previous errors
     clearError();
-    
-    // Validate inputs
+
     if (!email || !password) {
       return;
     }
-    
+
     setSubmitting(true);
     try {
-      // Call login function from auth context
       await login(email, password);
-      // Removed the immediate redirect - now handled by the useEffect above
     } finally {
       setSubmitting(false);
     }
@@ -59,14 +50,14 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
-      <Card className="w-full max-w-md shadow-xl transition-all duration-300 hover:shadow-2xl">
+      <Card className="w-full max-w-md shadow-none">
         <CardHeader className="space-y-1">
           <CardTitle className="text-2xl font-bold text-center">Sign In</CardTitle>
           <CardDescription className="text-center">
             Enter your email and password to access your account
           </CardDescription>
         </CardHeader>
-        
+
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
             {error && (
@@ -74,7 +65,7 @@ export default function LoginPage() {
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
-            
+
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -84,16 +75,16 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="transition-colors duration-150 focus:ring-0 focus:ring-offset-0"
+                className="focus:ring-0 focus:ring-offset-0"
               />
             </div>
-            
+
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label htmlFor="password">Password</Label>
                 <Link
                   href="/forgot-password"
-                  className="text-sm font-medium text-primary hover:underline transition-all duration-200"
+                  className="text-sm font-medium text-primary hover:underline"
                 >
                   Forgot password?
                 </Link>
@@ -104,30 +95,23 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="transition-colors duration-150 focus:ring-0 focus:ring-offset-0"
+                className="focus:ring-0 focus:ring-offset-0"
               />
             </div>
           </CardContent>
-          
+
           <CardFooter className="flex flex-col space-y-4">
-            <Button 
-              type="submit" 
-              className="w-full transition-all duration-300 hover:scale-[1.02] active:scale-95" 
-                disabled={submitting}
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={submitting}
             >
-              {submitting ? (
-                <span className="flex items-center gap-2">
-                  <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
-                  Signing In...
-                </span>
-              ) : (
-                'Sign In'
-              )}
+              {submitting ? 'Signing In...' : 'Sign In'}
             </Button>
-            
+
             <div className="text-center text-sm">
               Don't have an account?{' '}
-              <Link href="/register" className="font-medium text-primary hover:underline transition-all duration-200">
+              <Link href="/register" className="font-medium text-primary hover:underline">
                 Create one
               </Link>
             </div>

@@ -8,7 +8,7 @@ import { Building, Briefcase, User } from 'lucide-react';
 export default function RegisterPage() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
-      <Card className="w-full max-w-md shadow-xl">
+      <Card className="w-full max-w-md shadow-none">
         <CardHeader className="space-y-1">
           <div className="text-sm">
             <Link href="/" className="font-medium text-primary">
