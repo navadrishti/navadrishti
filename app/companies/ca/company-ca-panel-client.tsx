@@ -80,16 +80,6 @@ const ShimmerCard = () => (
           return;
         }
 
-        try {
-          const hasTab = typeof window !== 'undefined' && sessionStorage.getItem('company_ca_tab_session');
-          if (!hasTab) {
-            router.push('/companies/ca/login');
-            return;
-          }
-        } catch (e) {
-          // ignore
-        }
-
         setContext(verifyPayload.company_ca);
 
         const projectsResponse = await fetch('/api/csr-projects', {
