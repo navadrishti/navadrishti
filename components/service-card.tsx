@@ -107,6 +107,52 @@ interface ServiceCardProps {
 }
 
 // Function to generate initials from name
+const listingCardClassName =
+  'h-full w-full max-w-[360px] overflow-hidden rounded-md border-2 border-slate-200 bg-white shadow-none'
+
+const listingCardImageClassName = 'mt-2 overflow-hidden rounded-md border border-slate-200 bg-slate-100'
+const listingCardImageFrameClassName = 'h-32 w-full'
+const listingBadgeClassName =
+  'inline-flex min-w-0 max-w-[48%] overflow-hidden rounded-full border px-2.5 py-0.5 text-xs font-semibold'
+const listingCategoryBadgeClassName =
+  'inline-flex min-w-0 max-w-[52%] overflow-hidden rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-semibold text-slate-700 shadow-none'
+
+const renderListingBadge = (content: React.ReactNode, className: string, title?: string) => (
+  <span className={className} title={title}>
+    <span className="block truncate">{content}</span>
+  </span>
+)
+const listingDescriptionClassName = 'min-w-0 truncate text-[13px] leading-5 text-slate-700'
+const listingMetricValueClassName = 'min-w-0 truncate text-[13px] font-semibold text-slate-900'
+
+const getUrgencyBadgeClass = (level?: string) => {
+  switch (String(level || 'medium').toLowerCase()) {
+    case 'critical':
+    case 'high':
+      return 'border-slate-200 bg-slate-50 text-red-700 shadow-none'
+    case 'medium':
+      return 'border-slate-200 bg-slate-50 text-orange-700 shadow-none'
+    case 'low':
+      return 'border-slate-200 bg-slate-50 text-emerald-700 shadow-none'
+    default:
+      return 'border-slate-200 bg-slate-50 text-slate-900 shadow-none'
+  }
+}
+
+const getOfferStatusBadgeClass = (value?: string) => {
+  switch (String(value || 'active').toLowerCase()) {
+    case 'active':
+      return 'border-slate-200 bg-slate-50 text-emerald-700 shadow-none'
+    case 'draft':
+      return 'border-slate-200 bg-slate-50 text-amber-700 shadow-none'
+    case 'closed':
+    case 'inactive':
+      return 'border-slate-200 bg-slate-50 text-gray-700 shadow-none'
+    default:
+      return 'border-slate-200 bg-slate-50 text-slate-900 shadow-none'
+  }
+}
+
 const getInitials = (name: string): string => {
   if (!name) return 'NG'
   
@@ -431,8 +477,6 @@ export function ServiceCard({
     && !isDuplicateOfferDescriptorPriceDescription
     && !isGenericFallbackPriceDescription;
 
-  const requestDescription = description.length > 160 ? `${description.slice(0, 157).trimEnd()}...` : description;
-
   const formatInrValue = (value: unknown): string => {
     if (value === null || value === undefined) return '';
     const text = String(value).trim();
@@ -472,92 +516,147 @@ export function ServiceCard({
   const isCompany = user?.user_type === 'company';
   const canVolunteer = isIndividual || isCompany;
   const canHireServices = isIndividual || isCompany;
-  const chipButtonClassName = "inline-flex items-center gap-2 text-sm font-medium text-slate-900";
-  const projectButtonClassName = "inline-flex items-center gap-2 text-sm font-medium text-slate-900";
+
+  const offerPriceLabel = (() => {
+    if (isVolunteerPricing) return 'Volunteer'
+    if (hasPriceAmount) return formatPrice(normalizedPriceAmount)
+    if (hasOfferAmount) return formatPrice(normalizedOfferAmount)
+    if (wage_info?.min_amount) return formatPrice(wage_info.min_amount)
+    return 'Not set'
+  })()
+
+  const renderListingCardImage = (options?: { autoplay?: boolean; showImageCount?: boolean }) => (
+    <div className={listingCardImageClassName}>
+      <div className={listingCardImageFrameClassName}>
+        <ImageCarousel
+          images={imageArray}
+          alt={title}
+          className="h-full w-full"
+          autoplay={options?.autoplay ?? false}
+          autoplayInterval={3500}
+          showThumbnails={false}
+          showImageCount={options?.showImageCount ?? imageArray.length > 1}
+          enableKeyboardNav={false}
+        />
+      </div>
+    </div>
+  )
 
   if (type === 'request') {
     return (
-      <Card className="h-full w-full max-w-[360px] overflow-hidden rounded-md border-2 border-slate-200 bg-white shadow-[0_18px_40px_-24px_rgba(15,23,42,0.35)]">
+      <Card className={listingCardClassName}>
         <CardContent className="flex h-full flex-col p-2">
-          {projectContext?.title && (
-            <div className="mb-3 flex items-center justify-between gap-2 rounded-md border-b border-slate-200 px-0 py-2">
-              <div className="min-w-0 flex-1 px-2">
-                <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-slate-500">Project</p>
-                <p className="truncate text-[15px] font-medium leading-tight text-slate-900">{projectContext.title}</p>
+          <div className="flex min-w-0 items-center justify-between gap-2">
+            {renderListingBadge(
+              String(effectiveRequestUrgency),
+              `${listingBadgeClassName} capitalize ${getUrgencyBadgeClass(String(effectiveRequestUrgency))}`,
+              String(effectiveRequestUrgency)
+            )}
+            {renderListingBadge(
+              projectCategory || category || 'Need',
+              listingCategoryBadgeClassName,
+              projectCategory || category || 'Need'
+            )}
+          </div>
+
+          {renderListingCardImage({ autoplay: true, showImageCount: true })}
+
+          <div className="mt-2 min-w-0 space-y-1 border-t border-slate-200 pt-2">
+            <h3
+              className="min-w-0 cursor-pointer truncate text-[17px] font-semibold leading-snug text-slate-900"
+              title={title}
+              onClick={handleCardClick}
+            >
+              {title}
+            </h3>
+            <p className={listingDescriptionClassName} title={description}>
+              {description}
+            </p>
+          </div>
+
+          <div className="mt-2 grid grid-cols-3 gap-2 border-t border-slate-200 pt-2 text-xs text-muted-foreground">
+            <div className="min-w-0 space-y-1">
+              <div className="flex min-w-0 items-center gap-1.5 text-slate-500">
+                <MapPin className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate font-medium">Location</span>
               </div>
-              {projectContext?.id ? (
-                <Link href={`/service-requests/projects/${projectContext.id}`} className={projectButtonClassName} onClick={(e) => e.stopPropagation()}>
-                  <span>View Project</span>
-                  <ArrowRight size={13} className="text-slate-900" />
-                </Link>
-              ) : null}
+              <p className={listingMetricValueClassName} title={requestMetricValue.location}>{requestMetricValue.location}</p>
             </div>
-          )}
-
-          <div className="overflow-hidden rounded-md border border-slate-200 bg-slate-100">
-            <div className="aspect-[4/3] w-full">
-              <ImageCarousel
-                images={imageArray}
-                alt={title}
-                className="h-full w-full"
-                autoplay={true}
-                autoplayInterval={3500}
-                showThumbnails={false}
-                showImageCount={true}
-                enableKeyboardNav={false}
-              />
+            <div className="min-w-0 space-y-1">
+              <div className="flex min-w-0 items-center gap-1.5 text-slate-500">
+                <Calendar className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate font-medium">Posted</span>
+              </div>
+              <p className={listingMetricValueClassName} title={requestMetricValue.posted}>{requestMetricValue.posted}</p>
+            </div>
+            <div className="min-w-0 space-y-1">
+              <div className="flex min-w-0 items-center gap-1.5 text-slate-500">
+                <Users className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate font-medium">Beneficiaries</span>
+              </div>
+              <p className={listingMetricValueClassName} title={requestMetricValue.beneficiaries}>{requestMetricValue.beneficiaries}</p>
             </div>
           </div>
 
-          <div className="border-t border-slate-200 mt-2 pt-2">
-            <div className="space-y-1">
-              <h3
-                className="cursor-pointer text-base font-medium leading-tight text-slate-800 line-clamp-1"
-                onClick={handleCardClick}
-              >
-                {title}
-              </h3>
-              <p className="text-sm text-muted-foreground truncate">{requestDescription}</p>
+          {projectContext?.title ? (
+            <div className="mt-1 min-w-0 border-t border-slate-200 pt-1 text-xs text-slate-900">
+              <div className="flex min-w-0 items-center justify-between gap-2">
+                <p className="min-w-0 flex-1 truncate" title={projectContext.title}>
+                  <span className="font-semibold">Project:</span>{' '}
+                  <span className="font-normal">{projectContext.title}</span>
+                </p>
+                {projectContext.id ? (
+                  <>
+                    <span className="h-3 w-px shrink-0 bg-slate-300" aria-hidden="true" />
+                    <Link
+                      href={`/service-requests/projects/${projectContext.id}`}
+                      className="shrink-0 text-xs font-semibold text-slate-900 hover:text-blue-600"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      View project
+                    </Link>
+                  </>
+                ) : null}
+              </div>
             </div>
-          </div>
-          <div className="border-t border-slate-200 mt-3 mb-2" />
+          ) : null}
 
-            <div className="mt-auto pt-2">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mt-1 border-t border-slate-200 pt-1">
+            <div className="flex min-w-0 items-center gap-2">
               <Link
                 href={ownerProfileId ? `/profile/${ownerProfileId}` : '#'}
-                className="flex min-w-0 flex-1 items-center gap-2"
+                className="flex min-w-0 flex-1 items-center gap-2 px-1 py-0.5"
+                onClick={(e) => e.stopPropagation()}
               >
-                <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-udaan-orange text-[11px] font-medium text-white shadow-sm">
+                <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-udaan-orange text-[10px] font-medium text-white">
                   {getInitials(providerDisplayName)}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-slate-800">{providerDisplayName}</p>
-                  <p className="flex items-center gap-1 text-xs text-muted-foreground">
-                    {getProviderIcon(providerDisplayType)}
+                  <p className="truncate text-sm font-medium text-slate-900" title={providerDisplayName}>{providerDisplayName}</p>
+                  <p className="truncate text-xs text-slate-700">
                     {getProviderLabel(providerDisplayType)}
                   </p>
                 </div>
               </Link>
 
+              <span className="h-8 w-px shrink-0 bg-slate-300" aria-hidden="true" />
+
               <Link
-                href={`/${type === 'request' ? 'service-requests' : 'service-offers'}/${id}`}
-                className={`${chipButtonClassName} self-start whitespace-nowrap sm:self-center`}
+                href={`/service-requests/${id}`}
+                className="inline-flex shrink-0 items-center gap-1 px-1 py-0.5 text-sm font-medium text-slate-900"
                 onClick={(e) => e.stopPropagation()}
               >
                 <span>Explore More</span>
-                <ArrowRight size={13} className="text-slate-900" />
+                <ArrowRight size={14} />
               </Link>
             </div>
 
-            {type === 'request' && (isOwner || showDeleteButton) ? (
-              <div className="mt-3 flex gap-3">
+            {(isOwner || showDeleteButton) ? (
+              <div className="flex items-center gap-2 pt-1">
                 {isOwner ? (
-                  <Link href={`/service-requests/edit/${id}`} className="flex-1">
-                    <div className="w-full text-left text-sm font-medium text-slate-900 py-2 px-1">
-                      <Edit size={14} className="inline-block mr-2 align-middle" />
-                      Edit Request
-                    </div>
+                  <Link href={`/service-requests/edit/${id}`} className="inline-flex h-6 items-center p-0 text-sm font-medium text-black hover:text-blue-600">
+                    <Edit size={14} className="mr-1" />
+                    Edit
                   </Link>
                 ) : null}
 
@@ -565,24 +664,14 @@ export function ServiceCard({
                   <button
                     type="button"
                     onClick={(e) => {
-                      e.stopPropagation();
-                      if (!isDeleting) onDelete();
+                      e.stopPropagation()
+                      if (!isDeleting) onDelete()
                     }}
                     disabled={isDeleting}
-                    className="flex-1 text-left text-sm font-medium text-red-600 py-2 px-1 disabled:opacity-60"
-                    aria-disabled={isDeleting}
+                    className="inline-flex h-6 items-center p-0 text-sm font-medium text-black hover:text-red-600 disabled:opacity-60"
                   >
-                    {isDeleting ? (
-                      <>
-                        <span className="inline-block mr-2 h-3 w-3 animate-spin rounded-full border-2 border-red-600 border-t-transparent" />
-                        Deleting...
-                      </>
-                    ) : (
-                      <>
-                        <Trash2 size={14} className="inline-block mr-2 align-middle" />
-                        Delete Request
-                      </>
-                    )}
+                    <Trash2 size={14} className="mr-1" />
+                    {isDeleting ? 'Deleting...' : 'Delete'}
                   </button>
                 ) : null}
               </div>
@@ -593,58 +682,89 @@ export function ServiceCard({
     )
   }
 
-  // Simplified card layout for Service Offers (match service request visual style)
   if (type === 'offer') {
     return (
-      <Card className="h-full w-full max-w-[360px] overflow-hidden rounded-md border-2 border-slate-200 bg-white shadow-[0_18px_40px_-24px_rgba(15,23,42,0.35)]">
+      <Card className={listingCardClassName}>
         <CardContent className="flex h-full flex-col p-2">
-          {/* Image */}
-          <div className="overflow-hidden rounded-md border border-slate-200 bg-slate-100">
-            <div className="aspect-[4/3] w-full">
-              <ImageCarousel
-                images={imageArray}
-                alt={title}
-                className="h-full w-full"
-                autoplay={false}
-                showThumbnails={false}
-                showImageCount={false}
-                enableKeyboardNav={false}
-              />
-            </div>
+          <div className="flex min-w-0 items-center justify-between gap-2">
+            {renderListingBadge(
+              status || 'active',
+              `${listingBadgeClassName} capitalize ${getOfferStatusBadgeClass(status)}`,
+              status || 'active'
+            )}
+            {renderListingBadge(
+              String(offerType || category || 'Offer'),
+              listingCategoryBadgeClassName,
+              String(offerType || category || 'Offer')
+            )}
           </div>
-          <div className="border-t border-slate-200 mt-2 pt-2">
-            <div className="space-y-1">
-              <h3 className="cursor-pointer text-base font-medium leading-tight text-slate-800 line-clamp-1" onClick={handleCardClick}>
-                {title}
-              </h3>
-              <p className="text-sm text-muted-foreground truncate">{description}</p>
-            </div>
-          </div>
-          <div className="border-t border-slate-200 mt-3 mb-2" />
 
-          {/* Footer with provider button and explore link */}
-          <div className="mt-auto pt-2">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          {renderListingCardImage()}
+
+          <div className="mt-2 min-w-0 space-y-1 border-t border-slate-200 pt-2">
+            <h3
+              className="min-w-0 cursor-pointer truncate text-[17px] font-semibold leading-snug text-slate-900"
+              title={title}
+              onClick={handleCardClick}
+            >
+              {title}
+            </h3>
+            <p className={listingDescriptionClassName} title={description}>
+              {description}
+            </p>
+          </div>
+
+          <div className="mt-2 grid grid-cols-3 gap-2 border-t border-slate-200 pt-2 text-xs text-muted-foreground">
+            <div className="min-w-0 space-y-1">
+              <div className="flex min-w-0 items-center gap-1.5 text-slate-500">
+                <MapPin className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate font-medium">Location</span>
+              </div>
+              <p className={listingMetricValueClassName} title={location || 'Not set'}>{location || 'Not set'}</p>
+            </div>
+            <div className="min-w-0 space-y-1">
+              <div className="flex min-w-0 items-center gap-1.5 text-slate-500">
+                <IndianRupee className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate font-medium">Price</span>
+              </div>
+              <p className={listingMetricValueClassName} title={offerPriceLabel}>{offerPriceLabel}</p>
+            </div>
+            <div className="min-w-0 space-y-1">
+              <div className="flex min-w-0 items-center gap-1.5 text-slate-500">
+                <Target className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate font-medium">Capacity</span>
+              </div>
+              <p className={listingMetricValueClassName} title={String(capacityLimit || 'Not set')}>{capacityLimit || 'Not set'}</p>
+            </div>
+          </div>
+
+          <div className="mt-1 border-t border-slate-200 pt-1">
+            <div className="flex min-w-0 items-center gap-2">
               <Link
                 href={ownerProfileId ? `/profile/${ownerProfileId}` : '#'}
-                className="flex min-w-0 flex-1 items-center gap-2.5"
+                className="flex min-w-0 flex-1 items-center gap-2 px-1 py-0.5"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-udaan-orange text-[11px] font-medium text-white">
+                <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-udaan-orange text-[10px] font-medium text-white">
                   {getInitials(providerDisplayName)}
                 </div>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-slate-900">{providerDisplayName}</p>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-slate-900" title={providerDisplayName}>{providerDisplayName}</p>
+                  <p className="truncate text-xs text-slate-700">
+                    {getProviderLabel(providerDisplayType)}
+                  </p>
                 </div>
               </Link>
 
+              <span className="h-8 w-px shrink-0 bg-slate-300" aria-hidden="true" />
+
               <Link
                 href={`/service-offers/${id}`}
-                className={chipButtonClassName}
+                className="inline-flex shrink-0 items-center gap-1 px-1 py-0.5 text-sm font-medium text-slate-900"
                 onClick={(e) => e.stopPropagation()}
               >
                 <span>Explore More</span>
-                <ArrowRight size={13} className="text-slate-900" />
+                <ArrowRight size={14} />
               </Link>
             </div>
           </div>

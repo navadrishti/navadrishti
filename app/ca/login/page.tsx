@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,27 +19,48 @@ export default function CALoginPage() {
   const [error, setError] = useState('');
   const [checkingAuth, setCheckingAuth] = useState(true);
 
-  // Redirect if already logged in
   useEffect(() => {
-    const checkCAAuth = async () => {
-      try {
-        const response = await fetch('/api/ca/verify', {
-          method: 'GET',
-          credentials: 'include'
-        });
+    let cancelled = false;
 
-        if (response.ok) {
-          router.push('/ca');
+    const checkExistingSession = async () => {
+      try {
+        const hasTab =
+          typeof window !== 'undefined' && Boolean(sessionStorage.getItem('ca_tab_session'));
+
+        if (!hasTab) {
+          if (!cancelled) setCheckingAuth(false);
           return;
         }
-      } catch (err) {
-        // Ignore verification failures and keep user on login page.
-      }
 
-      setCheckingAuth(false);
+        const response = await fetch('/api/ca/verify', {
+          method: 'GET',
+          credentials: 'include',
+        });
+
+        if (!response.ok) {
+          if (!cancelled) setCheckingAuth(false);
+          return;
+        }
+
+        const data = await response.json().catch(() => ({}));
+
+        if (!cancelled) {
+          if (data?.must_change_password || data?.account?.must_change_password) {
+            router.replace('/ca/change-password');
+          } else {
+            router.replace('/ca');
+          }
+        }
+      } catch {
+        if (!cancelled) setCheckingAuth(false);
+      }
     };
 
-    checkCAAuth();
+    checkExistingSession();
+
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -61,12 +82,11 @@ export default function CALoginPage() {
 
       if (response.ok) {
         toast.success('CA login successful');
-        try { sessionStorage.setItem('ca_tab_session', Date.now().toString()); } catch (e) {}
+        try { sessionStorage.setItem('ca_tab_session', Date.now().toString()); } catch {}
         setUsername('');
         setPassword('');
         setError('');
-        
-        // Check if password change is mandatory
+
         if (data.must_change_password) {
           router.push('/ca/change-password');
         } else {
@@ -76,7 +96,7 @@ export default function CALoginPage() {
         setError(data.error || 'Login failed');
         toast.error(data.error || 'Login failed');
       }
-    } catch (err) {
+    } catch {
       setError('Network error. Please try again.');
       toast.error('Network error. Please try again.');
     } finally {
@@ -84,12 +104,11 @@ export default function CALoginPage() {
     }
   };
 
-  // Show loading while checking authentication
   if (checkingAuth) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100">
         <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-blue-600 mx-auto" />
+          <Loader2 className="mx-auto h-8 w-8 animate-spin text-blue-600" />
           <p className="mt-4 text-blue-600">Checking authentication...</p>
         </div>
       </div>
@@ -97,16 +116,14 @@ export default function CALoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center p-4">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100 p-4">
       <div className="w-full max-w-md">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">CA Console</h1>
+        <div className="mb-8 text-center">
+          <h1 className="mb-2 text-3xl font-bold text-gray-900">CA Console</h1>
           <p className="text-gray-600">Chartered Accountant Verification Portal</p>
         </div>
 
-        {/* Login Card */}
-        <Card>
+        <Card className="border-2 border-slate-200 shadow-none">
           <CardHeader>
             <CardTitle>Sign In</CardTitle>
             <CardDescription>
@@ -115,14 +132,12 @@ export default function CALoginPage() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleLogin} className="space-y-4">
-              {error && (
+              {error ? (
                 <Alert variant="destructive">
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
-              )}
-
-              {/* CA ID removed - login by username and password only */}
+              ) : null}
 
               <div className="space-y-2">
                 <Label htmlFor="username">Username</Label>
@@ -150,35 +165,29 @@ export default function CALoginPage() {
                 />
               </div>
 
-              <Button 
-                type="submit" 
-                className="w-full" 
+              <Button
+                type="submit"
+                className="w-full"
                 disabled={loading || !username || !password}
               >
                 {loading ? (
                   <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Signing in...
                   </>
                 ) : (
                   <>
-                    <Shield className="h-4 w-4 mr-2" />
+                    <Shield className="mr-2 h-4 w-4" />
                     Sign In
                   </>
                 )}
               </Button>
-
-              <div className="text-center text-sm text-gray-600 mt-4">
-                <p>Forgot password? Contact administrator</p>
-              </div>
             </form>
           </CardContent>
         </Card>
 
-        {/* Demo Credentials Notice removed (CA ID not required) */}
-
-        {/* Footer */}
-        <div className="text-center mt-6 text-sm text-gray-600">
+        <div className="mt-6 text-center text-sm text-gray-600">
+          <p className="mb-2">Forgot password? Contact administrator</p>
           <p className="inline-flex items-center gap-2">
             © 2026
             <Image

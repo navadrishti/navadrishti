@@ -158,16 +158,6 @@ export default function GovernmentAdminPage() {
           return;
         }
 
-        try {
-          const hasTab = typeof window !== 'undefined' && sessionStorage.getItem('govt_admin_tab_session');
-          if (!hasTab) {
-            router.push('/government-admin/login');
-            return;
-          }
-        } catch (e) {
-          // ignore
-        }
-
         const verifyData = await verifyResponse.json();
         setAccount(verifyData.account || null);
 
@@ -189,6 +179,11 @@ export default function GovernmentAdminPage() {
 
   const handleLogout = async () => {
     await fetch('/api/government-admin/logout', { method: 'POST', credentials: 'include' });
+    try {
+      sessionStorage.removeItem('govt_admin_tab_session');
+    } catch {
+      // Ignore storage access issues
+    }
     router.push('/government-admin/login');
   };
 
