@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ArrowLeft, Building2, Calendar, MapPin, Users } from "lucide-react"
+import { ArrowLeft, Building2, Calendar, MapPin, CheckCircle2 } from "lucide-react"
 
 function CSRCampaignDetailSkeleton() {
   return (
@@ -71,12 +71,16 @@ function CSRCampaignDetailSkeleton() {
   )
 }
 
+import { readCampaignCategory, readCampaignLocation } from '@/lib/campaign-schema'
+import { formatDisplayDate, isCampaignStarted, isVolunteerRegistrationPastDeadline } from "@/lib/format-date"
+import { getVolunteerButtonState, sumVolunteerApplicationCount } from '@/lib/campaign-volunteer-utils'
+
 interface Campaign {
   id: string
   title: string | null
   description: string | null
-  cause: string
-  region: string
+  category: string | null
+  location: string | null
   budget_inr: number | null
   budget_breakdown: Record<string, number> | null
   schedule_vii: string | null
@@ -101,10 +105,13 @@ export default function CSRCampaignDetailPage() {
   const [currentUserType, setCurrentUserType] = useState<string | null>(null)
   const { user } = useAuth()
   const isCompany = user?.user_type === 'company'
+  const canShowVolunteerAction = user?.user_type === 'ngo' || user?.user_type === 'individual'
   const allVerified = Boolean(user?.email_verified && user?.phone_verified && user?.verification_status === 'verified')
   const [accepting, setAccepting] = useState(false)
   const [applying, setApplying] = useState(false)
   const [activeTab, setActiveTab] = useState<'overview' | 'owner' | 'milestones'>('overview')
+
+  const effectiveUserId = Number(user?.id || currentUserId || 0)
 
   useEffect(() => {
     if (!campaignId) return
@@ -114,7 +121,10 @@ export default function CSRCampaignDetailPage() {
       setLoading(true)
       setError(null)
       try {
-        const response = await fetch('/api/campaigns')
+        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
+        const response = await fetch('/api/campaigns', {
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        })
         const payload = await response.json().catch(() => null)
         const rows: Campaign[] = Array.isArray(payload?.data) ? payload.data : []
         const match = rows.find((item) => String(item.id) === campaignId) || null
@@ -133,13 +143,15 @@ export default function CSRCampaignDetailPage() {
     return () => {
       cancelled = true
     }
-  }, [campaignId])
+  }, [campaignId, effectiveUserId])
 
   const appliedByCurrentUser = (() => {
     try {
       const impact = (campaign as any)?.impact_metrics || {}
       const apps = Array.isArray(impact.volunteer_applications) ? impact.volunteer_applications : []
-      return apps.some((a: any) => Number(a?.user_id || 0) === Number(currentUserId))
+      return effectiveUserId > 0
+        ? apps.some((a: any) => Number(a?.user_id || 0) === effectiveUserId)
+        : false
     } catch (e) { return false }
   })()
 
@@ -154,20 +166,23 @@ export default function CSRCampaignDetailPage() {
     try {
       const impact = (campaign as any)?.impact_metrics || {}
       const apps = Array.isArray(impact.volunteer_applications) ? impact.volunteer_applications : []
-      return apps.reduce((sum: number, item: any) => sum + Number(item?.capacity || 1), 0)
+      return sumVolunteerApplicationCount(apps)
     } catch (e) { return 0 }
   })()
 
-  const isVolunteerClosed = (() => {
-    try {
-      if (!campaign?.start_date) return false
-      const start = new Date(String(campaign.start_date))
-      const allowedUntil = new Date(start)
-      allowedUntil.setDate(start.getDate() - 1)
-      allowedUntil.setHours(23, 59, 59, 999)
-      return new Date() > allowedUntil
-    } catch (e) { return false }
-  })()
+  const volunteerState = getVolunteerButtonState({
+    status: campaign?.status,
+    startDate: campaign?.start_date,
+    leadNgoAccepted: campaign?.impact_metrics?.lead_ngo_accepted,
+    volunteerCount,
+    volunteerLimit,
+    userType: currentUserType ?? user?.user_type,
+    allVerified,
+    applied: appliedByCurrentUser,
+    applying,
+    isVolunteerRegistrationPastDeadline,
+    isCampaignStarted,
+  })
 
   const handleVolunteerClick = async () => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
@@ -184,12 +199,14 @@ export default function CSRCampaignDetailPage() {
         alert(payload?.error || 'Failed to volunteer')
       } else {
         // reload campaign
-        const response = await fetch('/api/campaigns')
+        const response = await fetch('/api/campaigns', {
+          headers: { Authorization: `Bearer ${token}` },
+        })
         const payload2 = await response.json().catch(() => null)
         const rows = Array.isArray(payload2?.data) ? payload2.data : []
         const match = rows.find((item: any) => String(item.id) === campaignId) || null
         setCampaign(match)
-        alert('Registered to volunteer')
+        alert('Applied to volunteer')
       }
     } catch (e) {
       console.error(e)
@@ -258,37 +275,44 @@ export default function CSRCampaignDetailPage() {
             <Card className="overflow-hidden border-slate-200 bg-white shadow-sm">
               <CardHeader className="border-b border-slate-100 bg-gradient-to-r from-white to-slate-50/80">
                 <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="space-y-2">
+                  <div className="min-w-0 flex-1 space-y-2">
                     {/* tags removed per request */}
-                    <CardTitle className="text-2xl text-slate-950">{campaign.title || campaign.cause}</CardTitle>
+                    <CardTitle className="text-2xl text-slate-950">{campaign.title || readCampaignCategory(campaign)}</CardTitle>
                     <p className="max-w-3xl text-sm leading-6 text-slate-600">{campaign.description || 'No campaign description provided.'}</p>
                   </div>
-                  <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-right shadow-sm">
-                    <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Budget</p>
-                    <p className="text-xl font-semibold text-slate-950">{formatCurrency(campaign.budget_inr)}</p>
-                  </div>
-                  {!isCompany && user && (
-                    <div className="mt-2 text-right">
-                      {appliedByCurrentUser ? (
-                        <Button disabled variant="ghost" className="h-9 px-3 text-sm font-medium text-emerald-600">Registered</Button>
-                      ) : (
-                        <Button onClick={handleVolunteerClick} disabled={applying || !allVerified || isVolunteerClosed || (volunteerLimit > 0 && volunteerCount >= volunteerLimit)} className="h-9 px-3 text-sm font-medium">
-                          {applying ? 'Registering…' : (!allVerified ? 'Verify to apply' : isVolunteerClosed ? 'Registration closed' : (volunteerLimit > 0 && volunteerCount >= volunteerLimit) ? 'Full' : 'Register to Volunteer')}
-                        </Button>
-                      )}
+                  <div className="flex shrink-0 flex-col items-end gap-2">
+                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-right shadow-sm">
+                      <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Budget</p>
+                      <p className="text-xl font-semibold text-slate-950">{formatCurrency(campaign.budget_inr)}</p>
                     </div>
-                  )}
+                    {canShowVolunteerAction && user ? (
+                      volunteerState.label === 'Applied' ? (
+                        <Button disabled variant="outline" className="h-9 gap-1 px-3 text-sm font-medium text-emerald-600">
+                          <CheckCircle2 className="h-4 w-4" />
+                          Applied
+                        </Button>
+                      ) : (
+                        <Button
+                          onClick={handleVolunteerClick}
+                          disabled={!volunteerState.canApply}
+                          className="h-9 px-3 text-sm font-medium"
+                        >
+                          {volunteerState.label}
+                        </Button>
+                      )
+                    ) : null}
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="p-5">
                 <div className="grid gap-3 md:grid-cols-3">
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500"><MapPin className="h-3.5 w-3.5" />Region</div>
-                    <p className="mt-2 text-sm font-semibold text-slate-950">{campaign.region}</p>
+                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500"><MapPin className="h-3.5 w-3.5" />Location</div>
+                    <p className="mt-2 text-sm font-semibold text-slate-950">{readCampaignLocation(campaign) || 'TBD'}</p>
                   </div>
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                     <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500"><Calendar className="h-3.5 w-3.5" />Timeline</div>
-                    <p className="mt-2 text-sm font-semibold text-slate-950">{campaign.start_date || 'Start TBD'} → {campaign.end_date || 'End TBD'}</p>
+                    <p className="mt-2 text-sm font-semibold text-slate-950">{formatDisplayDate(campaign.start_date) || 'Start TBD'} → {formatDisplayDate(campaign.end_date) || 'End TBD'}</p>
                   </div>
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                     <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500"><Building2 className="h-3.5 w-3.5" />Company</div>
@@ -314,7 +338,7 @@ export default function CSRCampaignDetailPage() {
                     <CardContent className="space-y-3 text-sm text-slate-700">
                       <div className="flex items-start justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
                         <span className="text-slate-500">Schedule VII</span>
-                        <span className="font-semibold text-slate-950">{campaign.schedule_vii || campaign.cause}</span>
+                        <span className="font-semibold text-slate-950">{campaign.schedule_vii || readCampaignCategory(campaign) || 'Not specified'}</span>
                       </div>
                       <div className="flex items-start justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
                         <span className="text-slate-500">Volunteer requirement</span>
@@ -417,7 +441,12 @@ export default function CSRCampaignDetailPage() {
                       <div key={`${campaign.id}-milestone-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <p className="text-sm font-semibold text-slate-950">{index + 1}. {String(milestone.title || `Milestone ${index + 1}`)}</p>
-                          <p className="text-xs text-slate-500">{String(milestone.start_date || milestone.startDate || '')}{(milestone.start_date || milestone.startDate) && (milestone.end_date || milestone.endDate) ? ` — ${String(milestone.end_date || milestone.endDate)}` : ''}</p>
+                          <p className="text-xs text-slate-500">
+                            {formatDisplayDate(String(milestone.start_date || milestone.startDate || ''))}
+                            {(milestone.start_date || milestone.startDate) && (milestone.end_date || milestone.endDate)
+                              ? ` — ${formatDisplayDate(String(milestone.end_date || milestone.endDate))}`
+                              : ''}
+                          </p>
                         </div>
                         <p className="mt-2 text-sm text-slate-700">{String(milestone.description || '')}</p>
                         <p className="mt-2 text-xs font-medium text-slate-500">Budget: {formatCurrency(Number(milestone.budget_allocated || 0))}</p>

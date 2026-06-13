@@ -6,6 +6,7 @@ import {
   InputSchema,
   type CapabilityMatch,
 } from "@/lib/csr-agent/find-service-offers";
+import { buildRequirementDetails } from "@/lib/csr-agent/recommendation-utils";
 
 type RecommendationDebug = {
   reason: "coercion_validation_failed" | "input_validation_failed" | "matcher_error" | "fallback_ok" | "empty_results" | "ok" | "route_error";
@@ -29,7 +30,7 @@ const RequestCoercionSchema = z
     budget: z.coerce.number(),
     start_date: z.coerce.date(),
     end_date: z.coerce.date(),
-    requirementDetails: z.coerce.string().trim().min(1),
+    requirementDetails: z.coerce.string().trim().optional().default(""),
   })
   .refine((data) => Number.isFinite(data.budget) && data.budget > 0, {
     message: "budget must be a positive number",
@@ -177,7 +178,9 @@ const findServiceOffersFallback = async (input: z.infer<typeof RequestCoercionSc
   });
 
   const candidates = looseFiltered.length > 0 ? looseFiltered : rows;
-  return buildFallbackMatches(candidates, input).slice(0, 5);
+  const matches = buildFallbackMatches(candidates, input);
+  if (matches.length > 0) return matches.slice(0, 5);
+  return buildFallbackMatches(rows, input).slice(0, 5);
 };
 
 export async function POST(request: NextRequest) {
@@ -205,7 +208,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const validation = InputSchema.safeParse(coerced.data);
+    const validation = InputSchema.safeParse({
+      ...coerced.data,
+      requirementDetails: buildRequirementDetails({
+        campaignName: coerced.data.title,
+        category: coerced.data.category,
+        city: coerced.data.city,
+        state: coerced.data.state_province,
+        requirementDetails: coerced.data.requirementDetails,
+      }),
+    });
     if (!validation.success) {
       return NextResponse.json<RecommendationResponse>(
         {
@@ -264,7 +276,16 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const fallbackMatches = await findServiceOffersFallback(coerced.data);
+    const fallbackMatches = await findServiceOffersFallback({
+      ...coerced.data,
+      requirementDetails: buildRequirementDetails({
+        campaignName: coerced.data.title,
+        category: coerced.data.category,
+        city: coerced.data.city,
+        state: coerced.data.state_province,
+        requirementDetails: coerced.data.requirementDetails,
+      }),
+    });
     return NextResponse.json<RecommendationResponse>({
       success: true,
       data: fallbackMatches,

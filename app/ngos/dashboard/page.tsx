@@ -12,11 +12,13 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Clock, CheckCircle, AlertTriangle, HeartHandshake, Trash2, Plus, Building, TicketCheck, MailCheck, Phone, Loader2, XCircle } from 'lucide-react';
+import { formatDisplayDate, formatCampaignLeadLifecycleLabel, type CampaignLeadLifecycle } from '@/lib/format-date';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 import { SkeletonOrderItem } from '@/components/ui/skeleton';
 import { ProfileDashboardTab } from '@/components/profile-dashboard-tab';
 import { DashboardQuickSidebar } from '@/components/dashboard-quick-sidebar';
+import { CampaignVolunteerAssignmentCard, type CampaignVolunteerAssignmentItem } from '@/components/campaign-volunteer-assignment-card';
 
 interface OfferRequestItem {
   id: number;
@@ -95,17 +97,6 @@ const formatInrAmount = (value: unknown): string => {
   return `INR ${amount.toLocaleString('en-IN')}`;
 };
 
-const formatDisplayDate = (value?: string | null): string => {
-  if (!value) return 'Not set';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Not set';
-  return date.toLocaleDateString('en-IN', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric'
-  });
-};
-
 const getOfferRequestBillingDetails = (request: OfferRequestItem) => {
   const meta = request.response_meta && typeof request.response_meta === 'object' ? request.response_meta : {};
   const assignmentMeta = meta.assignment_meta && typeof meta.assignment_meta === 'object' ? meta.assignment_meta : {};
@@ -162,15 +153,52 @@ interface CSRTrackingAssignment {
   }>;
 }
 
-interface LeadNgoInvitation {
+interface CampaignLeadAssignment {
   id: string;
+  campaign_id: string;
+  campaign_title: string;
+  campaign_description?: string;
+  campaign_location?: string;
+  campaign_category?: string;
+  campaign_status: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  lifecycle: CampaignLeadLifecycle;
+  accepted_at?: string | null;
+  company_id: number;
+  company_name: string;
+  company_email?: string;
+}
+
+interface CampaignVolunteerAssignment {
+  id: string;
+  campaign_id: string;
+  campaign_title: string;
+  campaign_location?: string;
+  campaign_category?: string;
+  campaign_status?: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  lifecycle: CampaignLeadLifecycle;
+  volunteer_capacity?: number;
+  company_name?: string;
+  assignment_id?: string | null;
+  attendance_summary?: {
+    last_attendance_at?: string | null;
+    days_attended?: number;
+    total_entries?: number;
+  };
+}
+
+interface CampaignLeadInvitation {
+  id: string;
+  campaign_id: string;
+  campaign_title: string;
+  campaign_description?: string;
+  campaign_location?: string;
+  campaign_cause?: string;
   status: string;
-  note?: string;
   invited_at?: string;
-  project_id: string;
-  project_title: string;
-  project_location?: string;
-  project_timeline?: string;
   company_id: number;
   company_name: string;
   company_email?: string;
@@ -189,6 +217,12 @@ const formatStatusLabel = (status: string): string => {
     .split(' ')
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
+};
+
+const getCampaignLifecycleBadgeClass = (lifecycle: CampaignLeadLifecycle): string => {
+  if (lifecycle === 'yet_to_start') return 'border-amber-300 bg-amber-50 text-amber-700';
+  if (lifecycle === 'started') return 'border-blue-300 bg-blue-50 text-blue-700';
+  return 'border-green-300 bg-green-50 text-green-700';
 };
 
 const getStatusBadgeClass = (status: string): string => {
@@ -220,9 +254,13 @@ function NGODashboardContent() {
   const [csrAttendanceAssignments, setCsrAttendanceAssignments] = useState<any[]>([]);
   const [loadingCSRAttendanceAssignments, setLoadingCSRAttendanceAssignments] = useState(false);
   const [markingAttendanceId, setMarkingAttendanceId] = useState<string | null>(null);
-  const [leadNgoInvitations, setLeadNgoInvitations] = useState<LeadNgoInvitation[]>([]);
-  const [loadingLeadNgoInvitations, setLoadingLeadNgoInvitations] = useState(false);
-  const [respondingLeadInviteId, setRespondingLeadInviteId] = useState<string | null>(null);
+  const [campaignLeadInvitations, setCampaignLeadInvitations] = useState<CampaignLeadInvitation[]>([]);
+  const [campaignLeadAssignments, setCampaignLeadAssignments] = useState<CampaignLeadAssignment[]>([]);
+  const [campaignVolunteerAssignments, setCampaignVolunteerAssignments] = useState<CampaignVolunteerAssignment[]>([]);
+  const [loadingCampaignVolunteerAssignments, setLoadingCampaignVolunteerAssignments] = useState(false);
+  const [loadingCampaignLeadInvitations, setLoadingCampaignLeadInvitations] = useState(false);
+  const [loadingCampaignLeadAssignments, setLoadingCampaignLeadAssignments] = useState(false);
+  const [respondingCampaignLeadInviteId, setRespondingCampaignLeadInviteId] = useState<string | null>(null);
   const [ongoingNeeds, setOngoingNeeds] = useState<any[]>([]);
   const [historyNeeds, setHistoryNeeds] = useState<any[]>([]);
   const [csrProjects, setCsrProjects] = useState<any[]>([]);
@@ -238,6 +276,7 @@ function NGODashboardContent() {
   const [yourNeedsTab, setYourNeedsTab] = useState<'ongoing-needs' | 'history-needs'>('ongoing-needs');
   const [trackingTab, setTrackingTab] = useState<'ongoing-projects' | 'history-projects' | 'ongoing-needs' | 'history-needs'>('ongoing-needs');
   const [csrProjectsTab, setCsrProjectsTab] = useState<'invitations' | 'ongoing' | 'completed'>('invitations');
+  const [csrProjectsSectionTab, setCsrProjectsSectionTab] = useState<'ngo-projects' | 'other-csr'>('ngo-projects');
   const [deletingRequest, setDeletingRequest] = useState<number | null>(null);
   const sidebarItems = [
     { value: 'profile', label: 'Profile' },
@@ -468,73 +507,129 @@ function NGODashboardContent() {
     }
   };
 
-  const fetchLeadNgoInvitations = async () => {
+  const fetchCampaignLeadInvitations = async () => {
     try {
-      setLoadingLeadNgoInvitations(true);
+      setLoadingCampaignLeadInvitations(true);
       const token = localStorage.getItem('token');
       if (!token) {
-        setLeadNgoInvitations([]);
+        setCampaignLeadInvitations([]);
         return;
       }
 
-      const response = await fetch('/api/service-request-assignments?mode=ngo-lead-invitations', {
+      const response = await fetch('/api/campaigns/lead-invitations', {
         headers: {
-          Authorization: `Bearer ${token}`
-        }
+          Authorization: `Bearer ${token}`,
+        },
       });
 
       const payload = await response.json();
       if (response.ok && payload?.success) {
-        setLeadNgoInvitations(Array.isArray(payload.data) ? payload.data : []);
+        setCampaignLeadInvitations(Array.isArray(payload.data) ? payload.data : []);
       } else {
-        setLeadNgoInvitations([]);
+        setCampaignLeadInvitations([]);
       }
     } catch (error) {
-      console.error('Error fetching lead NGO invitations:', error);
-      setLeadNgoInvitations([]);
+      console.error('Error fetching campaign lead invitations:', error);
+      setCampaignLeadInvitations([]);
     } finally {
-      setLoadingLeadNgoInvitations(false);
+      setLoadingCampaignLeadInvitations(false);
     }
   };
 
-  const respondLeadNgoInvitation = async (inviteId: string, decision: 'accepted' | 'rejected') => {
+  const fetchCampaignLeadAssignments = async () => {
     try {
-      setRespondingLeadInviteId(inviteId);
+      setLoadingCampaignLeadAssignments(true);
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setCampaignLeadAssignments([]);
+        return;
+      }
+
+      const response = await fetch('/api/campaigns/lead-assignments', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const payload = await response.json();
+      if (response.ok && payload?.success) {
+        setCampaignLeadAssignments(Array.isArray(payload.data) ? payload.data : []);
+      } else {
+        setCampaignLeadAssignments([]);
+      }
+    } catch (error) {
+      console.error('Error fetching campaign lead assignments:', error);
+      setCampaignLeadAssignments([]);
+    } finally {
+      setLoadingCampaignLeadAssignments(false);
+    }
+  };
+
+  const fetchCampaignVolunteerAssignments = async () => {
+    try {
+      setLoadingCampaignVolunteerAssignments(true);
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setCampaignVolunteerAssignments([]);
+        return;
+      }
+
+      const response = await fetch('/api/campaigns/volunteer-assignments', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await response.json();
+      if (response.ok && data?.success) {
+        setCampaignVolunteerAssignments(Array.isArray(data.data) ? data.data : []);
+      } else {
+        setCampaignVolunteerAssignments([]);
+      }
+    } catch (error) {
+      console.error('Error fetching campaign volunteer assignments:', error);
+      setCampaignVolunteerAssignments([]);
+    } finally {
+      setLoadingCampaignVolunteerAssignments(false);
+    }
+  };
+
+  const respondCampaignLeadInvitation = async (campaignId: string, decision: 'accepted' | 'rejected') => {
+    try {
+      setRespondingCampaignLeadInviteId(campaignId);
       const token = localStorage.getItem('token');
       if (!token) {
         toast({ title: 'Error', description: 'Please login again', variant: 'destructive' });
         return;
       }
 
-      const response = await fetch('/api/service-request-assignments', {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          action: 'respond-lead-ngo-invitation',
-          inviteId,
-          decision
-        })
-      });
+      if (decision === 'accepted') {
+        const response = await fetch('/api/campaigns/accept-lead', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ campaign_id: campaignId }),
+        });
 
-      const payload = await response.json();
-      if (!response.ok || !payload?.success) {
-        toast({ title: 'Decision failed', description: payload?.error || 'Could not update invitation', variant: 'destructive' });
-        return;
+        const payload = await response.json();
+        if (!response.ok || !payload?.success) {
+          toast({ title: 'Accept failed', description: payload?.error || 'Could not accept lead NGO invite', variant: 'destructive' });
+          return;
+        }
+
+        toast({
+          title: 'Lead role accepted',
+          description: 'This campaign is now in Ongoing CSR. It will show as Started once the campaign begins.',
+        });
+
+        setCsrProjectsSectionTab('other-csr');
+        setCsrProjectsTab('ongoing');
       }
 
-      toast({
-        title: decision === 'accepted' ? 'Invitation accepted' : 'Invitation rejected',
-        description: decision === 'accepted' ? 'You are now the lead NGO for this project. Other invites are expired automatically.' : 'Invitation was rejected.'
-      });
-
-      fetchLeadNgoInvitations();
+      await Promise.all([fetchCampaignLeadInvitations(), fetchCampaignLeadAssignments()]);
     } catch (error) {
-      toast({ title: 'Decision failed', description: 'Could not update invitation', variant: 'destructive' });
+      toast({ title: 'Error', description: 'Could not respond to campaign invitation', variant: 'destructive' });
     } finally {
-      setRespondingLeadInviteId(null);
+      setRespondingCampaignLeadInviteId(null);
     }
   };
 
@@ -732,6 +827,83 @@ function NGODashboardContent() {
     return Number.isFinite(capacity) && capacity > 0 ? capacity : 1;
   };
 
+  const handleMarkCampaignVolunteerAttendance = async (assignment: CampaignVolunteerAssignmentItem) => {
+    const token = localStorage.getItem('token');
+    if (!token || !assignment.assignment_id) {
+      toast({ title: 'Authentication required', description: 'Please sign in again to mark attendance.', variant: 'destructive' });
+      return;
+    }
+
+    const today = getLocalDateString();
+    const attendanceSummary = assignment.attendance_summary || {};
+    if (String(attendanceSummary.last_attendance_at || '') === today) {
+      toast({ title: 'Already marked', description: "Today's attendance has already been submitted." });
+      return;
+    }
+
+    const location = await new Promise<{ latitude: number; longitude: number; accuracy?: number } | null>((resolve) => {
+      if (typeof navigator === 'undefined' || !navigator.geolocation) {
+        resolve(null);
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => resolve({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy
+        }),
+        () => resolve(null),
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    });
+
+    if (!location) {
+      toast({
+        title: 'Location required',
+        description: 'Please share your location to mark attendance.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    try {
+      setMarkingAttendanceId(String(assignment.assignment_id));
+      const response = await fetch(`/api/service-assignments/${assignment.assignment_id}/attendance`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          attendanceStatus: 'present',
+          attendanceSource: 'ngo_dashboard',
+          attendanceDate: today,
+          locationLatitude: location.latitude,
+          locationLongitude: location.longitude,
+          locationAccuracy: location.accuracy,
+          units: getNgoAttendanceUnits()
+        })
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.success) {
+        throw new Error(payload?.error || 'Failed to mark attendance');
+      }
+
+      toast({ title: 'Attendance marked', description: `Attendance saved for ${getNgoAttendanceUnits()} people.` });
+      await fetchCampaignVolunteerAssignments();
+    } catch (error) {
+      toast({
+        title: 'Attendance failed',
+        description: error instanceof Error ? error.message : 'Could not mark attendance.',
+        variant: 'destructive'
+      });
+    } finally {
+      setMarkingAttendanceId(null);
+    }
+  };
+
   const handleMarkCSRAttendance = async (assignment: any) => {
     const token = localStorage.getItem('token');
     if (!token) {
@@ -820,7 +992,9 @@ function NGODashboardContent() {
       fetchCompanyProjectApplications(),
       fetchCSRTrackingAssignments(),
       fetchCSRAttendanceAssignments(),
-      fetchLeadNgoInvitations(),
+      fetchCampaignLeadInvitations(),
+      fetchCampaignLeadAssignments(),
+      fetchCampaignVolunteerAssignments(),
       fetchCSRProjects()
     ]);
   };
@@ -952,9 +1126,18 @@ function NGODashboardContent() {
     return { completed, inProgress, accepted };
   };
 
-  const invitationProjects = csrProjects.filter((project) => getProjectBucket(project) === 'invitation');
+  const ongoingCampaignVolunteerAssignments = campaignVolunteerAssignments.filter((assignment) => assignment.lifecycle !== 'completed');
+  const completedCampaignVolunteerAssignments = campaignVolunteerAssignments.filter((assignment) => assignment.lifecycle === 'completed');
+  const ongoingCampaignLeadAssignments = campaignLeadAssignments.filter((assignment) => assignment.lifecycle !== 'completed');
+  const completedCampaignLeadAssignments = campaignLeadAssignments.filter((assignment) => assignment.lifecycle === 'completed');
   const ongoingCSRProjects = csrProjects.filter((project) => getProjectBucket(project) === 'ongoing');
   const completedCSRProjects = csrProjects.filter((project) => getProjectBucket(project) === 'completed');
+  const otherCsrCount =
+    campaignLeadInvitations.length +
+    ongoingCampaignLeadAssignments.length +
+    completedCampaignLeadAssignments.length +
+    ongoingCSRProjects.length +
+    completedCSRProjects.length;
   const ongoingTrackingProjects = csrTrackingAssignments.filter((assignment) => !['completed', 'closed', 'cancelled'].includes(String(assignment.assignment_status || '').toLowerCase()));
   const historyTrackingProjects = csrTrackingAssignments.filter((assignment) => ['completed', 'closed', 'cancelled'].includes(String(assignment.assignment_status || '').toLowerCase()));
   const navigateToTab = (value: string) => {
@@ -966,6 +1149,7 @@ function NGODashboardContent() {
       setTrackingTab('ongoing-needs');
     }
     if (value === 'csr-projects') {
+      setCsrProjectsSectionTab('ngo-projects');
       setCsrProjectsTab('invitations');
     }
     router.replace(`/ngos/dashboard?tab=${value}`, { scroll: false });
@@ -1098,7 +1282,7 @@ function NGODashboardContent() {
                                 <Button variant="outline" size="sm">View Offer</Button>
                               </Link>
                             </div>
-                              <div className="text-xs text-slate-500">Valid until: {formatDisplayDate(offer.valid_until)}</div>
+                              <div className="text-xs text-slate-500">Valid until: {formatDisplayDate(offer.valid_until) || 'Not set'}</div>
                           </div>
                         ))}
                       </TabsContent>
@@ -1226,7 +1410,7 @@ function NGODashboardContent() {
                                   <div className="grid grid-cols-1 gap-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 sm:grid-cols-2 lg:grid-cols-3">
                                     <div className="min-w-0">
                                       <p className="text-xs uppercase tracking-wide text-slate-500">Assigned</p>
-                                      <p className="truncate">{formatDisplayDate(billing.assignedAt)}</p>
+                                      <p className="truncate">{formatDisplayDate(billing.assignedAt) || 'Not set'}</p>
                                     </div>
                                     <div className="min-w-0">
                                       <p className="text-xs uppercase tracking-wide text-slate-500">Billing</p>
@@ -1550,88 +1734,127 @@ function NGODashboardContent() {
                   
 
                   <TabsContent value="csr-projects" className="mt-4 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-medium">Projects Assigned to Your NGO</h3>
-                      <Button variant="outline" size="sm" onClick={fetchCSRProjects}>Refresh</Button>
-                    </div>
+                    <Tabs
+                      value={csrProjectsSectionTab}
+                      onValueChange={(value) => setCsrProjectsSectionTab(value as 'ngo-projects' | 'other-csr')}
+                      className="w-full"
+                    >
+                      <TabsList className="grid w-full grid-cols-2 h-auto">
+                        <TabsTrigger value="ngo-projects">
+                          Taken - in ({csrTrackingAssignments.length})
+                        </TabsTrigger>
+                        <TabsTrigger value="other-csr">
+                          Assignments ({otherCsrCount})
+                        </TabsTrigger>
+                      </TabsList>
 
-                    <div className="rounded-md border bg-slate-50 p-4 space-y-3">
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <p className="font-semibold text-slate-900">NGO Project CSR Tracking</p>
-                          <p className="text-sm text-slate-600">Accepted full-project handoffs are tracked here and removed from Your Needs.</p>
+                      <TabsContent value="ngo-projects" className="mt-4 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h3 className="font-medium">Taken - in</h3>
+                            <p className="text-sm text-muted-foreground">Projects you published that a company has taken in or is working on with you.</p>
+                          </div>
+                          <Button variant="outline" size="sm" onClick={fetchCSRTrackingAssignments}>Refresh</Button>
                         </div>
-                        <Button variant="outline" size="sm" onClick={fetchCSRTrackingAssignments}>Refresh Tracking</Button>
-                      </div>
 
-                      {loadingCSRTrackingAssignments ? (
-                        <div className="flex items-center justify-center py-6 text-sm text-slate-600">
-                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                          Loading tracking assignments...
-                        </div>
-                      ) : csrTrackingAssignments.length === 0 ? (
-                        <p className="text-sm text-slate-600">No accepted company handoffs yet.</p>
-                      ) : (
-                        <div className="space-y-3">
-                          {csrTrackingAssignments.map((assignment) => {
-                            return (
-                            <div key={`${assignment.project_id}:${assignment.assigned_company_id}`} className="rounded-md border bg-white p-3 space-y-3">
-                              <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                                <div>
-                                  <p className="font-semibold">{assignment.project_title}</p>
-                                  <p className="text-sm text-slate-600">Assigned Company: {assignment.assigned_company_name}</p>
-                                  <p className="text-xs text-slate-500">{assignment.assigned_company_email || 'No email'} • {assignment.project_location || 'Location not set'}</p>
-                                </div>
-                                <Badge variant="outline" className={`w-fit ${getStatusBadgeClass(assignment.assignment_status)}`}>
-                                  {formatStatusLabel(assignment.assignment_status)}
-                                </Badge>
-                              </div>
-
-                              <p className="text-xs text-slate-600">Need-level tracking is available only in the project detail page.</p>
+                        <div className="rounded-md border bg-slate-50 p-4 space-y-3">
+                          {loadingCSRTrackingAssignments ? (
+                            <div className="flex items-center justify-center py-6 text-sm text-slate-600">
+                              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                              Loading company handoffs...
                             </div>
-                          )})}
-                        </div>
-                      )}
-                    </div>
+                          ) : csrTrackingAssignments.length === 0 ? (
+                            <div className="py-6 text-center text-muted-foreground">
+                              <p className="font-medium">No company handoffs yet</p>
+                              <p className="mt-1 text-sm">When a company takes in one of your projects, it will appear here.</p>
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              {csrTrackingAssignments.map((assignment) => (
+                                <div key={`${assignment.project_id}:${assignment.assigned_company_id}`} className="rounded-md border bg-white p-3 space-y-3">
+                                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                                    <div>
+                                      <p className="font-semibold">{assignment.project_title}</p>
+                                      <p className="text-sm text-slate-600">Company: {assignment.assigned_company_name}</p>
+                                      <p className="text-xs text-slate-500">{assignment.assigned_company_email || 'No email'} • {assignment.project_location || 'Location not set'}</p>
+                                    </div>
+                                    <Badge variant="outline" className={`w-fit ${getStatusBadgeClass(assignment.assignment_status)}`}>
+                                      {formatStatusLabel(assignment.assignment_status)}
+                                    </Badge>
+                                  </div>
 
-                    {loadingCSRProjects ? (
+                                  <div className="flex flex-wrap gap-2">
+                                    <Link href={`/service-requests/projects/${assignment.project_id}`}>
+                                      <Button size="sm" variant="outline">View Project</Button>
+                                    </Link>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </TabsContent>
+
+                      <TabsContent value="other-csr" className="mt-4 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h3 className="font-medium">Assignments</h3>
+                            <p className="text-sm text-muted-foreground">Invitations, ongoing work, and completed CSR where you are assigned as lead NGO or volunteer.</p>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              void fetchCSRProjects();
+                              void fetchCampaignLeadInvitations();
+                              void fetchCampaignLeadAssignments();
+                            }}
+                          >
+                            Refresh
+                          </Button>
+                        </div>
+
+                    {loadingCSRProjects || loadingCampaignLeadAssignments || loadingCampaignVolunteerAssignments ? (
                       <div className="p-8 text-center text-muted-foreground">Loading CSR projects...</div>
                     ) : (
                       <Tabs value={csrProjectsTab} onValueChange={(value) => setCsrProjectsTab(value as 'invitations' | 'ongoing' | 'completed')} className="w-full">
                         <TabsList className="grid w-full grid-cols-3 h-auto">
-                          <TabsTrigger value="invitations">Invitations ({invitationProjects.length})</TabsTrigger>
-                          <TabsTrigger value="ongoing">Ongoing CSR ({ongoingCSRProjects.length})</TabsTrigger>
-                          <TabsTrigger value="completed">Completed CSR ({completedCSRProjects.length})</TabsTrigger>
+                          <TabsTrigger value="invitations">Invitations ({campaignLeadInvitations.length})</TabsTrigger>
+                          <TabsTrigger value="ongoing">Ongoing CSR ({ongoingCampaignLeadAssignments.length + ongoingCampaignVolunteerAssignments.length + ongoingCSRProjects.length})</TabsTrigger>
+                          <TabsTrigger value="completed">Completed CSR ({completedCampaignLeadAssignments.length + completedCampaignVolunteerAssignments.length + completedCSRProjects.length})</TabsTrigger>
                         </TabsList>
 
                         <TabsContent value="invitations" className="mt-4 space-y-3">
                           <div className="rounded-md border bg-slate-50 p-4 space-y-3">
                             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                               <div>
-                                <p className="font-semibold text-slate-900">Lead NGO Invitations (Service Projects)</p>
-                                <p className="text-sm text-slate-600">Companies can invite your NGO to act as lead implementer for accepted projects.</p>
+                                <p className="font-semibold text-slate-900">CSR Campaign Lead NGO Invitations</p>
+                                <p className="text-sm text-slate-600">Companies invite your NGO to lead a CSR campaign before it is published.</p>
                               </div>
-                              <Button variant="outline" size="sm" onClick={fetchLeadNgoInvitations}>Refresh</Button>
+                              <Button variant="outline" size="sm" onClick={fetchCampaignLeadInvitations}>Refresh</Button>
                             </div>
 
-                            {loadingLeadNgoInvitations ? (
+                            {loadingCampaignLeadInvitations ? (
                               <div className="flex items-center justify-center py-4 text-sm text-slate-600">
                                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
                                 Loading invitations...
                               </div>
-                            ) : leadNgoInvitations.length === 0 ? (
-                              <p className="text-sm text-slate-600">No lead NGO invitations yet.</p>
+                            ) : campaignLeadInvitations.length === 0 ? (
+                              <div className="py-8 text-center text-muted-foreground">
+                                <p className="font-medium">No invitations pending</p>
+                                <p className="mt-1 text-sm">CSR campaign lead invites from companies will appear here.</p>
+                              </div>
                             ) : (
                               <div className="space-y-2">
-                                {leadNgoInvitations.map((invite) => {
+                                {campaignLeadInvitations.map((invite) => {
                                   const actionable = ['pending', 'invited', 'pending_acceptance', 'awaiting_acceptance', 'offered', 'assigned'].includes(String(invite.status || '').toLowerCase());
                                   return (
                                     <div key={invite.id} className="rounded-md border bg-white p-3 space-y-2">
                                       <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                                         <div>
-                                          <p className="font-semibold">{invite.project_title}</p>
+                                          <p className="font-semibold">{invite.campaign_title}</p>
                                           <p className="text-sm text-slate-600">Invited by: {invite.company_name}</p>
-                                          <p className="text-xs text-slate-500">{invite.company_email || 'No email'} • {invite.project_location || 'Location not set'}</p>
+                                          <p className="text-xs text-slate-500">{invite.company_email || 'No email'} • {invite.campaign_location || 'Location not set'}</p>
                                         </div>
                                         <Badge variant="outline" className={`w-fit ${getStatusBadgeClass(invite.status)}`}>
                                           {formatStatusLabel(invite.status)}
@@ -1639,25 +1862,13 @@ function NGODashboardContent() {
                                       </div>
 
                                       <div className="flex flex-wrap gap-2">
-                                        <Link href={`/service-requests/projects/${invite.project_id}`}>
-                                          <Button size="sm" variant="outline">View Project</Button>
-                                        </Link>
                                         <Button
                                           size="sm"
                                           className="bg-green-600 hover:bg-green-700"
-                                          onClick={() => respondLeadNgoInvitation(invite.id, 'accepted')}
-                                          disabled={!actionable || respondingLeadInviteId === invite.id}
+                                          onClick={() => respondCampaignLeadInvitation(invite.campaign_id, 'accepted')}
+                                          disabled={!actionable || respondingCampaignLeadInviteId === invite.campaign_id}
                                         >
-                                          {respondingLeadInviteId === invite.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Accept'}
-                                        </Button>
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          className="border-red-300 text-red-600 hover:bg-red-50"
-                                          onClick={() => respondLeadNgoInvitation(invite.id, 'rejected')}
-                                          disabled={!actionable || respondingLeadInviteId === invite.id}
-                                        >
-                                          {respondingLeadInviteId === invite.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Reject'}
+                                          {respondingCampaignLeadInviteId === invite.campaign_id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Accept'}
                                         </Button>
                                       </div>
                                     </div>
@@ -1666,59 +1877,54 @@ function NGODashboardContent() {
                               </div>
                             )}
                           </div>
-
-                          {invitationProjects.length === 0 ? (
-                            <div className="p-8 text-center text-muted-foreground">
-                              <p className="text-lg font-medium mb-2">No invitations pending</p>
-                              <p className="text-sm">New CSR project invitations will appear here.</p>
-                            </div>
-                          ) : invitationProjects.map((project) => (
-                            <div key={project.id} className="rounded-md border bg-white p-4">
-                              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                                <div>
-                                  <p className="font-semibold">{project.title}</p>
-                                  <p className="text-sm text-muted-foreground">{project.region || 'Region not set'}</p>
-                                </div>
-                                <Badge variant="outline" className="w-fit">{project.project_status}</Badge>
-                              </div>
-                              <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-muted-foreground md:grid-cols-3">
-                                <p>Deadline: {project.deadline_at || 'N/A'}</p>
-                                <p>Milestones: {project.completed_milestones_count ?? 0}/{project.milestones_count ?? 0}</p>
-                                <p>Confirmed Funds: Rs {project.confirmed_funds ?? 0}</p>
-                              </div>
-                              <div className="mt-3">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => fetchProjectEvidenceTimeline(project.id)}
-                                  disabled={loadingEvidenceProjectId === project.id}
-                                >
-                                  {loadingEvidenceProjectId === project.id ? 'Loading Timeline...' : 'View Evidence Timeline'}
-                                </Button>
-                              </div>
-
-                              {projectEvidenceById[project.id] && (
-                                <div className="mt-4 rounded-md border bg-slate-50 p-3">
-                                  <p className="text-sm font-medium text-slate-900">Evidence Timeline Snapshot</p>
-                                  <div className="mt-2 grid grid-cols-1 gap-2 text-xs text-slate-600 md:grid-cols-4">
-                                    <p>Total Milestones: {projectEvidenceById[project.id]?.summary?.total_milestones ?? 0}</p>
-                                    <p>Completed: {projectEvidenceById[project.id]?.summary?.completed_milestones ?? 0}</p>
-                                    <p>Confirmed Funds: Rs {projectEvidenceById[project.id]?.summary?.confirmed_funds ?? 0}</p>
-                                    <p>Upcoming: {projectEvidenceById[project.id]?.summary?.next_milestone?.title || 'N/A'}</p>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          ))}
                         </TabsContent>
 
                         <TabsContent value="ongoing" className="mt-4 space-y-3">
-                          {ongoingCSRProjects.length === 0 ? (
+                          {ongoingCampaignLeadAssignments.length === 0 && ongoingCampaignVolunteerAssignments.length === 0 && ongoingCSRProjects.length === 0 ? (
                             <div className="p-8 text-center text-muted-foreground">
                               <p className="text-lg font-medium mb-2">No ongoing CSR projects</p>
-                              <p className="text-sm">Active projects accepted by your NGO will appear here.</p>
+                              <p className="text-sm">Accepted campaign assignments and active projects will appear here.</p>
                             </div>
-                          ) : ongoingCSRProjects.map((project) => (
+                          ) : (
+                            <>
+                              {ongoingCampaignLeadAssignments.map((assignment) => (
+                                <div key={`campaign-lead-${assignment.id}`} className="rounded-md border bg-white p-4">
+                                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                                    <div>
+                                      <p className="font-semibold">{assignment.campaign_title}</p>
+                                      <p className="text-sm text-muted-foreground">Lead NGO • {assignment.company_name}</p>
+                                      <p className="text-xs text-muted-foreground">{assignment.campaign_location || 'Location not set'}</p>
+                                    </div>
+                                    <Badge variant="outline" className={`w-fit ${getCampaignLifecycleBadgeClass(assignment.lifecycle)}`}>
+                                      {formatCampaignLeadLifecycleLabel(assignment.lifecycle)}
+                                    </Badge>
+                                  </div>
+                                  <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-muted-foreground md:grid-cols-2">
+                                    <p>Category: {assignment.campaign_category || 'Not set'}</p>
+                                    <p>
+                                      Timeline: {formatDisplayDate(assignment.start_date) || 'Start TBD'} → {formatDisplayDate(assignment.end_date) || 'End TBD'}
+                                    </p>
+                                    {assignment.campaign_status === 'draft' && assignment.lifecycle === 'yet_to_start' ? (
+                                      <p className="md:col-span-2 text-amber-700">Waiting for the company to publish this campaign.</p>
+                                    ) : null}
+                                  </div>
+                                  <div className="mt-3">
+                                    <Button asChild variant="outline" size="sm">
+                                      <Link href={`/csr-campaigns/${assignment.campaign_id}`}>View Campaign</Link>
+                                    </Button>
+                                  </div>
+                                </div>
+                              ))}
+                              {ongoingCampaignVolunteerAssignments.map((assignment) => (
+                                <CampaignVolunteerAssignmentCard
+                                  key={`campaign-volunteer-${assignment.id}`}
+                                  assignment={assignment}
+                                  today={getLocalDateString()}
+                                  markingAttendanceId={markingAttendanceId}
+                                  onMarkAttendance={handleMarkCampaignVolunteerAttendance}
+                                />
+                              ))}
+                              {ongoingCSRProjects.map((project) => (
                             <div key={project.id} className="rounded-md border bg-white p-4">
                               {(() => {
                                 const attendanceAssignment = csrAttendanceAssignments.find((assignment) => String(assignment.target_id) === String(project.id));
@@ -1802,15 +2008,53 @@ function NGODashboardContent() {
                               )}
                             </div>
                           ))}
+                            </>
+                          )}
                         </TabsContent>
 
                         <TabsContent value="completed" className="mt-4 space-y-3">
-                          {completedCSRProjects.length === 0 ? (
+                          {completedCampaignLeadAssignments.length === 0 && completedCampaignVolunteerAssignments.length === 0 && completedCSRProjects.length === 0 ? (
                             <div className="p-8 text-center text-muted-foreground">
                               <p className="text-lg font-medium mb-2">No completed CSR projects yet</p>
-                              <p className="text-sm">Completed projects will appear here for reference and reporting.</p>
+                              <p className="text-sm">Completed campaigns and projects will appear here for reference and reporting.</p>
                             </div>
-                          ) : completedCSRProjects.map((project) => (
+                          ) : (
+                            <>
+                              {completedCampaignLeadAssignments.map((assignment) => (
+                                <div key={`campaign-lead-completed-${assignment.id}`} className="rounded-md border bg-white p-4">
+                                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                                    <div>
+                                      <p className="font-semibold">{assignment.campaign_title}</p>
+                                      <p className="text-sm text-muted-foreground">Lead NGO • {assignment.company_name}</p>
+                                      <p className="text-xs text-muted-foreground">{assignment.campaign_location || 'Location not set'}</p>
+                                    </div>
+                                    <Badge variant="outline" className={`w-fit ${getCampaignLifecycleBadgeClass(assignment.lifecycle)}`}>
+                                      {formatCampaignLeadLifecycleLabel(assignment.lifecycle)}
+                                    </Badge>
+                                  </div>
+                                  <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-muted-foreground md:grid-cols-2">
+                                    <p>Category: {assignment.campaign_category || 'Not set'}</p>
+                                    <p>
+                                      Timeline: {formatDisplayDate(assignment.start_date) || 'Start TBD'} → {formatDisplayDate(assignment.end_date) || 'End TBD'}
+                                    </p>
+                                  </div>
+                                  <div className="mt-3">
+                                    <Button asChild variant="outline" size="sm">
+                                      <Link href={`/csr-campaigns/${assignment.campaign_id}`}>View Campaign</Link>
+                                    </Button>
+                                  </div>
+                                </div>
+                              ))}
+                              {completedCampaignVolunteerAssignments.map((assignment) => (
+                                <CampaignVolunteerAssignmentCard
+                                  key={`campaign-volunteer-completed-${assignment.id}`}
+                                  assignment={assignment}
+                                  today={getLocalDateString()}
+                                  markingAttendanceId={markingAttendanceId}
+                                  onMarkAttendance={handleMarkCampaignVolunteerAttendance}
+                                />
+                              ))}
+                              {completedCSRProjects.map((project) => (
                             <div key={project.id} className="rounded-md border bg-white p-4">
                               <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                                 <div>
@@ -1828,11 +2072,6 @@ function NGODashboardContent() {
                               <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-muted-foreground md:grid-cols-2">
                                 <p>Deadline: {project.deadline_at || 'N/A'}</p>
                                 <p>Confirmed Funds: Rs {project.confirmed_funds ?? 0}</p>
-                              </div>
-                              <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                                <p className="font-medium text-slate-900">Attendance</p>
-                                <p className="mt-1 text-slate-600">Days attended: {project.days_attended ?? 0}</p>
-                                <p className="text-slate-600">Last marked: {project.last_attendance_at || 'Not yet'}</p>
                               </div>
                               <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
                                 <p className="font-medium text-slate-900">Attendance</p>
@@ -1863,9 +2102,13 @@ function NGODashboardContent() {
                               )}
                             </div>
                           ))}
+                            </>
+                          )}
                         </TabsContent>
                       </Tabs>
                     )}
+                      </TabsContent>
+                    </Tabs>
                   </TabsContent>
                     </Tabs>
                   </CardContent>

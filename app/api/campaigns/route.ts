@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth';
+import { buildCampaignWritePayload, resolveCampaignCategoryInput, resolveCampaignLocationInput } from '@/lib/campaign-schema';
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const cause = searchParams.get('cause');
-    const region = searchParams.get('region');
+    const cause = searchParams.get('cause') || searchParams.get('category');
+    const region = searchParams.get('region') || searchParams.get('location');
     const companyId = searchParams.get('company_id');
     const search = searchParams.get('search');
 
@@ -16,11 +17,11 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false });
 
     if (cause) {
-      query = query.ilike('cause', `%${cause}%`);
+      query = query.ilike('category', `%${cause}%`);
     }
 
     if (region) {
-      query = query.ilike('region', `%${region}%`);
+      query = query.ilike('location', `%${region}%`);
     }
 
     if (companyId) {
@@ -28,7 +29,8 @@ export async function GET(request: NextRequest) {
     }
 
     if (search) {
-      query = query.or(`title.ilike.%${search}%,description.ilike.%${search}%,cause.ilike.%${search}%`);
+      const term = `%${search.trim()}%`;
+      query = query.or(`title.ilike."${term}",description.ilike."${term}",category.ilike."${term}",location.ilike."${term}",schedule_vii.ilike."${term}"`);
     }
 
     const { data, error } = await query;
@@ -75,41 +77,17 @@ export async function POST(request: NextRequest) {
     assertUserType(user, ['company']);
 
     const body = await request.json();
-    const {
-      title,
-      description,
-      cause,
-      region,
-      budget_inr,
-      timeline,
-      budget_breakdown,
-      schedule_vii,
-      sdg_alignment,
-      impact_metrics,
-      milestones
-    } = body;
+    const category = resolveCampaignCategoryInput(body);
+    const location = resolveCampaignLocationInput(body);
 
-    if (!title || !cause || !region) {
+    if (!body.title || !category || !location) {
       return NextResponse.json(
-        { error: 'title, cause and region are required' },
+        { error: 'title, category and location are required' },
         { status: 400 }
       );
     }
 
-    const payload = {
-      company_id: user.id,
-      title,
-      description: description ?? null,
-      cause,
-      region,
-      budget_inr: budget_inr ?? null,
-      timeline: timeline ?? null,
-      budget_breakdown: budget_breakdown ?? {},
-      schedule_vii: schedule_vii ?? null,
-      sdg_alignment: sdg_alignment ?? [],
-      impact_metrics: impact_metrics ?? {},
-      milestones: milestones ?? []
-    };
+    const payload = buildCampaignWritePayload(body, user.id);
 
     const { data, error } = await supabase
       .from('campaigns')
@@ -127,7 +105,7 @@ export async function POST(request: NextRequest) {
       entity_id: data.id,
       event_type: 'campaign_created',
       event_hash: `campaign_created:${data.id}:${Date.now()}`,
-      event_payload: { title: data.title, cause: data.cause, region: data.region },
+      event_payload: { title: data.title, category: data.category, location: data.location },
       created_by: user.id
     });
 

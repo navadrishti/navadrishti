@@ -1,5 +1,6 @@
 ﻿// Database helper functions for Social Feed functionality
 import { supabase } from './db'
+import { extractHashtagsFromContent, mergeUniqueHashtags, normalizeHashtagKey, stripHashtagPrefix } from './hashtag-utils'
 
 // ===============================================
 // POSTS FUNCTIONALITY
@@ -147,10 +148,8 @@ export const socialFeedDb = {
       visibility?: string;
     }) {
       try {
-        // Extract hashtags from content
-        const hashtagRegex = /#([a-zA-Z0-9_]+)/g;
-        const contentHashtags = postData.content.match(hashtagRegex)?.map(tag => tag.replace('#', '').toLowerCase()) || [];
-        const allTags = [...new Set([...(postData.tags || []), ...contentHashtags])];
+        const contentHashtags = extractHashtagsFromContent(postData.content)
+        const allTags = mergeUniqueHashtags(postData.tags, contentHashtags)
 
         // Create post data WITHOUT triggers by using raw insert
         const postInsert = {
@@ -206,17 +205,17 @@ export const socialFeedDb = {
 
     // Enhanced method to update hashtag statistics with proper trending logic
     async updateHashtagStats(tags: string[]) {
-      for (const tag of tags) {
+      for (const rawTag of tags) {
         try {
-          const tagLower = tag.toLowerCase().trim();
-          
-          if (!tagLower || tagLower.length === 0) continue;
-          
-          // Check for existing hashtag
+          const displayTag = stripHashtagPrefix(rawTag)
+          const tagKey = normalizeHashtagKey(displayTag)
+
+          if (!tagKey) continue
+
           const { data: existing, error: selectError } = await supabase
             .from('hashtags')
-            .select('id, total_mentions, daily_mentions, weekly_mentions')
-            .eq('tag', tagLower)
+            .select('id, tag, total_mentions, daily_mentions, weekly_mentions')
+            .ilike('tag', displayTag)
             .maybeSingle();
 
           if (selectError) {
@@ -235,6 +234,7 @@ export const socialFeedDb = {
             const { error: updateError } = await supabase
               .from('hashtags')
               .update({
+                tag: displayTag,
                 total_mentions: newTotalMentions,
                 daily_mentions: newDailyMentions,
                 weekly_mentions: newWeeklyMentions,
@@ -253,7 +253,7 @@ export const socialFeedDb = {
             const { error: insertError } = await supabase
               .from('hashtags')
               .insert({
-                tag: tagLower,
+                tag: displayTag,
                 total_mentions: 1,
                 daily_mentions: 1,
                 weekly_mentions: 1,
@@ -277,17 +277,17 @@ export const socialFeedDb = {
 
     // Method to decrement hashtag statistics when posts are deleted
     async decrementHashtagStats(tags: string[]) {
-      for (const tag of tags) {
+      for (const rawTag of tags) {
         try {
-          const tagLower = tag.toLowerCase().trim();
-          
-          if (!tagLower || tagLower.length === 0) continue;
-          
-          // Get current hashtag stats
+          const displayTag = stripHashtagPrefix(rawTag)
+          const tagKey = normalizeHashtagKey(displayTag)
+
+          if (!tagKey) continue
+
           const { data: existing, error: selectError } = await supabase
             .from('hashtags')
             .select('id, total_mentions, daily_mentions, weekly_mentions')
-            .eq('tag', tagLower)
+            .ilike('tag', displayTag)
             .maybeSingle();
 
           if (selectError || !existing) {
@@ -481,15 +481,21 @@ export const socialFeedDb = {
         if (postsError) throw postsError;
 
         // Step 2: Build a count of actual hashtag usage
-        const hashtagCounts = new Map<string, number>();
-        
+        const hashtagCounts = new Map<string, { count: number; displayTag: string }>()
+
         for (const post of allPosts || []) {
-          const hashtagRegex = /#([a-zA-Z0-9_]+)/g;
-          const hashtags = post.content.match(hashtagRegex)?.map(tag => tag.replace('#', '').toLowerCase()) || [];
-          
-          hashtags.forEach(tag => {
-            hashtagCounts.set(tag, (hashtagCounts.get(tag) || 0) + 1);
-          });
+          const hashtags = extractHashtagsFromContent(post.content || '')
+
+          hashtags.forEach((tag) => {
+            const key = normalizeHashtagKey(tag)
+            const current = hashtagCounts.get(key)
+            if (current) {
+              current.count += 1
+              current.displayTag = tag
+            } else {
+              hashtagCounts.set(key, { count: 1, displayTag: tag })
+            }
+          })
         }
 
         // Step 3: Get all stored hashtags
@@ -508,7 +514,7 @@ export const socialFeedDb = {
 
         // Step 4: Fix or remove incorrect hashtags
         for (const storedHashtag of storedHashtags || []) {
-          const actualCount = hashtagCounts.get(storedHashtag.tag) || 0;
+          const actualCount = hashtagCounts.get(normalizeHashtagKey(storedHashtag.tag))?.count || 0
           
           if (actualCount === 0) {
             // Delete hashtags that don't exist in any posts
@@ -546,17 +552,17 @@ export const socialFeedDb = {
           }
           
           // Remove from actual counts after processing
-          hashtagCounts.delete(storedHashtag.tag);
+          hashtagCounts.delete(normalizeHashtagKey(storedHashtag.tag))
         }
 
-        // Step 5: Create missing hashtags
-        for (const [tag, count] of hashtagCounts.entries()) {
+        for (const [tagKey, entry] of hashtagCounts.entries()) {
+          const { count, displayTag } = entry
           const trendingScore = this.calculateTrendingScore(count, count, count);
           
           const { error: insertError } = await supabase
             .from('hashtags')
             .insert({
-              tag,
+              tag: displayTag,
               total_mentions: count,
               daily_mentions: count,
               weekly_mentions: count,
@@ -568,7 +574,7 @@ export const socialFeedDb = {
             });
           
           if (insertError) {
-            results.errors.push(`Failed to create ${tag}: ${insertError.message}`);
+            results.errors.push(`Failed to create ${displayTag}: ${insertError.message}`);
           } else {
             results.created++;
           }
@@ -615,9 +621,7 @@ export const socialFeedDb = {
         
         if (getError) throw getError;
         
-        // Extract hashtags from the post content
-        const hashtagRegex = /#([a-zA-Z0-9_]+)/g;
-        const hashtags = post?.content.match(hashtagRegex)?.map(tag => tag.replace('#', '').toLowerCase()) || [];
+        const hashtags = extractHashtagsFromContent(post?.content || '')
         
         // Delete the post
         const { error } = await supabase
@@ -958,13 +962,13 @@ export const socialFeedDb = {
     },
 
     async updateTopic(topic: string, category: string = 'hashtag') {
-      const normalizedTag = topic.replace(/^#/, '').trim().toLowerCase();
-      if (!normalizedTag) return null;
+      const displayTag = stripHashtagPrefix(topic)
+      if (!displayTag) return null
 
       const { data: existing, error: selectError } = await supabase
         .from('hashtags')
         .select('id, total_mentions, daily_mentions, weekly_mentions')
-        .eq('tag', normalizedTag)
+        .ilike('tag', displayTag)
         .maybeSingle();
 
       if (selectError) throw selectError;
@@ -980,6 +984,7 @@ export const socialFeedDb = {
         const { data, error } = await supabase
           .from('hashtags')
           .update({
+            tag: displayTag,
             category,
             total_mentions: totalMentions,
             daily_mentions: dailyMentions,
@@ -999,7 +1004,7 @@ export const socialFeedDb = {
       const { data, error } = await supabase
         .from('hashtags')
         .insert({
-          tag: normalizedTag,
+          tag: displayTag,
           category,
           total_mentions: 1,
           daily_mentions: 1,

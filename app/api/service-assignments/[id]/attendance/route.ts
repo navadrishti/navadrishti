@@ -12,6 +12,7 @@ import {
   normalizeEngagementStatus,
   shouldUseDailyAttendance
 } from '@/lib/service-engagement';
+import { isCampaignStarted } from '@/lib/format-date';
 
 interface JWTPayload {
   id: number;
@@ -166,13 +167,30 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       Number(assignment.assignee_user_id) === Number(decoded.id) &&
       ['ngo', 'individual'].includes(decoded.user_type);
 
+    const isCampaignVolunteerAttendance =
+      assignment.target_type === 'campaign' &&
+      Number(assignment.assignee_user_id) === Number(decoded.id) &&
+      ['ngo', 'individual'].includes(decoded.user_type);
+
     const isNgoAttendance = decoded.user_type === 'ngo';
 
-    if (assignment.target_type === 'csr_project' && !isVolunteerSelfAttendance) {
-      return NextResponse.json({ error: 'Only the assigned NGO volunteer or individual volunteer can mark CSR attendance' }, { status: 403 });
-    }
+    if (assignment.target_type === 'campaign') {
+      if (!isCampaignVolunteerAttendance) {
+        return NextResponse.json({ error: 'Only the assigned campaign volunteer can mark attendance' }, { status: 403 });
+      }
 
-    if (assignment.target_type !== 'csr_project' && !isVolunteerSelfAttendance && !isNgoAttendance) {
+      const { data: campaign } = await supabase
+        .from('campaigns')
+        .select('start_date, end_date, status')
+        .eq('id', assignment.target_id)
+        .maybeSingle();
+
+      if (!isCampaignStarted(campaign?.start_date as string | null)) {
+        return NextResponse.json({ error: 'Attendance opens when the campaign starts' }, { status: 400 });
+      }
+    } else if (assignment.target_type === 'csr_project' && !isVolunteerSelfAttendance && !isNgoAttendance) {
+      return NextResponse.json({ error: 'Only the assigned NGO volunteer or individual volunteer can mark CSR attendance' }, { status: 403 });
+    } else if (assignment.target_type !== 'csr_project' && assignment.target_type !== 'campaign' && !isVolunteerSelfAttendance && !isNgoAttendance) {
       return NextResponse.json({ error: 'Only the assigned NGO or the volunteer themselves can mark attendance' }, { status: 403 });
     }
 
@@ -198,13 +216,31 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'Only today\'s attendance can be marked' }, { status: 400 });
     }
 
-    const units = toNumber(body?.units ?? body?.quantity ?? (isVolunteerSelfAttendance && userType === 'ngo' ? actingNgoCapacity : 1)) || (isVolunteerSelfAttendance && userType === 'ngo' ? Math.max(1, actingNgoCapacity) : 1);
+    if (isCampaignVolunteerAttendance && requestedAttendanceDate !== today) {
+      return NextResponse.json({ error: 'Only today\'s attendance can be marked' }, { status: 400 });
+    }
+
+    const units = toNumber(body?.units ?? body?.quantity ?? (
+      (isCampaignVolunteerAttendance || isVolunteerSelfAttendance) && userType === 'ngo'
+        ? actingNgoCapacity
+        : 1
+    )) || (
+      (isCampaignVolunteerAttendance || isVolunteerSelfAttendance) && userType === 'ngo'
+        ? Math.max(1, actingNgoCapacity)
+        : 1
+    );
     const multiplier = toNumber(body?.multiplier ?? 1) || 1;
     const paymentStatus = normalizeAttendancePaymentStatus(body?.paymentStatus || body?.payment_status || 'pending');
     const markedForUserId = toNumber(body?.markedForUserId ?? body?.marked_for_user_id ?? assignment.assignee_user_id);
     const locationLatitude = body?.locationLatitude ?? body?.location_latitude ?? null;
     const locationLongitude = body?.locationLongitude ?? body?.location_longitude ?? null;
     const locationAccuracy = body?.locationAccuracy ?? body?.location_accuracy ?? null;
+
+    if (assignment.target_type === 'campaign') {
+      if (locationLatitude === null || locationLongitude === null) {
+        return NextResponse.json({ error: 'Location is required to mark campaign attendance' }, { status: 400 });
+      }
+    }
 
     const meta = buildAttendanceMeta({
       targetType: assignment.target_type,

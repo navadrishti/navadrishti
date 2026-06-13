@@ -1,5 +1,6 @@
 // API route for trending topics
 import { NextRequest, NextResponse } from 'next/server'
+import { extractHashtagsFromContent, normalizeHashtagKey, stripHashtagPrefix } from '@/lib/hashtag-utils'
 
 export async function GET(request: NextRequest) {
   try {
@@ -93,36 +94,46 @@ export async function GET(request: NextRequest) {
     if (postsError) throw postsError
 
     // Extract hashtags from posts
-    const hashtagCounts: { [key: string]: number } = {}
+    const hashtagCounts = new Map<string, { count: number; displayTag: string }>()
     
     posts?.forEach(post => {
-      // Extract hashtags from content
-      const contentHashtags = post.content.match(/#[a-zA-Z0-9]+/g) || []
-      contentHashtags.forEach((tag: string) => {
-        const cleanTag = tag.substring(1).toLowerCase()
-        hashtagCounts[cleanTag] = (hashtagCounts[cleanTag] || 0) + 1
+      const contentHashtags = extractHashtagsFromContent(post.content || '')
+      contentHashtags.forEach((tag) => {
+        const key = normalizeHashtagKey(tag)
+        const current = hashtagCounts.get(key)
+        if (current) {
+          current.count += 1
+          current.displayTag = tag
+        } else {
+          hashtagCounts.set(key, { count: 1, displayTag: tag })
+        }
       })
-      
-      // Extract from tags array if available
+
       if (post.tags) {
-        let tagArray = []
+        let tagArray: string[] = []
         try {
           tagArray = typeof post.tags === 'string' ? JSON.parse(post.tags) : post.tags
         } catch {
           tagArray = []
         }
         tagArray.forEach((tag: string) => {
-          const cleanTag = tag.toLowerCase()
-          hashtagCounts[cleanTag] = (hashtagCounts[cleanTag] || 0) + 1
+          const cleaned = stripHashtagPrefix(tag)
+          const key = normalizeHashtagKey(cleaned)
+          const current = hashtagCounts.get(key)
+          if (current) {
+            current.count += 1
+            current.displayTag = cleaned
+          } else {
+            hashtagCounts.set(key, { count: 1, displayTag: cleaned })
+          }
         })
       }
     })
 
-    // Convert to trending topics format and sort by count
-    const extractedTopics = Object.entries(hashtagCounts)
-      .map(([topic, count]) => ({
-        id: topic,
-        topic,
+    const extractedTopics = Array.from(hashtagCounts.values())
+      .map(({ displayTag, count }) => ({
+        id: normalizeHashtagKey(displayTag),
+        topic: displayTag,
         mention_count: count,
         category: 'general',
         trend_score: count * 1.5,

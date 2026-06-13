@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server"
 import { verifyToken } from "@/lib/auth"
 import { supabase } from "@/lib/db"
 import { randomUUID } from 'crypto'
+import {
+  buildProjectContextWithPublished,
+  pruneRemovedAgentSessions,
+  readPublishedEntity,
+} from "@/lib/ai-agent-sessions"
 
 type AgentKind = "csr" | "ngo"
 
@@ -105,6 +110,7 @@ async function buildLatestPayloadFromTables(userId: number, agent: AgentKind) {
     .from(sessionsTable)
     .select("id, title, status, project_context, created_at, updated_at, last_message_at")
     .eq("user_id", userId)
+    .neq("status", "archived")
     .order("updated_at", { ascending: false })
 
   if (error) throw error
@@ -130,6 +136,9 @@ async function buildLatestPayloadFromTables(userId: number, agent: AgentKind) {
   const sessions = (rows || []).map((r: any) => {
     const state = stateBySession[r.id] || {}
     const uiState = state.ui_state && typeof state.ui_state === "object" ? state.ui_state : {}
+    const projectContext =
+      r.project_context && typeof r.project_context === "object" ? r.project_context : {}
+    const published = readPublishedEntity(projectContext)
     const base = {
       id: r.id,
       title: r.title,
@@ -154,6 +163,10 @@ async function buildLatestPayloadFromTables(userId: number, agent: AgentKind) {
         milestoneQuestionIndex: toNumberOr(uiState.milestoneQuestionIndex, 0),
         serviceSuggestions: state.service_suggestions || [],
         generatedCampaigns: state.generated_campaigns || [],
+        publishedCampaignId:
+          published?.type === "campaign"
+            ? published.id
+            : (projectContext as Record<string, unknown>).published_campaign_id ?? null,
       }
     }
 
@@ -166,6 +179,10 @@ async function buildLatestPayloadFromTables(userId: number, agent: AgentKind) {
       activeNeedQuestionIndex: toNumberOr(uiState.activeNeedQuestionIndex, 0),
       selectedOfferIdsByNeed: state.selected_offer_ids_by_need || uiState.selectedOfferIdsByNeed || {},
       generatedDraft: state.generated_draft || uiState.generatedDraft || null,
+      publishedProjectId:
+        published?.type === "project"
+          ? published.id
+          : (projectContext as Record<string, unknown>).published_project_id ?? null,
     }
   })
 
@@ -367,12 +384,14 @@ export async function POST(request: NextRequest) {
       const origId = s.id
       const idToUse = isValidUUID(origId) ? origId : randomUUID()
       if (!isValidUUID(origId) && origId) idMap[origId] = idToUse
+      const existingContext =
+        s.project_context && typeof s.project_context === "object" ? s.project_context : {}
       return {
         id: idToUse,
         user_id: userId,
         title: s.title || "Untitled session",
         status: s.status || "active",
-        project_context: s.project_context || s.projectData || {},
+        project_context: buildProjectContextWithPublished(s, existingContext as Record<string, unknown>),
         created_at: s.createdAt || new Date().toISOString(),
         updated_at: normalizedPayload.updatedAt || new Date().toISOString(),
         last_message_at: s.lastMessageAt || null,
@@ -447,6 +466,8 @@ export async function POST(request: NextRequest) {
       const { error: upsertStateErr } = await supabase.from(stateTable).upsert(stateRow, { onConflict: 'session_id' })
       if (upsertStateErr) console.warn('Failed to upsert session state', upsertStateErr)
     }
+
+    await pruneRemovedAgentSessions(agent, userId, sessionRows.map((row) => String(row.id)))
 
     return NextResponse.json({ success: true })
   } catch (error) {
