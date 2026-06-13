@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { socialFeedDb } from '@/lib/social-feed-db';
 import { verifyToken } from '@/lib/auth';
 import { verifyAuthToken, checkApiPermission } from '@/lib/server-access-control';
+import { mergeUniqueHashtags, extractHashtagsFromContent } from '@/lib/hashtag-utils';
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,10 +27,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Content or images required' }, { status: 400 });
     }
 
-    // Extract hashtags from content
-    const hashtagRegex = /#[a-zA-Z0-9_]+/g;
-    const extractedTags = content?.match(hashtagRegex)?.map((tag: string) => tag.replace('#', '')) || [];
-    const allTags = [...new Set([...(hashtags || []), ...extractedTags])];
+    const allTags = mergeUniqueHashtags(hashtags, extractHashtagsFromContent(content || ''));
 
     // Prepare media URLs array
     const mediaUrls = images ? images.map((img: any) => img.url) : [];

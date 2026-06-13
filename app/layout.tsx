@@ -122,7 +122,7 @@ export default async function RootLayout({
               position="top-right" 
               richColors={false}
               closeButton 
-              expand
+              expand={false}
               visibleToasts={6}
               duration={5000}
               theme="system"

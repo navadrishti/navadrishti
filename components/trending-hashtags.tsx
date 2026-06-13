@@ -3,6 +3,7 @@
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useTrendingHashtags } from '@/hooks/use-realtime-hashtags'
+import { formatHashtagLabel } from '@/lib/hashtag-utils'
 import { Activity, TrendingUp, Wifi, WifiOff } from 'lucide-react'
 import { useEffect } from 'react'
 
@@ -193,7 +194,7 @@ export function TrendingHashtags({
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-sm">
-                      {hashtag.tag}
+                      {formatHashtagLabel(hashtag.tag)}
                     </span>
                     {hashtag.is_trending && getTrendingIcon(hashtag.trending_score)}
                   </div>

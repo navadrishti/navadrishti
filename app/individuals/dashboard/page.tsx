@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ProfileDashboardTab } from '@/components/profile-dashboard-tab';
 import { DashboardQuickSidebar } from '@/components/dashboard-quick-sidebar';
+import { CampaignVolunteerAssignmentCard, type CampaignVolunteerAssignmentItem } from '@/components/campaign-volunteer-assignment-card';
 import { useToast } from '@/hooks/use-toast';
 
 interface OfferRequestItem {
@@ -97,11 +98,15 @@ function IndividualDashboardContent() {
   const [ongoingApplications, setOngoingApplications] = useState<any[]>([]);
   const [historyApplications, setHistoryApplications] = useState<any[]>([]);
   const [loadingApplications, setLoadingApplications] = useState(true);
-  const [markingAttendanceId, setMarkingAttendanceId] = useState<number | null>(null);
+  const [markingAttendanceId, setMarkingAttendanceId] = useState<string | null>(null);
+  const [campaignVolunteerAssignments, setCampaignVolunteerAssignments] = useState<CampaignVolunteerAssignmentItem[]>([]);
+  const [loadingCampaignVolunteerAssignments, setLoadingCampaignVolunteerAssignments] = useState(true);
+  const [csrCampaignsTab, setCsrCampaignsTab] = useState<'ongoing' | 'completed'>('ongoing');
   const sidebarItems = [
     { value: 'profile', label: 'Profile' },
     { value: 'capability-offers', label: 'Capability Offers' },
     { value: 'service-requests', label: 'Invitations' },
+    { value: 'csr-campaigns', label: 'CSR Campaigns' },
   ];
 
   const fetchServiceOffers = async () => {
@@ -196,11 +201,116 @@ function IndividualDashboardContent() {
     if (historyData.success) setHistoryApplications(Array.isArray(historyData.data) ? historyData.data : [])
   }
 
+  const fetchCampaignVolunteerAssignments = async () => {
+    try {
+      setLoadingCampaignVolunteerAssignments(true);
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setCampaignVolunteerAssignments([]);
+        return;
+      }
+
+      const response = await fetch('/api/campaigns/volunteer-assignments', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await response.json();
+      setCampaignVolunteerAssignments(response.ok && data?.success && Array.isArray(data.data) ? data.data : []);
+    } catch {
+      setCampaignVolunteerAssignments([]);
+    } finally {
+      setLoadingCampaignVolunteerAssignments(false);
+    }
+  };
+
   const getLocalDateString = (reference: Date = new Date()) => {
     const year = reference.getFullYear();
     const month = String(reference.getMonth() + 1).padStart(2, '0');
     const day = String(reference.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
+  };
+
+  const handleCampaignVolunteerAttendance = async (assignment: CampaignVolunteerAssignmentItem) => {
+    const token = localStorage.getItem('token');
+    if (!token || !assignment.assignment_id) {
+      toast({
+        title: 'Authentication required',
+        description: 'Please sign in again to mark attendance.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    const today = getLocalDateString();
+    const attendanceSummary = assignment.attendance_summary || {};
+    if (String(attendanceSummary.last_attendance_at || '') === today) {
+      toast({ title: 'Already marked', description: "Today's attendance has already been submitted." });
+      return;
+    }
+
+    const location = await new Promise<{ latitude: number; longitude: number; accuracy?: number } | null>((resolve) => {
+      if (typeof navigator === 'undefined' || !navigator.geolocation) {
+        resolve(null);
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => resolve({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy
+        }),
+        () => resolve(null),
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    });
+
+    if (!location) {
+      toast({
+        title: 'Location required',
+        description: 'Please share your location to mark attendance.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    try {
+      setMarkingAttendanceId(String(assignment.assignment_id));
+      const response = await fetch(`/api/service-assignments/${assignment.assignment_id}/attendance`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          attendanceStatus: 'present',
+          attendanceSource: 'volunteer_dashboard',
+          attendanceDate: today,
+          locationLatitude: location.latitude,
+          locationLongitude: location.longitude,
+          locationAccuracy: location.accuracy,
+          units: 1
+        })
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.success) {
+        throw new Error(payload?.error || 'Failed to mark attendance');
+      }
+
+      toast({
+        title: 'Attendance marked',
+        description: 'Your self-attendance was saved successfully.'
+      });
+      await fetchCampaignVolunteerAssignments();
+    } catch (error) {
+      toast({
+        title: 'Attendance failed',
+        description: error instanceof Error ? error.message : 'Could not mark attendance.',
+        variant: 'destructive'
+      });
+    } finally {
+      setMarkingAttendanceId(null);
+    }
   };
 
   const handleSelfAttendance = async (application: any) => {
@@ -225,7 +335,7 @@ function IndividualDashboardContent() {
     }
 
     try {
-      setMarkingAttendanceId(Number(application.id));
+      setMarkingAttendanceId(String(application.id));
       const today = getLocalDateString();
       const location = await new Promise<{ latitude: number; longitude: number; accuracy?: number } | null>((resolve) => {
         if (typeof navigator === 'undefined' || !navigator.geolocation) {
@@ -301,9 +411,13 @@ function IndividualDashboardContent() {
       fetchServiceOffers(),
       fetchOfferApplications(),
       fetchOfferRequests(),
-      fetchMyApplications()
+      fetchMyApplications(),
+      fetchCampaignVolunteerAssignments()
     ]);
   };
+
+  const ongoingCampaignVolunteerAssignments = campaignVolunteerAssignments.filter((assignment) => assignment.lifecycle !== 'completed');
+  const completedCampaignVolunteerAssignments = campaignVolunteerAssignments.filter((assignment) => assignment.lifecycle === 'completed');
 
   const pendingOfferRequests = offerRequests.filter((request) => getOfferRequestBucket(request) === 'pending');
   const inProgressOfferRequests = offerRequests.filter((request) => getOfferRequestBucket(request) === 'in-progress');
@@ -400,6 +514,7 @@ function IndividualDashboardContent() {
     fetchServiceOffers();
     fetchOfferApplications();
     fetchOfferRequests();
+    fetchCampaignVolunteerAssignments();
   }, [user?.id]);
 
   const navigateToTab = (value: string) => {
@@ -408,6 +523,9 @@ function IndividualDashboardContent() {
     }
     if (value === 'service-requests') {
       setMyApplicationsTab('ongoing');
+    }
+    if (value === 'csr-campaigns') {
+      setCsrCampaignsTab('ongoing');
     }
     router.replace(`/individuals/dashboard?tab=${value}`, { scroll: false });
   };
@@ -751,9 +869,9 @@ function IndividualDashboardContent() {
                                   <Button
                                     size="sm"
                                     onClick={() => handleSelfAttendance(application)}
-                                    disabled={markingAttendanceId === application.id}
+                                    disabled={markingAttendanceId === String(application.id)}
                                   >
-                                    {markingAttendanceId === application.id ? 'Marking…' : 'Mark Attendance'}
+                                    {markingAttendanceId === String(application.id) ? 'Marking…' : 'Mark Attendance'}
                                   </Button>
                                 </div>
                               </CardContent>
@@ -796,6 +914,55 @@ function IndividualDashboardContent() {
                                 </div>
                               </CardContent>
                             </Card>
+                          ))}
+                        </TabsContent>
+                      </Tabs>
+                    ) : activeTab === 'csr-campaigns' ? (
+                      <Tabs value={csrCampaignsTab} onValueChange={(value) => setCsrCampaignsTab(value as 'ongoing' | 'completed')} className="w-full">
+                        <TabsList className="grid w-full grid-cols-2">
+                          <TabsTrigger value="ongoing">Ongoing ({ongoingCampaignVolunteerAssignments.length})</TabsTrigger>
+                          <TabsTrigger value="completed">Completed ({completedCampaignVolunteerAssignments.length})</TabsTrigger>
+                        </TabsList>
+
+                        <TabsContent value="ongoing" className="mt-4 space-y-3">
+                          {loadingCampaignVolunteerAssignments ? (
+                            <div className="p-6 text-center text-muted-foreground">Loading CSR campaigns...</div>
+                          ) : ongoingCampaignVolunteerAssignments.length === 0 ? (
+                            <div className="p-8 text-center text-muted-foreground">
+                              <HeartHandshake className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                              <p className="text-lg font-medium mb-2">No ongoing CSR campaigns</p>
+                              <p className="text-sm mb-4">Campaigns you volunteer for will appear here as Yet to start, then Started.</p>
+                              <Link href="/csr-campaigns">
+                                <Button variant="outline">Browse CSR Campaigns</Button>
+                              </Link>
+                            </div>
+                          ) : ongoingCampaignVolunteerAssignments.map((assignment) => (
+                            <CampaignVolunteerAssignmentCard
+                              key={`individual-campaign-volunteer-${assignment.id}`}
+                              assignment={assignment}
+                              today={getLocalDateString()}
+                              markingAttendanceId={markingAttendanceId}
+                              onMarkAttendance={handleCampaignVolunteerAttendance}
+                            />
+                          ))}
+                        </TabsContent>
+
+                        <TabsContent value="completed" className="mt-4 space-y-3">
+                          {loadingCampaignVolunteerAssignments ? (
+                            <div className="p-6 text-center text-muted-foreground">Loading CSR campaigns...</div>
+                          ) : completedCampaignVolunteerAssignments.length === 0 ? (
+                            <div className="p-8 text-center text-muted-foreground">
+                              <p className="text-lg font-medium mb-2">No completed CSR campaigns yet</p>
+                              <p className="text-sm">Finished campaigns will appear here for reference.</p>
+                            </div>
+                          ) : completedCampaignVolunteerAssignments.map((assignment) => (
+                            <CampaignVolunteerAssignmentCard
+                              key={`individual-campaign-volunteer-completed-${assignment.id}`}
+                              assignment={assignment}
+                              today={getLocalDateString()}
+                              markingAttendanceId={markingAttendanceId}
+                              onMarkAttendance={handleCampaignVolunteerAttendance}
+                            />
                           ))}
                         </TabsContent>
                       </Tabs>

@@ -20,6 +20,7 @@ import {
   Loader2,
   MoreVertical,
   Send,
+  Trash2,
 } from "lucide-react"
 import { CSR_SCHEDULE_VII_CATEGORIES, SERVICE_REQUEST_CATEGORIES } from "@/lib/categories"
 
@@ -45,6 +46,7 @@ type NGOAIAgentSession = {
   conversationStage: ConversationStage
   generatedDraft: ServiceRequestDraftPayload | null
   selectedOfferIdsByNeed: Record<number, number[]>
+  publishedProjectId?: string | null
 }
 
 interface SessionPayload<T> {
@@ -146,7 +148,8 @@ const buildEmptySession = (): NGOAIAgentSession => {
     activeNeedQuestionIndex: 0,
     conversationStage: 'project',
     generatedDraft: null,
-    selectedOfferIdsByNeed: {}
+    selectedOfferIdsByNeed: {},
+    publishedProjectId: null,
   }
 }
 
@@ -478,6 +481,7 @@ export default function NGOAIAgentPage() {
   const [activeNeedQuestionIndex, setActiveNeedQuestionIndex] = useState(0)
   const [conversationStage, setConversationStage] = useState<ConversationStage>('project')
   const [generatedDraft, setGeneratedDraft] = useState<ServiceRequestDraftPayload | null>(null)
+  const [publishedProjectId, setPublishedProjectId] = useState<string | null>(null)
   const [publishingDraft, setPublishingDraft] = useState(false)
   const [offersLoading, setOffersLoading] = useState(false)
   const [relatedOffersByNeed, setRelatedOffersByNeed] = useState<Record<number, Array<{ offer: ServiceOfferLite; score: number; capacity: number; coverageRatio: number | null }>>>({})
@@ -853,6 +857,7 @@ export default function NGOAIAgentPage() {
       conversationStage,
       generatedDraft,
       selectedOfferIdsByNeed,
+      publishedProjectId,
     }
   }
 
@@ -1040,6 +1045,7 @@ export default function NGOAIAgentPage() {
     setConversationStage(active.conversationStage || 'project')
     setGeneratedDraft(active.generatedDraft || null)
     setSelectedOfferIdsByNeed(active.selectedOfferIdsByNeed || {})
+    setPublishedProjectId(active.publishedProjectId || null)
 
     const timer = setTimeout(() => {
       isApplyingSessionRef.current = false
@@ -1060,6 +1066,7 @@ export default function NGOAIAgentPage() {
     setConversationStage(session.conversationStage || 'project')
     setGeneratedDraft(session.generatedDraft || null)
     setSelectedOfferIdsByNeed(session.selectedOfferIdsByNeed || {})
+    setPublishedProjectId(session.publishedProjectId || null)
     setInput('')
     setTimeout(() => {
       isApplyingSessionRef.current = false
@@ -1078,7 +1085,7 @@ export default function NGOAIAgentPage() {
       : [nextSession, ...sessions]
 
     persistSessions(nextSessions, nextSession.id)
-  }, [mounted, user?.id, activeSessionId, messages, projectData, needsData, needCount, projectStep, activeNeedIndex, activeNeedQuestionIndex, conversationStage, generatedDraft, selectedOfferIdsByNeed])
+  }, [mounted, user?.id, activeSessionId, messages, projectData, needsData, needCount, projectStep, activeNeedIndex, activeNeedQuestionIndex, conversationStage, generatedDraft, selectedOfferIdsByNeed, publishedProjectId])
 
   useEffect(() => {
     if (!mounted || !user?.id || sessions.length === 0) return
@@ -1091,6 +1098,48 @@ export default function NGOAIAgentPage() {
     setSessions(nextSessions)
     setActiveSessionId(next.id)
     if (mounted && user?.id) persistSessions(nextSessions, next.id)
+  }
+
+  const deleteSession = async (sessionId: string, event?: React.MouseEvent) => {
+    event?.stopPropagation()
+    event?.preventDefault()
+    if (!window.confirm('Remove this conversation from history? Any published project or needs you created will stay live.')) return
+
+    const isServerSession = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(sessionId)
+    if (isServerSession && user?.id) {
+      try {
+        const response = await fetch(`/api/ai-agent/sessions/${encodeURIComponent(sessionId)}?agent=ngo`, {
+          method: 'DELETE',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          credentials: 'include',
+        })
+        const body = await response.json().catch(() => ({}))
+        if (!response.ok && response.status !== 404) {
+          throw new Error(body?.error || 'Failed to delete conversation')
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to delete conversation'
+        setMessages((prev) => [...prev, { role: 'assistant', content: message }])
+        return
+      }
+    }
+
+    let nextSessions = sessions.filter((session) => session.id !== sessionId)
+    let nextActiveId = activeSessionId
+
+    if (activeSessionId === sessionId) {
+      if (nextSessions.length === 0) {
+        const fresh = buildEmptySession()
+        nextSessions = [fresh]
+        nextActiveId = fresh.id
+      } else {
+        nextActiveId = nextSessions[0].id
+      }
+      setActiveSessionId(nextActiveId)
+    }
+
+    setSessions(nextSessions)
+    if (mounted && user?.id) persistSessions(nextSessions, nextActiveId)
   }
 
   useEffect(() => {
@@ -1661,6 +1710,15 @@ export default function NGOAIAgentPage() {
 
       setMessages(prev => [...prev, { role: 'assistant', content: `Published successfully. ${createdNeedIds.length} need${createdNeedIds.length > 1 ? 's were' : ' was'} created and is now live.` }])
 
+      const projectId = String(projectData.data.id)
+      setPublishedProjectId(projectId)
+      const currentSession = normalizeSessionFromState()
+      if (currentSession) {
+        const withPublished = { ...currentSession, publishedProjectId: projectId, updatedAt: new Date().toISOString() }
+        const nextSessions = sessions.map((session) => (session.id === withPublished.id ? withPublished : session))
+        persistSessions(nextSessions, withPublished.id)
+      }
+
       if (projectData?.data?.id) {
         router.push(`/service-requests/projects/${projectData.data.id}`)
       } else {
@@ -1780,15 +1838,27 @@ export default function NGOAIAgentPage() {
                     orderedSessions.map((session) => {
                       const isActive = session.id === activeSessionId
                       return (
-                        <button
+                        <div
                           key={session.id}
-                          type="button"
-                          onClick={() => setActiveSessionId(session.id)}
-                          className={`w-full rounded-xl border px-3 py-2 text-left transition ${isActive ? 'border-blue-300 bg-blue-50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}
+                          className={`flex items-start gap-1 rounded-xl border transition ${isActive ? 'border-blue-300 bg-blue-50' : 'border-slate-200 bg-white hover:bg-slate-50'}`}
                         >
-                          <p className="text-sm font-semibold text-slate-900">{session.title}</p>
-                          <p className="mt-1 text-[11px] text-slate-500">{new Date(session.updatedAt).toLocaleString()}</p>
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => setActiveSessionId(session.id)}
+                            className="min-w-0 flex-1 px-3 py-2 text-left"
+                          >
+                            <p className="text-sm font-semibold text-slate-900">{session.title}</p>
+                            <p className="mt-1 text-[11px] text-slate-500">{new Date(session.updatedAt).toLocaleString()}</p>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(event) => void deleteSession(session.id, event)}
+                            className="mr-2 mt-2 rounded-md p-1.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+                            aria-label={`Delete ${session.title}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
                       )
                     })
                   )}

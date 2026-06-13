@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
 import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth'
+import { deleteCampaignWithDependencies, formatCampaignDeleteError } from '@/lib/campaign-delete'
 
 async function loadCampaign(campaignId: string) {
   const { data, error } = await supabase
@@ -28,19 +29,13 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       return NextResponse.json({ error: 'You can only delete your own campaign' }, { status: 403 })
     }
 
-    const { error } = await supabase
-      .from('campaigns')
-      .delete()
-      .eq('id', id)
-      .eq('company_id', user.id)
-
-    if (error) {
-      throw error
-    }
+    await deleteCampaignWithDependencies(id)
 
     return NextResponse.json({ success: true })
   } catch (error: any) {
     console.error('Campaign delete error:', error)
-    return NextResponse.json({ error: error?.message || 'Failed to delete campaign' }, { status: 500 })
+    const message = formatCampaignDeleteError(error)
+    const status = error?.code === '23503' ? 409 : 500
+    return NextResponse.json({ error: message }, { status })
   }
 }

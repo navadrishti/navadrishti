@@ -163,7 +163,7 @@ export function Header({ className = '' }: { className?: string } = {}) {
 
   const desktopNavItems: NavigationItem[] = [
     {
-      label: 'Feed',
+      label: 'Social',
       href: '/home',
       description: 'Latest posts and updates'
     },

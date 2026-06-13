@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import jwt from 'jsonwebtoken'
 import { supabase } from '@/lib/db'
 import { JWT_SECRET } from '@/lib/auth'
+import { isCampaignStarted, isVolunteerRegistrationPastDeadline } from '@/lib/format-date'
+import {
+  getVolunteerApplicationCapacity,
+  isVolunteerCapacityFullForUser,
+  sumVolunteerApplicationCount,
+} from '@/lib/campaign-volunteer-utils'
+import { ensureCampaignVolunteerAssignment } from '@/lib/campaign-volunteer-assignment'
 
 interface JWTPayload {
   id: number
@@ -22,11 +29,6 @@ function safeJson(value: unknown): Record<string, any> {
     }
   }
   return {}
-}
-
-function toNumber(value: unknown): number {
-  const parsed = Number(value)
-  return Number.isFinite(parsed) ? parsed : 0
 }
 
 async function loadCampaign(campaignId: string) {
@@ -67,16 +69,21 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ success: true, data: { campaign_id: id, applied: true, existing } })
     }
 
-    // deadline: volunteering closes the day before campaign start at 23:59
-    const startDateStr = campaign.start_date as string | null
-    if (startDateStr) {
-      const startDate = new Date(startDateStr)
-      const allowedUntil = new Date(startDate)
-      allowedUntil.setDate(startDate.getDate() - 1)
-      allowedUntil.setHours(23, 59, 59, 999)
-      if (new Date() > allowedUntil) {
-        return NextResponse.json({ error: 'Volunteering for this campaign has closed' }, { status: 400 })
-      }
+    const status = String(campaign.status || '').toLowerCase()
+    if (['completed', 'cancelled', 'closed'].includes(status)) {
+      return NextResponse.json({ error: 'Volunteering for this campaign has closed' }, { status: 400 })
+    }
+
+    if (
+      isVolunteerRegistrationPastDeadline(campaign.start_date as string | null) ||
+      isCampaignStarted(campaign.start_date as string | null)
+    ) {
+      return NextResponse.json({ error: 'Volunteering for this campaign has closed' }, { status: 400 })
+    }
+
+    const leadAccepted = Boolean(impact.lead_ngo_accepted) || status === 'active'
+    if (!leadAccepted) {
+      return NextResponse.json({ error: 'Volunteering opens after the lead NGO accepts the campaign' }, { status: 400 })
     }
 
     // check other overlapping campaign registrations for same user
@@ -122,9 +129,13 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'Complete email, phone and document verifications to volunteer' }, { status: 403 })
     }
 
-    const capacity = decoded.user_type === 'ngo'
-      ? Number(actingUser?.ngo_volunteer_capacity ?? actingUser?.profile_data?.ngo_volunteer_capacity ?? actingUser?.profile_data?.team_strength ?? 1) || 1
-      : 1
+    const capacity = getVolunteerApplicationCapacity(decoded.user_type, actingUser)
+
+    const currentVolunteerCount = sumVolunteerApplicationCount(volunteerApplications)
+    const volunteerLimit = Number(impact.volunteer_requirement ?? impact.volunteer_limit ?? 0) || 0
+    if (isVolunteerCapacityFullForUser(decoded.user_type, currentVolunteerCount, volunteerLimit)) {
+      return NextResponse.json({ error: 'Volunteer capacity for this campaign is full' }, { status: 400 })
+    }
 
     const entry = {
       user_id: Number(decoded.id),
@@ -135,12 +146,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     const nextApplications = [...volunteerApplications, entry]
-    const volunteerCount = nextApplications.reduce((sum: number, item: any) => sum + toNumber(item?.capacity || 1), 0)
-    // enforce volunteer limit if configured
-    const volunteerLimit = Number(impact.volunteer_requirement ?? impact.volunteer_limit ?? 0) || 0
-    if (volunteerLimit > 0 && volunteerCount > volunteerLimit) {
-      return NextResponse.json({ error: 'Volunteer capacity for this campaign is full' }, { status: 400 })
-    }
+    const volunteerCount = sumVolunteerApplicationCount(nextApplications)
     const nextImpact = {
       ...impact,
       volunteer_applications: nextApplications,
@@ -160,6 +166,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     if (error || !data) {
       throw new Error(error?.message || 'Failed to apply for campaign')
+    }
+
+    try {
+      await ensureCampaignVolunteerAssignment({
+        campaign: data,
+        userId: Number(decoded.id),
+        userType: decoded.user_type,
+        capacity,
+        appliedAt: entry.applied_at,
+      })
+    } catch (assignmentError) {
+      console.error('Campaign volunteer assignment error:', assignmentError)
     }
 
     return NextResponse.json({ success: true, data: { campaign: data, applied: true, capacity, volunteerCount } })

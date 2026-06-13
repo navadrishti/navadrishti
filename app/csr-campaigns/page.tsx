@@ -9,9 +9,11 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { StyledSelect } from "@/components/ui/styled-select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Search, MapPin, Calendar, Users, Filter, Sparkles, ArrowRight, CheckCircle2, Pencil, Trash2 } from "lucide-react"
+import { Search, Filter, Sparkles, ArrowRight, CheckCircle2, Pencil, Trash2 } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
 import { CSR_SCHEDULE_VII_CATEGORIES } from "@/lib/categories"
+import { formatDisplayDate, isCampaignStarted, isVolunteerRegistrationPastDeadline } from "@/lib/format-date"
+import { getVolunteerButtonState, sumVolunteerApplicationCount } from "@/lib/campaign-volunteer-utils"
 
 const getInitials = (name: string) => {
   const parts = name.trim().split(/\s+/).filter(Boolean)
@@ -21,11 +23,13 @@ const getInitials = (name: string) => {
 }
 
 const formatCampaignDuration = (item: CampaignApiItem) => {
-  if (item.start_date && item.end_date) {
-    return `${item.start_date} → ${item.end_date}`
+  const start = formatDisplayDate(item.start_date)
+  const end = formatDisplayDate(item.end_date)
+  if (start && end) {
+    return `${start} → ${end}`
   }
-  if (item.start_date) return `From ${item.start_date}`
-  if (item.end_date) return `Until ${item.end_date}`
+  if (start) return `From ${start}`
+  if (end) return `Until ${end}`
 
   const duration = item.impact_metrics?.duration
   if (typeof duration === 'string' && duration.trim()) {
@@ -53,7 +57,9 @@ interface Campaign {
   appliedByCurrentUser?: boolean
   companyId?: number | null
   companyInitials?: string
-  isVolunteerClosed?: boolean
+  selectedLeadNgoId?: number | null
+  leadNgoAccepted?: boolean
+  start_date?: string | null
 }
 
 interface CampaignApiItem {
@@ -150,13 +156,14 @@ export default function CSRCampaignsPage() {
 
   const effectiveUserType = isHydrated ? user?.user_type : undefined
   const isCompany = effectiveUserType === 'company'
+  const canShowVolunteerAction = effectiveUserType === 'ngo' || effectiveUserType === 'individual'
   const currentUserId = Number(user?.id || 0)
   const isCompanyOwner = (campaignCompanyId?: number | null) => isCompany && Number(campaignCompanyId || 0) === currentUserId
 
   const hydrateCampaignStats = (item: CampaignApiItem) => {
     const metrics = item.impact_metrics && typeof item.impact_metrics === 'object' ? item.impact_metrics : {}
     const applications = Array.isArray(metrics.volunteer_applications) ? metrics.volunteer_applications : []
-    const volunteerCount = applications.reduce((sum: number, application: any) => sum + Number(application?.capacity || application?.size || application?.ngo_capacity || 1), 0)
+    const volunteerCount = sumVolunteerApplicationCount(applications)
     const volunteerLimit = Number(metrics.volunteer_requirement || metrics.volunteer_limit || 0) || undefined
     const appliedByCurrentUser = currentUserId > 0
       ? applications.some((application: any) => Number(application?.user_id || 0) === currentUserId)
@@ -184,17 +191,8 @@ export default function CSRCampaignsPage() {
       companyInitials: getInitials(companyName || 'Company'),
       start_date: item.start_date || null,
       end_date: item.end_date || null,
-      isVolunteerClosed: (() => {
-        try {
-          const sd = (item as any).start_date
-          if (!sd) return false
-          const s = new Date(String(sd))
-          const allowed = new Date(s)
-          allowed.setDate(s.getDate() - 1)
-          allowed.setHours(23,59,59,999)
-          return new Date() > allowed
-        } catch (e) { return false }
-      })()
+      selectedLeadNgoId: Number(metrics.selected_lead_ngo_id || 0) || null,
+      leadNgoAccepted: Boolean(metrics.lead_ngo_accepted),
     }
   }
 
@@ -282,7 +280,9 @@ export default function CSRCampaignsPage() {
     const matchesSearch = campaign.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          campaign.company.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesCategory = selectedCategory === 'all' || campaign.category === selectedCategory
-    return matchesSearch && matchesCategory
+    const isUpcoming = !isCampaignStarted(campaign.start_date)
+    const isDraftHiddenFromPublic = String(campaign.status || '').toLowerCase() === 'draft' && !isCompanyOwner(campaign.companyId)
+    return matchesSearch && matchesCategory && isUpcoming && !isDraftHiddenFromPublic
   })
 
   const getStatusColor = (status: string) => {
@@ -399,27 +399,21 @@ export default function CSRCampaignsPage() {
                       </p>
                     </div>
 
-                    <div className="mt-3 grid grid-cols-3 gap-2 border-t border-slate-200 pt-3 text-xs text-muted-foreground">
-                      <div className="min-w-0 space-y-1">
-                        <div className="flex min-w-0 items-center gap-1.5 text-slate-500">
-                          <MapPin className="h-3.5 w-3.5 shrink-0" />
-                          <span className="truncate font-medium">Location</span>
-                        </div>
-                        <p className="min-w-0 truncate text-[13px] font-semibold text-slate-900" title={campaign.location || 'TBD'}>{campaign.location || 'TBD'}</p>
+                    <div className="mt-3 space-y-2 border-t border-slate-200 pt-3 text-xs text-muted-foreground">
+                      <div className="space-y-0.5">
+                        <p className="font-medium text-slate-500">Location</p>
+                        <p className="break-words text-[13px] font-semibold text-slate-900">{campaign.location || 'TBD'}</p>
                       </div>
-                      <div className="min-w-0 space-y-1">
-                        <div className="flex min-w-0 items-center gap-1.5 text-slate-500">
-                          <Calendar className="h-3.5 w-3.5 shrink-0" />
-                          <span className="truncate font-medium">Duration</span>
-                        </div>
-                        <p className="min-w-0 truncate text-[13px] font-semibold text-slate-900" title={campaign.duration}>{campaign.duration}</p>
+                      <div className="space-y-0.5">
+                        <p className="font-medium text-slate-500">Duration</p>
+                        <p className="break-words text-[13px] font-semibold text-slate-900">{campaign.duration}</p>
                       </div>
-                      <div className="min-w-0 space-y-1">
-                        <div className="flex min-w-0 items-center gap-1.5 text-slate-500">
-                          <Users className="h-3.5 w-3.5 shrink-0" />
-                          <span className="truncate font-medium">Volunteers</span>
-                        </div>
-                        <p className="min-w-0 truncate text-[13px] font-semibold text-slate-900" title={`${campaign.volunteerCount ?? 0} applied`}>{campaign.volunteerCount ?? 0} applied</p>
+                      <div className="space-y-0.5">
+                        <p className="font-medium text-slate-500">Volunteers</p>
+                        <p className="break-words text-[13px] font-semibold text-slate-900">
+                          {campaign.volunteerCount ?? 0} applied
+                          {campaign.volunteerLimit ? ` · ${campaign.volunteerLimit} needed` : ''}
+                        </p>
                       </div>
                     </div>
 
@@ -446,11 +440,53 @@ export default function CSRCampaignsPage() {
 
                         <span className="h-8 w-px shrink-0 bg-slate-300" aria-hidden="true" />
 
-                        <Link href={`/csr-campaigns/${campaign.id}`} className="inline-flex shrink-0 items-center gap-1 px-1 py-0.5 text-sm font-medium text-slate-900" >
-                          <span>Explore More</span>
-                          <ArrowRight size={14} />
-                        </Link>
+                        <div className="ml-auto flex shrink-0 items-center">
+                          <Link href={`/csr-campaigns/${campaign.id}`} className="inline-flex items-center gap-1 px-1 py-0.5 text-sm font-medium text-slate-900">
+                            <span>Explore More</span>
+                            <ArrowRight size={14} />
+                          </Link>
+                        </div>
                       </div>
+
+                      {canShowVolunteerAction && user ? (
+                        <div className="mt-1 border-t border-slate-200 pt-1">
+                          <div className="flex justify-end">
+                            {(() => {
+                              const volunteerState = getVolunteerButtonState({
+                                status: campaign.status,
+                                startDate: campaign.start_date,
+                                leadNgoAccepted: campaign.leadNgoAccepted,
+                                volunteerCount: campaign.volunteerCount,
+                                volunteerLimit: campaign.volunteerLimit,
+                                userType: effectiveUserType,
+                                allVerified,
+                                applied: Boolean(campaign.appliedByCurrentUser),
+                                applying: applyingCampaignId === campaign.id,
+                                isVolunteerRegistrationPastDeadline,
+                                isCampaignStarted,
+                              })
+
+                              return volunteerState.label === 'Applied' ? (
+                                <Button disabled variant="ghost" className="h-6 p-0 text-sm font-medium text-emerald-600 shadow-none hover:bg-transparent hover:text-emerald-600">
+                                  <CheckCircle2 size={14} className="mr-1" />
+                                  Applied
+                                </Button>
+                              ) : (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  onClick={() => handleVolunteer(campaign.id)}
+                                  disabled={!volunteerState.canApply}
+                                  className="h-6 p-0 text-sm font-medium text-black shadow-none hover:bg-transparent hover:text-blue-600"
+                                >
+                                  <ArrowRight size={14} className="mr-1" />
+                                  {volunteerState.label}
+                                </Button>
+                              )
+                            })()}
+                          </div>
+                        </div>
+                      ) : null}
 
                       {isCompanyOwner(campaign.companyId) && (
                         <div className="pt-1">
@@ -475,36 +511,12 @@ export default function CSRCampaignsPage() {
                         </div>
                       )}
                     </div>
-
-                    {!isCompany && user && (
-                      <div className="py-1">
-                        <div className="flex items-center gap-3">
-                          {campaign.appliedByCurrentUser ? (
-                            <Button disabled variant="ghost" className="h-6 p-0 text-sm font-medium text-emerald-600 shadow-none hover:bg-transparent hover:text-emerald-600">
-                              <CheckCircle2 size={14} className="mr-1" />
-                              Applied
-                            </Button>
-                          ) : (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              onClick={() => handleVolunteer(campaign.id)}
-                              disabled={applyingCampaignId === campaign.id || !allVerified || Boolean(campaign.isVolunteerClosed) || Boolean(campaign.volunteerLimit && (campaign.volunteerCount ?? 0) >= (campaign.volunteerLimit ?? 0))}
-                              className="h-6 p-0 text-sm font-medium text-black shadow-none hover:bg-transparent hover:text-blue-600"
-                            >
-                              <ArrowRight size={14} className="mr-1" />
-                              {applyingCampaignId === campaign.id ? 'Applying...' : (!allVerified ? 'Verify to apply' : (campaign.isVolunteerClosed ? 'Closed' : (Boolean(campaign.volunteerLimit && (campaign.volunteerCount ?? 0) >= (campaign.volunteerLimit ?? 0)) ? 'Full' : 'Volunteer')))}
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    )}
                   </CardContent>
                 </Card>
               ))}
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center">
+            <div className="flex flex-col items-center justify-center p-8 text-center">
               <div className="mb-4 rounded-full bg-muted p-3">
                 <Filter className="h-6 w-6 text-muted-foreground" />
               </div>
