@@ -140,7 +140,7 @@ export default function CompanyCAPanelLoginPage() {
                   type="email"
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
-                  placeholder="ca@yourcompany.com"
+                  placeholder="Enter your email"
                   required
                   disabled={loading}
                 />
@@ -153,7 +153,7 @@ export default function CompanyCAPanelLoginPage() {
                   type="password"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
-                  placeholder="Your password"
+                  placeholder="Enter your password"
                   required
                   disabled={loading}
                 />

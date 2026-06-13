@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { socialFeedDb } from '@/lib/social-feed-db';
 import { supabase } from '@/lib/db';
+import { extractHashtagsFromContent, normalizeHashtagKey } from '@/lib/hashtag-utils';
 
 export async function GET(request: NextRequest) {
   try {
@@ -25,24 +26,22 @@ export async function GET(request: NextRequest) {
     }
 
     // Calculate real-time hashtag mentions
-    const hashtagCounts = new Map<string, { daily: number; weekly: number; total: number }>();
-    
+    const hashtagCounts = new Map<string, { daily: number; weekly: number; total: number; displayTag: string }>();
+
     for (const post of recentPosts || []) {
       const postDate = new Date(post.created_at);
       const isToday = postDate >= todayStart;
       const isThisWeek = postDate >= weekStart;
-      
-      // Extract hashtags from post content
-      const hashtagRegex = /#([a-zA-Z0-9_]+)/g;
-      const hashtags = post.content.match(hashtagRegex)?.map(tag => 
-        tag.replace('#', '').toLowerCase()
-      ) || [];
-      
-      hashtags.forEach(tag => {
-        if (!hashtagCounts.has(tag)) {
-          hashtagCounts.set(tag, { daily: 0, weekly: 0, total: 0 });
+
+      const hashtags = extractHashtagsFromContent(post.content || '');
+
+      hashtags.forEach((tag) => {
+        const key = normalizeHashtagKey(tag);
+        if (!hashtagCounts.has(key)) {
+          hashtagCounts.set(key, { daily: 0, weekly: 0, total: 0, displayTag: tag });
         }
-        const counts = hashtagCounts.get(tag)!;
+        const counts = hashtagCounts.get(key)!;
+        counts.displayTag = tag;
         if (isToday) counts.daily++;
         if (isThisWeek) counts.weekly++;
         counts.total++;
@@ -64,22 +63,27 @@ export async function GET(request: NextRequest) {
     
     // Add stored hashtags with updated counts
     for (const stored of storedHashtags || []) {
-      const realTime = hashtagCounts.get(stored.tag) || { daily: 0, weekly: 0, total: stored.total_mentions };
-      mergedHashtags.set(stored.tag, {
+      const realTime = hashtagCounts.get(normalizeHashtagKey(stored.tag)) || {
+        daily: 0,
+        weekly: 0,
+        total: stored.total_mentions,
+        displayTag: stored.tag,
+      };
+      mergedHashtags.set(normalizeHashtagKey(stored.tag), {
         ...stored,
+        tag: realTime.displayTag || stored.tag,
         daily_mentions: realTime.daily,
         weekly_mentions: realTime.weekly,
-        total_mentions: Math.max(stored.total_mentions, realTime.total), // Use higher value
+        total_mentions: Math.max(stored.total_mentions, realTime.total),
         trending_score: realTime.daily * 3 + realTime.weekly * 1.5 + realTime.total * 0.1
       });
     }
 
-    // Add new hashtags that aren't stored yet
-    for (const [tag, counts] of hashtagCounts) {
-      if (!mergedHashtags.has(tag)) {
-        mergedHashtags.set(tag, {
-          id: `temp_${tag}`,
-          tag,
+    for (const [tagKey, counts] of hashtagCounts) {
+      if (!mergedHashtags.has(tagKey)) {
+        mergedHashtags.set(tagKey, {
+          id: `temp_${tagKey}`,
+          tag: counts.displayTag,
           daily_mentions: counts.daily,
           weekly_mentions: counts.weekly,
           total_mentions: counts.total,

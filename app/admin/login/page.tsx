@@ -134,6 +134,7 @@ export default function AdminLoginPage() {
                 <Input
                   id="username"
                   type="text"
+                  placeholder="Enter your username"
                   value={credentials.username}
                   onChange={(e) => setCredentials((prev) => ({
                     ...prev,
@@ -149,6 +150,7 @@ export default function AdminLoginPage() {
                 <Input
                   id="password"
                   type="password"
+                  placeholder="Enter your password"
                   value={credentials.password}
                   onChange={(e) => setCredentials((prev) => ({
                     ...prev,

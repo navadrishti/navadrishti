@@ -12,9 +12,11 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { CheckCircle2, Loader2, MoreVertical, Send } from "lucide-react"
+import { CheckCircle2, Loader2, MoreVertical, Send, Trash2 } from "lucide-react"
 import { useSearchParams } from "next/navigation"
 import { CSR_SCHEDULE_VII_CATEGORIES } from "@/lib/categories"
+import { readCampaignCategory, readCampaignDuration, readCampaignLocation } from "@/lib/campaign-schema"
+import { buildRequirementDetails, scoreProjectSuggestions } from "@/lib/csr-agent/recommendation-utils"
 
 type ConversationStage = "project" | "milestone-count" | "milestones" | "generating" | "complete"
 
@@ -49,9 +51,36 @@ interface NgoDirectoryItem {
   id: number
   name: string
   email: string
+  score: number
+}
+
+type LeadNgoInvite = {
+  ngoId: number
+  name: string
+  email: string
+  status?: 'invited' | 'accepted' | 'rejected' | 'expired' | 'pending'
+}
+
+function normalizeLeadNgoInvites(
+  invites: Array<{ ngoId: number; name: string; email: string; status?: string }> | undefined | null,
+): LeadNgoInvite[] {
+  if (!Array.isArray(invites)) return []
+  return invites
+    .map((invite) => ({
+      ngoId: Number(invite.ngoId),
+      name: String(invite.name || ''),
+      email: String(invite.email || ''),
+      status: String(invite.status || 'invited').toLowerCase() as LeadNgoInvite['status'],
+    }))
+    .filter((invite) => Number.isFinite(invite.ngoId) && invite.ngoId > 0 && invite.status !== 'rejected')
+}
+
+function getAcceptedLeadNgo(invites: LeadNgoInvite[]): LeadNgoInvite | null {
+  return invites.find((invite) => invite.status === 'accepted') || null
 }
 
 interface MilestoneInput {
+  title?: string
   description: string
   budgetTarget: string
   startDate?: string
@@ -134,8 +163,8 @@ interface CSRAgentSession {
   selectedProjectSuggestionId: string | null
   invitedOfferIds: number[]
   ngoDirectory: NgoDirectoryItem[]
-  leadNgoInvites: Array<{ ngoId: number; name: string; email: string; status: 'invited' | 'accepted' | 'rejected' }>
-  selectedLeadNgoId: number | null
+  leadNgoInvites: LeadNgoInvite[]
+  draftCampaignId: string | null
   publishedCampaignId: string | null
   generatedCampaigns: GeneratedCampaign[]
 }
@@ -156,10 +185,63 @@ const DAY_MS = 24 * 60 * 60 * 1000
 
 function parseDateOnly(value: string | undefined | null) {
   if (!value) return null
-  const [year, month, day] = String(value).split('-').map((part) => Number(part))
-  if (!year || !month || !day) return null
-  const utc = Date.UTC(year, month - 1, day)
-  return Number.isFinite(utc) ? utc : null
+  const trimmed = String(value).trim()
+  if (!trimmed) return null
+
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (isoMatch) {
+    const utc = Date.UTC(Number(isoMatch[1]), Number(isoMatch[2]) - 1, Number(isoMatch[3]))
+    return Number.isFinite(utc) ? utc : null
+  }
+
+  const dmyMatch = trimmed.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/)
+  if (dmyMatch) {
+    const utc = Date.UTC(Number(dmyMatch[3]), Number(dmyMatch[2]) - 1, Number(dmyMatch[1]))
+    return Number.isFinite(utc) ? utc : null
+  }
+
+  return null
+}
+
+function normalizeDateInput(value: string | undefined | null) {
+  const parsed = parseDateOnly(value)
+  return parsed === null ? String(value || '').trim() : formatDateOnlyFromUtc(parsed)
+}
+
+function buildMilestonePhasePlan(count: number, data: ProjectIntakeData) {
+  const campaign = String(data.campaignName || 'CSR campaign').trim()
+  const category = String(data.category || 'community development').trim()
+  const location = [data.city, data.state].filter(Boolean).join(', ') || 'target location'
+
+  if (count <= 1) {
+    return [{
+      title: 'Project delivery',
+      description: `Complete end-to-end delivery of ${category} activities for ${campaign} in ${location}.`,
+    }]
+  }
+
+  const phases: Array<{ title: string; description: string }> = [
+    {
+      title: 'Planning & kickoff',
+      description: `Needs assessment, stakeholder alignment, and execution plan for ${campaign}.`,
+    },
+  ]
+
+  const middleCount = Math.max(0, count - 2)
+  for (let index = 0; index < middleCount; index++) {
+    const phaseNumber = index + 1
+    phases.push({
+      title: middleCount === 1 ? 'Implementation' : `Implementation phase ${phaseNumber}`,
+      description: `On-ground delivery of ${category} work in ${location} during phase ${phaseNumber} of ${middleCount}.`,
+    })
+  }
+
+  phases.push({
+    title: 'Monitoring & closure',
+    description: `Track outcomes, document impact evidence, and close ${campaign} with beneficiary reporting.`,
+  })
+
+  return phases.slice(0, count)
 }
 
 function formatDateOnlyFromUtc(timestamp: number) {
@@ -203,13 +285,22 @@ const milestoneQuestions = [
   { key: "budgetTarget", question: "What budget should I assign to this milestone?" },
 ] as const
 
-const deriveSessionTitle = (messages: Message[]): string => {
+const deriveSessionTitle = (messages: Message[], projectData?: ProjectIntakeData): string => {
+  const campaignName = String(projectData?.campaignName || '').trim()
+  if (campaignName) return campaignName
+
   const firstUser = messages.find((message) => message.role === "user" && String(message.content || "").trim())
   if (!firstUser) return "Untitled session"
   const words = String(firstUser.content || "").trim().split(/\s+/).filter(Boolean)
   if (words.length === 0) return "Untitled session"
   const firstFive = words.slice(0, 5).join(" ")
   return words.length > 5 ? `${firstFive}...` : firstFive
+}
+
+const getSessionDisplayTitle = (session: CSRAgentSession): string => {
+  const campaignName = String(session.projectData?.campaignName || '').trim()
+  if (campaignName) return campaignName
+  return session.title || 'Untitled session'
 }
 
 const buildEmptySession = (): CSRAgentSession => {
@@ -233,7 +324,7 @@ const buildEmptySession = (): CSRAgentSession => {
     invitedOfferIds: [],
     ngoDirectory: [],
     leadNgoInvites: [],
-    selectedLeadNgoId: null,
+    draftCampaignId: null,
     publishedCampaignId: null,
     generatedCampaigns: [],
   }
@@ -433,7 +524,6 @@ export default function CSRAgentPage() {
   const [conversationStage, setConversationStage] = useState<ConversationStage>("project")
   const [serviceSuggestions, setServiceSuggestions] = useState<ServiceSuggestion[]>([])
   const [recommendationError, setRecommendationError] = useState<string | null>(null)
-  const [recommendationDebug, setRecommendationDebug] = useState<string | null>(null)
   const [isFetchingRecommendations, setIsFetchingRecommendations] = useState(false)
   const [generatedCampaigns, setGeneratedCampaigns] = useState<GeneratedCampaign[]>([])
   const [generationError, setGenerationError] = useState<string | null>(null)
@@ -444,8 +534,9 @@ export default function CSRAgentPage() {
   const [invitedOfferIds, setInvitedOfferIds] = useState<number[]>([])
   const [ngoDirectory, setNgoDirectory] = useState<NgoDirectoryItem[]>([])
   const [isFetchingNgoDirectory, setIsFetchingNgoDirectory] = useState(false)
-  const [leadNgoInvites, setLeadNgoInvites] = useState<Array<{ ngoId: number; name: string; email: string; status: 'invited' | 'accepted' | 'rejected' }>>([])
-  const [selectedLeadNgoId, setSelectedLeadNgoId] = useState<number | null>(null)
+  const [leadNgoInvites, setLeadNgoInvites] = useState<LeadNgoInvite[]>([])
+  const [confirmedLeadNgo, setConfirmedLeadNgo] = useState<LeadNgoInvite | null>(null)
+  const [draftCampaignId, setDraftCampaignId] = useState<string | null>(null)
   const [publishedCampaignId, setPublishedCampaignId] = useState<string | null>(null)
   const editingCampaignId = searchParams.get('campaign_id')
   const [isEditingPreviewProject, setIsEditingPreviewProject] = useState(false)
@@ -471,6 +562,29 @@ export default function CSRAgentPage() {
   const pendingServerPayloadRef = useRef<string | null>(null)
   const serverRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isServerSyncInFlightRef = useRef(false)
+  const lastNgoSuggestionKeyRef = useRef<string | null>(null)
+  const recommendationKey = useMemo(
+    () =>
+      JSON.stringify({
+        category: projectData.category,
+        city: projectData.city,
+        state: projectData.state,
+        budget: projectData.budget,
+        startDate: projectData.startDate,
+        endDate: projectData.endDate,
+        campaignName: projectData.campaignName,
+      }),
+    [
+      projectData.category,
+      projectData.city,
+      projectData.state,
+      projectData.budget,
+      projectData.startDate,
+      projectData.endDate,
+      projectData.campaignName,
+    ],
+  )
+  const lastRecommendationKeyRef = useRef<string | null>(null)
 
   const effectiveUserType = mounted ? user?.user_type : undefined
   const userAvatar = typeof user?.profile_image === "string" ? user.profile_image.trim() : ""
@@ -482,13 +596,6 @@ export default function CSRAgentPage() {
     .join("") || "U"
 
   const categoryOptions = useMemo(() => CSR_SCHEDULE_VII_CATEGORIES, [])
-
-  const activeQuestion = useMemo(() => {
-    if (conversationStage === "project") return projectQuestions[Math.min(projectStep, projectQuestions.length - 1)]
-    if (conversationStage === "milestone-count") return { key: "milestoneCount", question: "How many milestones should I plan?" }
-    if (conversationStage === "milestones") return milestoneQuestions[Math.min(milestoneQuestionIndex, milestoneQuestions.length - 1)]
-    return null
-  }, [conversationStage, projectStep, milestoneQuestionIndex])
 
   const fixedChoiceOptions = useMemo(() => {
     if (conversationStage === "project") {
@@ -575,19 +682,44 @@ export default function CSRAgentPage() {
     if (answeredQuestions >= totalQuestions) return 100
     return Math.min(Math.round((answeredQuestions / totalQuestions) * 100), 95)
   }, [generatedCampaigns.length, totalQuestions, answeredQuestions])
+  const acceptedLeadNgo = useMemo(
+    () => confirmedLeadNgo || getAcceptedLeadNgo(leadNgoInvites),
+    [confirmedLeadNgo, leadNgoInvites],
+  )
+  const hasLockedLeadNgo = Boolean(acceptedLeadNgo)
+
   const hasRequiredProjectFields = useMemo(() => {
     return Boolean(projectData.category && projectData.city && projectData.state && projectData.budget && projectData.startDate && projectData.endDate)
   }, [projectData])
   const isQuestionnaireComplete = totalQuestions > 0 && answeredQuestions >= totalQuestions
 
-  const activeQuestionLabel = generatedCampaigns.length > 0 ? "Draft ready" : activeQuestion?.question || "Campaign details"
-  const promptTitle = generatedCampaigns.length > 0
+  const activeQuestion = useMemo(() => {
+    if (generatedCampaigns.length > 0 || isQuestionnaireComplete) return null
+    if (conversationStage === "project") return projectQuestions[Math.min(projectStep, projectQuestions.length - 1)]
+    if (conversationStage === "milestone-count") return { key: "milestoneCount", question: "How many milestones should I plan?" }
+    if (conversationStage === "milestones") return milestoneQuestions[Math.min(milestoneQuestionIndex, milestoneQuestions.length - 1)]
+    return null
+  }, [conversationStage, projectStep, milestoneQuestionIndex, generatedCampaigns.length, isQuestionnaireComplete])
+
+  const activeQuestionLabel = generatedCampaigns.length > 0
     ? "Draft ready"
-    : conversationStage === "project"
-      ? "Step 1: Campaign details"
-      : conversationStage === "milestone-count"
-        ? "Step 2: Milestone count"
-        : "Step 3: Milestone details"
+    : isQuestionnaireComplete
+      ? (leadNgoInvites.length > 0
+        ? (acceptedLeadNgo
+          ? (isGeneratingCampaigns ? "Generating campaign draft..." : "Ready to publish")
+          : "Waiting for lead NGO acceptance")
+        : "All details captured — invite a lead NGO to continue")
+      : (activeQuestion?.question || "Campaign details")
+
+  const promptTitle = generatedCampaigns.length > 0
+    ? "Ready to publish"
+    : isQuestionnaireComplete
+      ? (acceptedLeadNgo ? "Ready to publish" : leadNgoInvites.length > 0 ? "Waiting for lead NGO" : "Invite a lead NGO")
+      : conversationStage === "project"
+        ? "Step 1: Campaign details"
+        : conversationStage === "milestone-count"
+          ? "Step 2: Milestone count"
+          : "Step 3: Milestone details"
 
   const cloudSaveText = useMemo(() => {
     if (cloudSaveStatus === "saving") return "Saving to cloud..."
@@ -618,11 +750,11 @@ export default function CSRAgentPage() {
       invitedOfferIds,
       ngoDirectory,
       leadNgoInvites,
-      selectedLeadNgoId,
+      draftCampaignId,
       publishedCampaignId,
       generatedCampaigns,
     })
-  }, [messages, projectData, milestoneCount, milestoneInputs, projectStep, milestoneIndex, milestoneQuestionIndex, conversationStage, serviceSuggestions, projectSuggestions, selectedProjectSuggestionId, invitedOfferIds, ngoDirectory, leadNgoInvites, selectedLeadNgoId, publishedCampaignId, generatedCampaigns])
+  }, [messages, projectData, milestoneCount, milestoneInputs, projectStep, milestoneIndex, milestoneQuestionIndex, conversationStage, serviceSuggestions, projectSuggestions, selectedProjectSuggestionId, invitedOfferIds, ngoDirectory, leadNgoInvites, draftCampaignId, publishedCampaignId, generatedCampaigns])
 
   const liveFields = [
     { label: "Campaign name", value: projectData.campaignName },
@@ -647,7 +779,7 @@ export default function CSRAgentPage() {
     const now = new Date().toISOString()
     return {
       id: activeSessionId || `csr-session-${Date.now()}`,
-      title: deriveSessionTitle(messages),
+      title: deriveSessionTitle(messages, projectData),
       createdAt: now,
       updatedAt: now,
       messages,
@@ -664,7 +796,7 @@ export default function CSRAgentPage() {
       invitedOfferIds,
       ngoDirectory,
       leadNgoInvites,
-      selectedLeadNgoId,
+      draftCampaignId,
       publishedCampaignId,
       generatedCampaigns,
     }
@@ -843,21 +975,21 @@ export default function CSRAgentPage() {
         if (!campaign) return
 
         const draft: GeneratedCampaign = {
-          title: campaign.title || campaign.cause || '',
+          title: campaign.title || readCampaignCategory(campaign) || '',
           description: campaign.description || '',
-          category: campaign.category || campaign.cause || '',
-          location: campaign.region || '',
+          category: readCampaignCategory(campaign),
+          location: readCampaignLocation(campaign),
           budget_inr: Number(campaign.budget_inr || 0),
           budget_breakdown: campaign.budget_breakdown || { infrastructure: 0, training: 0, materials: 0, monitoring: 0, contingency: 0 },
-          schedule_vii: campaign.schedule_vii || campaign.category || '',
+          schedule_vii: campaign.schedule_vii || readCampaignCategory(campaign),
           sdg_alignment: Array.isArray(campaign.sdg_alignment) ? campaign.sdg_alignment : [],
           start_date: campaign.start_date || '',
           end_date: campaign.end_date || '',
           impact_metrics: {
             beneficiaries: Number(campaign.impact_metrics?.beneficiaries || 0),
-            duration: campaign.timeline ? `${campaign.timeline} months` : 'Flexible timeline'
+            duration: readCampaignDuration(campaign) || 'Flexible timeline',
           },
-          milestones: Array.isArray(campaign.milestones) ? campaign.milestones : []
+          milestones: Array.isArray(campaign.milestones) ? campaign.milestones : [],
         }
 
         setProjectData({
@@ -895,12 +1027,56 @@ export default function CSRAgentPage() {
     setConversationStage(fresh.conversationStage)
     setServiceSuggestions(fresh.serviceSuggestions)
     setGeneratedCampaigns(fresh.generatedCampaigns)
+    setPublishedCampaignId(fresh.publishedCampaignId)
     setRecommendationError(null)
-    setRecommendationDebug(null)
     setGenerationError(null)
     setInput("")
     // persist the new session immediately
     if (mounted && user?.id) persistSessions([fresh, ...sessions], fresh.id)
+  }
+
+  const deleteSession = async (sessionId: string, event?: React.MouseEvent) => {
+    event?.stopPropagation()
+    event?.preventDefault()
+    if (!window.confirm('Remove this conversation from history? Any published campaign you created will stay live.')) return
+
+    const isServerSession = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(sessionId)
+    if (isServerSession && user?.id) {
+      try {
+        const response = await fetch(`/api/ai-agent/sessions/${encodeURIComponent(sessionId)}?agent=csr`, {
+          method: 'DELETE',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          credentials: 'include',
+        })
+        const body = await response.json().catch(() => ({}))
+        if (!response.ok && response.status !== 404) {
+          throw new Error(body?.error || 'Failed to delete conversation')
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to delete conversation'
+        appendAssistantMessage(message)
+        return
+      }
+    }
+
+    let nextSessions = sessions.filter((session) => session.id !== sessionId)
+    let nextActiveId = activeSessionId
+
+    if (activeSessionId === sessionId) {
+      if (nextSessions.length === 0) {
+        const fresh = buildEmptySession()
+        nextSessions = [fresh]
+        nextActiveId = fresh.id
+        applySession(fresh, nextSessions, false)
+      } else {
+        nextActiveId = nextSessions[0].id
+        applySession(nextSessions[0], nextSessions, false)
+      }
+    } else {
+      setSessions(nextSessions)
+    }
+
+    if (mounted && user?.id) persistSessions(nextSessions, nextActiveId)
   }
 
   const handleEditStart = (index: number) => {
@@ -996,13 +1172,17 @@ export default function CSRAgentPage() {
     setSelectedProjectSuggestionId(session.selectedProjectSuggestionId || null)
     setInvitedOfferIds(session.invitedOfferIds || [])
     setNgoDirectory(session.ngoDirectory || [])
-    setLeadNgoInvites(session.leadNgoInvites || [])
-    setSelectedLeadNgoId(session.selectedLeadNgoId || null)
+    setLeadNgoInvites(normalizeLeadNgoInvites(session.leadNgoInvites))
+    setConfirmedLeadNgo(getAcceptedLeadNgo(normalizeLeadNgoInvites(session.leadNgoInvites)))
+    setDraftCampaignId(session.draftCampaignId || null)
     setPublishedCampaignId(session.publishedCampaignId || null)
     setGeneratedCampaigns(session.generatedCampaigns)
     setInput("")
     setTimeout(() => {
       isApplyingSessionRef.current = false
+      if (session.draftCampaignId && token) {
+        void syncLeadInviteStatuses({ draftCampaignId: session.draftCampaignId, sessionId: session.id })
+      }
     }, 0)
     // persist that this session was made active
     if (persistSelection && mounted && user?.id) persistSessions(nextSessions.map((s) => (s.id === session.id ? session : s)), session.id)
@@ -1018,7 +1198,14 @@ export default function CSRAgentPage() {
 
     setIsFetchingRecommendations(true)
     setRecommendationError(null)
-    setRecommendationDebug(null)
+
+    const requirementDetails = buildRequirementDetails({
+      campaignName: payload.campaignName,
+      category: payload.category,
+      city: payload.city,
+      state: payload.state,
+      requirementDetails: payload.requirementDetails,
+    })
 
     try {
       const response = await fetch("/api/csr-agent/get-recommendations", {
@@ -1026,23 +1213,18 @@ export default function CSRAgentPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: payload.campaignName || payload.category,
-          description: `${payload.campaignName || ''} ${payload.requirementDetails || ''}`.trim(),
+          description: `${payload.campaignName || ""} ${requirementDetails}`.trim(),
           category: payload.category,
           city: payload.city,
           state_province: payload.state,
           budget: numericBudget,
-          start_date: payload.startDate,
-          end_date: payload.endDate,
-          requirementDetails: payload.requirementDetails,
+          start_date: normalizeDateInput(payload.startDate),
+          end_date: normalizeDateInput(payload.endDate),
+          requirementDetails,
         }),
       })
 
       const result = (await response.json()) as RecommendationApiResponse
-
-      if (process.env.NODE_ENV !== "production" && result?.debug?.reason) {
-        const debugSuffix = result.debug.message ? `: ${result.debug.message}` : ""
-        setRecommendationDebug(`Debug (${result.debug.reason})${debugSuffix}`)
-      }
 
       if (!response.ok || !result?.success) {
         const detailText = result?.details && typeof result.details === "object"
@@ -1072,7 +1254,23 @@ export default function CSRAgentPage() {
     }
   }
 
+  const ngoSuggestionKey = useMemo(
+    () =>
+      [
+        projectData.campaignName,
+        projectData.category,
+        projectData.city,
+        projectData.state,
+        projectData.volunteerRequirement,
+      ]
+        .map((value) => String(value || "").trim())
+        .join("|"),
+    [projectData.campaignName, projectData.category, projectData.city, projectData.state, projectData.volunteerRequirement],
+  )
+
   useEffect(() => {
+    if (hasLockedLeadNgo) return
+
     const title = String(projectData.campaignName || '').trim()
     const category = String(projectData.category || '').trim()
 
@@ -1087,21 +1285,37 @@ export default function CSRAgentPage() {
     const loadProjectSuggestions = async () => {
       setIsFetchingProjectSuggestions(true)
       try {
-        const q = `${title} ${category} ${projectData.city || ''} ${projectData.state || ''}`.trim()
-        const response = await fetch(`/api/service-request-projects?includeEmpty=true&status=active&q=${encodeURIComponent(q)}`)
-        const payload = await response.json().catch(() => null)
-        const rawRows: unknown[] = Array.isArray(payload?.data) ? payload.data : []
-        const rows: ProjectSuggestion[] = rawRows
-          .map((item) => normalizeProjectSuggestion(item))
-          .filter((item): item is ProjectSuggestion => Boolean(item))
-        const term = `${title} ${category} ${projectData.city || ''} ${projectData.state || ''}`.toLowerCase()
-        const filtered = rows.filter((project) => {
-          const haystack = `${project.title} ${project.description} ${project.location} ${project.timeline || ''}`.toLowerCase()
-          return haystack.includes(term) || term.split(/\s+/).some((part) => part.length > 2 && haystack.includes(part))
+        const fetchProjects = async (query: string) => {
+          const response = await fetch(`/api/service-request-projects?includeEmpty=true&status=active&q=${encodeURIComponent(query)}`)
+          const payload = await response.json().catch(() => null)
+          const rawRows: unknown[] = Array.isArray(payload?.data) ? payload.data : []
+          return rawRows
+            .map((item) => normalizeProjectSuggestion(item))
+            .filter((item): item is ProjectSuggestion => Boolean(item))
+        }
+
+        const primaryQuery = `${title} ${category} ${projectData.city || ''} ${projectData.state || ''}`.trim()
+        let rows = await fetchProjects(primaryQuery)
+
+        if (rows.length === 0) {
+          rows = await fetchProjects(category)
+        }
+        if (rows.length === 0) {
+          rows = await fetchProjects(String(projectData.city || projectData.state || 'project'))
+        }
+        if (rows.length === 0) {
+          rows = await fetchProjects('')
+        }
+
+        const ranked = scoreProjectSuggestions(rows, {
+          campaignName: title,
+          category,
+          city: projectData.city,
+          state: projectData.state,
         })
 
         if (!cancelled) {
-          setProjectSuggestions((filtered.length > 0 ? filtered : rows).slice(0, 4))
+          setProjectSuggestions(ranked.slice(0, 4))
         }
       } catch {
         if (!cancelled) setProjectSuggestions([])
@@ -1114,10 +1328,18 @@ export default function CSRAgentPage() {
     return () => {
       cancelled = true
     }
-  }, [projectData.campaignName, projectData.category, projectData.city, projectData.state])
+  }, [projectData.campaignName, projectData.category, projectData.city, projectData.state, hasLockedLeadNgo])
 
   useEffect(() => {
-    if (!projectData.campaignName || !projectData.category || ngoDirectory.length > 0) return
+    if (!mounted || !user?.id || !token) return
+    if (hasLockedLeadNgo) return
+    if (!projectData.campaignName?.trim() || !projectData.category?.trim()) {
+      setNgoDirectory([])
+      lastNgoSuggestionKeyRef.current = null
+      return
+    }
+
+    if (lastNgoSuggestionKeyRef.current === ngoSuggestionKey && ngoDirectory.length > 0) return
 
     let cancelled = false
     const loadNgoDirectory = async () => {
@@ -1134,14 +1356,32 @@ export default function CSRAgentPage() {
 
         const response = await fetch(`/api/ngos/score`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          credentials: 'include',
           body: JSON.stringify(body),
         })
 
         const payload = await response.json().catch(() => null)
+        if (!response.ok) {
+          throw new Error(payload?.error || 'Failed to load lead NGO suggestions')
+        }
+
         const rows = Array.isArray(payload?.data) ? payload.data : []
         if (!cancelled) {
-          setNgoDirectory(rows.map((item: any) => ({ id: Number(item.id), name: String(item.name || ''), email: String(item.email || ''), score: Number(item.score || 0) })).filter((item: NgoDirectoryItem) => Number.isFinite(item.id) && item.id > 0))
+          const mapped = rows
+            .map((item: any) => ({
+              id: Number(item.id),
+              name: String(item.name || ''),
+              email: String(item.email || ''),
+              score: Number(item.score || 0),
+            }))
+            .filter((item: NgoDirectoryItem) => Number.isFinite(item.id) && item.id > 0)
+
+          setNgoDirectory(mapped)
+          lastNgoSuggestionKeyRef.current = ngoSuggestionKey
         }
       } catch (e) {
         console.error('Failed to load scored NGO directory', e)
@@ -1155,7 +1395,7 @@ export default function CSRAgentPage() {
     return () => {
       cancelled = true
     }
-  }, [projectData.campaignName, projectData.category, ngoDirectory.length])
+  }, [mounted, user?.id, token, ngoSuggestionKey, hasLockedLeadNgo])
 
   const generateCampaignDrafts = async (payload: ProjectIntakeData, recommendations: ServiceSuggestion[]) => {
     if (!user?.id) {
@@ -1181,8 +1421,11 @@ export default function CSRAgentPage() {
         end_date: payload.endDate || "",
         volunteerRequirement: payload.volunteerRequirement || "",
         milestone_info: milestoneInputs.map((milestone) => ({
+          title: milestone.title || '',
           description: milestone.description,
           budget_allocated: parseMoneyValue(milestone.budgetTarget) || 0,
+          start_date: milestone.startDate || undefined,
+          end_date: milestone.endDate || undefined,
         })),
         requirementDetails: payload.requirementDetails || "",
         recommendations,
@@ -1228,39 +1471,163 @@ export default function CSRAgentPage() {
     })
   }
 
-  const handleInviteLeadNgo = (ngo: NgoDirectoryItem) => {
+  const applyRemoteInviteState = (data: {
+    draftCampaignId?: string | null
+    leadNgoAccepted?: boolean
+    selectedLeadNgoId?: number | null
+    selectedLeadNgoName?: string | null
+    selectedLeadNgoEmail?: string | null
+    invites?: Array<{ ngo_id: number; name: string; email: string; status: string }>
+  }) => {
+    if (data.draftCampaignId) {
+      setDraftCampaignId(String(data.draftCampaignId))
+    }
+
+    const remoteInvites = Array.isArray(data.invites) ? data.invites : []
+    setLeadNgoInvites((current) => {
+      const next = current.map((invite) => {
+        const remote = remoteInvites.find((row) => Number(row.ngo_id) === invite.ngoId)
+        if (!remote) return invite
+        return { ...invite, status: String(remote.status || invite.status || 'invited').toLowerCase() as LeadNgoInvite['status'] }
+      })
+
+      for (const remote of remoteInvites) {
+        const ngoId = Number(remote.ngo_id)
+        if (!next.some((invite) => invite.ngoId === ngoId)) {
+          next.push({
+            ngoId,
+            name: remote.name,
+            email: remote.email,
+            status: String(remote.status || 'invited').toLowerCase() as LeadNgoInvite['status'],
+          })
+        }
+      }
+
+      if (data.leadNgoAccepted && Number(data.selectedLeadNgoId || 0) > 0) {
+        const accepted: LeadNgoInvite = {
+          ngoId: Number(data.selectedLeadNgoId),
+          name: String(data.selectedLeadNgoName || ''),
+          email: String(data.selectedLeadNgoEmail || ''),
+          status: 'accepted',
+        }
+        setConfirmedLeadNgo(accepted)
+        if (!next.some((invite) => invite.ngoId === accepted.ngoId)) {
+          next.push(accepted)
+        }
+        return next.map((invite) => {
+          if (invite.ngoId === Number(data.selectedLeadNgoId)) {
+            return {
+              ...invite,
+              name: data.selectedLeadNgoName || invite.name,
+              email: data.selectedLeadNgoEmail || invite.email,
+              status: 'accepted',
+            }
+          }
+          if (invite.status === 'accepted') return invite
+          return invite.status === 'invited' || invite.status === 'pending'
+            ? { ...invite, status: 'expired' as const }
+            : invite
+        })
+      }
+
+      return next
+    })
+  }
+
+  const syncLeadInviteStatuses = async (overrides?: { draftCampaignId?: string | null; sessionId?: string | null }) => {
+    if (!token) return null
+    const resolvedDraftId = overrides?.draftCampaignId ?? draftCampaignId
+    const resolvedSessionId = overrides?.sessionId ?? activeSessionId
+    if (!resolvedDraftId && !resolvedSessionId) return null
+
+    const params = new URLSearchParams()
+    if (resolvedDraftId) params.set('draftCampaignId', resolvedDraftId)
+    else if (resolvedSessionId) params.set('sessionId', resolvedSessionId)
+
+    const response = await fetch(`/api/csr-agent/lead-ngo-invites?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const payload = await response.json().catch(() => null)
+    if (!response.ok || !payload?.success) return null
+    applyRemoteInviteState(payload.data || {})
+    if (payload.data?.leadNgoAccepted) {
+      setTimeout(() => {
+        persistCurrentSessionSnapshot({
+          leadNgoInvites: normalizeLeadNgoInvites(
+            (Array.isArray(payload.data?.invites) ? payload.data.invites : []).map((row: { ngo_id: number; name: string; email: string; status: string }) => ({
+              ngoId: row.ngo_id,
+              name: row.name,
+              email: row.email,
+              status: row.status,
+            })),
+          ),
+        })
+      }, 0)
+    }
+    return payload.data
+  }
+
+  const handleInviteLeadNgoToggle = async (ngo: NgoDirectoryItem) => {
+    if (hasLockedLeadNgo) {
+      return
+    }
     if (!canUseCampaignActions) {
       appendAssistantMessage('Please select an existing project or finish all campaign details before inviting lead NGOs.')
       return
     }
-    setLeadNgoInvites((current) => {
-      const existing = current.find((item) => item.ngoId === ngo.id)
-      const invitedInvite = {
-        ngoId: ngo.id,
-        name: ngo.name,
-        email: ngo.email,
-        status: 'invited' as const,
-      }
-      const next = existing
-        ? current.map((item) => item.ngoId === ngo.id ? ({ ...item, status: 'invited' as const }) : item)
-        : [...current, invitedInvite]
-      setTimeout(() => persistCurrentSessionSnapshot({ leadNgoInvites: next }), 0)
-      return next
-    })
-    appendAssistantMessage(`Invited lead NGO candidate: ${ngo.name}.`)
-  }
+    if (!token || !activeSessionId) {
+      appendAssistantMessage('Unable to send invites right now. Please sign in again.')
+      return
+    }
 
-  const handleAcceptLeadNgo = (ngoId: number) => {
-    const invite = leadNgoInvites.find((item) => item.ngoId === ngoId)
-    if (!invite) return
-    setLeadNgoInvites((current) => {
-      const next = current.map((item) => item.ngoId === ngoId ? ({ ...item, status: 'accepted' as const }) : item)
-      setTimeout(() => persistCurrentSessionSnapshot({ leadNgoInvites: next, selectedLeadNgoId: ngoId }), 0)
-      return next
-    })
-    setSelectedLeadNgoId(ngoId)
-    appendAssistantMessage(`${invite.name} is now marked as the selected lead NGO for this campaign.`)
-    void finalizeConversation()
+    const alreadyInvited = leadNgoInvites.some((item) => item.ngoId === ngo.id)
+
+    try {
+      const response = await fetch('/api/csr-agent/lead-ngo-invites', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          sessionId: activeSessionId,
+          draftCampaignId,
+          action: alreadyInvited ? 'revoke' : 'invite',
+          ngoId: ngo.id,
+          ngoName: ngo.name,
+          ngoEmail: ngo.email,
+          projectData,
+          volunteerRequirement: projectData.volunteerRequirement || '',
+        }),
+      })
+
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || !payload?.success) {
+        if (response.status === 409 || String(payload?.error || '').toLowerCase().includes('already accepted')) {
+          await syncLeadInviteStatuses()
+          return
+        }
+        throw new Error(payload?.error || 'Failed to update lead NGO invite')
+      }
+
+      applyRemoteInviteState(payload.data || {})
+      if (payload.data?.draftCampaignId) {
+        setTimeout(() => persistCurrentSessionSnapshot({ draftCampaignId: String(payload.data.draftCampaignId) }), 0)
+      }
+
+      if (!alreadyInvited && isQuestionnaireComplete) {
+        setGenerationError(null)
+      }
+
+      appendAssistantMessage(
+        alreadyInvited
+          ? `Removed lead NGO invite for ${ngo.name}.`
+          : `Invited ${ngo.name} as a lead NGO candidate. They can accept from their dashboard. You can publish once a lead NGO accepts and is assigned.`,
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to update lead NGO invite'
+      appendAssistantMessage(message)
+    }
   }
 
   const handlePublishDraft = async () => {
@@ -1272,12 +1639,18 @@ export default function CSRAgentPage() {
       appendAssistantMessage('Please generate or keep a draft before publishing.')
       return
     }
-    if (!selectedLeadNgoId) {
-      appendAssistantMessage('Please select a lead NGO before publishing the campaign.')
+    if (!acceptedLeadNgo) {
+      appendAssistantMessage('A lead NGO must accept the invite from their dashboard before you can publish this campaign.')
       return
     }
     if (!user?.id || !token) {
       appendAssistantMessage('Unable to publish right now. Please sign in again.')
+      return
+    }
+
+    const publishCampaignId = draftCampaignId || editingCampaignId
+    if (!publishCampaignId) {
+      appendAssistantMessage('Campaign draft is missing. Invite a lead NGO again and wait for acceptance before publishing.')
       return
     }
 
@@ -1286,16 +1659,28 @@ export default function CSRAgentPage() {
       const payloadBody = {
         title: draft.title,
         description: draft.description,
-        cause: draft.category,
-        region: draft.location,
+        category: draft.category,
+        location: draft.location,
         budget_inr: draft.budget_inr,
-        timeline: draft.impact_metrics.duration,
         budget_breakdown: draft.budget_breakdown,
         schedule_vii: draft.schedule_vii,
         sdg_alignment: draft.sdg_alignment,
+        start_date: draft.start_date,
+        end_date: draft.end_date,
         impact_metrics: {
           ...draft.impact_metrics,
-          selected_lead_ngo_id: selectedLeadNgoId,
+          csr_agent_session_id: activeSessionId,
+          selected_lead_ngo_id: acceptedLeadNgo.ngoId,
+          selected_lead_ngo_name: acceptedLeadNgo.name,
+          selected_lead_ngo_email: acceptedLeadNgo.email,
+          lead_ngo_accepted: true,
+          lead_ngo_invites: leadNgoInvites.map((invite) => ({
+            ngo_id: invite.ngoId,
+            name: invite.name,
+            email: invite.email,
+            status: invite.status || (invite.ngoId === acceptedLeadNgo.ngoId ? 'accepted' : 'expired'),
+            invited_at: new Date().toISOString(),
+          })),
           invited_offer_ids: invitedOfferIds,
           volunteer_requirement: projectData.volunteerRequirement || '',
           ...(selectedProjectSuggestionId ? { beneficiaries: Number((projectSuggestions.find(p => p.id === selectedProjectSuggestionId)?.expected_beneficiaries) || draft.impact_metrics.beneficiaries || 0) } : {}),
@@ -1304,35 +1689,38 @@ export default function CSRAgentPage() {
         milestones: draft.milestones,
       }
 
-      const response = editingCampaignId
-        ? await fetch('/api/csr-agent/update-campaign/route', {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              campaign_id: editingCampaignId,
-              company_id: user?.id,
-              campaign: payloadBody,
-            }),
-          })
-        : await fetch('/api/campaigns', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify(payloadBody),
-          })
+      const response = await fetch('/api/csr-agent/publish-campaign', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          campaign_id: publishCampaignId,
+          campaign: payloadBody,
+        }),
+      })
 
       const payload = await response.json().catch(() => null)
       if (!response.ok || !payload?.success) {
         throw new Error(payload?.error || 'Failed to publish campaign')
       }
 
-      setPublishedCampaignId(String(payload.data?.id || payload.data?.campaign_id || editingCampaignId || ''))
-      appendAssistantMessage(editingCampaignId ? 'Campaign updated successfully.' : `Campaign published successfully. Published campaign ID: ${String(payload.data?.id || '')}`)
+      const campaignId = String(payload.data?.id || publishCampaignId)
+      setPublishedCampaignId(campaignId)
+      const currentSession = normalizeSessionFromState()
+      if (currentSession) {
+        const withPublished = { ...currentSession, publishedCampaignId: campaignId, updatedAt: new Date().toISOString() }
+        const nextSessions = sessions.map((session) => (session.id === withPublished.id ? withPublished : session))
+        persistSessions(nextSessions, withPublished.id)
+      }
+
+      const campaignUrl = payload.campaign_url || `/csr-campaigns/${campaignId}`
+      if (payload.social_post_id) {
+        appendAssistantMessage(`Campaign published successfully. It is now listed on CSR Campaigns and an announcement was posted to Social with a link to ${campaignUrl}.`)
+      } else {
+        appendAssistantMessage(`Campaign published successfully on CSR Campaigns (${campaignUrl}). The social announcement could not be created automatically — you can share the link manually from Social.`)
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to publish campaign'
       appendAssistantMessage(message)
@@ -1346,10 +1734,9 @@ export default function CSRAgentPage() {
       return
     }
 
-    const hasAcceptedLeadNgo = leadNgoInvites.some((item) => item.status === 'accepted') || selectedLeadNgoId !== null
-    if (!hasAcceptedLeadNgo) {
+    if (!acceptedLeadNgo) {
       setConversationStage('milestones')
-      appendAssistantMessage('Please invite and select a lead NGO before I generate the final draft.')
+      appendAssistantMessage('Please wait for a lead NGO to accept the invite from their dashboard before I generate the final draft.')
       return
     }
 
@@ -1389,6 +1776,13 @@ export default function CSRAgentPage() {
         return false
       }
       nextProjectData.budget = String(parsedBudget)
+    } else if (current.key === "startDate" || current.key === "endDate") {
+      const parsedDate = parseDateOnly(trimmed)
+      if (parsedDate === null) {
+        appendAssistantMessage("Please enter a valid date in DD/MM/YYYY format.")
+        return false
+      }
+      nextProjectData[current.key] = formatDateOnlyFromUtc(parsedDate)
     } else if (current.key === "volunteerRequirement") {
       nextProjectData.volunteerRequirement = trimmed
     } else if (current.key === "category") {
@@ -1455,7 +1849,7 @@ export default function CSRAgentPage() {
 
     const count = Math.floor(parsed)
     setMilestoneCount(count)
-    setMilestoneInputs(Array.from({ length: count }, () => ({ description: "", budgetTarget: "" })))
+    setMilestoneInputs(Array.from({ length: count }, () => ({ title: '', description: '', budgetTarget: '' })))
     setMilestoneIndex(0)
     setMilestoneQuestionIndex(0)
     setConversationStage("milestones")
@@ -1547,28 +1941,21 @@ export default function CSRAgentPage() {
     const endUtc = parseDateOnly(data.endDate)
     const totalDays = startUtc !== null && endUtc !== null && endUtc >= startUtc ? Math.floor((endUtc - startUtc) / DAY_MS) + 1 : 0
 
-    const campaignHint = [data.campaignName, data.category, data.city, data.state].filter(Boolean).join(' • ')
-    const randomness = refresh ? Math.floor(Math.random() * 1000) : Date.now() % 1000
-
     const makeSet = (count: number, title: string) => {
+      const phases = buildMilestonePhasePlan(count, data)
       const base = Math.floor(totalBudget / count)
       const remainder = totalBudget - base * count
       const daysBase = totalDays > 0 ? Math.floor(totalDays / count) : 0
       const daysRemainder = totalDays > 0 ? totalDays - daysBase * count : 0
 
-      const milestones: MilestoneInput[] = Array.from({ length: count }).map((_, i) => {
+      const milestones: MilestoneInput[] = phases.map((phase, i) => {
         const extra = i < remainder ? 1 : 0
         const amt = base + extra
         const extraDay = i < daysRemainder ? 1 : 0
         const days = Math.max(1, daysBase + extraDay)
-        const desc = i === 0
-          ? `Planning & kickoff (${campaignHint})`
-          : i === count - 1
-            ? `Closure & reporting (${data.city || 'target location'})`
-            : `Implementation activities aligned to ${data.category || 'selected category'}`
 
-        let startStr: string | undefined = undefined
-        let endStr: string | undefined = undefined
+        let startStr: string | undefined
+        let endStr: string | undefined
         if (startUtc !== null && endUtc !== null && totalDays > 0) {
           let prefixDays = 0
           for (let idx = 0; idx < i; idx++) {
@@ -1576,45 +1963,37 @@ export default function CSRAgentPage() {
             const daysForIdx = Math.max(1, daysBase + extraForIdx)
             prefixDays += daysForIdx
           }
-          const sUtc = startUtc + prefixDays * DAY_MS
-          const eUtc = Math.min(sUtc + (days - 1) * DAY_MS, endUtc)
-          startStr = formatDateOnlyFromUtc(sUtc)
-          endStr = formatDateOnlyFromUtc(eUtc)
+          const segmentStartUtc = startUtc + prefixDays * DAY_MS
+          const segmentEndUtc = Math.min(segmentStartUtc + (days - 1) * DAY_MS, endUtc)
+          startStr = formatDateOnlyFromUtc(segmentStartUtc)
+          endStr = formatDateOnlyFromUtc(segmentEndUtc)
         }
 
         return {
-          description: desc,
+          title: phase.title,
+          description: phase.description,
           budgetTarget: String(amt),
           startDate: startStr,
           endDate: endStr,
         }
       })
 
-      // adjust last milestone budget to ensure total equals totalBudget (defensive)
-      const sum = milestones.reduce((s, m) => s + (parseMoneyValue(m.budgetTarget) || 0), 0)
+      const sum = milestones.reduce((total, milestone) => total + (parseMoneyValue(milestone.budgetTarget) || 0), 0)
       if (sum !== totalBudget) {
         const diff = totalBudget - sum
         const last = milestones[milestones.length - 1]
         last.budgetTarget = String((parseMoneyValue(last.budgetTarget) || 0) + diff)
       }
 
-      // adjust days sum similarly: ensure last milestone ends on project end if mismatched
-      const sumDays = milestones.reduce((s, m) => {
-        if (m.startDate && m.endDate) {
-          const sd = parseDateOnly(m.startDate)
-          const ed = parseDateOnly(m.endDate)
-          if (sd !== null && ed !== null) {
-            return s + (Math.floor((ed - sd) / DAY_MS) + 1)
-          }
-        }
-                                      return s
-      }, 0)
-      if (totalDays > 0 && sumDays !== totalDays) {
+      if (totalDays > 0 && endUtc !== null) {
         const last = milestones[milestones.length - 1]
-        if (endUtc !== null) last.endDate = formatDateOnlyFromUtc(endUtc)
+        last.endDate = formatDateOnlyFromUtc(endUtc)
+        if (startUtc !== null) {
+          milestones[0].startDate = formatDateOnlyFromUtc(startUtc)
+        }
       }
 
-      return { id: `suggest-${count}-${Date.now()}-${Math.random().toString(36).slice(2,6)}-${randomness}`, title, milestones }
+      return { id: `suggest-${count}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}-${refresh ? 'r' : 's'}`, title, milestones }
     }
 
     const sets = [
@@ -1633,24 +2012,23 @@ export default function CSRAgentPage() {
     setMilestoneCount(set.milestones.length)
     setMilestoneInputs(set.milestones)
     setMilestoneIndex(Math.max(0, set.milestones.length - 1))
-    setMilestoneQuestionIndex(1)
-    setConversationStage('milestones')
+    setMilestoneQuestionIndex(0)
     setShowMilestoneSuggestions(false)
-    appendAssistantMessage(`Selected suggested milestone set: ${set.title}. I will use these milestones for the campaign and generate drafts now.`)
-    // persist session immediately so selection survives reload
+    appendAssistantMessage(`Selected suggested milestone set: ${set.title}. ${acceptedLeadNgo ? 'Generating your campaign draft now.' : 'Invite a lead NGO in the preview panel and wait for them to accept from their dashboard before the draft is generated.'}`)
     if (mounted && user?.id) {
       const nextSession = normalizeSessionFromState()
       if (nextSession) {
         const nextSessions = sessions.some((s) => s.id === nextSession.id)
           ? sessions.map((s) => (s.id === nextSession.id ? nextSession : s))
           : [nextSession, ...sessions]
-        // persist using structured payload (sessions + activeSessionId)
         persistSessions(nextSessions, nextSession.id)
       }
     }
-    setTimeout(() => {
-      void finalizeConversation()
-    }, 0)
+    if (acceptedLeadNgo) {
+      setTimeout(() => {
+        void finalizeConversation()
+      }, 0)
+    }
   }
 
 
@@ -1721,12 +2099,13 @@ export default function CSRAgentPage() {
     const count = milestoneCount ?? Math.max(1, milestoneInputs.length || 1)
     const baseMilestones = milestoneInputs.length > 0
       ? milestoneInputs.slice(0, count).map((m) => ({
+        title: m.title || '',
         description: m.description || '',
         budgetTarget: m.budgetTarget || '',
         startDate: (m as any).startDate || (m as any).start_date || undefined,
         endDate: (m as any).endDate || (m as any).end_date || undefined,
       }))
-      : Array.from({ length: count }, () => ({ description: '', budgetTarget: '' }))
+      : Array.from({ length: count }, () => ({ title: '', description: '', budgetTarget: '' }))
     setPreviewMilestoneCount(count)
     setPreviewMilestoneDrafts(baseMilestones)
     setIsEditingPreviewMilestones(true)
@@ -1737,10 +2116,11 @@ export default function CSRAgentPage() {
     const resizedMilestones = Array.from({ length: count }, (_, index) => {
       const existing = previewMilestoneDrafts[index]
       return {
+        title: String(existing?.title || ''),
         description: String(existing?.description || ''),
         budgetTarget: String(existing?.budgetTarget || ''),
-        startDate: existing?.startDate,
-        endDate: existing?.endDate,
+        startDate: existing?.startDate ? normalizeDateInput(existing.startDate) : undefined,
+        endDate: existing?.endDate ? normalizeDateInput(existing.endDate) : undefined,
       }
     })
 
@@ -1780,13 +2160,19 @@ export default function CSRAgentPage() {
       }
       const first = resizedMilestones[0]
       const last = resizedMilestones[resizedMilestones.length - 1]
-      if (first.startDate && first.startDate !== projectData.startDate) {
-        appendAssistantMessage('First milestone must start on the project start date.')
-        return
+      if (first.startDate) {
+        const firstStart = parseDateOnly(first.startDate)
+        if (firstStart === null || firstStart !== projectStart) {
+          appendAssistantMessage('First milestone must start on the project start date.')
+          return
+        }
       }
-      if (last.endDate && last.endDate !== projectData.endDate) {
-        appendAssistantMessage('Last milestone must end on the project end date.')
-        return
+      if (last.endDate) {
+        const lastEnd = parseDateOnly(last.endDate)
+        if (lastEnd === null || lastEnd !== projectEnd) {
+          appendAssistantMessage('Last milestone must end on the project end date.')
+          return
+        }
       }
       // ensure milestones are contiguous and within project bounds
       for (let i = 0; i < resizedMilestones.length; i++) {
@@ -2028,19 +2414,44 @@ export default function CSRAgentPage() {
   useEffect(() => {
     if (!mounted || !user?.id) return
     if (!hasRequiredProjectFields) return
-    if (serviceSuggestions.length > 0 || isFetchingRecommendations) return
-    void loadRecommendations(projectData)
-  }, [mounted, user?.id, hasRequiredProjectFields, serviceSuggestions.length, isFetchingRecommendations, projectData])
+    if (isFetchingRecommendations) return
+    if (lastRecommendationKeyRef.current === recommendationKey) return
+
+    void loadRecommendations(projectData).finally(() => {
+      lastRecommendationKeyRef.current = recommendationKey
+    })
+  }, [mounted, user?.id, hasRequiredProjectFields, isFetchingRecommendations, recommendationKey, projectData])
 
   useEffect(() => {
     if (!mounted || !user?.id) return
     if (!isQuestionnaireComplete) return
     if (generatedCampaigns.length > 0 || isGeneratingCampaigns || isTyping) return
-    if (conversationStage === "generating" || conversationStage === "complete") return
+    if (conversationStage === "generating") return
     if (generationError) return
+    if (!acceptedLeadNgo) return
     if (isHydratingFromServerRef.current || isApplyingSessionRef.current) return
     void finalizeConversation()
-  }, [mounted, user?.id, isQuestionnaireComplete, generatedCampaigns.length, isGeneratingCampaigns, isTyping, conversationStage, generationError])
+  }, [mounted, user?.id, isQuestionnaireComplete, generatedCampaigns.length, isGeneratingCampaigns, isTyping, conversationStage, generationError, acceptedLeadNgo?.ngoId])
+
+  useEffect(() => {
+    if (!mounted || !user?.id || !token) return
+    if (hasLockedLeadNgo) return
+    if (!draftCampaignId && leadNgoInvites.length === 0) return
+
+    void syncLeadInviteStatuses()
+    const interval = setInterval(() => {
+      void syncLeadInviteStatuses()
+    }, 5000)
+
+    return () => clearInterval(interval)
+  }, [mounted, user?.id, token, draftCampaignId, leadNgoInvites.length, hasLockedLeadNgo])
+
+  useEffect(() => {
+    if (!isQuestionnaireComplete) return
+    if (generatedCampaigns.length > 0 && conversationStage !== "complete") {
+      setConversationStage("complete")
+    }
+  }, [isQuestionnaireComplete, generatedCampaigns.length, conversationStage])
 
   if (!mounted || loading) {
     return (
@@ -2120,15 +2531,27 @@ export default function CSRAgentPage() {
                     orderedSessions.map((session) => {
                       const isActive = session.id === activeSessionId
                       return (
-                        <button
+                        <div
                           key={session.id}
-                          type="button"
-                          onClick={() => applySession(session)}
-                          className={`w-full rounded-xl border px-3 py-2 text-left transition ${isActive ? "border-blue-300 bg-blue-50" : "border-slate-200 bg-white hover:bg-slate-50"}`}
+                          className={`flex items-start gap-1 rounded-xl border transition ${isActive ? "border-blue-300 bg-blue-50" : "border-slate-200 bg-white hover:bg-slate-50"}`}
                         >
-                          <p className="text-sm font-semibold text-slate-900">{session.title}</p>
-                          <p className="mt-1 text-[11px] text-slate-500">{new Date(session.updatedAt).toLocaleString()}</p>
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => applySession(session)}
+                            className="min-w-0 flex-1 px-3 py-2 text-left"
+                          >
+                            <p className="text-sm font-semibold text-slate-900">{getSessionDisplayTitle(session)}</p>
+                            <p className="mt-1 text-[11px] text-slate-500">{new Date(session.updatedAt).toLocaleString()}</p>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(event) => void deleteSession(session.id, event)}
+                            className="mr-2 mt-2 rounded-md p-1.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+                            aria-label={`Delete ${session.title}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
                       )
                     })
                   )}
@@ -2349,26 +2772,17 @@ export default function CSRAgentPage() {
                                       <Button size="sm" variant="outline" onClick={() => handleSelectSuggestedSet(idx)}>Select this set</Button>
                                     </div>
                                   </div>
-                                  <div className="mt-2 grid gap-1">
-                                    {set.milestones.map((m, i) => {
-                                      const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-                                      let desc = String(m.description || '')
-                                      // remove set title prefix like "Milestone 1: Short (3 milestones) - "
-                                      try {
-                                        const title = String(set.title || '')
-                                        if (title) {
-                                          const re = new RegExp(`^\\s*(?:Milestone\\s*${i + 1}\\s*:\\s*)?${escapeRegExp(title)}\\s*[-–—]\s*`, 'i')
-                                          desc = desc.replace(re, '')
-                                        }
-                                      } catch {}
-                                      // also remove any leading 'Milestone X: ' that may already be present in the stored description
-                                      desc = desc.replace(/^\s*Milestone\s*\d+\s*:\s*/i, '')
-                                      // trim
-                                      desc = desc.trim()
-                                      return (
-                                        <div key={i} className="text-xs text-slate-600 break-words whitespace-normal">Milestone {i + 1}: {desc} — {formatCurrency(parseMoneyValue(m.budgetTarget) || 0)} {(m.startDate || (m as any).start_date) && (m.endDate || (m as any).end_date) ? `• ${(m.startDate || (m as any).start_date)} — ${(m.endDate || (m as any).end_date)}` : ''}</div>
-                                      )
-                                    })}
+                                  <div className="mt-2 grid gap-2">
+                                    {set.milestones.map((m, i) => (
+                                      <div key={i} className="rounded-md border border-slate-100 bg-slate-50 p-2 text-xs text-slate-700">
+                                        <p className="font-semibold text-slate-900">Milestone {i + 1}: {m.title || `Phase ${i + 1}`}</p>
+                                        <p className="mt-1 break-words whitespace-normal">{m.description}</p>
+                                        <p className="mt-1 text-slate-600">
+                                          {formatCurrency(parseMoneyValue(m.budgetTarget) || 0)}
+                                          {m.startDate && m.endDate ? ` • ${m.startDate} to ${m.endDate}` : ''}
+                                        </p>
+                                      </div>
+                                    ))}
                                   </div>
                                 </div>
                               ))}
@@ -2382,13 +2796,17 @@ export default function CSRAgentPage() {
                           value={input}
                           onChange={(event) => setInput(event.target.value)}
                           onKeyDown={(event) => event.key === "Enter" && handleSend()}
-                          placeholder={activeQuestion?.question || "Type your response..."}
-                          disabled={isTyping}
+                          placeholder={
+                            isQuestionnaireComplete
+                              ? "All campaign details are captured. Use the preview panel to publish."
+                              : (activeQuestion?.question || "Type your response...")
+                          }
+                          disabled={isTyping || (isQuestionnaireComplete && !generationError)}
                           className="h-11 w-full flex-1 rounded-xl border-slate-200 bg-slate-50 sm:h-12"
                         />
                         <Button
                           onClick={() => void handleSend()}
-                          disabled={!input.trim() || isTyping}
+                          disabled={!input.trim() || isTyping || (isQuestionnaireComplete && !generationError)}
                           className="h-11 w-full rounded-xl bg-slate-950 px-4 text-white hover:bg-slate-800 sm:h-12 sm:w-auto sm:px-5"
                         >
                           <Send className="h-4 w-4" />
@@ -2407,10 +2825,6 @@ export default function CSRAgentPage() {
               </CardHeader>
               <CardContent className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-5">
                 <div className="space-y-5">
-                  {process.env.NODE_ENV !== "production" && recommendationDebug && (
-                    <div className="rounded-2xl border border-blue-200 bg-blue-50 p-3 text-xs text-blue-700">{recommendationDebug}</div>
-                  )}
-
                   {generationError && (
                     <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{generationError}</div>
                   )}
@@ -2458,6 +2872,20 @@ export default function CSRAgentPage() {
                     </div>
                   </div>
 
+                  {hasLockedLeadNgo ? (
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                      <p className="text-sm font-semibold text-emerald-950">Lead NGO confirmed</p>
+                      <p className="mt-1 text-sm text-emerald-800">
+                        {acceptedLeadNgo?.name} has accepted and is assigned as lead NGO for this campaign.
+                      </p>
+                      {selectedProjectSuggestionId ? (
+                        <p className="mt-2 text-xs text-emerald-700">
+                          Linked project: {projectSuggestions.find((project) => project.id === selectedProjectSuggestionId)?.title || 'Selected project'}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <>
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                     <div className="flex items-center justify-between gap-3">
                       <div>
@@ -2489,6 +2917,8 @@ export default function CSRAgentPage() {
                       )}
                     </div>
                   </div>
+                    </>
+                  )}
 
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                     <div className="flex items-center justify-between gap-3">
@@ -2518,50 +2948,59 @@ export default function CSRAgentPage() {
                         ))
                       ) : (
                         <div className="rounded-xl border border-dashed border-slate-200 bg-white p-4 text-sm text-slate-500">
-                          Optional capability suggestions will appear after you select an existing project or complete the campaign details.
+                          {isFetchingRecommendations
+                            ? 'Finding capability offers...'
+                            : 'No strong capability matches found for this campaign yet. You can still continue without inviting offers.'}
                         </div>
                       )}
                     </div>
                   </div>
 
+                  {!hasLockedLeadNgo ? (
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <p className="text-sm font-semibold text-slate-950">Possible Lead NGOs</p>
-                        <p className="mt-1 text-xs text-slate-500">Invite lead NGO candidates, then mark one as selected so the final draft can be published.</p>
+                        <p className="mt-1 text-xs text-slate-500">Invite one or more lead NGO candidates. They accept from their dashboard. You can publish only after a lead NGO accepts and is assigned.</p>
                       </div>
                       {isFetchingNgoDirectory && <Loader2 className="h-4 w-4 animate-spin text-slate-500" />}
                     </div>
                     <div className="mt-3 space-y-2">
                       {ngoDirectory.length > 0 ? ngoDirectory.slice(0, 5).map((ngo) => {
-                        const invite = leadNgoInvites.find((item) => item.ngoId === ngo.id)
+                        const isInvited = leadNgoInvites.some((item) => item.ngoId === ngo.id)
                         return (
                           <div key={ngo.id} className="rounded-xl border border-slate-200 bg-white p-3">
                             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                               <div className="min-w-0">
                                 <p className="text-sm font-semibold text-slate-950">{ngo.name}</p>
                                 <p className="mt-1 text-xs text-slate-500 break-words">{ngo.email || 'No email provided'}</p>
+                                <p className="mt-1 text-[11px] font-medium text-blue-700">Match score {ngo.score}</p>
                               </div>
                               <div className="flex shrink-0 items-center gap-2 self-start">
-                                <Button type="button" size="sm" className="whitespace-nowrap" disabled={!canUseCampaignActions} variant={invite ? 'secondary' : 'outline'} onClick={() => handleInviteLeadNgo(ngo)}>
-                                  {invite ? 'Invited' : 'Invite'}
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  className="whitespace-nowrap"
+                                  disabled={!canUseCampaignActions}
+                                  variant={isInvited ? 'secondary' : 'outline'}
+                                  onClick={() => handleInviteLeadNgoToggle(ngo)}
+                                >
+                                  {isInvited ? 'Invited' : 'Invite'}
                                 </Button>
-                                {invite?.status === 'invited' ? (
-                                  <Button type="button" size="sm" className="whitespace-nowrap" disabled={!canUseCampaignActions} onClick={() => handleAcceptLeadNgo(ngo.id)}>Select</Button>
-                                ) : invite?.status === 'accepted' ? (
-                                  <span className="whitespace-nowrap rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">Selected</span>
-                                ) : null}
                               </div>
                             </div>
                           </div>
                         )
                       }) : (
                         <div className="rounded-xl border border-dashed border-slate-200 bg-white p-4 text-sm text-slate-500">
-                          {isFetchingNgoDirectory ? 'Loading NGO directory...' : 'No NGO directory entries found.'}
+                          {isFetchingNgoDirectory
+                            ? 'Loading lead NGO suggestions...'
+                            : 'No NGOs are registered on the platform yet.'}
                         </div>
                       )}
                     </div>
                   </div>
+                  ) : null}
 
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                     <div className="flex items-center justify-between gap-3">
@@ -2591,7 +3030,7 @@ export default function CSRAgentPage() {
                               onChange={(event) => {
                                 const count = Math.max(1, Math.min(10, Number(event.target.value || 1)))
                                 setPreviewMilestoneCount(count)
-                                setPreviewMilestoneDrafts((prev) => Array.from({ length: count }, (_, index) => prev[index] || { description: '', budgetTarget: '' }))
+                                setPreviewMilestoneDrafts((prev) => Array.from({ length: count }, (_, index) => prev[index] || { title: '', description: '', budgetTarget: '' }))
                               }}
                               className="h-9 w-24"
                             />
@@ -2599,11 +3038,16 @@ export default function CSRAgentPage() {
                           {(previewMilestoneDrafts || []).map((milestone, index) => (
                             <div key={`preview-edit-milestone-${index}`} className="rounded-xl border border-slate-200 p-3">
                               <p className="mb-2 text-xs font-semibold text-slate-500">Milestone {index + 1}</p>
+                              <Input
+                                value={milestone.title || ''}
+                                onChange={(event) => setPreviewMilestoneDrafts((prev) => prev.map((item, itemIndex) => itemIndex === index ? { ...item, title: event.target.value } : item))}
+                                placeholder="Milestone title"
+                              />
                               <textarea
                                 value={milestone.description || ''}
                                 onChange={(event) => setPreviewMilestoneDrafts((prev) => prev.map((item, itemIndex) => itemIndex === index ? { ...item, description: event.target.value } : item))}
                                 placeholder="Milestone description"
-                                className="min-h-[70px] w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none ring-0 focus:border-slate-300"
+                                className="mt-2 min-h-[70px] w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none ring-0 focus:border-slate-300"
                               />
                               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                                 <Input
@@ -2630,7 +3074,7 @@ export default function CSRAgentPage() {
                       ) : milestoneInputs.length > 0 ? (
                         milestoneInputs.map((milestone, index) => (
                           <div key={`milestone-${index}`} className="rounded-xl border border-slate-200 bg-white p-3">
-                            <p className="text-sm font-semibold text-slate-950">Milestone {index + 1}</p>
+                            <p className="text-sm font-semibold text-slate-950">{milestone.title || `Milestone ${index + 1}`}</p>
                             <p className="mt-1 text-xs text-slate-600 break-words">{milestone.description || "Waiting for description"}</p>
                             <p className="mt-1 text-xs text-slate-600">{milestone.budgetTarget ? formatCurrency(parseMoneyValue(milestone.budgetTarget) || 0) : "Waiting for budget"} {milestone.startDate && milestone.endDate ? `• ${milestone.startDate} — ${milestone.endDate}` : ''}</p>
                           </div>
@@ -2643,136 +3087,44 @@ export default function CSRAgentPage() {
                     </div>
                   </div>
 
-                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-semibold text-slate-950">Generated drafts</p>
-                      {generatedCampaigns.length > 0 && (
-                        isEditingGeneratedDrafts ? (
-                          <div className="flex items-center gap-2">
-                            <Button type="button" size="sm" variant="ghost" onClick={handleCancelGeneratedDraftsEdit}>Cancel</Button>
-                            <Button type="button" size="sm" onClick={handleSaveGeneratedDraftsEdit}>Save</Button>
-                          </div>
-                        ) : (
-                          <Button type="button" size="sm" variant="outline" onClick={handleStartGeneratedDraftsEdit}>Edit</Button>
-                        )
-                      )}
-                    </div>
-                    {selectedLeadNgoId ? (
-                      <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
-                        <span>Lead NGO selected. The final draft can now be published.</span>
-                        <Button type="button" size="sm" onClick={handlePublishDraft} disabled={!generatedCampaigns.length || !canUseCampaignActions}>Publish</Button>
+                  <div className="rounded-2xl border border-blue-200 bg-white p-4 shadow-sm">
+                    {isGeneratingCampaigns ? (
+                      <div className="flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-slate-700">
+                        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-[#1d4ed8]" />
+                        Generating your campaign draft...
+                      </div>
+                    ) : acceptedLeadNgo && generatedCampaigns.length > 0 ? (
+                      <div className="flex flex-col gap-3 rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="text-sm font-semibold text-slate-900">
+                          Ready to publish!
+                        </p>
+                        <Button
+                          type="button"
+                          className="shrink-0 bg-[#1d4ed8] text-white hover:bg-[#1e40af]"
+                          onClick={handlePublishDraft}
+                          disabled={!canUseCampaignActions}
+                        >
+                          Publish
+                        </Button>
+                      </div>
+                    ) : acceptedLeadNgo ? (
+                      <div className="flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-slate-700">
+                        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-[#1d4ed8]" />
+                        {acceptedLeadNgo.name} accepted. Generating your campaign draft...
+                      </div>
+                    ) : isQuestionnaireComplete && leadNgoInvites.length > 0 && !acceptedLeadNgo ? (
+                      <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-slate-700">
+                        Waiting for a lead NGO to accept the invite from their dashboard.
+                      </div>
+                    ) : isQuestionnaireComplete && !hasLockedLeadNgo ? (
+                      <div className="rounded-xl border border-dashed border-blue-200 bg-blue-50/40 px-4 py-3 text-sm text-slate-600">
+                        Invite at least one lead NGO above. Once they accept from their dashboard, your campaign draft will be generated and you can publish.
                       </div>
                     ) : null}
-                    <div className="mt-3 space-y-3">
-                      {isGeneratingCampaigns ? (
-                        <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
-                          Generating campaign drafts...
-                        </div>
-                      ) : isEditingGeneratedDrafts ? (
-                        previewGeneratedDrafts.map((campaign, campaignIndex) => (
-                          <div key={`editable-campaign-${campaignIndex}`} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                            <div className="grid gap-2">
-                              <Input
-                                value={campaign.title}
-                                onChange={(event) => setPreviewGeneratedDrafts((prev) => prev.map((item, itemIndex) => itemIndex === campaignIndex ? { ...item, title: event.target.value } : item))}
-                                placeholder="Campaign title"
-                              />
-                              <textarea
-                                value={campaign.description}
-                                onChange={(event) => setPreviewGeneratedDrafts((prev) => prev.map((item, itemIndex) => itemIndex === campaignIndex ? { ...item, description: event.target.value } : item))}
-                                placeholder="Campaign description"
-                                className="min-h-[80px] w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none ring-0 focus:border-slate-300"
-                              />
-                            </div>
-                            <div className="mt-3 space-y-2">
-                              {campaign.milestones.map((milestone, milestoneIndex) => (
-                                <div key={`editable-campaign-${campaignIndex}-milestone-${milestoneIndex}`} className="rounded-xl border border-slate-200 bg-white p-3">
-                                  <Input
-                                    value={milestone.title}
-                                    onChange={(event) => setPreviewGeneratedDrafts((prev) => prev.map((item, itemIndex) => {
-                                      if (itemIndex !== campaignIndex) return item
-                                      return {
-                                        ...item,
-                                        milestones: item.milestones.map((entry, entryIndex) => entryIndex === milestoneIndex ? { ...entry, title: event.target.value } : entry),
-                                      }
-                                    }))}
-                                    placeholder={`Milestone ${milestoneIndex + 1} title`}
-                                  />
-                                  <textarea
-                                    value={milestone.description}
-                                    onChange={(event) => setPreviewGeneratedDrafts((prev) => prev.map((item, itemIndex) => {
-                                      if (itemIndex !== campaignIndex) return item
-                                      return {
-                                        ...item,
-                                        milestones: item.milestones.map((entry, entryIndex) => entryIndex === milestoneIndex ? { ...entry, description: event.target.value } : entry),
-                                      }
-                                    }))}
-                                    placeholder={`Milestone ${milestoneIndex + 1} description`}
-                                    className="mt-2 min-h-[72px] w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none ring-0 focus:border-slate-300"
-                                  />
-                                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                                    <Input
-                                      type="number"
-                                      min={0}
-                                      value={milestone.budget_allocated}
-                                      onChange={(event) => setPreviewGeneratedDrafts((prev) => prev.map((item, itemIndex) => {
-                                        if (itemIndex !== campaignIndex) return item
-                                        return {
-                                          ...item,
-                                          milestones: item.milestones.map((entry, entryIndex) => entryIndex === milestoneIndex ? { ...entry, budget_allocated: Number(event.target.value || 0) } : entry),
-                                        }
-                                      }))}
-                                      placeholder="Budget"
-                                    />
-                                    <Input
-                                      type="date"
-                                      value={(milestone as any).startDate || milestone.start_date || ''}
-                                      onChange={(event) => setPreviewGeneratedDrafts((prev) => prev.map((item, itemIndex) => {
-                                        if (itemIndex !== campaignIndex) return item
-                                        return {
-                                          ...item,
-                                          milestones: item.milestones.map((entry, entryIndex) => entryIndex === milestoneIndex ? { ...entry, startDate: event.target.value } : entry),
-                                        }
-                                      }))}
-                                      placeholder="Start date"
-                                    />
-                                    <Input
-                                      type="date"
-                                      value={(milestone as any).endDate || milestone.end_date || ''}
-                                      onChange={(event) => setPreviewGeneratedDrafts((prev) => prev.map((item, itemIndex) => {
-                                        if (itemIndex !== campaignIndex) return item
-                                        return {
-                                          ...item,
-                                          milestones: item.milestones.map((entry, entryIndex) => entryIndex === milestoneIndex ? { ...entry, endDate: event.target.value } : entry),
-                                        }
-                                      }))}
-                                      placeholder="End date"
-                                    />
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ))
-                      ) : generatedCampaigns.length > 0 ? (
-                        generatedCampaigns.map((campaign, index) => <CampaignDraftCard key={`${campaign.title}-${index}`} campaign={campaign} />)
-                      ) : (
-                        <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
-                          Drafts will appear here once the conversation is complete.
-                        </div>
-                      )}
-                    </div>
+                    {generationError ? (
+                      <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{generationError}</div>
+                    ) : null}
                   </div>
-
-                  {conversationStage === "complete" && (
-                    <div className="rounded-2xl bg-gradient-to-r from-slate-950 to-slate-900 p-4 text-white">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-white/70">
-                        <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-                        Conversation complete
-                      </div>
-                      <p className="mt-2 text-sm text-white/80">Your CSR campaign drafts are ready. You can start a new conversation from the sidebar at any time.</p>
-                    </div>
-                  )}
 
                 </div>
               </CardContent>

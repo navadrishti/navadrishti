@@ -310,10 +310,18 @@ export const findServiceOffers = async (input: InputSchemaType): Promise<Capabil
         })
         .filter((item) => {
             const text = `${item.capability_name} ${item.impact_area.join(' ')} ${item.city} ${item.state_province}`.toLowerCase()
-            return text.includes(categoryNeedle) || item.score >= 40 || queryTokens.some((token) => text.includes(token))
+            return (
+                text.includes(categoryNeedle) ||
+                item.score >= 18 ||
+                queryTokens.some((token) => text.includes(token)) ||
+                categoryTokens.some((token) => text.includes(token))
+            )
         })
 
     // sort by final score descending
     const ranked = scored.sort((a, b) => b.score - a.score)
-    return ranked
+    if (ranked.length === 0) return []
+
+    const strongMatches = ranked.filter((item) => item.score >= 20)
+    return (strongMatches.length > 0 ? strongMatches : ranked).slice(0, 10)
 }

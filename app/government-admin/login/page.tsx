@@ -132,6 +132,7 @@ export default function GovernmentAdminLoginPage() {
                 <Input
                   id="username"
                   type="text"
+                  placeholder="Enter your username"
                   value={credentials.username}
                   onChange={(e) => setCredentials((prev) => ({ ...prev, username: e.target.value }))}
                   required
@@ -144,6 +145,7 @@ export default function GovernmentAdminLoginPage() {
                 <Input
                   id="password"
                   type="password"
+                  placeholder="Enter your password"
                   value={credentials.password}
                   onChange={(e) => setCredentials((prev) => ({ ...prev, password: e.target.value }))}
                   required
