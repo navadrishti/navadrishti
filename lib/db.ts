@@ -100,11 +100,8 @@ export const db = {
         query = query.eq('status', filters.status);
       }
 
-      if (filters.q) {
-        const qStr = `%${String(filters.q)}%`
-        // search common text fields for the query
-        query = query.or(`title.ilike.${qStr},description.ilike.${qStr},location.ilike.${qStr},exact_address.ilike.${qStr}`)
-      }
+      // Search is handled in the API route with token scoring; PostgREST `.or()`
+      // breaks when the query contains commas or other filter delimiters.
 
       if (filters.limit && Number(filters.limit) > 0) {
         query = query.limit(Number(filters.limit))

@@ -21,8 +21,11 @@ function coerceInteger(schema: z.ZodNumber) {
 
 // Milestone defined by the user in the request
 export const requestMilestoneSchema = z.object({
+  title:            z.string().trim().optional(),
   description:      z.string().min(1),
   budget_allocated: z.number().positive(),
+  start_date:       z.string().trim().optional(),
+  end_date:         z.string().trim().optional(),
 });
 
 export const generateCampaignsInputSchema = z.object({
@@ -47,6 +50,8 @@ export const responseMilestoneSchema = z.object({
   duration_weeks:   coerceInteger(z.number().int().nonnegative()),
   budget_allocated: z.number(),
   deliverables:     z.array(z.string()),
+  start_date:       z.string().trim().optional(),
+  end_date:         z.string().trim().optional(),
 });
 
 export const campaignSchema = z.object({
@@ -362,19 +367,22 @@ export function buildFallbackCampaigns(input: GenerateCampaignsInput): Campaign[
     const milestoneBudgets = distributeMilestoneBudget(budget, seedMilestones.length, preferredBudgets)
 
     const milestones: ResponseMilestone[] = seedMilestones.map((source, index) => {
+      const sourceTitle = String((source as any).title || '').trim()
+      const sourceDescription = String(source.description || '').trim()
       const weeks = Math.max(1, Math.floor((index + 1 + milestoneCount) / milestoneCount))
-      const titleBase = source.description || `Milestone ${index + 1}`
-      const milestoneTitle = config.lever === "Direct Implementation"
+      const milestoneTitle = sourceTitle || (config.lever === "Direct Implementation"
         ? `Milestone ${index + 1}: Execution`
         : config.lever === "Capacity Building"
           ? `Milestone ${index + 1}: Training Enablement`
-          : `Milestone ${index + 1}: Access Delivery`
+          : `Milestone ${index + 1}: Access Delivery`)
 
       return {
         title: milestoneTitle,
-        description: buildMilestoneDescription(config.lever, titleBase, location),
+        description: buildMilestoneDescription(config.lever, sourceDescription || `Milestone ${index + 1}`, location),
         duration_weeks: weeks,
         budget_allocated: milestoneBudgets[index] || 0,
+        start_date: (source as any).start_date,
+        end_date: (source as any).end_date,
         deliverables: [
           `${config.lever} plan approved for stage ${index + 1}`,
           `Execution evidence recorded for ${location}`,
