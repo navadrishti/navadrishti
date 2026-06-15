@@ -21,6 +21,11 @@ import { ProfileDashboardTab } from '@/components/profile-dashboard-tab';
 import { DashboardQuickSidebar } from '@/components/dashboard-quick-sidebar';
 import { ImpactReportsPanel } from '@/components/companies/impact-reports-panel';
 import { useToast } from '@/hooks/use-toast';
+import {
+  formatAttendanceSummary,
+  getSkillServiceDailyRate,
+  isDailyRentalEngagementMeta,
+} from '@/lib/ngo-need-fulfillment';
 interface OfferRequestItem {
   id: number;
   service_offer_id: number;
@@ -151,6 +156,16 @@ const getOfferRequestBillingDetails = (request: OfferRequestItem) => {
   };
 };
 
+const toOfferRentalApplication = (request: OfferRequestItem) => {
+  const billing = getOfferRequestBillingDetails(request);
+  return {
+    id: request.id,
+    fulfillment_amount: billing.paymentAmount,
+    assigned_amount: billing.paymentAmount,
+    response_meta: request.response_meta && typeof request.response_meta === 'object' ? request.response_meta : {},
+  };
+};
+
 interface CSRTrackingAssignment {
   project_id: string;
   project_title: string;
@@ -233,6 +248,323 @@ const getInitials = (name: string): string => {
   if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
   return `${parts[0].charAt(0)}${parts[parts.length - 1].charAt(0)}`.toUpperCase();
 };
+
+declare global {
+  interface Window {
+    Razorpay?: any;
+  }
+}
+
+function getSkillLocalDateString(reference: Date = new Date()) {
+  const year = reference.getFullYear();
+  const month = String(reference.getMonth() + 1).padStart(2, '0');
+  const day = String(reference.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function loadRazorpayScript() {
+  if (typeof window === 'undefined' || window.Razorpay) return Promise.resolve();
+  return new Promise<void>((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Failed to load Razorpay'));
+    document.body.appendChild(script);
+  });
+}
+
+function InlineSkillServiceFulfillment({
+  application,
+  role,
+  title = 'Skill / service rental',
+  onUpdated,
+}: {
+  application: {
+    id: number;
+    fulfillment_amount?: number | null;
+    fulfillment_quantity?: number | null;
+    assigned_amount?: number | null;
+    assigned_quantity?: number | null;
+    proposed_amount?: number | null;
+    response_meta?: Record<string, any> | null;
+  };
+  role: 'ngo' | 'individual';
+  title?: string;
+  onUpdated?: () => void | Promise<void>;
+}) {
+  const { toast } = useToast();
+  const [marking, setMarking] = useState(false);
+  const [settling, setSettling] = useState(false);
+  const meta = application.response_meta && typeof application.response_meta === 'object'
+    ? application.response_meta
+    : {};
+  const assignmentId =
+    meta.assignment_id || meta.assignmentMeta?.id || meta.assignment_meta?.id;
+  const dailyRate = getSkillServiceDailyRate(application);
+  const summary = formatAttendanceSummary(meta);
+  const today = getSkillLocalDateString();
+  const alreadyMarkedToday = String(summary.lastAttendanceAt || '') === today;
+  const settlementStatus = String(meta.settlement_status || '').toLowerCase();
+  const isSettled = settlementStatus === 'settled';
+  const outstanding = Math.max(0, summary.totalDue - summary.paidTotal);
+
+  useEffect(() => {
+    if (role === 'ngo') {
+      void loadRazorpayScript().catch(() => undefined);
+    }
+  }, [role]);
+
+  const handleMarkAttendance = async () => {
+    if (!assignmentId) {
+      toast({
+        title: 'Attendance unavailable',
+        description: 'Assignment is not linked yet.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (alreadyMarkedToday) {
+      toast({
+        title: 'Already marked',
+        description: "Today's attendance is already recorded and cannot be changed.",
+      });
+      return;
+    }
+
+    setMarking(true);
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('Please sign in again');
+
+      const response = await fetch(`/api/service-assignments/${assignmentId}/attendance`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          attendanceStatus: 'present',
+          attendanceSource: 'ngo_dashboard',
+          attendanceDate: today,
+          units: 1,
+          multiplier: 1,
+          markedForUserId: meta.assignee_user_id || undefined,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.error || 'Failed to mark attendance');
+      }
+
+      toast({
+        title: 'Attendance marked',
+        description: `Present day recorded. Daily due: INR ${dailyRate.toLocaleString('en-IN')}.`,
+      });
+      await onUpdated?.();
+    } catch (error) {
+      toast({
+        title: 'Could not mark attendance',
+        description: error instanceof Error ? error.message : 'Something went wrong',
+        variant: 'destructive',
+      });
+    } finally {
+      setMarking(false);
+    }
+  };
+
+  const handleSettle = async () => {
+    if (!assignmentId) {
+      toast({
+        title: 'Settlement unavailable',
+        description: 'Assignment is not linked yet.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setSettling(true);
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('Please sign in again');
+
+      const response = await fetch(`/api/service-assignments/${assignmentId}/settle`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ action: 'start' }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.error || 'Failed to start settlement');
+      }
+
+      const payload = data.data;
+      if (payload?.settled) {
+        toast({
+          title: 'Service completed',
+          description: payload.settledAmount > 0
+            ? `Settlement recorded for INR ${Number(payload.settledAmount).toLocaleString('en-IN')}.`
+            : 'Service marked complete with no payment due.',
+        });
+        await onUpdated?.();
+        return;
+      }
+
+      if (!payload?.paymentRequired) {
+        await onUpdated?.();
+        return;
+      }
+
+      await loadRazorpayScript();
+      if (!window.Razorpay) {
+        throw new Error('Razorpay failed to load. Refresh and try again.');
+      }
+
+      const razorpay = new window.Razorpay({
+        key: payload.keyId,
+        amount: Math.round(Number(payload.amount) * 100),
+        currency: payload.currency || 'INR',
+        name: 'Navadrishti',
+        description: 'Daily rental settlement',
+        order_id: payload.orderId,
+        theme: { color: '#059669' },
+        handler: async (paymentResponse: Record<string, string>) => {
+          try {
+            const verifyRes = await fetch(`/api/service-assignments/${assignmentId}/settle`, {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                action: 'verify',
+                razorpay_order_id: paymentResponse.razorpay_order_id,
+                razorpay_payment_id: paymentResponse.razorpay_payment_id,
+                razorpay_signature: paymentResponse.razorpay_signature,
+              }),
+            });
+
+            const verifyData = await verifyRes.json();
+            if (!verifyRes.ok || !verifyData?.success) {
+              throw new Error(verifyData?.error || 'Payment verification failed');
+            }
+
+            toast({
+              title: 'Payment successful',
+              description: `Settled INR ${Number(verifyData.data?.settledAmount || payload.amount).toLocaleString('en-IN')} and marked service complete.`,
+            });
+            await onUpdated?.();
+          } catch (verifyError) {
+            toast({
+              title: 'Payment verification failed',
+              description: verifyError instanceof Error ? verifyError.message : 'Contact support with your payment reference.',
+              variant: 'destructive',
+            });
+          }
+        },
+      });
+
+      razorpay.open();
+    } catch (error) {
+      toast({
+        title: 'Could not settle',
+        description: error instanceof Error ? error.message : 'Something went wrong',
+        variant: 'destructive',
+      });
+    } finally {
+      setSettling(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3 rounded-md border border-emerald-200 bg-emerald-50/60 p-3">
+      <div>
+        <p className="text-sm font-medium text-emerald-950">{title}</p>
+        <p className="text-xs text-emerald-900/80">
+          {role === 'ngo'
+            ? 'Mark attendance once per day for this individual. Past days cannot be marked or edited. Settle the cumulative total when service ends.'
+            : 'The NGO marks your daily attendance. Payment is calculated from present days times your quoted daily rate.'}
+        </p>
+      </div>
+
+      <div className="grid gap-2 text-sm sm:grid-cols-3">
+        <p>
+          Daily rate:{' '}
+          <span className="font-medium text-slate-900">
+            {dailyRate > 0 ? `INR ${dailyRate.toLocaleString('en-IN')}` : 'Not set'}
+          </span>
+        </p>
+        <p>
+          Days present: <span className="font-medium text-slate-900">{summary.daysPresent}</span>
+        </p>
+        <p>
+          Cumulative due:{' '}
+          <span className="font-medium text-slate-900">
+            INR {summary.totalDue.toLocaleString('en-IN')}
+          </span>
+        </p>
+      </div>
+
+      {summary.lastAttendanceAt ? (
+        <p className="text-xs text-slate-600">
+          Last attendance marked: {summary.lastAttendanceAt}
+        </p>
+      ) : null}
+
+      {isSettled ? (
+        <p className="text-xs font-medium text-emerald-800">
+          Settled
+          {meta.settled_amount != null ? ` · INR ${Number(meta.settled_amount).toLocaleString('en-IN')}` : ''}
+          {meta.settlement_mode ? ` (${meta.settlement_mode})` : ''}
+        </p>
+      ) : role === 'ngo' ? (
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" onClick={handleMarkAttendance} disabled={marking || alreadyMarkedToday || isSettled}>
+            {marking ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Marking…
+              </>
+            ) : alreadyMarkedToday ? (
+              'Today already marked'
+            ) : (
+              'Mark today present'
+            )}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleSettle}
+            disabled={settling || isSettled}
+          >
+            {settling ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Settling…
+              </>
+            ) : outstanding > 0 ? (
+              `Complete service & pay INR ${outstanding.toLocaleString('en-IN')}`
+            ) : (
+              'Complete service (no payment due)'
+            )}
+          </Button>
+        </div>
+      ) : (
+        <p className="text-xs text-slate-600">
+          {alreadyMarkedToday
+            ? 'The NGO marked you present today.'
+            : "Waiting for the NGO to mark today's attendance."}
+          {outstanding > 0 ? ` Outstanding: INR ${outstanding.toLocaleString('en-IN')}.` : ''}
+        </p>
+      )}
+    </div>
+  );
+}
 
 function CompanyDashboardContent() {
   const { user } = useAuth();
@@ -1205,6 +1537,15 @@ function CompanyDashboardContent() {
                                     <p className="text-xs text-slate-500 break-words">
                                       Needs: {formatSelectedNeeds(request).join(' · ')}
                                     </p>
+                                  ) : null}
+
+                                  {isDailyRentalEngagementMeta(request.response_meta) ? (
+                                    <InlineSkillServiceFulfillment
+                                      application={toOfferRentalApplication(request)}
+                                      role="ngo"
+                                      title="Capability offer rental"
+                                      onUpdated={fetchOfferRequests}
+                                    />
                                   ) : null}
 
                                   <div className="space-y-1 text-sm text-slate-600">

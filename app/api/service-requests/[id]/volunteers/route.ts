@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { db, supabase } from '@/lib/db';
+import { canIndividualApplyToNeed } from '@/lib/infrastructure-assignment-lock';
+import { getNgoNeedFulfillmentMode } from '@/lib/ngo-need-fulfillment';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 
@@ -137,13 +139,25 @@ export async function POST(
       );
     }
 
-    // Fetch request to determine request type and require fulfillment amount/quantity accordingly
     const requestData = await db.serviceRequests.getById(requestId);
-    const isFinancial = String(requestData?.request_type || requestData?.category || '').toLowerCase().includes('financial')
+    if (!requestData) {
+      return NextResponse.json({ error: 'Service request not found' }, { status: 404 });
+    }
 
-    if (isFinancial) {
+    const applyCheck = await canIndividualApplyToNeed(Number(volunteer_id), requestData);
+    if (!applyCheck.allowed) {
+      return NextResponse.json({ error: applyCheck.reason }, { status: 409 });
+    }
+
+    const fulfillmentMode = getNgoNeedFulfillmentMode(requestData);
+
+    if (fulfillmentMode === 'financial') {
       if (fulfillment_amount == null || Number(fulfillment_amount) <= 0) {
         return NextResponse.json({ error: 'Fulfillment amount is required for financial needs' }, { status: 400 });
+      }
+    } else if (fulfillmentMode === 'skill_service') {
+      if (fulfillment_amount == null || Number(fulfillment_amount) <= 0) {
+        return NextResponse.json({ error: 'Daily service rate (INR per day) is required for skill/service needs' }, { status: 400 });
       }
     } else {
       if (fulfillment_quantity == null || Number(fulfillment_quantity) <= 0) {
@@ -151,7 +165,6 @@ export async function POST(
       }
     }
 
-    // Snapshot volunteer profile for audit and display
     const volunteerProfile = await db.users.findById(volunteer_id);
 
     const volunteerData = {
@@ -162,6 +175,8 @@ export async function POST(
       fulfillment_amount: fulfillment_amount != null ? Number(fulfillment_amount) : null,
       fulfillment_quantity: fulfillment_quantity != null ? Number(fulfillment_quantity) : null,
       response_meta: {
+        fulfillment_mode: fulfillmentMode,
+        daily_rate_inr: fulfillmentMode === 'skill_service' ? Number(fulfillment_amount || 0) : null,
         volunteer_snapshot: {
           id: volunteerProfile?.id || volunteer_id,
           name: volunteerProfile?.name || null,

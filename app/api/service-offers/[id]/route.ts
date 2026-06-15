@@ -90,22 +90,34 @@ const buildPriceInfo = (offerType: string, transactionType: string, body: Record
   }
 }
 
-const normalizeOfferDetailsForStorage = (offerType: string, transactionType: string, details: Record<string, any>) => {
+const normalizeOfferDetailsForStorage = (
+  offerType: string,
+  transactionType: string,
+  details: Record<string, any>,
+  body?: Record<string, any>
+) => {
+  const mergedDetails = {
+    ...details,
+    billing_cycle: body?.billing_cycle ?? details.billing_cycle ?? (transactionType === 'rent' ? 'daily' : null),
+    unit_rate: toNullablePositiveNumber(body?.unit_rate ?? details.unit_rate),
+    rate_currency: body?.rate_currency ?? details.rate_currency ?? 'INR',
+  }
+
   if (offerType === 'material') {
     return {
-      ...details,
-      available_to: transactionType === 'sell' ? null : (details.available_to ?? null)
+      ...mergedDetails,
+      available_to: transactionType === 'sell' ? null : (mergedDetails.available_to ?? null)
     }
   }
 
   if (offerType === 'infrastructure') {
     return {
-      ...details,
-      available_to: transactionType === 'sell' ? null : (details.available_to ?? null)
+      ...mergedDetails,
+      available_to: transactionType === 'sell' ? null : (mergedDetails.available_to ?? null)
     }
   }
 
-  return details
+  return mergedDetails
 }
 
 const buildBackendCapabilities = (offer: Record<string, any>) => {
@@ -405,7 +417,12 @@ export async function PUT(
 
     const priceInfo = buildPriceInfo(offerType, transactionType, body)
 
-    const normalizedOfferDetails = normalizeOfferDetailsForStorage(offerType, transactionType, body.offer_details && typeof body.offer_details === 'object' ? body.offer_details : {})
+    const normalizedOfferDetails = normalizeOfferDetailsForStorage(
+      offerType,
+      transactionType,
+      body.offer_details && typeof body.offer_details === 'object' ? body.offer_details : {},
+      body
+    )
 
     const updateData = {
       title: String(body.title || '').trim(),

@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 import { db, supabase } from '@/lib/db';
 import { getDelhiveryTrackingSnapshot } from '@/lib/delhivery';
+import { isDeliveredTrackingStatus } from '@/lib/service-request-allocation';
 
 interface JWTPayload {
   id: number;
@@ -190,12 +191,31 @@ export async function POST(
       console.error('Delhivery shipment dual-write skipped:', dualWriteError);
     }
 
+    const delivered = isDeliveredTrackingStatus(snapshot.currentStatus)
+
+    const volunteerUpdatePayload: Record<string, unknown> = {
+      response_meta: nextMeta,
+      updated_at: new Date().toISOString(),
+    }
+
+    if (delivered) {
+      const assignedQuantity = Number(volunteerApplication.assigned_quantity || volunteerApplication.fulfillment_quantity || 0)
+      const assignedAmount = Number(volunteerApplication.assigned_amount || volunteerApplication.fulfillment_amount || 0)
+
+      volunteerUpdatePayload.status = 'completed'
+      volunteerUpdatePayload.individual_done_at =
+        volunteerApplication.individual_done_at || new Date().toISOString()
+      volunteerUpdatePayload.fulfilled_quantity = assignedQuantity > 0
+        ? assignedQuantity
+        : Number(volunteerApplication.fulfilled_quantity || 0)
+      volunteerUpdatePayload.fulfilled_amount = assignedAmount > 0
+        ? assignedAmount
+        : Number(volunteerApplication.fulfilled_amount || 0)
+    }
+
     const { data: updatedVolunteer, error: updateError } = await supabase
       .from('service_volunteers')
-      .update({
-        response_meta: nextMeta,
-        updated_at: new Date().toISOString()
-      })
+      .update(volunteerUpdatePayload)
       .eq('id', volunteerApplicationId)
       .eq('service_request_id', requestId)
       .select('*')

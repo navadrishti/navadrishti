@@ -859,12 +859,16 @@ export async function GET(request: NextRequest) {
             title,
             description,
             category,
+            request_type,
+            requirements,
             location,
             status,
             timeline,
             urgency_level,
             estimated_budget,
             beneficiary_count,
+            ngo_id,
+            ngo:users!ngo_id(id, name, email),
             project:service_request_projects!project_id(id, title, exact_address, location, timeline)
           )
         `)
@@ -916,6 +920,7 @@ export async function GET(request: NextRequest) {
           ...requestItem,
           assignments: relatedAssignments,
           accepted_count: relatedAssignments.filter((item: any) => ['accepted', 'active', 'completed'].includes(String(item.status || '').toLowerCase())).length,
+          pending_count: relatedAssignments.filter((item: any) => String(item.status || '').toLowerCase() === 'pending').length,
           completed_count: relatedAssignments.filter((item: any) => {
             const status = String(item.status || '').toLowerCase()
             return status === 'completed' || item.ngo_confirmed_at
