@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, supabase } from '@/lib/db';
 import jwt from 'jsonwebtoken';
+import { db, supabase } from '@/lib/db';
+import { isNeedOpenForListing } from '@/lib/service-request-allocation';
 import { JWT_SECRET } from '@/lib/auth';
 import { CSR_SCHEDULE_VII_CATEGORIES, SERVICE_REQUEST_TYPES } from '@/lib/categories';
 
@@ -511,8 +512,10 @@ export async function GET(request: NextRequest) {
         })
       );
 
-      // Filter out requests that are full (unless user is viewing their own requests)
-      const filteredRequests = requestsWithVolunteerCount.filter((request: any) => !request.is_full);
+      // Hide needs with no remaining quantity/amount from public browsing.
+      const filteredRequests = requestsWithVolunteerCount.filter(
+        (request: any) => !request.is_full && isNeedOpenForListing(request)
+      );
       finalRequests = filteredRequests;
     }
 

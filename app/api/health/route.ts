@@ -38,7 +38,8 @@ export async function GET() {
     // Check external services configuration
     const requiredEnvVars = [
       'NEXT_PUBLIC_SUPABASE_URL',
-      'SUPABASE_SERVICE_ROLE_KEY', 
+      'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY',
+      'SUPABASE_SECRET_KEY',
       'JWT_SECRET'
     ];
     

@@ -13,6 +13,13 @@ import {
   shouldUseDailyAttendance
 } from '@/lib/service-engagement';
 import { isCampaignStarted } from '@/lib/format-date';
+import {
+  isCampaignVolunteerAssignment,
+  resolveCampaignIdFromAssignment,
+} from '@/lib/campaign-volunteer-assignment';
+import {
+  getNgoNeedFulfillmentMode,
+} from '@/lib/ngo-need-fulfillment';
 
 interface JWTPayload {
   id: number;
@@ -89,7 +96,7 @@ async function persistAttendanceSummary(assignment: any, entries: any[]) {
     })
     .eq('id', assignment.id);
 
-  if (assignment.target_type === 'csr_project') {
+  if (assignment.target_type === 'csr_project' && !isCampaignVolunteerAssignment(assignment)) {
     const { data: project } = await supabase
       .from('csr_projects')
       .select('id, metadata')
@@ -167,22 +174,62 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       Number(assignment.assignee_user_id) === Number(decoded.id) &&
       ['ngo', 'individual'].includes(decoded.user_type);
 
+    const isCampaignVolunteer = isCampaignVolunteerAssignment(assignment);
+
+    let serviceRequestMode: ReturnType<typeof getNgoNeedFulfillmentMode> | null = null;
+    if (assignment.target_type === 'service_request') {
+      const { data: serviceRequest } = await supabase
+        .from('service_requests')
+        .select('id, category, request_type, ngo_id')
+        .eq('id', assignment.target_id)
+        .maybeSingle();
+      serviceRequestMode = getNgoNeedFulfillmentMode(serviceRequest);
+    }
+
+    const isSkillServiceNeedAttendance =
+      assignment.target_type === 'service_request' &&
+      assignment.application_table === 'service_volunteers' &&
+      serviceRequestMode === 'skill_service';
+
+    const isNgoOwnerForRequest =
+      assignment.target_type === 'service_request' &&
+      Number(assignment.owner_user_id) === Number(decoded.id);
+
     const isCampaignVolunteerAttendance =
-      assignment.target_type === 'campaign' &&
+      isCampaignVolunteer &&
       Number(assignment.assignee_user_id) === Number(decoded.id) &&
       ['ngo', 'individual'].includes(decoded.user_type);
 
     const isNgoAttendance = decoded.user_type === 'ngo';
 
-    if (assignment.target_type === 'campaign') {
+    if (isSkillServiceNeedAttendance) {
+      if (!isNgoAttendance || !isNgoOwnerForRequest) {
+        return NextResponse.json(
+          { error: 'Only the NGO can mark daily attendance for skill/service needs' },
+          { status: 403 }
+        );
+      }
+    } else if (
+      assignment.target_type === 'service_request' &&
+      assignment.application_table === 'service_volunteers' &&
+      isVolunteerSelfAttendance
+    ) {
+      return NextResponse.json(
+        { error: 'Self attendance is not used for NGO needs. CSR campaign attendance is separate.' },
+        { status: 403 }
+      );
+    }
+
+    if (isCampaignVolunteer) {
       if (!isCampaignVolunteerAttendance) {
         return NextResponse.json({ error: 'Only the assigned campaign volunteer can mark attendance' }, { status: 403 });
       }
 
+      const campaignId = resolveCampaignIdFromAssignment(assignment);
       const { data: campaign } = await supabase
         .from('campaigns')
         .select('start_date, end_date, status')
-        .eq('id', assignment.target_id)
+        .eq('id', campaignId)
         .maybeSingle();
 
       if (!isCampaignStarted(campaign?.start_date as string | null)) {
@@ -190,7 +237,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       }
     } else if (assignment.target_type === 'csr_project' && !isVolunteerSelfAttendance && !isNgoAttendance) {
       return NextResponse.json({ error: 'Only the assigned NGO volunteer or individual volunteer can mark CSR attendance' }, { status: 403 });
-    } else if (assignment.target_type !== 'csr_project' && assignment.target_type !== 'campaign' && !isVolunteerSelfAttendance && !isNgoAttendance) {
+    } else if (assignment.target_type !== 'csr_project' && !isCampaignVolunteer && !isVolunteerSelfAttendance && !isNgoAttendance) {
       return NextResponse.json({ error: 'Only the assigned NGO or the volunteer themselves can mark attendance' }, { status: 403 });
     }
 
@@ -212,12 +259,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       0
     ) || 0;
 
-    if (isVolunteerSelfAttendance && requestedAttendanceDate !== today) {
+    if (isVolunteerSelfAttendance && !isCampaignVolunteerAttendance && requestedAttendanceDate !== today) {
       return NextResponse.json({ error: 'Only today\'s attendance can be marked' }, { status: 400 });
     }
 
     if (isCampaignVolunteerAttendance && requestedAttendanceDate !== today) {
       return NextResponse.json({ error: 'Only today\'s attendance can be marked' }, { status: 400 });
+    }
+
+    if (isSkillServiceNeedAttendance && requestedAttendanceDate !== today) {
+      return NextResponse.json({ error: 'Past days cannot be marked. Only today\'s attendance is allowed.' }, { status: 400 });
     }
 
     const units = toNumber(body?.units ?? body?.quantity ?? (
@@ -236,7 +287,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const locationLongitude = body?.locationLongitude ?? body?.location_longitude ?? null;
     const locationAccuracy = body?.locationAccuracy ?? body?.location_accuracy ?? null;
 
-    if (assignment.target_type === 'campaign') {
+    if (isCampaignVolunteer) {
       if (locationLatitude === null || locationLongitude === null) {
         return NextResponse.json({ error: 'Location is required to mark campaign attendance' }, { status: 400 });
       }
