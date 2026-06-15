@@ -104,7 +104,8 @@ Create `vercel.json` in project root:
 ```env
 # Database
 NEXT_PUBLIC_SUPABASE_URL=your_production_supabase_url
-SUPABASE_SERVICE_ROLE_KEY=your_production_service_key
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_production_publishable_key
+SUPABASE_SECRET_KEY=your_production_secret_key
 
 # Security
 JWT_SECRET=production_jwt_secret_32_chars_minimum

@@ -3,7 +3,7 @@ import { supabase } from '@/lib/db'
 import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth'
 import { getCampaignLeadLifecycle } from '@/lib/format-date'
 import { readCampaignCategory, readCampaignLocation } from '@/lib/campaign-schema'
-import { ensureCampaignVolunteerAssignment, getVolunteerApplicationForUser } from '@/lib/campaign-volunteer-assignment'
+import { ensureCampaignVolunteerAssignment, filterCampaignVolunteerAssignments, getVolunteerApplicationForUser } from '@/lib/campaign-volunteer-assignment'
 
 function safeJson(value: unknown): Record<string, any> {
   if (!value) return {}
@@ -44,12 +44,13 @@ export async function GET(request: NextRequest) {
 
     const { data: assignments } = await supabase
       .from('service_engagement_assignments')
-      .select('id, target_id, meta')
-      .eq('target_type', 'campaign')
+      .select('id, target_id, meta, target_type')
       .eq('assignee_user_id', user.id)
 
+    const campaignAssignments = filterCampaignVolunteerAssignments(assignments)
+
     const assignmentsByCampaignId = new Map<string, any>(
-      (assignments || []).map((row) => [String(row.target_id), row])
+      campaignAssignments.map((row) => [String(row.target_id), row])
     )
 
     const payload = []

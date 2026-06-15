@@ -41,8 +41,8 @@ Edit `.env.local` with your configuration:
 ```env
 # Supabase (Required)
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
+SUPABASE_SECRET_KEY=your_supabase_secret_key
 
 # JWT Secret (Required)
 JWT_SECRET=your_jwt_secret_at_least_32_characters_long
@@ -89,8 +89,8 @@ LOG_LEVEL=info                    # error | warn | info | debug
 
 # Supabase Project Settings (Required)
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...  # Anon public key
-SUPABASE_SERVICE_ROLE_KEY=eyJ...      # Service role key (keep secret)
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...  # Publishable key (client-safe)
+SUPABASE_SECRET_KEY=sb_secret_...                      # Secret key (server only)
 
 # Database Connection Settings
 DATABASE_URL=postgresql://[user]:[pass]@[host]:[port]/[db]  # Optional direct connection
@@ -429,7 +429,8 @@ The application validates required environment variables on startup:
 // lib/env-validation.ts
 const requiredEnvVars = [
   'NEXT_PUBLIC_SUPABASE_URL',
-  'SUPABASE_SERVICE_ROLE_KEY',
+  'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY',
+  'SUPABASE_SECRET_KEY',
   'JWT_SECRET',
   'CLOUDINARY_CLOUD_NAME'
 ];

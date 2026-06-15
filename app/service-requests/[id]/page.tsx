@@ -193,11 +193,9 @@ export default function ServiceRequestDetailPage() {
   const [applicantQuantities, setApplicantQuantities] = useState<Record<number, string>>({})
   const [receiptUploads, setReceiptUploads] = useState<Record<number, File | null>>({})
   const [ngoCompletionNotes, setNgoCompletionNotes] = useState<Record<number, string>>({})
-  const [ngoDeliveryTrackingByApplicant, setNgoDeliveryTrackingByApplicant] = useState<Record<number, string>>({})
   const [individualReceiptFile, setIndividualReceiptFile] = useState<File | null>(null)
   const [individualCompletionNote, setIndividualCompletionNote] = useState('')
   const [individualDeliveryTrackingId, setIndividualDeliveryTrackingId] = useState('')
-  const [syncingApplicantTrackingId, setSyncingApplicantTrackingId] = useState<number | null>(null)
   const [syncingOwnTracking, setSyncingOwnTracking] = useState(false)
 
   const requestId = params.id as string
@@ -435,7 +433,16 @@ export default function ServiceRequestDetailPage() {
       return
     }
 
-    if (!isFinancialRequest && !applicationFulfillmentQuantity.trim()) {
+    if (isSkillServiceNeed && !applicationFulfillmentAmount.trim()) {
+      toast({
+        title: 'Daily rate required',
+        description: 'Enter your quoted INR rate per day for this skill/service need.',
+        variant: 'destructive'
+      })
+      return
+    }
+
+    if (!isFinancialRequest && !isSkillServiceNeed && !applicationFulfillmentQuantity.trim()) {
       toast({
         title: 'Fulfillment quantity required',
         description: 'Enter how much you can fulfill for this need.',
@@ -457,8 +464,8 @@ export default function ServiceRequestDetailPage() {
           // volunteer_id is optional when authenticated; include for backward compatibility
           volunteer_id: user.id,
           message: applicationMessage,
-          fulfillment_amount: isFinancialRequest ? applicationFulfillmentAmount : null,
-          fulfillment_quantity: isFinancialRequest ? null : applicationFulfillmentQuantity
+          fulfillment_amount: isFinancialRequest || isSkillServiceNeed ? applicationFulfillmentAmount : null,
+          fulfillment_quantity: isFinancialRequest || isSkillServiceNeed ? null : applicationFulfillmentQuantity
         })
       })
 
@@ -580,7 +587,6 @@ export default function ServiceRequestDetailPage() {
           status: 'completed',
           receiptUrl,
           completionNote: ngoCompletionNotes[applicant.id] || '',
-          deliveryTrackingId: (ngoDeliveryTrackingByApplicant[applicant.id] || '').trim() || undefined
         })
       })
 
@@ -591,50 +597,10 @@ export default function ServiceRequestDetailPage() {
       }
 
       toast({ title: 'Receipt confirmed', description: 'The fulfillment was moved to history.' })
-        setNgoDeliveryTrackingByApplicant((prev) => ({ ...prev, [applicant.id]: '' }))
       fetchRequestDetails()
       fetchApplicants()
     } catch (error: any) {
       toast({ title: 'Update failed', description: error?.message || 'Could not confirm fulfillment', variant: 'destructive' })
-    }
-  }
-
-  const syncApplicantDelivery = async (applicant: ApplicantEntry) => {
-    if (!token) return
-
-    const trackingId = (ngoDeliveryTrackingByApplicant[applicant.id] || applicant.response_meta?.delivery_tracking_id || '').trim()
-    if (!trackingId) {
-      toast({ title: 'Tracking ID required', description: 'Enter or save a Delhivery tracking ID first.', variant: 'destructive' })
-      return
-    }
-
-    setSyncingApplicantTrackingId(applicant.id)
-    try {
-      const response = await fetch(`/api/service-requests/${requestId}/volunteers/${applicant.id}/delivery/sync`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ trackingId })
-      })
-
-      const data = await response.json()
-      if (!response.ok || !data?.success) {
-        toast({ title: 'Sync failed', description: data?.error || 'Could not fetch Delhivery status', variant: 'destructive' })
-        return
-      }
-
-      const updatedAssignment = data?.data?.assignment
-      if (updatedAssignment) {
-        setApplicants((prev) => prev.map((entry) => (entry.id === applicant.id ? updatedAssignment : entry)))
-      }
-
-      toast({ title: 'Tracking synced', description: 'Latest Delhivery shipment status has been updated.' })
-    } catch (error: any) {
-      toast({ title: 'Sync failed', description: error?.message || 'Could not fetch Delhivery status', variant: 'destructive' })
-    } finally {
-      setSyncingApplicantTrackingId(null)
     }
   }
 
@@ -816,6 +782,12 @@ export default function ServiceRequestDetailPage() {
   const projectBeneficiaries = linkedProject?.expected_beneficiaries || parsedRequirements?.beneficiary_count || request?.volunteers_needed || 0
   const isFinancialNeed = infoRequestType.toLowerCase().includes('financial')
   const isMaterialNeed = infoRequestType.toLowerCase().includes('material')
+  const isSkillServiceNeed =
+    infoRequestType.toLowerCase().includes('skill') ||
+    infoRequestType.toLowerCase().includes('service')
+  const isInfrastructureNeed = infoRequestType.toLowerCase().includes('infra')
+  const usesManualMarkDone =
+    !isFinancialNeed && !isMaterialNeed && !isSkillServiceNeed && !isInfrastructureNeed
   const fundingTargetInr = parseAmountToInr(parsedRequirements?.funding_target_inr || parsedRequirements?.estimated_budget || parsedRequirements?.budget)
   const fundsRaisedInr = parseAmountToInr(parsedRequirements?.funds_raised_inr)
   const fundsRemainingInr = Math.max(0, fundingTargetInr - fundsRaisedInr)
@@ -1317,50 +1289,36 @@ export default function ServiceRequestDetailPage() {
                                           />
                                         </div>
                                       </div>
-                                      {isMaterialNeed && (
-                                        <div className="space-y-2">
-                                          <Label htmlFor={`ngo-tracking-${applicant.id}`}>Delhivery Tracking ID</Label>
-                                          <Input
-                                            id={`ngo-tracking-${applicant.id}`}
-                                            value={ngoDeliveryTrackingByApplicant[applicant.id] || ''}
-                                            onChange={(e) =>
-                                              setNgoDeliveryTrackingByApplicant((prev) => ({
-                                                ...prev,
-                                                [applicant.id]: e.target.value
-                                              }))
-                                            }
-                                            placeholder="Optional tracking id"
-                                          />
-                                          {(ngoDeliveryTrackingByApplicant[applicant.id] || applicant.response_meta?.delivery_tracking_id) && (
-                                            <div className="space-y-2 rounded border bg-white p-2 text-xs text-muted-foreground">
-                                              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                                                <span>
-                                                  Status: <span className="font-medium text-foreground">{applicant.response_meta?.delivery_tracking_last_status || 'Not synced yet'}</span>
-                                                </span>
-                                                <Button
-                                                  type="button"
-                                                  variant="outline"
-                                                  size="sm"
-                                                  onClick={() => syncApplicantDelivery(applicant)}
-                                                  disabled={syncingApplicantTrackingId === applicant.id}
-                                                >
-                                                  {syncingApplicantTrackingId === applicant.id ? (
-                                                    <><Loader2 className="mr-2 h-3 w-3 animate-spin" /> Syncing...</>
-                                                  ) : (
-                                                    'Sync Delhivery Status'
-                                                  )}
-                                                </Button>
-                                              </div>
-                                              <div>
-                                                Last location: {applicant.response_meta?.delivery_tracking_last_location || 'N/A'}
-                                              </div>
-                                              <div>
-                                                Last event: {formatDateTime(applicant.response_meta?.delivery_tracking_last_event_at || applicant.response_meta?.delivery_tracking_synced_at)}
-                                              </div>
-                                            </div>
-                                          )}
+                                      {isMaterialNeed && applicant.response_meta?.delivery_tracking_id ? (
+                                        <div className="space-y-2 rounded border bg-white p-2 text-xs text-muted-foreground">
+                                          <div>
+                                            Tracking ID:{' '}
+                                            <span className="font-medium text-foreground">
+                                              {applicant.response_meta.delivery_tracking_id}
+                                            </span>
+                                          </div>
+                                          <div>
+                                            Status:{' '}
+                                            <span className="font-medium text-foreground">
+                                              {applicant.response_meta?.delivery_tracking_last_status || 'Not synced yet'}
+                                            </span>
+                                          </div>
+                                          <div>
+                                            Last location: {applicant.response_meta?.delivery_tracking_last_location || 'N/A'}
+                                          </div>
+                                          <div>
+                                            Last event:{' '}
+                                            {formatDateTime(
+                                              applicant.response_meta?.delivery_tracking_last_event_at ||
+                                                applicant.response_meta?.delivery_tracking_synced_at
+                                            )}
+                                          </div>
                                         </div>
-                                      )}
+                                      ) : isMaterialNeed ? (
+                                        <p className="text-xs text-muted-foreground">
+                                          Delhivery tracking will appear here after the individual verifies pickup.
+                                        </p>
+                                      ) : null}
                                     </div>
                                   )}
 
@@ -1492,7 +1450,7 @@ export default function ServiceRequestDetailPage() {
                                 </div>
                               </div>
 
-                              {(userApplication.status === 'accepted' || userApplication.status === 'active') && (
+                              {(userApplication.status === 'accepted' || userApplication.status === 'active') && usesManualMarkDone && (
                                 <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
                                   <div>
                                     <p className="font-medium text-sm">Mark Fulfillment Done</p>
@@ -1598,6 +1556,18 @@ export default function ServiceRequestDetailPage() {
                                     value={applicationFulfillmentAmount}
                                     onChange={(e) => setApplicationFulfillmentAmount(e.target.value)}
                                     placeholder="e.g., 5000"
+                                  />
+                                </div>
+                              ) : isSkillServiceNeed ? (
+                                <div>
+                                  <Label htmlFor="fulfillment_amount">Your Daily Rate (INR) *</Label>
+                                  <Input
+                                    id="fulfillment_amount"
+                                    type="number"
+                                    min="1"
+                                    value={applicationFulfillmentAmount}
+                                    onChange={(e) => setApplicationFulfillmentAmount(e.target.value)}
+                                    placeholder="e.g., 1500 per day"
                                   />
                                 </div>
                               ) : (

@@ -12,7 +12,7 @@ import { SpeedInsights } from '@vercel/speed-insights/next'
 import { verifyToken } from '@/lib/auth'
 
 export const metadata: Metadata = {
-  title: 'Navadrishti',
+  title: 'Navadrishti | Digital OS for Social Impact',
   description: 'Created by Shubhendu Chakrabarti',
   generator: 'Shubhendu Chakrabarti',
   icons: {

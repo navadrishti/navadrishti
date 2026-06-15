@@ -2,6 +2,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, supabase } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
+import {
+  getNeedRemainingQuantity,
+  getServiceRequestTarget,
+  parseAllocationNumber,
+} from '@/lib/service-request-allocation';
+import {
+  applyVolunteerAcceptanceAllocation,
+  validateAcceptanceAllocation,
+} from '@/lib/service-request-allocation-db';
+import {
+  getNgoNeedFulfillmentMode,
+  getSkillServiceDailyRate,
+  shouldCreateSkillServiceAssignment,
+} from '@/lib/ngo-need-fulfillment';
 
 // Interface for JWT payload
 interface JWTPayload {
@@ -11,28 +25,12 @@ interface JWTPayload {
   name: string;
 }
 
-function parseAmount(value: unknown): number {
-  if (value === null || value === undefined) return 0;
-  const text = String(value).trim();
-  if (!text) return 0;
-  const parsed = Number(text.replace(/[^\d.-]/g, ''));
-  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
-}
-
 function getRequestTarget(request: any): { amount: number; quantity: number; type: string } {
-  const requirements = (() => {
-    try {
-      return typeof request?.requirements === 'string' ? JSON.parse(request.requirements) : (request?.requirements || {});
-    } catch {
-      return {};
-    }
-  })();
-
-  const requestType = String(requirements?.request_type || request?.request_type || request?.category || '').toLowerCase();
+  const target = getServiceRequestTarget(request);
   return {
-    type: requestType,
-    amount: parseAmount(request?.target_amount ?? requirements?.funding_target_inr ?? requirements?.estimated_budget ?? requirements?.budget),
-    quantity: parseAmount(request?.target_quantity ?? requirements?.target_quantity ?? request?.volunteers_needed ?? requirements?.beneficiary_count)
+    type: target.type,
+    amount: target.amount,
+    quantity: target.quantity,
   };
 }
 
@@ -103,11 +101,27 @@ export async function PUT(
     }
 
     if (userType === 'ngo' && status === 'accepted') {
+      const requestTarget = getServiceRequestTarget(request_data);
+      const resolvedAllocationAmount = allocationAmount != null
+        ? Number(allocationAmount)
+        : parseAllocationNumber(volunteerApplication.fulfillment_amount || volunteerApplication.assigned_amount);
+      const resolvedAllocationQuantity = allocationQuantity != null
+        ? Number(allocationQuantity)
+        : parseAllocationNumber(volunteerApplication.fulfillment_quantity || volunteerApplication.assigned_quantity);
+
+      const allocationError = validateAcceptanceAllocation(request_data, {
+        amount: requestTarget.isFinancial ? resolvedAllocationAmount : 0,
+        quantity: requestTarget.isFinancial ? 0 : resolvedAllocationQuantity,
+      });
+
+      if (allocationError) {
+        return NextResponse.json({ error: allocationError }, { status: 400 });
+      }
+
       // Try to call a DB-side stored procedure for atomic accept (if available).
       try {
-        const isFinancial = String(request_data.request_type || request_data.category || '').toLowerCase().includes('financial')
-        const allocationAmountParam = isFinancial ? (allocationAmount != null ? Number(allocationAmount) : parseAmount(volunteerApplication.fulfillment_amount || volunteerApplication.assigned_amount)) : 0
-        const allocationQuantityParam = !isFinancial ? (allocationQuantity != null ? Number(allocationQuantity) : parseAmount(volunteerApplication.fulfillment_quantity || volunteerApplication.assigned_quantity)) : 0
+        const allocationAmountParam = requestTarget.isFinancial ? resolvedAllocationAmount : 0;
+        const allocationQuantityParam = requestTarget.isFinancial ? 0 : resolvedAllocationQuantity;
 
         const { data: rpcResult, error: rpcError } = await supabase.rpc('accept_volunteer_assignment', {
           p_request_id: requestId,
@@ -119,20 +133,13 @@ export async function PUT(
         });
 
         if (rpcError) {
-          // If function not installed or RPC failure, fall back to JS-based logic below
           console.warn('RPC accept_volunteer_assignment failed, falling back to JS path:', rpcError.message)
         } else if (rpcResult) {
-          // RPC returns JSONB - map to expected updatedVolunteer
-          // Refresh applicant and request details
-          fetchApplicants()
-          fetchRequestDetails()
           return NextResponse.json({ success: true, data: rpcResult });
         }
-      } catch (e) {
+      } catch (e: any) {
         console.warn('RPC call attempted and failed:', e?.message || e)
       }
-
-      // If RPC not available or failed, continue with the existing JS fallback logic (already implemented earlier)
     }
 
     const existingMeta =
@@ -166,8 +173,8 @@ export async function PUT(
     }
 
     if (userType === 'ngo' && status === 'accepted') {
-      updatePayload.assigned_amount = allocationAmount != null ? Number(allocationAmount) : parseAmount(volunteerApplication.fulfillment_amount || volunteerApplication.assigned_amount)
-      updatePayload.assigned_quantity = allocationQuantity != null ? Number(allocationQuantity) : parseAmount(volunteerApplication.fulfillment_quantity || volunteerApplication.assigned_quantity)
+      updatePayload.assigned_amount = allocationAmount != null ? Number(allocationAmount) : parseAllocationNumber(volunteerApplication.fulfillment_amount || volunteerApplication.assigned_amount)
+      updatePayload.assigned_quantity = allocationQuantity != null ? Number(allocationQuantity) : parseAllocationNumber(volunteerApplication.fulfillment_quantity || volunteerApplication.assigned_quantity)
       updatePayload.fulfilled_amount = volunteerApplication.fulfilled_amount || 0
       updatePayload.fulfilled_quantity = volunteerApplication.fulfilled_quantity || 0
     }
@@ -198,64 +205,81 @@ export async function PUT(
     }
 
     if (userType === 'ngo' && status === 'accepted') {
-      // Only create assignment metadata and mark this volunteer as assigned. Do NOT auto-reject all other applicants.
       const acceptedMeta = updatedVolunteer.response_meta && typeof updatedVolunteer.response_meta === 'object'
         ? updatedVolunteer.response_meta
         : {};
+      const fulfillmentMode = getNgoNeedFulfillmentMode(request_data);
 
-      const assignmentMeta = {
-        target_type: 'service_request',
-        target_id: String(requestId),
-        invitation_id: acceptedMeta.invitation_id || null,
-        application_table: 'service_volunteers',
-        application_id: String(volId),
-        owner_user_id: request_data.requester_id,
-        assignee_user_id: updatedVolunteer.volunteer_id,
-        assigned_by_user_id: userId,
-        assigned_at: new Date().toISOString(),
-        billing_cycle: acceptedMeta.billing_cycle || 'daily',
-        payment_mode: acceptedMeta.payment_mode || 'daily_due',
-        valid_until: acceptedMeta.valid_until || updatedVolunteer.assigned_until || null,
-        rate_per_unit: acceptedMeta.rate_per_unit || updatedVolunteer.assigned_amount || updatedVolunteer.assigned_quantity || null,
-        rate_currency: acceptedMeta.currency || 'INR'
-      };
+      if (shouldCreateSkillServiceAssignment(request_data)) {
+        const isInfrastructure = fulfillmentMode === 'infrastructure';
+        const dailyRate = getSkillServiceDailyRate(updatedVolunteer);
 
-      const { data: assignment } = await supabase
-        .from('service_engagement_assignments')
-        .insert({
-          ...assignmentMeta,
-          status: 'active',
-          meta: assignmentMeta
-        })
-        .select('*')
-        .maybeSingle();
+        const assignmentMeta = {
+          target_type: 'service_request',
+          target_id: String(requestId),
+          invitation_id: acceptedMeta.invitation_id || null,
+          application_table: 'service_volunteers',
+          application_id: String(volId),
+          owner_user_id: request_data.requester_id,
+          assignee_user_id: updatedVolunteer.volunteer_id,
+          assigned_by_user_id: userId,
+          assigned_at: new Date().toISOString(),
+          billing_cycle: isInfrastructure ? 'one_time' : 'daily',
+          payment_mode: isInfrastructure ? 'waived' : 'daily_due',
+          valid_until: acceptedMeta.valid_until || updatedVolunteer.assigned_until || null,
+          rate_per_unit: isInfrastructure ? null : dailyRate,
+          rate_currency: acceptedMeta.currency || 'INR',
+          fulfillment_mode: fulfillmentMode,
+        };
 
-      await supabase
-        .from('service_volunteers')
-        .update({
-          response_meta: {
-            ...acceptedMeta,
-            isAssigned: true,
-            assignment_id: assignment?.id || null,
-            assignment_meta: assignmentMeta,
-            accepted_at: new Date().toISOString()
-          },
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', volId)
-        .eq('service_request_id', requestId);
+        const { data: assignment } = await supabase
+          .from('service_engagement_assignments')
+          .insert({
+            ...assignmentMeta,
+            status: 'active',
+            meta: assignmentMeta,
+          })
+          .select('*')
+          .maybeSingle();
 
-      // If the request is now fully allocated, mark request as completed and reject remaining pending applicants
-      const refreshedRequest = (await supabase.from('service_requests').select('*').eq('id', requestId).single()).data;
-      const requestTarget = getRequestTarget(refreshedRequest);
-      const currentAllocated = requestTarget.type.includes('financial') ? Number(refreshedRequest.current_amount || 0) : Number(refreshedRequest.current_quantity || 0);
-      const targetValue = requestTarget.type.includes('financial') ? requestTarget.amount : requestTarget.quantity;
+        await supabase
+          .from('service_volunteers')
+          .update({
+            response_meta: {
+              ...acceptedMeta,
+              isAssigned: true,
+              assignment_id: assignment?.id || null,
+              assignment_meta: assignmentMeta,
+              accepted_at: new Date().toISOString(),
+              infrastructure_exclusive: isInfrastructure,
+            },
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', volId)
+          .eq('service_request_id', requestId);
+      } else {
+        await supabase
+          .from('service_volunteers')
+          .update({
+            response_meta: {
+              ...acceptedMeta,
+              isAssigned: true,
+              accepted_at: new Date().toISOString(),
+              fulfillment_mode: fulfillmentMode,
+            },
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', volId)
+          .eq('service_request_id', requestId);
+      }
 
-      if (currentAllocated >= targetValue && targetValue > 0) {
-        // Mark request completed
-        await supabase.from('service_requests').update({ status: 'completed', updated_at: new Date().toISOString() }).eq('id', requestId);
+      const refreshedRequest = await applyVolunteerAcceptanceAllocation(request_data, {
+        amount: Number(updatePayload.assigned_amount || 0),
+        quantity: Number(updatePayload.assigned_quantity || 0),
+      });
 
-        // Reject any remaining pending applicants
+      const remaining = getNeedRemainingQuantity(refreshedRequest);
+      if (remaining <= 0) {
         const { data: pendingApplicants } = await supabase
           .from('service_volunteers')
           .select('id, response_meta')
@@ -264,7 +288,15 @@ export async function PUT(
 
         for (const pa of pendingApplicants || []) {
           const otherMeta = pa?.response_meta && typeof pa.response_meta === 'object' ? pa.response_meta : {};
-          await supabase.from('service_volunteers').update({ status: 'rejected', response_meta: { ...otherMeta, rejected_at: new Date().toISOString() }, updated_at: new Date().toISOString() }).eq('id', pa.id).eq('service_request_id', requestId);
+          await supabase
+            .from('service_volunteers')
+            .update({
+              status: 'rejected',
+              response_meta: { ...otherMeta, rejected_at: new Date().toISOString(), auto_rejected_reason: 'need_fully_allocated' },
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', pa.id)
+            .eq('service_request_id', requestId);
         }
       }
     }
