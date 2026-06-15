@@ -11,6 +11,11 @@ import { ArrowLeft, Loader2, Users, Mail, Phone, Calendar, CheckCircle, XCircle,
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
 import Link from 'next/link'
+import {
+  formatDeliveryTrackingStatus,
+  getNeedRemainingQuantity,
+  getServiceRequestTarget,
+} from '@/lib/service-request-allocation'
 
 interface ServiceRequest {
   id: number;
@@ -21,6 +26,12 @@ interface ServiceRequest {
   urgency_level: string;
   status: string;
   created_at: string;
+  beneficiary_count?: number | null;
+  target_quantity?: number | null;
+  remaining_quantity?: number | null;
+  current_quantity?: number | null;
+  estimated_budget?: number | null;
+  target_amount?: number | null;
 }
 
 interface Volunteer {
@@ -35,6 +46,50 @@ interface Volunteer {
   start_date?: string;
   end_date?: string;
   hours_contributed: number;
+  fulfillment_amount?: number | null;
+  fulfillment_quantity?: number | null;
+  assigned_amount?: number | null;
+  assigned_quantity?: number | null;
+  response_meta?: Record<string, any> | null;
+}
+
+function normalizeVolunteer(raw: any): Volunteer {
+  const volunteer = raw?.volunteer && typeof raw.volunteer === 'object' ? raw.volunteer : {}
+
+  return {
+    id: Number(raw.id),
+    volunteer_id: Number(raw.volunteer_id),
+    volunteer_name: String(volunteer.name || raw.volunteer_name || 'Volunteer'),
+    volunteer_email: String(volunteer.email || raw.volunteer_email || ''),
+    volunteer_type: (volunteer.user_type || raw.volunteer_type || 'individual') as Volunteer['volunteer_type'],
+    message: String(raw.message || ''),
+    status: raw.status,
+    applied_at: raw.applied_at || raw.created_at || '',
+    start_date: raw.start_date,
+    end_date: raw.end_date,
+    hours_contributed: Number(raw.hours_contributed || 0),
+    fulfillment_amount: raw.fulfillment_amount,
+    fulfillment_quantity: raw.fulfillment_quantity,
+    assigned_amount: raw.assigned_amount,
+    assigned_quantity: raw.assigned_quantity,
+    response_meta: raw.response_meta,
+  }
+}
+
+function isDeliverableNeed(request: ServiceRequest | null) {
+  const category = String(request?.category || '').toLowerCase()
+  return category.includes('material') || category.includes('deliver')
+}
+
+function formatVolunteerOffer(request: ServiceRequest | null, volunteer: Volunteer) {
+  const target = getServiceRequestTarget(request)
+  if (target.isFinancial) {
+    const amount = Number(volunteer.fulfillment_amount ?? volunteer.assigned_amount ?? 0)
+    return amount > 0 ? `INR ${amount.toLocaleString('en-IN')}` : 'Amount not set'
+  }
+
+  const quantity = Number(volunteer.fulfillment_quantity ?? volunteer.assigned_quantity ?? 0)
+  return quantity > 0 ? `${quantity} units` : 'Quantity not set'
 }
 
 const formatDate = (value?: string | null) => {
@@ -108,7 +163,7 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
         const volunteersData = await volunteersResponse.json();
 
         if (volunteersData.success) {
-          setVolunteers(volunteersData.data);
+          setVolunteers((volunteersData.data || []).map(normalizeVolunteer));
         } else {
           console.error('Failed to fetch volunteers:', volunteersData.error);
         }
@@ -129,25 +184,55 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
     fetchData();
   }, [user, resolvedParams.id, router, toast]);
 
-  const handleVolunteerStatusUpdate = async (volunteerId: number, newStatus: string) => {
-    setUpdating(volunteerId);
+  const handleVolunteerStatusUpdate = async (volunteer: Volunteer, newStatus: string) => {
+    setUpdating(volunteer.id);
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`/api/service-requests/${resolvedParams.id}/volunteers/${volunteerId}`, {
+      const payload: Record<string, unknown> = { status: newStatus };
+
+      if (newStatus === 'accepted') {
+        const target = getServiceRequestTarget(request);
+        const remaining = getNeedRemainingQuantity(request);
+        if (target.isFinancial) {
+          const offer = Number(volunteer.fulfillment_amount ?? volunteer.assigned_amount ?? 0);
+          payload.allocationAmount = Math.min(offer > 0 ? offer : remaining, remaining);
+        } else {
+          const offer = Number(volunteer.fulfillment_quantity ?? volunteer.assigned_quantity ?? 0);
+          payload.allocationQuantity = Math.min(offer > 0 ? offer : remaining, remaining);
+        }
+      }
+
+      const response = await fetch(`/api/service-requests/${resolvedParams.id}/volunteers/${volunteer.id}`, {
         method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ status: newStatus }),
+        body: JSON.stringify(payload),
       });
 
       const data = await response.json();
 
       if (data.success) {
-        setVolunteers(prev => 
-          prev.map(v => v.id === volunteerId ? { ...v, status: newStatus as any } : v)
-        );
+        const [requestResponse, volunteersResponse] = await Promise.all([
+          fetch(`/api/service-requests/${resolvedParams.id}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch(`/api/service-requests/${resolvedParams.id}/volunteers`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+        ]);
+
+        const requestData = await requestResponse.json();
+        const volunteersData = await volunteersResponse.json();
+
+        if (requestData.success) {
+          setRequest(requestData.data);
+        }
+        if (volunteersData.success) {
+          setVolunteers((volunteersData.data || []).map(normalizeVolunteer));
+        }
+
         toast({
           title: "Success",
           description: `Volunteer ${newStatus === 'accepted' ? 'accepted' : 
@@ -242,6 +327,17 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
   const acceptedVolunteers = filterVolunteersByStatus('accepted');
   const activeVolunteers = filterVolunteersByStatus('active');
   const completedVolunteers = filterVolunteersByStatus('completed');
+  const deliverableNeed = isDeliverableNeed(request);
+  const needTarget = getServiceRequestTarget(request);
+  const needRemaining = getNeedRemainingQuantity(request);
+
+  const needTargetLabel = needTarget.isFinancial
+    ? (needTarget.amount > 0 ? `INR ${needTarget.amount.toLocaleString('en-IN')}` : 'Open budget')
+    : (needTarget.quantity > 0 ? `${needTarget.quantity} units` : String(request.beneficiary_count || 0));
+
+  const needRemainingLabel = needTarget.isFinancial
+    ? (needTarget.amount > 0 ? `INR ${needRemaining.toLocaleString('en-IN')}` : 'Open')
+    : (needTarget.quantity > 0 ? `${needRemaining} units` : String(needRemaining));
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -278,9 +374,16 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
           </CardHeader>
           <CardContent>
             <p className="text-gray-700 mb-4">{request.description}</p>
-            {request.location && (
-              <p className="text-sm text-gray-500">Location: {request.location}</p>
-            )}
+            <div className="grid grid-cols-1 gap-2 text-sm text-gray-600 sm:grid-cols-3">
+              {request.location ? <p>Location: {request.location}</p> : null}
+              <p>Target: {needTargetLabel}</p>
+              <p>Remaining: {needRemainingLabel}</p>
+            </div>
+            {deliverableNeed ? (
+              <p className="mt-3 text-sm text-indigo-700">
+                Deliverable need — fulfillment is tracked via Delhivery after you accept an applicant.
+              </p>
+            ) : null}
           </CardContent>
         </Card>
 
@@ -340,6 +443,9 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
                               <Calendar size={14} />
                               Applied {formatDate(volunteer.applied_at)}
                             </span>
+                            <span className="font-medium text-slate-700">
+                              Offer: {formatVolunteerOffer(request, volunteer)}
+                            </span>
                           </div>
                           {volunteer.message && (
                             <div className="bg-gray-50 p-3 rounded-lg mb-3">
@@ -352,7 +458,7 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
                         <div className="flex gap-2 ml-4">
                           <Button
                             size="sm"
-                            onClick={() => handleVolunteerStatusUpdate(volunteer.id, 'accepted')}
+                            onClick={() => handleVolunteerStatusUpdate(volunteer, 'accepted')}
                             disabled={updating === volunteer.id}
                             className="bg-green-600 hover:bg-green-700"
                           >
@@ -368,7 +474,7 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => handleVolunteerStatusUpdate(volunteer.id, 'rejected')}
+                            onClick={() => handleVolunteerStatusUpdate(volunteer, 'rejected')}
                             disabled={updating === volunteer.id}
                             className="border-red-200 text-red-600 hover:bg-red-50"
                           >
@@ -422,7 +528,19 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
                               <Calendar size={14} />
                               Accepted {formatDate(volunteer.applied_at)}
                             </span>
+                            <span className="font-medium text-slate-700">
+                              Assigned: {formatVolunteerOffer(request, volunteer)}
+                            </span>
                           </div>
+                          {deliverableNeed ? (
+                            <p className="text-sm text-indigo-700">
+                              Delhivery: {formatDeliveryTrackingStatus(
+                                volunteer.response_meta && typeof volunteer.response_meta === 'object'
+                                  ? volunteer.response_meta
+                                  : {}
+                              )}
+                            </p>
+                          ) : null}
                           {volunteer.message && (
                             <div className="bg-gray-50 p-3 rounded-lg">
                               <p className="text-sm text-gray-700">
@@ -431,19 +549,21 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
                             </div>
                           )}
                         </div>
-                        <div className="flex gap-2 ml-4">
-                          <Button
-                            size="sm"
-                            onClick={() => handleVolunteerStatusUpdate(volunteer.id, 'active')}
-                            disabled={updating === volunteer.id}
-                          >
-                            {updating === volunteer.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              'Start Work'
-                            )}
-                          </Button>
-                        </div>
+                        {!deliverableNeed ? (
+                          <div className="flex gap-2 ml-4">
+                            <Button
+                              size="sm"
+                              onClick={() => handleVolunteerStatusUpdate(volunteer, 'active')}
+                              disabled={updating === volunteer.id}
+                            >
+                              {updating === volunteer.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                'Start Work'
+                              )}
+                            </Button>
+                          </div>
+                        ) : null}
                       </div>
                     </CardContent>
                   </Card>
@@ -491,22 +611,36 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
                                 {volunteer.hours_contributed} hours contributed
                               </span>
                             )}
+                            <span className="font-medium text-slate-700">
+                              Assigned: {formatVolunteerOffer(request, volunteer)}
+                            </span>
                           </div>
+                          {deliverableNeed ? (
+                            <p className="text-sm text-indigo-700">
+                              Delhivery: {formatDeliveryTrackingStatus(
+                                volunteer.response_meta && typeof volunteer.response_meta === 'object'
+                                  ? volunteer.response_meta
+                                  : {}
+                              )}
+                            </p>
+                          ) : null}
                         </div>
-                        <div className="flex gap-2 ml-4">
-                          <Button
-                            size="sm"
-                            onClick={() => handleVolunteerStatusUpdate(volunteer.id, 'completed')}
-                            disabled={updating === volunteer.id}
-                            className="bg-green-600 hover:bg-green-700"
-                          >
-                            {updating === volunteer.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              'Mark Complete'
-                            )}
-                          </Button>
-                        </div>
+                        {!deliverableNeed ? (
+                          <div className="flex gap-2 ml-4">
+                            <Button
+                              size="sm"
+                              onClick={() => handleVolunteerStatusUpdate(volunteer, 'completed')}
+                              disabled={updating === volunteer.id}
+                              className="bg-green-600 hover:bg-green-700"
+                            >
+                              {updating === volunteer.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                'Mark Complete'
+                              )}
+                            </Button>
+                          </div>
+                        ) : null}
                       </div>
                     </CardContent>
                   </Card>

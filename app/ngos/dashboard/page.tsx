@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, useMemo } from 'react';
 import { createClient as createSupabaseClient } from '@/lib/supabase';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
@@ -11,6 +11,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Clock, CheckCircle, AlertTriangle, HeartHandshake, Trash2, Plus, Building, TicketCheck, MailCheck, Phone, Loader2, XCircle } from 'lucide-react';
 import { formatDisplayDate, formatCampaignLeadLifecycleLabel, type CampaignLeadLifecycle } from '@/lib/format-date';
 import Link from 'next/link';
@@ -19,6 +21,23 @@ import { SkeletonOrderItem } from '@/components/ui/skeleton';
 import { ProfileDashboardTab } from '@/components/profile-dashboard-tab';
 import { DashboardQuickSidebar } from '@/components/dashboard-quick-sidebar';
 import { CampaignVolunteerAssignmentCard, type CampaignVolunteerAssignmentItem } from '@/components/campaign-volunteer-assignment-card';
+import {
+  formatDeliveryTrackingStatus,
+  getDeliveryTrackingEvents,
+  getNeedRemainingQuantity,
+  getServiceRequestTarget,
+  isDeliveredTrackingStatus,
+  isNeedOpenForListing,
+  isPickedUpTrackingStatus,
+} from '@/lib/service-request-allocation';
+import {
+  formatAttendanceSummary,
+  getSkillServiceDailyRate,
+  getNgoNeedFulfillmentMode,
+  isDailyRentalEngagementMeta,
+  shouldUseDelhiveryForNeed,
+  shouldUseNgoMarkedDailyAttendance,
+} from '@/lib/ngo-need-fulfillment';
 
 interface OfferRequestItem {
   id: number;
@@ -110,6 +129,16 @@ const getOfferRequestBillingDetails = (request: OfferRequestItem) => {
     paymentMode: String(meta.payment_mode || assignmentMeta.payment_mode || request.payment_mode || ''),
     paymentAmount,
     paymentRequired
+  };
+};
+
+const toOfferRentalApplication = (request: OfferRequestItem) => {
+  const billing = getOfferRequestBillingDetails(request);
+  return {
+    id: request.id,
+    fulfillment_amount: billing.paymentAmount,
+    assigned_amount: billing.paymentAmount,
+    response_meta: request.response_meta && typeof request.response_meta === 'object' ? request.response_meta : {},
   };
 };
 
@@ -234,6 +263,908 @@ const getStatusBadgeClass = (status: string): string => {
   if (normalized === 'expired') return 'border-slate-300 bg-slate-100 text-slate-700';
   return 'border-slate-300 bg-white text-slate-700';
 };
+
+function formatDelhiveryEventTime(value: unknown) {
+  if (!value) return 'Time not available';
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function InlineDelhiveryFulfillment({
+  serviceRequestId,
+  volunteerApplicationId,
+  responseMeta,
+  canEditTrackingId = true,
+  canVerifyPickup = false,
+  onUpdated,
+}: {
+  serviceRequestId: number;
+  volunteerApplicationId: number;
+  responseMeta?: Record<string, any> | null;
+  canEditTrackingId?: boolean;
+  canVerifyPickup?: boolean;
+  onUpdated?: (nextMeta: Record<string, any>) => void | Promise<void>;
+}) {
+  const { toast } = useToast();
+  const meta = responseMeta && typeof responseMeta === 'object' ? responseMeta : {};
+  const [trackingId, setTrackingId] = useState(String(meta.delivery_tracking_id || ''));
+  const [syncing, setSyncing] = useState(false);
+
+  const events = useMemo(() => getDeliveryTrackingEvents(meta), [meta]);
+  const currentStatus = formatDeliveryTrackingStatus(meta);
+  const pickedUp = isPickedUpTrackingStatus(meta.delivery_tracking_last_status);
+  const delivered = isDeliveredTrackingStatus(meta.delivery_tracking_last_status);
+
+  const handleVerifyPickup = async () => {
+    const resolvedTrackingId = trackingId.trim() || String(meta.delivery_tracking_id || '').trim();
+    if (!resolvedTrackingId) {
+      toast({
+        title: 'Tracking ID required',
+        description: 'Enter the Delhivery tracking ID from your shipment.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setSyncing(true);
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('Please sign in again');
+
+      const response = await fetch(
+        `/api/service-requests/${serviceRequestId}/volunteers/${volunteerApplicationId}/delivery/sync`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ trackingId: resolvedTrackingId }),
+        }
+      );
+
+      const data = await response.json();
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.error || 'Could not verify Delhivery pickup');
+      }
+
+      const nextMeta =
+        data?.data?.assignment?.response_meta && typeof data.data.assignment.response_meta === 'object'
+          ? data.data.assignment.response_meta
+          : meta;
+
+      setTrackingId(String(nextMeta.delivery_tracking_id || resolvedTrackingId));
+
+      toast({
+        title: isDeliveredTrackingStatus(nextMeta.delivery_tracking_last_status)
+          ? 'Delivery updated'
+          : isPickedUpTrackingStatus(nextMeta.delivery_tracking_last_status)
+            ? 'Pickup verified'
+            : 'Delhivery status synced',
+        description: formatDeliveryTrackingStatus(nextMeta),
+      });
+
+      await onUpdated?.(nextMeta);
+    } catch (error) {
+      toast({
+        title: 'Verification failed',
+        description: error instanceof Error ? error.message : 'Could not sync Delhivery status',
+        variant: 'destructive',
+      });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3 rounded-md border border-indigo-200 bg-indigo-50/60 p-3">
+      <div>
+        <p className="text-sm font-medium text-indigo-950">Delhivery delivery</p>
+        <p className="text-xs text-indigo-800/80">
+          Material fulfillment is tracked through Delhivery pickup and delivery updates.
+        </p>
+      </div>
+
+      <div className="grid gap-2 text-sm sm:grid-cols-2">
+        <p>
+          Status:{' '}
+          <span className="font-medium text-slate-900">{currentStatus}</span>
+        </p>
+        <p>
+          Last location:{' '}
+          <span className="font-medium text-slate-900">
+            {meta.delivery_tracking_last_location || 'Not available yet'}
+          </span>
+        </p>
+      </div>
+
+      {canEditTrackingId ? (
+        <div className="space-y-2">
+          <Label htmlFor={`delhivery-tracking-${volunteerApplicationId}`} className="text-xs">
+            Delhivery tracking ID
+          </Label>
+          <Input
+            id={`delhivery-tracking-${volunteerApplicationId}`}
+            value={trackingId}
+            onChange={(event) => setTrackingId(event.target.value)}
+            placeholder="Enter tracking ID after Delhivery pickup"
+            className="bg-white"
+          />
+        </div>
+      ) : meta.delivery_tracking_id ? (
+        <p className="text-xs text-slate-700">
+          Tracking ID: <span className="font-medium">{meta.delivery_tracking_id}</span>
+        </p>
+      ) : null}
+
+      {canVerifyPickup ? (
+        <Button
+          size="sm"
+          className="bg-indigo-700 hover:bg-indigo-800"
+          onClick={handleVerifyPickup}
+          disabled={syncing}
+        >
+          {syncing ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Checking Delhivery…
+            </>
+          ) : delivered ? (
+            'Refresh delivery status'
+          ) : pickedUp ? (
+            'Refresh delivery status'
+          ) : (
+            'Verify Delhivery pickup'
+          )}
+        </Button>
+      ) : null}
+
+      {events.length > 0 ? (
+        <div className="rounded-md border border-indigo-100 bg-white p-3">
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
+            Delivery timeline
+          </p>
+          <ol className="space-y-2">
+            {events.map((event: any, index: number) => (
+              <li key={`${event.status}-${event.timestamp}-${index}`} className="border-l-2 border-indigo-200 pl-3">
+                <p className="text-sm font-medium text-slate-900">
+                  {String(event.status || 'Update')}
+                </p>
+                <p className="text-xs text-slate-600">
+                  {event.location ? `${event.location} · ` : ''}
+                  {formatDelhiveryEventTime(event.timestamp)}
+                </p>
+                {event.details ? (
+                  <p className="text-xs text-slate-500">{String(event.details)}</p>
+                ) : null}
+              </li>
+            ))}
+          </ol>
+        </div>
+      ) : (
+        <p className="text-xs text-slate-600">
+          {meta.delivery_tracking_id
+            ? canVerifyPickup
+              ? 'No timeline events yet. Use verify pickup to pull the latest Delhivery updates.'
+              : 'No timeline events yet. The individual will sync Delhivery updates after pickup.'
+            : canVerifyPickup
+              ? 'Add the tracking ID once Delhivery picks up the goods to start live tracking.'
+              : 'Waiting for the individual to verify Delhivery pickup and share tracking updates.'}
+        </p>
+      )}
+    </div>
+  );
+}
+declare global {
+  interface Window {
+    Razorpay?: any;
+  }
+}
+
+function getSkillLocalDateString(reference: Date = new Date()) {
+  const year = reference.getFullYear();
+  const month = String(reference.getMonth() + 1).padStart(2, '0');
+  const day = String(reference.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function loadRazorpayScript() {
+  if (typeof window === 'undefined' || window.Razorpay) return Promise.resolve();
+  return new Promise<void>((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Failed to load Razorpay'));
+    document.body.appendChild(script);
+  });
+}
+
+function InlineSkillServiceFulfillment({
+  application,
+  role,
+  title = 'Skill / service rental',
+  onUpdated,
+}: {
+  application: {
+    id: number;
+    fulfillment_amount?: number | null;
+    fulfillment_quantity?: number | null;
+    assigned_amount?: number | null;
+    assigned_quantity?: number | null;
+    proposed_amount?: number | null;
+    response_meta?: Record<string, any> | null;
+  };
+  role: 'ngo' | 'individual';
+  title?: string;
+  onUpdated?: () => void | Promise<void>;
+}) {
+  const { toast } = useToast();
+  const [marking, setMarking] = useState(false);
+  const [settling, setSettling] = useState(false);
+  const meta = application.response_meta && typeof application.response_meta === 'object'
+    ? application.response_meta
+    : {};
+  const assignmentId =
+    meta.assignment_id || meta.assignmentMeta?.id || meta.assignment_meta?.id;
+  const dailyRate = getSkillServiceDailyRate(application);
+  const summary = formatAttendanceSummary(meta);
+  const today = getSkillLocalDateString();
+  const alreadyMarkedToday = String(summary.lastAttendanceAt || '') === today;
+  const settlementStatus = String(meta.settlement_status || '').toLowerCase();
+  const isSettled = settlementStatus === 'settled';
+  const outstanding = Math.max(0, summary.totalDue - summary.paidTotal);
+
+  useEffect(() => {
+    if (role === 'ngo') {
+      void loadRazorpayScript().catch(() => undefined);
+    }
+  }, [role]);
+
+  const handleMarkAttendance = async () => {
+    if (!assignmentId) {
+      toast({
+        title: 'Attendance unavailable',
+        description: 'Assignment is not linked yet.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (alreadyMarkedToday) {
+      toast({
+        title: 'Already marked',
+        description: "Today's attendance is already recorded and cannot be changed.",
+      });
+      return;
+    }
+
+    setMarking(true);
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('Please sign in again');
+
+      const response = await fetch(`/api/service-assignments/${assignmentId}/attendance`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          attendanceStatus: 'present',
+          attendanceSource: 'ngo_dashboard',
+          attendanceDate: today,
+          units: 1,
+          multiplier: 1,
+          markedForUserId: meta.assignee_user_id || undefined,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.error || 'Failed to mark attendance');
+      }
+
+      toast({
+        title: 'Attendance marked',
+        description: `Present day recorded. Daily due: INR ${dailyRate.toLocaleString('en-IN')}.`,
+      });
+      await onUpdated?.();
+    } catch (error) {
+      toast({
+        title: 'Could not mark attendance',
+        description: error instanceof Error ? error.message : 'Something went wrong',
+        variant: 'destructive',
+      });
+    } finally {
+      setMarking(false);
+    }
+  };
+
+  const handleSettle = async () => {
+    if (!assignmentId) {
+      toast({
+        title: 'Settlement unavailable',
+        description: 'Assignment is not linked yet.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setSettling(true);
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('Please sign in again');
+
+      const response = await fetch(`/api/service-assignments/${assignmentId}/settle`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ action: 'start' }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.error || 'Failed to start settlement');
+      }
+
+      const payload = data.data;
+      if (payload?.settled) {
+        toast({
+          title: 'Service completed',
+          description: payload.settledAmount > 0
+            ? `Settlement recorded for INR ${Number(payload.settledAmount).toLocaleString('en-IN')}.`
+            : 'Service marked complete with no payment due.',
+        });
+        await onUpdated?.();
+        return;
+      }
+
+      if (!payload?.paymentRequired) {
+        await onUpdated?.();
+        return;
+      }
+
+      await loadRazorpayScript();
+      if (!window.Razorpay) {
+        throw new Error('Razorpay failed to load. Refresh and try again.');
+      }
+
+      const razorpay = new window.Razorpay({
+        key: payload.keyId,
+        amount: Math.round(Number(payload.amount) * 100),
+        currency: payload.currency || 'INR',
+        name: 'Navadrishti',
+        description: 'Daily rental settlement',
+        order_id: payload.orderId,
+        theme: { color: '#059669' },
+        handler: async (paymentResponse: Record<string, string>) => {
+          try {
+            const verifyRes = await fetch(`/api/service-assignments/${assignmentId}/settle`, {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                action: 'verify',
+                razorpay_order_id: paymentResponse.razorpay_order_id,
+                razorpay_payment_id: paymentResponse.razorpay_payment_id,
+                razorpay_signature: paymentResponse.razorpay_signature,
+              }),
+            });
+
+            const verifyData = await verifyRes.json();
+            if (!verifyRes.ok || !verifyData?.success) {
+              throw new Error(verifyData?.error || 'Payment verification failed');
+            }
+
+            toast({
+              title: 'Payment successful',
+              description: `Settled INR ${Number(verifyData.data?.settledAmount || payload.amount).toLocaleString('en-IN')} and marked service complete.`,
+            });
+            await onUpdated?.();
+          } catch (verifyError) {
+            toast({
+              title: 'Payment verification failed',
+              description: verifyError instanceof Error ? verifyError.message : 'Contact support with your payment reference.',
+              variant: 'destructive',
+            });
+          }
+        },
+      });
+
+      razorpay.open();
+    } catch (error) {
+      toast({
+        title: 'Could not settle',
+        description: error instanceof Error ? error.message : 'Something went wrong',
+        variant: 'destructive',
+      });
+    } finally {
+      setSettling(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3 rounded-md border border-emerald-200 bg-emerald-50/60 p-3">
+      <div>
+        <p className="text-sm font-medium text-emerald-950">{title}</p>
+        <p className="text-xs text-emerald-900/80">
+          {role === 'ngo'
+            ? 'Mark attendance once per day for this individual. Past days cannot be marked or edited. Settle the cumulative total when service ends.'
+            : 'The NGO marks your daily attendance. Payment is calculated from present days times your quoted daily rate.'}
+        </p>
+      </div>
+
+      <div className="grid gap-2 text-sm sm:grid-cols-3">
+        <p>
+          Daily rate:{' '}
+          <span className="font-medium text-slate-900">
+            {dailyRate > 0 ? `INR ${dailyRate.toLocaleString('en-IN')}` : 'Not set'}
+          </span>
+        </p>
+        <p>
+          Days present: <span className="font-medium text-slate-900">{summary.daysPresent}</span>
+        </p>
+        <p>
+          Cumulative due:{' '}
+          <span className="font-medium text-slate-900">
+            INR {summary.totalDue.toLocaleString('en-IN')}
+          </span>
+        </p>
+      </div>
+
+      {summary.lastAttendanceAt ? (
+        <p className="text-xs text-slate-600">
+          Last attendance marked: {summary.lastAttendanceAt}
+        </p>
+      ) : null}
+
+      {isSettled ? (
+        <p className="text-xs font-medium text-emerald-800">
+          Settled
+          {meta.settled_amount != null ? ` · INR ${Number(meta.settled_amount).toLocaleString('en-IN')}` : ''}
+          {meta.settlement_mode ? ` (${meta.settlement_mode})` : ''}
+        </p>
+      ) : role === 'ngo' ? (
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" onClick={handleMarkAttendance} disabled={marking || alreadyMarkedToday || isSettled}>
+            {marking ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Marking…
+              </>
+            ) : alreadyMarkedToday ? (
+              'Today already marked'
+            ) : (
+              'Mark today present'
+            )}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleSettle}
+            disabled={settling || isSettled}
+          >
+            {settling ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Settling…
+              </>
+            ) : outstanding > 0 ? (
+              `Complete service & pay INR ${outstanding.toLocaleString('en-IN')}`
+            ) : (
+              'Complete service (no payment due)'
+            )}
+          </Button>
+        </div>
+      ) : (
+        <p className="text-xs text-slate-600">
+          {alreadyMarkedToday
+            ? 'The NGO marked you present today.'
+            : "Waiting for the NGO to mark today's attendance."}
+          {outstanding > 0 ? ` Outstanding: INR ${outstanding.toLocaleString('en-IN')}.` : ''}
+        </p>
+      )}
+    </div>
+  );
+}
+function InlineInfrastructureAssignment({
+  application,
+  serviceRequestId,
+  role,
+  onUpdated,
+}: {
+  application: {
+    id: number;
+    status?: string;
+    response_meta?: Record<string, any> | null;
+  };
+  serviceRequestId: number;
+  role: 'ngo' | 'individual';
+  onUpdated?: () => void | Promise<void>;
+}) {
+  const { toast } = useToast();
+  const [completing, setCompleting] = useState(false);
+  const status = String(application.status || '').toLowerCase();
+  const inProgress = ['accepted', 'active'].includes(status);
+
+  const handleMarkComplete = async () => {
+    setCompleting(true);
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('Please sign in again');
+
+      const response = await fetch(
+        `/api/service-requests/${serviceRequestId}/volunteers/${application.id}`,
+        {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ status: 'completed' }),
+        }
+      );
+
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to mark complete');
+      }
+
+      toast({
+        title: 'Infrastructure need completed',
+        description: 'The individual can now apply to other needs.',
+      });
+      await onUpdated?.();
+    } catch (error) {
+      toast({
+        title: 'Could not mark complete',
+        description: error instanceof Error ? error.message : 'Something went wrong',
+        variant: 'destructive',
+      });
+    } finally {
+      setCompleting(false);
+    }
+  };
+
+  if (!inProgress) return null;
+
+  return (
+    <div className="space-y-2 rounded-md border border-violet-200 bg-violet-50/60 p-3">
+      <p className="text-sm font-medium text-violet-950">Infrastructure assignment</p>
+      <p className="text-xs text-violet-900/80">
+        {role === 'individual'
+          ? 'You are assigned to this infrastructure need. You cannot take another need until the NGO marks this complete.'
+          : 'Mark this infrastructure engagement complete when work is done so the individual can take new needs.'}
+      </p>
+      {role === 'ngo' ? (
+        <Button size="sm" variant="outline" onClick={handleMarkComplete} disabled={completing}>
+          {completing ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Marking…
+            </>
+          ) : (
+            'Mark complete'
+          )}
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+type NgoNeedAssignment = {
+  id: number;
+  status?: string;
+  assigned_quantity?: number | null;
+  assigned_amount?: number | null;
+  fulfillment_quantity?: number | null;
+  fulfillment_amount?: number | null;
+  response_meta?: Record<string, any> | null;
+  volunteer?: { id?: number; name?: string | null; email?: string | null; user_type?: string | null } | null;
+};
+
+type NgoNeedDashboardItem = {
+  id: number;
+  title: string;
+  status?: string;
+  category?: string;
+  location?: string;
+  beneficiary_count?: number | null;
+  target_quantity?: number | null;
+  remaining_quantity?: number | null;
+  current_quantity?: number | null;
+  estimated_budget?: number | null;
+  target_amount?: number | null;
+  accepted_count?: number;
+  completed_count?: number;
+  project?: { title?: string | null; exact_address?: string | null; location?: string | null } | null;
+  assignments?: NgoNeedAssignment[];
+};
+
+function getAcceptedNgoNeedAssignments(item: NgoNeedDashboardItem) {
+  return (item.assignments || []).filter((assignment) =>
+    ['accepted', 'active', 'completed'].includes(String(assignment.status || '').toLowerCase())
+  );
+}
+
+function getPendingNgoNeedAssignments(item: NgoNeedDashboardItem) {
+  return (item.assignments || []).filter(
+    (assignment) => String(assignment.status || '').toLowerCase() === 'pending'
+  );
+}
+
+function formatNgoNeedOfferValue(item: NgoNeedDashboardItem, assignment: NgoNeedAssignment) {
+  const mode = getNgoNeedFulfillmentMode(item);
+  if (mode === 'financial') {
+    const amount = Number(assignment.fulfillment_amount ?? assignment.assigned_amount ?? 0);
+    return amount > 0 ? `INR ${amount.toLocaleString('en-IN')}` : 'Amount not set';
+  }
+  if (mode === 'skill_service') {
+    const amount = Number(assignment.fulfillment_amount ?? assignment.assigned_amount ?? 0);
+    return amount > 0 ? `INR ${amount.toLocaleString('en-IN')} / day` : 'Daily rate not set';
+  }
+
+  const quantity = Number(assignment.fulfillment_quantity ?? assignment.assigned_quantity ?? 0);
+  return quantity > 0 ? `${quantity} units` : 'Quantity not set';
+}
+
+function formatNgoNeedTargetSummary(item: NgoNeedDashboardItem) {
+  const target = getServiceRequestTarget(item);
+  const remaining = getNeedRemainingQuantity(item);
+
+  if (target.isFinancial) {
+    const targetLabel = target.amount > 0 ? `INR ${target.amount.toLocaleString('en-IN')}` : 'Open budget';
+    const remainingLabel = target.amount > 0 ? `INR ${remaining.toLocaleString('en-IN')}` : 'Open';
+    return { targetLabel, remainingLabel };
+  }
+
+  const targetLabel = target.quantity > 0 ? `${target.quantity} units` : String(item.beneficiary_count || 0);
+  const remainingLabel = target.quantity > 0 ? `${remaining} units` : String(remaining);
+  return { targetLabel, remainingLabel };
+}
+
+function NgoNeedDashboardInline({
+  need,
+  variant = 'ongoing',
+  onUpdated,
+}: {
+  need: NgoNeedDashboardItem;
+  variant?: 'ongoing' | 'history';
+  onUpdated?: () => void | Promise<void>;
+}) {
+  const { toast } = useToast();
+  const [updatingId, setUpdatingId] = useState<number | null>(null);
+
+  const accepted = getAcceptedNgoNeedAssignments(need);
+  const pending = getPendingNgoNeedAssignments(need);
+  const { targetLabel, remainingLabel } = formatNgoNeedTargetSummary(need);
+  const listingOpen = isNeedOpenForListing(need);
+  const target = getServiceRequestTarget(need);
+  const location =
+    need.project?.exact_address || need.project?.location || need.location || 'Not set';
+
+  const handleApplicantDecision = async (
+    assignment: NgoNeedAssignment,
+    decision: 'accepted' | 'rejected'
+  ) => {
+    setUpdatingId(assignment.id);
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('Please sign in again');
+      }
+
+      const payload: Record<string, unknown> = { status: decision };
+      if (decision === 'accepted') {
+        const remaining = getNeedRemainingQuantity(need);
+        if (target.isFinancial) {
+          const offer = Number(assignment.fulfillment_amount ?? assignment.assigned_amount ?? 0);
+          payload.allocationAmount = Math.min(offer > 0 ? offer : remaining, remaining);
+        } else {
+          const offer = Number(assignment.fulfillment_quantity ?? assignment.assigned_quantity ?? 0);
+          payload.allocationQuantity = Math.min(offer > 0 ? offer : remaining, remaining);
+        }
+      }
+
+      const response = await fetch(
+        `/api/service-requests/${need.id}/volunteers/${assignment.id}`,
+        {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to update application');
+      }
+
+      toast({
+        title: decision === 'accepted' ? 'Application accepted' : 'Application rejected',
+        description:
+          decision === 'accepted'
+            ? `${assignment.volunteer?.name || 'Applicant'} is now assigned to this need.`
+            : `${assignment.volunteer?.name || 'Applicant'} was not selected.`,
+      });
+
+      await onUpdated?.();
+    } catch (error) {
+      toast({
+        title: 'Could not update application',
+        description: error instanceof Error ? error.message : 'Something went wrong',
+        variant: 'destructive',
+      });
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  return (
+    <div className="space-y-3 rounded-md border bg-white p-4">
+      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+        <div>
+          <p className="font-semibold">{need.title}</p>
+          <p className="text-sm text-muted-foreground">
+            {need.project?.title || need.location || 'Standalone need'}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Badge variant="outline">{need.status || 'active'}</Badge>
+          {variant === 'ongoing' && !listingOpen ? (
+            <Badge variant="outline" className="border-slate-300 bg-slate-50 text-slate-700">
+              Fully assigned · hidden from listing
+            </Badge>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-2 text-sm text-muted-foreground md:grid-cols-4">
+        <p>Target: {targetLabel}</p>
+        <p>Remaining: {remainingLabel}</p>
+        <p>Pending review: {pending.length}</p>
+        <p>Location: {location}</p>
+      </div>
+
+      {pending.length > 0 && variant === 'ongoing' ? (
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-2">
+          <p className="text-sm font-medium text-amber-900">Pending applications</p>
+          {pending.map((assignment) => (
+            <div
+              key={assignment.id}
+              className="flex flex-col gap-2 border-t border-amber-200 pt-2 first:border-t-0 first:pt-0 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div>
+                <p className="text-sm font-medium text-slate-900">
+                  {assignment.volunteer?.name || 'Individual'}
+                </p>
+                <p className="text-xs text-slate-600">
+                  Offer: {formatNgoNeedOfferValue(need, assignment)}
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  className="bg-green-600 hover:bg-green-700"
+                  disabled={updatingId === assignment.id}
+                  onClick={() => handleApplicantDecision(assignment, 'accepted')}
+                >
+                  {updatingId === assignment.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    'Accept'
+                  )}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="border-red-200 text-red-600 hover:bg-red-50"
+                  disabled={updatingId === assignment.id}
+                  onClick={() => handleApplicantDecision(assignment, 'rejected')}
+                >
+                  Reject
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {accepted.length > 0 ? (
+        <div className="rounded-md border border-slate-200 bg-slate-50 p-3 space-y-3">
+          <p className="text-sm font-medium text-slate-900">Assigned individuals</p>
+          {accepted.map((assignment) => {
+            const mode = getNgoNeedFulfillmentMode(need);
+            const inFulfillment = ['accepted', 'active'].includes(String(assignment.status || '').toLowerCase());
+
+            return (
+              <div key={assignment.id} className="space-y-2 border-t border-slate-200 pt-2 first:border-t-0 first:pt-0">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">
+                      {assignment.volunteer?.name || 'Individual'}
+                    </p>
+                    <p className="text-xs text-slate-600">
+                      Promised: {formatNgoNeedOfferValue(need, assignment)}
+                    </p>
+                  </div>
+                  <p className="text-xs capitalize text-slate-600 sm:text-right">
+                    {String(assignment.status || 'accepted').replace('_', ' ')}
+                  </p>
+                </div>
+
+                {shouldUseDelhiveryForNeed(need) && inFulfillment ? (
+                  <InlineDelhiveryFulfillment
+                    serviceRequestId={need.id}
+                    volunteerApplicationId={assignment.id}
+                    responseMeta={assignment.response_meta || {}}
+                    canEditTrackingId={false}
+                    canVerifyPickup={false}
+                    onUpdated={onUpdated}
+                  />
+                ) : null}
+
+                {shouldUseNgoMarkedDailyAttendance(need) && inFulfillment ? (
+                  <InlineSkillServiceFulfillment
+                    application={assignment}
+                    role="ngo"
+                    onUpdated={onUpdated}
+                  />
+                ) : null}
+
+                {mode === 'infrastructure' && inFulfillment ? (
+                  <InlineInfrastructureAssignment
+                    application={assignment}
+                    serviceRequestId={need.id}
+                    role="ngo"
+                    onUpdated={onUpdated}
+                  />
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+
+      <div className="flex flex-wrap gap-2">
+        <Link href={`/service-requests/${need.id}`}>
+          <Button variant="outline" size="sm">
+            View
+          </Button>
+        </Link>
+        {variant === 'ongoing' ? (
+          <>
+            <Link href={`/service-requests/edit/${need.id}`}>
+              <Button variant="outline" size="sm">
+                Edit
+              </Button>
+            </Link>
+            {pending.length > 0 ? (
+              <Link href={`/service-requests/applicants/${need.id}`}>
+                <Button variant="outline" size="sm">
+                  All applicants ({pending.length})
+                </Button>
+              </Link>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
 function NGODashboardContent() {
   const { user, refreshUser } = useAuth();
@@ -367,28 +1298,23 @@ function NGODashboardContent() {
       const token = localStorage.getItem('token');
       if (!token) return;
 
-      console.log('Fetching service requests...');
-      const response = await fetch('/api/service-requests?view=my-requests&limit=5', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      const [ongoingResponse, historyResponse] = await Promise.all([
+        fetch('/api/service-request-assignments?view=ongoing', {
+          headers: { Authorization: `Bearer ${token}` }
+        }),
+        fetch('/api/service-request-assignments?view=history', {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+      ]);
 
-      const data = await response.json();
-      console.log('Service requests response:', data);
-      if (data.success) {
-        const requests = data.data || [];
-        setOngoingNeeds(requests.filter((request: any) => !isHistoryNeed(request)));
-        setHistoryNeeds(requests.filter((request: any) => isHistoryNeed(request)));
-        console.log('Service requests set:', data.data?.length || 0, 'items');
-        console.log('Detailed service requests:', (data.data || []).map((req: any) => ({
-          id: req.id,
-          title: req.title,
-          status: req.status,
-          volunteers_count: req.volunteers_count
-        })));
-      } else {
-        console.error('Service requests fetch failed:', data.error);
+      const ongoingData = await ongoingResponse.json();
+      const historyData = await historyResponse.json();
+
+      if (ongoingData.success) {
+        setOngoingNeeds(Array.isArray(ongoingData.data) ? ongoingData.data : []);
+      }
+      if (historyData.success) {
+        setHistoryNeeds(Array.isArray(historyData.data) ? historyData.data : []);
       }
     } catch (error) {
       console.error('Error fetching service requests:', error);
@@ -1429,6 +2355,15 @@ function NGODashboardContent() {
                                     </p>
                                   ) : null}
 
+                                  {isDailyRentalEngagementMeta(request.response_meta) ? (
+                                    <InlineSkillServiceFulfillment
+                                      application={toOfferRentalApplication(request)}
+                                      role="ngo"
+                                      title="Capability offer rental"
+                                      onUpdated={fetchOfferRequests}
+                                    />
+                                  ) : null}
+
                                   <div className="space-y-1 text-sm text-slate-600">
                                     <p>This decision is final. Use tracking and project screens to manage the engagement.</p>
                                     <p className="text-xs text-slate-500">Request ID: {request.id}</p>
@@ -1670,32 +2605,12 @@ function NGODashboardContent() {
                             <p className="text-sm">Accepted and active requests will appear here until fulfillment is confirmed.</p>
                           </div>
                         ) : ongoingNeeds.map((request) => (
-                          <div key={request.id} className="rounded-md border bg-white p-4 space-y-3">
-                            <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                              <div>
-                                <p className="font-semibold">{request.title}</p>
-                                <p className="text-sm text-muted-foreground">{request.project?.title || request.location}</p>
-                              </div>
-                              <Badge variant="outline">{request.status}</Badge>
-                            </div>
-                            <div className="grid grid-cols-1 gap-2 text-sm md:grid-cols-4 text-muted-foreground">
-                              <p>Accepted: {request.accepted_count || 0}</p>
-                              <p>Completed: {request.completed_count || 0}</p>
-                              <p>Location: {request.project?.exact_address || request.project?.location || request.location || 'Not set'}</p>
-                              <p>Target: {request.category?.toLowerCase().includes('financial') ? `INR ${Number(request.estimated_budget || 0).toLocaleString('en-IN')}` : request.beneficiary_count || 0}</p>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              <Link href={`/service-requests/${request.id}`}>
-                                <Button variant="outline" size="sm">View</Button>
-                              </Link>
-                              <Link href={`/service-requests/edit/${request.id}`}>
-                                <Button variant="outline" size="sm">Edit</Button>
-                              </Link>
-                              <Link href={`/service-requests/applicants/${request.id}`}>
-                                <Button variant="outline" size="sm">Applicants</Button>
-                              </Link>
-                            </div>
-                          </div>
+                          <NgoNeedDashboardInline
+                            key={request.id}
+                            need={request as NgoNeedDashboardItem}
+                            variant="ongoing"
+                            onUpdated={fetchServiceRequests}
+                          />
                         ))}
                       </TabsContent>
 
@@ -1708,25 +2623,11 @@ function NGODashboardContent() {
                             <p className="text-sm">Completed or cancelled requests will appear here.</p>
                           </div>
                         ) : historyNeeds.map((request) => (
-                          <div key={request.id} className="rounded-md border bg-white p-4 space-y-3">
-                            <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                              <div>
-                                <p className="font-semibold">{request.title}</p>
-                                <p className="text-sm text-muted-foreground">{request.project?.title || request.location}</p>
-                              </div>
-                              <Badge variant="outline">{request.status}</Badge>
-                            </div>
-                            <div className="grid grid-cols-1 gap-2 text-sm md:grid-cols-3 text-muted-foreground">
-                              <p>Accepted: {request.accepted_count || 0}</p>
-                              <p>Completed: {request.completed_count || 0}</p>
-                              <p>Location: {request.project?.exact_address || request.project?.location || request.location || 'Not set'}</p>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              <Link href={`/service-requests/${request.id}`}>
-                                <Button variant="outline" size="sm">View</Button>
-                              </Link>
-                            </div>
-                          </div>
+                          <NgoNeedDashboardInline
+                            key={request.id}
+                            need={request as NgoNeedDashboardItem}
+                            variant="history"
+                          />
                         ))}
                       </TabsContent>
                     </Tabs>

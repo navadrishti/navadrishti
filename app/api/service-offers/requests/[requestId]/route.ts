@@ -7,6 +7,19 @@ interface JWTPayload {
   id: number;
 }
 
+function safeParseJson(value: unknown): Record<string, any> {
+  if (!value) return {}
+  if (typeof value === 'object') return value as Record<string, any>
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value)
+    } catch {
+      return {}
+    }
+  }
+  return {}
+}
+
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ requestId: string }> }
@@ -47,7 +60,7 @@ export async function PUT(
 
     const { data: offer, error: offerError } = await supabase
       .from('service_offers')
-      .select('id, creator_id, valid_until, transaction_type, price_amount')
+      .select('id, creator_id, valid_until, transaction_type, price_amount, offer_details')
       .eq('id', targetRequest.service_offer_id)
       .single();
 
@@ -148,6 +161,22 @@ export async function PUT(
         ? targetRequest.response_meta
         : {};
 
+      const offerDetails = safeParseJson(offer.offer_details)
+      const isRent = offer.transaction_type === 'rent'
+      const dailyRate = Number(
+        offerDetails.unit_rate ??
+          offer.price_amount ??
+          currentMeta.rate_per_unit ??
+          targetRequest.proposed_amount ??
+          0
+      ) || 0
+      const billingCycle = isRent
+        ? String(offerDetails.billing_cycle || currentMeta.billing_cycle || targetRequest.billing_cycle || 'daily')
+        : String(currentMeta.billing_cycle || targetRequest.billing_cycle || 'one_time')
+      const paymentMode = isRent
+        ? 'daily_due'
+        : String(currentMeta.payment_mode || targetRequest.payment_mode || 'prepaid')
+
       const assignmentMeta = {
         target_type: 'service_offer',
         target_id: String(targetRequest.service_offer_id),
@@ -158,19 +187,23 @@ export async function PUT(
         assignee_user_id: targetRequest.client_id,
         assigned_by_user_id: ownerId,
         assigned_at: nowIso,
-        billing_cycle: currentMeta.billing_cycle || targetRequest.billing_cycle || 'one_time',
-        payment_mode: currentMeta.payment_mode || targetRequest.payment_mode || 'prepaid',
+        billing_cycle: billingCycle,
+        payment_mode: paymentMode,
         // Assignment should NOT inherit the offer's `valid_until` (offer expiry).
         // Only set an assignment-level validity if explicitly provided in the application's meta
         // (e.g. `assignment_valid_until`). Otherwise leave it open-ended (null).
         valid_until: currentMeta.assignment_valid_until ?? null,
-        rate_per_unit: currentMeta.rate_per_unit || targetRequest.proposed_amount || null,
-        rate_currency: currentMeta.currency || 'INR'
+        rate_per_unit: isRent ? dailyRate : (currentMeta.rate_per_unit || targetRequest.proposed_amount || null),
+        rate_currency: currentMeta.currency || offerDetails.rate_currency || 'INR'
       };
 
       const linkedServiceRequestId = Number(currentMeta.service_request_id || targetRequest.service_request_id || 0) || null;
-      const offerAmount = Number(currentMeta.rate_per_unit || targetRequest.proposed_amount || offer.price_amount || 0) || 0;
-      const paymentRequired = offer.transaction_type !== 'volunteer' && offer.transaction_type !== 'donate' && offerAmount > 0;
+      const offerAmount = isRent
+        ? dailyRate
+        : Number(currentMeta.rate_per_unit || targetRequest.proposed_amount || offer.price_amount || 0) || 0
+      const paymentRequired = isRent
+        ? dailyRate > 0
+        : offer.transaction_type !== 'volunteer' && offer.transaction_type !== 'donate' && offerAmount > 0;
 
       const { data: assignment } = await supabase
         .from('service_engagement_assignments')
@@ -190,6 +223,9 @@ export async function PUT(
             isAssigned: true,
             assignment_id: assignment?.id || null,
             assignment_meta: assignmentMeta,
+            billing_cycle: billingCycle,
+            payment_mode: paymentMode,
+            rate_per_unit: assignmentMeta.rate_per_unit,
             linked_service_request_id: linkedServiceRequestId,
             payment_required: paymentRequired,
             payment_amount_inr: paymentRequired ? offerAmount : 0,
