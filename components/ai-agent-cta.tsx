@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
 import { Sparkles, X } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
+import { AGENT_CTA } from "@/lib/ai-suite"
 
 export function AIAgentCTA() {
   const { user } = useAuth()
@@ -71,31 +72,23 @@ export function AIAgentCTA() {
   }
 
   const aiAgentCta = !mounted || !user ? null : (user.user_type === 'company'
-    ? {
-        href: '/companies/csr-agent',
-        title: 'AI CSR Agent',
-        description: 'Build CSR campaigns with AI',
-      }
+    ? AGENT_CTA.company
     : user.user_type === 'ngo'
-    ? {
-        href: '/ngos/ai-agent',
-        title: 'NGO AI Agent',
-        description: 'Draft service requests with AI',
-      }
+    ? AGENT_CTA.ngo
     : null)
 
   if (!aiAgentCta) return null
   // Hide AI CTA everywhere inside privileged consoles (including login routes)
   if (
     pathname.startsWith('/ca') ||
-    pathname.startsWith('/companies/ca') ||
+    pathname.startsWith('/evidence-verification') ||
     pathname.startsWith('/admin') ||
     pathname.startsWith('/government-admin')
   ) {
     return null
   }
   // Hide on public auth/landing routes — show only after user is inside the platform
-  const publicPathsToHide = ['/', '/login', '/register', '/forgot-password', '/reset-password', '/companies/ca/login', '/ca/login']
+  const publicPathsToHide = ['/', '/login', '/register', '/forgot-password', '/reset-password', '/evidence-verification/login', '/ca/login']
   for (const p of publicPathsToHide) {
     if (pathname === p || pathname.startsWith(p + '/')) return null
   }
@@ -133,7 +126,7 @@ export function AIAgentCTA() {
                     </div>
                     <button
                       onClick={() => setShowExpanded(false)}
-                      aria-label="Close AI Agent popup"
+                      aria-label={aiAgentCta.closeLabel}
                       className="shrink-0 rounded-full p-1 text-black transition-colors hover:bg-black/5 hover:text-black"
                     >
                       <X className="h-4 w-4" />
@@ -147,7 +140,7 @@ export function AIAgentCTA() {
                     >
                       <span className="ai-agent-border-flow block w-full rounded-[0.9rem] p-[1.5px] bg-transparent">
                         <span className="flex w-full items-center justify-center rounded-[0.8rem] bg-white/0 px-3 py-2 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(0,103,185,0.08)] backdrop-blur-[2px] transition-colors group-hover:bg-white/5">
-                          Open AI Agent
+                          {aiAgentCta.openLabel}
                         </span>
                       </span>
                     </Link>

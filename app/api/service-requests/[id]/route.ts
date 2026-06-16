@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { db, supabase } from '@/lib/db';
+import {
+  getFundingProgress,
+  isFinancialNeedType,
+  parseInrNumber,
+  resolveFundingTargetInr,
+  resolveFundsRaisedInr,
+} from '@/lib/service-request-allocation';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 import { CSR_SCHEDULE_VII_CATEGORIES, SERVICE_REQUEST_TYPES } from '@/lib/categories';
@@ -154,6 +161,52 @@ export async function GET(
     serviceRequest.estimated_budget = serviceRequest.estimated_budget != null ? String(serviceRequest.estimated_budget) : (requirements.estimated_budget || requirements.budget || 'Not specified');
     serviceRequest.beneficiary_count = serviceRequest.beneficiary_count != null ? Number(serviceRequest.beneficiary_count) : Number(requirements.beneficiary_count || 0);
     serviceRequest.impact_description = serviceRequest.impact_description || requirements.impact_description || '';
+
+    const requestType = String(serviceRequest.request_type || requirements.request_type || '');
+    if (isFinancialNeedType(requestType)) {
+      let razorpayTotalInr = 0;
+      try {
+        const { data: orderRows } = await supabase
+          .from('razorpay_payment_orders')
+          .select('id')
+          .eq('service_request_id', requestId);
+
+        const orderIds = (orderRows || []).map((row: { id: unknown }) => row.id).filter(Boolean);
+        if (orderIds.length > 0) {
+          const { data: paymentRows } = await supabase
+            .from('razorpay_payments')
+            .select('amount_inr, payment_status')
+            .in('order_id', orderIds)
+            .eq('payment_status', 'captured');
+
+          razorpayTotalInr = (paymentRows || []).reduce((sum: number, row: { amount_inr?: unknown }) => {
+            return sum + parseInrNumber(row.amount_inr);
+          }, 0);
+        }
+      } catch (paymentLookupError) {
+        console.warn('Failed to aggregate Razorpay payments for service request:', paymentLookupError);
+      }
+
+      const targetInr = resolveFundingTargetInr({
+        funding_target_inr: requirements.funding_target_inr,
+        target_amount: serviceRequest.target_amount,
+        estimated_budget: requirements.estimated_budget ?? serviceRequest.estimated_budget,
+        budget: requirements.budget,
+      });
+
+      const raisedInr = resolveFundsRaisedInr({
+        funds_raised_inr: requirements.funds_raised_inr,
+        current_amount: serviceRequest.current_amount,
+        financial_transactions: requirements.financial_transactions,
+        razorpay_total_inr: razorpayTotalInr,
+      });
+
+      const funding = getFundingProgress(targetInr, raisedInr);
+      serviceRequest.funding_target_inr = funding.target;
+      serviceRequest.funds_raised_inr = funding.raised;
+      serviceRequest.funds_remaining_inr = funding.remaining;
+      serviceRequest.funding_progress = funding.progress;
+    }
 
     // Return the service request data (publicly accessible)
     return NextResponse.json({

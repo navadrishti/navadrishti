@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
-import { getCAFromRequest } from '@/lib/server-ca-auth';
-import { getCompanyCAFromRequest } from '@/lib/server-company-ca-auth';
+import { getCAFromRequest } from '@/lib/server-auth';
+import { getCompanyCAFromRequest } from '@/lib/server-auth';
 
 export interface EvidenceApproverContext {
   actorType: 'platform_ca' | 'company_ca';

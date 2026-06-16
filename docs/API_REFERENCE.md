@@ -569,6 +569,68 @@ Fetch recent platform-wide activities (last 24 hours).
 - Returns activities from last 24 hours
 - Includes service requests, service offers, posts, users, and verifications
 
+## 🤖 Navadrishti AI Suite
+
+User-facing names: **Atlas** (NGO), **Catalyst** (Company), **Pulse** (embedded matching). See `lib/ai-suite.ts`.
+
+### POST /api/ai-agent/progress
+Persist or load Atlas/Catalyst session state.
+
+**Query:** `agent=ngo` (Atlas) or `agent=csr` (Catalyst)
+
+**Body (POST):**
+```json
+{
+  "agent": "ngo",
+  "data": { "sessions": [], "activeSessionId": "..." }
+}
+```
+
+### DELETE /api/ai-agent/sessions/[id]
+Archive or delete a session. **Query:** `agent=ngo|csr`
+
+### Catalyst — `/api/csr-agent/*`
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/api/csr-agent/generate-campaigns` | Gemini campaign drafts |
+| POST | `/api/csr-agent/get-recommendations` | **Pulse** capability matches for campaign |
+| POST | `/api/csr-agent/publish-campaign` | Publish after lead NGO accepted |
+| POST | `/api/csr-agent/lead-ngo-invites` | Lead NGO invite sync |
+| POST | `/api/csr-agent/save-campaign` | Save draft |
+| POST | `/api/csr-agent/update-campaign` | Update draft |
+| POST | `/api/csr-agent/search-capabilities` | Search offers |
+| POST | `/api/csr-agent/check-ngo-service` | NGO service check |
+
+### Pulse — matching
+
+| Method | Path | Used by |
+|--------|------|---------|
+| POST | `/api/service-requests/recommend` | Atlas, manual need create |
+| POST | `/api/csr-agent/get-recommendations` | Catalyst |
+| POST | `/api/ngos/score` | Catalyst lead NGO ranking |
+
+**Recommend request (abbreviated):**
+```json
+{
+  "request_type": "Material Need",
+  "title": "School supplies",
+  "description": "...",
+  "limit": 8
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "recommendations": [{ "id": 1, "title": "...", "score": 82 }],
+    "suggested_set": []
+  }
+}
+```
+
 ## 🚫 Error Codes
 
 | Code | Status | Description |

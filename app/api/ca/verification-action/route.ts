@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCAFromRequest } from '@/lib/server-ca-auth';
+import { getCAFromRequest } from '@/lib/server-auth';
 
 export async function POST(request: NextRequest) {
   try {

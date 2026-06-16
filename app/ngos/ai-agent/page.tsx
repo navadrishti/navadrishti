@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useAuth } from "@/lib/auth-context"
@@ -23,6 +23,12 @@ import {
   Trash2,
 } from "lucide-react"
 import { CSR_SCHEDULE_VII_CATEGORIES, SERVICE_REQUEST_CATEGORIES } from "@/lib/categories"
+import {
+  captureMobileChatScrollPosition,
+  restoreMobileChatScrollPosition,
+  scrollAgentMessagesContainer,
+} from "@/lib/ai-agent-sessions"
+import { AGENT_GREETINGS, AGENT_NAMES, agentLoadingLabel } from "@/lib/ai-suite"
 
 interface Message {
   role: 'user' | 'assistant'
@@ -121,7 +127,7 @@ type ServiceOfferLite = {
   ngo_name?: string | null
 }
 
-const INITIAL_ASSISTANT_MESSAGE = 'Hello! I\'m your NGO AI Agent. We\'ll do this step-by-step: project details first, then number of needs, then each need\'s details. Let\'s start with the project title.'
+const INITIAL_ASSISTANT_MESSAGE = AGENT_GREETINGS.atlas
 
 const deriveSessionTitle = (messages: Message[]): string => {
   const firstUser = messages.find((m) => m.role === 'user' && String(m.content || '').trim())
@@ -490,7 +496,8 @@ export default function NGOAIAgentPage() {
   const [fulfilledNeedIndices, setFulfilledNeedIndices] = useState<number[]>([])
   const [cloudSaveStatus, setCloudSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'offline' | 'error'>('idle')
   const [lastCloudSavedAt, setLastCloudSavedAt] = useState<string | null>(null)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
+  const mobileChatScrollYRef = useRef<number | null>(null)
   const isApplyingSessionRef = useRef(false)
   const isHydratingFromServerRef = useRef(false)
   const serverPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -714,7 +721,11 @@ export default function NGOAIAgentPage() {
     : []
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    scrollAgentMessagesContainer(messagesContainerRef.current)
+  }
+
+  const lockMobileChatScroll = () => {
+    mobileChatScrollYRef.current = captureMobileChatScrollPosition()
   }
 
   const persistSessions = (nextSessions: NGOAIAgentSession[], nextActiveId?: string) => {
@@ -864,6 +875,10 @@ export default function NGOAIAgentPage() {
   useEffect(() => {
     scrollToBottom()
   }, [messages])
+
+  useLayoutEffect(() => {
+    restoreMobileChatScrollPosition(mobileChatScrollYRef.current)
+  }, [messages, projectData, needsData, needCount, generatedDraft])
 
   useEffect(() => {
     setMounted(true)
@@ -1208,7 +1223,7 @@ export default function NGOAIAgentPage() {
         setMessages((prev) => {
           const alreadyAnnounced = prev.some((m) => m.role === 'assistant' && m.content.includes('Step 4 complete'))
           if (alreadyAnnounced) return prev
-          return [...prev, { role: 'assistant', content: 'Step 4 complete: I recommended the best available service offers for each need. You can review and adjust invited offers before publishing.' }]
+          return [...prev, { role: 'assistant', content: `Step 4 complete: ${AGENT_NAMES.pulse} recommended the best available service offers for each need. You can review and adjust invited offers before publishing.` }]
         })
       } catch {
         setRelatedOffersByNeed({})
@@ -1266,6 +1281,7 @@ export default function NGOAIAgentPage() {
 
   const submitUserText = (userText: string) => {
     if (generatedDraft) return
+    lockMobileChatScroll()
     const userMessage: Message = { role: 'user', content: userText }
     setMessages(prev => [...prev, userMessage])
     setIsTyping(true)
@@ -1739,7 +1755,7 @@ export default function NGOAIAgentPage() {
         <main className="container mx-auto px-4 py-8">
           <Card>
             <CardHeader>
-              <CardTitle>Loading NGO AI Agent</CardTitle>
+              <CardTitle>{agentLoadingLabel(AGENT_NAMES.atlas)}</CardTitle>
               <CardDescription>Preparing your workspace...</CardDescription>
             </CardHeader>
             <CardContent>
@@ -1761,7 +1777,7 @@ export default function NGOAIAgentPage() {
         <main className="container mx-auto px-4 py-8">
           <Card>
             <CardHeader>
-              <CardTitle>Loading NGO AI Agent</CardTitle>
+              <CardTitle>{agentLoadingLabel(AGENT_NAMES.atlas)}</CardTitle>
               <CardDescription>Preparing your workspace...</CardDescription>
             </CardHeader>
             <CardContent>
@@ -1868,9 +1884,9 @@ export default function NGOAIAgentPage() {
 
             <Card className="flex h-[35rem] min-h-0 flex-col overflow-hidden border-slate-200/70 bg-white/90 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur lg:h-full">
               <CardHeader className="border-b border-slate-100 bg-gradient-to-r from-white to-slate-50/80">
-                <CardTitle className="text-slate-950">AI Request Assistant</CardTitle>
+                <CardTitle className="text-slate-950">{AGENT_NAMES.atlas}</CardTitle>
                 <CardDescription className="text-slate-600">
-                  Chat with the agent to capture the project, need type, scale, and urgency.
+                  Capture the project, need type, scale, and urgency step by step.
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex min-h-0 flex-1 flex-col p-0">
@@ -1890,7 +1906,7 @@ export default function NGOAIAgentPage() {
                   </div>
 
                   <div className="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-5 sm:py-5">
-                    <div className="min-h-0 max-h-[11.5rem] flex-1 overflow-y-auto overflow-x-hidden pr-2 sm:max-h-[13.5rem] lg:max-h-none">
+                    <div ref={messagesContainerRef} className="min-h-0 max-h-[11.5rem] flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain pr-2 sm:max-h-[13.5rem] lg:max-h-none">
                       <div className="space-y-4">
                         {messages.map((message, idx) => (
                           <div
@@ -2049,7 +2065,6 @@ export default function NGOAIAgentPage() {
                             </div>
                           </div>
                         )}
-                        <div ref={messagesEndRef} />
                       </div>
                     </div>
 
@@ -2099,6 +2114,7 @@ export default function NGOAIAgentPage() {
                         <Input
                           value={input}
                           onChange={(e) => setInput(e.target.value)}
+                          onFocus={lockMobileChatScroll}
                           onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                           placeholder={fixedChoiceOptions.length > 0 ? 'Pick an option or type your response...' : 'Type your response...'}
                           disabled={isTyping}
@@ -2118,7 +2134,7 @@ export default function NGOAIAgentPage() {
               </CardContent>
             </Card>
 
-            <Card className="flex h-auto min-h-0 flex-col overflow-hidden border-slate-200/70 bg-white/90 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur md:h-full">
+            <Card className="flex h-auto min-h-0 flex-col overflow-hidden border-slate-200/70 bg-white/90 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur max-md:[overflow-anchor:none] md:h-full">
                 <CardHeader className="border-b border-slate-100">
                   <CardTitle className="text-slate-950">Request Preview</CardTitle>
                   <CardDescription className="text-slate-600">
@@ -2299,7 +2315,7 @@ export default function NGOAIAgentPage() {
                             <FileText className="mx-auto h-9 w-9 text-slate-400" />
                             <p className="mt-3 text-sm font-medium text-slate-700">No draft fields yet.</p>
                             <p className="mt-1 text-sm leading-6 text-slate-500">
-                              The agent will fill this card as soon as you answer the first prompt.
+                              {AGENT_NAMES.atlas} will fill this card as soon as you answer the first prompt.
                             </p>
                           </div>
                         )}

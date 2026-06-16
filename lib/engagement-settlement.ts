@@ -1,7 +1,7 @@
 import crypto from 'crypto'
 import Razorpay from 'razorpay'
 import { supabase } from '@/lib/db'
-import { formatAttendanceSummary } from '@/lib/ngo-need-fulfillment'
+import { formatAttendanceSummary } from '@/lib/service-request-allocation'
 
 function safeJson(value: unknown): Record<string, any> {
   if (!value) return {}

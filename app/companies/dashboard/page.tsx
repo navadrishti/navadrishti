@@ -20,12 +20,14 @@ import { Textarea } from '@/components/ui/textarea';
 import { ProfileDashboardTab } from '@/components/profile-dashboard-tab';
 import { DashboardQuickSidebar } from '@/components/dashboard-quick-sidebar';
 import { ImpactReportsPanel } from '@/components/companies/impact-reports-panel';
+import { YourCapabilitiesPanel } from '@/components/service-card';
+import { AGENT_NAMES } from '@/lib/ai-suite'
 import { useToast } from '@/hooks/use-toast';
 import {
   formatAttendanceSummary,
   getSkillServiceDailyRate,
   isDailyRentalEngagementMeta,
-} from '@/lib/ngo-need-fulfillment';
+} from '@/lib/service-request-allocation';
 interface OfferRequestItem {
   id: number;
   service_offer_id: number;
@@ -230,6 +232,14 @@ const formatStatusLabel = (status: string): string => {
     .split(' ')
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
+};
+
+const formatLeadNgoInviteStatusLabel = (status: string): string => {
+  const normalized = String(status || '').trim().toLowerCase();
+  if (['pending', 'invited', 'pending_acceptance', 'awaiting_acceptance', 'offered', 'assigned'].includes(normalized)) {
+    return 'Pending';
+  }
+  return formatStatusLabel(status);
 };
 
 const getStatusBadgeClass = (status: string): string => {
@@ -580,13 +590,11 @@ function CompanyDashboardContent() {
     return requestedTab;
   })();
   const [serviceOffers, setServiceOffers] = useState<any[]>([]);
-  const [offerApplications, setOfferApplications] = useState<any[]>([]);
   const [offerRequests, setOfferRequests] = useState<OfferRequestItem[]>([]);
   const [loadingServiceOffers, setLoadingServiceOffers] = useState(false);
-  const [loadingOfferApplications, setLoadingOfferApplications] = useState(false);
   const [loadingOfferRequests, setLoadingOfferRequests] = useState(false);
   const [updatingOfferRequestId, setUpdatingOfferRequestId] = useState<number | null>(null);
-  const [capabilityOffersTab, setCapabilityOffersTab] = useState<'your-capabilities' | 'your-applications' | 'requests'>('your-capabilities');
+  const [capabilityOffersTab, setCapabilityOffersTab] = useState<'your-capabilities' | 'requests'>('your-capabilities');
   const [offerRequestsTab, setOfferRequestsTab] = useState<'pending' | 'in-progress' | 'history'>('pending');
   const [csrProjects, setCsrProjects] = useState<any[]>([]);
   const [projectEvidenceById, setProjectEvidenceById] = useState<Record<string, any>>({});
@@ -847,7 +855,7 @@ function CompanyDashboardContent() {
         return;
       }
 
-      const response = await fetch('/api/service-offers?view=my-offers&limit=20', {
+      const response = await fetch('/api/service-offers?view=my-offers&include_expired=true&limit=50', {
         headers: {
           Authorization: `Bearer ${token}`
         }
@@ -865,30 +873,6 @@ function CompanyDashboardContent() {
   const pendingOfferRequests = offerRequests.filter((request) => getOfferRequestBucket(request) === 'pending');
   const inProgressOfferRequests = offerRequests.filter((request) => getOfferRequestBucket(request) === 'in-progress');
   const historyOfferRequests = offerRequests.filter((request) => getOfferRequestBucket(request) === 'history');
-
-  const fetchOfferApplications = async () => {
-    try {
-      setLoadingOfferApplications(true);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setOfferApplications([]);
-        return;
-      }
-
-      const response = await fetch('/api/service-offers?view=my-responses&limit=20', {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
-
-      const payload = await response.json();
-      setOfferApplications(payload.success ? (payload.data || []) : []);
-    } catch {
-      setOfferApplications([]);
-    } finally {
-      setLoadingOfferApplications(false);
-    }
-  };
 
   const fetchOfferRequests = async () => {
     try {
@@ -1018,7 +1002,7 @@ function CompanyDashboardContent() {
       const token = localStorage.getItem('token');
       if (!token) return;
 
-      const response = await fetch('/api/companies/ca/accounts?query=available-ca-ids', {
+      const response = await fetch('/api/evidence-verification/accounts?query=available-ca-ids', {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await response.json();
@@ -1040,7 +1024,7 @@ function CompanyDashboardContent() {
         return;
       }
 
-      const response = await fetch('/api/companies/ca/accounts', {
+      const response = await fetch('/api/evidence-verification/accounts', {
         headers: {
           Authorization: `Bearer ${token}`
         }
@@ -1065,7 +1049,6 @@ function CompanyDashboardContent() {
 
     await Promise.all([
       fetchServiceOffers(),
-      fetchOfferApplications(),
       fetchOfferRequests(),
       fetchProjectOpportunities(),
       fetchCSRTrackingAssignments(),
@@ -1129,7 +1112,7 @@ function CompanyDashboardContent() {
         return;
       }
 
-      const response = await fetch('/api/companies/ca/accounts', {
+      const response = await fetch('/api/evidence-verification/accounts', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -1147,16 +1130,16 @@ function CompanyDashboardContent() {
       const payload = await response.json();
 
       if (!response.ok || !payload?.success) {
-        setCompanyCAFeedback({ type: 'error', message: payload?.error || 'Failed to create Company CA account.' });
+        setCompanyCAFeedback({ type: 'error', message: payload?.error || 'Failed to create CA account.' });
         return;
       }
 
       setLastCreatedCompanyCA({ email: companyCAForm.email, password: companyCAForm.password, ca_id: payload.data.identity.ca_id });
-      setCompanyCAFeedback({ type: 'success', message: 'Company CA account created successfully.' });
+      setCompanyCAFeedback({ type: 'success', message: 'CA account created successfully.' });
       setCompanyCAForm({ name: '', email: '', password: '', ca_id: '', auto_generate_ca_id: true });
       await fetchCompanyCAAccounts();
     } catch (error) {
-      setCompanyCAFeedback({ type: 'error', message: 'Failed to create Company CA account.' });
+      setCompanyCAFeedback({ type: 'error', message: 'Failed to create CA account.' });
     } finally {
       setCreatingCompanyCA(false);
     }
@@ -1166,7 +1149,7 @@ function CompanyDashboardContent() {
     setCompanyCAFeedback(null);
 
     if (!identityId) {
-      setCompanyCAFeedback({ type: 'error', message: 'Invalid Company CA identity.' });
+      setCompanyCAFeedback({ type: 'error', message: 'Invalid CA account.' });
       return;
     }
 
@@ -1177,7 +1160,7 @@ function CompanyDashboardContent() {
         return;
       }
 
-      const response = await fetch(`/api/companies/ca/accounts/${encodeURIComponent(identityId)}`, {
+      const response = await fetch(`/api/evidence-verification/accounts/${encodeURIComponent(identityId)}`, {
         method: 'PATCH',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -1188,27 +1171,27 @@ function CompanyDashboardContent() {
 
       const payload = await response.json();
       if (!response.ok || !payload?.success) {
-        setCompanyCAFeedback({ type: 'error', message: payload?.error || 'Failed to update Company CA status.' });
+        setCompanyCAFeedback({ type: 'error', message: payload?.error || 'Failed to update CA account status.' });
         return;
       }
 
-      setCompanyCAFeedback({ type: 'success', message: `Company CA ${status === 'active' ? 'activated' : 'deactivated'} successfully.` });
+      setCompanyCAFeedback({ type: 'success', message: `CA account ${status === 'active' ? 'activated' : 'deactivated'} successfully.` });
       await fetchCompanyCAAccounts();
     } catch {
-      setCompanyCAFeedback({ type: 'error', message: 'Failed to update Company CA status.' });
+      setCompanyCAFeedback({ type: 'error', message: 'Failed to update CA account status.' });
     }
   };
 
   const deleteCompanyCAAccount = async (identityId: string, caName: string) => {
     const confirmed = window.confirm(
-      `⚠️ PERMANENTLY DELETE Company CA account "${caName}"?\n\nThis action cannot be undone. All data associated with this account will be permanently removed.`
+      `⚠️ PERMANENTLY DELETE CA account "${caName}"?\n\nThis action cannot be undone. All data associated with this account will be permanently removed.`
     );
     if (!confirmed) return;
 
     setCompanyCAFeedback(null);
 
     if (!identityId) {
-      setCompanyCAFeedback({ type: 'error', message: 'Invalid Company CA identity.' });
+      setCompanyCAFeedback({ type: 'error', message: 'Invalid CA account.' });
       return;
     }
 
@@ -1219,7 +1202,7 @@ function CompanyDashboardContent() {
         return;
       }
 
-      const response = await fetch(`/api/companies/ca/accounts/${encodeURIComponent(identityId)}`, {
+      const response = await fetch(`/api/evidence-verification/accounts/${encodeURIComponent(identityId)}`, {
         method: 'DELETE',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -1229,14 +1212,14 @@ function CompanyDashboardContent() {
 
       const payload = await response.json();
       if (!response.ok || !payload?.success) {
-        setCompanyCAFeedback({ type: 'error', message: payload?.error || 'Failed to delete Company CA account.' });
+        setCompanyCAFeedback({ type: 'error', message: payload?.error || 'Failed to delete CA account.' });
         return;
       }
 
-      setCompanyCAFeedback({ type: 'success', message: 'Company CA account permanently deleted.' });
+      setCompanyCAFeedback({ type: 'success', message: 'CA account permanently deleted.' });
       await fetchCompanyCAAccounts();
     } catch {
-      setCompanyCAFeedback({ type: 'error', message: 'Failed to delete Company CA account.' });
+      setCompanyCAFeedback({ type: 'error', message: 'Failed to delete CA account.' });
     }
   };
 
@@ -1260,7 +1243,7 @@ function CompanyDashboardContent() {
     { value: 'profile', label: 'Profile' },
     { value: 'capability-offers', label: 'Capability Offers' },
     { value: 'csr-projects', label: 'CSR Projects' },
-    { value: 'company-ca', label: 'CA Access' },
+    { value: 'company-ca', label: 'CA Credentials' },
     { value: 'impact-reports', label: 'Impact Reports' },
   ];
 
@@ -1328,73 +1311,18 @@ function CompanyDashboardContent() {
                   </TabsContent>
 
                   <TabsContent value="capability-offers" className="mt-4 space-y-4">
-                    <Tabs value={capabilityOffersTab} onValueChange={(value) => setCapabilityOffersTab(value as 'your-capabilities' | 'your-applications' | 'requests')} className="w-full">
-                      <TabsList className="grid w-full grid-cols-3 h-auto">
+                    <Tabs value={capabilityOffersTab} onValueChange={(value) => setCapabilityOffersTab(value as 'your-capabilities' | 'requests')} className="w-full">
+                      <TabsList className="grid w-full grid-cols-2 h-auto">
                         <TabsTrigger value="your-capabilities">Your Capabilities</TabsTrigger>
-                        <TabsTrigger value="your-applications">Your Applications</TabsTrigger>
                         <TabsTrigger value="requests">Offer Applications</TabsTrigger>
                       </TabsList>
 
                       <TabsContent value="your-capabilities" className="mt-4 space-y-3">
-                        {loadingServiceOffers ? (
-                          <div className="p-6 text-center text-muted-foreground">Loading capability offers...</div>
-                        ) : serviceOffers.length === 0 ? (
-                          <div className="p-8 text-center text-muted-foreground">
-                            <p className="text-lg font-medium mb-2">No capability offers yet</p>
-                            <p className="text-sm mb-4">Create capability offers to support NGO needs and partnerships.</p>
-                            <Link href="/service-offers/create">
-                              <Button variant="outline">Create Capability Offer</Button>
-                            </Link>
-                          </div>
-                        ) : serviceOffers.map((offer) => (
-                          <div key={offer.id} className="rounded-md border bg-white p-4 space-y-3">
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <p className="font-semibold">{offer.title}</p>
-                                <p className="text-sm text-muted-foreground">{offer.category || 'Capability'}</p>
-                              </div>
-                              <Badge variant="outline">{offer.status || 'active'}</Badge>
-                            </div>
-                            <div className="flex gap-2">
-                              <Link href={`/service-offers/${offer.id}`}>
-                                <Button variant="outline" size="sm">View</Button>
-                              </Link>
-                              <Link href={`/service-offers/edit/${offer.id}`}>
-                                <Button variant="outline" size="sm">Edit</Button>
-                              </Link>
-                            </div>
-                              <div className="text-xs text-slate-500">Valid until: {formatDisplayDate(offer.valid_until)}</div>
-                          </div>
-                        ))}
-                      </TabsContent>
-
-                      <TabsContent value="your-applications" className="mt-4 space-y-3">
-                        {loadingOfferApplications ? (
-                          <div className="p-6 text-center text-muted-foreground">Loading your applications...</div>
-                        ) : offerApplications.length === 0 ? (
-                          <div className="p-8 text-center text-muted-foreground">
-                            <p className="text-lg font-medium mb-2">No applications yet</p>
-                            <p className="text-sm mb-4">Your applications on capability offers will appear here.</p>
-                            <Link href="/service-offers">
-                              <Button variant="outline">Browse Capability Offers</Button>
-                            </Link>
-                          </div>
-                        ) : offerApplications.map((offer) => (
-                          <div key={offer.id} className="rounded-md border bg-white p-4 space-y-3">
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <p className="font-semibold">{offer.title}</p>
-                                <p className="text-sm text-muted-foreground">{offer.provider_name || offer.ngo_name || 'Provider not available'}</p>
-                              </div>
-                              <Badge variant="outline">{offer.status || 'active'}</Badge>
-                            </div>
-                            <div className="flex gap-2">
-                              <Link href={`/service-offers/${offer.id}`}>
-                                <Button variant="outline" size="sm">View Offer</Button>
-                              </Link>
-                            </div>
-                          </div>
-                        ))}
+                        <YourCapabilitiesPanel
+                          offers={serviceOffers}
+                          loading={loadingServiceOffers}
+                          emptyDescription="Create capability offers to support NGO needs and partnerships."
+                        />
                       </TabsContent>
 
                       <TabsContent value="requests" className="mt-4 space-y-3">
@@ -1767,6 +1695,20 @@ function CompanyDashboardContent() {
                                     .filter((ngo) => ngo.id !== Number(assignment.lead_ngo_id));
 
                                   const suggestedNgos = availableNgos.slice(0, 4);
+                                  const suggestedIds = new Set(suggestedNgos.map((ngo) => ngo.id));
+                                  const invitedNgosNotInSuggested = inviteEntries
+                                    .filter(([ngoId]) => !suggestedIds.has(ngoId))
+                                    .map(([ngoId, invite]) => {
+                                      const fromDirectory = availableNgos.find((item) => item.id === ngoId);
+                                      return {
+                                        id: ngoId,
+                                        name: String(invite.ngo_name || fromDirectory?.name || 'NGO'),
+                                        email: invite.ngo_email || fromDirectory?.email,
+                                      } satisfies NgoDirectoryItem;
+                                    });
+                                  const displaySuggestedNgos = [...invitedNgosNotInSuggested, ...suggestedNgos].filter(
+                                    (ngo, index, list) => list.findIndex((item) => item.id === ngo.id) === index
+                                  );
                                   const matchedNgos = term
                                     ? availableNgos.filter((ngo) =>
                                         String(ngo.name || '').toLowerCase().includes(term) ||
@@ -1774,57 +1716,51 @@ function CompanyDashboardContent() {
                                       )
                                     : [];
 
-                                  const renderNgoRow = (ngo: NgoDirectoryItem) => (
-                                    (() => {
-                                      const inviteRecord = inviteByNgoId.get(ngo.id);
-                                      const inviteStatus = String(inviteRecord?.status || '').toLowerCase();
-                                      const alreadyInvited = !!inviteRecord;
-                                      const isInviteActionable = ['pending', 'invited', 'pending_acceptance', 'awaiting_acceptance', 'offered', 'assigned'].includes(inviteStatus);
-                                      const isAlreadyFinal = ['accepted', 'expired', 'rejected'].includes(inviteStatus);
-                                      const canInvite = !hasSelectedLeadNgo && !alreadyInvited;
+                                  const renderNgoRow = (ngo: NgoDirectoryItem) => {
+                                    const inviteRecord = inviteByNgoId.get(ngo.id);
+                                    const inviteStatus = String(inviteRecord?.status || '').toLowerCase();
+                                    const alreadyInvited = !!inviteRecord;
+                                    const canInvite = !hasSelectedLeadNgo && !alreadyInvited;
 
-                                      return (
-                                    <div key={`${assignment.project_id}-${ngo.id}`} className="flex items-center justify-between gap-3 rounded-md border bg-white p-3 hover:bg-[#eaf4ff] transition-colors">
-                                      <Link href={`/profile/${ngo.id}`} target="_blank" className="flex min-w-0 items-center gap-3 no-underline">
-                                        <Avatar className="h-9 w-9">
-                                          <AvatarFallback className="bg-udaan-orange text-white text-xs font-semibold">
-                                            {getInitials(ngo.name || 'NGO')}
-                                          </AvatarFallback>
-                                        </Avatar>
-                                        <div className="min-w-0">
-                                          <p className="truncate text-sm font-medium text-slate-900">{ngo.name}</p>
-                                          <p className="truncate text-xs text-slate-500">{ngo.email || 'No email'}</p>
+                                    return (
+                                      <div key={`${assignment.project_id}-${ngo.id}`} className="flex items-center justify-between gap-3 rounded-md border bg-white p-3 hover:bg-[#eaf4ff] transition-colors">
+                                        <Link href={`/profile/${ngo.id}`} target="_blank" className="flex min-w-0 items-center gap-3 no-underline">
+                                          <Avatar className="h-9 w-9">
+                                            <AvatarFallback className="bg-udaan-orange text-white text-xs font-semibold">
+                                              {getInitials(ngo.name || 'NGO')}
+                                            </AvatarFallback>
+                                          </Avatar>
+                                          <div className="min-w-0">
+                                            <p className="truncate text-sm font-medium text-slate-900">{ngo.name}</p>
+                                            <p className="truncate text-xs text-slate-500">{ngo.email || 'No email'}</p>
+                                          </div>
+                                        </Link>
+                                        <div className="flex shrink-0 items-center gap-2">
+                                          {inviteRecord?.selected_as_lead ? (
+                                            <Badge variant="secondary">Lead NGO</Badge>
+                                          ) : null}
+                                          {hasSelectedLeadNgo && !alreadyInvited ? (
+                                            <Button size="sm" variant="outline" disabled>
+                                              Lead Finalized
+                                            </Button>
+                                          ) : alreadyInvited ? (
+                                            <Badge variant="outline" className={getStatusBadgeClass(inviteStatus)}>
+                                              {formatLeadNgoInviteStatusLabel(inviteStatus)}
+                                            </Badge>
+                                          ) : (
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              disabled={!allVerified || !canInvite || invitingProjectId === assignment.project_id}
+                                              onClick={() => inviteLeadNgosFromDashboard(assignment.project_id, [ngo.id])}
+                                            >
+                                              {invitingProjectId === assignment.project_id ? 'Inviting...' : 'Invite'}
+                                            </Button>
+                                          )}
                                         </div>
-                                      </Link>
-                                      <div className="flex items-center gap-2">
-                                        {alreadyInvited && !['pending','invited','pending_acceptance','awaiting_acceptance'].includes(inviteStatus) ? (
-                                          <Badge variant="outline" className={getStatusBadgeClass(inviteStatus)}>
-                                            {formatStatusLabel(inviteStatus)}
-                                          </Badge>
-                                        ) : null}
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          disabled={!allVerified || !canInvite || invitingProjectId === assignment.project_id}
-                                          onClick={() => inviteLeadNgosFromDashboard(assignment.project_id, [ngo.id])}
-                                        >
-                                          {hasSelectedLeadNgo
-                                            ? 'Lead Finalized'
-                                            : invitingProjectId === assignment.project_id
-                                              ? 'Inviting...'
-                                              : alreadyInvited
-                                                ? isAlreadyFinal
-                                                  ? formatStatusLabel(inviteStatus)
-                                                  : isInviteActionable
-                                                    ? 'Invited'
-                                                    : 'Invited'
-                                                : 'Invite'}
-                                        </Button>
                                       </div>
-                                    </div>
-                                      );
-                                    })()
-                                  );
+                                    );
+                                  };
 
                                   return (
                                     <>
@@ -1845,10 +1781,10 @@ function CompanyDashboardContent() {
                                         <p className="text-xs text-slate-500">No NGOs available to suggest right now.</p>
                                       ) : (
                                         <div className="space-y-3">
-                                          {!term && suggestedNgos.length > 0 ? (
+                                          {!term && displaySuggestedNgos.length > 0 ? (
                                             <div className="space-y-2">
                                               <p className="text-xs font-medium text-slate-600">Suggested NGOs</p>
-                                              <div className="space-y-2">{suggestedNgos.slice(0,5).map(renderNgoRow)}</div>
+                                              <div className="space-y-2">{displaySuggestedNgos.slice(0, 5).map(renderNgoRow)}</div>
                                             </div>
                                           ) : null}
 
@@ -1875,38 +1811,6 @@ function CompanyDashboardContent() {
                                 {/* Optional note removed per product request */}
                               </div>
 
-                                {(assignment.lead_ngo_invites || []).length > 0 ? (
-                                <div className="rounded-md border bg-slate-50 p-3 space-y-2">
-                                  <p className="text-sm font-medium text-slate-900">Lead NGO Invitation Status</p>
-                                  {(assignment.lead_ngo_invites || []).map((invite) => {
-                                    const ngoFromDirectory = ngoDirectory.find(n => Number(n.id) === Number(invite.ngo_id));
-                                    const displayName = invite.ngo_name || ngoFromDirectory?.name || 'NGO';
-                                    const displayEmail = invite.ngo_email || ngoFromDirectory?.email || 'No email';
-                                    return (
-                                      <div key={invite.id} className="flex items-center justify-between gap-3 rounded-md border bg-white p-3 hover:bg-[#eaf4ff] transition-colors">
-                                        <Link href={`/profile/${invite.ngo_id}`} target="_blank" className="flex min-w-0 items-center gap-3 no-underline">
-                                          <Avatar className="h-9 w-9">
-                                            <AvatarFallback className="bg-udaan-orange text-white text-xs font-semibold">
-                                              {getInitials(displayName)}
-                                            </AvatarFallback>
-                                          </Avatar>
-                                          <div className="min-w-0">
-                                            <p className="truncate text-sm font-medium text-slate-900">{displayName}</p>
-                                            <p className="truncate text-xs text-slate-500">{displayEmail}</p>
-                                          </div>
-                                        </Link>
-                                        <div className="flex items-center gap-2">
-                                          <Badge variant="outline" className={getStatusBadgeClass(invite.status)}>
-                                            {formatStatusLabel(invite.status)}
-                                          </Badge>
-                                          {invite.selected_as_lead ? <Badge variant="secondary">Lead NGO</Badge> : null}
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              ) : null}
-
                               <div className="flex justify-end">
                                 <Link href={`/service-requests/projects/${assignment.project_id}`}>
                                   <Button size="sm" variant="outline">Open Project Detail</Button>
@@ -1922,7 +1826,7 @@ function CompanyDashboardContent() {
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                           <p className="font-semibold text-slate-900">Published CSR Campaigns</p>
-                          <p className="text-sm text-slate-600">Campaigns created in the CSR AI Agent and published into the campaigns table.</p>
+                          <p className="text-sm text-slate-600">Campaigns created in {AGENT_NAMES.catalyst} and published into the campaigns table.</p>
                         </div>
                         <Button variant="outline" size="sm" onClick={fetchPublishedCsrCampaigns}>Refresh Campaigns</Button>
                       </div>
@@ -1959,9 +1863,6 @@ function CompanyDashboardContent() {
                                   <Button size="sm" asChild>
                                     <Link href={`/csr-campaigns/${campaign.id}`}>Open Detail</Link>
                                   </Button>
-                                  <Button size="sm" variant="outline" asChild>
-                                    <Link href="/companies/csr-agent">Open CSR Agent</Link>
-                                  </Button>
                                 </div>
                               </div>
                             );
@@ -1975,7 +1876,7 @@ function CompanyDashboardContent() {
 
                   <TabsContent value="company-ca" className="mt-4 space-y-4">
                     <div className="space-y-4 pt-1">
-                      <h3 className="font-semibold text-slate-900">Generate Company CA Panel Credentials</h3>
+                      <h3 className="font-semibold text-slate-900">Generate CA Credentials</h3>
                       <p className="mt-1 text-sm text-slate-600">
                         Create a scoped Company CA login for your internal compliance reviewer.
                       </p>
@@ -2066,11 +1967,11 @@ function CompanyDashboardContent() {
 
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                           <Button type="submit" disabled={creatingCompanyCA} className="w-full sm:w-auto">
-                            {creatingCompanyCA ? 'Creating...' : 'Create Company CA Credentials'}
+                            {creatingCompanyCA ? 'Creating...' : 'Create CA Credentials'}
                           </Button>
-                          <Link href="/companies/ca/login" className="w-full sm:w-auto">
+                          <Link href="/evidence-verification/login" className="w-full sm:w-auto">
                             <Button type="button" variant="outline" className="h-auto w-full whitespace-normal text-center sm:w-auto">
-                              Open Company CA Panel Login
+                              Open Evidence Verification Portal
                             </Button>
                           </Link>
                         </div>
@@ -2088,20 +1989,20 @@ function CompanyDashboardContent() {
                           <p>CA ID: {lastCreatedCompanyCA.ca_id}</p>
                           <p>Email: {lastCreatedCompanyCA.email}</p>
                           <p>Password: {lastCreatedCompanyCA.password}</p>
-                          <p className="mt-1">Panel URL: /companies/ca/login</p>
+                          <p className="mt-1">Panel URL: /evidence-verification/login</p>
                         </div>
                       )}
                     </div>
 
                     <div className="space-y-3 pt-2">
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <h4 className="font-semibold text-slate-900">Existing Active Company CA Accounts</h4>
+                        <h4 className="font-semibold text-slate-900">Existing Active CA Accounts</h4>
                         <Button variant="outline" size="sm" onClick={fetchCompanyCAAccounts} className="w-full sm:w-auto">Refresh</Button>
                       </div>
                       {loadingCompanyCAAccounts ? (
                         <p className="mt-3 text-sm text-slate-600">Loading accounts...</p>
                       ) : activeCompanyCAAccounts.length === 0 ? (
-                        <p className="mt-3 text-sm text-slate-600">No active Company CA accounts.</p>
+                        <p className="mt-3 text-sm text-slate-600">No active CA accounts.</p>
                       ) : (
                         <div className="mt-3 space-y-2">
                           {activeCompanyCAAccounts.map((account: any) => (
@@ -2139,7 +2040,7 @@ function CompanyDashboardContent() {
 
                       {!loadingCompanyCAAccounts && inactiveCompanyCAAccounts.length > 0 && (
                         <div className="mt-5 border-t pt-4">
-                          <h5 className="font-medium text-slate-900">Inactive Company CA Accounts</h5>
+                          <h5 className="font-medium text-slate-900">Inactive CA Accounts</h5>
                           <div className="mt-3 space-y-2">
                             {inactiveCompanyCAAccounts.map((account: any) => (
                               <div key={account.id} className="rounded-md border bg-slate-50 p-3 text-sm">

@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth';
-import { isCARequest } from '@/lib/server-ca-auth';
-import { getCompanyCAFromRequest } from '@/lib/server-company-ca-auth';
+import { isCARequest } from '@/lib/server-auth';
+import { getCompanyCAFromRequest } from '@/lib/server-auth';
 
 export async function GET(request: NextRequest) {
   try {
     const caMode = isCARequest(request);
-    const hasCompanyCAToken = Boolean(request.cookies.get('company-ca-token')?.value);
+    const hasCompanyCAToken = Boolean(request.cookies.get('evidence-verification-token')?.value);
     const companyCAContext = (!caMode && hasCompanyCAToken)
       ? await getCompanyCAFromRequest(request)
       : null;

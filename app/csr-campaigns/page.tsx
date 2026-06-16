@@ -14,6 +14,7 @@ import { useAuth } from "@/lib/auth-context"
 import { CSR_SCHEDULE_VII_CATEGORIES } from "@/lib/categories"
 import { formatDisplayDate, isCampaignStarted, isVolunteerRegistrationPastDeadline } from "@/lib/format-date"
 import { getVolunteerButtonState, sumVolunteerApplicationCount } from "@/lib/campaign-volunteer-utils"
+import { AGENT_NAMES, AGENT_ROUTES } from "@/lib/ai-suite"
 
 const getInitials = (name: string) => {
   const parts = name.trim().split(/\s+/).filter(Boolean)
@@ -26,7 +27,7 @@ const formatCampaignDuration = (item: CampaignApiItem) => {
   const start = formatDisplayDate(item.start_date)
   const end = formatDisplayDate(item.end_date)
   if (start && end) {
-    return `${start} → ${end}`
+    return `${start} to ${end}`
   }
   if (start) return `From ${start}`
   if (end) return `Until ${end}`
@@ -331,13 +332,13 @@ export default function CSRCampaignsPage() {
                   Launch New CSR Campaign?
                 </h2>
                 <p className="text-gray-700 text-base max-w-md font-medium">
-                  Create structured campaign plans through the CSR AI Agent. Manual campaign creation is disabled.
+                  Create structured campaign plans through {AGENT_NAMES.catalyst}. Manual campaign creation is disabled.
                 </p>
               </div>
-              <Link href="/companies/csr-agent">
+              <Link href={AGENT_ROUTES.catalyst}>
                   <button className="flex h-auto items-center rounded-md border-2 border-black bg-white px-8 py-4 text-base font-medium text-black shadow-sm transition-all duration-300 hover:bg-gray-50">
                   <Sparkles size={20} className="mr-3" />
-                  Use CSR AI Agent
+                  Use {AGENT_NAMES.catalyst}
                   <ArrowRight size={16} className="ml-3" />
                 </button>
               </Link>

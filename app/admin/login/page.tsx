@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Shield, Loader2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { AuthBackButton } from '@/components/header';
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -106,7 +107,10 @@ export default function AdminLoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100 p-4">
+    <div className="relative flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100 p-4">
+      <div className="absolute left-4 top-4 sm:left-6 sm:top-6">
+        <AuthBackButton variant="button" />
+      </div>
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
           <h1 className="mb-2 text-3xl font-bold text-gray-900">Admin Console</h1>
