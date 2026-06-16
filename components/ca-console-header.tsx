@@ -24,8 +24,8 @@ interface CAConsoleHeaderProps {
 }
 
 export function CAConsoleHeader({
-  title = 'Company CA Console',
-  subtitle = 'Chartered Accountant verification workspace',
+  title = 'Evidence Verification Portal',
+  subtitle = 'Review and verify project evidence',
   accountName,
   accountEmail,
   userId,
@@ -35,7 +35,7 @@ export function CAConsoleHeader({
   const router = useRouter();
 
   const emailLabel = accountEmail || 'testing@example.com';
-  const displayName = accountName || 'Company CA';
+  const displayName = accountName || 'Verifier';
 
   const initials = useMemo(() => {
     const source = accountEmail || accountName || 'CA';
@@ -46,7 +46,7 @@ export function CAConsoleHeader({
   }, [accountEmail, accountName]);
 
   const handleSettings = () => {
-    router.push('/companies/ca/settings');
+    router.push('/evidence-verification/settings');
   };
 
   return (
@@ -59,14 +59,14 @@ export function CAConsoleHeader({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Link href="/companies/ca" className="inline-flex">
+            <Link href="/evidence-verification" className="inline-flex">
               <Button variant="ghost" size="sm" className="text-white hover:bg-blue-700 hover:text-white">
                 Dashboard
               </Button>
             </Link>
-            <Link href="/companies/ca/history" className="inline-flex">
+            <Link href="/evidence-verification/history" className="inline-flex">
               <Button variant="ghost" size="sm" className="text-white hover:bg-blue-700 hover:text-white">
-                CA History
+                History
               </Button>
             </Link>
 

@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Building, ChevronDown } from 'lucide-react';
 import { Header } from '@/components/header';
+import { DetailField, displayValue } from '@/components/detail-fields';
+import { formatDetailDate } from '@/lib/format-date';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -36,6 +38,10 @@ type ProjectDetailPayload = {
     exact_address?: string;
     timeline?: string;
     status?: string;
+    valid_until?: string | null;
+    expected_beneficiaries?: number | null;
+    category?: string | null;
+    csr_project_available_for_csr?: boolean | null;
       ngo?: {
       id: number;
       name: string;
@@ -90,6 +96,65 @@ const getInitials = (name?: string) => {
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
 };
+
+type ProjectRecord = {
+  title: string
+  description?: string | null
+  exact_address?: string | null
+  location?: string | null
+  timeline?: string | null
+  expected_beneficiaries?: number | null
+  valid_until?: string | null
+  category?: string | null
+  csr_project_available_for_csr?: boolean | null
+}
+
+function ProjectDetailFields({ project }: { project: ProjectRecord }) {
+  const exactAddress = project.exact_address || project.location
+  const csrAvailable = project.csr_project_available_for_csr
+
+  return (
+    <div className="space-y-6">
+      <section className="space-y-6">
+        <h3 className="text-sm font-medium text-gray-500">Project Details</h3>
+
+        <div>
+          <p className="text-sm text-gray-500">Project Title</p>
+          <p className="text-sm font-medium text-slate-800">{project.title}</p>
+        </div>
+
+        <div className="grid grid-cols-1 gap-x-12 gap-y-6 md:grid-cols-2">
+          <DetailField label="Project Category" value={displayValue(project.category)} />
+          <DetailField label="Project Exact Address" value={displayValue(exactAddress)} />
+        </div>
+
+        <section className="space-y-3">
+          <h4 className="text-sm font-medium text-gray-500">Project Description</h4>
+          <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">
+            {displayValue(project.description)}
+          </p>
+        </section>
+
+        <div className="grid grid-cols-1 gap-x-12 gap-y-6 md:grid-cols-2">
+          <DetailField label="Project Timeline" value={displayValue(project.timeline)} />
+          <DetailField
+            label="Expected Beneficiaries"
+            value={
+              project.expected_beneficiaries != null && project.expected_beneficiaries > 0
+                ? Number(project.expected_beneficiaries).toLocaleString('en-IN')
+                : 'Not set'
+            }
+          />
+          <DetailField label="Project Valid Until" value={formatDetailDate(project.valid_until)} />
+          <DetailField
+            label="Available for CSR Takeover"
+            value={csrAvailable === false ? 'No' : csrAvailable === true ? 'Yes' : 'Not set'}
+          />
+        </div>
+      </section>
+    </div>
+  )
+}
 
 export default function ServiceRequestProjectDetailPage() {
   const params = useParams();
@@ -297,7 +362,10 @@ export default function ServiceRequestProjectDetailPage() {
   const ngoFounded = String(ngoProfileData.founded || ngoProfileData.founded_year || 'Founded year not set');
   const ngoPincode = ngo?.pincode || 'Pincode not set';
   const ngoProfileImage = String(ngoProfileData.profile_image || ngoProfileData.logo_url || '').trim();
-  const projectCategory = payload.needs.map((need) => String(need.category || '').trim()).find(Boolean) || 'Not specified';
+  const projectCategory = projectData.category
+    || payload.needs.map((need) => String(need.category || '').trim()).find(Boolean)
+    || 'Not set';
+  const csrProjectAvailable = projectData.csr_project_available_for_csr;
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-gradient-to-br from-blue-50 to-indigo-100">
@@ -328,60 +396,19 @@ export default function ServiceRequestProjectDetailPage() {
                   </TabsList>
 
                   <TabsContent value="details" className="mt-4 space-y-4">
-                    <div className="flex items-start justify-between">
-                      <div className="space-y-2">
-                        <p className="text-sm font-medium text-gray-500">Project Title</p>
-                        <p className="font-semibold text-lg text-blue-600">{projectData.title}</p>
-                      </div>
-                      { /* Edit Project button moved to page top for alignment; no duplicate here */ }
-                    </div>
-
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium text-gray-500">Project Category</p>
-                      <p className="font-medium">{projectCategory}</p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium text-gray-500">Description</p>
-                      <p className="text-sm leading-6 text-muted-foreground whitespace-pre-wrap break-words">
-                        {projectData.description || 'No description provided.'}
-                      </p>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-3">
-                      <div>
-                        <p className="text-sm font-medium text-gray-500">Total Project Time</p>
-                        <p className="font-semibold">{projectData.timeline ? String(projectData.timeline) : 'Not specified'}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-gray-500">Validity</p>
-                        <p className="font-semibold text-blue-600">{projectData.valid_until ? String(projectData.valid_until) : 'Open-ended'}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-gray-500">Expected Beneficiaries</p>
-                        <p className="font-semibold text-blue-600">{projectData.expected_beneficiaries ?? 'Not specified'}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-gray-500">Selected Lead NGO</p>
-                        <p className="font-semibold">{projectData.selected_lead_ngo_name || 'Not selected'}</p>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-3">
-                      <div>
-                        <p className="font-medium text-gray-500">Ongoing Needs</p>
-                        <p className="font-semibold">{payload.need_breakdown.ongoing.length}</p>
-                      </div>
-                      <div>
-                        <p className="font-medium text-gray-500">Fulfilled Needs</p>
-                        <p className="font-semibold">{payload.need_breakdown.fulfilled.length}</p>
-                      </div>
-                      <div>
-                        <p className="font-medium text-gray-500">Removed Needs</p>
-                        <p className="font-semibold">{payload.need_breakdown.removed.length}</p>
-                      </div>
-                    </div>
-
+                    <ProjectDetailFields
+                      project={{
+                        title: projectData.title,
+                        description: projectData.description,
+                        exact_address: projectData.exact_address,
+                        location: projectData.location,
+                        timeline: projectData.timeline,
+                        expected_beneficiaries: projectData.expected_beneficiaries,
+                        valid_until: projectData.valid_until,
+                        category: projectCategory,
+                        csr_project_available_for_csr: csrProjectAvailable,
+                      }}
+                    />
                   </TabsContent>
 
                   <TabsContent value="needs" className="mt-4 space-y-4">

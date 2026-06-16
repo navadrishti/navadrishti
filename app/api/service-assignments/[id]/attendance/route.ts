@@ -19,7 +19,7 @@ import {
 } from '@/lib/campaign-volunteer-assignment';
 import {
   getNgoNeedFulfillmentMode,
-} from '@/lib/ngo-need-fulfillment';
+} from '@/lib/service-request-allocation';
 
 interface JWTPayload {
   id: number;

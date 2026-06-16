@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
 import { db, supabase } from '@/lib/db';
-import { isNeedOpenForListing } from '@/lib/service-request-allocation';
+import { isNeedOpenForListing, isServiceRequestExpired } from '@/lib/service-request-allocation';
+import { resolveFundingTargetInr } from '@/lib/service-request-allocation';
 import { JWT_SECRET } from '@/lib/auth';
 import { CSR_SCHEDULE_VII_CATEGORIES, SERVICE_REQUEST_TYPES } from '@/lib/categories';
 
@@ -156,7 +157,13 @@ function deriveAutoUrgency(timeline: unknown, createdAtMs: number): 'low' | 'med
 }
 
 function buildProgressFields(body: Record<string, any>, existing?: Record<string, any> | null) {
-  const targetAmount = parseAmount(body.target_amount ?? body.estimated_budget ?? body.budget ?? existing?.target_amount ?? existing?.estimated_budget ?? existing?.budget);
+  const resolvedTarget = resolveFundingTargetInr({
+    funding_target_inr: body.funding_target_inr ?? existing?.funding_target_inr,
+    target_amount: body.target_amount ?? existing?.target_amount,
+    estimated_budget: body.estimated_budget ?? existing?.estimated_budget,
+    budget: body.budget ?? existing?.budget,
+  });
+  const targetAmount = resolvedTarget > 0 ? resolvedTarget : null;
   const targetQuantity = parseAmount(body.target_quantity ?? body.quantity ?? body.volunteers_needed ?? body.beneficiary_count ?? existing?.target_quantity ?? existing?.quantity ?? existing?.volunteers_needed ?? existing?.beneficiary_count);
   const currentAmount = parseAmount(body.current_amount ?? existing?.current_amount) ?? 0;
   const currentQuantity = parseAmount(body.current_quantity ?? existing?.current_quantity) ?? 0;
@@ -466,16 +473,15 @@ export async function GET(request: NextRequest) {
     }
 
     if (view === 'all') {
-      finalRequests = processedRequests.filter((item: any) => !isCompanyAssignedNeed(item) && !isProjectLocked(item));
-    }
-
-    if (view === 'all') {
-      // For each request, check if it has reached its volunteer limit
-      const safeProcessed = Array.isArray(processedRequests) ? processedRequests : [];
+      const browsableRequests = processedRequests.filter(
+        (item: any) =>
+          !isCompanyAssignedNeed(item) &&
+          !isProjectLocked(item) &&
+          !isServiceRequestExpired(item)
+      )
 
       const requestsWithVolunteerCount = await Promise.all(
-        safeProcessed.map(async (request: any) => {
-          // Defensive defaults in case request is unexpectedly null/undefined
+        browsableRequests.map(async (request: any) => {
           if (!request || typeof request !== 'object') {
             console.warn('Skipping invalid request during volunteer count:', request);
             return { accepted_volunteers_count: 0, is_full: false };
@@ -512,11 +518,9 @@ export async function GET(request: NextRequest) {
         })
       );
 
-      // Hide needs with no remaining quantity/amount from public browsing.
-      const filteredRequests = requestsWithVolunteerCount.filter(
+      finalRequests = requestsWithVolunteerCount.filter(
         (request: any) => !request.is_full && isNeedOpenForListing(request)
       );
-      finalRequests = filteredRequests;
     }
 
     return NextResponse.json({
@@ -740,6 +744,14 @@ export async function POST(request: NextRequest) {
 
       // Prepare requirements JSON
       const images = parseImageArray(body.images);
+      const fundingTargetInr = normalizedRequestType === 'Financial Need'
+        ? resolveFundingTargetInr({
+            target_amount,
+            estimated_budget,
+            budget,
+          })
+        : 0;
+
       const requirementsData = {
         request_type: normalizedRequestType,
         estimated_budget: estimated_budget || budget || 'Not specified',
@@ -750,7 +762,15 @@ export async function POST(request: NextRequest) {
         timeline: timelineLabel,
         project: projectContext,
         category_details: details || {},
-        images
+        images,
+        ...(fundingTargetInr > 0
+          ? {
+              funding_target_inr: fundingTargetInr,
+              funds_raised_inr: 0,
+              funds_remaining_inr: fundingTargetInr,
+              financial_transactions: [],
+            }
+          : {}),
       };
 
       const progressFields = buildProgressFields({

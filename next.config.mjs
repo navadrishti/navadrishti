@@ -47,7 +47,23 @@ const nextConfig = {
     root: process.cwd(),
   },
   async redirects() {
-    return []
+    return [
+      {
+        source: '/companies/ca',
+        destination: '/evidence-verification',
+        permanent: true,
+      },
+      {
+        source: '/companies/ca/:path*',
+        destination: '/evidence-verification/:path*',
+        permanent: true,
+      },
+      {
+        source: '/api/companies/ca/:path*',
+        destination: '/api/evidence-verification/:path*',
+        permanent: true,
+      },
+    ]
   },
 }
 

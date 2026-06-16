@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ProfileDashboardTab } from '@/components/profile-dashboard-tab';
 import { DashboardQuickSidebar } from '@/components/dashboard-quick-sidebar';
 import { CampaignVolunteerAssignmentCard, type CampaignVolunteerAssignmentItem } from '@/components/campaign-volunteer-assignment-card';
+import { YourCapabilitiesPanel } from '@/components/service-card';
 import {
   formatDeliveryTrackingStatus,
   getDeliveryTrackingEvents,
@@ -31,7 +32,7 @@ import {
   shouldUseDelhiveryForNeed,
   shouldUseNgoMarkedDailyAttendance,
   shouldUseRazorpayForNeed,
-} from '@/lib/ngo-need-fulfillment';
+} from '@/lib/service-request-allocation';
 import { useToast } from '@/hooks/use-toast';
 
 interface OfferRequestItem {
@@ -909,13 +910,11 @@ function IndividualDashboardContent() {
       ? 'ngo-requests'
       : requestedTab;
   const [serviceOffers, setServiceOffers] = useState<any[]>([]);
-  const [offerApplications, setOfferApplications] = useState<any[]>([]);
   const [offerRequests, setOfferRequests] = useState<OfferRequestItem[]>([]);
   const [loadingServiceOffers, setLoadingServiceOffers] = useState(true);
-  const [loadingOfferApplications, setLoadingOfferApplications] = useState(true);
   const [loadingOfferRequests, setLoadingOfferRequests] = useState(true);
   const [updatingOfferRequestId, setUpdatingOfferRequestId] = useState<number | null>(null);
-  const [capabilityOffersTab, setCapabilityOffersTab] = useState<'your-capabilities' | 'your-applications' | 'requests'>('your-capabilities');
+  const [capabilityOffersTab, setCapabilityOffersTab] = useState<'your-capabilities' | 'requests'>('your-capabilities');
   const [offerRequestsTab, setOfferRequestsTab] = useState<'pending' | 'in-progress' | 'history'>('pending');
   const [myApplicationsTab, setMyApplicationsTab] = useState<'pending' | 'in-progress' | 'history'>('in-progress');
   const [ongoingApplications, setOngoingApplications] = useState<IndividualNgoRequestApplication[]>([]);
@@ -941,7 +940,7 @@ function IndividualDashboardContent() {
         return;
       }
 
-      const response = await fetch('/api/service-offers?view=my-offers&limit=20', {
+      const response = await fetch('/api/service-offers?view=my-offers&include_expired=true&limit=50', {
         headers: {
           Authorization: `Bearer ${token}`
         }
@@ -953,30 +952,6 @@ function IndividualDashboardContent() {
       setServiceOffers([]);
     } finally {
       setLoadingServiceOffers(false);
-    }
-  };
-
-  const fetchOfferApplications = async () => {
-    try {
-      setLoadingOfferApplications(true);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setOfferApplications([]);
-        return;
-      }
-
-      const response = await fetch('/api/service-offers?view=my-responses&limit=20', {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
-
-      const data = await response.json();
-      setOfferApplications(data.success ? (data.data || []) : []);
-    } catch {
-      setOfferApplications([]);
-    } finally {
-      setLoadingOfferApplications(false);
     }
   };
 
@@ -1141,7 +1116,6 @@ function IndividualDashboardContent() {
 
     await Promise.all([
       fetchServiceOffers(),
-      fetchOfferApplications(),
       fetchOfferRequests(),
       fetchMyApplications(),
       fetchCampaignVolunteerAssignments()
@@ -1247,7 +1221,6 @@ function IndividualDashboardContent() {
   useEffect(() => {
     if (!user?.id) return;
     fetchServiceOffers();
-    fetchOfferApplications();
     fetchOfferRequests();
     fetchCampaignVolunteerAssignments();
   }, [user?.id]);
@@ -1297,93 +1270,18 @@ function IndividualDashboardContent() {
                     {activeTab === 'profile' ? (
                       <ProfileDashboardTab />
                     ) : activeTab === 'capability-offers' ? (
-                      <Tabs value={capabilityOffersTab} onValueChange={(value) => setCapabilityOffersTab(value as 'your-capabilities' | 'your-applications' | 'requests')} className="w-full">
-                        <TabsList className="grid w-full grid-cols-3">
+                      <Tabs value={capabilityOffersTab} onValueChange={(value) => setCapabilityOffersTab(value as 'your-capabilities' | 'requests')} className="w-full">
+                        <TabsList className="grid w-full grid-cols-2">
                           <TabsTrigger value="your-capabilities">Your Capabilities</TabsTrigger>
-                          <TabsTrigger value="your-applications">Your Applications</TabsTrigger>
                           <TabsTrigger value="requests">Offer Applications</TabsTrigger>
                         </TabsList>
 
                         <TabsContent value="your-capabilities" className="mt-4 space-y-3">
-                          {loadingServiceOffers ? (
-                            // Render 3 skeleton cards with same structure as real cards for proper alignment
-                            [1,2,3].map((i) => (
-                              <Card key={`skeleton-offer-${i}`}>
-                                <CardContent className="p-4 space-y-3 animate-pulse">
-                                  <div className="flex items-start justify-between gap-3">
-                                    <div>
-                                      <div className="h-4 bg-gray-200 rounded w-48 mb-2" />
-                                      <div className="h-3 bg-gray-200 rounded w-32" />
-                                    </div>
-                                    <div className="h-6 w-20 bg-gray-200 rounded" />
-                                  </div>
-                                  <div className="flex gap-2">
-                                    <div className="h-8 w-24 bg-gray-200 rounded" />
-                                    <div className="h-8 w-24 bg-gray-200 rounded" />
-                                  </div>
-                                </CardContent>
-                              </Card>
-                            ))
-                          ) : serviceOffers.length === 0 ? (
-                            <div className="p-8 text-center text-muted-foreground">
-                              <p className="text-lg font-medium mb-2">No capability offers yet</p>
-                              <p className="text-sm mb-4">Create an offer to contribute skills, funds, materials, or infrastructure.</p>
-                              <Link href="/service-offers/create">
-                                <Button variant="outline">Create Capability Offer</Button>
-                              </Link>
-                            </div>
-                          ) : serviceOffers.map((offer) => (
-                            <Card key={offer.id}>
-                              <CardContent className="p-4 space-y-3">
-                                <div className="flex items-start justify-between gap-3">
-                                  <div>
-                                    <p className="font-semibold">{offer.title}</p>
-                                    <p className="text-sm text-muted-foreground">{offer.category || 'Capability'}</p>
-                                  </div>
-                                  <Badge variant="outline">{offer.status || 'active'}</Badge>
-                                </div>
-                                <div className="flex gap-2">
-                                  <Link href={`/service-offers/${offer.id}`}>
-                                    <Button size="sm" variant="outline">View</Button>
-                                  </Link>
-                                  <Link href={`/service-offers/edit/${offer.id}`}>
-                                    <Button size="sm" variant="outline">Edit</Button>
-                                  </Link>
-                                </div>
-                              </CardContent>
-                            </Card>
-                          ))}
-                        </TabsContent>
-
-                        <TabsContent value="your-applications" className="mt-4 space-y-3">
-                          {loadingOfferApplications ? (
-                              <div className="p-6 text-center text-muted-foreground">Loading your applications...</div>
-                            ) : offerApplications.length === 0 ? (
-                              <div className="p-8 text-center text-muted-foreground">
-                                <p className="text-lg font-medium mb-2">No applications yet</p>
-                                <p className="text-sm mb-4">Your applications on capability offers will appear here.</p>
-                                <Link href="/service-offers">
-                                  <Button variant="outline">Browse Capability Offers</Button>
-                                </Link>
-                              </div>
-                            ) : offerApplications.map((offer) => (
-                            <Card key={offer.id}>
-                              <CardContent className="p-4 space-y-3">
-                                <div className="flex items-start justify-between gap-3">
-                                  <div>
-                                    <p className="font-semibold">{offer.title}</p>
-                                    <p className="text-sm text-muted-foreground">{offer.provider_name || offer.ngo_name || 'Provider not available'}</p>
-                                  </div>
-                                  <Badge variant="outline">{offer.status || 'active'}</Badge>
-                                </div>
-                                <div className="flex gap-2">
-                                  <Link href={`/service-offers/${offer.id}`}>
-                                    <Button size="sm" variant="outline">View Offer</Button>
-                                  </Link>
-                                </div>
-                              </CardContent>
-                            </Card>
-                          ))}
+                          <YourCapabilitiesPanel
+                            offers={serviceOffers}
+                            loading={loadingServiceOffers}
+                            emptyDescription="Create an offer to contribute skills, funds, materials, or infrastructure."
+                          />
                         </TabsContent>
 
                         <TabsContent value="requests" className="mt-4 space-y-3">

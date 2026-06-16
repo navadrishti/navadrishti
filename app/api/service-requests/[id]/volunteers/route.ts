@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, supabase } from '@/lib/db';
 import { canIndividualApplyToNeed } from '@/lib/infrastructure-assignment-lock';
-import { getNgoNeedFulfillmentMode } from '@/lib/ngo-need-fulfillment';
+import { getNgoNeedFulfillmentMode } from '@/lib/service-request-allocation';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 

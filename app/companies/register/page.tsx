@@ -14,6 +14,7 @@ import { Building, Mail, Phone, Globe, MapPin, Users, Briefcase } from "lucide-r
 import { toast } from 'sonner'
 import { useOtpSender } from '@/hooks/use-otp-sender'
 import { Textarea } from '@/components/ui/textarea'
+import { AuthBackButton } from '@/components/header'
 
 export default function CompanyRegistration() {
   const [formData, setFormData] = useState({
@@ -260,9 +261,7 @@ export default function CompanyRegistration() {
       <Card className="w-full max-w-2xl shadow-none">
         <CardHeader className="space-y-1">
           <div className="text-sm">
-            <Link href="/register" className="font-medium text-primary">
-              Back
-            </Link>
+            <AuthBackButton fallbackHref="/register" />
           </div>
           <CardTitle className="text-2xl font-bold text-center">Register as Company</CardTitle>
           <CardDescription className="text-center">

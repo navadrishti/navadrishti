@@ -14,6 +14,7 @@ import { useOtpSender } from '@/hooks/use-otp-sender';
 
 import { toast } from 'sonner';
 import { MapPin } from 'lucide-react';
+import { AuthBackButton } from '@/components/header';
 
 export default function IndividualRegister() {
   const [formData, setFormData] = useState({
@@ -177,9 +178,7 @@ export default function IndividualRegister() {
       <Card className="w-full max-w-2xl shadow-none">
         <CardHeader className="space-y-1">
           <div className="text-sm">
-            <Link href="/register" className="font-medium text-primary">
-              Back
-            </Link>
+            <AuthBackButton fallbackHref="/register" />
           </div>
           <CardTitle className="text-2xl font-bold text-center">Register as Individual</CardTitle>
           <CardDescription className="text-center">

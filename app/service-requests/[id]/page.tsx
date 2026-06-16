@@ -3,10 +3,14 @@
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, User, Building, MessageSquare, CheckCircle, XCircle, Loader2, AlertTriangle, IndianRupee } from 'lucide-react'
+import { ArrowLeft, User, Building, MessageSquare, CheckCircle, XCircle, Loader2, AlertTriangle, IndianRupee, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
 import { Header } from '@/components/header'
+import { DetailField, DetailSection, displayValue, parseImages } from '@/components/detail-fields'
+import { Dialog, DialogContent } from '@/components/ui/dialog'
+import { cn } from '@/lib/utils'
+import { getFundingProgress, resolveFundingTargetInr, resolveFundsRaisedInr } from '@/lib/service-request-allocation'
 import { VerificationBadge } from '@/components/verification-badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -60,6 +64,12 @@ interface ServiceRequest {
     status?: string
   }
   status: 'active' | 'in_progress' | 'completed' | 'cancelled'
+  target_amount?: number | null
+  current_amount?: number | null
+  funding_target_inr?: number | null
+  funds_raised_inr?: number | null
+  funds_remaining_inr?: number | null
+  funding_progress?: number | null
   created_at: string
   updated_at: string
 }
@@ -169,6 +179,269 @@ const getInitials = (name?: string) => {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
 }
 
+type RequestRecord = {
+  id?: number
+  title: string
+  description: string
+  images?: string[] | string
+  request_type?: string
+  category?: string
+  timeline?: string
+  deadline?: string
+  beneficiary_count?: number | null
+  estimated_budget?: string | number | null
+  impact_description?: string
+  requirements?: string | Record<string, unknown> | null
+  project?: {
+    id?: string | number
+    title?: string
+  } | null
+}
+
+function SquareImageGallery({
+  images,
+  alt,
+  thumbClassName = 'h-20 w-20',
+}: {
+  images: string[]
+  alt: string
+  thumbClassName?: string
+}) {
+  const validImages = images.filter((url) => typeof url === 'string' && url.trim())
+  const [open, setOpen] = useState(false)
+  const [activeIndex, setActiveIndex] = useState(0)
+
+  if (validImages.length === 0) return null
+
+  const openAt = (index: number) => {
+    setActiveIndex(index)
+    setOpen(true)
+  }
+
+  const showPrevious = () => {
+    setActiveIndex((current) => (current - 1 + validImages.length) % validImages.length)
+  }
+
+  const showNext = () => {
+    setActiveIndex((current) => (current + 1) % validImages.length)
+  }
+
+  return (
+    <>
+      <div className="flex flex-wrap gap-2">
+        {validImages.map((url, index) => (
+          <button
+            key={`${url}-${index}`}
+            type="button"
+            onClick={() => openAt(index)}
+            className={cn(
+              'overflow-hidden rounded-md border border-slate-200 bg-slate-100 transition hover:border-blue-300 hover:ring-2 hover:ring-blue-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500',
+              thumbClassName
+            )}
+            aria-label={`View image ${index + 1} for ${alt}`}
+          >
+            <img src={url} alt={`${alt} thumbnail ${index + 1}`} className="h-full w-full object-cover" />
+          </button>
+        ))}
+      </div>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-4xl border-none bg-transparent p-0 shadow-none [&>button]:text-white [&>button]:hover:bg-white/10">
+          <div className="relative overflow-hidden rounded-lg bg-black/90">
+            <div className="flex min-h-[50vh] items-center justify-center p-4 sm:p-8">
+              <img
+                src={validImages[activeIndex]}
+                alt={`${alt} - image ${activeIndex + 1}`}
+                className="max-h-[75vh] max-w-full object-contain"
+              />
+            </div>
+
+            {validImages.length > 1 ? (
+              <>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute left-2 top-1/2 h-9 w-9 -translate-y-1/2 text-white hover:bg-white/10"
+                  onClick={showPrevious}
+                  aria-label="Previous image"
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-2 top-1/2 h-9 w-9 -translate-y-1/2 text-white hover:bg-white/10"
+                  onClick={showNext}
+                  aria-label="Next image"
+                >
+                  <ChevronRight className="h-5 w-5" />
+                </Button>
+                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-3 py-1 text-xs text-white">
+                  {activeIndex + 1} / {validImages.length}
+                </div>
+              </>
+            ) : null}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
+function parseRequirements(value?: string | Record<string, unknown> | null) {
+  if (!value) return {} as Record<string, unknown>
+  if (typeof value === 'object') return value
+  try {
+    return JSON.parse(value) as Record<string, unknown>
+  } catch {
+    return {}
+  }
+}
+
+function normalizeRequestType(value?: string | null) {
+  const text = String(value || '').trim()
+  return text || 'Not set'
+}
+
+function isLinkedToProject(requirements: Record<string, unknown>, project?: RequestRecord['project']) {
+  return Boolean(
+    project?.id ||
+    requirements.projectId ||
+    requirements.project_id ||
+    (requirements.project_context && typeof requirements.project_context === 'object')
+  )
+}
+
+function RequestNeedDetailsSection({ request }: { request: RequestRecord }) {
+  const requirements = parseRequirements(request.requirements)
+  const projectContext = (requirements.project_context && typeof requirements.project_context === 'object'
+    ? requirements.project_context
+    : {}) as Record<string, unknown>
+  const categoryDetails = (requirements.category_details && typeof requirements.category_details === 'object'
+    ? requirements.category_details
+    : requirements.details && typeof requirements.details === 'object'
+      ? requirements.details
+      : {}) as Record<string, unknown>
+
+  const requestType = normalizeRequestType(
+    String(requirements.request_type || request.request_type || request.category || '')
+  )
+  const linkedToProject = isLinkedToProject(requirements, request.project)
+  const images = parseImages(request.images)
+  const budget = request.estimated_budget ?? requirements.estimated_budget ?? requirements.budget
+  const beneficiaryCount = request.beneficiary_count ?? Number(requirements.beneficiary_count || 0)
+  const impactDescription = request.impact_description ?? requirements.impact_description
+  const contactInfo = requirements.contactInfo ?? requirements.contact_info
+  const timeline = request.timeline || request.deadline || requirements.timeline
+  const linkedProjectId = String(request.project?.id || requirements.projectId || requirements.project_id || '').trim()
+  const linkedProjectTitle = String(
+    request.project?.title || projectContext.project_title || 'Linked project'
+  )
+
+  const isMaterialNeed = requestType.toLowerCase().includes('material')
+  const isSkillServiceNeed =
+    requestType.toLowerCase().includes('skill') || requestType.toLowerCase().includes('service')
+  const isInfrastructureNeed = requestType.toLowerCase().includes('infra')
+
+  return (
+    <div className="space-y-6">
+      <section className="space-y-6">
+        <h3 className="text-sm font-medium text-gray-500">Need Details</h3>
+
+        <div>
+          <p className="text-sm text-gray-500">Need Title</p>
+          <p className="text-sm font-medium text-slate-800">{request.title}</p>
+        </div>
+
+        <section className="space-y-3">
+          <h4 className="text-sm font-medium text-gray-500">Description</h4>
+          <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">{request.description}</p>
+        </section>
+
+        {images.length > 0 ? (
+          <section className="space-y-3">
+            <h4 className="text-sm font-medium text-gray-500">Images</h4>
+            <SquareImageGallery images={images} alt={request.title} thumbClassName="h-20 w-20 sm:h-24 sm:w-24" />
+          </section>
+        ) : null}
+
+        <div className="grid grid-cols-1 gap-x-12 gap-y-6 md:grid-cols-2">
+          <DetailField label="Need Type" value={requestType} />
+          {!linkedToProject ? (
+            <DetailField
+              label="Beneficiary Count"
+              value={beneficiaryCount > 0 ? beneficiaryCount.toLocaleString('en-IN') : 'Not set'}
+            />
+          ) : (
+            <DetailField label="Beneficiary Count" value="Inherited from project" />
+          )}
+          <DetailField label="Budget Range" value={displayValue(budget)} />
+        </div>
+
+        <section className="space-y-3">
+          <h4 className="text-sm font-medium text-gray-500">Impact Description</h4>
+          <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">
+            {displayValue(impactDescription)}
+          </p>
+        </section>
+
+        <div className="grid grid-cols-1 gap-x-12 gap-y-6 md:grid-cols-2">
+          {linkedToProject ? (
+            <DetailField label="Timeline / Deadline" value="Inherited from project" />
+          ) : (
+            <DetailField label="Timeline / Deadline" value={displayValue(timeline)} />
+          )}
+          <div className="md:col-span-2">
+            <DetailField label="Contact Information" value={displayValue(contactInfo)} />
+          </div>
+        </div>
+      </section>
+
+      {isMaterialNeed ? (
+        <DetailSection title="Material Details">
+          <div className="md:col-span-2">
+            <DetailField label="Items Needed" value={displayValue(categoryDetails.material_items)} />
+          </div>
+        </DetailSection>
+      ) : null}
+
+      {isSkillServiceNeed ? (
+        <DetailSection title="Skill / Service Details">
+          <DetailField label="Role Needed" value={displayValue(categoryDetails.skill_role)} />
+          <DetailField label="Duration" value={displayValue(categoryDetails.skill_duration)} />
+        </DetailSection>
+      ) : null}
+
+      {isInfrastructureNeed ? (
+        <DetailSection title="Infrastructure Scope">
+          <div className="md:col-span-2">
+            <DetailField label="Scope" value={displayValue(categoryDetails.infrastructure_scope)} />
+          </div>
+        </DetailSection>
+      ) : null}
+
+      {linkedToProject && linkedProjectId ? (
+        <section className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+          <h3 className="text-sm font-medium text-gray-500">Project Context</h3>
+          <DetailField label="Linked Project" value={linkedProjectTitle} />
+          {projectContext.project_category ? (
+            <div className="pt-1">
+              <Badge variant="secondary" className="border-gray-200 bg-gray-100 text-gray-700">
+                {String(projectContext.project_category)}
+              </Badge>
+            </div>
+          ) : null}
+          <Link href={`/service-requests/projects/${linkedProjectId}`}>
+            <Button variant="outline" size="sm">View Project Detail</Button>
+          </Link>
+        </section>
+      ) : null}
+    </div>
+  )
+}
+
 export default function ServiceRequestDetailPage() {
   const params = useParams()
   const router = useRouter()
@@ -205,8 +478,6 @@ export default function ServiceRequestDetailPage() {
   const canShowVolunteerTab = !isHydrated || (effectiveUserType !== 'company' && effectiveUserType !== 'ngo')
   const isNgoOwner = effectiveUserType === 'ngo' && request?.ngo_id === user?.id
   const canVolunteer = effectiveUserType === 'individual'
-  const requestPrimaryImage = Array.isArray(request?.images) && request?.images?.length > 0 ? request.images[0] : ''
-
   useEffect(() => {
     setIsHydrated(true)
   }, [])
@@ -763,23 +1034,6 @@ export default function ServiceRequestDetailPage() {
   })() as Record<string, any>
 
   const infoRequestType = String(parsedRequirements?.request_type || request?.category || 'Not specified')
-  const infoProjectCategory = String(
-    parsedRequirements?.project_category
-      || parsedRequirements?.project?.category
-      || parsedRequirements?.project_context?.project_category
-      || request?.category
-      || 'Not specified'
-  )
-  const infoBudget = String(parsedRequirements?.estimated_budget || parsedRequirements?.budget || 'Not specified')
-  const infoBeneficiaries = Number(parsedRequirements?.beneficiary_count || 0)
-  const infoImpact = String(parsedRequirements?.impact_description || 'Not specified')
-  const linkedProject = request?.project || parsedRequirements?.project?.project || null
-  const linkedProjectId = String(linkedProject?.id || request?.project?.id || '').trim()
-  const categoryDetails = parsedRequirements?.category_details || {}
-  // Prefer canonical project-level validity and beneficiaries when present
-  const rawValidity = String(linkedProject?.valid_until || request?.deadline || request?.timeline || parsedRequirements?.timeline || 'Not specified')
-  const infoValidity = rawValidity.trim().toLowerCase() === 'anytime' ? 'Anytime (No expiry)' : rawValidity
-  const projectBeneficiaries = linkedProject?.expected_beneficiaries || parsedRequirements?.beneficiary_count || request?.volunteers_needed || 0
   const isFinancialNeed = infoRequestType.toLowerCase().includes('financial')
   const isMaterialNeed = infoRequestType.toLowerCase().includes('material')
   const isSkillServiceNeed =
@@ -788,10 +1042,20 @@ export default function ServiceRequestDetailPage() {
   const isInfrastructureNeed = infoRequestType.toLowerCase().includes('infra')
   const usesManualMarkDone =
     !isFinancialNeed && !isMaterialNeed && !isSkillServiceNeed && !isInfrastructureNeed
-  const fundingTargetInr = parseAmountToInr(parsedRequirements?.funding_target_inr || parsedRequirements?.estimated_budget || parsedRequirements?.budget)
-  const fundsRaisedInr = parseAmountToInr(parsedRequirements?.funds_raised_inr)
-  const fundsRemainingInr = Math.max(0, fundingTargetInr - fundsRaisedInr)
-  const fundingProgress = fundingTargetInr > 0 ? Math.min(100, Math.round((fundsRaisedInr / fundingTargetInr) * 100)) : 0
+  const fundingTargetInr = resolveFundingTargetInr({
+    funding_target_inr: request?.funding_target_inr ?? parsedRequirements?.funding_target_inr,
+    target_amount: request?.target_amount,
+    estimated_budget: parsedRequirements?.estimated_budget ?? request?.estimated_budget,
+    budget: parsedRequirements?.budget,
+  })
+  const fundsRaisedInr = resolveFundsRaisedInr({
+    funds_raised_inr: request?.funds_raised_inr ?? parsedRequirements?.funds_raised_inr,
+    current_amount: request?.current_amount,
+    financial_transactions: parsedRequirements?.financial_transactions,
+  })
+  const funding = getFundingProgress(fundingTargetInr, fundsRaisedInr)
+  const fundsRemainingInr = request?.funds_remaining_inr ?? funding.remaining
+  const fundingProgress = request?.funding_progress ?? funding.progress
   const canPayForRequest = Boolean(isAuthenticated && canVolunteer && !isNgoOwner && request?.status !== 'completed' && request?.status !== 'cancelled')
   const requesterProfile = request?.requester
   const requesterProfileData = requesterProfile?.profile_data || {}
@@ -922,7 +1186,8 @@ export default function ServiceRequestDetailPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           <div className="lg:col-span-12 min-w-0">
-            <div className="bg-white p-6">
+            <Card>
+              <CardContent className="pt-6">
               <Tabs defaultValue="details" className="w-full">
                   <TabsList className="flex w-full gap-2 overflow-x-auto pb-1">
                     <TabsTrigger value="details" className="shrink-0 whitespace-nowrap">Need Details</TabsTrigger>
@@ -931,88 +1196,7 @@ export default function ServiceRequestDetailPage() {
                   </TabsList>
 
                   <TabsContent value="details" className="mt-4 space-y-4">
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium text-gray-500">Title</p>
-                      <p className="font-semibold text-lg">{request.title}</p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium text-gray-500">Description</p>
-                      <p className="text-sm leading-6 text-muted-foreground whitespace-pre-wrap break-words">{request.description}</p>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
-                      <div>
-                        <p className="font-medium text-gray-500">Need Type</p>
-                        <p className="font-semibold">{infoRequestType}</p>
-                      </div>
-                      <div>
-                        <p className="font-medium text-gray-500">Location</p>
-                        <p className="font-semibold">{request.location || 'Not specified'}</p>
-                      </div>
-                      <div>
-                        <p className="font-medium text-gray-500">Validity</p>
-                        <p className="font-semibold">{infoValidity}</p>
-                      </div>
-                      <div>
-                        <p className="font-medium text-gray-500">Budget</p>
-                        <p className="font-semibold">{infoBudget}</p>
-                      </div>
-                      <div>
-                        <p className="font-medium text-gray-500">Beneficiaries</p>
-                        <p className="font-semibold">{infoBeneficiaries > 0 ? infoBeneficiaries : 'Not specified'}</p>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium text-gray-500">Impact Description</p>
-                      <div className="text-sm text-muted-foreground max-h-48 overflow-auto whitespace-pre-wrap break-words">
-                        {infoImpact}
-                      </div>
-                    </div>
-
-                    {linkedProject && (
-                      <div className="space-y-3 rounded-lg border p-4 bg-muted/30">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-medium text-gray-500">Linked Project</p>
-                            <p className="font-semibold">{linkedProject.title || 'Project'}</p>
-                          </div>
-                          <div className="rounded-full bg-white px-3 py-1 text-xs font-medium text-slate-700 shadow-sm ring-1 ring-slate-200">
-                            {infoProjectCategory}
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
-                          <div>
-                            <p className="text-gray-500">Location</p>
-                            <p className="font-medium">{linkedProject.location || request.location || 'Not specified'}</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-500">Total Project Time</p>
-                            <p className="font-medium">{linkedProject.timeline || infoValidity}</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-500">Expected Beneficiaries</p>
-                            <p className="font-medium">{projectBeneficiaries > 0 ? Number(projectBeneficiaries).toLocaleString('en-IN') : 'Not specified'}</p>
-                          </div>
-                          {linkedProject.description && (
-                            <div className="md:col-span-2">
-                              <p className="text-gray-500">Description</p>
-                              <p className="font-medium leading-6 text-muted-foreground whitespace-pre-wrap break-words">{linkedProject.description}</p>
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          {linkedProjectId ? (
-                            <Link href={`/service-requests/projects/${linkedProjectId}`}>
-                              <Button variant="outline" size="sm">View Project Detail</Button>
-                            </Link>
-                          ) : (
-                            <Button variant="outline" size="sm" disabled>View Project Detail</Button>
-                          )}
-                        </div>
-                      </div>
-                    )}
+                    <RequestNeedDetailsSection request={request} />
 
                     {isFinancialNeed && (
                       <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
@@ -1029,7 +1213,10 @@ export default function ServiceRequestDetailPage() {
                             <span>Target INR {fundingTargetInr.toLocaleString('en-IN')}</span>
                           </div>
                           <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-200">
-                            <div className="h-full rounded-full border border-slate-300 bg-white transition-all duration-300" style={{ width: `${fundingProgress}%` }} />
+                            <div
+                              className="h-full rounded-full bg-blue-600 transition-all duration-300"
+                              style={{ width: `${fundingProgress}%` }}
+                            />
                           </div>
                         </div>
 
@@ -1607,7 +1794,8 @@ export default function ServiceRequestDetailPage() {
                     )}
                   </TabsContent>
                 </Tabs>
-            </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth';
-import { isCARequest } from '@/lib/server-ca-auth';
+import { isCARequest } from '@/lib/server-auth';
 
 async function getProjectById(projectId: string) {
   const { data, error } = await supabase

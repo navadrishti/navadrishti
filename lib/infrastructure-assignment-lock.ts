@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/db'
-import { getNgoNeedFulfillmentMode, normalizeServiceRequestRecord } from '@/lib/ngo-need-fulfillment'
+import { getNgoNeedFulfillmentMode, normalizeServiceRequestRecord } from '@/lib/service-request-allocation'
 
 const ACTIVE_VOLUNTEER_STATUSES = ['pending', 'accepted', 'active']
 

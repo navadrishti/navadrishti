@@ -85,3 +85,10 @@ export function isVolunteerRegistrationPastDeadline(startDate: string | null | u
   allowedUntil.setHours(23, 59, 59, 999)
   return new Date() > allowedUntil
 }
+
+/** Detail views: same as formatDisplayDate but shows "Not set" when empty. */
+export function formatDetailDate(value?: string | null): string {
+  if (!value) return 'Not set'
+  const formatted = formatDisplayDate(value)
+  return formatted || String(value)
+}

@@ -78,10 +78,36 @@ export async function POST(req: NextRequest) {
 
     const rows = Array.isArray(offers) ? offers : []
 
+    const now = Date.now()
+    const unexpiredRows = rows.filter((row) => {
+      if (!row.valid_until) return true
+      const expiryMs = Date.parse(String(row.valid_until))
+      return Number.isNaN(expiryMs) || expiryMs >= now
+    })
+
+    const offerIds = unexpiredRows
+      .map((row) => Number(row.id))
+      .filter((id) => Number.isFinite(id) && id > 0)
+
+    const usedOfferIds = new Set<number>()
+    if (offerIds.length > 0) {
+      const { data: usedClients } = await supabase
+        .from('service_clients')
+        .select('service_offer_id')
+        .in('service_offer_id', offerIds)
+        .in('status', ['accepted', 'completed', 'active', 'in_progress'])
+
+      for (const client of usedClients || []) {
+        usedOfferIds.add(Number(client.service_offer_id))
+      }
+    }
+
+    const availableRows = unexpiredRows.filter((row) => !usedOfferIds.has(Number(row.id)))
+
     // Build candidate map from vector results and direct rows
     const candidateMap = new Map<number, any>()
 
-    for (const r of rows) {
+    for (const r of availableRows) {
       const capacity = toNumber(r.capacity) || toNumber(r.quantity) || toNumber(r.amount) || toNumber(r.price_amount) || toNumber(r.sell_amount) || null
       candidateMap.set(Number(r.id), {
         id: Number(r.id),

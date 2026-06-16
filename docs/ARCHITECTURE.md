@@ -37,13 +37,21 @@ Navdrishti follows a modern full-stack architecture built on Next.js with a Post
 │   ├── service-requests/  # Service requests pages
 │   └── [user-pages]/     # User-facing pages
 ├── components/            # Reusable components
-│   ├── ui/               # Base UI components
-│   └── [feature-components] # Feature-specific components
+│   ├── ui/               # Base UI components (shadcn)
+│   ├── detail-fields.tsx # Shared DetailField / DetailSection helpers
+│   ├── service-card.tsx  # Listing cards + YourCapabilitiesPanel (dashboard)
+│   ├── ai-agent-cta.tsx  # Floating Atlas / Catalyst launcher
+│   └── header.tsx        # Navigation + AuthBackButton
 ├── lib/                   # Utility libraries
 │   ├── auth.ts           # Authentication utilities
+│   ├── server-auth.ts    # JWT user + Navadrishti CA + Company CA auth
+│   ├── ai-suite.ts       # Navadrishti AI Suite display names & routes
+│   ├── service-request-allocation.ts  # Allocation, funding, fulfillment
+│   ├── service-offers.ts # Offer types, dashboard classification, usage records
+│   ├── ai-agent-sessions.ts           # Atlas/Catalyst session persistence
 │   ├── db.ts             # Database connections
-│   ├── utils.ts          # General utilities
-│   └── [service-libs]    # Service-specific libraries
+│   ├── utils.ts          # General utilities (currency, urgency, navigation)
+│   └── csr-agent/        # Catalyst LLM + Pulse capability search
 ├── hooks/                # Custom React hooks
 ├── styles/               # Global styles
 └── docs/                 # Documentation
@@ -98,6 +106,20 @@ Navdrishti follows a modern full-stack architecture built on Next.js with a Post
 - **Audit Trail**: Verification decisions and case lifecycle tracking
 - **Status Management**: Assignment, review, clarification, approval, and rejection flows
 
+#### Navadrishti AI Suite
+
+User-facing agents use codenames only (no role subtitles in UI). Routes and API paths are unchanged.
+
+| Codename | Route | Role | Matching (Pulse) |
+|----------|-------|------|------------------|
+| **Atlas** | `/ngos/ai-agent` | NGO project + need drafting, publish flow | `POST /api/service-requests/recommend` per need |
+| **Catalyst** | `/companies/csr-agent` | CSR campaign intake, drafts, publish | `POST /api/csr-agent/get-recommendations`, `POST /api/ngos/score` |
+| **Pulse** | *(embedded)* | Rank capability offers and NGO leads | Vector + lexical hybrid; no standalone page |
+| **Sentinel** | — | Reserved | Monitoring intelligence (not productized) |
+| **Insight** | — | Reserved | Analytics intelligence (not productized) |
+
+Config: `lib/ai-suite.ts`. Session sync: `lib/ai-agent-sessions.ts`, `/api/ai-agent/progress`, `/api/ai-agent/sessions/[id]`.
+
 ## 🗄️ Database Design
 
 ### Core Tables
@@ -118,7 +140,7 @@ Navdrishti follows a modern full-stack architecture built on Next.js with a Post
 - **JWT Tokens**: Stateless authentication
 - **Role-based Permissions**: Granular access control
 - **Session Management**: Secure session handling
-- **CSRF Protection**: Request validation
+- **Server auth helpers**: `lib/server-auth.ts` (platform JWT, Navadrishti CA, Company CA)
 
 ### Data Protection
 - **Input Validation**: Server-side validation with Zod

@@ -14,6 +14,7 @@ import { Building2, Mail, Phone, MapPin, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { Textarea } from '@/components/ui/textarea'
 import { useOtpSender } from '@/hooks/use-otp-sender'
+import { AuthBackButton } from '@/components/header'
 
 export default function NGORegister() {
   const [formData, setFormData] = useState({
@@ -273,9 +274,7 @@ export default function NGORegister() {
       <Card className="w-full max-w-2xl shadow-none">
         <CardHeader className="space-y-1">
           <div className="text-sm">
-            <Link href="/register" className="font-medium text-primary">
-              Back
-            </Link>
+            <AuthBackButton fallbackHref="/register" />
           </div>
           <CardTitle className="text-2xl font-bold text-center">Register as NGO</CardTitle>
           <CardDescription className="text-center">

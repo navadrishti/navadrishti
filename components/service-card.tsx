@@ -1,11 +1,12 @@
 'use client'
 
-import React, { useEffect, useState } from "react"
+import React, { useEffect, useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { ImageCarousel } from "@/components/ui/image-carousel"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { 
   Star, MapPin, Calendar, Target, Clock, IndianRupee, 
   HeartHandshake, UserRound, Building, Users, Shield, 
@@ -13,6 +14,20 @@ import {
 } from "lucide-react"
 import { VerificationBadge } from "./verification-badge"
 import { formatPrice, getRequestUrgencyLevel } from "@/lib/utils"
+import { formatDisplayDate } from "@/lib/format-date"
+import {
+  IMPACT_AREA_OPTIONS,
+  OFFER_TYPE_OPTIONS,
+  TRANSACTION_TYPE_OPTIONS,
+  classifyCapabilityOffer,
+  formatPastReasonLabel,
+  formatUsageStatusLabel,
+  formatOfferInrAmount,
+  formatNeedLabel,
+  type CapabilityOfferSummary,
+  type CapabilityOfferUsageRecord,
+  type CapabilityOfferPastReason,
+} from "@/lib/service-offers"
 import { useAuth } from "@/lib/auth-context"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import Link from "next/link"
@@ -576,22 +591,19 @@ export function ServiceCard({
 
           <div className="mt-2 grid grid-cols-3 gap-2 border-t border-slate-200 pt-2 text-xs text-muted-foreground">
             <div className="min-w-0 space-y-1">
-              <div className="flex min-w-0 items-center gap-1.5 text-slate-500">
-                <MapPin className="h-3.5 w-3.5 shrink-0" />
+              <div className="min-w-0 text-slate-500">
                 <span className="truncate font-medium">Location</span>
               </div>
               <p className={listingMetricValueClassName} title={requestMetricValue.location}>{requestMetricValue.location}</p>
             </div>
             <div className="min-w-0 space-y-1">
-              <div className="flex min-w-0 items-center gap-1.5 text-slate-500">
-                <Calendar className="h-3.5 w-3.5 shrink-0" />
+              <div className="min-w-0 text-slate-500">
                 <span className="truncate font-medium">Posted</span>
               </div>
               <p className={listingMetricValueClassName} title={requestMetricValue.posted}>{requestMetricValue.posted}</p>
             </div>
             <div className="min-w-0 space-y-1">
-              <div className="flex min-w-0 items-center gap-1.5 text-slate-500">
-                <Users className="h-3.5 w-3.5 shrink-0" />
+              <div className="min-w-0 text-slate-500">
                 <span className="truncate font-medium">Beneficiaries</span>
               </div>
               <p className={listingMetricValueClassName} title={requestMetricValue.beneficiaries}>{requestMetricValue.beneficiaries}</p>
@@ -647,7 +659,6 @@ export function ServiceCard({
                 onClick={(e) => e.stopPropagation()}
               >
                 <span>Explore More</span>
-                <ArrowRight size={14} />
               </Link>
             </div>
 
@@ -716,22 +727,19 @@ export function ServiceCard({
 
           <div className="mt-2 grid grid-cols-3 gap-2 border-t border-slate-200 pt-2 text-xs text-muted-foreground">
             <div className="min-w-0 space-y-1">
-              <div className="flex min-w-0 items-center gap-1.5 text-slate-500">
-                <MapPin className="h-3.5 w-3.5 shrink-0" />
+              <div className="min-w-0 text-slate-500">
                 <span className="truncate font-medium">Location</span>
               </div>
               <p className={listingMetricValueClassName} title={location || 'Not set'}>{location || 'Not set'}</p>
             </div>
             <div className="min-w-0 space-y-1">
-              <div className="flex min-w-0 items-center gap-1.5 text-slate-500">
-                <IndianRupee className="h-3.5 w-3.5 shrink-0" />
+              <div className="min-w-0 text-slate-500">
                 <span className="truncate font-medium">Price</span>
               </div>
               <p className={listingMetricValueClassName} title={offerPriceLabel}>{offerPriceLabel}</p>
             </div>
             <div className="min-w-0 space-y-1">
-              <div className="flex min-w-0 items-center gap-1.5 text-slate-500">
-                <Target className="h-3.5 w-3.5 shrink-0" />
+              <div className="min-w-0 text-slate-500">
                 <span className="truncate font-medium">Capacity</span>
               </div>
               <p className={listingMetricValueClassName} title={String(capacityLimit || 'Not set')}>{capacityLimit || 'Not set'}</p>
@@ -764,7 +772,6 @@ export function ServiceCard({
                 onClick={(e) => e.stopPropagation()}
               >
                 <span>Explore More</span>
-                <ArrowRight size={14} />
               </Link>
             </div>
           </div>
@@ -1127,4 +1134,364 @@ export function ServiceCard({
       </CardFooter>
     </Card>
   );
+}
+
+function dashboardLabelForOption(
+  options: { value: string; label: string }[],
+  value?: string | null
+) {
+  if (!value) return 'Not set'
+  return options.find((option) => option.value === value)?.label || value.replace(/_/g, ' ')
+}
+
+function dashboardLabelForImpactArea(value: string) {
+  return IMPACT_AREA_OPTIONS.find((option) => option.value === value)?.label || value.replace(/_/g, ' ')
+}
+
+function formatDashboardLocation(offer: CapabilityOfferSummary) {
+  const parts = [offer.city, offer.state_province].filter(Boolean)
+  if (parts.length > 0) return parts.join(', ')
+  if (offer.coverage_area) return offer.coverage_area
+  return 'Not set'
+}
+
+function formatDashboardPrice(offer: CapabilityOfferSummary) {
+  const transactionType = String(offer.transaction_type || '').toLowerCase()
+  const requiresPricing = transactionType === 'rent' || transactionType === 'sell'
+  if (!requiresPricing || offer.price_type === 'free') return 'Free'
+  if (offer.price_amount && Number(offer.price_amount) > 0) {
+    return `INR ${Number(offer.price_amount).toLocaleString('en-IN')}`
+  }
+  return 'Not set'
+}
+
+function pastReasonBadgeClass(reason?: CapabilityOfferPastReason | null) {
+  if (reason === 'expired') return 'border-slate-300 bg-slate-100 text-slate-700'
+  if (reason === 'used') return 'border-blue-300 bg-blue-50 text-blue-700'
+  if (reason === 'expired_and_used') return 'border-violet-300 bg-violet-50 text-violet-700'
+  if (reason === 'inactive') return 'border-slate-300 bg-slate-100 text-slate-700'
+  return 'border-slate-300 bg-slate-100 text-slate-700'
+}
+
+function DashboardDetailItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-xs text-gray-500">{label}</p>
+      <p className="text-sm font-medium text-slate-800 break-words">{value}</p>
+    </div>
+  )
+}
+
+function UsageRecordSection({ usage }: { usage: CapabilityOfferUsageRecord }) {
+  const needs = Array.isArray(usage.selected_needs) ? usage.selected_needs : []
+  const trackHref = usage.assignment_id
+    ? `/service-request-assignments/${usage.assignment_id}`
+    : usage.linked_service_request_id
+      ? `/service-requests/${usage.linked_service_request_id}`
+      : null
+
+  return (
+    <div className="rounded-md border border-slate-200 bg-slate-50/80 p-3 space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-sm font-medium text-slate-900">Usage details</p>
+        <Badge variant="outline" className="capitalize">
+          {formatUsageStatusLabel(usage.status)}
+        </Badge>
+      </div>
+
+      <div className="grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+        <DashboardDetailItem
+          label="Used by"
+          value={
+            usage.client_name
+              ? `${usage.client_name}${usage.client_type ? ` (${usage.client_type})` : ''}`
+              : 'Unknown'
+          }
+        />
+        {usage.assigned_at ? (
+          <DashboardDetailItem label="Assigned on" value={formatDisplayDate(usage.assigned_at)} />
+        ) : null}
+        {usage.completed_at ? (
+          <DashboardDetailItem label="Completed on" value={formatDisplayDate(usage.completed_at)} />
+        ) : null}
+        {usage.billing_cycle || usage.payment_mode ? (
+          <DashboardDetailItem
+            label="Billing"
+            value={`${usage.billing_cycle || 'one_time'} · ${usage.payment_mode || 'prepaid'}`}
+          />
+        ) : null}
+        {usage.payment_amount_inr != null || usage.fulfilled_amount != null ? (
+          <DashboardDetailItem
+            label="Amount"
+            value={
+              usage.fulfilled_amount != null && Number(usage.fulfilled_amount) > 0
+                ? `${formatOfferInrAmount(usage.fulfilled_amount)} fulfilled`
+                : `${formatOfferInrAmount(usage.payment_amount_inr)}${usage.payment_required ? ' · due' : ''}`
+            }
+          />
+        ) : null}
+        {usage.fulfilled_quantity != null && Number(usage.fulfilled_quantity) > 0 ? (
+          <DashboardDetailItem
+            label="Quantity fulfilled"
+            value={String(usage.fulfilled_quantity)}
+          />
+        ) : null}
+      </div>
+
+      {needs.length > 0 ? (
+        <div className="space-y-2">
+          <p className="text-xs text-gray-500">Linked needs</p>
+          <div className="flex flex-wrap gap-2">
+            {needs.map((need) => (
+              <Link key={need.id} href={`/service-requests/${need.id}`}>
+                <Badge
+                  variant="secondary"
+                  className="border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                >
+                  {formatNeedLabel(need)}
+                </Badge>
+              </Link>
+            ))}
+          </div>
+        </div>
+      ) : usage.linked_service_request_id ? (
+        <DashboardDetailItem
+          label="Linked need"
+          value={`Need #${usage.linked_service_request_id}`}
+        />
+      ) : null}
+
+      {usage.is_daily_rental ? (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50/60 p-3 space-y-2">
+          <p className="text-sm font-medium text-emerald-950">Daily attendance & payment</p>
+          <div className="grid gap-2 text-sm sm:grid-cols-3">
+            <p>
+              Daily rate:{' '}
+              <span className="font-medium">{formatOfferInrAmount(usage.payment_amount_inr)}</span>
+            </p>
+            <p>
+              Days present: <span className="font-medium">{usage.days_present ?? 0}</span>
+            </p>
+            <p>
+              Cumulative due:{' '}
+              <span className="font-medium">{formatOfferInrAmount(usage.cumulative_due)}</span>
+            </p>
+          </div>
+          {usage.last_attendance_at ? (
+            <p className="text-xs text-slate-600">
+              Last attendance: {formatDisplayDate(usage.last_attendance_at)}
+            </p>
+          ) : null}
+          {usage.settled_amount != null && Number(usage.settled_amount) >= 0 ? (
+            <p className="text-xs font-medium text-emerald-800">
+              Settled · {formatOfferInrAmount(usage.settled_amount)}
+              {usage.settlement_mode ? ` (${usage.settlement_mode})` : ''}
+            </p>
+          ) : usage.cumulative_due != null && Number(usage.cumulative_due) > 0 ? (
+            <p className="text-xs text-slate-600">
+              Outstanding: {formatOfferInrAmount(Number(usage.cumulative_due) - Number(usage.paid_total || 0))}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {usage.message ? (
+        <p className="text-sm text-slate-600 break-words">{usage.message}</p>
+      ) : null}
+
+      {trackHref ? (
+        <Button size="sm" variant="outline" asChild>
+          <Link href={trackHref}>Track engagement</Link>
+        </Button>
+      ) : null}
+    </div>
+  )
+}
+
+type YourCapabilityOfferCardProps = {
+  offer: CapabilityOfferSummary
+  pastReason?: CapabilityOfferPastReason | null
+}
+
+export function YourCapabilityOfferCard({ offer, pastReason }: YourCapabilityOfferCardProps) {
+  const impactAreas = Array.isArray(offer.impact_area) ? offer.impact_area.filter(Boolean) : []
+  const applicationsCount = Number(offer.applications_count || 0)
+  const pendingApplications = Number(offer.pending_applications || 0)
+  const usageRecords = Array.isArray(offer.usage_records) ? offer.usage_records : []
+
+  return (
+    <div className="rounded-md border border-slate-200 bg-white p-4 space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 flex-1 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <h4 className="text-base font-semibold text-slate-900">{offer.title}</h4>
+            {pastReason ? (
+              <Badge variant="outline" className={pastReasonBadgeClass(pastReason)}>
+                {formatPastReasonLabel(pastReason)}
+              </Badge>
+            ) : null}
+          </div>
+          {offer.description ? (
+            <p className="line-clamp-2 text-sm text-muted-foreground">{offer.description}</p>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
+        <DashboardDetailItem
+          label="Offer Type"
+          value={dashboardLabelForOption(OFFER_TYPE_OPTIONS, offer.offer_type || undefined)}
+        />
+        <DashboardDetailItem
+          label="Transaction Type"
+          value={dashboardLabelForOption(TRANSACTION_TYPE_OPTIONS, offer.transaction_type || undefined)}
+        />
+        <DashboardDetailItem label="Location" value={formatDashboardLocation(offer)} />
+        <DashboardDetailItem label="Coverage Area" value={offer.coverage_area || 'Not set'} />
+        <DashboardDetailItem label="Price" value={formatDashboardPrice(offer)} />
+        <DashboardDetailItem
+          label="Valid Until"
+          value={offer.valid_until ? formatDisplayDate(offer.valid_until) : 'Not set'}
+        />
+        {!pastReason ? (
+          <DashboardDetailItem
+            label="Applications"
+            value={
+              applicationsCount > 0
+                ? `${applicationsCount} total${pendingApplications > 0 ? ` · ${pendingApplications} pending` : ''}`
+                : 'None yet'
+            }
+          />
+        ) : null}
+      </div>
+
+      {impactAreas.length > 0 ? (
+        <div className="space-y-2">
+          <p className="text-xs text-gray-500">Impact Area</p>
+          <div className="flex flex-wrap gap-2">
+            {impactAreas.slice(0, 6).map((area) => (
+              <Badge
+                key={area}
+                variant="secondary"
+                className="border-gray-200 bg-gray-100 text-gray-700"
+              >
+                {dashboardLabelForImpactArea(area)}
+              </Badge>
+            ))}
+            {impactAreas.length > 6 ? (
+              <Badge variant="secondary" className="border-gray-200 bg-gray-100 text-gray-700">
+                +{impactAreas.length - 6} more
+              </Badge>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {usageRecords.map((usage) => (
+        <UsageRecordSection key={usage.id} usage={usage} />
+      ))}
+
+      <div className="flex flex-wrap gap-2 pt-1">
+        <Button size="sm" asChild>
+          <Link href={`/service-offers/${offer.id}`}>View Detail</Link>
+        </Button>
+        {!pastReason || pastReason === 'expired' ? (
+          <Button size="sm" variant="outline" asChild>
+            <Link href={`/service-offers/edit/${offer.id}`}>Edit</Link>
+          </Button>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+type YourCapabilitiesPanelProps = {
+  offers: CapabilityOfferSummary[]
+  loading?: boolean
+  createHref?: string
+  createLabel?: string
+  emptyTitle?: string
+  emptyDescription?: string
+}
+
+export function YourCapabilitiesPanel({
+  offers,
+  loading = false,
+  createHref = '/service-offers/create',
+  createLabel = 'Create Capability Offer',
+  emptyTitle = 'No capability offers yet',
+  emptyDescription = 'Create capability offers to support NGO needs and partnerships.',
+}: YourCapabilitiesPanelProps) {
+  const [tab, setTab] = useState<'active' | 'past'>('active')
+
+  const { activeOffers, pastOffers } = useMemo(() => {
+    const active: Array<{ offer: CapabilityOfferSummary; pastReason: null }> = []
+    const past: Array<{ offer: CapabilityOfferSummary; pastReason: NonNullable<ReturnType<typeof classifyCapabilityOffer>['pastReason']> }> = []
+
+    for (const offer of offers) {
+      const classification = classifyCapabilityOffer(offer)
+      if (classification.isActive) {
+        active.push({ offer, pastReason: null })
+      } else if (classification.pastReason) {
+        past.push({ offer, pastReason: classification.pastReason })
+      }
+    }
+
+    return { activeOffers: active, pastOffers: past }
+  }, [offers])
+
+  if (loading) {
+    return (
+      <div className="p-6 text-center text-muted-foreground">
+        Loading capability offers...
+      </div>
+    )
+  }
+
+  if (offers.length === 0) {
+    return (
+      <div className="p-8 text-center text-muted-foreground">
+        <p className="text-lg font-medium mb-2">{emptyTitle}</p>
+        <p className="text-sm mb-4">{emptyDescription}</p>
+        <Link href={createHref}>
+          <Button variant="outline">{createLabel}</Button>
+        </Link>
+      </div>
+    )
+  }
+
+  return (
+    <Tabs value={tab} onValueChange={(value) => setTab(value as 'active' | 'past')} className="w-full">
+      <TabsList className="grid w-full grid-cols-2 h-auto">
+        <TabsTrigger value="active">Active offers ({activeOffers.length})</TabsTrigger>
+        <TabsTrigger value="past">Past offers ({pastOffers.length})</TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="active" className="mt-4 space-y-3">
+        {activeOffers.length === 0 ? (
+          <div className="p-8 text-center text-muted-foreground">
+            <p className="text-lg font-medium mb-2">No active offers</p>
+            <p className="text-sm">Offers that are still valid and not yet used appear here.</p>
+          </div>
+        ) : (
+          activeOffers.map(({ offer }) => (
+            <YourCapabilityOfferCard key={offer.id} offer={offer} />
+          ))
+        )}
+      </TabsContent>
+
+      <TabsContent value="past" className="mt-4 space-y-3">
+        {pastOffers.length === 0 ? (
+          <div className="p-8 text-center text-muted-foreground">
+            <p className="text-lg font-medium mb-2">No past offers</p>
+            <p className="text-sm">Expired or used capability offers will appear here.</p>
+          </div>
+        ) : (
+          pastOffers.map(({ offer, pastReason }) => (
+            <YourCapabilityOfferCard key={offer.id} offer={offer} pastReason={pastReason} />
+          ))
+        )}
+      </TabsContent>
+    </Tabs>
+  )
 }
