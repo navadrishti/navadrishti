@@ -11,8 +11,9 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "@/components/ui/command"
 import { Badge } from "@/components/ui/badge"
 import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription, SheetClose } from "@/components/ui/sheet"
-import { Award, Bell, ChevronDown, Menu, Search, ShoppingBag, X, GraduationCap, Briefcase, Building, LogIn, MessageSquare } from "lucide-react"
+import { Award, Bell, ChevronDown, Menu, Search, ShoppingBag, X, GraduationCap, Briefcase, Building, LogIn, MessageSquare, ArrowLeft } from "lucide-react"
 import { VerificationBadge } from "@/components/verification-badge"
+import { cn } from "@/lib/utils"
 
 interface ProfileSearchResult {
   id: number;
@@ -652,3 +653,62 @@ export function Header({ className = '' }: { className?: string } = {}) {
   )
 }
 
+type AuthBackButtonProps = {
+  fallbackHref?: string;
+  className?: string;
+  variant?: 'link' | 'button';
+};
+
+export function AuthBackButton({
+  fallbackHref = '/',
+  className,
+  variant = 'link',
+}: AuthBackButtonProps) {
+  const router = useRouter();
+
+  const handleBack = () => {
+    if (typeof window !== 'undefined') {
+      const referrer = document.referrer;
+      const hasSameOriginReferrer =
+        referrer.length > 0 && new URL(referrer).origin === window.location.origin;
+
+      if (hasSameOriginReferrer || window.history.length > 1) {
+        router.back();
+        return;
+      }
+    }
+
+    router.push(fallbackHref);
+  };
+
+  if (variant === 'link') {
+    return (
+      <button
+        type="button"
+        onClick={handleBack}
+        className={cn(
+          'inline-flex items-center text-sm font-medium text-primary hover:underline',
+          className
+        )}
+      >
+        <ArrowLeft className="mr-1 h-4 w-4" />
+        Back
+      </button>
+    );
+  }
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      onClick={handleBack}
+      className={cn(
+        'px-0 text-primary hover:text-primary/80 hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0',
+        className
+      )}
+    >
+      <ArrowLeft className="mr-2 h-4 w-4" />
+      Back
+    </Button>
+  );
+}

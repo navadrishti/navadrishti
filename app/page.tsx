@@ -40,15 +40,17 @@ const mobileRows = [
 
 const repeatRow = <T,>(row: T[]) => [...row, ...row];
 
+const DOWNLOAD_APP_URL = 'https://navadrishti.in';
+
 const rootSubnavItems = [
   { label: 'Government Administrator', href: '/government-admin/login' },
-  { label: 'Evidence Verification Portal', href: '/companies/ca/login' },
+  { label: 'Evidence Verification Portal', href: '/evidence-verification/login' },
   { label: 'Navadrishti CA Portal', href: '/ca/login' },
   { label: 'District Analytics Portal', href: '/government-admin/district-dashboard' },
   { label: 'State Analytics Portal', href: '/government-admin/state-dashboard' },
-  { label: 'About Us', href: '/about' },
+  { label: 'About Us', href: 'https://navadrishti.in', external: true },
   { label: 'Contact Us', href: 'mailto:connect@navadrishti.in' },
-]
+] as const;
 
 // Animation keyframes
 const scrollAnimations = `
@@ -115,15 +117,35 @@ function RootSubNavbar() {
       <div className="relative bg-transparent md:bg-udaan-blue/90 md:backdrop-blur supports-[backdrop-filter]:md:bg-udaan-blue/85">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex flex-wrap items-center justify-start gap-2 py-2 text-[11px] font-medium sm:justify-end sm:overflow-x-auto sm:whitespace-nowrap sm:gap-3 sm:text-xs">
-            {rootSubnavItems.map((item) => (
-              <Link
-                key={item.label}
-                href={item.href}
-                className="px-1 py-1 text-white/90 transition-colors hover:text-udaan-orange whitespace-nowrap"
-              >
-                {item.label}
-              </Link>
-            ))}
+            <a
+              href={DOWNLOAD_APP_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-md border border-white/60 bg-transparent px-2.5 py-1 text-[11px] font-semibold text-white transition-colors hover:border-udaan-orange hover:bg-transparent hover:text-udaan-orange sm:text-xs"
+            >
+              Download Evidence Capture App
+            </a>
+            {rootSubnavItems.map((item) =>
+              'external' in item && item.external ? (
+                <a
+                  key={item.label}
+                  href={item.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-1 py-1 text-white/90 transition-colors hover:text-udaan-orange whitespace-nowrap"
+                >
+                  {item.label}
+                </a>
+              ) : (
+                <Link
+                  key={item.label}
+                  href={item.href}
+                  className="px-1 py-1 text-white/90 transition-colors hover:text-udaan-orange whitespace-nowrap"
+                >
+                  {item.label}
+                </Link>
+              )
+            )}
           </div>
         </div>
       </div>

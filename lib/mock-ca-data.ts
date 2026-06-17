@@ -226,7 +226,7 @@ export const mockAuditHistoryResponse = {
 
 // Mock API endpoints for testing
 export const mockAPIEndpoints = {
-  '/api/companies/ca/verify': mockCompanyCAContext,
+  '/api/evidence-verification/verify': mockCompanyCAContext,
   '/api/csr-projects': mockProjectsResponse,
   '/api/csr-projects/proj-001/evidence': mockProjectEvidenceResponse,
   '/api/csr-projects/proj-002/evidence': {

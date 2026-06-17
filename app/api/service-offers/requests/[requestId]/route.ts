@@ -236,6 +236,14 @@ export async function PUT(
         })
         .eq('id', parsedRequestId)
         .eq('service_offer_id', targetRequest.service_offer_id);
+
+      await supabase
+        .from('service_offers')
+        .update({
+          status: 'inactive',
+          updated_at: nowIso
+        })
+        .eq('id', targetRequest.service_offer_id);
     }
 
     if (status === 'completed') {

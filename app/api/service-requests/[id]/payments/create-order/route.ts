@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import Razorpay from 'razorpay';
 import { db, supabase } from '@/lib/db';
 import { JWT_SECRET } from '@/lib/auth';
+import { resolveFundingTargetInr, resolveFundsRaisedInr } from '@/lib/service-request-allocation';
 
 interface JWTPayload {
   id: number;
@@ -74,15 +75,22 @@ export async function POST(
     const body = await request.json();
     const desiredAmountInr = parseAmountToInr(body?.amount);
 
-    const targetInr = parseAmountToInr(
-      requirements?.funding_target_inr ?? requirements?.estimated_budget ?? requirements?.budget
-    );
+    const targetInr = resolveFundingTargetInr({
+      funding_target_inr: requirements?.funding_target_inr,
+      target_amount: serviceRequest.target_amount,
+      estimated_budget: requirements?.estimated_budget ?? serviceRequest.estimated_budget,
+      budget: requirements?.budget,
+    });
 
     if (targetInr <= 0) {
       return NextResponse.json({ error: 'This request has no valid financial target configured' }, { status: 400 });
     }
 
-    const raisedInr = parseAmountToInr(requirements?.funds_raised_inr);
+    const raisedInr = resolveFundsRaisedInr({
+      funds_raised_inr: requirements?.funds_raised_inr,
+      current_amount: serviceRequest.current_amount,
+      financial_transactions: requirements?.financial_transactions,
+    });
     const remainingInr = Math.max(0, targetInr - raisedInr);
 
     if (remainingInr <= 0) {

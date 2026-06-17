@@ -547,7 +547,7 @@ export default function AdminPage() {
   }, [router]);
 
   const handleLogout = async () => {
-    const authCookieNames = ['token', 'user', 'ca-token', 'company-ca-token', 'navadrishti-ca-token', 'admin-token', 'govt-admin-token'];
+    const authCookieNames = ['token', 'user', 'ca-token', 'evidence-verification-token', 'navadrishti-ca-token', 'admin-token', 'govt-admin-token'];
     const clearAuthCookies = () => {
       try {
         authCookieNames.forEach((name) => {

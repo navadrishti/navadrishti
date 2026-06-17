@@ -3,8 +3,8 @@ import jwt from 'jsonwebtoken';
 import { supabase } from '@/lib/db';
 import { JWT_SECRET } from '@/lib/auth';
 import { buildInvitationMeta, normalizeBillingCycle, normalizeEngagementSource, normalizePaymentMode as normalizePaymentModeValue } from '@/lib/service-engagement';
-import { getCompanyCAFromRequest } from '@/lib/server-company-ca-auth';
-import { isCARequest } from '@/lib/server-ca-auth';
+import { getCompanyCAFromRequest } from '@/lib/server-auth';
+import { isCARequest } from '@/lib/server-auth';
 
 interface JWTPayload {
   id: number;

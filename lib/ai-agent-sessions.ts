@@ -180,3 +180,23 @@ export async function pruneRemovedAgentSessions(
     }
   }
 }
+
+export function isMobileAgentViewport(): boolean {
+  if (typeof window === 'undefined') return false
+  return window.matchMedia('(max-width: 767px)').matches
+}
+
+export function scrollAgentMessagesContainer(container: HTMLElement | null) {
+  if (!container || isMobileAgentViewport()) return
+  container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
+}
+
+export function captureMobileChatScrollPosition(): number | null {
+  if (!isMobileAgentViewport()) return null
+  return window.scrollY
+}
+
+export function restoreMobileChatScrollPosition(y: number | null) {
+  if (y === null || !isMobileAgentViewport()) return
+  window.scrollTo({ top: y, left: 0, behavior: 'auto' })
+}

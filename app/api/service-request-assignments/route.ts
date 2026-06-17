@@ -388,7 +388,7 @@ export async function GET(request: NextRequest) {
       {
         const response = await supabase
           .from('service_request_projects')
-          .select('id, ngo_id, title, description, location, exact_address, timeline, status, updated_at, created_at, ngo:users!ngo_id(id, name, email, location, city, state_province, country, phone, ngo_volunteer_capacity, industry, pincode, profile_data)')
+          .select('id, ngo_id, title, description, location, exact_address, timeline, status, valid_until, expected_beneficiaries, updated_at, created_at, ngo:users!ngo_id(id, name, email, location, city, state_province, country, phone, ngo_volunteer_capacity, industry, pincode, profile_data)')
           .eq('id', projectId)
           .maybeSingle()
 
@@ -404,7 +404,7 @@ export async function GET(request: NextRequest) {
         
         const { data: projectWithoutNgo, error: projectErrorWithoutNgo } = await supabase
           .from('service_request_projects')
-          .select('id, ngo_id, title, description, location, exact_address, timeline, status, updated_at, created_at')
+          .select('id, ngo_id, title, description, location, exact_address, timeline, status, valid_until, expected_beneficiaries, updated_at, created_at')
           .eq('id', projectId)
           .maybeSingle()
 
@@ -451,6 +451,22 @@ export async function GET(request: NextRequest) {
       }
 
       const needsList = Array.isArray(needs) ? needs : []
+      const firstNeedContext = needsList.length > 0
+        ? safeJsonObject((needsList[0] as any)?.project_context)
+        : {}
+      const enrichedProject = project
+        ? {
+            ...project,
+            category: String(firstNeedContext.project_category || (needsList[0] as any)?.category || '').trim() || null,
+            csr_project_available_for_csr: firstNeedContext.csr_project_available_for_csr !== false,
+            expected_beneficiaries: project.expected_beneficiaries ?? (firstNeedContext.project_expected_beneficiaries != null
+              ? Number(firstNeedContext.project_expected_beneficiaries)
+              : null),
+            valid_until: project.valid_until ?? (firstNeedContext.project_valid_until
+              ? String(firstNeedContext.project_valid_until)
+              : null),
+          }
+        : project
       // project-detail: needs loaded
 
       if (!project && needsList.length > 0) {
@@ -570,7 +586,7 @@ export async function GET(request: NextRequest) {
       }, {})
 
       const responsePayload = {
-        project,
+        project: enrichedProject,
         anchor_need_id: anchorNeedId,
         needs: needsList,
         need_breakdown: {

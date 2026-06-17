@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Building, Briefcase, User } from 'lucide-react';
+import { AuthBackButton } from '@/components/header';
 
 export default function RegisterPage() {
   return (
@@ -11,9 +12,7 @@ export default function RegisterPage() {
       <Card className="w-full max-w-md shadow-none">
         <CardHeader className="space-y-1">
           <div className="text-sm">
-            <Link href="/" className="font-medium text-primary">
-              Back
-            </Link>
+            <AuthBackButton />
           </div>
           <CardTitle className="text-2xl font-bold text-center">Create an Account</CardTitle>
           <CardDescription className="text-center">

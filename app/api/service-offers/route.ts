@@ -7,6 +7,7 @@ import {
   IMPACT_AREAS,
   isOfferType,
   isOfferExpired,
+  isCapabilityOfferAvailableForListing,
   isTransactionAllowedForOfferType,
   isTransactionType,
   OfferType,
@@ -16,6 +17,7 @@ import {
   toNullableNumber,
   toNullablePositiveNumber
 } from '@/lib/service-offers'
+import { buildUsageRecordFromClient } from '@/lib/service-offers'
 
 interface JWTPayload {
   id: number
@@ -383,9 +385,10 @@ export async function GET(request: NextRequest) {
     let filteredOffers = (offers || []).map(normalizeOffer)
 
     // Server-side: remove expired offers based on expires_at if present
+    const shouldIncludeExpired = includeExpired || view === 'my-offers'
     filteredOffers = filteredOffers.filter((offer: any) => {
       if (!offer) return false
-      if (includeExpired) return true
+      if (shouldIncludeExpired) return true
       const exp = offer.expires_at || offer.valid_until
       if (!exp) return true
       const ms = Date.parse(String(exp))
@@ -435,28 +438,75 @@ export async function GET(request: NextRequest) {
 
       const { data: clients } = await supabase
         .from('service_clients')
-        .select('service_offer_id, status')
+        .select(`
+          id,
+          service_offer_id,
+          status,
+          message,
+          response_meta,
+          fulfilled_amount,
+          fulfilled_quantity,
+          assigned_at,
+          accepted_at,
+          completed_at,
+          service_request_id,
+          proposed_amount,
+          client:users!client_id(name, email, user_type)
+        `)
         .in('service_offer_id', offerIds)
 
       if (clients) {
+        const assignmentIds = clients
+          .map((client: any) => client?.response_meta?.assignment_id)
+          .filter((id: unknown) => id != null && String(id).length > 0)
+          .map((id: unknown) => String(id))
+
+        const assignmentMap = new Map<string, Record<string, unknown>>()
+        if (assignmentIds.length > 0) {
+          const { data: assignments } = await supabase
+            .from('service_engagement_assignments')
+            .select('id, meta, status, completed_at')
+            .in('id', assignmentIds)
+
+          for (const assignment of assignments || []) {
+            assignmentMap.set(String(assignment.id), assignment)
+          }
+        }
+
         const counts = clients.reduce((acc: Record<number, any>, client) => {
           if (!acc[client.service_offer_id]) {
-            acc[client.service_offer_id] = { total: 0, accepted: 0, pending: 0 }
+            acc[client.service_offer_id] = { total: 0, accepted: 0, pending: 0, usage: [] as any[] }
           }
 
           acc[client.service_offer_id].total += 1
           if (client.status === 'accepted') acc[client.service_offer_id].accepted += 1
           if (client.status === 'pending') acc[client.service_offer_id].pending += 1
+
+          const usageRecord = buildUsageRecordFromClient(
+            client,
+            client?.response_meta?.assignment_id
+              ? assignmentMap.get(String(client.response_meta.assignment_id))
+              : null
+          )
+          if (usageRecord) {
+            acc[client.service_offer_id].usage.push(usageRecord)
+          }
+
           return acc
         }, {})
 
         filteredOffers.forEach((offer: any) => {
-          const offerCounts = counts[offer.id] || { total: 0, accepted: 0, pending: 0 }
+          const offerCounts = counts[offer.id] || { total: 0, accepted: 0, pending: 0, usage: [] }
           offer.applications_count = offerCounts.total
           offer.pending_applications = offerCounts.pending
-          offer.isAssigned = offerCounts.accepted > 0
+          offer.isAssigned = offerCounts.accepted > 0 || offerCounts.usage.length > 0
+          offer.usage_records = offerCounts.usage
         })
       }
+    }
+
+    if (view === 'all' || !view) {
+      filteredOffers = filteredOffers.filter((offer: any) => isCapabilityOfferAvailableForListing(offer))
     }
 
     return NextResponse.json({ success: true, data: filteredOffers })

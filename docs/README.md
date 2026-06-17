@@ -24,6 +24,7 @@ Navdrishti serves as a bridge between those who need help and those who can prov
 
 | File | Purpose |
 |------|--------|
+| [TECHNICAL_README.md](./TECHNICAL_README.md) | **Complete technical knowledge dump — roles, AI Suite, workflows, APIs, pages, debt** |
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | System architecture, tech stack, and component interactions |
 | [API_REFERENCE.md](./API_REFERENCE.md) | Complete API documentation with endpoints and examples |
 | [DATABASE_SCHEMA.md](./DATABASE_SCHEMA.md) | Database tables, relationships, and data models |
@@ -55,7 +56,7 @@ Navdrishti serves as a bridge between those who need help and those who can prov
 
 ## 🛠️ Technology Stack
 
-- **Framework**: Next.js 15.5.6 (React 19.2.0)
+- **Framework**: Next.js 16 (React 19)
 - **Database**: Supabase PostgreSQL
 - **Authentication**: JWT + Custom Auth System
 - **Styling**: Tailwind CSS + Radix UI
@@ -82,14 +83,35 @@ This documentation is designed to help developers at all levels understand and c
 
 ## 📝 Recent Updates
 
+### Navadrishti AI Suite & Platform Consolidation (June 2026)
+
+**AI Suite branding (user-facing)**
+- **Atlas** — NGO project/need drafting at `/ngos/ai-agent` (formerly “NGO AI Agent”)
+- **Catalyst** — CSR campaign drafting at `/companies/csr-agent` (formerly “CSR AI Agent”)
+- **Pulse** — embedded matching engine (no separate page): capability offer recommendations and NGO lead scoring inside Atlas/Catalyst flows
+- **Sentinel** / **Insight** — reserved codenames for future monitoring and analytics surfaces
+- Central labels: `lib/ai-suite.ts`; floating CTA: `components/ai-agent-cta.tsx`
+
+**Capability marketplace**
+- Public browse (`view=all`) hides expired/used offers and expired or fully-assigned needs
+- Only **NGOs** apply to capability offers from the offer detail page (`service_clients`)
+- Dashboard **Your Capabilities** tabs: Active vs Past (expired, used, or inactive) with usage records
+
+**Code consolidation**
+- Need allocation, funding helpers, and fulfillment routing → `lib/service-request-allocation.ts`
+- Platform JWT, Navadrishti CA, and Company CA request auth → `lib/server-auth.ts`
+- Shared detail UI helpers → `components/detail-fields.tsx`
+- Dashboard capability cards → `components/service-card.tsx` (`YourCapabilitiesPanel`)
+- Auth back navigation → `components/header.tsx` (`AuthBackButton`)
+
 ### Platform Verification & Service Improvements (January 2026)
 
 **CA Verification Console**
-- Added a dedicated CA review workflow for NGO and company verification
-- Introduced status-based case management and audit-friendly review flows
+- Dedicated CA review workflow for NGO and company verification
+- Status-based case management and audit-friendly review flows
 
 **Service-First Experience**
-- Simplified dashboards around service requests, offers, volunteering, and client work
-- Expanded impact tracking around collaboration instead of transactional activity
+- Dashboards centered on service requests, offers, volunteering, and client work
+- Impact tracking focused on collaboration outcomes
 
-See [VERIFICATION_FLOW.md](./VERIFICATION_FLOW.md) for the CA workflow and [ARCHITECTURE.md](./ARCHITECTURE.md) for current platform structure.
+See [VERIFICATION_FLOW.md](./VERIFICATION_FLOW.md) for the CA workflow, [ARCHITECTURE.md](./ARCHITECTURE.md) for platform structure, and [TECHNICAL_README.md](./TECHNICAL_README.md) for the full technical reference.

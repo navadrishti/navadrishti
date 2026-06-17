@@ -131,6 +131,40 @@ export async function GET(request: NextRequest) {
       console.log('✅ No expired offers found');
     }
 
+    // ========== TASK 1B: EXPIRE CAPABILITY OFFERS PAST VALID_UNTIL ==========
+    console.log('\n⏳ Task 1B: Deactivating capability offers past valid_until...');
+
+    const nowIso = new Date().toISOString();
+    const { data: validityExpiredOffers, error: validityExpiredError } = await supabase
+      .from('service_offers')
+      .select('id, title, valid_until')
+      .eq('status', 'active')
+      .not('valid_until', 'is', null)
+      .lt('valid_until', nowIso)
+      .limit(1000);
+
+    let deactivatedOfferCount = 0;
+    if (validityExpiredError) {
+      console.error('Error fetching validity-expired capability offers:', validityExpiredError);
+    } else if (validityExpiredOffers && validityExpiredOffers.length > 0) {
+      for (const offer of validityExpiredOffers) {
+        const { error: deactivateError } = await supabase
+          .from('service_offers')
+          .update({ status: 'inactive', updated_at: nowIso })
+          .eq('id', offer.id);
+
+        if (deactivateError) {
+          console.error(`Error deactivating offer ${offer.id}:`, deactivateError);
+          continue;
+        }
+
+        deactivatedOfferCount++;
+        console.log(`✅ Deactivated expired capability offer ${offer.id}: "${offer.title}"`);
+      }
+    } else {
+      console.log('✅ No capability offers to deactivate by valid_until');
+    }
+
     // ========== TASK 2: HASHTAG CLEANUP ==========
     console.log('\n#️⃣ Task 2: Cleaning up hashtags...');
     
