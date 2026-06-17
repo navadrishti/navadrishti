@@ -1,4 +1,4 @@
-import { createServerClient } from "@/lib/supabase";
+import { createServerClient } from "@/lib/db";
 
 export async function embedText(text: string): Promise<number[]> {
   const supabase = createServerClient();

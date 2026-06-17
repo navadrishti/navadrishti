@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import crypto from 'crypto';
-import { createServerClient } from '@/lib/supabase';
+import { createServerClient } from '@/lib/db';
 
 const prepareEmailOtpSchema = z.object({
   email: z.string().email('Invalid email address')

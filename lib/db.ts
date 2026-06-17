@@ -1,5 +1,12 @@
 // Updated Database connection utility - now using Supabase PostgreSQL
+import 'server-only'
 import { createClient } from '@supabase/supabase-js';
+import { buildAllocationUpdatePayload } from '@/lib/service-request-allocation'
+import {
+  type AgentKind,
+  type PublishedEntity,
+  readPublishedEntity,
+} from '@/lib/ai-agent-sessions'
 
 // Initialize Supabase client
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -11,6 +18,11 @@ export const supabase = createClient(supabaseUrl, supabaseSecretKey, {
     persistSession: false
   }
 });
+
+/** Server-side Supabase client (same instance as `supabase`). */
+export function createServerClient() {
+  return supabase
+}
 
 // Helper function for backward compatibility - converts to direct Supabase queries
 export async function executeQuery({ query, values = [] }: { query: string; values?: any[] }) {
@@ -997,3 +1009,163 @@ export const db = {
 
 // Export the main database object for easy use
 export default db;
+
+export async function applyVolunteerAcceptanceAllocation(
+  request: Record<string, any>,
+  input: { amount?: number; quantity?: number }
+) {
+  const allocation = buildAllocationUpdatePayload(request, input)
+  const updatePayload: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  }
+
+  if (allocation.current_amount != null) {
+    updatePayload.current_amount = allocation.current_amount
+    updatePayload.remaining_amount = allocation.remaining_amount
+  }
+
+  if (allocation.current_quantity != null) {
+    updatePayload.current_quantity = allocation.current_quantity
+    updatePayload.remaining_quantity = allocation.remaining_quantity
+  }
+
+  const { data, error } = await supabase
+    .from('service_requests')
+    .update(updatePayload)
+    .eq('id', request.id)
+    .select('*')
+    .single()
+
+  if (error || !data) {
+    throw new Error(error?.message || 'Failed to update need allocation')
+  }
+
+  return data
+}
+
+const aiAgentTables = (agent: AgentKind) => ({
+  sessions: agent === 'csr' ? 'csr_ai_agent_sessions' : 'ngo_ai_agent_sessions',
+  state: agent === 'csr' ? 'csr_ai_agent_session_state' : 'ngo_ai_agent_session_state',
+  messages: agent === 'csr' ? 'csr_ai_agent_messages' : 'ngo_ai_agent_messages',
+})
+
+async function deleteAiAgentSessionChildren(agent: AgentKind, sessionId: string) {
+  const { state, messages } = aiAgentTables(agent)
+  await supabase.from(messages).delete().eq('session_id', sessionId)
+  await supabase.from(state).delete().eq('session_id', sessionId)
+}
+
+export async function archiveAgentSession(
+  agent: AgentKind,
+  sessionId: string,
+  published: PublishedEntity,
+  existingContext: Record<string, unknown> = {},
+) {
+  const { sessions } = aiAgentTables(agent)
+  const now = new Date().toISOString()
+  const archivedContext: Record<string, unknown> = {
+    ...existingContext,
+    ai_agent_archived_at: now,
+    ai_agent_published_at:
+      typeof existingContext.ai_agent_published_at === 'string'
+        ? existingContext.ai_agent_published_at
+        : now,
+  }
+
+  if (published.type === 'campaign') {
+    archivedContext.published_campaign_id = published.id
+  } else {
+    archivedContext.published_project_id = published.id
+  }
+
+  await deleteAiAgentSessionChildren(agent, sessionId)
+
+  const { error } = await supabase
+    .from(sessions)
+    .update({
+      status: 'archived',
+      title: published.type === 'campaign' ? 'Published campaign' : 'Published project',
+      project_context: archivedContext,
+      last_message_at: null,
+      updated_at: now,
+    })
+    .eq('id', sessionId)
+
+  if (error) throw error
+}
+
+export async function hardDeleteAgentSession(agent: AgentKind, sessionId: string) {
+  const { sessions } = aiAgentTables(agent)
+  await deleteAiAgentSessionChildren(agent, sessionId)
+  const { error } = await supabase.from(sessions).delete().eq('id', sessionId)
+  if (error) throw error
+}
+
+export async function deleteAgentSessionForUser(
+  agent: AgentKind,
+  userId: number,
+  sessionId: string,
+): Promise<'archived' | 'deleted'> {
+  const { sessions } = aiAgentTables(agent)
+
+  const { data: row, error } = await supabase
+    .from(sessions)
+    .select('id, project_context, status')
+    .eq('id', sessionId)
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (error) throw error
+  if (!row) {
+    throw new Error('Session not found')
+  }
+
+  const projectContext =
+    row.project_context && typeof row.project_context === 'object'
+      ? (row.project_context as Record<string, unknown>)
+      : {}
+
+  const published = readPublishedEntity(projectContext)
+
+  if (published) {
+    await archiveAgentSession(agent, sessionId, published, projectContext)
+    return 'archived'
+  }
+
+  await hardDeleteAgentSession(agent, sessionId)
+  return 'deleted'
+}
+
+/** Remove server sessions missing from a client sync payload (archive if published). */
+export async function pruneRemovedAgentSessions(
+  agent: AgentKind,
+  userId: number,
+  incomingSessionIds: string[],
+) {
+  const { sessions } = aiAgentTables(agent)
+  const incoming = new Set(incomingSessionIds)
+
+  const { data: existingRows, error } = await supabase
+    .from(sessions)
+    .select('id, project_context, status')
+    .eq('user_id', userId)
+
+  if (error) throw error
+
+  for (const row of existingRows || []) {
+    if (incoming.has(String(row.id))) continue
+    if (String(row.status || '').toLowerCase() === 'archived') continue
+
+    const projectContext =
+      row.project_context && typeof row.project_context === 'object'
+        ? (row.project_context as Record<string, unknown>)
+        : {}
+    const published = readPublishedEntity(projectContext)
+
+    if (published) {
+      await archiveAgentSession(agent, String(row.id), published, projectContext)
+    } else {
+      await hardDeleteAgentSession(agent, String(row.id))
+    }
+  }
+}
