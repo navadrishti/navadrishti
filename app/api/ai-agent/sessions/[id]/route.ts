@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken } from '@/lib/auth'
-import { deleteAgentSessionForUser } from '@/lib/ai-agent-sessions'
+import { deleteAgentSessionForUser } from '@/lib/db'
 
 type AgentKind = 'csr' | 'ngo'
 
