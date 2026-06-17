@@ -6,16 +6,12 @@ import {
   getNeedRemainingQuantity,
   getServiceRequestTarget,
   parseAllocationNumber,
-} from '@/lib/service-request-allocation';
-import {
   applyVolunteerAcceptanceAllocation,
   validateAcceptanceAllocation,
-} from '@/lib/service-request-allocation-db';
-import {
   getNgoNeedFulfillmentMode,
   getSkillServiceDailyRate,
   shouldCreateSkillServiceAssignment,
-} from '@/lib/ngo-need-fulfillment';
+} from '@/lib/service-request-allocation';
 
 // Interface for JWT payload
 interface JWTPayload {

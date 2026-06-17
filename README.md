@@ -2,6 +2,12 @@
 
 A comprehensive platform connecting NGOs, individuals, and companies for social impact through service requests, service offerings, and community collaboration.
 
+## Technical Documentation
+
+For the full structured technical knowledge dump (architecture, roles, APIs, workflows, database, AI/ML, deployment, and technical debt), see:
+
+**[docs/TECHNICAL_README.md](docs/TECHNICAL_README.md)**
+
 ## Features
 
 ### For NGOs
@@ -169,7 +175,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## Support
 
 - **GitHub Issues**: Report bugs and request features
-- **Documentation**: Check the `/docs` folder for detailed guides
+- **Documentation**: [Technical README](docs/TECHNICAL_README.md) · Check the `/docs` folder for additional guides
 - **Community**: Join our discussions in GitHub Discussions
 
 ---

@@ -1,77 +1,20 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
-import { useParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import { Header } from "@/components/header"
+import { DetailField, DetailSection, displayValue } from "@/components/detail-fields"
+import { formatDetailDate } from "@/lib/format-date"
+import { Badge } from "@/components/ui/badge"
+import { readCampaignCategory, readCampaignDuration, readCampaignLocation } from "@/lib/campaign-schema"
 import { useAuth } from '@/lib/auth-context'
 import { Button } from "@/components/ui/button"
-// Badge removed: tags removed from CSR detail page
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ArrowLeft, Building2, Calendar, MapPin, CheckCircle2 } from "lucide-react"
-
-function CSRCampaignDetailSkeleton() {
-  return (
-    <div className="space-y-6">
-      <Card className="overflow-hidden border-slate-200 bg-white shadow-sm">
-        <CardHeader className="border-b border-slate-100 bg-gradient-to-r from-white to-slate-50/80">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Skeleton className="h-5 w-20 rounded-full" />
-                <Skeleton className="h-5 w-28 rounded-full" />
-              </div>
-              <Skeleton className="h-8 w-80 max-w-full" />
-              <Skeleton className="h-4 w-[30rem] max-w-full" />
-              <Skeleton className="h-4 w-[24rem] max-w-full" />
-            </div>
-            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-right shadow-sm">
-              <Skeleton className="h-3 w-14 ml-auto" />
-              <Skeleton className="mt-2 h-7 w-24 ml-auto" />
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="p-5">
-          <div className="grid gap-3 md:grid-cols-3">
-            <Skeleton className="h-20 rounded-2xl" />
-            <Skeleton className="h-20 rounded-2xl" />
-            <Skeleton className="h-20 rounded-2xl" />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Skeleton className="h-10 w-full rounded-md" />
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card className="border-slate-200 bg-white shadow-sm">
-          <CardHeader>
-            <Skeleton className="h-6 w-48" />
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Skeleton className="h-12 rounded-xl" />
-            <Skeleton className="h-12 rounded-xl" />
-            <Skeleton className="h-12 rounded-xl" />
-            <Skeleton className="h-12 rounded-xl" />
-          </CardContent>
-        </Card>
-        <Card className="border-slate-200 bg-white shadow-sm">
-          <CardHeader>
-            <Skeleton className="h-6 w-40" />
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Skeleton className="h-12 rounded-xl" />
-            <Skeleton className="h-12 rounded-xl" />
-            <Skeleton className="h-12 rounded-xl" />
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  )
-}
-
-import { readCampaignCategory, readCampaignLocation } from '@/lib/campaign-schema'
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { ArrowLeft, CheckCircle2 } from "lucide-react"
 import { formatDisplayDate, isCampaignStarted, isVolunteerRegistrationPastDeadline } from "@/lib/format-date"
 import { getVolunteerButtonState, sumVolunteerApplicationCount } from '@/lib/campaign-volunteer-utils'
 
@@ -95,8 +38,237 @@ interface Campaign {
   status?: string | null
 }
 
+type CampaignRecord = {
+  id?: string
+  title?: string | null
+  description?: string | null
+  category?: string | null
+  location?: string | null
+  budget_inr?: number | null
+  budget_breakdown?: Record<string, number> | null
+  schedule_vii?: string | null
+  sdg_alignment?: number[] | null
+  impact_metrics?: Record<string, unknown> | null
+  milestones?: Array<Record<string, unknown>> | null
+  start_date?: string | null
+  end_date?: string | null
+  company_id?: number | null
+  status?: string | null
+}
+
+function formatCurrency(amount: number | null | undefined) {
+  const value = Number(amount || 0)
+  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value)
+}
+
+function parseCityState(location: string, impact: Record<string, unknown>) {
+  const city = String(impact.city || '').trim()
+  const state = String(impact.state || impact.state_province || '').trim()
+  if (city || state) {
+    return { city: city || 'Not set', state: state || 'Not set' }
+  }
+
+  const parts = location.split(',').map((part) => part.trim()).filter(Boolean)
+  if (parts.length >= 2) {
+    return { city: parts[0], state: parts.slice(1).join(', ') }
+  }
+  if (parts.length === 1) {
+    return { city: parts[0], state: 'Not set' }
+  }
+  return { city: 'Not set', state: 'Not set' }
+}
+
+function labelForBudgetKey(key: string) {
+  return key.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+function CampaignDetailFields({ campaign }: { campaign: CampaignRecord }) {
+  const impact = campaign.impact_metrics && typeof campaign.impact_metrics === 'object'
+    ? campaign.impact_metrics
+    : {}
+  const location = readCampaignLocation(campaign)
+  const { city, state } = parseCityState(location, impact)
+  const volunteerRequirement = String(impact.volunteer_requirement || impact.volunteerRequirement || '')
+  const beneficiaries = impact.beneficiaries ?? impact.impact_reach
+  const duration = readCampaignDuration(campaign)
+  const selectedLeadNgoName = String(impact.selected_lead_ngo_name || '')
+  const selectedLeadNgoId = Number(impact.selected_lead_ngo_id || 0)
+  const invitedOfferIds = Array.isArray(impact.invited_offer_ids) ? impact.invited_offer_ids : []
+  const sdgAlignment = Array.isArray(campaign.sdg_alignment) ? campaign.sdg_alignment : []
+  const budgetParts = Object.entries(campaign.budget_breakdown || {})
+    .map(([label, value]) => ({ label, value: Number(value) || 0 }))
+    .filter((entry) => entry.value > 0)
+  const milestones = Array.isArray(campaign.milestones) ? campaign.milestones : []
+
+  return (
+    <div className="space-y-6">
+      <section className="space-y-6">
+        <h3 className="text-sm font-medium text-gray-500">Campaign Details</h3>
+
+        <div>
+          <p className="text-sm text-gray-500">Campaign Name</p>
+          <p className="text-sm font-medium text-slate-800">{campaign.title || readCampaignCategory(campaign) || 'Not set'}</p>
+        </div>
+
+        <section className="space-y-3">
+          <h4 className="text-sm font-medium text-gray-500">Description</h4>
+          <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">
+            {displayValue(campaign.description)}
+          </p>
+        </section>
+
+        <div className="grid grid-cols-1 gap-x-12 gap-y-6 md:grid-cols-2">
+          <DetailField label="Category (Schedule VII)" value={displayValue(campaign.category || campaign.schedule_vii)} />
+          <DetailField label="City" value={city} />
+          <DetailField label="State / Province" value={state} />
+          <DetailField label="Budget (INR)" value={formatCurrency(campaign.budget_inr)} />
+          <DetailField label="Volunteer Requirement" value={displayValue(volunteerRequirement)} />
+          <DetailField label="Start Date" value={formatDisplayDate(campaign.start_date) || formatDetailDate(campaign.start_date)} />
+          <DetailField label="End Date" value={formatDisplayDate(campaign.end_date) || formatDetailDate(campaign.end_date)} />
+        </div>
+      </section>
+
+      <DetailSection title="Impact & Alignment">
+        <DetailField
+          label="Expected Beneficiaries"
+          value={
+            beneficiaries != null && Number(beneficiaries) > 0
+              ? Number(beneficiaries).toLocaleString('en-IN')
+              : 'Not set'
+          }
+        />
+        <DetailField label="Duration" value={displayValue(duration)} />
+        <div className="md:col-span-2">
+          <p className="text-sm text-gray-500">SDG Alignment</p>
+          {sdgAlignment.length > 0 ? (
+            <div className="mt-1 flex flex-wrap gap-2">
+              {sdgAlignment.map((sdg) => (
+                <Badge key={sdg} variant="secondary" className="border-gray-200 bg-gray-100 text-gray-700">
+                  SDG {sdg}
+                </Badge>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-1 text-sm font-medium text-slate-800">Not set</p>
+          )}
+        </div>
+      </DetailSection>
+
+      <DetailSection title="Budget Breakdown">
+        {budgetParts.length > 0 ? (
+          budgetParts.map((part) => (
+            <DetailField key={part.label} label={labelForBudgetKey(part.label)} value={formatCurrency(part.value)} />
+          ))
+        ) : (
+          <div className="md:col-span-2">
+            <p className="text-sm font-medium text-slate-800">Not set</p>
+          </div>
+        )}
+      </DetailSection>
+
+      <DetailSection title="Lead NGO & Offers">
+        <DetailField
+          label="Lead NGO"
+          value={
+            selectedLeadNgoName
+              ? selectedLeadNgoName
+              : selectedLeadNgoId > 0
+                ? `NGO #${selectedLeadNgoId}`
+                : 'Not selected'
+          }
+        />
+        <DetailField
+          label="Invited Offers"
+          value={invitedOfferIds.length > 0 ? `${invitedOfferIds.length} invited` : 'None yet'}
+        />
+      </DetailSection>
+
+      <section className="space-y-4">
+        <h3 className="text-sm font-medium text-gray-500">Milestones</h3>
+        {milestones.length > 0 ? (
+          <div className="space-y-4">
+            {milestones.map((milestone, index) => {
+              const title = String(milestone.title || `Milestone ${index + 1}`)
+              const description = String(milestone.description || '')
+              const startDate = formatDisplayDate(String(milestone.start_date || milestone.startDate || ''))
+              const endDate = formatDisplayDate(String(milestone.end_date || milestone.endDate || ''))
+              const budgetTarget = Number(milestone.budget_allocated ?? milestone.budgetTarget ?? 0)
+              const deliverables = Array.isArray(milestone.deliverables)
+                ? milestone.deliverables.map(String).filter(Boolean)
+                : milestone.deliverables
+                  ? [String(milestone.deliverables)]
+                  : []
+
+              return (
+                <div key={`${campaign.id || 'campaign'}-milestone-${index}`} className="rounded-lg border border-slate-200 p-4 space-y-3">
+                  <div>
+                    <p className="text-sm text-gray-500">Title</p>
+                    <p className="text-sm font-medium text-slate-800">{title}</p>
+                  </div>
+                  {description ? (
+                    <div>
+                      <p className="text-sm text-gray-500">Description</p>
+                      <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">{description}</p>
+                    </div>
+                  ) : null}
+                  <div className="grid grid-cols-1 gap-x-12 gap-y-4 md:grid-cols-2">
+                    <DetailField label="Start Date" value={startDate || 'Not set'} />
+                    <DetailField label="End Date" value={endDate || 'Not set'} />
+                    <DetailField label="Budget Target" value={budgetTarget > 0 ? formatCurrency(budgetTarget) : 'Not set'} />
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Deliverables</p>
+                    {deliverables.length > 0 ? (
+                      <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-slate-800">
+                        {deliverables.map((item) => (
+                          <li key={item}>{item}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-1 text-sm font-medium text-slate-800">Not set</p>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          <p className="text-sm font-medium text-slate-800">Not set</p>
+        )}
+      </section>
+    </div>
+  )
+}
+
+function CSRCampaignDetailSkeleton() {
+  return (
+    <Card>
+      <CardContent className="pt-6 space-y-4">
+        <div className="grid w-full grid-cols-2 gap-2">
+          <Skeleton className="h-10 rounded-md" />
+          <Skeleton className="h-10 rounded-md" />
+        </div>
+        <div className="space-y-3">
+          <Skeleton className="h-5 w-48 rounded-md" />
+          <Skeleton className="h-4 w-full rounded-md" />
+          <Skeleton className="h-4 w-11/12 rounded-md" />
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="rounded-md border border-slate-200 p-4 space-y-2">
+                <Skeleton className="h-3 w-24 rounded-md" />
+                <Skeleton className="h-5 w-4/5 rounded-md" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 export default function CSRCampaignDetailPage() {
   const params = useParams<{ id: string }>()
+  const router = useRouter()
   const campaignId = String(params?.id || "")
   const [campaign, setCampaign] = useState<Campaign | null>(null)
   const [loading, setLoading] = useState(true)
@@ -104,71 +276,74 @@ export default function CSRCampaignDetailPage() {
   const [currentUserId, setCurrentUserId] = useState<number | null>(null)
   const [currentUserType, setCurrentUserType] = useState<string | null>(null)
   const { user } = useAuth()
-  const isCompany = user?.user_type === 'company'
   const canShowVolunteerAction = user?.user_type === 'ngo' || user?.user_type === 'individual'
   const allVerified = Boolean(user?.email_verified && user?.phone_verified && user?.verification_status === 'verified')
   const [accepting, setAccepting] = useState(false)
   const [applying, setApplying] = useState(false)
-  const [activeTab, setActiveTab] = useState<'overview' | 'owner' | 'milestones'>('overview')
 
   const effectiveUserId = Number(user?.id || currentUserId || 0)
 
+  const loadCampaign = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
+      const response = await fetch('/api/campaigns', {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      })
+      const payload = await response.json().catch(() => null)
+      const rows: Campaign[] = Array.isArray(payload?.data) ? payload.data : []
+      const match = rows.find((item) => String(item.id) === campaignId) || null
+      setCampaign(match)
+      if (!match) setError('Campaign not found')
+    } catch {
+      setError('Failed to load campaign details')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   useEffect(() => {
     if (!campaignId) return
+    void loadCampaign()
+  }, [campaignId, effectiveUserId])
 
+  useEffect(() => {
     let cancelled = false
-    const loadCampaign = async () => {
-      setLoading(true)
-      setError(null)
+    const loadMe = async () => {
       try {
-        const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
-        const response = await fetch('/api/campaigns', {
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        })
-        const payload = await response.json().catch(() => null)
-        const rows: Campaign[] = Array.isArray(payload?.data) ? payload.data : []
-        const match = rows.find((item) => String(item.id) === campaignId) || null
-        if (!cancelled) {
-          setCampaign(match)
-          if (!match) setError('Campaign not found')
+        const res = await fetch('/api/auth/me')
+        const payload = await res.json().catch(() => null)
+        if (!cancelled && payload?.success && payload?.data) {
+          setCurrentUserId(Number(payload.data.id || null))
+          setCurrentUserType(String(payload.data.user_type || null))
         }
       } catch {
-        if (!cancelled) setError('Failed to load campaign details')
-      } finally {
-        if (!cancelled) setLoading(false)
+        // ignore
       }
     }
-
-    void loadCampaign()
-    return () => {
-      cancelled = true
-    }
-  }, [campaignId, effectiveUserId])
+    void loadMe()
+    return () => { cancelled = true }
+  }, [])
 
   const appliedByCurrentUser = (() => {
     try {
-      const impact = (campaign as any)?.impact_metrics || {}
+      const impact = campaign?.impact_metrics || {}
       const apps = Array.isArray(impact.volunteer_applications) ? impact.volunteer_applications : []
       return effectiveUserId > 0
         ? apps.some((a: any) => Number(a?.user_id || 0) === effectiveUserId)
         : false
-    } catch (e) { return false }
+    } catch {
+      return false
+    }
   })()
 
-  const volunteerLimit = (() => {
-    try {
-      const impact = (campaign as any)?.impact_metrics || {}
-      return Number(impact.volunteer_requirement ?? impact.volunteer_limit ?? 0) || 0
-    } catch (e) { return 0 }
-  })()
-
-  const volunteerCount = (() => {
-    try {
-      const impact = (campaign as any)?.impact_metrics || {}
-      const apps = Array.isArray(impact.volunteer_applications) ? impact.volunteer_applications : []
-      return sumVolunteerApplicationCount(apps)
-    } catch (e) { return 0 }
-  })()
+  const volunteerLimit = Number(campaign?.impact_metrics?.volunteer_requirement ?? campaign?.impact_metrics?.volunteer_limit ?? 0) || 0
+  const volunteerCount = sumVolunteerApplicationCount(
+    Array.isArray(campaign?.impact_metrics?.volunteer_applications)
+      ? campaign?.impact_metrics?.volunteer_applications
+      : []
+  )
 
   const volunteerState = getVolunteerButtonState({
     status: campaign?.status,
@@ -186,7 +361,10 @@ export default function CSRCampaignDetailPage() {
 
   const handleVolunteerClick = async () => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
-    if (!token) { alert('Please sign in to volunteer'); return }
+    if (!token) {
+      alert('Please sign in to volunteer')
+      return
+    }
     if (applying) return
     try {
       setApplying(true)
@@ -198,14 +376,7 @@ export default function CSRCampaignDetailPage() {
       if (!res.ok || !payload?.success) {
         alert(payload?.error || 'Failed to volunteer')
       } else {
-        // reload campaign
-        const response = await fetch('/api/campaigns', {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        const payload2 = await response.json().catch(() => null)
-        const rows = Array.isArray(payload2?.data) ? payload2.data : []
-        const match = rows.find((item: any) => String(item.id) === campaignId) || null
-        setCampaign(match)
+        await loadCampaign()
         alert('Applied to volunteer')
       }
     } catch (e) {
@@ -216,251 +387,115 @@ export default function CSRCampaignDetailPage() {
     }
   }
 
-  useEffect(() => {
-    let cancelled = false
-    const loadMe = async () => {
-      try {
-        const res = await fetch('/api/auth/me')
-        const payload = await res.json().catch(() => null)
-        if (!cancelled && payload?.success && payload?.data) {
-          setCurrentUserId(Number(payload.data.id || null))
-          setCurrentUserType(String(payload.data.user_type || null))
-        }
-      } catch (e) {
-        // ignore
-      }
-    }
-    void loadMe()
-    return () => { cancelled = true }
-  }, [])
-
-  const budgetParts = useMemo(() => {
-    const breakdown = campaign?.budget_breakdown || {}
-    return Object.entries(breakdown)
-      .map(([label, value]) => ({ label, value: Number(value) || 0 }))
-      .filter((entry) => entry.value > 0)
-  }, [campaign?.budget_breakdown])
-
-  const formatCurrency = (amount: number | null | undefined) => {
-    const value = Number(amount || 0)
-    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value)
-  }
-
-  const volunteerRequirement = String(campaign?.impact_metrics?.volunteer_requirement || '')
-  const invitedOfferIds = Array.isArray(campaign?.impact_metrics?.invited_offer_ids) ? campaign?.impact_metrics?.invited_offer_ids : []
   const selectedLeadNgoId = campaign?.impact_metrics?.selected_lead_ngo_id
-  const impactReach = campaign?.impact_metrics?.beneficiaries
-  const selectedLeadNgoName = campaign?.impact_metrics?.selected_lead_ngo_name
   const ownerName = campaign?.company_id ? `Company #${campaign.company_id}` : 'Company not set'
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50">
+    <div className="min-h-screen overflow-x-hidden bg-gradient-to-br from-blue-50 to-indigo-100">
       <Header />
-      <main className="flex-1 px-6 py-8 md:px-10">
-        <div className="mb-6 flex items-center justify-between gap-4">
-          <Button asChild variant="ghost" className="gap-2 text-slate-700 hover:text-slate-950">
-            <Link href="/csr-campaigns">
-              <ArrowLeft className="h-4 w-4" />
-              Back to campaigns
-            </Link>
+      <div className="mx-auto max-w-7xl px-4 py-8">
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <Button
+            variant="ghost"
+            onClick={() => router.back()}
+            className="w-full justify-start px-0 text-blue-600 hover:text-blue-800 hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0 sm:w-auto"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back
           </Button>
+          {canShowVolunteerAction && user && campaign ? (
+            volunteerState.label === 'Applied' ? (
+              <Button disabled variant="outline" className="w-full gap-1 text-emerald-600 sm:w-auto">
+                <CheckCircle2 className="h-4 w-4" />
+                Applied
+              </Button>
+            ) : (
+              <Button
+                onClick={handleVolunteerClick}
+                disabled={!volunteerState.canApply}
+                className="w-full sm:w-auto"
+              >
+                {volunteerState.label}
+              </Button>
+            )
+          ) : null}
         </div>
 
         {loading ? (
           <CSRCampaignDetailSkeleton />
         ) : error || !campaign ? (
-          <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-sm text-slate-600">{error || 'Campaign not found.'}</div>
+          <Alert>
+            <AlertDescription>{error || 'Campaign not found.'}</AlertDescription>
+          </Alert>
         ) : (
-          <div className="space-y-6">
-            <Card className="overflow-hidden border-slate-200 bg-white shadow-sm">
-              <CardHeader className="border-b border-slate-100 bg-gradient-to-r from-white to-slate-50/80">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="min-w-0 flex-1 space-y-2">
-                    {/* tags removed per request */}
-                    <CardTitle className="text-2xl text-slate-950">{campaign.title || readCampaignCategory(campaign)}</CardTitle>
-                    <p className="max-w-3xl text-sm leading-6 text-slate-600">{campaign.description || 'No campaign description provided.'}</p>
-                  </div>
-                  <div className="flex shrink-0 flex-col items-end gap-2">
-                    <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-right shadow-sm">
-                      <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Budget</p>
-                      <p className="text-xl font-semibold text-slate-950">{formatCurrency(campaign.budget_inr)}</p>
-                    </div>
-                    {canShowVolunteerAction && user ? (
-                      volunteerState.label === 'Applied' ? (
-                        <Button disabled variant="outline" className="h-9 gap-1 px-3 text-sm font-medium text-emerald-600">
-                          <CheckCircle2 className="h-4 w-4" />
-                          Applied
-                        </Button>
-                      ) : (
-                        <Button
-                          onClick={handleVolunteerClick}
-                          disabled={!volunteerState.canApply}
-                          className="h-9 px-3 text-sm font-medium"
-                        >
-                          {volunteerState.label}
-                        </Button>
-                      )
-                    ) : null}
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="p-5">
-                <div className="grid gap-3 md:grid-cols-3">
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500"><MapPin className="h-3.5 w-3.5" />Location</div>
-                    <p className="mt-2 text-sm font-semibold text-slate-950">{readCampaignLocation(campaign) || 'TBD'}</p>
-                  </div>
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500"><Calendar className="h-3.5 w-3.5" />Timeline</div>
-                    <p className="mt-2 text-sm font-semibold text-slate-950">{formatDisplayDate(campaign.start_date) || 'Start TBD'} → {formatDisplayDate(campaign.end_date) || 'End TBD'}</p>
-                  </div>
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500"><Building2 className="h-3.5 w-3.5" />Company</div>
-                    <p className="mt-2 text-sm font-semibold text-slate-950">Company #{campaign.company_id || 'TBD'}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            <div className="lg:col-span-12 min-w-0">
+              <Card>
+                <CardContent className="pt-6">
+                  <Tabs defaultValue="details" className="w-full">
+                    <TabsList className="flex w-full gap-2 overflow-x-auto pb-1">
+                      <TabsTrigger value="details" className="shrink-0 whitespace-nowrap">Campaign Details</TabsTrigger>
+                      <TabsTrigger value="owner" className="shrink-0 whitespace-nowrap">Company Owner</TabsTrigger>
+                    </TabsList>
 
-            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'overview' | 'owner' | 'milestones')} className="space-y-4">
-              <TabsList className="grid w-full grid-cols-3 bg-slate-100">
-                <TabsTrigger value="overview">Overview</TabsTrigger>
-                <TabsTrigger value="owner">Owner Details</TabsTrigger>
-                <TabsTrigger value="milestones">Milestones</TabsTrigger>
-              </TabsList>
+                    <TabsContent value="details" className="mt-4 space-y-4">
+                      <CampaignDetailFields campaign={campaign} />
 
-              <TabsContent value="overview" className="space-y-6">
-                <div className="grid gap-6 lg:grid-cols-2">
-                  <Card className="border-slate-200 bg-white shadow-sm">
-                    <CardHeader>
-                      <CardTitle className="text-slate-950">Campaign details</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3 text-sm text-slate-700">
-                      <div className="flex items-start justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                        <span className="text-slate-500">Schedule VII</span>
-                        <span className="font-semibold text-slate-950">{campaign.schedule_vii || readCampaignCategory(campaign) || 'Not specified'}</span>
-                      </div>
-                      <div className="flex items-start justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                        <span className="text-slate-500">Volunteer requirement</span>
-                        <span className="max-w-[60%] text-right font-semibold text-slate-950">{volunteerRequirement || 'Not specified'}</span>
-                      </div>
-                      <div className="flex items-start justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                        <span className="text-slate-500">Lead NGO</span>
-                        <span className="font-semibold text-slate-950">{selectedLeadNgoName || (selectedLeadNgoId ? `NGO #${selectedLeadNgoId}` : 'Not selected')}</span>
-                      </div>
-                      <div className="flex items-start justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                        <span className="text-slate-500">Impact reach</span>
-                        <span className="font-semibold text-slate-950">{Number(impactReach || 0).toLocaleString('en-IN')}</span>
-                      </div>
-                      {currentUserId && Number(selectedLeadNgoId) === Number(currentUserId) && campaign?.status !== 'active' && (
-                        <div className="mt-3">
-                          <Button onClick={async () => {
-                            if (!campaignId) return
-                            try {
-                              setAccepting(true)
-                              const res = await fetch('/api/campaigns/accept-lead', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ campaign_id: campaignId })
-                              })
-                              const payload = await res.json().catch(() => null)
-                              if (!res.ok || !payload?.success) {
-                                alert(payload?.error || 'Failed to accept lead role')
-                              } else {
-                                setCampaign(payload.data)
-                                alert('Accepted lead role. Volunteer gap calculated and campaign activated.')
-                              }
-                            } catch (e) {
-                              alert('Failed to accept lead role')
-                            } finally {
-                              setAccepting(false)
-                            }
-                          }} disabled={accepting}>{accepting ? 'Accepting…' : 'Accept Lead Role'}</Button>
-                        </div>
-                      )}
-                      <div className="flex items-start justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                        <span className="text-slate-500">Invited offers</span>
-                        <span className="font-semibold text-slate-950">{invitedOfferIds.length > 0 ? `${invitedOfferIds.length} invited` : 'None yet'}</span>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="border-slate-200 bg-white shadow-sm">
-                    <CardHeader>
-                      <CardTitle className="text-slate-950">Attached offers</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      {budgetParts.length > 0 ? budgetParts.map((part) => (
-                        <div key={part.label} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                          <div className="flex items-center justify-between gap-4">
-                            <p className="text-sm font-semibold text-slate-950">{part.label}</p>
-                            <p className="text-sm font-semibold text-slate-950">{formatCurrency(part.value)}</p>
-                          </div>
-                        </div>
-                      )) : (
-                        <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">No budget breakdown attached yet.</div>
-                      )}
-                    </CardContent>
-                  </Card>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="owner" className="space-y-6">
-                <Card className="border-slate-200 bg-white shadow-sm">
-                  <CardHeader>
-                    <CardTitle className="text-slate-950">CSR Owner Details</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3 text-sm text-slate-700">
-                    <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                      <span className="text-slate-500">Owner name</span>
-                      <span className="font-semibold text-slate-950">{ownerName}</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                      <span className="text-slate-500">Owner type</span>
-                      <span className="font-semibold text-slate-950">Company</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                      <span className="text-slate-500">Company ID</span>
-                      <span className="font-semibold text-slate-950">{campaign.company_id || 'Not set'}</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                      <span className="text-slate-500">Campaign status</span>
-                      <span className="font-semibold text-slate-950">{campaign.status || 'draft'}</span>
-                    </div>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              <TabsContent value="milestones" className="space-y-6">
-                <Card className="border-slate-200 bg-white shadow-sm">
-                  <CardHeader>
-                    <CardTitle className="text-slate-950">Milestones</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {(campaign.milestones || []).length > 0 ? campaign.milestones!.map((milestone, index) => (
-                      <div key={`${campaign.id}-milestone-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <p className="text-sm font-semibold text-slate-950">{index + 1}. {String(milestone.title || `Milestone ${index + 1}`)}</p>
-                          <p className="text-xs text-slate-500">
-                            {formatDisplayDate(String(milestone.start_date || milestone.startDate || ''))}
-                            {(milestone.start_date || milestone.startDate) && (milestone.end_date || milestone.endDate)
-                              ? ` — ${formatDisplayDate(String(milestone.end_date || milestone.endDate))}`
-                              : ''}
+                      {currentUserId && Number(selectedLeadNgoId) === Number(currentUserId) && campaign.status !== 'active' ? (
+                        <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+                          <p className="text-sm text-muted-foreground mb-3">
+                            You have been invited as the lead NGO for this campaign.
                           </p>
+                          <Button
+                            onClick={async () => {
+                              if (!campaignId) return
+                              try {
+                                setAccepting(true)
+                                const res = await fetch('/api/campaigns/accept-lead', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ campaign_id: campaignId })
+                                })
+                                const payload = await res.json().catch(() => null)
+                                if (!res.ok || !payload?.success) {
+                                  alert(payload?.error || 'Failed to accept lead role')
+                                } else {
+                                  setCampaign(payload.data)
+                                  alert('Accepted lead role. Volunteer gap calculated and campaign activated.')
+                                }
+                              } catch {
+                                alert('Failed to accept lead role')
+                              } finally {
+                                setAccepting(false)
+                              }
+                            }}
+                            disabled={accepting}
+                          >
+                            {accepting ? 'Accepting…' : 'Accept Lead Role'}
+                          </Button>
                         </div>
-                        <p className="mt-2 text-sm text-slate-700">{String(milestone.description || '')}</p>
-                        <p className="mt-2 text-xs font-medium text-slate-500">Budget: {formatCurrency(Number(milestone.budget_allocated || 0))}</p>
-                      </div>
-                    )) : (
-                      <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">No milestones attached yet.</div>
-                    )}
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            </Tabs>
+                      ) : null}
+                    </TabsContent>
+
+                    <TabsContent value="owner" className="mt-4 space-y-4">
+                      <DetailSection title="Company Owner">
+                        <DetailField label="Owner Name" value={ownerName} />
+                        <DetailField label="Owner Type" value="Company" />
+                        <DetailField label="Company ID" value={campaign.company_id || 'Not set'} />
+                        <DetailField label="Campaign Status" value={campaign.status || 'draft'} />
+                        <DetailField
+                          label="Campaign Timeline"
+                          value={`${formatDisplayDate(campaign.start_date) || 'Not set'} to ${formatDisplayDate(campaign.end_date) || 'Not set'}`}
+                        />
+                      </DetailSection>
+                    </TabsContent>
+                  </Tabs>
+                </CardContent>
+              </Card>
+            </div>
           </div>
         )}
-      </main>
+      </div>
     </div>
   )
 }

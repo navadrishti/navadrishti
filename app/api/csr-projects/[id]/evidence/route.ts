@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { getAuthUserFromRequest } from '@/lib/server-auth';
-import { isCARequest } from '@/lib/server-ca-auth';
-import { getCompanyCAFromRequest } from '@/lib/server-company-ca-auth';
+import { isCARequest } from '@/lib/server-auth';
+import { getCompanyCAFromRequest } from '@/lib/server-auth';
 
 async function canAccessProject(request: NextRequest, project: any): Promise<boolean> {
   if (isCARequest(request)) {

@@ -21,6 +21,7 @@ import { SkeletonOrderItem } from '@/components/ui/skeleton';
 import { ProfileDashboardTab } from '@/components/profile-dashboard-tab';
 import { DashboardQuickSidebar } from '@/components/dashboard-quick-sidebar';
 import { CampaignVolunteerAssignmentCard, type CampaignVolunteerAssignmentItem } from '@/components/campaign-volunteer-assignment-card';
+import { YourCapabilitiesPanel } from '@/components/service-card';
 import {
   formatDeliveryTrackingStatus,
   getDeliveryTrackingEvents,
@@ -37,7 +38,7 @@ import {
   isDailyRentalEngagementMeta,
   shouldUseDelhiveryForNeed,
   shouldUseNgoMarkedDailyAttendance,
-} from '@/lib/ngo-need-fulfillment';
+} from '@/lib/service-request-allocation';
 
 interface OfferRequestItem {
   id: number;
@@ -1268,7 +1269,7 @@ function NGODashboardContent() {
       if (!token) return;
 
       console.log('Fetching service offers...');
-      const response = await fetch('/api/service-offers?view=my-offers&limit=5', {
+      const response = await fetch('/api/service-offers?view=my-offers&include_expired=true&limit=50', {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -2135,55 +2136,13 @@ function NGODashboardContent() {
                         <TabsTrigger value="requests">Offer Applications</TabsTrigger>
                       </TabsList>
 
-                      <TabsContent value="your-capabilities" className="mt-4">
-                        <div className="grid grid-cols-1 md:grid-cols-5 p-4 text-sm font-medium text-gray-500 border-b">
-                          <div>Service</div>
-                          <div>Category</div>
-                          <div>Status</div>
-                          <div>Requests</div>
-                          <div className="text-right">Actions</div>
-                        </div>
-                        <div className="divide-y">
-                          {loadingData ? (
-                            <div className="p-4 text-center">
-                              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary mx-auto"></div>
-                              <p className="text-sm text-muted-foreground mt-2">Loading capability offers...</p>
-                            </div>
-                          ) : serviceOffers.length === 0 ? (
-                            <div className="p-4 text-center text-muted-foreground">
-                              <p>No capability offers yet</p>
-                              <Link href="/service-offers/create">
-                                <Button size="sm" className="mt-2">Create Your First Service Offer</Button>
-                              </Link>
-                            </div>
-                          ) : (
-                            serviceOffers.map((offer) => (
-                              <div key={offer.id} className="grid grid-cols-1 md:grid-cols-4 p-4 text-sm items-center">
-                                <div className="font-medium">{offer.title}</div>
-                                <div>{offer.category}</div>
-                                <div>
-                                  <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
-                                    offer.status === 'active'
-                                    ? 'bg-green-50 text-green-700'
-                                      : offer.status === 'paused'
-                                      ? 'bg-amber-50 text-amber-700'
-                                      : 'bg-gray-50 text-gray-700'
-                                  }`}>
-                                    {offer.status === 'active' ? 'Available' : offer.status?.charAt(0).toUpperCase() + offer.status?.slice(1) || 'Unknown'}
-                                  </span>
-                                </div>
-                                <div className="flex justify-end gap-2">
-                                  <Link href={`/service-offers/${offer.id}`}>
-                                    <Button variant="ghost" size="sm">View</Button>
-                                  </Link>
-                                  <Link href={`/service-offers/edit/${offer.id}`}>
-                                    <Button variant="outline" size="sm">Edit</Button>
-                                  </Link>
-                                </div>
-                              </div>
-                            ))
-                          )}
-                        </div>
+                      <TabsContent value="your-capabilities" className="mt-4 space-y-3">
+                        <YourCapabilitiesPanel
+                          offers={serviceOffers}
+                          loading={loadingData}
+                          createLabel="Create Your First Service Offer"
+                          emptyDescription="Publish capability offers for NGOs to discover and apply."
+                        />
                       </TabsContent>
 
                       <TabsContent value="your-applications" className="mt-4 space-y-3">

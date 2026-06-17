@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { MapPin, Search, Building2 } from "lucide-react"
+import { Search, Building2 } from "lucide-react"
 import { VerificationBadge } from "@/components/verification-badge"
 
 interface NGO {
@@ -26,7 +26,7 @@ interface NGO {
 }
 
 const ngoCardClassName =
-  "w-full max-w-[360px] rounded-md border-2 border-slate-200 bg-white shadow-none"
+  "flex h-full w-full flex-col rounded-md border-2 border-slate-200 bg-white shadow-none"
 
 function getInitials(name: string) {
   if (!name) return "N"
@@ -43,12 +43,15 @@ function formatNgoSize(ngo: NGO) {
 function NGONetworkCardSkeleton() {
   return (
     <Card className={ngoCardClassName}>
-      <CardContent className="p-2">
-        <Skeleton className="h-5 w-28 rounded-full" />
+      <CardContent className="flex flex-1 flex-col p-2">
+        <Skeleton className="h-5 w-28 self-start rounded-full" />
 
         <div className="mt-1.5 flex min-w-0 items-center gap-2 border-t border-slate-200 pt-1.5">
           <Skeleton className="h-8 w-8 shrink-0 rounded-full" />
-          <Skeleton className="h-5 w-3/4 rounded" />
+          <div className="flex min-w-0 flex-1 items-center gap-1">
+            <Skeleton className="h-5 flex-1 rounded" />
+            <Skeleton className="h-4 w-4 shrink-0 rounded-full" />
+          </div>
         </div>
 
         <div className="mt-1.5 min-w-0 border-t border-slate-200 pt-1.5">
@@ -56,7 +59,12 @@ function NGONetworkCardSkeleton() {
           <Skeleton className="mt-0.5 h-4 w-full rounded" />
         </div>
 
-        <div className="mt-1.5 space-y-1.5 border-t border-slate-200 pt-1.5">
+        <div className="mt-1.5 grid grid-cols-2 gap-x-2 border-t border-slate-200 pt-1.5">
+          <Skeleton className="h-3 w-full rounded" />
+          <Skeleton className="h-3 w-full rounded" />
+        </div>
+
+        <div className="mt-1.5 grid grid-cols-2 gap-x-2 border-t border-slate-200 pt-1.5">
           <Skeleton className="h-3 w-full rounded" />
           <Skeleton className="h-3 w-full rounded" />
         </div>
@@ -165,7 +173,7 @@ export default function NGONetworkPage() {
           </div>
 
           {loading ? (
-            <div className="grid items-start gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div className="grid items-stretch gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {Array.from({ length: 8 }).map((_, i) => (
                 <NGONetworkCardSkeleton key={i} />
               ))}
@@ -182,17 +190,18 @@ export default function NGONetworkPage() {
               ) : null}
             </div>
           ) : (
-            <div className="grid items-start gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div className="grid items-stretch gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {ngos.map((ngo) => (
                 <Card key={ngo.id} className={ngoCardClassName}>
-                  <CardContent className="p-2">
+                  <CardContent className="flex flex-1 flex-col p-2">
                     <span
-                      className="inline-block max-w-full rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-semibold leading-snug text-slate-700 break-words"
+                      className="inline-flex w-fit max-w-full self-start overflow-hidden rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-semibold text-slate-700"
+                      title={ngo.sector || "Sector not listed"}
                     >
-                      {ngo.sector || "Sector not listed"}
+                      <span className="truncate">{ngo.sector || "Sector not listed"}</span>
                     </span>
 
-                    <div className="mt-1.5 flex items-start gap-2 border-t border-slate-200 pt-1.5">
+                    <div className="mt-1.5 flex min-h-[2rem] items-center gap-2 border-t border-slate-200 pt-1.5">
                       <Avatar className="h-8 w-8 shrink-0 border border-udaan-orange/25">
                         {ngo.profile_image ? (
                           <AvatarImage src={ngo.profile_image} alt={ngo.name} />
@@ -201,53 +210,64 @@ export default function NGONetworkPage() {
                           {getInitials(ngo.name)}
                         </AvatarFallback>
                       </Avatar>
-                      <div className="flex min-w-0 flex-1 items-start gap-1.5">
+                      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
                         <Link
                           href={`/profile/${ngo.id}`}
-                          className="min-w-0 break-words text-base font-semibold leading-snug text-slate-900 hover:text-udaan-navy"
+                          className="min-w-0 truncate text-base font-semibold leading-none text-slate-900 hover:text-udaan-navy"
+                          title={ngo.name}
                         >
                           {ngo.name}
                         </Link>
-                        <VerificationBadge status="verified" size="sm" showText={false} />
+                        <VerificationBadge status="verified" size="sm" showText={false} className="shrink-0" />
                       </div>
                     </div>
 
-                    <div className="mt-1.5 border-t border-slate-200 pt-1.5 text-xs text-muted-foreground">
-                      <div className="flex items-center gap-1.5 text-slate-500">
-                        <MapPin className="h-3.5 w-3.5 shrink-0" />
+                    <div className="mt-1.5 min-h-[3.25rem] border-t border-slate-200 pt-1.5 text-xs text-muted-foreground">
+                      <div className="text-slate-500">
                         <span className="font-medium">Location</span>
                       </div>
-                      <p className="mt-0.5 break-words text-[13px] font-semibold leading-snug text-slate-900">
+                      <p
+                        className="mt-0.5 line-clamp-2 text-[13px] font-semibold leading-snug text-slate-900"
+                        title={ngo.location || "Not set"}
+                      >
                         {ngo.location || "Not set"}
                       </p>
                     </div>
 
-                    <div className="mt-1.5 grid grid-cols-2 gap-x-2 gap-y-1.5 border-t border-slate-200 pt-1.5 text-xs text-slate-900">
-                      <p className="break-words leading-snug">
+                    <div className="mt-1.5 grid min-h-[2.5rem] grid-cols-2 gap-x-2 border-t border-slate-200 pt-1.5 text-xs text-slate-900">
+                      <p className="line-clamp-2 min-w-0 leading-snug" title={ngo.registration_type || "Not set"}>
                         <span className="font-semibold">Registration:</span>{" "}
                         <span className="font-normal">{ngo.registration_type || "Not set"}</span>
                       </p>
-                      <p className="break-words leading-snug">
+                      <p className="line-clamp-2 min-w-0 leading-snug" title={formatNgoSize(ngo)}>
                         <span className="font-semibold">Size:</span>{" "}
                         <span className="font-normal">{formatNgoSize(ngo)}</span>
                       </p>
                     </div>
 
-                    <div className="mt-1.5 space-y-1.5 border-t border-slate-200 pt-1.5 text-xs text-slate-900">
-                      <p className="break-all leading-snug">
+                    <div className="mt-auto grid min-h-[2.75rem] grid-cols-2 gap-x-2 border-t border-slate-200 pt-1.5 text-xs text-slate-900">
+                      <p className="min-w-0 leading-snug">
                         <span className="font-semibold">Email:</span>{" "}
-                        <a href={`mailto:${ngo.email}`} className="font-normal hover:text-blue-600">
+                        <a
+                          href={`mailto:${ngo.email}`}
+                          className="mt-0.5 block line-clamp-2 break-all font-normal hover:text-blue-600"
+                          title={ngo.email}
+                        >
                           {ngo.email}
                         </a>
                       </p>
-                      <p className="break-all leading-snug">
+                      <p className="min-w-0 leading-snug">
                         <span className="font-semibold">Phone:</span>{" "}
                         {ngo.phone && ngo.phone.trim() ? (
-                          <a href={`tel:${ngo.phone}`} className="font-normal hover:text-blue-600">
+                          <a
+                            href={`tel:${ngo.phone}`}
+                            className="mt-0.5 block line-clamp-2 break-all font-normal hover:text-blue-600"
+                            title={ngo.phone}
+                          >
                             {ngo.phone}
                           </a>
                         ) : (
-                          <span className="font-normal">Not Available</span>
+                          <span className="mt-0.5 block font-normal">Not Available</span>
                         )}
                       </p>
                     </div>

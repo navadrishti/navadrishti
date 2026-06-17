@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { useAuth } from "@/lib/auth-context"
 import { Header } from "@/components/header"
 import { Button } from "@/components/ui/button"
@@ -17,6 +17,12 @@ import { useSearchParams } from "next/navigation"
 import { CSR_SCHEDULE_VII_CATEGORIES } from "@/lib/categories"
 import { readCampaignCategory, readCampaignDuration, readCampaignLocation } from "@/lib/campaign-schema"
 import { buildRequirementDetails, scoreProjectSuggestions } from "@/lib/csr-agent/recommendation-utils"
+import {
+  captureMobileChatScrollPosition,
+  restoreMobileChatScrollPosition,
+  scrollAgentMessagesContainer,
+} from "@/lib/ai-agent-sessions"
+import { AGENT_GREETINGS, AGENT_NAMES, agentLoadingLabel } from "@/lib/ai-suite"
 
 type ConversationStage = "project" | "milestone-count" | "milestones" | "generating" | "complete"
 
@@ -249,7 +255,7 @@ function formatDateOnlyFromUtc(timestamp: number) {
 }
 
 const INITIAL_ASSISTANT_MESSAGE =
-  "Hello! I'm your CSR AI Agent. We'll capture the campaign details step by step, then I’ll generate campaign drafts. Let’s start with the campaign name."
+  AGENT_GREETINGS.catalyst
 
 const fixedMilestoneCountOptions = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
 const fixedBudgetOptions = ["INR 1,00,000", "INR 5,00,000", "INR 10,00,000", "INR 25,00,000"]
@@ -554,7 +560,8 @@ export default function CSRAgentPage() {
   const [editingText, setEditingText] = useState<string>("")
   const [cloudSaveStatus, setCloudSaveStatus] = useState<"idle" | "saving" | "saved" | "offline" | "error">("idle")
   const [lastCloudSavedAt, setLastCloudSavedAt] = useState<string | null>(null)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
+  const mobileChatScrollYRef = useRef<number | null>(null)
   const isApplyingSessionRef = useRef(false)
   const isHydratingFromServerRef = useRef(false)
   const serverPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -767,7 +774,11 @@ export default function CSRAgentPage() {
   ].filter((item) => Boolean(item.value))
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    scrollAgentMessagesContainer(messagesContainerRef.current)
+  }
+
+  const lockMobileChatScroll = () => {
+    mobileChatScrollYRef.current = captureMobileChatScrollPosition()
   }
 
   const appendAssistantMessage = (content: string) => {
@@ -1743,7 +1754,7 @@ export default function CSRAgentPage() {
     setConversationStage("generating")
     setIsGeneratingCampaigns(true)
     setGenerationError(null)
-    appendAssistantMessage("Thanks. I have all the details. I’m matching capability offers and generating campaign drafts now.")
+    appendAssistantMessage(`Thanks. I have all the details. ${AGENT_NAMES.pulse} is matching capability offers and generating campaign drafts now.`)
 
     try {
       const recommendations = serviceSuggestions.length > 0 ? serviceSuggestions : await loadRecommendations(projectData)
@@ -1916,6 +1927,7 @@ export default function CSRAgentPage() {
     const text = input.trim()
     if (!text || isTyping) return
 
+    lockMobileChatScroll()
     setMessages((current) => [...current, { role: "user", content: text }])
     setInput("")
     setIsTyping(true)
@@ -2270,6 +2282,10 @@ export default function CSRAgentPage() {
     scrollToBottom()
   }, [messages])
 
+  useLayoutEffect(() => {
+    restoreMobileChatScrollPosition(mobileChatScrollYRef.current)
+  }, [messages, projectData, milestoneCount, milestoneInputs, generatedCampaigns])
+
   useEffect(() => {
     if (!mounted || !user?.id) return
 
@@ -2461,7 +2477,7 @@ export default function CSRAgentPage() {
           <div className="container mx-auto flex min-h-[calc(100dvh-4rem)] flex-col px-3 py-3 md:h-full md:min-h-0 md:px-4 md:py-4">
             <Card className="border-slate-200/70 bg-white/90 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur">
               <CardHeader>
-                <CardTitle className="text-slate-950">Loading CSR AI Agent</CardTitle>
+                <CardTitle className="text-slate-950">{agentLoadingLabel(AGENT_NAMES.catalyst)}</CardTitle>
                 <CardDescription className="text-slate-600">Preparing your workspace...</CardDescription>
               </CardHeader>
             </Card>
@@ -2561,8 +2577,8 @@ export default function CSRAgentPage() {
 
             <Card className="flex h-[35rem] min-h-0 flex-col overflow-hidden border-slate-200/70 bg-white/90 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur lg:h-full">
               <CardHeader className="border-b border-slate-100 bg-gradient-to-r from-white to-slate-50/80">
-                <CardTitle className="text-slate-950">AI CSR Agent</CardTitle>
-                <CardDescription className="text-slate-600">Chat with the agent to capture the campaign, milestones, and execution details.</CardDescription>
+                <CardTitle className="text-slate-950">{AGENT_NAMES.catalyst}</CardTitle>
+                <CardDescription className="text-slate-600">Capture the campaign, milestones, and execution details step by step.</CardDescription>
               </CardHeader>
               <CardContent className="flex min-h-0 flex-1 flex-col p-0">
                 <div className="flex min-h-0 flex-1 flex-col">
@@ -2577,7 +2593,7 @@ export default function CSRAgentPage() {
                   </div>
 
                   <div className="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-5 sm:py-5">
-                    <div className="min-h-0 max-h-[11.5rem] flex-1 overflow-y-auto overflow-x-hidden pr-2 sm:max-h-[13.5rem] lg:max-h-none">
+                    <div ref={messagesContainerRef} className="min-h-0 max-h-[11.5rem] flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain pr-2 sm:max-h-[13.5rem] lg:max-h-none">
                       <div className="space-y-4">
                         {messages.map((message, index) => (
                           <div key={`${message.role}-${index}`} className={`flex gap-3 ${message.role === "user" ? "justify-end" : "justify-start"}`}>
@@ -2680,7 +2696,6 @@ export default function CSRAgentPage() {
                             </div>
                           </div>
                         )}
-                        <div ref={messagesEndRef} />
                       </div>
                     </div>
 
@@ -2795,6 +2810,7 @@ export default function CSRAgentPage() {
                         <Input
                           value={input}
                           onChange={(event) => setInput(event.target.value)}
+                          onFocus={lockMobileChatScroll}
                           onKeyDown={(event) => event.key === "Enter" && handleSend()}
                           placeholder={
                             isQuestionnaireComplete
@@ -2818,7 +2834,7 @@ export default function CSRAgentPage() {
               </CardContent>
             </Card>
 
-            <Card className="flex h-auto min-h-0 flex-col overflow-hidden border-slate-200/70 bg-white/90 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur md:h-full">
+            <Card className="flex h-auto min-h-0 flex-col overflow-hidden border-slate-200/70 bg-white/90 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur max-md:[overflow-anchor:none] md:h-full">
               <CardHeader className="border-b border-slate-100 bg-gradient-to-r from-white to-slate-50/80">
                 <CardTitle className="text-slate-950">Campaign Preview</CardTitle>
                 <CardDescription className="text-slate-600">Matched offers, captured fields, and generated campaign drafts.</CardDescription>
@@ -2866,7 +2882,7 @@ export default function CSRAgentPage() {
                         ))
                       ) : (
                         <div className="rounded-xl border border-dashed border-slate-200 bg-white p-4 text-center text-sm text-slate-500">
-                          The agent will fill this card as soon as the first answers come in.
+                          {AGENT_NAMES.catalyst} will fill this card as soon as the first answers come in.
                         </div>
                       )}
                     </div>
@@ -2922,7 +2938,7 @@ export default function CSRAgentPage() {
 
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                     <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-semibold text-slate-950">Suggested offers</p>
+                      <p className="text-sm font-semibold text-slate-950">{AGENT_NAMES.pulse} matches</p>
                       {isFetchingRecommendations && <Loader2 className="h-4 w-4 animate-spin text-slate-500" />}
                     </div>
                     <div className="mt-3 space-y-3">
@@ -2949,8 +2965,8 @@ export default function CSRAgentPage() {
                       ) : (
                         <div className="rounded-xl border border-dashed border-slate-200 bg-white p-4 text-sm text-slate-500">
                           {isFetchingRecommendations
-                            ? 'Finding capability offers...'
-                            : 'No strong capability matches found for this campaign yet. You can still continue without inviting offers.'}
+                            ? `${AGENT_NAMES.pulse} is finding capability offers...`
+                            : `No strong capability matches from ${AGENT_NAMES.pulse} yet. You can still continue without inviting offers.`}
                         </div>
                       )}
                     </div>

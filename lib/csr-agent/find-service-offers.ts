@@ -256,11 +256,34 @@ export const findServiceOffers = async (input: InputSchemaType): Promise<Capabil
         return []
     }
 
+    const offerIds = activeOffers
+        .map((offer) => Number(offer.id))
+        .filter((id) => Number.isFinite(id) && id > 0)
+
+    const usedOfferIds = new Set<number>()
+    if (offerIds.length > 0) {
+        const { data: usedClients } = await supabase
+            .from('service_clients')
+            .select('service_offer_id')
+            .in('service_offer_id', offerIds)
+            .in('status', ['accepted', 'completed', 'active', 'in_progress'])
+
+        for (const client of usedClients || []) {
+            usedOfferIds.add(Number(client.service_offer_id))
+        }
+    }
+
+    const availableOffers = activeOffers.filter((offer) => !usedOfferIds.has(Number(offer.id)))
+
+    if (availableOffers.length === 0) {
+        return []
+    }
+
     const categoryNeedle = input.category.trim().toLowerCase()
     const cityNeedle = input.city.trim().toLowerCase()
     const stateNeedle = input.state_province.trim().toLowerCase()
 
-    const scored: CapabilityMatch[] = activeOffers
+    const scored: CapabilityMatch[] = availableOffers
         .map((offer) => {
             const impactAreas = splitToList(offer.impact_area)
             const requirements = splitToList(offer.requirements)
