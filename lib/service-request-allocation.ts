@@ -1,5 +1,3 @@
-import { supabase } from '@/lib/db'
-
 export type ServiceRequestTarget = {
   type: string
   amount: number
@@ -285,39 +283,6 @@ export function getFundingProgress(targetInr: number, raisedInr: number) {
 
 export function isFinancialNeedType(value: unknown): boolean {
   return String(value || '').toLowerCase().includes('financial')
-}
-
-export async function applyVolunteerAcceptanceAllocation(
-  request: Record<string, any>,
-  input: { amount?: number; quantity?: number }
-) {
-  const allocation = buildAllocationUpdatePayload(request, input)
-  const updatePayload: Record<string, unknown> = {
-    updated_at: new Date().toISOString(),
-  }
-
-  if (allocation.current_amount != null) {
-    updatePayload.current_amount = allocation.current_amount
-    updatePayload.remaining_amount = allocation.remaining_amount
-  }
-
-  if (allocation.current_quantity != null) {
-    updatePayload.current_quantity = allocation.current_quantity
-    updatePayload.remaining_quantity = allocation.remaining_quantity
-  }
-
-  const { data, error } = await supabase
-    .from('service_requests')
-    .update(updatePayload)
-    .eq('id', request.id)
-    .select('*')
-    .single()
-
-  if (error || !data) {
-    throw new Error(error?.message || 'Failed to update need allocation')
-  }
-
-  return data
 }
 
 export function validateAcceptanceAllocation(

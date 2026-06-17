@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, supabase } from '@/lib/db';
+import { db, supabase, applyVolunteerAcceptanceAllocation } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 import {
   getNeedRemainingQuantity,
   getServiceRequestTarget,
   parseAllocationNumber,
-  applyVolunteerAcceptanceAllocation,
   validateAcceptanceAllocation,
   getNgoNeedFulfillmentMode,
   getSkillServiceDailyRate,
