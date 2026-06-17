@@ -4,7 +4,6 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 export const supabaseConfig = {
   url: process.env.NEXT_PUBLIC_SUPABASE_URL!,
   publishableKey: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
-  secretKey: process.env.SUPABASE_SECRET_KEY!,
 }
 
 // Create Supabase client for client-side usage
@@ -12,20 +11,6 @@ export const createClient = () => {
   return createSupabaseClient(
     supabaseConfig.url,
     supabaseConfig.publishableKey
-  );
-}
-
-// Create Supabase client with secret key for server-side usage
-export const createServerClient = () => {
-  return createSupabaseClient(
-    supabaseConfig.url,
-    supabaseConfig.secretKey,
-    {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false
-      }
-    }
   );
 }
 

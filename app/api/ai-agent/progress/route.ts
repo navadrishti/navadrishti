@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { verifyToken } from "@/lib/auth"
-import { supabase } from "@/lib/db"
+import { supabase, pruneRemovedAgentSessions } from "@/lib/db"
 import { randomUUID } from 'crypto'
 import {
   buildProjectContextWithPublished,
-  pruneRemovedAgentSessions,
   readPublishedEntity,
 } from "@/lib/ai-agent-sessions"
 
