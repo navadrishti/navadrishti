@@ -1,54 +1,46 @@
+import {
+  EvidencePortalMain,
+  EvidencePortalShell,
+} from '@/components/evidence-verification/portal-ui';
+
 export default function CompanyCAPanelSkeleton() {
   return (
-    <div className="min-h-screen bg-slate-100">
-      
-      {/* Header */}
-      <div className="border-b bg-white">
-        <div className="mx-auto max-w-6xl px-6 py-5">
-          <div className="h-8 w-56 bg-slate-200 rounded animate-pulse" />
-          <div className="mt-2 h-4 w-80 bg-slate-100 rounded animate-pulse" />
+    <EvidencePortalShell>
+      <div className="border-b bg-udaan-blue">
+        <div className="udaan-container flex h-16 items-center px-4 md:px-6">
+          <div className="h-10 w-36 rounded bg-white/20 animate-pulse" />
+          <div className="ml-auto flex items-center gap-4">
+            <div className="h-8 w-24 rounded bg-white/20 animate-pulse" />
+            <div className="h-8 w-24 rounded bg-white/20 animate-pulse" />
+            <div className="h-9 w-9 rounded-full bg-white/20 animate-pulse" />
+          </div>
         </div>
       </div>
 
-      <div className="mx-auto max-w-6xl px-6 pt-6 pb-10 space-y-6">
-
-        {/* Toggle */}
-        <div className="flex justify-between">
-          <div className="h-6 w-40 bg-slate-200 rounded animate-pulse"></div>
-          <div className="h-6 w-32 bg-slate-200 rounded animate-pulse"></div>
+      <EvidencePortalMain>
+        <div className="space-y-2 border-b border-slate-200/80 pb-6">
+          <div className="h-9 w-64 rounded bg-slate-200 animate-pulse" />
+          <div className="h-5 w-80 max-w-full rounded bg-slate-100 animate-pulse" />
         </div>
 
-        {/* Summary Cards */}
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="rounded-xl border bg-white p-6 space-y-3">
-            <div className="h-5 w-32 bg-slate-200 rounded animate-pulse"></div>
-            <div className="h-4 w-40 bg-slate-100 rounded animate-pulse"></div>
-            <div className="h-10 w-20 bg-slate-200 rounded animate-pulse"></div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          {Array.from({ length: 2 }).map((_, index) => (
+            <div key={index} className="rounded-lg border border-slate-200 bg-white p-6 space-y-3 shadow-sm">
+              <div className="h-5 w-32 bg-slate-200 rounded animate-pulse" />
+              <div className="h-4 w-40 bg-slate-100 rounded animate-pulse" />
+              <div className="h-10 w-20 bg-slate-200 rounded animate-pulse" />
+            </div>
+          ))}
+        </div>
+
+        {Array.from({ length: 3 }).map((_, index) => (
+          <div key={index} className="rounded-lg border border-slate-200 bg-white p-6 space-y-3 shadow-sm">
+            <div className="h-5 w-48 bg-slate-200 rounded animate-pulse" />
+            <div className="h-4 w-full max-w-md bg-slate-100 rounded animate-pulse" />
+            <div className="h-24 w-full bg-slate-100 rounded animate-pulse" />
           </div>
-
-          <div className="rounded-xl border bg-white p-6 space-y-3">
-            <div className="h-5 w-32 bg-slate-200 rounded animate-pulse"></div>
-            <div className="h-4 w-40 bg-slate-100 rounded animate-pulse"></div>
-            <div className="h-10 w-20 bg-slate-200 rounded animate-pulse"></div>
-            <div className="h-10 w-full bg-slate-200 rounded animate-pulse"></div>
-          </div>
-        </div>
-
-        {/* Payment */}
-        <div className="rounded-xl border bg-white p-6 space-y-3">
-          <div className="h-5 w-40 bg-slate-200 rounded animate-pulse"></div>
-          <div className="h-4 w-60 bg-slate-100 rounded animate-pulse"></div>
-          <div className="h-20 bg-slate-100 rounded animate-pulse"></div>
-        </div>
-
-        {/* Projects */}
-        <div className="space-y-4">
-          <div className="h-24 bg-slate-100 rounded animate-pulse"></div>
-          <div className="h-24 bg-slate-100 rounded animate-pulse"></div>
-          <div className="h-24 bg-slate-100 rounded animate-pulse"></div>
-        </div>
-
-      </div>
-    </div>
+        ))}
+      </EvidencePortalMain>
+    </EvidencePortalShell>
   );
 }

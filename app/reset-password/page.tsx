@@ -8,7 +8,8 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { ArrowLeft, CheckCircle } from 'lucide-react';
+import { CheckCircle } from 'lucide-react';
+import { AuthCardBackRow } from '@/components/header';
 
 function ResetPasswordContent() {
   const [password, setPassword] = useState('');
@@ -109,14 +110,17 @@ function ResetPasswordContent() {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
         <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-green-100 flex items-center justify-center">
-              <CheckCircle className="h-6 w-6 text-green-600" />
+          <CardHeader className="space-y-1">
+            <AuthCardBackRow fallbackHref="/login" />
+            <div className="text-center">
+              <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-green-100 flex items-center justify-center">
+                <CheckCircle className="h-6 w-6 text-green-600" />
+              </div>
+              <CardTitle className="text-2xl font-bold text-center text-green-600">Password Reset Successful</CardTitle>
+              <CardDescription className="text-center">
+                Your password has been successfully reset. You can now sign in with your new password.
+              </CardDescription>
             </div>
-            <CardTitle className="text-2xl font-bold text-green-600">Password Reset Successful</CardTitle>
-            <CardDescription>
-              Your password has been successfully reset. You can now sign in with your new password.
-            </CardDescription>
           </CardHeader>
           
           <CardContent className="text-center text-sm text-muted-foreground">
@@ -139,9 +143,10 @@ function ResetPasswordContent() {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
         <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <CardTitle className="text-2xl font-bold text-destructive">Invalid Reset Link</CardTitle>
-            <CardDescription>
+          <CardHeader className="space-y-1">
+            <AuthCardBackRow fallbackHref="/login" />
+            <CardTitle className="text-2xl font-bold text-center text-destructive">Invalid Reset Link</CardTitle>
+            <CardDescription className="text-center">
               This password reset link is invalid or has expired.
             </CardDescription>
           </CardHeader>
@@ -158,12 +163,6 @@ function ResetPasswordContent() {
             <Link href="/forgot-password" className="w-full">
               <Button className="w-full">
                 Request New Reset Link
-              </Button>
-            </Link>
-            <Link href="/login" className="w-full">
-              <Button variant="outline" className="w-full hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0" onClick={(e) => { e.preventDefault(); router.back(); }}>
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Back
               </Button>
             </Link>
           </CardFooter>
@@ -191,6 +190,7 @@ function ResetPasswordContent() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
+          <AuthCardBackRow fallbackHref="/login" />
           <CardTitle className="text-2xl font-bold text-center">Reset Password</CardTitle>
           <CardDescription className="text-center">
             Enter your new password below

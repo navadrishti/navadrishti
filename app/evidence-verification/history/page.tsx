@@ -3,13 +3,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { CAConsoleHeader } from '@/components/ca-console-header';
+import { CAConsoleHeader, formatVerifierScopeLabels } from '@/components/ca-console-header';
 import {
-  mockCompanyCAContext,
-  mockProjectsResponse,
-  mockAuditHistoryResponse
-} from '@/lib/mock-ca-data';
+  EvidenceMessageCard,
+  EvidencePageHeader,
+  EvidencePortalMain,
+  EvidencePortalShell,
+  EvidenceSectionCard,
+} from '@/components/evidence-verification/portal-ui';
 
 type AuditEvent = {
   id: string;
@@ -30,57 +31,41 @@ function prettifyLabel(value: string) {
 
 function HistorySkeleton() {
   return (
-    <div className="min-h-screen bg-slate-100">
-      <div className="border-b bg-white">
-        <div className="mx-auto max-w-6xl px-6 py-5">
-          <div className="h-8 w-56 rounded bg-slate-200 animate-pulse" />
-          <div className="mt-2 h-4 w-80 rounded bg-slate-100 animate-pulse" />
-        </div>
+    <>
+      <div className="space-y-2">
+        <div className="h-9 w-52 animate-pulse rounded bg-slate-200" />
+        <div className="h-5 w-full max-w-2xl animate-pulse rounded bg-slate-100" />
+        <div className="h-4 w-72 max-w-full animate-pulse rounded bg-slate-100" />
       </div>
 
-      <div className="mx-auto max-w-6xl px-6 pt-6 pb-10 space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="h-4 w-24 rounded bg-slate-200 animate-pulse" />
-            <div className="h-7 w-24 rounded-full bg-slate-200 animate-pulse" />
+      <div className="w-full rounded-lg border border-slate-200 bg-white shadow-sm">
+        <div className="space-y-4 p-6 pb-4">
+          <div className="space-y-2">
+            <div className="h-6 w-28 animate-pulse rounded bg-slate-200" />
+            <div className="h-4 w-full max-w-md animate-pulse rounded bg-slate-100" />
           </div>
-          <div className="h-4 w-40 rounded bg-slate-100 animate-pulse" />
-        </div>
-
-        <div className="rounded-lg border bg-white p-4">
-          <div className="h-4 w-1/2 rounded bg-slate-200 animate-pulse" />
-        </div>
-
-        <div className="h-10 w-40 rounded bg-slate-200 animate-pulse" />
-
-        <div className="rounded-xl border bg-white p-6 space-y-4">
-          <div className="h-5 w-44 rounded bg-slate-200 animate-pulse" />
-          <div className="h-4 w-80 rounded bg-slate-100 animate-pulse" />
 
           <div className="space-y-3">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="rounded-md border bg-slate-50 p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-2">
-                    <div className="h-4 w-40 rounded bg-slate-200 animate-pulse" />
-                    <div className="h-3 w-28 rounded bg-slate-100 animate-pulse" />
-                  </div>
-                  <div className="h-6 w-28 rounded-full bg-slate-200 animate-pulse" />
-                </div>
-
-                <div className="grid gap-2 md:grid-cols-3">
-                  <div className="h-3 rounded bg-slate-100 animate-pulse" />
-                  <div className="h-3 rounded bg-slate-100 animate-pulse" />
-                  <div className="h-3 rounded bg-slate-100 animate-pulse" />
-                </div>
-
-                <div className="h-16 rounded border bg-white animate-pulse" />
-              </div>
-            ))}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="h-4 w-12 animate-pulse rounded bg-slate-100" />
+              <div className="h-9 w-14 animate-pulse rounded-md bg-slate-200" />
+              <div className="h-9 w-24 animate-pulse rounded-md bg-slate-100" />
+              <div className="h-9 w-28 animate-pulse rounded-md bg-slate-100" />
+            </div>
+            <div className="h-3 w-44 animate-pulse rounded bg-slate-100" />
           </div>
         </div>
+
+        <div className="min-h-[50vh] space-y-3 px-6 pb-6 pt-0">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div
+              key={index}
+              className="h-24 w-full animate-pulse rounded-md border border-slate-200 bg-slate-50"
+            />
+          ))}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -91,11 +76,8 @@ export default function EvidenceVerificationHistoryPage() {
   const [projects, setProjects] = useState<any[]>([]);
   const [projectAuditById, setProjectAuditById] = useState<Record<string, AuditEvent[]>>({});
   const [message, setMessage] = useState('');
-  const [useMockData, setUseMockData] = useState(false);
-
   const [selectedEventType, setSelectedEventType] = useState<string>('ALL');
   const [filterLoading, setFilterLoading] = useState(false);
-
   const filterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const formatDateTime = (value: string) => {
@@ -106,24 +88,21 @@ export default function EvidenceVerificationHistoryPage() {
 
   const dedupeEvents = (events: AuditEvent[]) => {
     const map = new Map<string, AuditEvent>();
-
     for (const event of events) {
       const key = `${event.id}-${event.entity_id}-${event.created_at}`;
       if (!map.has(key)) {
         map.set(key, event);
       }
     }
-
     return Array.from(map.values());
   };
 
   const fetchProjectAudit = async (projectId: string) => {
     const response = await fetch(`/api/csr-projects/${projectId}/audit`, {
-      credentials: 'include'
+      credentials: 'include',
     });
 
     const payload = await response.json();
-
     if (response.ok && payload?.success && Array.isArray(payload.data)) {
       return payload.data as AuditEvent[];
     }
@@ -137,80 +116,55 @@ export default function EvidenceVerificationHistoryPage() {
       setMessage('');
 
       try {
-        if (useMockData) {
-          setContext(mockCompanyCAContext);
+        const verifyRes = await fetch('/api/evidence-verification/verify', {
+          credentials: 'include',
+        });
 
-          const loadedProjects = Array.isArray(mockProjectsResponse.data)
-            ? mockProjectsResponse.data
-            : [];
+        const verifyPayload = await verifyRes.json();
+        if (!verifyRes.ok || !verifyPayload?.success) {
+          router.push('/evidence-verification/login');
+          return;
+        }
+
+        setContext(verifyPayload.company_ca);
+
+        const projectsRes = await fetch('/api/csr-projects', {
+          credentials: 'include',
+        });
+
+        const projectsPayload = await projectsRes.json();
+        if (projectsRes.ok && projectsPayload?.success && Array.isArray(projectsPayload.data)) {
+          const loadedProjects = projectsPayload.data;
           setProjects(loadedProjects);
 
-          const auditById: Record<string, AuditEvent[]> = {};
+          const auditEntries = await Promise.all(
+            loadedProjects.map(async (project: any) => {
+              const audit = await fetchProjectAudit(project.id);
+              return { projectId: project.id, audit };
+            })
+          );
 
-          loadedProjects.forEach((project: any) => {
-            if (project.id === 'proj-001') {
-              auditById[project.id] = Array.isArray(mockAuditHistoryResponse.data)
-                ? (mockAuditHistoryResponse.data as AuditEvent[])
-                : [];
-            } else {
-              auditById[project.id] = [];
-            }
+          const auditById: Record<string, AuditEvent[]> = {};
+          auditEntries.forEach(({ projectId, audit }) => {
+            auditById[projectId] = audit;
           });
 
           setProjectAuditById(auditById);
         } else {
-          const verifyRes = await fetch('/api/evidence-verification/verify', {
-            credentials: 'include'
-          });
-
-          const verifyPayload = await verifyRes.json();
-          if (!verifyRes.ok || !verifyPayload?.success) {
-            router.push('/evidence-verification/login');
-            return;
-          }
-
-          setContext(verifyPayload.company_ca);
-
-          const projectsRes = await fetch('/api/csr-projects', {
-            credentials: 'include'
-          });
-
-          const projectsPayload = await projectsRes.json();
-          if (projectsRes.ok && projectsPayload?.success && Array.isArray(projectsPayload.data)) {
-            const loadedProjects = projectsPayload.data;
-            setProjects(loadedProjects);
-
-            const auditEntries = await Promise.all(
-              loadedProjects.map(async (project: any) => {
-                const audit = await fetchProjectAudit(project.id);
-                return { projectId: project.id, audit };
-              })
-            );
-
-            const auditById: Record<string, AuditEvent[]> = {};
-            auditEntries.forEach(({ projectId, audit }) => {
-              auditById[projectId] = audit;
-            });
-
-            setProjectAuditById(auditById);
-          } else {
-            setProjects([]);
-            setProjectAuditById({});
-            setMessage('No audit history available.');
-          }
+          setProjects([]);
+          setProjectAuditById({});
+          setMessage('No audit history available.');
         }
       } catch (error) {
-        if (!useMockData) {
-          setMessage('Unable to load audit history.');
-          console.error(error);
-        }
+        setMessage('Unable to load audit history.');
+        console.error(error);
       } finally {
         setLoading(false);
       }
     };
 
-    loadHistory();
-  }, [router, useMockData]);
+    void loadHistory();
+  }, [router]);
 
   useEffect(() => {
     return () => {
@@ -223,13 +177,9 @@ export default function EvidenceVerificationHistoryPage() {
   const handleLogout = async () => {
     await fetch('/api/evidence-verification/logout', {
       method: 'POST',
-      credentials: 'include'
+      credentials: 'include',
     });
     router.push('/evidence-verification/login');
-  };
-
-  const handleChangePassword = () => {
-    router.push('/evidence-verification/settings');
   };
 
   const allAuditEvents = useMemo(() => {
@@ -244,10 +194,7 @@ export default function EvidenceVerificationHistoryPage() {
   }, [projectAuditById]);
 
   const eventTypeOptions = useMemo(() => {
-    const types = Array.from(
-      new Set(allAuditEvents.map((event) => event.event_type).filter(Boolean))
-    );
-
+    const types = Array.from(new Set(allAuditEvents.map((event) => event.event_type).filter(Boolean)));
     return types.slice(0, 8);
   }, [allAuditEvents]);
 
@@ -271,148 +218,108 @@ export default function EvidenceVerificationHistoryPage() {
     }, 350);
   };
 
-  if (loading) {
-    return <HistorySkeleton />;
-  }
+  const scopeLabels = formatVerifierScopeLabels(context);
 
   return (
-    <div className="min-h-screen bg-slate-100">
+    <EvidencePortalShell>
       <CAConsoleHeader
-        title="Audit History"
-        subtitle={`Company ID: ${context?.company_user_id || 'Loading...'}`}
-        accountName={context?.company?.name || context?.company_name || context?.user?.name}
-        accountEmail={context?.user?.email || 'testing@example.com'}
-        userId={context?.company_user_id}
+        accountName={context?.user?.name}
+        accountEmail={context?.user?.email}
+        companyName={context?.company?.name || context?.company_name}
+        caId={context?.ca_id}
+        companyUserId={context?.company_user_id}
         onLogout={handleLogout}
-        onChangePassword={handleChangePassword}
       />
 
-      <div className="mx-auto max-w-6xl px-6 pt-6 pb-10 space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <label className="text-sm text-slate-600">Use Mock Data:</label>
-            <button
-              onClick={() => setUseMockData(!useMockData)}
-              className={`px-3 py-1 text-xs rounded-full transition-colors ${
-                useMockData
-                  ? 'bg-blue-100 text-blue-700 border border-blue-300'
-                  : 'bg-gray-100 text-gray-600 border border-gray-300'
-              }`}
-            >
-              {useMockData ? 'ON (Mock)' : 'OFF (API)'}
-            </button>
-          </div>
+      <EvidencePortalMain>
+        {loading ? (
+          <HistorySkeleton />
+        ) : (
+          <>
+        <EvidencePageHeader
+          title="Audit History"
+          description="Complete audit trail of CSR project events and actions."
+          scopeLabels={scopeLabels || undefined}
+          bordered={false}
+        />
 
-          <div className="text-xs text-slate-500">
-            {useMockData ? 'Using sample data for testing' : 'Using live API data'}
-          </div>
-        </div>
+        {message ? <EvidenceMessageCard>{message}</EvidenceMessageCard> : null}
 
-        {message ? (
-          <Card>
-            <CardContent className="pt-4 text-sm text-slate-700">{message}</CardContent>
-          </Card>
-        ) : null}
-
-        <Button variant="outline" onClick={() => router.push('/evidence-verification')}>
-          ← Back to Dashboard
-        </Button>
-
-        <Card>
-          <CardHeader className="space-y-4">
-            <div>
-              <CardTitle>Audit History</CardTitle>
-              <CardDescription>
-                Complete audit trail of all CSR project events and actions
-              </CardDescription>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm text-slate-600">Filter:</span>
-
-              <Button
-                size="sm"
-                variant={selectedEventType === 'ALL' ? 'default' : 'outline'}
-                onClick={() => handleFilterChange('ALL')}
-              >
-                All
-              </Button>
-
-              {eventTypeOptions.map((type) => (
+        <EvidenceSectionCard
+          className="w-full"
+          title="Event Log"
+          description="Filter and review recorded verification activity."
+          headerExtra={
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm text-slate-600">Filter:</span>
                 <Button
-                  key={type}
                   size="sm"
-                  variant={selectedEventType === type ? 'default' : 'outline'}
-                  onClick={() => handleFilterChange(type)}
+                  className="h-9 min-w-[4.5rem]"
+                  variant={selectedEventType === 'ALL' ? 'default' : 'outline'}
+                  onClick={() => handleFilterChange('ALL')}
                 >
-                  {prettifyLabel(type)}
+                  All
                 </Button>
+                {eventTypeOptions.map((type) => (
+                  <Button
+                    key={type}
+                    size="sm"
+                    className="h-9"
+                    variant={selectedEventType === type ? 'default' : 'outline'}
+                    onClick={() => handleFilterChange(type)}
+                  >
+                    {prettifyLabel(type)}
+                  </Button>
+                ))}
+              </div>
+              <p className="text-xs text-slate-500">
+                Showing {filteredEvents.length} of {allAuditEvents.length} events
+              </p>
+            </div>
+          }
+        >
+          <div className="min-h-[50vh] w-full">
+          {filterLoading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div key={index} className="h-24 rounded-lg border border-slate-200 bg-slate-50 animate-pulse" />
               ))}
             </div>
-
-            <div className="text-xs text-slate-500">
-              Showing {filteredEvents.length} of {allAuditEvents.length} events
-            </div>
-          </CardHeader>
-
-          <CardContent>
-            {filterLoading ? (
-              <div className="space-y-3">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className="rounded-md border bg-slate-50 p-4 space-y-3 animate-pulse">
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-2">
-                        <div className="h-4 w-40 rounded bg-slate-200" />
-                        <div className="h-3 w-28 rounded bg-slate-100" />
-                      </div>
-                      <div className="h-6 w-28 rounded-full bg-slate-200" />
-                    </div>
-
-                    <div className="grid gap-2 md:grid-cols-3">
-                      <div className="h-3 rounded bg-slate-100" />
-                      <div className="h-3 rounded bg-slate-100" />
-                      <div className="h-3 rounded bg-slate-100" />
-                    </div>
-
-                    <div className="h-16 rounded border bg-white" />
-                  </div>
-                ))}
-              </div>
-            ) : filteredEvents.length === 0 ? (
-              <p className="text-sm text-slate-600">No audit events recorded yet.</p>
-            ) : (
-              <div className="space-y-3">
-                {filteredEvents.map((event: AuditEvent) => (
-                  <div key={event.id} className="rounded-md border bg-slate-50 p-4">
-                    <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                      <div>
-                        <p className="font-semibold text-slate-900">{event.event_type}</p>
-                        <p className="text-sm text-slate-600">
-                          {event.entity_type || 'Entity'}: {event.entity_id}
-                        </p>
-                        {event.description && (
-                          <p className="mt-1 text-sm text-slate-600">{event.description}</p>
-                        )}
-                      </div>
-                      <p className="whitespace-nowrap text-sm text-slate-600">
-                        {formatDateTime(event.created_at)}
+          ) : filteredEvents.length === 0 ? (
+            <p className="text-sm text-slate-600">No audit events recorded yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {filteredEvents.map((event: AuditEvent) => (
+                <div key={event.id} className="w-full rounded-md border border-slate-200 bg-white p-4">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-slate-900">{event.event_type}</p>
+                      <p className="text-sm text-slate-600">
+                        {event.entity_type || 'Entity'}: {event.entity_id}
                       </p>
+                      {event.description ? (
+                        <p className="mt-1 text-sm text-slate-600">{event.description}</p>
+                      ) : null}
                     </div>
-
-                    {event.details && (
-                      <div className="mt-2 rounded border bg-white p-2 text-xs text-slate-600">
-                        <pre className="overflow-auto">
-                          {JSON.stringify(event.details, null, 2)}
-                        </pre>
-                      </div>
-                    )}
+                    <p className="shrink-0 whitespace-nowrap text-sm text-slate-600">
+                      {formatDateTime(event.created_at)}
+                    </p>
                   </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+                  {event.details ? (
+                    <div className="mt-2 rounded border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600">
+                      <pre className="overflow-auto">{JSON.stringify(event.details, null, 2)}</pre>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          )}
+          </div>
+        </EvidenceSectionCard>
+          </>
+        )}
+      </EvidencePortalMain>
+    </EvidencePortalShell>
   );
 }

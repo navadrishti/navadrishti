@@ -712,3 +712,13 @@ export function AuthBackButton({
     </Button>
   );
 }
+
+export function AuthCardBackRow({
+  fallbackHref,
+}: Pick<AuthBackButtonProps, 'fallbackHref'>) {
+  return (
+    <div className="text-sm">
+      <AuthBackButton fallbackHref={fallbackHref} />
+    </div>
+  );
+}

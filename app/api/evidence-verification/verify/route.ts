@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
       },
       company_ca: {
         identity_id: context.identity.id,
+        ca_id: context.identity.ca_id,
         company_user_id: context.identity.company_user_id,
         permissions: context.identity.permissions,
         user: {
