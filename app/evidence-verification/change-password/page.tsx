@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertCircle, Loader2 } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,7 +13,6 @@ export default function EvidenceVerificationChangePasswordPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [verifying, setVerifying] = useState(true);
   const [form, setForm] = useState({
     currentPassword: '',
     newPassword: '',
@@ -36,16 +35,13 @@ export default function EvidenceVerificationChangePasswordPage() {
         const data = await response.json();
         if (!data?.identity?.must_change_password) {
           router.push('/evidence-verification');
-          return;
         }
-
-        setVerifying(false);
-      } catch (err) {
+      } catch {
         router.push('/evidence-verification/login');
       }
     };
 
-    checkSession();
+    void checkSession();
   }, [router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -91,20 +87,9 @@ export default function EvidenceVerificationChangePasswordPage() {
     }
   };
 
-  if (verifying) {
-    return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-blue-600 mx-auto" />
-          <p className="mt-4 text-slate-600">Verifying session...</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-slate-100 px-4 py-6 text-slate-900 sm:px-6 lg:px-8">
-      <div className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-4xl items-center justify-center">
+    <div className="min-h-full bg-slate-100 px-4 py-6 text-slate-900 sm:px-6 lg:px-8">
+      <div className="mx-auto flex min-h-full max-w-4xl items-center justify-center py-8">
         <Card className="w-full border-slate-200 bg-white">
           <CardHeader>
             <CardTitle className="text-3xl font-semibold tracking-tight text-slate-900">Change Password</CardTitle>

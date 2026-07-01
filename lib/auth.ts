@@ -1,4 +1,4 @@
-import jwt from 'jsonwebtoken';
+import jwt, { JsonWebTokenError, TokenExpiredError } from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -87,12 +87,18 @@ export function verifyToken(token: string): UserData | null {
       user_type: decoded.user_type || 'individual'
     } as UserData;
   } catch (error) {
+    if (error instanceof TokenExpiredError) {
+      return null;
+    }
+
+    if (error instanceof JsonWebTokenError) {
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('Token verification failed:', error.message);
+      }
+      return null;
+    }
+
     console.error('Token verification failed:', error);
-    console.error('Token causing error:', token);
-    // Do NOT manipulate browser globals from a module that may run on the server.
-    // Client-side code (for example in the auth context or logout flow) should
-    // clear cookies/localStorage/sessionStorage when a corrupted token is
-    // detected on the client.
     return null;
   }
 }

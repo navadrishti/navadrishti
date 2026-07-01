@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AuthBackButton } from '@/components/header';
+import { AuthCardBackRow } from '@/components/header';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -53,9 +53,7 @@ export default function LoginPage() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
       <Card className="w-full max-w-md shadow-none">
         <CardHeader className="space-y-1">
-          <div className="text-sm">
-            <AuthBackButton />
-          </div>
+          <AuthCardBackRow />
           <CardTitle className="text-2xl font-bold text-center">Sign In</CardTitle>
           <CardDescription className="text-center">
             Enter your email and password to access your account

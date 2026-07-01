@@ -14,7 +14,7 @@ import { Building2, Mail, Phone, MapPin, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { Textarea } from '@/components/ui/textarea'
 import { useOtpSender } from '@/hooks/use-otp-sender'
-import { AuthBackButton } from '@/components/header'
+import { AuthCardBackRow } from '@/components/header'
 
 export default function NGORegister() {
   const [formData, setFormData] = useState({
@@ -273,9 +273,7 @@ export default function NGORegister() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
       <Card className="w-full max-w-2xl shadow-none">
         <CardHeader className="space-y-1">
-          <div className="text-sm">
-            <AuthBackButton fallbackHref="/register" />
-          </div>
+          <AuthCardBackRow fallbackHref="/register" />
           <CardTitle className="text-2xl font-bold text-center">Register as NGO</CardTitle>
           <CardDescription className="text-center">
             Create your NGO account to connect with volunteers and companies

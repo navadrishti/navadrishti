@@ -81,13 +81,13 @@ interface CampaignApiItem {
 
 function CSRCampaignCtaSkeleton() {
   return (
-    <div className="mb-8 relative overflow-hidden rounded-md border border-slate-200 bg-white p-6 shadow-sm">
-      <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+    <div className="mb-8 p-8 bg-white rounded-md border-2 border-black shadow-sm relative overflow-hidden">
+      <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
         <div className="text-center md:text-left">
-          <Skeleton className="h-7 w-56 mb-2" />
-          <Skeleton className="h-4 w-full max-w-sm" />
+          <Skeleton className="h-8 w-72 mb-3" />
+          <Skeleton className="h-5 w-full max-w-md" />
         </div>
-        <Skeleton className="h-10 w-40 rounded-md" />
+        <Skeleton className="h-[58px] w-[210px] rounded-lg" />
       </div>
     </div>
   )

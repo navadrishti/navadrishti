@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label';
 import { Clock, CheckCircle, AlertTriangle, HeartHandshake, Trash2, Plus, Building, TicketCheck, MailCheck, Phone, Loader2, XCircle } from 'lucide-react';
 import { formatDisplayDate, formatCampaignLeadLifecycleLabel, type CampaignLeadLifecycle } from '@/lib/format-date';
 import Link from 'next/link';
+import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { SkeletonOrderItem } from '@/components/ui/skeleton';
 import { ProfileDashboardTab } from '@/components/profile-dashboard-tab';
@@ -166,12 +167,21 @@ interface CSRTrackingAssignment {
   project_title: string;
   project_location?: string;
   project_timeline?: string;
+  project_description?: string;
+  project_category?: string | null;
+  project_expected_beneficiaries?: number | null;
+  project_valid_until?: string | null;
+  project_status?: string | null;
+  csr_project_available_for_csr?: boolean | null;
   lead_ngo_id: number;
   lead_ngo_name: string;
   lead_ngo_email?: string;
   assigned_company_id: number;
   assigned_company_name: string;
   assigned_company_email?: string;
+  selected_lead_ngo_id?: number | null;
+  selected_lead_ngo_name?: string | null;
+  selected_lead_ngo_email?: string | null;
   assignment_status: string;
   assigned_at?: string | null;
   review_note?: string;
@@ -204,6 +214,7 @@ interface CampaignVolunteerAssignment {
   id: string;
   campaign_id: string;
   campaign_title: string;
+  campaign_description?: string;
   campaign_location?: string;
   campaign_category?: string;
   campaign_status?: string;
@@ -212,6 +223,8 @@ interface CampaignVolunteerAssignment {
   lifecycle: CampaignLeadLifecycle;
   volunteer_capacity?: number;
   company_name?: string;
+  company_email?: string;
+  applied_at?: string | null;
   assignment_id?: string | null;
   attendance_summary?: {
     last_attendance_at?: string | null;
@@ -264,6 +277,218 @@ const getStatusBadgeClass = (status: string): string => {
   if (normalized === 'expired') return 'border-slate-300 bg-slate-100 text-slate-700';
   return 'border-slate-300 bg-white text-slate-700';
 };
+
+function StaticStatusBadge({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold pointer-events-none select-none',
+        className
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+function NeedDetailLink({
+  need,
+}: {
+  need: { id: number; title: string; request_type?: string };
+}) {
+  return (
+    <Link
+      href={`/service-requests/${need.id}`}
+      className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700 no-underline hover:bg-slate-100 hover:text-slate-700 focus:bg-slate-100 focus:text-slate-700"
+    >
+      {need.title}
+      {need.request_type ? ` · ${need.request_type}` : ''}
+    </Link>
+  );
+}
+
+function CampaignAssignmentDetails({
+  assignment,
+  roleLabel,
+}: {
+  assignment: CampaignLeadAssignment;
+  roleLabel: string;
+}) {
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+        <div className="min-w-0">
+          <p className="font-semibold text-slate-900">{assignment.campaign_title}</p>
+          <p className="text-sm text-slate-600">
+            {roleLabel} • {assignment.company_name}
+          </p>
+          <p className="text-xs text-slate-500">
+            {assignment.company_email || 'No email'}
+            {assignment.accepted_at ? ` • Accepted ${formatDisplayDate(assignment.accepted_at)}` : ''}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2 shrink-0">
+          <StaticStatusBadge className={getCampaignLifecycleBadgeClass(assignment.lifecycle)}>
+            {formatCampaignLeadLifecycleLabel(assignment.lifecycle)}
+          </StaticStatusBadge>
+          {assignment.campaign_status ? (
+            <StaticStatusBadge className={getStatusBadgeClass(assignment.campaign_status)}>
+              Campaign: {formatStatusLabel(assignment.campaign_status)}
+            </StaticStatusBadge>
+          ) : null}
+        </div>
+      </div>
+
+      {assignment.campaign_description ? (
+        <p className="text-sm text-muted-foreground line-clamp-3">{assignment.campaign_description}</p>
+      ) : null}
+
+      {assignment.campaign_status === 'draft' && assignment.lifecycle === 'yet_to_start' ? (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Waiting for the company to publish this campaign.
+        </div>
+      ) : null}
+
+      <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm md:grid-cols-3">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-slate-500">Category</p>
+          <p className="font-medium text-slate-800">{assignment.campaign_category || 'Not set'}</p>
+        </div>
+        <div>
+          <p className="text-xs uppercase tracking-wide text-slate-500">Location</p>
+          <p className="font-medium text-slate-800">{assignment.campaign_location || 'Not set'}</p>
+        </div>
+        <div>
+          <p className="text-xs uppercase tracking-wide text-slate-500">Timeline</p>
+          <p className="font-medium text-slate-800">
+            {formatDisplayDate(assignment.start_date) || 'Start TBD'} → {formatDisplayDate(assignment.end_date) || 'End TBD'}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2 pt-1">
+        <Button asChild variant="outline" size="sm">
+          <Link href={`/csr-campaigns/${assignment.campaign_id}`}>View Campaign</Link>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function CsrTrackingProjectDetails({
+  assignment,
+  partnerLabel,
+  partnerName,
+  partnerEmail,
+}: {
+  assignment: CSRTrackingAssignment;
+  partnerLabel: string;
+  partnerName: string;
+  partnerEmail?: string;
+}) {
+  const beneficiaries =
+    assignment.project_expected_beneficiaries != null && assignment.project_expected_beneficiaries > 0
+      ? Number(assignment.project_expected_beneficiaries).toLocaleString('en-IN')
+      : null;
+  const csrAvailable = assignment.csr_project_available_for_csr;
+  const needs = assignment.needs || [];
+  const visibleNeeds = needs.slice(0, 4);
+  const hiddenNeedCount = Math.max(0, needs.length - visibleNeeds.length);
+  const hasDistinctLeadNgo = Boolean(
+    assignment.selected_lead_ngo_id &&
+    Number(assignment.selected_lead_ngo_id) !== Number(assignment.lead_ngo_id)
+  );
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+        <div className="min-w-0">
+          <p className="font-semibold text-slate-900">{assignment.project_title}</p>
+          <p className="text-sm text-slate-600">{partnerLabel}: {partnerName}</p>
+          <p className="text-xs text-slate-500">
+            {partnerEmail || 'No email'}
+            {assignment.assigned_at ? ` • Handoff ${formatDisplayDate(assignment.assigned_at)}` : ''}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Owner NGO: {assignment.lead_ngo_name}
+            {hasDistinctLeadNgo && assignment.selected_lead_ngo_name
+              ? ` • Lead NGO: ${assignment.selected_lead_ngo_name}`
+              : ''}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2 shrink-0">
+          <StaticStatusBadge className={getStatusBadgeClass(assignment.assignment_status)}>
+            Assignment: {formatStatusLabel(assignment.assignment_status)}
+          </StaticStatusBadge>
+          {assignment.project_status ? (
+            <StaticStatusBadge className={getStatusBadgeClass(assignment.project_status)}>
+              Project: {formatStatusLabel(assignment.project_status)}
+            </StaticStatusBadge>
+          ) : null}
+        </div>
+      </div>
+
+      {assignment.project_description ? (
+        <p className="text-sm text-muted-foreground line-clamp-3">{assignment.project_description}</p>
+      ) : null}
+
+      {assignment.review_note ? (
+        <div className="rounded-md border bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <span className="font-medium">Acceptance note:</span> {assignment.review_note}
+        </div>
+      ) : null}
+
+      <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm md:grid-cols-3">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-slate-500">Need types</p>
+          <p className="font-medium text-slate-800">{assignment.project_category || 'Not set'}</p>
+        </div>
+        <div>
+          <p className="text-xs uppercase tracking-wide text-slate-500">Location</p>
+          <p className="font-medium text-slate-800">{assignment.project_location || 'Not set'}</p>
+        </div>
+        <div>
+          <p className="text-xs uppercase tracking-wide text-slate-500">Timeline</p>
+          <p className="font-medium text-slate-800">{assignment.project_timeline || 'Not set'}</p>
+        </div>
+        <div>
+          <p className="text-xs uppercase tracking-wide text-slate-500">Beneficiaries</p>
+          <p className="font-medium text-slate-800">{beneficiaries || 'Not set'}</p>
+        </div>
+        <div>
+          <p className="text-xs uppercase tracking-wide text-slate-500">Valid until</p>
+          <p className="font-medium text-slate-800">{formatDisplayDate(assignment.project_valid_until) || 'Not set'}</p>
+        </div>
+        <div>
+          <p className="text-xs uppercase tracking-wide text-slate-500">CSR takeover</p>
+          <p className="font-medium text-slate-800">
+            {csrAvailable === false ? 'No' : csrAvailable === true ? 'Yes' : 'Not set'}
+          </p>
+        </div>
+      </div>
+
+      {needs.length > 0 ? (
+        <div>
+          <p className="mb-1.5 text-xs uppercase tracking-wide text-slate-500">Project needs ({needs.length})</p>
+          <div className="flex flex-wrap gap-1.5">
+            {visibleNeeds.map((need) => (
+              <NeedDetailLink key={need.id} need={need} />
+            ))}
+            {hiddenNeedCount > 0 ? (
+              <StaticStatusBadge className="border-slate-200 bg-white text-slate-600">+{hiddenNeedCount} more</StaticStatusBadge>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="flex flex-wrap gap-2 pt-1">
+        <Link href={`/service-requests/projects/${assignment.project_id}`}>
+          <Button size="sm" variant="outline">View Project</Button>
+        </Link>
+      </div>
+    </div>
+  );
+}
 
 function formatDelhiveryEventTime(value: unknown) {
   if (!value) return 'Time not available';
@@ -2108,7 +2333,7 @@ function NGODashboardContent() {
               />
 
               <div className="lg:col-span-8">
-                <Card className="min-h-[420px]">
+                <Card>
                   <CardContent className="pt-6">
                     <Tabs value={activeTab} onValueChange={(value) => {
                       window.history.replaceState(null, '', `/ngos/dashboard?tab=${value}`);
@@ -2631,23 +2856,13 @@ function NGODashboardContent() {
                           ) : (
                             <div className="space-y-3">
                               {csrTrackingAssignments.map((assignment) => (
-                                <div key={`${assignment.project_id}:${assignment.assigned_company_id}`} className="rounded-md border bg-white p-3 space-y-3">
-                                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                                    <div>
-                                      <p className="font-semibold">{assignment.project_title}</p>
-                                      <p className="text-sm text-slate-600">Company: {assignment.assigned_company_name}</p>
-                                      <p className="text-xs text-slate-500">{assignment.assigned_company_email || 'No email'} • {assignment.project_location || 'Location not set'}</p>
-                                    </div>
-                                    <Badge variant="outline" className={`w-fit ${getStatusBadgeClass(assignment.assignment_status)}`}>
-                                      {formatStatusLabel(assignment.assignment_status)}
-                                    </Badge>
-                                  </div>
-
-                                  <div className="flex flex-wrap gap-2">
-                                    <Link href={`/service-requests/projects/${assignment.project_id}`}>
-                                      <Button size="sm" variant="outline">View Project</Button>
-                                    </Link>
-                                  </div>
+                                <div key={`${assignment.project_id}:${assignment.assigned_company_id}`} className="rounded-md border bg-white p-4">
+                                  <CsrTrackingProjectDetails
+                                    assignment={assignment}
+                                    partnerLabel="Company"
+                                    partnerName={assignment.assigned_company_name}
+                                    partnerEmail={assignment.assigned_company_email}
+                                  />
                                 </div>
                               ))}
                             </div>
@@ -2749,30 +2964,7 @@ function NGODashboardContent() {
                             <>
                               {ongoingCampaignLeadAssignments.map((assignment) => (
                                 <div key={`campaign-lead-${assignment.id}`} className="rounded-md border bg-white p-4">
-                                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                                    <div>
-                                      <p className="font-semibold">{assignment.campaign_title}</p>
-                                      <p className="text-sm text-muted-foreground">Lead NGO • {assignment.company_name}</p>
-                                      <p className="text-xs text-muted-foreground">{assignment.campaign_location || 'Location not set'}</p>
-                                    </div>
-                                    <Badge variant="outline" className={`w-fit ${getCampaignLifecycleBadgeClass(assignment.lifecycle)}`}>
-                                      {formatCampaignLeadLifecycleLabel(assignment.lifecycle)}
-                                    </Badge>
-                                  </div>
-                                  <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-muted-foreground md:grid-cols-2">
-                                    <p>Category: {assignment.campaign_category || 'Not set'}</p>
-                                    <p>
-                                      Timeline: {formatDisplayDate(assignment.start_date) || 'Start TBD'} → {formatDisplayDate(assignment.end_date) || 'End TBD'}
-                                    </p>
-                                    {assignment.campaign_status === 'draft' && assignment.lifecycle === 'yet_to_start' ? (
-                                      <p className="md:col-span-2 text-amber-700">Waiting for the company to publish this campaign.</p>
-                                    ) : null}
-                                  </div>
-                                  <div className="mt-3">
-                                    <Button asChild variant="outline" size="sm">
-                                      <Link href={`/csr-campaigns/${assignment.campaign_id}`}>View Campaign</Link>
-                                    </Button>
-                                  </div>
+                                  <CampaignAssignmentDetails assignment={assignment} roleLabel="Lead NGO" />
                                 </div>
                               ))}
                               {ongoingCampaignVolunteerAssignments.map((assignment) => (
@@ -2882,27 +3074,7 @@ function NGODashboardContent() {
                             <>
                               {completedCampaignLeadAssignments.map((assignment) => (
                                 <div key={`campaign-lead-completed-${assignment.id}`} className="rounded-md border bg-white p-4">
-                                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                                    <div>
-                                      <p className="font-semibold">{assignment.campaign_title}</p>
-                                      <p className="text-sm text-muted-foreground">Lead NGO • {assignment.company_name}</p>
-                                      <p className="text-xs text-muted-foreground">{assignment.campaign_location || 'Location not set'}</p>
-                                    </div>
-                                    <Badge variant="outline" className={`w-fit ${getCampaignLifecycleBadgeClass(assignment.lifecycle)}`}>
-                                      {formatCampaignLeadLifecycleLabel(assignment.lifecycle)}
-                                    </Badge>
-                                  </div>
-                                  <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-muted-foreground md:grid-cols-2">
-                                    <p>Category: {assignment.campaign_category || 'Not set'}</p>
-                                    <p>
-                                      Timeline: {formatDisplayDate(assignment.start_date) || 'Start TBD'} → {formatDisplayDate(assignment.end_date) || 'End TBD'}
-                                    </p>
-                                  </div>
-                                  <div className="mt-3">
-                                    <Button asChild variant="outline" size="sm">
-                                      <Link href={`/csr-campaigns/${assignment.campaign_id}`}>View Campaign</Link>
-                                    </Button>
-                                  </div>
+                                  <CampaignAssignmentDetails assignment={assignment} roleLabel="Lead NGO" />
                                 </div>
                               ))}
                               {completedCampaignVolunteerAssignments.map((assignment) => (

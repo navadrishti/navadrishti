@@ -17,6 +17,35 @@ async function loadCampaign(campaignId: string) {
   return data
 }
 
+export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params
+    const campaign = await loadCampaign(id)
+
+    let companyName: string | null = null
+    const companyId = Number(campaign.company_id || 0)
+    if (companyId > 0) {
+      const { data: company } = await supabase
+        .from('users')
+        .select('id, name')
+        .eq('id', companyId)
+        .maybeSingle()
+      companyName = company?.name ? String(company.name).trim() : null
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        ...campaign,
+        company_name: companyName,
+      },
+    })
+  } catch (error) {
+    console.error('Campaign fetch error:', error)
+    return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
+  }
+}
+
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = getAuthUserFromRequest(request)

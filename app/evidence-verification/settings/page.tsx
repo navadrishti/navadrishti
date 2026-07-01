@@ -3,10 +3,17 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { CAConsoleHeader } from '@/components/ca-console-header';
+import { CAConsoleHeader, formatVerifierScopeLabels } from '@/components/ca-console-header';
+import {
+  EvidenceActionRow,
+  EvidencePageHeader,
+  EvidencePortalContentSkeleton,
+  EvidencePortalMain,
+  EvidencePortalShell,
+  EvidenceSectionCard,
+} from '@/components/evidence-verification/portal-ui';
 
 export default function EvidenceVerificationSettingsPage() {
   const router = useRouter();
@@ -23,7 +30,7 @@ export default function EvidenceVerificationSettingsPage() {
     const loadContext = async () => {
       try {
         const response = await fetch('/api/evidence-verification/verify', {
-          credentials: 'include'
+          credentials: 'include',
         });
         const payload = await response.json();
 
@@ -40,13 +47,13 @@ export default function EvidenceVerificationSettingsPage() {
       }
     };
 
-    loadContext();
+    void loadContext();
   }, [router]);
 
   const handleLogout = async () => {
     await fetch('/api/evidence-verification/logout', {
       method: 'POST',
-      credentials: 'include'
+      credentials: 'include',
     });
     router.push('/evidence-verification/login');
   };
@@ -78,12 +85,12 @@ export default function EvidenceVerificationSettingsPage() {
         method: 'POST',
         credentials: 'include',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           current_password: currentPassword,
-          new_password: newPassword
-        })
+          new_password: newPassword,
+        }),
       });
       const payload = await response.json();
 
@@ -103,111 +110,83 @@ export default function EvidenceVerificationSettingsPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-100 px-6 py-10">
-        <p className="text-center text-slate-700">Loading settings...</p>
-      </div>
-    );
-  }
+  const scopeLabels = formatVerifierScopeLabels(context);
 
   return (
-    <div className="min-h-screen bg-slate-100">
+    <EvidencePortalShell>
       <CAConsoleHeader
-        title="Portal Settings"
-        subtitle="Manage account details and change password"
-        accountName={context?.company?.name || context?.user?.name || 'Verifier'}
-        accountEmail={context?.user?.email || 'company-ca@example.com'}
-        userId={context?.company_user_id}
+        accountName={context?.user?.name}
+        accountEmail={context?.user?.email}
+        companyName={context?.company?.name || context?.company_name}
+        caId={context?.ca_id}
+        companyUserId={context?.company_user_id}
         onLogout={handleLogout}
-        onChangePassword={() => {
-          // no-op if already on settings page
-        }}
       />
 
-      <div className="mx-auto max-w-4xl space-y-6 px-6 py-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Account overview</CardTitle>
-            <CardDescription>Verification account details and user profile.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3 text-slate-800">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <p className="text-xs uppercase tracking-wide text-slate-500">Name</p>
-                <p className="text-sm font-medium">{context?.user?.name || context?.company?.name || 'Verifier'}</p>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-slate-500">Email</p>
-                <p className="text-sm font-medium">{context?.user?.email || 'N/A'}</p>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-slate-500">Company</p>
-                <p className="text-sm font-medium">{context?.company?.name || 'N/A'}</p>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-slate-500">Verifier ID</p>
-                <p className="text-sm font-medium">{context?.company_user_id || 'N/A'}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <EvidencePortalMain narrow>
+        {loading ? (
+          <EvidencePortalContentSkeleton />
+        ) : (
+          <>
+        <EvidencePageHeader
+          title="Settings"
+          description="Manage your verifier account and password."
+          scopeLabels={scopeLabels || undefined}
+        />
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Change password</CardTitle>
-            <CardDescription>Use a secure new password and save it here.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {errorMessage ? (
-              <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{errorMessage}</div>
-            ) : null}
-            {successMessage ? (
-              <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{successMessage}</div>
-            ) : null}
-            <form className="grid gap-4" onSubmit={handlePasswordChange}>
-              <div className="grid gap-2">
-                <Label htmlFor="company-ca-settings-current-password">Current password</Label>
-                <Input
-                  id="company-ca-settings-current-password"
-                  type="password"
-                  value={currentPassword}
-                  onChange={(event) => setCurrentPassword(event.target.value)}
-                  required
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="company-ca-settings-new-password">New password</Label>
-                <Input
-                  id="company-ca-settings-new-password"
-                  type="password"
-                  value={newPassword}
-                  onChange={(event) => setNewPassword(event.target.value)}
-                  required
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="company-ca-settings-confirm-password">Confirm new password</Label>
-                <Input
-                  id="company-ca-settings-confirm-password"
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(event) => setConfirmPassword(event.target.value)}
-                  required
-                />
-              </div>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <Button type="submit" disabled={submitting}>
-                  {submitting ? 'Saving...' : 'Save new password'}
-                </Button>
-                <Button variant="outline" onClick={() => router.push('/evidence-verification')}>
-                  Back to dashboard
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+        <EvidenceSectionCard title="Change password" description="Use a secure new password and save it here.">
+          {errorMessage ? (
+            <div className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{errorMessage}</div>
+          ) : null}
+          {successMessage ? (
+            <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
+              {successMessage}
+            </div>
+          ) : null}
+          <form className="grid gap-4" onSubmit={handlePasswordChange}>
+            <div className="grid gap-2">
+              <Label htmlFor="company-ca-settings-current-password">Current password</Label>
+              <Input
+                id="company-ca-settings-current-password"
+                type="password"
+                value={currentPassword}
+                onChange={(event) => setCurrentPassword(event.target.value)}
+                required
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="company-ca-settings-new-password">New password</Label>
+              <Input
+                id="company-ca-settings-new-password"
+                type="password"
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+                required
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="company-ca-settings-confirm-password">Confirm new password</Label>
+              <Input
+                id="company-ca-settings-confirm-password"
+                type="password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+                required
+              />
+            </div>
+            <EvidenceActionRow className="sm:justify-stretch [&>button]:sm:flex-1">
+              <Button type="submit" disabled={submitting}>
+                {submitting ? 'Saving...' : 'Save new password'}
+              </Button>
+              <Button type="button" variant="outline" onClick={() => router.push('/evidence-verification')}>
+                Back to dashboard
+              </Button>
+            </EvidenceActionRow>
+          </form>
+        </EvidenceSectionCard>
+          </>
+        )}
+      </EvidencePortalMain>
+    </EvidencePortalShell>
   );
 }

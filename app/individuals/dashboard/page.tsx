@@ -1265,7 +1265,7 @@ function IndividualDashboardContent() {
 
               {/* Main content */}
               <div className="lg:col-span-8">
-                <Card className="min-h-[420px]">
+                <Card>
                   <CardContent className="pt-6">
                     {activeTab === 'profile' ? (
                       <ProfileDashboardTab />

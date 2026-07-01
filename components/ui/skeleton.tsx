@@ -347,17 +347,13 @@ function SkeletonGrid({ items = 4 }: { items?: number }) {
 // CTA Skeleton
 function SkeletonCTA() {
   return (
-    <div className="mb-8 p-6 bg-white rounded-md border-2 border-slate-200 shadow-sm relative overflow-hidden">
-      
+    <div className="mb-8 p-8 bg-white rounded-md border-2 border-black shadow-sm relative overflow-hidden">
       <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
         <div className="text-center md:text-left">
-          <Skeleton className="h-8 w-48 mb-3 rounded-md" />
-          <Skeleton className="h-4 w-80 rounded-md" />
+          <Skeleton className="h-8 w-72 mb-3" />
+          <Skeleton className="h-5 w-full max-w-md" />
         </div>
-        <div className="flex flex-col sm:flex-row gap-4">
-          <Skeleton className="h-12 w-40 rounded-md" />
-          <Skeleton className="h-12 w-48 rounded-md" />
-        </div>
+        <Skeleton className="h-[58px] w-[210px] rounded-lg" />
       </div>
     </div>
   )

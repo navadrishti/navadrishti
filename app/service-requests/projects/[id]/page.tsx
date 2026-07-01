@@ -176,13 +176,19 @@ export default function ServiceRequestProjectDetailPage() {
   const allVerified = Boolean(user?.email_verified && user?.phone_verified && user?.verification_status === 'verified');
 
   const fetchProjectDetail = async (options?: { silent?: boolean }) => {
-    if (!token || !projectId) return;
+    if (!projectId) return;
     const silent = Boolean(options?.silent);
 
     try {
-      setLoading(true);
+      if (!silent) {
+        setLoading(true);
+      }
+      const headers: HeadersInit = {};
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
       const response = await fetch(`/api/service-request-assignments?mode=project-detail&projectId=${encodeURIComponent(projectId)}`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers
       });
 
       const data = await response.json();
@@ -208,12 +214,12 @@ export default function ServiceRequestProjectDetailPage() {
   }, []);
 
   useEffect(() => {
-    if (!user || !token) return;
+    if (!projectId) return;
     fetchProjectDetail();
   }, [user?.id, token, projectId]);
 
   useEffect(() => {
-    if (!user || !token) return;
+    if (!token || !projectId) return;
 
     const interval = window.setInterval(() => {
       void fetchProjectDetail({ silent: true });
@@ -312,19 +318,6 @@ export default function ServiceRequestProjectDetailPage() {
     return renderProjectLoadingSkeleton();
   }
 
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-        <Header />
-        <div className="mx-auto max-w-7xl px-4 py-8">
-          <Alert>
-            <AlertDescription>Please log in to view project details.</AlertDescription>
-          </Alert>
-        </div>
-      </div>
-    );
-  }
-
   if (loading || !payload) {
     return renderProjectLoadingSkeleton();
   }
@@ -342,9 +335,9 @@ export default function ServiceRequestProjectDetailPage() {
     ngo: undefined
   };
 
-  const canShowApplicationTab = user.user_type === 'company';
-  const canCompanyApply = user.user_type === 'company' && payload.csr_project_eligible_for_company_apply;
-  const canCompanyManageCsr = user.user_type === 'company' && allVerified;
+  const canShowApplicationTab = user?.user_type === 'company';
+  const canCompanyApply = user?.user_type === 'company' && payload.csr_project_eligible_for_company_apply;
+  const canCompanyManageCsr = user?.user_type === 'company' && allVerified;
   const ngo = projectData.ngo;
   const ngoProfileData = ngo?.profile_data || {};
   const ngoLocation = ngo?.city && ngo?.state_province
@@ -551,7 +544,7 @@ export default function ServiceRequestProjectDetailPage() {
 
                   {canShowApplicationTab ? (
                   <TabsContent value="application" className="mt-4">
-                    {user.user_type !== 'company' ? (
+                    {!user || user.user_type !== 'company' ? (
                       <Alert>
                         <AlertDescription>
                           Everyone can view this project. Only companies can apply and manage CSR invite flow.

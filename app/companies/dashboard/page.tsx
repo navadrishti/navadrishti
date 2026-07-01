@@ -3,6 +3,7 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { cn } from '@/lib/utils';
 import { createClient as createSupabaseClient } from '@/lib/supabase';
 import { Building, CheckCircle, HandHeart, MailCheck, Phone, Loader2, XCircle, Power, Trash2 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
@@ -173,6 +174,12 @@ interface CSRTrackingAssignment {
   project_title: string;
   project_location?: string;
   project_timeline?: string;
+  project_description?: string;
+  project_category?: string | null;
+  project_expected_beneficiaries?: number | null;
+  project_valid_until?: string | null;
+  project_status?: string | null;
+  csr_project_available_for_csr?: boolean | null;
   lead_ngo_id: number;
   lead_ngo_name: string;
   lead_ngo_email?: string;
@@ -251,6 +258,150 @@ const getStatusBadgeClass = (status: string): string => {
   if (normalized === 'expired') return 'border-slate-300 bg-slate-100 text-slate-700';
   return 'border-slate-300 bg-white text-slate-700';
 };
+
+function StaticStatusBadge({ children, className }: { children: React.ReactNode; className?: string }) {
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold pointer-events-none select-none',
+        className
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+function NeedDetailLink({
+  need,
+}: {
+  need: { id: number; title: string; request_type?: string };
+}) {
+  return (
+    <Link
+      href={`/service-requests/${need.id}`}
+      className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700 no-underline hover:bg-slate-100 hover:text-slate-700 focus:bg-slate-100 focus:text-slate-700"
+    >
+      {need.title}
+      {need.request_type ? ` · ${need.request_type}` : ''}
+    </Link>
+  );
+}
+
+function CsrTrackingProjectDetails({
+  assignment,
+  partnerLabel,
+  partnerName,
+  partnerEmail,
+}: {
+  assignment: CSRTrackingAssignment;
+  partnerLabel: string;
+  partnerName: string;
+  partnerEmail?: string;
+}) {
+  const beneficiaries =
+    assignment.project_expected_beneficiaries != null && assignment.project_expected_beneficiaries > 0
+      ? Number(assignment.project_expected_beneficiaries).toLocaleString('en-IN')
+      : null;
+  const csrAvailable = assignment.csr_project_available_for_csr;
+  const needs = assignment.needs || [];
+  const visibleNeeds = needs.slice(0, 4);
+  const hiddenNeedCount = Math.max(0, needs.length - visibleNeeds.length);
+  const hasDistinctLeadNgo = Boolean(
+    assignment.selected_lead_ngo_id &&
+    Number(assignment.selected_lead_ngo_id) !== Number(assignment.lead_ngo_id)
+  );
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+        <div className="min-w-0">
+          <p className="font-semibold text-slate-900">{assignment.project_title}</p>
+          <p className="text-sm text-slate-600">{partnerLabel}: {partnerName}</p>
+          <p className="text-xs text-slate-500">
+            {partnerEmail || 'No email'}
+            {assignment.assigned_at ? ` • Handoff ${formatDisplayDate(assignment.assigned_at)}` : ''}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Owner NGO: {assignment.lead_ngo_name}
+            {hasDistinctLeadNgo && assignment.selected_lead_ngo_name
+              ? ` • Lead NGO: ${assignment.selected_lead_ngo_name}`
+              : ''}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2 shrink-0">
+          <StaticStatusBadge className={getStatusBadgeClass(assignment.assignment_status)}>
+            Assignment: {formatStatusLabel(assignment.assignment_status)}
+          </StaticStatusBadge>
+          {assignment.project_status ? (
+            <StaticStatusBadge className={getStatusBadgeClass(assignment.project_status)}>
+              Project: {formatStatusLabel(assignment.project_status)}
+            </StaticStatusBadge>
+          ) : null}
+        </div>
+      </div>
+
+      {assignment.project_description ? (
+        <p className="text-sm text-muted-foreground line-clamp-3">{assignment.project_description}</p>
+      ) : null}
+
+      {assignment.review_note ? (
+        <div className="rounded-md border bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <span className="font-medium">Acceptance note:</span> {assignment.review_note}
+        </div>
+      ) : null}
+
+      <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm md:grid-cols-3">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-slate-500">Need types</p>
+          <p className="font-medium text-slate-800">{assignment.project_category || 'Not set'}</p>
+        </div>
+        <div>
+          <p className="text-xs uppercase tracking-wide text-slate-500">Location</p>
+          <p className="font-medium text-slate-800">{assignment.project_location || 'Not set'}</p>
+        </div>
+        <div>
+          <p className="text-xs uppercase tracking-wide text-slate-500">Timeline</p>
+          <p className="font-medium text-slate-800">{assignment.project_timeline || 'Not set'}</p>
+        </div>
+        <div>
+          <p className="text-xs uppercase tracking-wide text-slate-500">Beneficiaries</p>
+          <p className="font-medium text-slate-800">{beneficiaries || 'Not set'}</p>
+        </div>
+        <div>
+          <p className="text-xs uppercase tracking-wide text-slate-500">Valid until</p>
+          <p className="font-medium text-slate-800">{formatDisplayDate(assignment.project_valid_until) || 'Not set'}</p>
+        </div>
+        <div>
+          <p className="text-xs uppercase tracking-wide text-slate-500">CSR takeover</p>
+          <p className="font-medium text-slate-800">
+            {csrAvailable === false ? 'No' : csrAvailable === true ? 'Yes' : 'Not set'}
+          </p>
+        </div>
+      </div>
+
+      {needs.length > 0 ? (
+        <div>
+          <p className="mb-1.5 text-xs uppercase tracking-wide text-slate-500">Project needs ({needs.length})</p>
+          <div className="flex flex-wrap gap-1.5">
+            {visibleNeeds.map((need) => (
+              <NeedDetailLink key={need.id} need={need} />
+            ))}
+            {hiddenNeedCount > 0 ? (
+              <StaticStatusBadge className="border-slate-200 bg-white text-slate-600">+{hiddenNeedCount} more</StaticStatusBadge>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="flex flex-wrap gap-2 pt-1">
+        <Link href={`/service-requests/projects/${assignment.project_id}`}>
+          <Button size="sm" variant="outline">View Project</Button>
+        </Link>
+      </div>
+    </div>
+  );
+}
 
 const getInitials = (name: string): string => {
   if (!name) return 'N';
@@ -1014,6 +1165,13 @@ function CompanyDashboardContent() {
     }
   };
 
+  useEffect(() => {
+    if (!user?.id || activeTab !== 'company-ca') return;
+    void fetchAvailableCompanyCaIds();
+  }, [user?.id, activeTab]);
+
+  const reusableCompanyCaIds = availableCompanyCaIds.filter((entry) => entry.reusable);
+
   const fetchCompanyCAAccounts = async () => {
     try {
       setLoadingCompanyCAAccounts(true);
@@ -1103,6 +1261,18 @@ function CompanyDashboardContent() {
       return;
     }
 
+    if (!companyCAForm.auto_generate_ca_id) {
+      const selectedCaId = availableCompanyCaIds.find((entry) => entry.ca_id === companyCAForm.ca_id);
+      if (!selectedCaId?.reusable) {
+        setCompanyCAFeedback({
+          type: 'error',
+          message:
+            'Selected CA ID is not available for succession. Deactivate the current holder first, or auto-generate a new CA ID.',
+        });
+        return;
+      }
+    }
+
     try {
       setCreatingCompanyCA(true);
       const token = localStorage.getItem('token');
@@ -1137,7 +1307,7 @@ function CompanyDashboardContent() {
       setLastCreatedCompanyCA({ email: companyCAForm.email, password: companyCAForm.password, ca_id: payload.data.identity.ca_id });
       setCompanyCAFeedback({ type: 'success', message: 'CA account created successfully.' });
       setCompanyCAForm({ name: '', email: '', password: '', ca_id: '', auto_generate_ca_id: true });
-      await fetchCompanyCAAccounts();
+      await Promise.all([fetchCompanyCAAccounts(), fetchAvailableCompanyCaIds()]);
     } catch (error) {
       setCompanyCAFeedback({ type: 'error', message: 'Failed to create CA account.' });
     } finally {
@@ -1176,7 +1346,7 @@ function CompanyDashboardContent() {
       }
 
       setCompanyCAFeedback({ type: 'success', message: `CA account ${status === 'active' ? 'activated' : 'deactivated'} successfully.` });
-      await fetchCompanyCAAccounts();
+      await Promise.all([fetchCompanyCAAccounts(), fetchAvailableCompanyCaIds()]);
     } catch {
       setCompanyCAFeedback({ type: 'error', message: 'Failed to update CA account status.' });
     }
@@ -1300,7 +1470,7 @@ function CompanyDashboardContent() {
               />
 
               <div className="lg:col-span-8">
-                <Card className="min-h-[420px]">
+                <Card>
                   <CardContent className="pt-6">
                     <Tabs value={activeTab} onValueChange={(value) => {
                       window.history.replaceState(null, '', `/companies/dashboard?tab=${value}`);
@@ -1658,19 +1828,13 @@ function CompanyDashboardContent() {
                         <div className="space-y-3">
                           {csrTrackingAssignments.map((assignment) => {
                             return (
-                            <div key={`${assignment.project_id}:${assignment.assigned_company_id}`} className="rounded-md border bg-white p-3 space-y-3">
-                              <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                                <div>
-                                  <p className="font-semibold">{assignment.project_title}</p>
-                                  <p className="text-sm text-slate-600">Lead NGO: {assignment.lead_ngo_name}</p>
-                                  <p className="text-xs text-slate-500">{assignment.lead_ngo_email || 'No email'} • {assignment.project_location || 'Location not set'}</p>
-                                </div>
-                                <Badge variant="outline" className={`w-fit ${getStatusBadgeClass(assignment.assignment_status)}`}>
-                                  {formatStatusLabel(assignment.assignment_status)}
-                                </Badge>
-                              </div>
-
-                              <p className="text-xs text-slate-600">Need-level tracking is available only in the project detail page.</p>
+                            <div key={`${assignment.project_id}:${assignment.assigned_company_id}`} className="rounded-md border bg-white p-4 space-y-3">
+                              <CsrTrackingProjectDetails
+                                assignment={assignment}
+                                partnerLabel="Lead NGO"
+                                partnerName={assignment.lead_ngo_name}
+                                partnerEmail={assignment.lead_ngo_email}
+                              />
 
                               {assignment.selected_lead_ngo_id ? (
                                 <div className="rounded-md border bg-emerald-50 p-2 text-xs text-emerald-800">
@@ -1917,19 +2081,27 @@ function CompanyDashboardContent() {
                         {!companyCAForm.auto_generate_ca_id && (
                           <div className="space-y-2">
                             <Label htmlFor="company-ca-id-select">Select CA ID</Label>
-                            <select
-                              id="company-ca-id-select"
-                              value={companyCAForm.ca_id}
-                              onChange={(e) => setCompanyCAForm((prev) => ({ ...prev, ca_id: e.target.value }))}
-                              className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm text-slate-900 outline-none"
-                            >
-                              <option value="">-- Select a CA ID --</option>
-                              {availableCompanyCaIds.map((caIdEntry: any) => (
-                                <option key={caIdEntry.ca_id} value={caIdEntry.ca_id}>
-                                  {caIdEntry.ca_id} ({caIdEntry.users?.name || 'Unknown'})
-                                </option>
-                              ))}
-                            </select>
+                            {reusableCompanyCaIds.length === 0 ? (
+                              <p className="text-xs text-amber-700">
+                                No CA IDs are available for succession. Deactivate an existing CA account first, or
+                                auto-generate a new CA ID.
+                              </p>
+                            ) : (
+                              <select
+                                id="company-ca-id-select"
+                                value={companyCAForm.ca_id}
+                                onChange={(e) => setCompanyCAForm((prev) => ({ ...prev, ca_id: e.target.value }))}
+                                className="h-10 w-full rounded-md border border-slate-200 px-3 text-sm text-slate-900 outline-none"
+                              >
+                                <option value="">-- Select a CA ID --</option>
+                                {reusableCompanyCaIds.map((caIdEntry: { ca_id: string; holder_name?: string | null }) => (
+                                  <option key={caIdEntry.ca_id} value={caIdEntry.ca_id}>
+                                    {caIdEntry.ca_id}
+                                    {caIdEntry.holder_name ? ` (previously: ${caIdEntry.holder_name})` : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
                           </div>
                         )}
 
