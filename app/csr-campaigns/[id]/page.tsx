@@ -288,14 +288,16 @@ export default function CSRCampaignDetailPage() {
     setError(null)
     try {
       const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
-      const response = await fetch('/api/campaigns', {
+      const response = await fetch(`/api/campaigns/${encodeURIComponent(campaignId)}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       })
       const payload = await response.json().catch(() => null)
-      const rows: Campaign[] = Array.isArray(payload?.data) ? payload.data : []
-      const match = rows.find((item) => String(item.id) === campaignId) || null
-      setCampaign(match)
-      if (!match) setError('Campaign not found')
+      if (!response.ok || !payload?.success || !payload?.data) {
+        setCampaign(null)
+        setError(payload?.error || 'Campaign not found')
+        return
+      }
+      setCampaign(payload.data as Campaign)
     } catch {
       setError('Failed to load campaign details')
     } finally {

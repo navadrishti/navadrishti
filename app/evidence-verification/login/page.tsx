@@ -2,14 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Shield, Loader2, AlertCircle } from 'lucide-react';
-import { AuthBackButton } from '@/components/header';
+import { AuthCardBackRow } from '@/components/header';
 
 export default function EvidenceVerificationLoginPage() {
   const router = useRouter();
@@ -17,7 +16,6 @@ export default function EvidenceVerificationLoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [checkingAuth, setCheckingAuth] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -28,20 +26,14 @@ export default function EvidenceVerificationLoginPage() {
           typeof window !== 'undefined' &&
           Boolean(sessionStorage.getItem('evidence_verification_tab_session'));
 
-        if (!hasTab) {
-          if (!cancelled) setCheckingAuth(false);
-          return;
-        }
+        if (!hasTab) return;
 
         const response = await fetch('/api/evidence-verification/verify', {
           method: 'GET',
           credentials: 'include',
         });
 
-        if (!response.ok) {
-          if (!cancelled) setCheckingAuth(false);
-          return;
-        }
+        if (!response.ok) return;
 
         const data = await response.json().catch(() => ({}));
 
@@ -53,11 +45,11 @@ export default function EvidenceVerificationLoginPage() {
           }
         }
       } catch {
-        if (!cancelled) setCheckingAuth(false);
+        // ignore — user can sign in manually
       }
     };
 
-    checkExistingSession();
+    void checkExistingSession();
 
     return () => {
       cancelled = true;
@@ -99,22 +91,9 @@ export default function EvidenceVerificationLoginPage() {
     }
   };
 
-  if (checkingAuth) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100">
-        <div className="text-center">
-          <Loader2 className="mx-auto h-8 w-8 animate-spin text-blue-600" />
-          <p className="mt-4 text-blue-600">Checking authentication...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100 p-4">
-      <div className="absolute left-4 top-4 sm:left-6 sm:top-6">
-        <AuthBackButton variant="button" />
-      </div>
+    <div className="flex min-h-full items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100 p-4">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
           <h1 className="mb-2 text-3xl font-bold text-gray-900">Evidence Verification Portal</h1>
@@ -122,9 +101,10 @@ export default function EvidenceVerificationLoginPage() {
         </div>
 
         <Card className="border-2 border-slate-200 shadow-none">
-          <CardHeader>
-            <CardTitle>Sign In</CardTitle>
-            <CardDescription>
+          <CardHeader className="space-y-1">
+            <AuthCardBackRow />
+            <CardTitle className="text-2xl font-bold text-center">Sign In</CardTitle>
+            <CardDescription className="text-center">
               Use the credentials provided by your company or project administrator
             </CardDescription>
           </CardHeader>
@@ -179,21 +159,6 @@ export default function EvidenceVerificationLoginPage() {
             </form>
           </CardContent>
         </Card>
-
-        <div className="mt-6 text-center text-sm text-gray-600">
-          <p className="mb-2">Evidence verification for company reviewers and field officers</p>
-          <p className="inline-flex items-center gap-2">
-            © 2026
-            <Image
-              src="/photos/small-logo.svg"
-              alt="Navadrishti logo"
-              width={14}
-              height={14}
-              className="h-3.5 w-3.5"
-            />
-            Navadrishti Platform
-          </p>
-        </div>
       </div>
     </div>
   );

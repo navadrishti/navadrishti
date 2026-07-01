@@ -4,16 +4,14 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Building, Briefcase, User } from 'lucide-react';
-import { AuthBackButton } from '@/components/header';
+import { AuthCardBackRow } from '@/components/header';
 
 export default function RegisterPage() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
       <Card className="w-full max-w-md shadow-none">
         <CardHeader className="space-y-1">
-          <div className="text-sm">
-            <AuthBackButton />
-          </div>
+          <AuthCardBackRow />
           <CardTitle className="text-2xl font-bold text-center">Create an Account</CardTitle>
           <CardDescription className="text-center">
             Choose how you would like to join our platform

@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import Image from 'next/image';
+import { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Loader2 } from 'lucide-react';
 
 export default function EvidenceVerificationLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [ready, setReady] = useState(false);
   const isPublicRoute =
     pathname === '/evidence-verification/login' || pathname === '/evidence-verification/change-password';
 
@@ -32,38 +31,44 @@ export default function EvidenceVerificationLayout({ children }: { children: Rea
           credentials: 'include',
         });
 
-        if (!response.ok) {
-          if (!cancelled) router.replace('/evidence-verification/login');
-          return;
+        if (!response.ok && !cancelled) {
+          router.replace('/evidence-verification/login');
         }
-
-        if (!cancelled) setReady(true);
       } catch {
         if (!cancelled) router.replace('/evidence-verification/login');
       }
     };
 
-    checkAccess();
+    void checkAccess();
 
     return () => {
       cancelled = true;
     };
-  }, [isPublicRoute, router]);
+  }, [isPublicRoute, pathname, router]);
 
-  if (isPublicRoute) {
-    return <>{children}</>;
-  }
-
-  if (!ready) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-blue-50">
-        <div className="text-center">
-          <Loader2 className="mx-auto h-8 w-8 animate-spin text-blue-600" />
-          <p className="mt-4 text-blue-600">Checking authentication...</p>
-        </div>
+  return (
+    <div className="flex min-h-screen flex-col">
+      <div className="flex flex-1 flex-col bg-gradient-to-br from-blue-50 to-indigo-100">
+        {children}
       </div>
-    );
-  }
-
-  return <>{children}</>;
+      <footer className="mt-auto border-t border-white/10 bg-udaan-blue text-white">
+        <div className="udaan-container flex flex-col items-center justify-between gap-3 py-4 text-xs sm:flex-row sm:text-sm">
+          <div className="flex flex-wrap items-center justify-center gap-2 text-white/90 sm:justify-start">
+            <span>© 2026</span>
+            <Image
+              src="/photos/small-logo.svg"
+              alt="Navadrishti logo"
+              width={16}
+              height={16}
+              className="h-4 w-4"
+            />
+            <span className="font-medium">Navadrishti Evidence Verification</span>
+          </div>
+          <p className="text-center text-white/75 sm:text-right">
+            Company milestone evidence review &amp; payment confirmation
+          </p>
+        </div>
+      </footer>
+    </div>
+  );
 }

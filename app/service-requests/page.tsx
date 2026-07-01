@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { StyledSelect } from '@/components/ui/styled-select'
 import { ServiceCard } from '@/components/service-card'
-import { Skeleton } from '@/components/ui/skeleton'
+import { Skeleton, SkeletonCTA } from '@/components/ui/skeleton'
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
 import { Search, ArrowRight, Plus } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
@@ -73,20 +73,6 @@ function ServiceRequestCardSkeleton() {
         </div>
       </CardContent>
     </Card>
-  )
-}
-
-function ServiceRequestCtaSkeleton() {
-  return (
-    <div className="mb-8 p-8 bg-white rounded-md border-2 border-black shadow-sm relative overflow-hidden">
-      <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
-        <div className="text-center md:text-left">
-          <Skeleton className="h-8 w-72 mb-3" />
-          <Skeleton className="h-5 w-full max-w-md" />
-        </div>
-        <Skeleton className="h-[58px] w-[210px] rounded-lg" />
-      </div>
-    </div>
   )
 }
 
@@ -248,7 +234,7 @@ function ServiceRequestsContent() {
 
         {/* Create Need CTA */}
         {loading ? (
-          user && isNGO && <ServiceRequestCtaSkeleton />
+          user && isNGO && <SkeletonCTA />
         ) : user && isNGO && (
           <div className="mb-8 p-8 bg-white rounded-md border-2 border-black shadow-sm relative overflow-hidden">
             
@@ -372,7 +358,7 @@ export default function ServiceRequestsPage() {
             <Skeleton className="h-5 w-full max-w-xl" />
           </div>
 
-          <ServiceRequestCtaSkeleton />
+          <SkeletonCTA />
 
           <div className="mb-8">
             <div className="mb-6 grid gap-6 md:grid-cols-2">

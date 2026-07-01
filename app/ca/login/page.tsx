@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Shield, Loader2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
-import { AuthBackButton } from '@/components/header';
+import { AuthCardBackRow } from '@/components/header';
 
 export default function CALoginPage() {
   const router = useRouter();
@@ -117,10 +117,7 @@ export default function CALoginPage() {
   }
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100 p-4">
-      <div className="absolute left-4 top-4 sm:left-6 sm:top-6">
-        <AuthBackButton variant="button" />
-      </div>
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100 p-4">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
           <h1 className="mb-2 text-3xl font-bold text-gray-900">CA Console</h1>
@@ -128,9 +125,10 @@ export default function CALoginPage() {
         </div>
 
         <Card className="border-2 border-slate-200 shadow-none">
-          <CardHeader>
-            <CardTitle>Sign In</CardTitle>
-            <CardDescription>
+          <CardHeader className="space-y-1">
+            <AuthCardBackRow />
+            <CardTitle className="text-2xl font-bold text-center">Sign In</CardTitle>
+            <CardDescription className="text-center">
               Enter your credentials to access the CA verification dashboard
             </CardDescription>
           </CardHeader>
