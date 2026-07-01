@@ -14,7 +14,7 @@ import { useOtpSender } from '@/hooks/use-otp-sender';
 
 import { toast } from 'sonner';
 import { MapPin } from 'lucide-react';
-import { AuthBackButton } from '@/components/header';
+import { AuthCardBackRow } from '@/components/header';
 
 export default function IndividualRegister() {
   const [formData, setFormData] = useState({
@@ -177,9 +177,7 @@ export default function IndividualRegister() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
       <Card className="w-full max-w-2xl shadow-none">
         <CardHeader className="space-y-1">
-          <div className="text-sm">
-            <AuthBackButton fallbackHref="/register" />
-          </div>
+          <AuthCardBackRow fallbackHref="/register" />
           <CardTitle className="text-2xl font-bold text-center">Register as Individual</CardTitle>
           <CardDescription className="text-center">
             Create your account to connect with NGOs and companies

@@ -1,17 +1,16 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { ArrowLeft, Mail } from 'lucide-react';
+import { Mail } from 'lucide-react';
+import { AuthCardBackRow } from '@/components/header';
 
 export default function ForgotPasswordPage() {
-  const router = useRouter();
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
@@ -58,14 +57,17 @@ export default function ForgotPasswordPage() {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
         <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-green-100 flex items-center justify-center">
-              <Mail className="h-6 w-6 text-green-600" />
+          <CardHeader className="space-y-1">
+            <AuthCardBackRow fallbackHref="/login" />
+            <div className="text-center">
+              <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-green-100 flex items-center justify-center">
+                <Mail className="h-6 w-6 text-green-600" />
+              </div>
+              <CardTitle className="text-2xl font-bold text-center">Check Your Email</CardTitle>
+              <CardDescription className="text-center">
+                We've sent a password reset link to <strong>{email}</strong>
+              </CardDescription>
             </div>
-            <CardTitle className="text-2xl font-bold">Check Your Email</CardTitle>
-            <CardDescription>
-              We've sent a password reset link to <strong>{email}</strong>
-            </CardDescription>
           </CardHeader>
           
           <CardContent className="text-center text-sm text-muted-foreground">
@@ -86,11 +88,6 @@ export default function ForgotPasswordPage() {
             >
               Send Another Email
             </Button>
-            
-            <Button variant="ghost" className="w-full hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0" onClick={() => router.back()}>
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back
-            </Button>
           </CardFooter>
         </Card>
       </div>
@@ -101,6 +98,7 @@ export default function ForgotPasswordPage() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
+          <AuthCardBackRow fallbackHref="/login" />
           <CardTitle className="text-2xl font-bold text-center">Forgot Password</CardTitle>
           <CardDescription className="text-center">
             Enter your email address and we'll send you a link to reset your password
@@ -139,16 +137,7 @@ export default function ForgotPasswordPage() {
               {loading ? 'Sending...' : 'Send Reset Link'}
             </Button>
             
-            <div className="flex items-center justify-center space-x-4 text-sm">
-              <button
-                type="button"
-                onClick={() => router.back()}
-                className="inline-flex items-center font-medium text-primary hover:underline"
-              >
-                <ArrowLeft className="mr-1 h-4 w-4" />
-                Back
-              </button>
-              <span className="text-muted-foreground">|</span>
+            <div className="text-center text-sm">
               <Link href="/register" className="font-medium text-primary hover:underline">
                 Create Account
               </Link>

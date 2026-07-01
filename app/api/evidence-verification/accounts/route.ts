@@ -3,7 +3,11 @@ import { z } from 'zod';
 import { supabase, db } from '@/lib/db';
 import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth';
 import { hashPassword } from '@/lib/auth';
-import { generateUniqueCompanyCaId } from '@/lib/company-ca-id-helper';
+import {
+  generateUniqueCompanyCaId,
+  getCompanyCaIdSuccessionOptions,
+  isCompanyCaIdReusableForSuccession,
+} from '@/lib/company-ca-id-helper';
 
 const createCompanyCASchema = z.object({
   name: z.string().min(2),
@@ -25,19 +29,13 @@ export async function GET(request: NextRequest) {
 
     // Get available CA IDs for succession assignment
     if (query === 'available-ca-ids') {
-      const { data, error } = await supabase
-        .from('company_ca_identities')
-        .select('ca_id, user_id, users:user_id(id, name)')
-        .eq('company_user_id', user.id)
-        .not('ca_id', 'is', null)
-        .order('ca_id', { ascending: true });
-
-      if (error) {
+      try {
+        const options = await getCompanyCaIdSuccessionOptions(user.id);
+        return NextResponse.json({ success: true, data: options });
+      } catch (error) {
         console.error('Failed to fetch available CA IDs:', error);
         return NextResponse.json({ error: 'Failed to fetch available CA IDs' }, { status: 500 });
       }
-
-      return NextResponse.json({ success: true, data: data ?? [] });
     }
 
     // Default: get all company CA identities
@@ -82,11 +80,30 @@ export async function POST(request: NextRequest) {
     const { name, email, password, permissions, status, ca_id, auto_generate_ca_id } = parsed.data;
 
     // Determine the CA ID to use
-    let assignedCaId = ca_id;
+    let assignedCaId: string;
     if (auto_generate_ca_id) {
       assignedCaId = await generateUniqueCompanyCaId(user.id);
-    } else if (!ca_id) {
-      return NextResponse.json({ error: 'CA ID must be provided or auto-generation must be enabled' }, { status: 400 });
+    } else {
+      const normalizedCaId = String(ca_id ?? '').trim();
+      if (!normalizedCaId) {
+        return NextResponse.json(
+          { error: 'CA ID must be provided or auto-generation must be enabled' },
+          { status: 400 }
+        );
+      }
+
+      const reusable = await isCompanyCaIdReusableForSuccession(user.id, normalizedCaId);
+      if (!reusable) {
+        return NextResponse.json(
+          {
+            error:
+              'Selected CA ID is not available for succession. Choose a CA ID from your company history with no active account, or deactivate the current holder first.',
+          },
+          { status: 409 }
+        );
+      }
+
+      assignedCaId = normalizedCaId;
     }
 
     const existing = await db.users.findByEmail(email);

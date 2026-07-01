@@ -14,7 +14,7 @@ import { Building, Mail, Phone, Globe, MapPin, Users, Briefcase } from "lucide-r
 import { toast } from 'sonner'
 import { useOtpSender } from '@/hooks/use-otp-sender'
 import { Textarea } from '@/components/ui/textarea'
-import { AuthBackButton } from '@/components/header'
+import { AuthCardBackRow } from '@/components/header'
 
 export default function CompanyRegistration() {
   const [formData, setFormData] = useState({
@@ -260,9 +260,7 @@ export default function CompanyRegistration() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
       <Card className="w-full max-w-2xl shadow-none">
         <CardHeader className="space-y-1">
-          <div className="text-sm">
-            <AuthBackButton fallbackHref="/register" />
-          </div>
+          <AuthCardBackRow fallbackHref="/register" />
           <CardTitle className="text-2xl font-bold text-center">Register as Company</CardTitle>
           <CardDescription className="text-center">
             Create your company account to connect with NGOs and skilled individuals

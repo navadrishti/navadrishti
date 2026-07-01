@@ -145,6 +145,13 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
         persistAuthSnapshot(authToken, data.user);
         return data.user as User;
       }
+
+      if (response.status === 401) {
+        persistAuthSnapshot(null, null);
+        setToken(null);
+        setUser(null);
+        return null;
+      }
     } catch (err) {
       console.error('User hydration error:', err);
     }
@@ -156,7 +163,7 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
     }
 
     return null;
-  }, []);
+  }, [persistAuthSnapshot]);
 
   const hydrateUserFromCookie = useCallback(async () => {
     try {
@@ -201,14 +208,16 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
           try {
             const parsedUser = JSON.parse(storedUser);
             setUser(parsedUser);
-            setLoading(false);
-            return;
           } catch (parseError) {
             console.error('Error parsing stored user:', parseError);
           }
         }
 
-        await hydrateUserFromServer(cleanToken);
+        const hydratedUser = await hydrateUserFromServer(cleanToken);
+        if (!hydratedUser) {
+          setToken(null);
+          setUser(null);
+        }
         setLoading(false);
         return;
       }
@@ -410,6 +419,10 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
         const data = await response.json();
         setUser(data.user);
         persistAuthSnapshot(token, data.user);
+      } else if (response.status === 401) {
+        setToken(null);
+        setUser(null);
+        persistAuthSnapshot(null, null);
       } else {
         notify.error('Failed to refresh user data');
       }

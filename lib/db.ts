@@ -885,7 +885,25 @@ export const db = {
       return data;
     },
 
+    async getByTicketId(ticketId: string) {
+      const { data, error } = await supabase
+        .from('support_tickets')
+        .select(`
+          *,
+          user:users!user_id(id, name, email, user_type, verification_status, profile_image)
+        `)
+        .eq('ticket_id', ticketId)
+        .single();
+
+      if (error && error.code !== 'PGRST116') throw error;
+      return data;
+    },
+
     async getById(id: number | string) {
+      if (typeof id === 'string' && id.startsWith('SUP-')) {
+        return this.getByTicketId(id);
+      }
+
       const { data, error } = await supabase
         .from('support_tickets')
         .select(`
@@ -897,6 +915,24 @@ export const db = {
 
       if (error && error.code !== 'PGRST116') throw error;
       return data;
+    },
+
+    async getByUserId(userId: number, filters: { status?: string } = {}) {
+      let query = supabase
+        .from('support_tickets')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (filters.status === 'open') {
+        query = query.in('status', ['open', 'in_progress']);
+      } else if (filters.status === 'closed') {
+        query = query.in('status', ['resolved', 'closed']);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
     }
   },
 

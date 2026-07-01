@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db, supabase } from '@/lib/db';
 import { comparePassword, generateToken } from '@/lib/auth';
+import { ensureCompanyCaIdAssigned } from '@/lib/company-ca-id-helper';
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -31,7 +32,7 @@ export async function POST(request: NextRequest) {
 
     const { data: identity, error: identityError } = await supabase
       .from('company_ca_identities')
-      .select('id, user_id, company_user_id, status, permissions, must_change_password')
+      .select('id, user_id, company_user_id, ca_id, status, permissions, must_change_password')
       .eq('user_id', user.id)
       .single();
 
@@ -42,6 +43,8 @@ export async function POST(request: NextRequest) {
     if (identity.status !== 'active') {
       return NextResponse.json({ error: 'This verification account is inactive' }, { status: 403 });
     }
+
+    const caId = await ensureCompanyCaIdAssigned(identity.id, identity.company_user_id, identity.ca_id);
 
     const token = generateToken({
       id: user.id,
@@ -65,6 +68,7 @@ export async function POST(request: NextRequest) {
       must_change_password: identity.must_change_password || false,
       company_ca: {
         identity_id: identity.id,
+        ca_id: caId,
         company_user_id: identity.company_user_id,
         permissions: identity.permissions ?? {},
         user: {

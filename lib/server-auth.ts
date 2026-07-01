@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { verifyToken, type UserData } from '@/lib/auth';
 import { verifyNavadrishtCAToken, type NavadrishtCATokenPayload } from '@/lib/navadrishti-ca-auth';
 import { supabase } from '@/lib/db';
+import { ensureCompanyCaIdAssigned } from '@/lib/company-ca-id-helper';
 
 function extractBearerToken(authHeader: string | null): string | null {
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -95,6 +96,7 @@ export interface CompanyCAContext {
     id: string;
     user_id: number;
     company_user_id: number;
+    ca_id?: string | null;
     status: string;
     permissions: Record<string, any>;
     must_change_password?: boolean;
@@ -115,7 +117,7 @@ export async function getCompanyCAFromRequest(request: NextRequest): Promise<Com
 
   const { data: identity, error } = await supabase
     .from('company_ca_identities')
-    .select('id, user_id, company_user_id, status, permissions, must_change_password')
+    .select('id, user_id, company_user_id, ca_id, status, permissions, must_change_password')
     .eq('user_id', user.id)
     .single();
 
@@ -127,12 +129,15 @@ export async function getCompanyCAFromRequest(request: NextRequest): Promise<Com
     throw new Error('Company CA identity is not active');
   }
 
+  const caId = await ensureCompanyCaIdAssigned(identity.id, identity.company_user_id, identity.ca_id);
+
   return {
     user,
     identity: {
       id: identity.id,
       user_id: identity.user_id,
       company_user_id: identity.company_user_id,
+      ca_id: caId,
       status: identity.status,
       permissions: identity.permissions ?? {},
       must_change_password: identity.must_change_password || false

@@ -69,19 +69,37 @@ function safeJsonObject(value: any): Record<string, any> {
 
 export async function GET(request: NextRequest) {
   try {
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
-    }
-
-    const token = authHeader.split(' ')[1]
-    const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload
-    const { id: userId, user_type: userType, name: userName } = decoded
-
     const { searchParams } = new URL(request.url)
     const view = searchParams.get('view') || 'ongoing'
     const mode = searchParams.get('mode') || ''
     const requestIdFilter = Number(searchParams.get('requestId') || '')
+
+    const authHeader = request.headers.get('authorization')
+    let userId = 0
+    let userType = ''
+    let userName = ''
+
+    if (mode === 'project-detail') {
+      if (authHeader?.startsWith('Bearer ')) {
+        try {
+          const decoded = jwt.verify(authHeader.split(' ')[1], JWT_SECRET) as JWTPayload
+          userId = decoded.id
+          userType = decoded.user_type
+          userName = decoded.name
+        } catch {
+          // Invalid token — still allow public read-only project detail
+        }
+      }
+    } else {
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
+      }
+
+      const decoded = jwt.verify(authHeader.split(' ')[1], JWT_SECRET) as JWTPayload
+      userId = decoded.id
+      userType = decoded.user_type
+      userName = decoded.name
+    }
 
     if (mode === 'company-projects') {
       if (userType !== 'company') {
@@ -600,6 +618,11 @@ export async function GET(request: NextRequest) {
         csr_project_ineligible_reason: hasIndividualFulfillment ? 'One or more needs in this project were already fulfilled by individuals.' : ''
       }
 
+      if (!userId) {
+        responsePayload.company_applications = []
+        responsePayload.lead_ngo_invites = []
+      }
+
       // project-detail: returning payload for project
 
       return NextResponse.json({ success: true, data: responsePayload })
@@ -672,9 +695,28 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'Only NGO and company users can view CSR tracking' }, { status: 403 })
       }
 
+      const projectSelect = `
+          id,
+          ngo_id,
+          title,
+          description,
+          location,
+          exact_address,
+          timeline,
+          status,
+          expected_beneficiaries,
+          valid_until,
+          selected_lead_ngo_id,
+          assigned_company_user_id,
+          assignment_status,
+          csr_project_available_for_csr,
+          created_at,
+          updated_at
+        `
+
       let contributionQuery = supabase
         .from('service_request_contributions')
-        .select('id, service_request_id, contributor_id, status, meta, created_at, updated_at')
+        .select('id, service_request_id, contributor_id, status, reference_text, meta, created_at, updated_at')
         .eq('contribution_type', COMPANY_PROJECT_CONTRIBUTION_TYPE)
         .in('status', ['accepted', 'in_progress', 'completed'])
         .order('updated_at', { ascending: false })
@@ -686,42 +728,122 @@ export async function GET(request: NextRequest) {
       const { data: contributions, error: contributionsError } = await contributionQuery
       if (contributionsError) throw contributionsError
 
-      if (!contributions || contributions.length === 0) {
+      const contributionNeedIds = [...new Set(
+        (contributions || [])
+          .map((item: any) => Number(item.service_request_id))
+          .filter((id: number) => Number.isFinite(id) && id > 0)
+      )]
+
+      const { data: contributionNeeds, error: contributionNeedsError } = contributionNeedIds.length > 0
+        ? await supabase
+            .from('service_requests')
+            .select('id, project_id, ngo_id, title, status, request_type, category, project_context, updated_at')
+            .in('id', contributionNeedIds)
+        : { data: [], error: null as any }
+
+      if (contributionNeedsError) throw contributionNeedsError
+
+      const needById = new Map<number, any>((contributionNeeds || []).map((need: any) => [Number(need.id), need]))
+      const handoffPairs = new Map<string, { projectId: string; companyId: number; contributions: any[] }>()
+
+      for (const contribution of contributions || []) {
+        const need = needById.get(Number(contribution.service_request_id))
+        if (!need) continue
+
+        const meta = safeJsonObject(contribution.meta)
+        const projectId = String(safeProjectIdFromMeta(meta) || need.project_id || '').trim()
+        if (!projectId) continue
+
+        const companyId = Number(contribution.contributor_id || meta.company_id || 0)
+        if (!Number.isFinite(companyId) || companyId <= 0) continue
+
+        const ownerNgoId = Number(need.ngo_id || 0)
+        if (userType === 'ngo' && ownerNgoId !== Number(userId)) {
+          const projectContext = safeJsonObject(need.project_context)
+          const assignment = safeJsonObject(projectContext.csr_assignment)
+          const selectedLeadNgoId = Number(assignment.selected_lead_ngo_id || 0)
+          if (selectedLeadNgoId !== Number(userId)) continue
+        }
+
+        const key = `${projectId}::${companyId}`
+        const bucket = handoffPairs.get(key) || { projectId, companyId, contributions: [] as any[] }
+        bucket.contributions.push(contribution)
+        handoffPairs.set(key, bucket)
+      }
+
+      let assignedProjectQuery = supabase
+        .from('service_request_projects')
+        .select(projectSelect)
+        .not('assigned_company_user_id', 'is', null)
+
+      if (userType === 'ngo') {
+        assignedProjectQuery = assignedProjectQuery.or(`ngo_id.eq.${userId},selected_lead_ngo_id.eq.${userId}`)
+      } else {
+        assignedProjectQuery = assignedProjectQuery.eq('assigned_company_user_id', userId)
+      }
+
+      const { data: assignedProjects, error: assignedProjectsError } = await assignedProjectQuery
+      if (assignedProjectsError) throw assignedProjectsError
+
+      for (const project of assignedProjects || []) {
+        const companyId = Number(project.assigned_company_user_id || 0)
+        if (!companyId) continue
+        const key = `${String(project.id)}::${companyId}`
+        if (!handoffPairs.has(key)) {
+          handoffPairs.set(key, { projectId: String(project.id), companyId, contributions: [] })
+        }
+      }
+
+      if (handoffPairs.size === 0) {
         return NextResponse.json({ success: true, data: [] })
       }
 
-      const requestIds = [...new Set(contributions.map((item: any) => Number(item.service_request_id)).filter((value) => Number.isFinite(value) && value > 0))]
-      const companyIds = [...new Set(contributions.map((item: any) => Number(item.contributor_id)).filter((value) => Number.isFinite(value) && value > 0))]
+      const projectIds = [...new Set([...handoffPairs.values()].map((pair) => pair.projectId))]
 
-      const { data: requests, error: requestsError } = await supabase
+      const { data: projects, error: projectsError } = await supabase
+        .from('service_request_projects')
+        .select(projectSelect)
+        .in('id', projectIds)
+
+      if (projectsError) throw projectsError
+
+      const projectById = new Map<string, any>((projects || []).map((project: any) => [String(project.id), project]))
+
+      for (const pair of handoffPairs.values()) {
+        const project = projectById.get(pair.projectId)
+        if (!project) continue
+        if (Number(project.assigned_company_user_id || 0) > 0) continue
+        const hasAcceptedContribution = pair.contributions.some((item: any) =>
+          ['accepted', 'in_progress', 'completed'].includes(String(item.status || '').toLowerCase())
+        )
+        if (!hasAcceptedContribution) continue
+
+        const { data: repaired, error: repairError } = await supabase
+          .from('service_request_projects')
+          .update({
+            assigned_company_user_id: pair.companyId,
+            assignment_status: 'accepted',
+            selected_lead_ngo_id: project.selected_lead_ngo_id || project.ngo_id,
+            status: project.status === 'active' ? 'in_progress' : project.status,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', pair.projectId)
+          .is('assigned_company_user_id', null)
+          .select(projectSelect)
+          .maybeSingle()
+
+        if (!repairError && repaired) {
+          projectById.set(pair.projectId, repaired)
+        }
+      }
+
+      const { data: needs, error: needsError } = await supabase
         .from('service_requests')
-        .select(`
-          id,
-          ngo_id,
-          title,
-          status,
-          request_type,
-          category,
-          location,
-          timeline,
-          project_id,
-          project_context,
-          project:service_request_projects!project_id(id, title, location, exact_address, timeline),
-          requester:users!ngo_id(id, name, email)
-        `)
-        .in('id', requestIds)
+        .select('id, project_id, ngo_id, title, status, request_type, category, project_context, updated_at')
+        .in('project_id', projectIds)
+        .order('created_at', { ascending: true })
 
-      if (requestsError) throw requestsError
-
-      const selectedLeadNgoIds = [...new Set((requests || [])
-        .map((requestItem: any) => {
-          const projectContext = safeJsonObject(requestItem?.project_context)
-          const assignment = safeJsonObject(projectContext?.csr_assignment)
-          return Number(assignment?.selected_lead_ngo_id || 0)
-        })
-        .filter((value: number) => Number.isFinite(value) && value > 0))]
-
-      const allUserIds = [...new Set([...companyIds, ...selectedLeadNgoIds])]
+      if (needsError) throw needsError
 
       const { data: allLeadInvites, error: allLeadInvitesError } = await supabase
         .from('service_request_contributions')
@@ -731,138 +853,159 @@ export async function GET(request: NextRequest) {
 
       if (allLeadInvitesError) throw allLeadInvitesError
 
-      const inviteNgoIds = [...new Set((allLeadInvites || []).map((inv: any) => Number(inv.contributor_id)).filter((v: number) => Number.isFinite(v) && v > 0))]
+      const userIds = new Set<number>()
+      for (const project of projectById.values()) {
+        if (project.ngo_id) userIds.add(Number(project.ngo_id))
+        if (project.assigned_company_user_id) userIds.add(Number(project.assigned_company_user_id))
+        if (project.selected_lead_ngo_id) userIds.add(Number(project.selected_lead_ngo_id))
+      }
+      for (const pair of handoffPairs.values()) {
+        userIds.add(pair.companyId)
+      }
+      for (const invite of allLeadInvites || []) {
+        userIds.add(Number(invite.contributor_id))
+      }
 
-      const combinedUserIds = [...new Set([...(allUserIds || []), ...inviteNgoIds])]
-
-      const { data: users, error: usersError } = combinedUserIds.length > 0
+      const { data: users, error: usersError } = userIds.size > 0
         ? await supabase
             .from('users')
             .select('id, name, email')
-            .in('id', combinedUserIds)
+            .in('id', [...userIds])
         : { data: [], error: null as any }
 
       if (usersError) throw usersError
 
-      const companyById = new Map<number, any>((users || []).map((item: any) => [Number(item.id), item]))
-      const requestById = new Map<number, any>((requests || []).map((item: any) => [Number(item.id), item]))
-      const grouped = new Map<string, any>()
-
-      for (const item of contributions) {
-        const requestItem = requestById.get(Number(item.service_request_id))
-        if (!requestItem) continue
-
-        const projectContext = safeJsonObject(requestItem.project_context)
-        const assignmentContext = safeJsonObject(projectContext.csr_assignment)
-        const selectedLeadNgoId = Number(assignmentContext.selected_lead_ngo_id || 0)
-        const isRequestNgo = Number(requestItem.ngo_id) === Number(userId)
-        const isSelectedLeadNgo = selectedLeadNgoId > 0 && selectedLeadNgoId === Number(userId)
-
-        if (userType === 'ngo' && !isRequestNgo && !isSelectedLeadNgo) continue
-
-        const companyId = Number(item.contributor_id)
-        const company = companyById.get(companyId)
-        const projectId = String(safeProjectIdFromMeta(item.meta) || requestItem.project_id || `request-${requestItem.id}`)
-        const key = `${projectId}::${companyId}`
-        const selectedLeadNgo = companyById.get(selectedLeadNgoId)
-
-        const existing = grouped.get(key) || {
-          project_id: projectId,
-          project_title: requestItem.project?.title || 'Project',
-          project_location: requestItem.project?.exact_address || requestItem.project?.location || requestItem.location || '',
-          project_timeline: requestItem.project?.timeline || requestItem.timeline || '',
-          lead_ngo_id: requestItem.ngo_id,
-          lead_ngo_name: requestItem.requester?.name || 'NGO',
-          lead_ngo_email: requestItem.requester?.email || '',
-          assigned_company_id: companyId,
-          assigned_company_name: company?.name || 'Company',
-          assigned_company_email: company?.email || '',
-          selected_lead_ngo_id: selectedLeadNgoId || null,
-          selected_lead_ngo_name: selectedLeadNgo?.name || null,
-          selected_lead_ngo_email: selectedLeadNgo?.email || null,
-          ngo_dashboard_role: isRequestNgo ? 'request_owner' : (isSelectedLeadNgo ? 'selected_lead' : 'viewer'),
-          assignment_status: String(item.status || 'accepted').toLowerCase(),
-          assigned_at: projectContext?.csr_assignment?.assigned_at || item.created_at || null,
-          review_note: safeNoteFromMeta(item.meta),
-          lead_ngo_invites: [] as any[],
-          needs: [] as any[]
-        }
-
-        existing.needs.push({
-          id: requestItem.id,
-          title: requestItem.title,
-          status: requestItem.status,
-          request_type: requestItem.request_type || requestItem.category
-        })
-
-        const normalizedStatus = String(item.status || '').toLowerCase()
-        if (normalizedStatus === 'completed') {
-          existing.assignment_status = 'completed'
-        } else if (normalizedStatus === 'in_progress' && existing.assignment_status !== 'completed') {
-          existing.assignment_status = 'in_progress'
-        }
-
-        grouped.set(key, existing)
+      const userById = new Map<number, any>((users || []).map((item: any) => [Number(item.id), item]))
+      const needsByProject = new Map<string, any[]>()
+      for (const need of needs || []) {
+        const projectId = String(need.project_id || '')
+        if (!projectId) continue
+        const bucket = needsByProject.get(projectId) || []
+        bucket.push(need)
+        needsByProject.set(projectId, bucket)
       }
 
-      for (const payload of grouped.values()) {
-        const projectId = String(payload.project_id)
-        const companyId = Number(payload.assigned_company_id)
-        const relevantInvites = (allLeadInvites || []).filter((invite: any) => {
-          const meta = safeJsonObject(invite.meta)
-          return String(meta.project_id || '') === projectId && Number(meta.inviting_company_id || 0) === companyId
-        })
+      const payload = [...handoffPairs.values()]
+        .map((pair) => {
+          const project = projectById.get(pair.projectId)
+          if (!project) return null
 
-        payload.lead_ngo_invites = relevantInvites.map((invite: any) => {
-          const inviteNgoId = Number(invite.contributor_id)
-          const inviteNgo = companyById.get(inviteNgoId)
-          return {
-            id: invite.id,
-            ngo_id: inviteNgoId,
-            ngo_name: inviteNgo?.name || 'NGO',
-            ngo_email: inviteNgo?.email || '',
-            status: invite.status,
-            note: String(invite.reference_text || invite.meta?.note || ''),
-            selected_as_lead: safeBoolean(invite.meta?.selected_as_lead),
-            created_at: invite.created_at,
-            updated_at: invite.updated_at
-          }
-        })
+          const projectId = String(project.id)
+          const companyId = Number(project.assigned_company_user_id || pair.companyId || 0)
+          const ownerNgoId = Number(project.ngo_id || 0)
+          const selectedLeadNgoId = Number(project.selected_lead_ngo_id || 0)
+          const projectNeeds = needsByProject.get(projectId) || []
+          const ownerNgo = userById.get(ownerNgoId)
+          const company = userById.get(companyId)
+          const selectedLeadNgo = selectedLeadNgoId > 0 ? userById.get(selectedLeadNgoId) : null
 
-        // Ensure we have user records for any invite NGO IDs not present in companyById
-        const missingNgoIds = payload.lead_ngo_invites
-          .map((i: any) => Number(i.ngo_id || 0))
-          .filter((id: number, idx: number, arr: number[]) => Number.isFinite(id) && id > 0 && !companyById.has(id))
+          const categoryLabels = [...new Set(
+            projectNeeds
+              .map((need: any) => String(need.request_type || need.category || '').trim())
+              .filter(Boolean)
+          )]
 
-        if (missingNgoIds.length > 0) {
-          try {
-            const { data: missingUsers, error: missingUsersError } = await supabase
-              .from('users')
-              .select('id, name, email')
-              .in('id', missingNgoIds)
+          const firstNeedContext = projectNeeds.length > 0
+            ? safeJsonObject(projectNeeds[0].project_context)
+            : {}
+          const csrAssignment = safeJsonObject(firstNeedContext.csr_assignment)
 
-            if (!missingUsersError && Array.isArray(missingUsers)) {
-              for (const u of missingUsers) {
-                companyById.set(Number(u.id), u)
-              }
-
-              // Replace placeholders with fetched user info
-              payload.lead_ngo_invites = payload.lead_ngo_invites.map((inv: any) => {
-                const ref = companyById.get(Number(inv.ngo_id))
-                return {
-                  ...inv,
-                  ngo_name: ref?.name || inv.ngo_name,
-                  ngo_email: ref?.email || inv.ngo_email
-                }
+          const relatedContributions = pair.contributions.length > 0
+            ? pair.contributions
+            : (contributions || []).filter((contribution: any) => {
+                const need = needById.get(Number(contribution.service_request_id))
+                return need &&
+                  String(need.project_id || '') === projectId &&
+                  Number(contribution.contributor_id) === companyId
               })
-            }
-          } catch (e) {
-            // ignore - keep existing placeholders
-          }
-        }
-      }
 
-      return NextResponse.json({ success: true, data: Array.from(grouped.values()) })
+          const reviewNoteFromContribution = relatedContributions
+            .map((contribution: any) => {
+              const meta = safeJsonObject(contribution.meta)
+              return String(meta.review_note || safeNoteFromMeta(contribution.meta) || contribution.reference_text || '').trim()
+            })
+            .find(Boolean)
+
+          const assignedAtFromContribution = relatedContributions
+            .map((contribution: any) => {
+              const meta = safeJsonObject(contribution.meta)
+              return meta.ngo_reviewed_at || contribution.updated_at || contribution.created_at || null
+            })
+            .find(Boolean)
+
+          const contributionStatus = relatedContributions
+            .map((contribution: any) => String(contribution.status || '').toLowerCase())
+            .sort((a: string, b: string) => {
+              const rank = (value: string) => (
+                value === 'completed' ? 3 : value === 'in_progress' ? 2 : value === 'accepted' ? 1 : 0
+              )
+              return rank(b) - rank(a)
+            })[0]
+
+          const relevantInvites = (allLeadInvites || []).filter((invite: any) => {
+            const meta = safeJsonObject(invite.meta)
+            return String(meta.project_id || '') === projectId && Number(meta.inviting_company_id || 0) === companyId
+          })
+
+          const leadNgoInvites = relevantInvites.map((invite: any) => {
+            const inviteNgoId = Number(invite.contributor_id)
+            const inviteNgo = userById.get(inviteNgoId)
+            const meta = safeJsonObject(invite.meta)
+            return {
+              id: invite.id,
+              ngo_id: inviteNgoId,
+              ngo_name: inviteNgo?.name || 'NGO',
+              ngo_email: inviteNgo?.email || '',
+              status: invite.status,
+              note: String(invite.reference_text || meta.note || ''),
+              selected_as_lead: safeBoolean(meta.selected_as_lead),
+              created_at: invite.created_at,
+              updated_at: invite.updated_at,
+            }
+          })
+
+          return {
+            project_id: projectId,
+            project_title: project.title || 'Project',
+            project_description: project.description || '',
+            project_location: project.exact_address || project.location || '',
+            project_timeline: project.timeline || '',
+            project_category: categoryLabels.length === 1
+              ? categoryLabels[0]
+              : (categoryLabels.length > 1 ? categoryLabels.join(' • ') : null),
+            project_expected_beneficiaries: project.expected_beneficiaries ?? null,
+            project_valid_until: project.valid_until ?? null,
+            project_status: project.status || null,
+            csr_project_available_for_csr: project.csr_project_available_for_csr ?? null,
+            lead_ngo_id: ownerNgoId,
+            lead_ngo_name: ownerNgo?.name || 'NGO',
+            lead_ngo_email: ownerNgo?.email || '',
+            assigned_company_id: companyId,
+            assigned_company_name: company?.name || 'Company',
+            assigned_company_email: company?.email || '',
+            selected_lead_ngo_id: selectedLeadNgoId > 0 ? selectedLeadNgoId : null,
+            selected_lead_ngo_name: selectedLeadNgo?.name || null,
+            selected_lead_ngo_email: selectedLeadNgo?.email || null,
+            ngo_dashboard_role: ownerNgoId === Number(userId)
+              ? 'request_owner'
+              : (selectedLeadNgoId === Number(userId) ? 'selected_lead' : 'viewer'),
+            assignment_status: String(
+              project.assignment_status || csrAssignment.assignment_status || contributionStatus || 'accepted'
+            ).toLowerCase(),
+            assigned_at: csrAssignment.assigned_at || assignedAtFromContribution || project.updated_at || project.created_at || null,
+            review_note: String(csrAssignment.review_note || reviewNoteFromContribution || '').trim(),
+            lead_ngo_invites: leadNgoInvites,
+            needs: projectNeeds.map((need: any) => ({
+              id: need.id,
+              title: need.title,
+              status: need.status,
+              request_type: need.request_type || need.category,
+            })),
+          }
+        })
+        .filter(Boolean)
+
+      return NextResponse.json({ success: true, data: payload })
     }
 
     if (userType === 'individual') {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { DashboardQuickSidebar } from '@/components/dashboard-quick-sidebar';
@@ -10,7 +10,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import { Skeleton } from '@/components/ui/skeleton';
 import {
   Select,
   SelectContent,
@@ -21,13 +20,23 @@ import {
 import { toast as sonnerToast } from 'sonner';
 import { GovernmentAdminManagement } from '@/components/government-admin-management';
 import { NavadrishtCAManagement } from '@/components/navadrishti-ca-management';
+import { AdminConsoleHeader, AdminPortalMain, AdminPortalShell } from './admin-layout-client';
+import {
+  AdminConsoleSkeleton,
+  AdminDetailItems,
+  AdminDetailSection,
+  AdminListItemSkeleton,
+  AdminMessagesSkeleton,
+  AdminSplitViewSkeleton,
+  AdminTicketDetailSkeleton,
+  formatAdminDetailValue,
+  safeParseRecordJson,
+} from '@/components/evidence-verification/portal-ui';
+import { cn } from '@/lib/utils';
 import {
   Gauge,
-  LogOut,
   PencilLine,
-  RefreshCw,
   Trash2,
-  MessageSquare,
   Search,
 } from 'lucide-react';
 
@@ -110,6 +119,14 @@ type SupportTicketMessage = {
   created_at: string;
   sender?: any;
 };
+
+const supportFilterButtonClass = (active: boolean) =>
+  cn(
+    'inline-flex h-10 w-full items-center justify-center rounded-md border px-3 text-sm font-medium transition-colors',
+    active
+      ? 'border-blue-600 bg-blue-600 text-white shadow-sm hover:border-blue-500 hover:bg-blue-500'
+      : 'border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700'
+  );
 
 const emptyRequestDraft = {
   title: '',
@@ -205,13 +222,571 @@ const postVisibilityOptions = [
   { value: 'draft', label: 'Draft' },
 ];
 
+const ADMIN_ACTIVE_TAB_KEY = 'admin_active_tab';
+
+const ADMIN_TAB_VALUES = new Set([
+  'overview',
+  'offers',
+  'projects',
+  'users',
+  'requests',
+  'campaigns',
+  'posts',
+  'support',
+  'refunds',
+  'government-admins',
+  'ca-credentials',
+]);
+
+function readAdminActiveTab(): string {
+  if (typeof window === 'undefined') return 'overview';
+  try {
+    const stored = sessionStorage.getItem(ADMIN_ACTIVE_TAB_KEY);
+    if (stored && ADMIN_TAB_VALUES.has(stored)) return stored;
+  } catch {
+    // ignore sessionStorage errors
+  }
+  return 'overview';
+}
+
+const adminActiveTabListeners = new Set<() => void>();
+
+function subscribeAdminActiveTab(onStoreChange: () => void) {
+  adminActiveTabListeners.add(onStoreChange);
+  return () => {
+    adminActiveTabListeners.delete(onStoreChange);
+  };
+}
+
+function persistAdminActiveTab(tab: string) {
+  try {
+    sessionStorage.setItem(ADMIN_ACTIVE_TAB_KEY, tab);
+    adminActiveTabListeners.forEach((listener) => listener());
+  } catch {
+    // ignore sessionStorage errors
+  }
+}
+
+function OfferFullDetails({ offer }: { offer: any }) {
+  if (!offer) return null;
+  return (
+    <AdminDetailSection title="Full offer record">
+      <AdminDetailItems
+        items={[
+          { label: 'Offer ID', value: formatAdminDetailValue(offer.id) },
+          { label: 'Admin status', value: formatAdminDetailValue(offer.admin_status) },
+          { label: 'Platform status', value: formatAdminDetailValue(offer.status) },
+          { label: 'Category', value: formatAdminDetailValue(offer.category) },
+          { label: 'Location', value: formatAdminDetailValue(offer.location) },
+          { label: 'Organization', value: formatAdminDetailValue(offer.organization?.name) },
+          { label: 'Org email', value: formatAdminDetailValue(offer.organization?.email) },
+          { label: 'Org ID', value: formatAdminDetailValue(offer.organization?.id || offer.creator_id) },
+          { label: 'Submitted for review', value: formatAdminDetailValue(offer.submitted_for_review_at) },
+          { label: 'Admin reviewed at', value: formatAdminDetailValue(offer.admin_reviewed_at) },
+          { label: 'Admin comments', value: formatAdminDetailValue(offer.admin_comments) },
+          { label: 'Created', value: formatAdminDetailValue(offer.created_at) },
+          { label: 'Updated', value: formatAdminDetailValue(offer.updated_at) },
+          { label: 'Description', value: formatAdminDetailValue(offer.description) },
+        ]}
+      />
+    </AdminDetailSection>
+  );
+}
+
+function RequestFullDetails({ request }: { request: any }) {
+  if (!request) return null;
+  const requirements = safeParseRecordJson(request.requirements);
+  const projectContext = safeParseRecordJson(request.project_context);
+  const transactions = Array.isArray(requirements.financial_transactions) ? requirements.financial_transactions : [];
+
+  return (
+    <div className="space-y-4">
+      <AdminDetailSection title="Request overview">
+        <AdminDetailItems
+          items={[
+            { label: 'Request ID', value: formatAdminDetailValue(request.id) },
+            { label: 'Title', value: formatAdminDetailValue(request.title) },
+            { label: 'Status', value: formatAdminDetailValue(request.status) },
+            { label: 'Category', value: formatAdminDetailValue(request.category) },
+            { label: 'Request type', value: formatAdminDetailValue(request.request_type || requirements.request_type) },
+            { label: 'Location', value: formatAdminDetailValue(request.location) },
+            { label: 'Timeline', value: formatAdminDetailValue(request.timeline) },
+            { label: 'Estimated budget', value: formatAdminDetailValue(request.estimated_budget) },
+            { label: 'Beneficiary count', value: formatAdminDetailValue(request.beneficiary_count) },
+            { label: 'Impact description', value: formatAdminDetailValue(request.impact_description) },
+            { label: 'Contact info', value: formatAdminDetailValue(request.contact_info) },
+            { label: 'Requester', value: formatAdminDetailValue(request.requester?.name) },
+            { label: 'Requester email', value: formatAdminDetailValue(request.requester?.email) },
+            { label: 'Project', value: formatAdminDetailValue(request.project?.title) },
+            { label: 'Project status', value: formatAdminDetailValue(request.project?.status) },
+            { label: 'Created', value: formatAdminDetailValue(request.created_at) },
+            { label: 'Updated', value: formatAdminDetailValue(request.updated_at) },
+          ]}
+        />
+      </AdminDetailSection>
+
+      {(requirements.funds_raised_inr || requirements.funding_target_inr || transactions.length > 0) ? (
+        <AdminDetailSection title="Financial details">
+          <AdminDetailItems
+            items={[
+              { label: 'Funds raised (INR)', value: formatAdminDetailValue(requirements.funds_raised_inr) },
+              { label: 'Funding target (INR)', value: formatAdminDetailValue(requirements.funding_target_inr ?? requirements.estimated_budget) },
+              { label: 'Funds remaining (INR)', value: formatAdminDetailValue(requirements.funds_remaining_inr) },
+              { label: 'Payment transactions', value: transactions.length ? `${transactions.length} recorded` : '—' },
+            ]}
+          />
+          {transactions.length > 0 ? (
+            <pre className="max-h-48 overflow-auto rounded-md border bg-white p-3 text-xs text-slate-700">
+              {JSON.stringify(transactions, null, 2)}
+            </pre>
+          ) : null}
+        </AdminDetailSection>
+      ) : null}
+
+      {Object.keys(projectContext).length > 0 ? (
+        <AdminDetailSection title="Project context">
+          <pre className="max-h-40 overflow-auto rounded-md border bg-white p-3 text-xs text-slate-700">
+            {JSON.stringify(projectContext, null, 2)}
+          </pre>
+        </AdminDetailSection>
+      ) : null}
+    </div>
+  );
+}
+
+function ProjectFullDetails({ project }: { project: any }) {
+  if (!project) return null;
+  return (
+    <AdminDetailSection title="Full project record">
+      <AdminDetailItems
+        items={[
+          { label: 'Project ID', value: formatAdminDetailValue(project.id) },
+          { label: 'Title', value: formatAdminDetailValue(project.title) },
+          { label: 'Status', value: formatAdminDetailValue(project.status) },
+          { label: 'Location', value: formatAdminDetailValue(project.location) },
+          { label: 'Exact address', value: formatAdminDetailValue(project.exact_address) },
+          { label: 'Timeline', value: formatAdminDetailValue(project.timeline) },
+          { label: 'NGO', value: formatAdminDetailValue(project.ngo?.name) },
+          { label: 'NGO email', value: formatAdminDetailValue(project.ngo?.email) },
+          { label: 'NGO ID', value: formatAdminDetailValue(project.ngo?.id || project.ngo_id) },
+          { label: 'Created', value: formatAdminDetailValue(project.created_at) },
+          { label: 'Updated', value: formatAdminDetailValue(project.updated_at) },
+          { label: 'Description', value: formatAdminDetailValue(project.description) },
+        ]}
+      />
+    </AdminDetailSection>
+  );
+}
+
+function CampaignFullDetails({ campaign }: { campaign: any }) {
+  if (!campaign) return null;
+  const impactMetrics = campaign.impact_metrics && typeof campaign.impact_metrics === 'object' ? campaign.impact_metrics : safeParseRecordJson(campaign.impact_metrics);
+  return (
+    <div className="space-y-4">
+      <AdminDetailSection title="Full campaign record">
+        <AdminDetailItems
+          items={[
+            { label: 'Campaign ID', value: formatAdminDetailValue(campaign.id) },
+            { label: 'Title', value: formatAdminDetailValue(campaign.title) },
+            { label: 'Status', value: formatAdminDetailValue(campaign.status) },
+            { label: 'Category', value: formatAdminDetailValue(campaign.category || campaign.cause) },
+            { label: 'Schedule VII', value: formatAdminDetailValue(campaign.schedule_vii) },
+            { label: 'Location', value: formatAdminDetailValue(campaign.location || campaign.region) },
+            { label: 'Budget (INR)', value: formatAdminDetailValue(campaign.budget_inr) },
+            { label: 'Start date', value: formatAdminDetailValue(campaign.start_date) },
+            { label: 'End date', value: formatAdminDetailValue(campaign.end_date) },
+            { label: 'Company', value: formatAdminDetailValue(campaign.company?.name) },
+            { label: 'Company email', value: formatAdminDetailValue(campaign.company?.email) },
+            { label: 'Company ID', value: formatAdminDetailValue(campaign.company_id) },
+            { label: 'Created', value: formatAdminDetailValue(campaign.created_at) },
+            { label: 'Updated', value: formatAdminDetailValue(campaign.updated_at) },
+            { label: 'Description', value: formatAdminDetailValue(campaign.description) },
+          ]}
+        />
+      </AdminDetailSection>
+      {Object.keys(impactMetrics).length > 0 ? (
+        <AdminDetailSection title="Impact metrics">
+          <pre className="max-h-40 overflow-auto rounded-md border bg-white p-3 text-xs text-slate-700">
+            {JSON.stringify(impactMetrics, null, 2)}
+          </pre>
+        </AdminDetailSection>
+      ) : null}
+      {Array.isArray(campaign.milestones) && campaign.milestones.length > 0 ? (
+        <AdminDetailSection title="Milestones">
+          <pre className="max-h-40 overflow-auto rounded-md border bg-white p-3 text-xs text-slate-700">
+            {JSON.stringify(campaign.milestones, null, 2)}
+          </pre>
+        </AdminDetailSection>
+      ) : null}
+    </div>
+  );
+}
+
+function PostFullDetails({ post }: { post: any }) {
+  if (!post) return null;
+  return (
+    <AdminDetailSection title="Full post record">
+      <AdminDetailItems
+        items={[
+          { label: 'Post ID', value: formatAdminDetailValue(post.id) },
+          { label: 'Author', value: formatAdminDetailValue(post.author?.name) },
+          { label: 'Author email', value: formatAdminDetailValue(post.author?.email) },
+          { label: 'Category', value: formatAdminDetailValue(post.category) },
+          { label: 'Visibility', value: formatAdminDetailValue(post.visibility) },
+          { label: 'Location', value: formatAdminDetailValue(post.location) },
+          { label: 'Tags', value: formatAdminDetailValue(post.tags) },
+          { label: 'Reactions', value: formatAdminDetailValue(post.reaction_count) },
+          { label: 'Comments', value: formatAdminDetailValue(post.comment_count) },
+          { label: 'Shares', value: formatAdminDetailValue(post.share_count) },
+          { label: 'Views', value: formatAdminDetailValue(post.view_count) },
+          { label: 'Published', value: formatAdminDetailValue(post.published_at) },
+          { label: 'Created', value: formatAdminDetailValue(post.created_at) },
+          { label: 'Updated', value: formatAdminDetailValue(post.updated_at) },
+          { label: 'Content', value: formatAdminDetailValue(post.content) },
+        ]}
+      />
+    </AdminDetailSection>
+  );
+}
+
+function UserFullDetails({ user }: { user: any }) {
+  if (!user) return null;
+  return (
+    <AdminDetailSection title="Full user record">
+      <AdminDetailItems
+        items={[
+          { label: 'User ID', value: formatAdminDetailValue(user.id) },
+          { label: 'Name', value: formatAdminDetailValue(user.name) },
+          { label: 'Email', value: formatAdminDetailValue(user.email) },
+          { label: 'User type', value: formatAdminDetailValue(user.user_type) },
+          { label: 'Verification', value: formatAdminDetailValue(user.verification_status) },
+          { label: 'City', value: formatAdminDetailValue(user.city) },
+          { label: 'State', value: formatAdminDetailValue(user.state_province) },
+          { label: 'Country', value: formatAdminDetailValue(user.country) },
+          { label: 'Phone', value: formatAdminDetailValue(user.phone) },
+          { label: 'Email verified', value: formatAdminDetailValue(user.email_verified) },
+          { label: 'Phone verified', value: formatAdminDetailValue(user.phone_verified) },
+          { label: 'Joined', value: formatAdminDetailValue(user.created_at) },
+          { label: 'Updated', value: formatAdminDetailValue(user.updated_at) },
+        ]}
+      />
+    </AdminDetailSection>
+  );
+}
+
+function TicketFullDetails({ ticket }: { ticket: any }) {
+  if (!ticket) return null;
+  return (
+    <AdminDetailSection title="Full ticket record">
+      <AdminDetailItems
+        items={[
+          { label: 'Ticket ID', value: formatAdminDetailValue(ticket.ticket_id) },
+          { label: 'Title', value: formatAdminDetailValue(ticket.title) },
+          { label: 'Status', value: formatAdminDetailValue(ticket.status) },
+          { label: 'User', value: formatAdminDetailValue(ticket.user_name || ticket.user?.name) },
+          { label: 'User email', value: formatAdminDetailValue(ticket.user_email || ticket.user?.email) },
+          { label: 'User type', value: formatAdminDetailValue(ticket.user_type || ticket.user?.user_type) },
+          { label: 'Proof URL', value: ticket.proof_url ? <a href={ticket.proof_url} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline">Open proof</a> : '—' },
+          { label: 'Created', value: formatAdminDetailValue(ticket.created_at) },
+          { label: 'Updated', value: formatAdminDetailValue(ticket.updated_at) },
+          { label: 'Resolved', value: formatAdminDetailValue(ticket.resolved_at) },
+          { label: 'Description', value: formatAdminDetailValue(ticket.description) },
+        ]}
+      />
+    </AdminDetailSection>
+  );
+}
+
+type AdminPaymentRow = {
+  id: string;
+  razorpay_payment_id: string;
+  razorpay_order_id?: string | null;
+  amount_inr?: number | string | null;
+  currency?: string | null;
+  payment_status?: string | null;
+  payment_method?: string | null;
+  paid_at?: string | null;
+  created_at?: string | null;
+  service_request_id?: number | null;
+  service_request?: any;
+  refunds?: any[];
+  latest_refund_status?: string | null;
+  refundable?: boolean;
+  source?: string;
+};
+
+const filterButtonClass = (active: boolean) =>
+  cn(
+    'inline-flex h-10 w-full items-center justify-center rounded-md border px-3 text-sm font-medium transition-colors',
+    active
+      ? 'border-blue-600 bg-blue-600 text-white shadow-sm hover:border-blue-500 hover:bg-blue-500'
+      : 'border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700'
+  );
+
+const statusTone = (value?: string | null) => {
+  const normalized = String(value || '').toLowerCase();
+  if (['processed', 'paid', 'approved', 'verified'].includes(normalized)) return 'bg-emerald-100 text-emerald-800';
+  if (['pending', 'in_progress', 'partially_refunded'].includes(normalized)) return 'bg-amber-100 text-amber-800';
+  if (['failed', 'rejected', 'refunded'].includes(normalized)) return 'bg-red-100 text-red-800';
+  return 'bg-slate-100 text-slate-700';
+};
+
+export function AdminRefundsPanel() {
+  const [payments, setPayments] = useState<AdminPaymentRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [filter, setFilter] = useState<'all' | 'refundable' | 'refunded'>('all');
+  const [query, setQuery] = useState('');
+  const [selectedPayment, setSelectedPayment] = useState<AdminPaymentRow | null>(null);
+  const [refundRequestId, setRefundRequestId] = useState('');
+  const [refundPaymentId, setRefundPaymentId] = useState('');
+  const [refundAmount, setRefundAmount] = useState('');
+  const [refundReason, setRefundReason] = useState('admin_refund');
+  const [refunding, setRefunding] = useState(false);
+
+  const loadPayments = useCallback(async () => {
+    try {
+      setLoading(true);
+      const params = new URLSearchParams();
+      if (filter !== 'all') params.set('filter', filter);
+      if (query.trim()) params.set('q', query.trim());
+      const response = await fetch(`/api/admin/payments?${params.toString()}`, { credentials: 'include' });
+      const data = await response.json();
+      if (!response.ok || !data?.success) throw new Error(data?.error || 'Failed to load payments');
+      setPayments(Array.isArray(data.payments) ? data.payments : []);
+    } catch (error: any) {
+      sonnerToast.error(error?.message || 'Failed to load payments');
+      setPayments([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [filter, query]);
+
+  useEffect(() => {
+    void loadPayments();
+  }, [loadPayments]);
+
+  const visiblePayments = useMemo(() => payments, [payments]);
+
+  const selectPayment = (payment: AdminPaymentRow) => {
+    setSelectedPayment(payment);
+    setRefundPaymentId(payment.razorpay_payment_id || '');
+    setRefundRequestId(payment.service_request_id ? String(payment.service_request_id) : '');
+    setRefundAmount(payment.amount_inr ? String(payment.amount_inr) : '');
+    setRefundReason('admin_refund');
+  };
+
+  const discoverPayment = async (paymentId: string) => {
+    if (!paymentId) return;
+    try {
+      const res = await fetch(`/api/admin/payments/discover?paymentId=${encodeURIComponent(paymentId)}`, { credentials: 'include' });
+      const payload = await res.json();
+      if (res.ok && payload?.success && payload.data) {
+        const { service_request_id, amount_inr } = payload.data;
+        if (service_request_id) setRefundRequestId(String(service_request_id));
+        if (amount_inr) setRefundAmount(String(amount_inr));
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const initiateRefund = async () => {
+    if (!refundRequestId.trim() || !refundPaymentId.trim()) {
+      sonnerToast.error('Service request ID and payment ID are required');
+      return;
+    }
+    try {
+      setRefunding(true);
+      const response = await fetch('/api/admin/payments/refund', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          service_request_id: refundRequestId,
+          razorpay_payment_id: refundPaymentId,
+          amount: refundAmount,
+          reason: refundReason,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data?.success) throw new Error(data?.error || 'Failed to initiate refund');
+      sonnerToast.success(data?.data?.message || 'Refund initiated');
+      await loadPayments();
+    } catch (error: any) {
+      sonnerToast.error(error?.message || 'Refund failed');
+    } finally {
+      setRefunding(false);
+    }
+  };
+
+  if (loading && payments.length === 0) {
+    return <AdminSplitViewSkeleton inboxTitleWidth="w-44" detailWithEditor={false} inboxMode="refunds" />;
+  }
+
+  return (
+    <div className="grid min-h-0 gap-6 overflow-x-hidden xl:grid-cols-2 xl:items-stretch">
+      <Card className="flex min-h-[36rem] flex-col border-blue-100 bg-white">
+        <CardHeader className="border-b border-slate-100 pb-4">
+          <CardTitle className="text-slate-900">Payments &amp; Refunds</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-1 flex-col gap-4 pt-6">
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search payment ID, request ID, title, payer"
+            className="h-10 border-blue-200 bg-white"
+          />
+          <div className="grid grid-cols-3 gap-2">
+            <button type="button" onClick={() => setFilter('all')} className={filterButtonClass(filter === 'all')}>All</button>
+            <button type="button" onClick={() => setFilter('refundable')} className={filterButtonClass(filter === 'refundable')}>Refundable</button>
+            <button type="button" onClick={() => setFilter('refunded')} className={filterButtonClass(filter === 'refunded')}>Refunded</button>
+          </div>
+          <Button type="button" className="h-10 w-full bg-blue-600 hover:bg-blue-500" onClick={loadPayments} disabled={loading}>
+            {loading ? 'Refreshing...' : 'Refresh payments'}
+          </Button>
+
+          <div className="flex min-h-[14rem] flex-1 flex-col border-t border-slate-100 pt-4">
+            {loading ? (
+              <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50/50 py-10 text-sm text-slate-500">
+                Loading payments...
+              </div>
+            ) : visiblePayments.length === 0 ? (
+              <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50/50 py-10 text-center text-sm text-slate-500">
+                No payments found for this filter.
+              </div>
+            ) : (
+              <div className="max-h-[28rem] space-y-3 overflow-y-auto pr-1">
+                {visiblePayments.map((payment) => (
+                  <button
+                    key={`${payment.id}-${payment.razorpay_payment_id}`}
+                    type="button"
+                    onClick={() => selectPayment(payment)}
+                    className={cn(
+                      'w-full rounded-lg border bg-white p-4 text-left transition-all hover:border-blue-300 hover:shadow-sm',
+                      selectedPayment?.razorpay_payment_id === payment.razorpay_payment_id
+                        ? 'border-blue-400 ring-1 ring-blue-200'
+                        : 'border-blue-100'
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold text-slate-900">{payment.razorpay_payment_id}</p>
+                        <p className="text-xs text-slate-500">
+                          Request #{payment.service_request_id || '—'} • {payment.service_request?.title || 'Unknown request'}
+                        </p>
+                      </div>
+                      <Badge className={cn('shrink-0 capitalize', statusTone(payment.latest_refund_status || payment.payment_status))}>
+                        {payment.latest_refund_status || payment.payment_status || 'unknown'}
+                      </Badge>
+                    </div>
+                    <p className="mt-2 text-sm text-slate-600">
+                      INR {formatAdminDetailValue(payment.amount_inr)} • {payment.service_request?.requester?.name || 'Unknown payer'}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="flex min-h-[36rem] flex-col border-blue-100 bg-white">
+        <CardHeader className="border-b border-slate-100 pb-4">
+          <CardTitle className="text-slate-900">Refund controls</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-1 flex-col gap-4 pt-6">
+          {!selectedPayment ? (
+            <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50/50 p-6 text-center text-sm text-slate-600">
+              Select a payment to review full details and initiate a Razorpay refund. Only admins can issue refunds.
+            </div>
+          ) : (
+            <div className="flex-1 space-y-5 overflow-y-auto pr-1">
+              <AdminDetailSection title="Payment details">
+                <AdminDetailItems
+                  items={[
+                    { label: 'Payment ID', value: formatAdminDetailValue(selectedPayment.razorpay_payment_id) },
+                    { label: 'Order ID', value: formatAdminDetailValue(selectedPayment.razorpay_order_id) },
+                    { label: 'Amount (INR)', value: formatAdminDetailValue(selectedPayment.amount_inr) },
+                    { label: 'Payment status', value: formatAdminDetailValue(selectedPayment.payment_status) },
+                    { label: 'Refund status', value: formatAdminDetailValue(selectedPayment.latest_refund_status) },
+                    { label: 'Paid at', value: formatAdminDetailValue(selectedPayment.paid_at) },
+                    { label: 'Source', value: formatAdminDetailValue(selectedPayment.source) },
+                    { label: 'Service request', value: formatAdminDetailValue(selectedPayment.service_request?.title) },
+                    { label: 'Requester', value: formatAdminDetailValue(selectedPayment.service_request?.requester?.name) },
+                    { label: 'Request status', value: formatAdminDetailValue(selectedPayment.service_request?.status) },
+                  ]}
+                />
+              </AdminDetailSection>
+
+              {Array.isArray(selectedPayment.refunds) && selectedPayment.refunds.length > 0 ? (
+                <AdminDetailSection title="Refund history">
+                  <pre className="max-h-40 overflow-auto rounded-md border bg-white p-3 text-xs text-slate-700">
+                    {JSON.stringify(selectedPayment.refunds, null, 2)}
+                  </pre>
+                </AdminDetailSection>
+              ) : null}
+
+              <AdminDetailSection title="Initiate Razorpay refund">
+                <p className="text-xs text-amber-800">
+                  Refunds apply to financial service requests only. Users cannot initiate refunds from the platform.
+                </p>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-sm font-medium text-slate-700">Service Request ID</label>
+                    <Input value={refundRequestId} onChange={(e) => setRefundRequestId(e.target.value)} placeholder="Request ID linked to payment" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">Razorpay Payment ID</label>
+                    <Input
+                      value={refundPaymentId}
+                      onChange={(e) => setRefundPaymentId(e.target.value)}
+                      onBlur={(e) => discoverPayment(e.target.value)}
+                      placeholder="pay_xxxxx"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700">Refund amount (optional)</label>
+                    <Input value={refundAmount} onChange={(e) => setRefundAmount(e.target.value)} placeholder="Leave blank for full refund" />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-sm font-medium text-slate-700">Refund reason</label>
+                    <Textarea value={refundReason} onChange={(e) => setRefundReason(e.target.value)} rows={3} placeholder="admin_refund" />
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  className="h-10 w-full"
+                  onClick={initiateRefund}
+                  disabled={refunding || !selectedPayment.refundable}
+                >
+                  {refunding ? 'Initiating refund...' : selectedPayment.refundable ? 'Initiate Refund' : 'Already refunded'}
+                </Button>
+              </AdminDetailSection>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const router = useRouter();
   const { user } = useAuth();
 
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('overview');
+  const activeTab = useSyncExternalStore(
+    subscribeAdminActiveTab,
+    readAdminActiveTab,
+    () => 'overview',
+  );
+
+  const setActiveTab = useCallback((tab: string) => {
+    if (!ADMIN_TAB_VALUES.has(tab)) return;
+    persistAdminActiveTab(tab);
+  }, []);
   const [overview, setOverview] = useState<OverviewData | null>(null);
   const [health, setHealth] = useState<HealthData | null>(null);
   const [serviceOffers, setServiceOffers] = useState<ServiceOffer[]>([]);
@@ -243,6 +818,7 @@ export default function AdminPage() {
   const [postQuery, setPostQuery] = useState('');
   const [supportQuery, setSupportQuery] = useState('');
   const [supportStatusFilter, setSupportStatusFilter] = useState<SupportTicketStatus | 'all'>('all');
+  const [supportBucketFilter, setSupportBucketFilter] = useState<'open' | 'closed' | 'all'>('open');
   const [selectedTicketDetail, setSelectedTicketDetail] = useState<SupportTicket | null>(null);
   const [messages, setMessages] = useState<SupportTicketMessage[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -251,11 +827,6 @@ export default function AdminPage() {
   const [replyMessage, setReplyMessage] = useState('');
   const [replying, setReplying] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [refunding, setRefunding] = useState(false);
-  const [refundRequestId, setRefundRequestId] = useState('');
-  const [refundPaymentId, setRefundPaymentId] = useState('');
-  const [refundAmount, setRefundAmount] = useState('');
-  const [refundReason, setRefundReason] = useState('admin_support_refund');
   const [trackingLookupId, setTrackingLookupId] = useState('');
   const [trackingLookupLoading, setTrackingLookupLoading] = useState(false);
   const [trackingSnapshot, setTrackingSnapshot] = useState<any | null>(null);
@@ -396,10 +967,6 @@ export default function AdminPage() {
   const selectTicket = (ticket: SupportTicket) => {
     setSelectedTicketDetail(ticket);
     setReplyMessage('');
-    setRefundRequestId('');
-    setRefundPaymentId('');
-    setRefundAmount('');
-    setRefundReason('admin_support_refund');
     setTrackingLookupId('');
     setTrackingSnapshot(null);
     loadTicketDetails(ticket.ticket_id);
@@ -458,48 +1025,6 @@ export default function AdminPage() {
     }
   };
 
-  const initiateRefund = async () => {
-    if (!selectedTicketDetail) return;
-    if (!refundRequestId.trim() || !refundPaymentId.trim()) {
-      sonnerToast.error('Refund details required');
-      return;
-    }
-    try {
-      setRefunding(true);
-      const response = await fetch(`/api/admin/support-tickets/${encodeURIComponent(selectedTicketDetail.ticket_id)}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ service_request_id: refundRequestId, razorpay_payment_id: refundPaymentId, amount: refundAmount, reason: refundReason }),
-      });
-      const data = await response.json();
-      if (!response.ok || !data?.success) throw new Error(data?.error || 'Failed to initiate refund');
-      sonnerToast.success('Refund initiated');
-      setSelectedTicketDetail((prev) => (prev ? { ...prev, status: 'resolved' } : prev));
-      setTickets((prev) => prev.map((t) => (t.ticket_id === selectedTicketDetail.ticket_id ? { ...t, status: 'resolved' } : t)));
-      await loadTicketDetails(selectedTicketDetail.ticket_id);
-    } catch (err: any) {
-      sonnerToast.error(err?.message || 'Refund failed');
-    } finally {
-      setRefunding(false);
-    }
-  };
-
-  const discoverPayment = async (paymentId: string) => {
-    if (!paymentId) return;
-    try {
-      const res = await fetch(`/api/admin/payments/discover?paymentId=${encodeURIComponent(paymentId)}`, { credentials: 'include' })
-      const payload = await res.json()
-      if (res.ok && payload?.success && payload.data) {
-        const { service_request_id, amount_inr } = payload.data
-        if (service_request_id) setRefundRequestId(String(service_request_id))
-        if (amount_inr) setRefundAmount(String(amount_inr))
-      }
-    } catch (e) {
-      // ignore
-    }
-  }
-
   const updateSelectedTicket = async () => {
     if (!selectedTicketDetail) return;
     try {
@@ -545,6 +1070,11 @@ export default function AdminPage() {
 
     return () => clearInterval(sessionCheck);
   }, [router]);
+
+  useEffect(() => {
+    if (activeTab !== 'support') return;
+    fetchTickets(supportStatusFilter === 'all' ? undefined : supportStatusFilter, supportQuery.trim() || undefined);
+  }, [activeTab, supportStatusFilter]);
 
   const handleLogout = async () => {
     const authCookieNames = ['token', 'user', 'ca-token', 'evidence-verification-token', 'navadrishti-ca-token', 'admin-token', 'govt-admin-token'];
@@ -600,7 +1130,7 @@ export default function AdminPage() {
     }
   };
 
-  const selectRequest = (requestItem: any) => {
+  const selectRequest = async (requestItem: any) => {
     setSelectedRequest(requestItem);
     setRequestDraft({
       title: requestItem?.title || '',
@@ -615,9 +1145,33 @@ export default function AdminPage() {
       impact_description: requestItem?.impact_description || '',
       contact_info: requestItem?.contact_info || '',
     });
+
+    try {
+      const response = await fetch(`/api/admin/service-requests/${requestItem.id}`, { credentials: 'include' });
+      const data = await response.json();
+      if (response.ok && data?.data) {
+        const full = data.data;
+        setSelectedRequest(full);
+        setRequestDraft({
+          title: full?.title || '',
+          description: full?.description || '',
+          category: full?.category || '',
+          request_type: full?.request_type || '',
+          location: full?.location || '',
+          status: full?.status || '',
+          timeline: full?.timeline || '',
+          estimated_budget: full?.estimated_budget?.toString?.() || '',
+          beneficiary_count: full?.beneficiary_count?.toString?.() || '',
+          impact_description: full?.impact_description || '',
+          contact_info: full?.contact_info || '',
+        });
+      }
+    } catch {
+      // keep list snapshot
+    }
   };
 
-  const selectProject = (projectItem: any) => {
+  const selectProject = async (projectItem: any) => {
     setSelectedProject(projectItem);
     setProjectDraft({
       title: projectItem?.title || '',
@@ -627,6 +1181,25 @@ export default function AdminPage() {
       timeline: projectItem?.timeline || '',
       status: projectItem?.status || '',
     });
+
+    try {
+      const response = await fetch(`/api/admin/service-request-projects/${projectItem.id}`, { credentials: 'include' });
+      const data = await response.json();
+      if (response.ok && data?.data) {
+        const full = data.data;
+        setSelectedProject(full);
+        setProjectDraft({
+          title: full?.title || '',
+          description: full?.description || '',
+          location: full?.location || '',
+          exact_address: full?.exact_address || '',
+          timeline: full?.timeline || '',
+          status: full?.status || '',
+        });
+      }
+    } catch {
+      // keep list snapshot
+    }
   };
 
   const selectCampaign = (campaignItem: any) => {
@@ -1085,6 +1658,14 @@ export default function AdminPage() {
   const visibleTickets = useMemo(() => {
     const query = supportQuery.trim().toLowerCase();
     return tickets.filter((ticket) => {
+      const bucketPass =
+        supportBucketFilter === 'all'
+          ? true
+          : supportBucketFilter === 'open'
+            ? ['open', 'in_progress'].includes(ticket.status)
+            : ['resolved', 'closed'].includes(ticket.status);
+      if (!bucketPass) return false;
+
       const statusPass = supportStatusFilter === 'all' || ticket.status === supportStatusFilter;
       if (!statusPass) return false;
       if (!query) return true;
@@ -1095,84 +1676,22 @@ export default function AdminPage() {
         || String(ticket.user_name || ticket.user?.name || '').toLowerCase().includes(query)
       );
     });
-  }, [tickets, supportQuery, supportStatusFilter]);
+  }, [tickets, supportQuery, supportStatusFilter, supportBucketFilter]);
 
   if (loading && !overview) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-blue-50 via-slate-50 to-white text-slate-900">
-        <header className="sticky top-0 z-50 border-b border-blue-700 bg-blue-600/95 backdrop-blur">
-          <div className="mx-auto max-w-6xl px-6">
-            <div className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
-              <div className="space-y-1">
-                <Skeleton className="h-3 w-24 rounded-full bg-blue-200/70" />
-                <Skeleton className="h-5 w-40 rounded-full bg-blue-200/70" />
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Skeleton className="h-9 w-20 rounded-full bg-blue-200/70" />
-                <Skeleton className="h-9 w-24 rounded-full bg-blue-200/70" />
-                <Skeleton className="h-9 w-24 rounded-full bg-blue-200/70" />
-              </div>
-            </div>
-          </div>
-        </header>
+      <AdminPortalShell>
+        <AdminConsoleHeader
+          accountName={user?.name}
+          onLogout={handleLogout}
+          onRefresh={refreshDashboard}
+          onSupport={() => setActiveTab('support')}
+        />
 
-        <div className="mx-auto h-[calc(100vh-88px)] max-w-7xl overflow-hidden px-6 pt-6 pb-6">
-          <div className="grid h-full grid-cols-1 items-start gap-6 overflow-hidden lg:grid-cols-12">
-            <div className="flex h-auto flex-col gap-2 rounded-3xl border border-blue-100 bg-white p-2.5 lg:col-span-3 lg:sticky lg:top-6">
-              <Skeleton className="h-10 w-full rounded-xl bg-slate-200/80" />
-              <Skeleton className="h-10 w-full rounded-xl bg-slate-200/80" />
-              <Skeleton className="h-10 w-full rounded-xl bg-slate-200/80" />
-              <Skeleton className="h-10 w-full rounded-xl bg-slate-200/80" />
-              <Skeleton className="h-10 w-full rounded-xl bg-slate-200/80" />
-              <Skeleton className="h-10 w-full rounded-xl bg-slate-200/80" />
-              <Skeleton className="h-10 w-full rounded-xl bg-slate-200/80" />
-            </div>
-
-            <Card className="h-full min-w-0 overflow-hidden border-blue-200/80 bg-white text-slate-900 lg:col-span-9">
-              <CardContent className="h-full overflow-hidden pt-6">
-                <div className="grid h-full gap-6 overflow-y-auto pr-1 xl:grid-cols-[0.95fr_1.05fr]">
-                  <Card className="border-blue-100 bg-white text-slate-900">
-                    <CardHeader>
-                      <Skeleton className="h-6 w-40 rounded-full bg-slate-200" />
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      <Skeleton className="h-20 w-full rounded-xl bg-slate-200" />
-                      <Skeleton className="h-20 w-full rounded-xl bg-slate-200" />
-                      <Skeleton className="h-20 w-full rounded-xl bg-slate-200" />
-                      <Skeleton className="h-20 w-full rounded-xl bg-slate-200" />
-                    </CardContent>
-                  </Card>
-
-                  <div className="grid min-w-0 gap-6">
-                    <Card className="border-blue-100 bg-white text-slate-900">
-                      <CardHeader>
-                        <Skeleton className="h-6 w-36 rounded-full bg-slate-200" />
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        <Skeleton className="h-12 w-full rounded-lg bg-slate-200" />
-                        <Skeleton className="h-12 w-full rounded-lg bg-slate-200" />
-                        <Skeleton className="h-12 w-full rounded-lg bg-slate-200" />
-                        <Skeleton className="h-3 w-56 rounded-full bg-slate-200" />
-                      </CardContent>
-                    </Card>
-
-                    <Card className="border-blue-100 bg-white text-slate-900">
-                      <CardHeader>
-                        <Skeleton className="h-6 w-32 rounded-full bg-slate-200" />
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        <Skeleton className="h-12 w-full rounded-lg bg-slate-200" />
-                        <Skeleton className="h-12 w-full rounded-lg bg-slate-200" />
-                        <Skeleton className="h-12 w-full rounded-lg bg-slate-200" />
-                      </CardContent>
-                    </Card>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </div>
+        <AdminPortalMain className="max-w-7xl">
+          <AdminConsoleSkeleton activeTab={activeTab} />
+        </AdminPortalMain>
+      </AdminPortalShell>
     );
   }
 
@@ -1181,33 +1700,16 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="h-screen overflow-hidden bg-gradient-to-b from-blue-50 via-slate-50 to-white text-slate-900">
-      <header className="sticky top-0 z-50 border-b border-blue-700 bg-blue-600/95 backdrop-blur">
-        <div className="mx-auto max-w-6xl px-6">
-          <div className="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center gap-2 text-white">
-              <span className="text-xs font-medium uppercase tracking-[0.16em] text-blue-100">Signed in as</span>
-              <span className="text-sm font-semibold leading-5 text-white">{user?.name || 'admin'}</span>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button variant="ghost" size="sm" className="text-white hover:bg-blue-700 hover:text-white" onClick={refreshDashboard}>
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Refresh
-              </Button>
-              <Button variant="ghost" size="sm" className="text-white hover:bg-blue-700 hover:text-white" onClick={() => setActiveTab('support')}>
-                Support
-              </Button>
-              <Button variant="outline" size="sm" className="border-white/40 bg-blue-600 text-white hover:bg-transparent hover:text-white" onClick={handleLogout}>
-                <LogOut className="mr-2 h-4 w-4" />
-                Logout
-              </Button>
-            </div>
-          </div>
-        </div>
-      </header>
+    <AdminPortalShell>
+      <AdminConsoleHeader
+        accountName={user?.name}
+        onLogout={handleLogout}
+        onRefresh={refreshDashboard}
+        onSupport={() => setActiveTab('support')}
+      />
 
-      <div className="mx-auto h-[calc(100vh-88px)] max-w-7xl overflow-hidden px-6 pt-6 pb-6">
-        <div className="grid h-full grid-cols-1 items-start gap-6 overflow-hidden lg:grid-cols-12">
+      <AdminPortalMain className="max-w-7xl">
+        <div className="grid min-h-0 flex-1 grid-cols-1 items-start gap-6 overflow-hidden lg:grid-cols-12">
           <DashboardQuickSidebar
             items={[
               { value: 'overview', label: 'Overview' },
@@ -1218,6 +1720,7 @@ export default function AdminPage() {
               { value: 'campaigns', label: 'CSR Campaigns' },
               { value: 'posts', label: 'Posts' },
               { value: 'support', label: 'Support' },
+              { value: 'refunds', label: 'Refunds' },
               { value: 'government-admins', label: 'Govt Admins' },
               { value: 'ca-credentials', label: 'CA Credentials' },
             ]}
@@ -1227,7 +1730,7 @@ export default function AdminPage() {
             triggerLabel="Admin Menu"
           />
 
-          <Card className="h-full min-h-0 overflow-hidden border-blue-200/80 bg-white text-slate-900 lg:col-span-9">
+          <Card className="h-full min-h-0 overflow-hidden border-slate-200 bg-white text-slate-900 shadow-sm lg:col-span-9">
             <CardContent className="h-full min-h-0 overflow-y-auto pt-6 pr-4 lg:overflow-y-auto">
             {activeTab === 'overview' && (
             <div className="mt-0 h-full min-h-0 space-y-6 overflow-y-auto pr-1">
@@ -1359,23 +1862,12 @@ export default function AdminPage() {
                     <p className="text-sm text-slate-500">Select an offer to review it.</p>
                   ) : (
                     <>
-                      <div className="space-y-2 rounded-lg border border-blue-100 bg-slate-50 p-4 text-sm">
-                        <p className="font-semibold text-slate-900">{selectedOffer.title}</p>
-                        <p className="text-slate-700">{selectedOffer.description}</p>
-                        <div className="flex flex-wrap gap-2 pt-2 text-xs text-slate-500">
-                          <span>ID #{selectedOffer.id}</span>
-                          <span>•</span>
-                          <span>{new Date(selectedOffer.created_at || Date.now()).toLocaleString('en-IN')}</span>
-                          <span>•</span>
-                          <span>{selectedOffer.organization?.name || 'Unknown org'}</span>
-                          {selectedOffer.category ? <span>• {selectedOffer.category}</span> : null}
-                          {selectedOffer.location ? <span>• {selectedOffer.location}</span> : null}
-                        </div>
-                      </div>
+                      <OfferFullDetails offer={selectedOffer} />
                       <Textarea value={reviewComments} onChange={(e) => setReviewComments(e.target.value)} rows={5} placeholder="Write admin review notes" className="border-blue-200 bg-white text-slate-900 placeholder:text-slate-400" />
                       <div className="flex flex-wrap gap-3">
                         <Button onClick={() => handleReview(selectedOffer.id, 'approve')} disabled={isReviewing} className="bg-emerald-600 hover:bg-emerald-500">Approve</Button>
                         <Button onClick={() => handleReview(selectedOffer.id, 'reject')} disabled={isReviewing} variant="destructive">Reject</Button>
+                        <Button variant="outline" className="border-blue-200 bg-white text-blue-700 hover:bg-blue-50" onClick={() => router.push(`/service-offers/${selectedOffer.id}`)}>Open live page</Button>
                       </div>
                     </>
                   )}
@@ -1423,14 +1915,7 @@ export default function AdminPage() {
                     <p className="text-sm text-slate-500">Select a project to edit it.</p>
                   ) : (
                     <>
-                      <div className="rounded-lg border border-blue-100 bg-slate-50 p-3 text-xs text-slate-600">
-                        <div className="flex flex-wrap gap-2">
-                          <span>ID #{selectedProject.id}</span>
-                          <span>• NGO: {selectedProject.ngo?.name || 'Unknown'}</span>
-                          <span>• Created: {new Date(selectedProject.created_at || Date.now()).toLocaleString('en-IN')}</span>
-                          {selectedProject.updated_at ? <span>• Updated: {new Date(selectedProject.updated_at).toLocaleString('en-IN')}</span> : null}
-                        </div>
-                      </div>
+                      <ProjectFullDetails project={selectedProject} />
                       <div className="grid gap-3 xl:grid-cols-2">
                         <Input value={projectDraft.title} onChange={(e) => setProjectDraft((prev) => ({ ...prev, title: e.target.value }))} placeholder="Title" className="border-blue-200 bg-white text-slate-900 placeholder:text-slate-400" />
                         <Select value={projectDraft.status} onValueChange={(value) => setProjectDraft((prev) => ({ ...prev, status: value }))}>
@@ -1504,11 +1989,7 @@ export default function AdminPage() {
                     <p className="text-sm text-slate-500">Select a user to edit it.</p>
                   ) : (
                     <>
-                      <div className="rounded-2xl border border-blue-100 bg-slate-50 p-4 text-sm">
-                        <p className="font-semibold text-slate-900">{selectedUser.name}</p>
-                        <p className="text-slate-600">{selectedUser.email}</p>
-                        <p className="mt-2 text-xs text-slate-500">ID #{selectedUser.id} • Joined {new Date(selectedUser.created_at || Date.now()).toLocaleString('en-IN')}</p>
-                      </div>
+                      <UserFullDetails user={selectedUser} />
                       <div className="grid gap-3 md:grid-cols-2">
                         <Select value={userDraft.user_type} onValueChange={(value) => setUserDraft((prev) => ({ ...prev, user_type: value as any }))}>
                           <SelectTrigger className="border-blue-200 bg-white text-slate-900">
@@ -1579,13 +2060,7 @@ export default function AdminPage() {
                     <p className="text-sm text-slate-500">Select a request to edit it.</p>
                   ) : (
                     <>
-                      <div className="rounded-lg border border-blue-100 bg-slate-50 p-3 text-xs text-slate-600">
-                        <div className="flex flex-wrap gap-2">
-                          <span>ID #{selectedRequest.id}</span>
-                          <span>• Requester: {selectedRequest.requester?.name || 'Unknown'}</span>
-                          <span>• Created: {new Date(selectedRequest.created_at || Date.now()).toLocaleString('en-IN')}</span>
-                        </div>
-                      </div>
+                      <RequestFullDetails request={selectedRequest} />
                       <div className="grid gap-3 md:grid-cols-2">
                         <Input value={requestDraft.title} onChange={(e) => setRequestDraft((prev) => ({ ...prev, title: e.target.value }))} placeholder="Title" className="border-blue-200 bg-white text-slate-900 placeholder:text-slate-400" />
                         <Input value={requestDraft.category} onChange={(e) => setRequestDraft((prev) => ({ ...prev, category: e.target.value }))} placeholder="Project category" className="border-blue-200 bg-white text-slate-900 placeholder:text-slate-400" />
@@ -1662,13 +2137,7 @@ export default function AdminPage() {
                     <p className="text-sm text-slate-500">Select a CSR campaign to edit or delete it.</p>
                   ) : (
                     <>
-                      <div className="rounded-lg border border-blue-100 bg-slate-50 p-3 text-xs text-slate-600">
-                        <div className="flex flex-wrap gap-2">
-                          <span>ID {selectedCampaign.id}</span>
-                          <span>• Company: {selectedCampaign.company?.name || `Company #${selectedCampaign.company_id || '?'}`}</span>
-                          <span>• Created: {new Date(selectedCampaign.created_at || Date.now()).toLocaleString('en-IN')}</span>
-                        </div>
-                      </div>
+                      <CampaignFullDetails campaign={selectedCampaign} />
                       <div className="grid gap-3 md:grid-cols-2">
                         <Input value={campaignDraft.title} onChange={(e) => setCampaignDraft((prev) => ({ ...prev, title: e.target.value }))} placeholder="Title" className="md:col-span-2 border-blue-200 bg-white text-slate-900 placeholder:text-slate-400" />
                         <Input value={campaignDraft.category} onChange={(e) => setCampaignDraft((prev) => ({ ...prev, category: e.target.value }))} placeholder="Category" className="border-blue-200 bg-white text-slate-900 placeholder:text-slate-400" />
@@ -1742,13 +2211,7 @@ export default function AdminPage() {
                     <p className="text-sm text-slate-500">Select a post to edit it.</p>
                   ) : (
                     <>
-                      <div className="rounded-lg border border-blue-100 bg-slate-50 p-3 text-xs text-slate-600">
-                        <div className="flex flex-wrap gap-2">
-                          <span>ID #{selectedPost.id}</span>
-                          <span>• Author: {selectedPost.author?.name || 'Unknown'}</span>
-                          <span>• Created: {new Date(selectedPost.created_at || selectedPost.published_at || Date.now()).toLocaleString('en-IN')}</span>
-                        </div>
-                      </div>
+                      <PostFullDetails post={selectedPost} />
                       <div className="grid gap-3 md:grid-cols-2">
                         <Input value={postDraft.category} onChange={(e) => setPostDraft((prev) => ({ ...prev, category: e.target.value }))} placeholder="Category" className="border-blue-200 bg-white text-slate-900 placeholder:text-slate-400" />
                         <Select value={postDraft.visibility} onValueChange={(value) => setPostDraft((prev) => ({ ...prev, visibility: value }))}>
@@ -1778,70 +2241,126 @@ export default function AdminPage() {
             )}
 
             {activeTab === 'support' && (
-            <div className="grid h-full min-h-0 gap-6 overflow-x-hidden overflow-y-auto pr-1 xl:grid-cols-[0.9fr_1.1fr]">
-              <div className="min-w-0">
-                <Card className="border-blue-100 bg-white">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-slate-900"><Search className="h-4 w-4" /> Search</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <Input
-                      value={supportQuery}
-                      onChange={(e) => setSupportQuery(e.target.value)}
-                      placeholder="Search title, description, ticket ID"
-                      className="border-blue-200 bg-white text-slate-900 placeholder:text-slate-400"
-                    />
-                    <div className="grid grid-cols-4 gap-2">
-                      <button onClick={() => setSupportStatusFilter('open')} className={`rounded-md border px-2 py-1 text-sm ${supportStatusFilter === 'open' ? 'border-blue-400 bg-blue-50 text-blue-700' : 'border-blue-100 bg-white'}`}>Open</button>
-                      <button onClick={() => setSupportStatusFilter('in_progress')} className={`rounded-md border px-2 py-1 text-sm ${supportStatusFilter === 'in_progress' ? 'border-blue-400 bg-blue-50 text-blue-700' : 'border-blue-100 bg-white'}`}>In Progress</button>
-                      <button onClick={() => setSupportStatusFilter('resolved')} className={`rounded-md border px-2 py-1 text-sm ${supportStatusFilter === 'resolved' ? 'border-blue-400 bg-blue-50 text-blue-700' : 'border-blue-100 bg-white'}`}>Resolved</button>
-                      <button onClick={() => setSupportStatusFilter('closed')} className={`rounded-md border px-2 py-1 text-sm ${supportStatusFilter === 'closed' ? 'border-blue-400 bg-blue-50 text-blue-700' : 'border-blue-100 bg-white'}`}>Closed</button>
-                    </div>
+            <div className="grid min-h-0 gap-6 overflow-x-hidden xl:grid-cols-2 xl:items-stretch">
+              <Card className="flex min-h-[36rem] flex-col border-blue-100 bg-white">
+                <CardHeader className="border-b border-slate-100 pb-4">
+                  <CardTitle className="flex items-center gap-2 text-slate-900">
+                    <Search className="h-4 w-4 text-blue-600" />
+                    Ticket Inbox
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-1 flex-col gap-4 pt-6">
+                  <Input
+                    value={supportQuery}
+                    onChange={(e) => setSupportQuery(e.target.value)}
+                    placeholder="Search title, description, ticket ID"
+                    className="h-10 border-blue-200 bg-white text-slate-900 placeholder:text-slate-400"
+                  />
+
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ticket bucket</p>
                     <div className="grid grid-cols-2 gap-2">
-                      <Button variant="outline" className="border-blue-200 bg-white text-blue-700 hover:bg-blue-50" onClick={() => setSupportStatusFilter('all')}>Show all</Button>
-                      <Button className="bg-blue-600 hover:bg-blue-500" onClick={() => fetchTickets(supportStatusFilter === 'all' ? undefined : supportStatusFilter, supportQuery.trim() || undefined)}>Refresh from server</Button>
+                      <button type="button" onClick={() => setSupportBucketFilter('open')} className={supportFilterButtonClass(supportBucketFilter === 'open')}>
+                        Open Tickets
+                      </button>
+                      <button type="button" onClick={() => setSupportBucketFilter('closed')} className={supportFilterButtonClass(supportBucketFilter === 'closed')}>
+                        Closed Tickets
+                      </button>
                     </div>
-                  </CardContent>
-                </Card>
+                  </div>
 
-                <div className="mt-4 space-y-3">
-                  {supportLoading ? (
-                    <Card>
-                      <CardContent className="py-10 text-center text-gray-500">Loading tickets...</CardContent>
-                    </Card>
-                  ) : visibleTickets.length === 0 ? (
-                    <Card>
-                      <CardContent className="py-10 text-center text-gray-500">No tickets found for this filter.</CardContent>
-                    </Card>
-                  ) : (
-                    visibleTickets.map((ticket) => (
-                      <Card key={ticket.ticket_id} className="cursor-pointer border-blue-100 bg-white transition-all hover:border-blue-300" onClick={() => selectTicket(ticket)}>
-                        <CardContent className="p-4 space-y-2">
-                          <div className="flex items-center justify-between gap-3">
-                            <div>
-                              <p className="font-semibold text-gray-900">{ticket.title}</p>
-                              <p className="text-xs text-gray-500">{ticket.ticket_id} • {ticket.user_name || ticket.user?.name || 'Unknown user'}</p>
-                            </div>
-                            <Badge className={`capitalize ${statusTone(ticket.status)}`}>{ticket.status}</Badge>
-                          </div>
-                          <p className="line-clamp-2 text-sm text-gray-600">{ticket.description}</p>
-                        </CardContent>
-                      </Card>
-                    ))
-                  )}
-                </div>
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status</p>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      <button type="button" onClick={() => setSupportStatusFilter('open')} className={supportFilterButtonClass(supportStatusFilter === 'open')}>
+                        Open
+                      </button>
+                      <button type="button" onClick={() => setSupportStatusFilter('in_progress')} className={supportFilterButtonClass(supportStatusFilter === 'in_progress')}>
+                        In Progress
+                      </button>
+                      <button type="button" onClick={() => setSupportStatusFilter('resolved')} className={supportFilterButtonClass(supportStatusFilter === 'resolved')}>
+                        Resolved
+                      </button>
+                      <button type="button" onClick={() => setSupportStatusFilter('closed')} className={supportFilterButtonClass(supportStatusFilter === 'closed')}>
+                        Closed
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-10 w-full border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+                      onClick={() => setSupportStatusFilter('all')}
+                    >
+                      Show all
+                    </Button>
+                    <Button
+                      type="button"
+                      className="h-10 w-full bg-blue-600 hover:bg-blue-500"
+                      onClick={() => fetchTickets(supportStatusFilter === 'all' ? undefined : supportStatusFilter, supportQuery.trim() || undefined)}
+                    >
+                      Refresh
+                    </Button>
+                  </div>
+
+                  <div className="flex min-h-[14rem] flex-1 flex-col border-t border-slate-100 pt-4">
+            {supportLoading ? (
+              <div className="space-y-3">
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <AdminListItemSkeleton key={`support-skeleton-${index}`} />
+                ))}
               </div>
-
-              <div className="min-w-0">
-                <Card className="sticky top-6 border-blue-100 bg-white">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-slate-900"><MessageSquare className="h-5 w-5 text-blue-600" /> Ticket Details</CardTitle>
-                  </CardHeader>
-                  <CardContent className="pt-6">
-                    {!selectedTicketDetail ? (
-                      <div className="rounded-md border bg-white p-4 text-sm text-slate-600">Select a ticket to review the issue, proof, and resolution controls.</div>
+            ) : visibleTickets.length === 0 ? (
+                      <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50/50 py-10 text-center text-sm text-slate-500">
+                        No tickets found for this filter.
+                      </div>
                     ) : (
-                      <div className="space-y-5">
+                      <div className="max-h-[28rem] space-y-3 overflow-y-auto pr-1">
+                        {visibleTickets.map((ticket) => (
+                          <button
+                            key={ticket.ticket_id}
+                            type="button"
+                            onClick={() => selectTicket(ticket)}
+                            className={cn(
+                              'w-full rounded-lg border bg-white p-4 text-left transition-all hover:border-blue-300 hover:shadow-sm',
+                              selectedTicketDetail?.ticket_id === ticket.ticket_id
+                                ? 'border-blue-400 ring-1 ring-blue-200'
+                                : 'border-blue-100'
+                            )}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="truncate font-semibold text-gray-900">{ticket.title}</p>
+                                <p className="text-xs text-gray-500">
+                                  {ticket.ticket_id} • {ticket.user_name || ticket.user?.name || 'Unknown user'}
+                                </p>
+                              </div>
+                              <Badge className={cn('shrink-0 capitalize', statusTone(ticket.status))}>{ticket.status.replace('_', ' ')}</Badge>
+                            </div>
+                            <p className="mt-2 line-clamp-2 text-sm text-gray-600">{ticket.description}</p>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="flex min-h-[36rem] flex-col border-blue-100 bg-white">
+                <CardHeader className="border-b border-slate-100 pb-4">
+                  <CardTitle className="text-slate-900">Ticket Details</CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-1 flex-col pt-6">
+                  {!selectedTicketDetail ? (
+                    <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50/50 p-6 text-center text-sm text-slate-600">
+                      Select a ticket to review the issue, proof, and resolution controls.
+                    </div>
+                  ) : detailLoading ? (
+                    <AdminTicketDetailSkeleton />
+                  ) : (
+                    <div className="flex-1 space-y-5 overflow-y-auto pr-1">
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <p className="text-sm text-slate-500">Ticket ID</p>
@@ -1863,28 +2382,11 @@ export default function AdminPage() {
                           </div>
                         </div>
 
-                        <div className="space-y-2">
-                          <p className="text-sm font-medium text-slate-500">Title</p>
-                          <p className="rounded-md border bg-white p-3 text-sm">{selectedTicketDetail.title}</p>
-                        </div>
+                        <TicketFullDetails ticket={selectedTicketDetail} />
 
                         <div className="space-y-2">
-                          <p className="text-sm font-medium text-slate-500">Description</p>
-                          <p className="whitespace-pre-wrap rounded-md border bg-white p-3 text-sm">{selectedTicketDetail.description}</p>
-                        </div>
-
-                        {selectedTicketDetail.proof_url ? (
-                          <div className="space-y-2">
-                            <p className="text-sm font-medium text-slate-500">Proof</p>
-                            <a href={selectedTicketDetail.proof_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm text-blue-700 hover:bg-blue-50">Open attached proof</a>
-                          </div>
-                        ) : null}
-
-                        <div className="space-y-2">
-                          <p className="text-sm font-medium text-slate-500">Conversation Thread</p>
-                          {detailLoading ? (
-                            <p className="text-sm text-slate-500">Loading conversation...</p>
-                          ) : messages.length === 0 ? (
+                          <p className="text-sm font-medium text-slate-500">Messages</p>
+                          {messages.length === 0 ? (
                             <p className="text-sm text-slate-500">No messages yet.</p>
                           ) : (
                             <div className="space-y-3 rounded-lg border bg-slate-50 p-4">
@@ -1909,35 +2411,27 @@ export default function AdminPage() {
                         <div className="space-y-2 rounded-lg border bg-white p-4">
                           <p className="text-sm font-semibold text-slate-900">Reply to User</p>
                           <Textarea value={replyMessage} onChange={(e) => setReplyMessage(e.target.value)} rows={4} placeholder="Write the message the user should receive" />
-                          <div className="flex flex-col gap-2 sm:flex-row">
-                            <Button onClick={sendReply} disabled={replying} className="sm:w-auto">{replying ? 'Sending...' : 'Send Reply'}</Button>
-                            <Button variant="outline" onClick={() => setStatusUpdate('in_progress')} className="sm:w-auto">Mark In Progress</Button>
-                            <Button variant="outline" onClick={() => setStatusUpdate('resolved')} className="sm:w-auto">Mark Resolved</Button>
+                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                            <Button onClick={sendReply} disabled={replying} className="h-10 w-full bg-blue-600 hover:bg-blue-500">
+                              {replying ? 'Sending...' : 'Send Reply'}
+                            </Button>
+                            <Button variant="outline" onClick={() => setStatusUpdate('in_progress')} className="h-10 w-full border-slate-200">
+                              Mark In Progress
+                            </Button>
+                            <Button variant="outline" onClick={() => setStatusUpdate('resolved')} className="h-10 w-full border-slate-200">
+                              Mark Resolved
+                            </Button>
                           </div>
                         </div>
 
                         <div className="space-y-3 rounded-lg border bg-amber-50 p-4">
-                          <p className="text-sm font-semibold text-amber-900">Refund Initiation</p>
-                          <p className="text-xs text-amber-800">Admin can initiate refunds directly from here. Users cannot initiate refunds from the platform.</p>
-                          <div className="grid gap-3 md:grid-cols-2">
-                            <div className="space-y-2 md:col-span-2">
-                              <label className="text-sm font-medium text-gray-700">Service Request ID</label>
-                              <Input value={refundRequestId} onChange={(e) => setRefundRequestId(e.target.value)} placeholder="Enter request ID linked to the payment" />
-                            </div>
-                            <div className="space-y-2">
-                              <label className="text-sm font-medium text-gray-700">Razorpay Payment ID</label>
-                              <Input value={refundPaymentId} onChange={(e) => setRefundPaymentId(e.target.value)} onBlur={(e) => discoverPayment(e.target.value)} placeholder="pay_xxxxx" />
-                            </div>
-                            <div className="space-y-2">
-                              <label className="text-sm font-medium text-gray-700">Refund Amount (optional)</label>
-                              <Input value={refundAmount} onChange={(e) => setRefundAmount(e.target.value)} placeholder="Leave blank for full refund" />
-                            </div>
-                            <div className="space-y-2 md:col-span-2">
-                              <label className="text-sm font-medium text-gray-700">Refund Reason</label>
-                              <Input value={refundReason} onChange={(e) => setRefundReason(e.target.value)} placeholder="admin_support_refund" />
-                            </div>
-                          </div>
-                          <Button variant="destructive" onClick={initiateRefund} disabled={refunding}>{refunding ? 'Initiating refund...' : 'Initiate Refund'}</Button>
+                          <p className="text-sm font-semibold text-amber-900">Refunds</p>
+                          <p className="text-xs text-amber-800">
+                            Razorpay refunds are managed in the dedicated Refunds tab. Only admins can initiate refunds.
+                          </p>
+                          <Button type="button" variant="outline" className="h-10 w-full border-amber-300 bg-white text-amber-900 hover:bg-amber-100" onClick={() => setActiveTab('refunds')}>
+                            Open Refunds tab
+                          </Button>
                         </div>
 
                         <div className="space-y-3 rounded-lg border bg-blue-50 p-4">
@@ -1984,15 +2478,20 @@ export default function AdminPage() {
                             </select>
                           </div>
                           <div className="flex items-end">
-                            <Button onClick={updateSelectedTicket} disabled={saving} className="w-full">{saving ? 'Saving...' : 'Save Changes'}</Button>
+                            <Button onClick={updateSelectedTicket} disabled={saving} className="h-10 w-full bg-blue-600 hover:bg-blue-500">
+                              {saving ? 'Saving...' : 'Save Changes'}
+                            </Button>
                           </div>
                         </div>
                       </div>
                     )}
-                  </CardContent>
-                </Card>
-              </div>
+                </CardContent>
+              </Card>
             </div>
+            )}
+
+            {activeTab === 'refunds' && (
+            <AdminRefundsPanel />
             )}
 
             {activeTab === 'government-admins' && (
@@ -2004,9 +2503,9 @@ export default function AdminPage() {
             )}
             </CardContent>
             </Card>
-          </div>
-      </div>
-    </div>
+        </div>
+      </AdminPortalMain>
+    </AdminPortalShell>
   );
 }
 
