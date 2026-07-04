@@ -29,6 +29,7 @@ import {
   getSkillServiceDailyRate,
   isDailyRentalEngagementMeta,
 } from '@/lib/service-request-allocation';
+import { openRazorpayCheckout } from '@/lib/razorpay-checkout';
 interface OfferRequestItem {
   id: number;
   service_offer_id: number;
@@ -410,28 +411,11 @@ const getInitials = (name: string): string => {
   return `${parts[0].charAt(0)}${parts[parts.length - 1].charAt(0)}`.toUpperCase();
 };
 
-declare global {
-  interface Window {
-    Razorpay?: any;
-  }
-}
-
 function getSkillLocalDateString(reference: Date = new Date()) {
   const year = reference.getFullYear();
   const month = String(reference.getMonth() + 1).padStart(2, '0');
   const day = String(reference.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
-}
-
-function loadRazorpayScript() {
-  if (typeof window === 'undefined' || window.Razorpay) return Promise.resolve();
-  return new Promise<void>((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error('Failed to load Razorpay'));
-    document.body.appendChild(script);
-  });
 }
 
 function InlineSkillServiceFulfillment({
@@ -468,12 +452,6 @@ function InlineSkillServiceFulfillment({
   const settlementStatus = String(meta.settlement_status || '').toLowerCase();
   const isSettled = settlementStatus === 'settled';
   const outstanding = Math.max(0, summary.totalDue - summary.paidTotal);
-
-  useEffect(() => {
-    if (role === 'ngo') {
-      void loadRazorpayScript().catch(() => undefined);
-    }
-  }, [role]);
 
   const handleMarkAttendance = async () => {
     if (!assignmentId) {
@@ -581,56 +559,47 @@ function InlineSkillServiceFulfillment({
         return;
       }
 
-      await loadRazorpayScript();
-      if (!window.Razorpay) {
-        throw new Error('Razorpay failed to load. Refresh and try again.');
-      }
-
-      const razorpay = new window.Razorpay({
-        key: payload.keyId,
-        amount: Math.round(Number(payload.amount) * 100),
+      await openRazorpayCheckout({
+        keyId: payload.keyId,
+        orderId: payload.orderId,
+        amountInr: Number(payload.amount),
         currency: payload.currency || 'INR',
-        name: 'Navadrishti',
         description: 'Daily rental settlement',
-        order_id: payload.orderId,
-        theme: { color: '#059669' },
-        handler: async (paymentResponse: Record<string, string>) => {
-          try {
-            const verifyRes = await fetch(`/api/service-assignments/${assignmentId}/settle`, {
-              method: 'POST',
-              headers: {
-                Authorization: `Bearer ${token}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                action: 'verify',
-                razorpay_order_id: paymentResponse.razorpay_order_id,
-                razorpay_payment_id: paymentResponse.razorpay_payment_id,
-                razorpay_signature: paymentResponse.razorpay_signature,
-              }),
-            });
+        themeColor: '#059669',
+        onSuccess: async (paymentResponse) => {
+          const verifyRes = await fetch(`/api/service-assignments/${assignmentId}/settle`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              action: 'verify',
+              razorpay_order_id: paymentResponse.razorpay_order_id,
+              razorpay_payment_id: paymentResponse.razorpay_payment_id,
+              razorpay_signature: paymentResponse.razorpay_signature,
+            }),
+          });
 
-            const verifyData = await verifyRes.json();
-            if (!verifyRes.ok || !verifyData?.success) {
-              throw new Error(verifyData?.error || 'Payment verification failed');
-            }
-
-            toast({
-              title: 'Payment successful',
-              description: `Settled INR ${Number(verifyData.data?.settledAmount || payload.amount).toLocaleString('en-IN')} and marked service complete.`,
-            });
-            await onUpdated?.();
-          } catch (verifyError) {
-            toast({
-              title: 'Payment verification failed',
-              description: verifyError instanceof Error ? verifyError.message : 'Contact support with your payment reference.',
-              variant: 'destructive',
-            });
+          const verifyData = await verifyRes.json();
+          if (!verifyRes.ok || !verifyData?.success) {
+            throw new Error(verifyData?.error || 'Payment verification failed');
           }
+
+          toast({
+            title: 'Payment successful',
+            description: `Settled INR ${Number(verifyData.data?.settledAmount || payload.amount).toLocaleString('en-IN')} and marked service complete.`,
+          });
+          await onUpdated?.();
+        },
+        onFailure: (error) => {
+          toast({
+            title: 'Payment failed',
+            description: error.description || error.reason || 'Razorpay could not complete the payment.',
+            variant: 'destructive',
+          });
         },
       });
-
-      razorpay.open();
     } catch (error) {
       toast({
         title: 'Could not settle',

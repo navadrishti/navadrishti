@@ -17,6 +17,7 @@ import {
   EvidenceSectionCard,
   EvidenceStatCard,
 } from '@/components/evidence-verification/portal-ui';
+import { openRazorpayCheckout } from '@/lib/razorpay-checkout';
 
 export default function VerificationPanelClient() {
   const router = useRouter();
@@ -171,18 +172,6 @@ export default function VerificationPanelClient() {
       .filter(Boolean);
   });
 
-  const loadRazorpay = () =>
-    new Promise<void>((resolve, reject) => {
-      if (typeof window === 'undefined') return reject(new Error('No window'));
-      if ((window as any).Razorpay) return resolve();
-      const script = document.createElement('script');
-      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-      script.async = true;
-      script.onload = () => resolve();
-      script.onerror = reject;
-      document.head.appendChild(script);
-    });
-
   const groupByRequest = (items: any[]) => {
     const map: Record<string, any[]> = {};
     items.forEach((it: any) => {
@@ -201,8 +190,6 @@ export default function VerificationPanelClient() {
     try {
       const attendanceEntryIds = items.filter((i: any) => i?.id && i?.attendance_date).map((i: any) => i.id);
 
-      await loadRazorpay();
-
       const res = await fetch('/api/evidence-verification/payments/create-order', {
         method: 'POST',
         credentials: 'include',
@@ -217,15 +204,14 @@ export default function VerificationPanelClient() {
       }
 
       const order = payload.data;
-      const razorpay = new (window as any).Razorpay({
-        key: order.keyId,
-        amount: Math.round(order.amount * 100),
+      await openRazorpayCheckout({
+        keyId: order.keyId,
+        orderId: order.orderId,
+        amountInr: Number(order.amount),
         currency: order.currency || 'INR',
-        name: 'Navadrishti',
         description: `Payment for Request ${order.serviceRequestId || ''}`,
-        order_id: order.orderId,
-        theme: { color: '#F47B20' },
-        handler: async (response: any) => {
+        themeColor: '#F47B20',
+        onSuccess: async (response) => {
           const verifyRes = await fetch('/api/evidence-verification/payments/verify', {
             method: 'POST',
             credentials: 'include',
@@ -242,9 +228,10 @@ export default function VerificationPanelClient() {
           await fetchCaPendingPayments();
           await loadPanel();
         },
+        onFailure: (error) => {
+          setPanelMessage(error.description || error.reason || 'Payment failed');
+        },
       });
-
-      razorpay.open();
     } catch (e: any) {
       setPanelMessage(e?.message || 'Payment failed');
     } finally {
