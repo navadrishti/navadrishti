@@ -28,6 +28,7 @@ import { Input } from '@/components/ui/input'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { openRazorpayCheckout } from '@/lib/razorpay-checkout'
 import { Checkbox } from '@/components/ui/checkbox'
 
 interface ServiceOffer {
@@ -391,22 +392,6 @@ export default function ServiceOfferDetailPage() {
   }, [])
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    if ((window as any).Razorpay) return
-
-    const script = document.createElement('script')
-    script.src = 'https://checkout.razorpay.com/v1/checkout.js'
-    script.async = true
-    document.body.appendChild(script)
-
-    return () => {
-      if (script.parentNode) {
-        script.parentNode.removeChild(script)
-      }
-    }
-  }, [])
-
-  useEffect(() => {
     if (offerId) {
       fetchOfferDetails()
       if (isAuthenticated && user) {
@@ -632,15 +617,6 @@ export default function ServiceOfferDetailPage() {
       return
     }
 
-    if (!(window as any).Razorpay) {
-      toast({
-        title: 'Razorpay unavailable',
-        description: 'Payment SDK failed to load. Please refresh and try again.',
-        variant: 'destructive'
-      })
-      return
-    }
-
     setPaying(true)
     try {
       const orderResponse = await fetch(`/api/service-offers/${offerId}/clients/${user.id}/payments/create-order`, {
@@ -662,19 +638,18 @@ export default function ServiceOfferDetailPage() {
       }
 
       const orderData = orderPayload.data
-      const razorpay = new (window as any).Razorpay({
-        key: orderData.keyId,
-        amount: Math.round(orderData.amount * 100),
+      await openRazorpayCheckout({
+        keyId: orderData.keyId,
+        orderId: orderData.orderId,
+        amountInr: Number(orderData.amount),
         currency: orderData.currency,
-        name: 'Navadrishti',
         description: `Payment for ${offer.title}`,
-        order_id: orderData.orderId,
         prefill: {
           name: user.name || '',
-          email: user.email || ''
+          email: user.email || '',
+          contact: user.phone || undefined,
         },
-        theme: { color: '#2563eb' },
-        handler: async (response: any) => {
+        onSuccess: async (response) => {
           const verifyResponse = await fetch(`/api/service-offers/${offerId}/clients/${user.id}/payments/verify`, {
             method: 'POST',
             headers: {
@@ -701,15 +676,20 @@ export default function ServiceOfferDetailPage() {
 
           checkExistingApplication()
           fetchOfferDetails()
-        }
+        },
+        onFailure: (error) => {
+          toast({
+            title: 'Payment failed',
+            description: error.description || error.reason || 'Razorpay could not complete the payment.',
+            variant: 'destructive'
+          })
+        },
       })
-
-      razorpay.open()
     } catch (error) {
       console.error('Error starting offer payment:', error)
       toast({
         title: 'Payment failed',
-        description: 'Could not complete the payment flow.',
+        description: error instanceof Error ? error.message : 'Could not open Razorpay checkout.',
         variant: 'destructive'
       })
     } finally {

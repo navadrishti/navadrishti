@@ -658,7 +658,7 @@ export function ServiceCard({
                 className="inline-flex shrink-0 items-center gap-1 px-1 py-0.5 text-sm font-medium text-slate-900"
                 onClick={(e) => e.stopPropagation()}
               >
-                <span>Explore More</span>
+                <span>View need</span>
               </Link>
             </div>
 
@@ -771,7 +771,7 @@ export function ServiceCard({
                 className="inline-flex shrink-0 items-center gap-1 px-1 py-0.5 text-sm font-medium text-slate-900"
                 onClick={(e) => e.stopPropagation()}
               >
-                <span>Explore More</span>
+                <span>View offer</span>
               </Link>
             </div>
           </div>
