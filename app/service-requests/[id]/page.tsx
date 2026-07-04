@@ -21,6 +21,7 @@ import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { openRazorpayCheckout } from '@/lib/razorpay-checkout'
 
 interface ServiceRequest {
   id: number
@@ -140,12 +141,6 @@ interface ApplicantEntry {
     name?: string
     email?: string
     user_type?: 'individual' | 'company' | 'ngo'
-  }
-}
-
-declare global {
-  interface Window {
-    Razorpay?: any
   }
 }
 
@@ -494,22 +489,6 @@ export default function ServiceRequestDetailPage() {
       }
     }
   }, [requestId, isAuthenticated, user])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    if (window.Razorpay) return
-
-    const script = document.createElement('script')
-    script.src = 'https://checkout.razorpay.com/v1/checkout.js'
-    script.async = true
-    document.body.appendChild(script)
-
-    return () => {
-      if (script.parentNode) {
-        script.parentNode.removeChild(script)
-      }
-    }
-  }, [])
 
   useEffect(() => {
     setCurrentTimeMs(Date.now())
@@ -918,15 +897,6 @@ export default function ServiceRequestDetailPage() {
     if (!request || !token) return
     if (!canPayForRequest) return
 
-    if (!window.Razorpay) {
-      toast({
-        title: 'Razorpay unavailable',
-        description: 'Payment SDK failed to load. Please refresh and try again.',
-        variant: 'destructive'
-      })
-      return
-    }
-
     const requestedInr = parseAmountToInr(paymentAmount)
     if (requestedInr <= 0) {
       toast({ title: 'Invalid amount', description: 'Enter a valid contribution amount in INR.', variant: 'destructive' })
@@ -955,31 +925,25 @@ export default function ServiceRequestDetailPage() {
       }
 
       const orderData = orderPayload.data
-      const razorpay = new window.Razorpay({
-        key: orderData.keyId,
-        amount: Math.round(orderData.amount * 100),
+      await openRazorpayCheckout({
+        keyId: orderData.keyId,
+        orderId: orderData.orderId,
+        amountInr: Number(orderData.amount),
         currency: orderData.currency,
-        name: 'Navadrishti',
         description: `Contribution for: ${orderData.requestTitle}`,
-        order_id: orderData.orderId,
         prefill: {
           name: user?.name || '',
-          email: user?.email || ''
+          email: user?.email || '',
+          contact: user?.phone || undefined,
         },
-        theme: {
-          color: '#2563eb'
-        },
-        handler: async (response: any) => {
+        onSuccess: async (response) => {
           const verifyRes = await fetch(`/api/service-requests/${request.id}/payments/verify`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
               Authorization: `Bearer ${token}`
             },
-            body: JSON.stringify({
-              ...response,
-              amount: orderData.amount
-            })
+            body: JSON.stringify(response)
           })
 
           const verifyPayload = await verifyRes.json()
@@ -998,13 +962,22 @@ export default function ServiceRequestDetailPage() {
           })
 
           fetchRequestDetails()
-        }
+        },
+        onFailure: (error) => {
+          toast({
+            title: 'Payment failed',
+            description: error.description || error.reason || 'Razorpay could not complete the payment.',
+            variant: 'destructive'
+          })
+        },
       })
-
-      razorpay.open()
     } catch (error) {
       console.error('Contribution error:', error)
-      toast({ title: 'Payment failed', description: 'Could not complete payment flow.', variant: 'destructive' })
+      toast({
+        title: 'Payment failed',
+        description: error instanceof Error ? error.message : 'Could not open Razorpay checkout.',
+        variant: 'destructive'
+      })
     } finally {
       setPaying(false)
     }
@@ -1191,7 +1164,7 @@ export default function ServiceRequestDetailPage() {
               <Tabs defaultValue="details" className="w-full">
                   <TabsList className="flex w-full gap-2 overflow-x-auto pb-1">
                     <TabsTrigger value="details" className="shrink-0 whitespace-nowrap">Need Details</TabsTrigger>
-                    {canShowVolunteerTab ? <TabsTrigger value="volunteer" className="shrink-0 whitespace-nowrap">Volunteer</TabsTrigger> : null}
+                    {canShowVolunteerTab && !isFinancialNeed ? <TabsTrigger value="volunteer" className="shrink-0 whitespace-nowrap">Volunteer</TabsTrigger> : null}
                     <TabsTrigger value="requester" className="shrink-0 whitespace-nowrap">Requester</TabsTrigger>
                   </TabsList>
 
@@ -1236,44 +1209,36 @@ export default function ServiceRequestDetailPage() {
                         </div>
 
                         {canPayForRequest && fundingTargetInr > 0 && fundsRemainingInr > 0 && (
-                          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
-                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                              <div>
-                                <p className="text-sm font-semibold text-slate-900">Pay the exact amount through Razorpay</p>
-                                <p className="text-xs text-slate-500">The server caps the amount to the remaining balance before creating the order.</p>
-                              </div>
-                              <Badge className="w-fit border-slate-200 bg-white text-slate-700">
-                                Live remaining: INR {fundsRemainingInr.toLocaleString('en-IN')}
-                              </Badge>
+                          <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                            <div>
+                              <p className="text-sm font-semibold text-slate-900">Contribute via Razorpay</p>
+                              <p className="text-xs text-slate-500">
+                                Volunteer by paying any amount up to INR {fundsRemainingInr.toLocaleString('en-IN')} remaining.
+                              </p>
                             </div>
 
-                            <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
-                              <div className="space-y-1">
-                                <Label htmlFor="paymentAmount">Contribution amount</Label>
-                                <div className="relative">
-                                  <IndianRupee className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
-                                  <input
-                                    id="paymentAmount"
-                                    type="number"
-                                    min={1}
-                                    max={Math.ceil(fundsRemainingInr)}
-                                    value={paymentAmount}
-                                    onChange={(e) => setPaymentAmount(e.target.value)}
-                                    className="h-11 w-full rounded-md border border-slate-300 bg-slate-50 px-9 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                                    placeholder="Amount"
-                                  />
-                                </div>
-                                <p className="text-xs text-slate-500">
-                                  Final charge is verified on the server and never exceeds the remaining target.
-                                </p>
+                            <div className="space-y-2">
+                              <Label htmlFor="paymentAmount">Contribution amount</Label>
+                              <div className="relative">
+                                <IndianRupee className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+                                <input
+                                  id="paymentAmount"
+                                  type="number"
+                                  min={1}
+                                  max={Math.ceil(fundsRemainingInr)}
+                                  value={paymentAmount}
+                                  onChange={(e) => setPaymentAmount(e.target.value)}
+                                  className="h-11 w-full rounded-md border border-slate-300 bg-slate-50 px-9 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                                  placeholder="Amount"
+                                />
                               </div>
-
-                              <Button onClick={handleContribute} disabled={paying} className="h-11 px-5">
-                                  {paying
-                                    ? 'Opening Razorpay...'
-                                    : `Pay INR ${Math.min(parseAmountToInr(paymentAmount) || 0, fundsRemainingInr || 0).toLocaleString('en-IN')}`}
-                              </Button>
                             </div>
+
+                            <Button onClick={handleContribute} disabled={paying} className="h-11 w-full">
+                              {paying
+                                ? 'Opening Razorpay...'
+                                : `Pay INR ${Math.min(parseAmountToInr(paymentAmount) || 0, fundsRemainingInr || 0).toLocaleString('en-IN')}`}
+                            </Button>
                           </div>
                         )}
 
@@ -1331,7 +1296,7 @@ export default function ServiceRequestDetailPage() {
                   </TabsContent>
 
                   <TabsContent value="volunteer" className="mt-4">
-                    {!canShowVolunteerTab ? null : (
+                    {!canShowVolunteerTab || isFinancialNeed ? null : (
                       <>
                         {!isAuthenticated && (
                           <div className="text-center space-y-4">

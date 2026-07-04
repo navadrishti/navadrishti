@@ -113,10 +113,13 @@ export async function POST(
     }
 
     const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret });
-    const [providerPayment, providerOrder] = await Promise.all([
+    const [fetchedPayment, fetchedOrder] = await Promise.all([
       razorpay.payments.fetch(String(razorpay_payment_id)),
-      razorpay.orders.fetch(String(razorpay_order_id))
+      razorpay.orders.fetch(String(razorpay_order_id)),
     ]);
+
+    const providerPayment = fetchedPayment;
+    const providerOrder = fetchedOrder;
 
     if (!providerPayment || providerPayment.id !== razorpay_payment_id) {
       return NextResponse.json({ error: 'Unable to fetch payment from provider' }, { status: 400 });
@@ -134,6 +137,11 @@ export async function POST(
     const providerCurrency = String(providerPayment.currency || '').toUpperCase();
     if (providerCurrency !== 'INR') {
       return NextResponse.json({ error: 'Only INR payments are supported' }, { status: 400 });
+    }
+
+    const paidInr = Number((Number(providerPayment.amount || 0) / 100).toFixed(2));
+    if (paidInr <= 0) {
+      return NextResponse.json({ error: 'Invalid contribution amount' }, { status: 400 });
     }
 
     const providerNotes = (providerOrder.notes || providerPayment.notes || {}) as Record<string, any>;
@@ -163,11 +171,6 @@ export async function POST(
       current_amount: serviceRequest.current_amount,
       financial_transactions: requirements?.financial_transactions,
     });
-    const paidInr = Number((Number(providerPayment.amount || 0) / 100).toFixed(2));
-
-    if (paidInr <= 0) {
-      return NextResponse.json({ error: 'Invalid contribution amount' }, { status: 400 });
-    }
 
     const previousPayments = Array.isArray(requirements?.financial_transactions)
       ? requirements.financial_transactions
