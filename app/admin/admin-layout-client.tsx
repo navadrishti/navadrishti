@@ -1,7 +1,6 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
@@ -329,24 +328,6 @@ export default function AdminLayoutClient({ children }: { children: ReactNode })
   return (
     <div className="flex min-h-screen flex-col">
       <div className="flex flex-1 flex-col bg-gradient-to-br from-blue-50 to-indigo-100">{children}</div>
-      <footer className="mt-auto border-t border-white/10 bg-udaan-blue text-white">
-        <div className="udaan-container flex flex-col items-center justify-between gap-3 py-4 text-xs sm:flex-row sm:text-sm">
-          <div className="flex flex-wrap items-center justify-center gap-2 text-white/90 sm:justify-start">
-            <span>© 2026</span>
-            <Image
-              src="/photos/small-logo.svg"
-              alt="Navadrishti logo"
-              width={16}
-              height={16}
-              className="h-4 w-4"
-            />
-            <span className="font-medium">Navadrishti Admin Console</span>
-          </div>
-          <p className="text-center text-white/75 sm:text-right">
-            Platform administration, moderation, and support operations
-          </p>
-        </div>
-      </footer>
     </div>
   );
 }

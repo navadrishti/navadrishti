@@ -93,7 +93,7 @@ export default function EvidenceVerificationLoginPage() {
 
 
   return (
-    <div className="flex min-h-full items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100 p-4">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100 p-4">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
           <h1 className="mb-2 text-3xl font-bold text-gray-900">Evidence Verification Portal</h1>
