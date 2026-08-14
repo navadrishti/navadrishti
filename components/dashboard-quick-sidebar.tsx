@@ -19,6 +19,23 @@ interface DashboardQuickSidebarProps {
   children?: ReactNode
 }
 
+function getSectionInitials(label: string): string {
+  const words = label
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+
+  if (words.length === 0) return '?'
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase()
+  return words
+    .map((word) => word[0])
+    .join('')
+    .slice(0, 3)
+    .toUpperCase()
+}
+
+const BOTTOM_HIDE_THRESHOLD_PX = 72
+
 export function DashboardQuickSidebar({
   items,
   activeTab,
@@ -27,9 +44,10 @@ export function DashboardQuickSidebar({
   triggerLabel = 'Sections',
   children,
 }: DashboardQuickSidebarProps) {
-  const [mobileOpen, setMobileOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
+  const [atPageBottom, setAtPageBottom] = useState(false)
+  const showNav = items.length > 1
 
   useEffect(() => {
     setMounted(true)
@@ -47,10 +65,29 @@ export function DashboardQuickSidebar({
     }
   }, [])
 
-  const handleSelect = (value: string) => {
-    onSelect(value)
-    setMobileOpen(false)
-  }
+  useEffect(() => {
+    if (!showNav) return
+
+    const updateBottomState = () => {
+      const scrollTop = window.scrollY || document.documentElement.scrollTop
+      const viewportHeight = window.innerHeight
+      const documentHeight = Math.max(
+        document.documentElement.scrollHeight,
+        document.body.scrollHeight
+      )
+      const distanceFromBottom = documentHeight - (scrollTop + viewportHeight)
+      setAtPageBottom(distanceFromBottom <= BOTTOM_HIDE_THRESHOLD_PX)
+    }
+
+    updateBottomState()
+    window.addEventListener('scroll', updateBottomState, { passive: true })
+    window.addEventListener('resize', updateBottomState)
+
+    return () => {
+      window.removeEventListener('scroll', updateBottomState)
+      window.removeEventListener('resize', updateBottomState)
+    }
+  }, [showNav, activeTab])
 
   const getButtonClassName = (isActive: boolean) =>
     [
@@ -61,70 +98,66 @@ export function DashboardQuickSidebar({
         : 'border-slate-200 bg-white text-slate-900 hover:bg-slate-50 hover:text-slate-900',
     ].join(' ')
 
-  const mobileSidebar = (
-    <div className="lg:hidden">
-      <div className={`fixed left-0 top-[15rem] z-[1000] ${headerMenuOpen ? 'hidden' : ''}`}>
-        <Button
-          type="button"
-          className="group h-32 w-10 rounded-r-2xl border-2 border-blue-600 bg-transparent p-0 text-blue-600 shadow-none backdrop-blur-0 transition-all hover:border-blue-600 hover:bg-transparent"
-          onClick={() => setMobileOpen((prev) => !prev)}
-        >
-          <span className="flex h-full w-full flex-col items-center justify-center gap-2">
-            <span className="relative flex h-4 w-4 items-center justify-center">
-            <span
-              className={`absolute h-2.5 w-2.5 border-b-[1.75px] border-r-[1.75px] border-blue-600 transition-transform duration-200 ${mobileOpen ? '-rotate-135 translate-x-[1px]' : 'rotate-315 -translate-x-[1px]'} group-hover:border-blue-600`}
-            />
-            <span className="absolute h-0.5 w-0.5 rounded-full bg-[#0067b9] transition-colors group-hover:bg-[#0067b9]" />
-            </span>
-            <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-blue-600 [writing-mode:vertical-rl] [text-orientation:mixed] rotate-180">
-              Sections
-            </span>
-          </span>
-          <span className="sr-only">Toggle {triggerLabel}</span>
-        </Button>
-      </div>
+  if (!showNav) {
+    return <>{children}</>
+  }
 
-      <div className={`fixed inset-0 z-[1100] ${mobileOpen ? 'pointer-events-auto' : 'pointer-events-none'}`}>
+  const hideFloatingNav = headerMenuOpen || atPageBottom
+
+  const mobileBottomNav = (
+    <div className="lg:hidden">
+      <nav
+        aria-label={triggerLabel}
+        aria-hidden={hideFloatingNav}
+        className={[
+          'pointer-events-none fixed inset-x-0 bottom-0 z-[1000] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] transition-all duration-300 ease-out',
+          hideFloatingNav
+            ? 'translate-y-[calc(100%+1.5rem)] opacity-0'
+            : 'translate-y-0 opacity-100',
+        ].join(' ')}
+      >
         <div
-          className={`absolute inset-0 bg-black/40 transition-opacity ${mobileOpen ? 'opacity-100' : 'opacity-0'}`}
-          onClick={() => setMobileOpen(false)}
-        />
-        <div
-          className={`absolute inset-y-0 left-0 w-[86vw] max-w-sm border-r bg-white backdrop-blur-sm transition-transform duration-200 ${mobileOpen ? 'translate-x-0 border-slate-200 shadow-2xl' : '-translate-x-[calc(100%+2px)] border-transparent shadow-none'}`}
+          className={[
+            'no-scrollbar mx-auto flex min-w-0 w-max max-w-full touch-pan-x items-stretch gap-1 overflow-x-auto overscroll-x-contain rounded-3xl border border-white/60 bg-white/50 px-2.5 py-2.5 shadow-[0_12px_40px_rgba(15,23,42,0.14)] backdrop-blur-2xl supports-[backdrop-filter]:bg-white/40 [-webkit-overflow-scrolling:touch]',
+            hideFloatingNav ? 'pointer-events-none' : 'pointer-events-auto',
+          ].join(' ')}
         >
-          <div className="flex h-full flex-col">
-            <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-4">
-              <div>
-                <p className="text-sm font-semibold text-slate-900">{triggerLabel}</p>
-                <p className="text-xs text-slate-500">Quick navigation</p>
-              </div>
-                <Button
+          {items.map((item) => {
+            const isActive = activeTab === item.value
+            const initials = getSectionInitials(item.label)
+
+            return (
+              <button
+                key={item.value}
                 type="button"
-                  className="group h-9 w-9 rounded-full border border-slate-200 bg-white p-0 text-slate-900 shadow-sm hover:bg-slate-50"
-                onClick={() => setMobileOpen(false)}
+                title={item.label}
+                aria-label={item.label}
+                aria-current={isActive ? 'page' : undefined}
+                tabIndex={hideFloatingNav ? -1 : undefined}
+                onClick={() => onSelect(item.value)}
+                className={[
+                  'flex w-[4.25rem] shrink-0 grow-0 flex-col items-center justify-center rounded-2xl px-2.5 py-2 transition-colors',
+                  isActive
+                    ? 'bg-white/90 text-black shadow-sm'
+                    : 'text-black/70 hover:bg-white/55 hover:text-black',
+                ].join(' ')}
               >
-                <span className="relative flex h-4 w-4 items-center justify-center">
-                  <span className="absolute h-2.5 w-2.5 border-l-[1.75px] border-t-[1.75px] border-slate-700 transition-colors group-hover:border-blue-600" />
-                  <span className="absolute h-0.5 w-0.5 rounded-full bg-slate-700/70 transition-colors group-hover:bg-blue-600" />
+                <span className="text-xs font-semibold tracking-[0.08em] leading-none text-black">
+                  {initials}
                 </span>
-                <span className="sr-only">Close {triggerLabel}</span>
-              </Button>
-            </div>
-            <div className="flex-1 space-y-3 overflow-y-auto overflow-x-hidden p-4">
-              {items.map((item) => (
-                <Button
-                  key={item.value}
-                  type="button"
-                  className={`${getButtonClassName(activeTab === item.value)} h-11 rounded-2xl px-4 shadow-sm ${activeTab === item.value ? '' : 'bg-white hover:bg-slate-50'}`}
-                  onClick={() => handleSelect(item.value)}
+                <span
+                  className={[
+                    'mt-1.5 max-w-full truncate text-[10px] font-medium leading-none',
+                    isActive ? 'text-black/80' : 'text-black/50',
+                  ].join(' ')}
                 >
                   {item.label}
-                </Button>
-              ))}
-            </div>
-          </div>
+                </span>
+              </button>
+            )
+          })}
         </div>
-      </div>
+      </nav>
     </div>
   )
 
@@ -138,7 +171,7 @@ export function DashboardQuickSidebar({
                 key={item.value}
                 type="button"
                 className={getButtonClassName(activeTab === item.value)}
-                onClick={() => handleSelect(item.value)}
+                onClick={() => onSelect(item.value)}
               >
                 {item.label}
               </Button>
@@ -147,7 +180,10 @@ export function DashboardQuickSidebar({
         </Card>
       </div>
 
-      {mounted ? createPortal(mobileSidebar, document.body) : null}
+      {/* Keep page content clear of the floating nav on small screens */}
+      <div className="h-24 lg:hidden" aria-hidden />
+
+      {mounted ? createPortal(mobileBottomNav, document.body) : null}
       {children}
     </>
   )

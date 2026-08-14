@@ -1234,7 +1234,7 @@ function IndividualDashboardContent() {
               />
 
               {/* Main content */}
-              <div className="lg:col-span-8">
+              <div className={sidebarItems.length > 1 ? 'lg:col-span-8' : 'lg:col-span-12'}>
                 <Card>
                   <CardContent className="pt-6">
                     {activeTab === 'profile' ? (
