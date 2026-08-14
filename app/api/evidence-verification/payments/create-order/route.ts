@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyCompanyCA } from '@/lib/company-ca'
 import Razorpay from 'razorpay'
 import { supabase } from '@/lib/db'
+import {
+  buildPricingResponse,
+  createPlatformPricedOrder,
+  isRazorpayRouteEnabled,
+} from '@/lib/razorpay-route'
 
 function parseAmountToInr(value: unknown): number {
   if (value === null || value === undefined) return 0
@@ -14,7 +19,6 @@ function parseAmountToInr(value: unknown): number {
 
 export async function POST(request: NextRequest) {
   try {
-    // Accept cookie or Authorization
     let token = null
     const auth = request.headers.get('authorization')
     if (auth && auth.startsWith('Bearer ')) token = auth.substring(7)
@@ -35,21 +39,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'attendanceEntryId(s) or contributionId(s) required' }, { status: 400 })
     }
 
-    let amountInr = 0
+    let baseAmountInr = 0
     let serviceRequestId: number | null = null
     let meta: any = {}
 
-    // Single id legacy support
     if (attendanceEntryId) attendanceEntryIds.push(attendanceEntryId)
     if (contributionId) contributionIds.push(contributionId)
 
     if (attendanceEntryIds.length > 0) {
-      // load entries and sum
       const { data: entries } = await supabase.from('service_attendance_entries').select('*').in('id', attendanceEntryIds)
       if (!entries || entries.length === 0) return NextResponse.json({ error: 'Attendance entries not found' }, { status: 404 })
       const payableEntries = entries.filter((e: any) => String(e.payment_status || 'pending').toLowerCase() !== 'paid')
       if (payableEntries.length === 0) return NextResponse.json({ success: true, data: { paymentRequired: false, message: 'Already paid' } })
-      amountInr = payableEntries.reduce((s: number, e: any) => s + Number(e.amount_due || 0), 0)
+      baseAmountInr = payableEntries.reduce((s: number, e: any) => s + Number(e.amount_due || 0), 0)
       serviceRequestId = entries[0].service_request_id || null
       meta = { attendanceEntryIds }
     }
@@ -59,12 +61,24 @@ export async function POST(request: NextRequest) {
       if (!contribs || contribs.length === 0) return NextResponse.json({ error: 'Contributions not found' }, { status: 404 })
       const alreadyPaidC = contribs.filter((c: any) => c.status === 'paid')
       if (alreadyPaidC.length === contribs.length) return NextResponse.json({ success: true, data: { paymentRequired: false, message: 'Already paid' } })
-      amountInr += contribs.reduce((s: number, c: any) => s + Number(c.amount || 0), 0)
+      baseAmountInr += contribs.reduce((s: number, c: any) => s + Number(c.amount || 0), 0)
       serviceRequestId = serviceRequestId || contribs[0].service_request_id || null
       meta = { ...meta, contributionIds }
     }
 
-    if (amountInr <= 0) return NextResponse.json({ success: true, data: { paymentRequired: false, amountInr: 0 } })
+    if (baseAmountInr <= 0) return NextResponse.json({ success: true, data: { paymentRequired: false, amountInr: 0 } })
+
+    let beneficiaryUserId = 0
+    let beneficiaryName = 'NGO'
+    if (serviceRequestId) {
+      const { data: serviceRequest } = await supabase
+        .from('service_requests')
+        .select('ngo_id, requester_id, ngo_name')
+        .eq('id', serviceRequestId)
+        .maybeSingle()
+      beneficiaryUserId = Number(serviceRequest?.ngo_id || serviceRequest?.requester_id || 0)
+      beneficiaryName = String(serviceRequest?.ngo_name || 'NGO')
+    }
 
     const keyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID
     const keySecret = process.env.RAZORPAY_KEY_SECRET
@@ -72,7 +86,20 @@ export async function POST(request: NextRequest) {
 
     const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret })
     const receipt = `ca_pay_${verify.company_ca.company_user_id}_${serviceRequestId || 'na'}_${Date.now()}`
-    const order = await razorpay.orders.create({ amount: Math.round(amountInr * 100), currency: 'INR', receipt, notes: { ...meta, paid_by_company_user_id: String(verify.company_ca.company_user_id) } })
+    const { order, pricing, orderNotes } = await createPlatformPricedOrder({
+      razorpay,
+      baseAmountInr,
+      receipt,
+      paymentKind: 'company_ca',
+      beneficiaryUserId: beneficiaryUserId > 0 ? beneficiaryUserId : undefined,
+      beneficiaryName,
+      notes: {
+        source: 'company_ca_payment',
+        paid_by_company_user_id: String(verify.company_ca.company_user_id),
+        service_request_id: serviceRequestId ? String(serviceRequestId) : undefined,
+        ...meta,
+      },
+    })
 
     const nowIso = new Date().toISOString()
     await supabase.from('razorpay_payment_orders').upsert({
@@ -80,21 +107,28 @@ export async function POST(request: NextRequest) {
       contribution_id: contributionId || null,
       volunteer_assignment_id: null,
       payer_user_id: null,
-      ngo_user_id: verify.company_ca.company_user_id,
+      ngo_user_id: beneficiaryUserId > 0 ? beneficiaryUserId : verify.company_ca.company_user_id,
       razorpay_order_id: String(order.id),
       receipt,
-      amount_inr: Number(amountInr.toFixed(2)),
-      amount_paise: Math.round(amountInr * 100),
+      amount_inr: Number(pricing.totalChargeInr.toFixed(2)),
+      amount_paise: pricing.totalChargePaise,
       currency: 'INR',
       order_status: 'created',
-      order_notes: {
-        source: 'company_ca_payment',
-        ...meta
-      },
+      order_notes: orderNotes,
       updated_at: nowIso
     }, { onConflict: 'razorpay_order_id' })
 
-    return NextResponse.json({ success: true, data: { orderId: order.id, amount: amountInr, currency: order.currency, keyId, serviceRequestId } })
+    return NextResponse.json({
+      success: true,
+      data: {
+        orderId: order.id,
+        ...buildPricingResponse(pricing),
+        currency: order.currency,
+        keyId,
+        serviceRequestId,
+        routeEnabled: isRazorpayRouteEnabled(),
+      },
+    })
   } catch (error: any) {
     console.error('CA create-order error:', error)
     return NextResponse.json({ error: error?.message || 'Failed to create order' }, { status: 500 })

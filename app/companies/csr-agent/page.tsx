@@ -23,6 +23,8 @@ import {
   scrollAgentMessagesContainer,
 } from "@/lib/ai-agent-sessions"
 import { AGENT_GREETINGS, AGENT_NAMES, agentLoadingLabel } from "@/lib/ai-suite"
+import { openRazorpayCheckout } from "@/lib/razorpay-checkout"
+import { InlineCsrCapabilityDelhivery } from "@/components/service-card"
 
 type ConversationStage = "project" | "milestone-count" | "milestones" | "generating" | "complete"
 
@@ -113,11 +115,6 @@ interface RecommendationApiResponse {
   data?: unknown
   error?: string
   details?: Record<string, string[]>
-  debug?: {
-    reason?: "coercion_validation_failed" | "input_validation_failed" | "matcher_error" | "fallback_ok" | "empty_results" | "ok" | "route_error"
-    message?: string
-    details?: unknown
-  }
 }
 
 interface GeneratedCampaign {
@@ -538,6 +535,9 @@ export default function CSRAgentPage() {
   const [isFetchingProjectSuggestions, setIsFetchingProjectSuggestions] = useState(false)
   const [selectedProjectSuggestionId, setSelectedProjectSuggestionId] = useState<string | null>(null)
   const [invitedOfferIds, setInvitedOfferIds] = useState<number[]>([])
+  const [paidOfferIds, setPaidOfferIds] = useState<number[]>([])
+  const [paidRentalsByOfferId, setPaidRentalsByOfferId] = useState<Record<number, any>>({})
+  const [payingOfferId, setPayingOfferId] = useState<number | null>(null)
   const [ngoDirectory, setNgoDirectory] = useState<NgoDirectoryItem[]>([])
   const [isFetchingNgoDirectory, setIsFetchingNgoDirectory] = useState(false)
   const [leadNgoInvites, setLeadNgoInvites] = useState<LeadNgoInvite[]>([])
@@ -1243,10 +1243,7 @@ export default function CSRAgentPage() {
               .map(([key, values]) => `${key}: ${Array.isArray(values) ? values.join(", ") : "invalid"}`)
               .join(" | ")
           : ""
-        const debugText = result?.debug?.reason
-          ? `debug_reason: ${result.debug.reason}${result?.debug?.message ? ` (${result.debug.message})` : ""}`
-          : ""
-        setRecommendationError([result?.error || "Failed to fetch recommendations", detailText, debugText].filter(Boolean).join(". "))
+        setRecommendationError([result?.error || "Failed to fetch recommendations", detailText].filter(Boolean).join(". "))
         return []
       }
 
@@ -1480,6 +1477,118 @@ export default function CSRAgentPage() {
       setTimeout(() => persistCurrentSessionSnapshot({ invitedOfferIds: next }), 0)
       return next
     })
+  }
+
+  const handlePayAndReserveOffer = async (offerId: number, offerType?: string) => {
+    if (!canUseCampaignActions) {
+      appendAssistantMessage('Please finish campaign details before paying for a capability rental.')
+      return
+    }
+    if (!user?.id || !token) {
+      appendAssistantMessage('Please sign in again to continue.')
+      return
+    }
+    if (user.verification_status === 'suspended') {
+      appendAssistantMessage('Your company account is suspended due to unpaid CSR capability penalties.')
+      return
+    }
+
+    const publishCampaignId = draftCampaignId || editingCampaignId
+    if (!publishCampaignId) {
+      appendAssistantMessage('Save the campaign draft before paying to reserve a capability.')
+      return
+    }
+
+    setPayingOfferId(offerId)
+    try {
+      const orderRes = await fetch('/api/csr-agent/update-campaign', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          action: 'capability_rental_create_order',
+          campaign_id: publishCampaignId,
+          company_id: user.id,
+          offer_id: offerId,
+        }),
+      })
+      const orderPayload = await orderRes.json().catch(() => null)
+      if (!orderRes.ok || !orderPayload?.success) {
+        throw new Error(orderPayload?.error || 'Failed to start capability payment')
+      }
+
+      if (!orderPayload.data?.paymentRequired) {
+        setPaidOfferIds((current) => [...new Set([...current, offerId])])
+        setInvitedOfferIds((current) => [...new Set([...current, offerId])])
+        appendAssistantMessage(`Capability offer #${offerId} is already reserved for this campaign.`)
+        return
+      }
+
+      await openRazorpayCheckout({
+        keyId: orderPayload.data.keyId,
+        orderId: orderPayload.data.orderId,
+        amountInr: Number(orderPayload.data.amount || orderPayload.data.pricing?.totalChargeInr || 0),
+        currency: 'INR',
+        description: `CSR ${offerType || 'capability'} rental reservation`,
+        themeColor: '#059669',
+        onSuccess: async (paymentResponse) => {
+          const verifyRes = await fetch('/api/csr-agent/update-campaign', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              action: 'capability_rental_verify',
+              campaign_id: publishCampaignId,
+              company_id: user.id,
+              offer_id: offerId,
+              razorpay_order_id: paymentResponse.razorpay_order_id,
+              razorpay_payment_id: paymentResponse.razorpay_payment_id,
+              razorpay_signature: paymentResponse.razorpay_signature,
+            }),
+          })
+          const verifyPayload = await verifyRes.json().catch(() => null)
+          if (!verifyRes.ok || !verifyPayload?.success) {
+            throw new Error(verifyPayload?.error || 'Payment verification failed')
+          }
+
+          setPaidOfferIds((current) => [...new Set([...current, offerId])])
+          setInvitedOfferIds((current) => [...new Set([...current, offerId])])
+          if (verifyPayload?.data?.rental) {
+            setPaidRentalsByOfferId((current) => ({
+              ...current,
+              [offerId]: verifyPayload.data.rental,
+            }))
+          }
+          setTimeout(() => persistCurrentSessionSnapshot({ invitedOfferIds: [...new Set([...invitedOfferIds, offerId])] }), 0)
+          const rental = verifyPayload?.data?.rental
+          const outbound = rental?.outbound_delivery
+          if (outbound?.tracking_id) {
+            appendAssistantMessage(
+              `Capability offer #${offerId} is reserved. Delhivery pickup scheduled (AWB ${outbound.tracking_id}) — material ships to the CSR project automatically.`,
+            )
+          } else if (outbound?.booking_error) {
+            appendAssistantMessage(
+              `Capability offer #${offerId} is reserved. Delhivery booking needs attention: ${outbound.booking_error}`,
+            )
+          } else {
+            appendAssistantMessage(
+              `Capability offer #${offerId} is reserved. Delhivery outbound shipment is being scheduled to the CSR project location.`,
+            )
+          }
+        },
+        onFailure: (error) => {
+          appendAssistantMessage(error.description || error.reason || 'Payment could not be completed.')
+        },
+      })
+    } catch (error) {
+      appendAssistantMessage(error instanceof Error ? error.message : 'Payment failed')
+    } finally {
+      setPayingOfferId(null)
+    }
   }
 
   const applyRemoteInviteState = (data: {
@@ -1727,11 +1836,7 @@ export default function CSRAgentPage() {
       }
 
       const campaignUrl = payload.campaign_url || `/csr-campaigns/${campaignId}`
-      if (payload.social_post_id) {
-        appendAssistantMessage(`Campaign published successfully. It is now listed on CSR Campaigns and an announcement was posted to Social with a link to ${campaignUrl}.`)
-      } else {
-        appendAssistantMessage(`Campaign published successfully on CSR Campaigns (${campaignUrl}). The social announcement could not be created automatically — you can share the link manually from Social.`)
-      }
+      appendAssistantMessage(`Campaign published successfully. It is now listed on CSR Campaigns: ${campaignUrl}`)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to publish campaign'
       appendAssistantMessage(message)
@@ -2954,12 +3059,58 @@ export default function CSRAgentPage() {
                               </div>
                               <div className="flex shrink-0 items-center gap-2 self-start">
                                 <span className="whitespace-nowrap rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">Score {service.score}</span>
-                                <Button type="button" size="sm" className="whitespace-nowrap" disabled={!canUseCampaignActions} variant={invitedOfferIds.includes(service.service_offer_id) ? 'secondary' : 'outline'} onClick={() => handleInviteOfferToggle(service.service_offer_id)}>
-                                  {invitedOfferIds.includes(service.service_offer_id) ? 'Invited' : 'Invite'}
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  className="whitespace-nowrap"
+                                  disabled={!canUseCampaignActions || payingOfferId === service.service_offer_id}
+                                  variant={paidOfferIds.includes(service.service_offer_id) ? 'secondary' : 'default'}
+                                  onClick={() => void handlePayAndReserveOffer(service.service_offer_id, service.offer_type)}
+                                >
+                                  {payingOfferId === service.service_offer_id ? (
+                                    <>
+                                      <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                                      Paying...
+                                    </>
+                                  ) : paidOfferIds.includes(service.service_offer_id) ? (
+                                    'Reserved'
+                                  ) : (
+                                    'Pay & reserve'
+                                  )}
                                 </Button>
                               </div>
                             </div>
                             <p className="mt-2 text-xs text-slate-600 break-words">{service.city || "Any city"} • {service.state_province || "Any state"}</p>
+                            {paidOfferIds.includes(service.service_offer_id) && paidRentalsByOfferId[service.service_offer_id] ? (
+                              <div className="mt-3">
+                                <InlineCsrCapabilityDelhivery
+                                  campaignId={String(draftCampaignId || editingCampaignId || '')}
+                                  offerId={service.service_offer_id}
+                                  leg="outbound"
+                                  delivery={paidRentalsByOfferId[service.service_offer_id]?.outbound_delivery}
+                                  onUpdated={async () => {
+                                    const campaignId = draftCampaignId || editingCampaignId
+                                    if (!campaignId || !token) return
+                                    const res = await fetch('/api/campaigns/lead-assignments?rentals=1', {
+                                      headers: { Authorization: `Bearer ${token}` },
+                                    })
+                                    const payload = await res.json().catch(() => null)
+                                    if (!res.ok || !payload?.success) return
+                                    const match = (payload.data || []).find(
+                                      (row: any) =>
+                                        String(row.campaign_id) === String(campaignId) &&
+                                        Number(row.rental?.service_offer_id) === service.service_offer_id
+                                    )
+                                    if (match?.rental) {
+                                      setPaidRentalsByOfferId((current) => ({
+                                        ...current,
+                                        [service.service_offer_id]: match.rental,
+                                      }))
+                                    }
+                                  }}
+                                />
+                              </div>
+                            ) : null}
                           </div>
                         ))
                       ) : (

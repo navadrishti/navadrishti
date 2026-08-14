@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyCompanyCA } from '@/lib/company-ca'
 import Razorpay from 'razorpay'
 import { supabase } from '@/lib/db'
+import { validateCapturedPaymentAmounts } from '@/lib/razorpay-route'
 
 function safeSignatureMatch(expected: string, received: string): boolean {
   const expectedBuffer = Buffer.from(String(expected || ''), 'utf8')
@@ -48,6 +49,14 @@ export async function POST(request: NextRequest) {
     if (!orderRow) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
 
     const paidInr = Number((Number(provPayment.amount || 0) / 100).toFixed(2))
+    const amountCheck = validateCapturedPaymentAmounts({
+      orderNotes: orderRow.order_notes || {},
+      paidInr,
+    })
+    if (!amountCheck.ok) {
+      return NextResponse.json({ error: amountCheck.error }, { status: 400 })
+    }
+    const creditedInr = amountCheck.baseAmountInr
 
     // If contribution id present, mark contribution paid; if attendance, mark attendance entry paid
     const notes = orderRow.order_notes || {}
@@ -99,7 +108,7 @@ export async function POST(request: NextRequest) {
       if (serviceRequestId > 0) {
         const { data: sr } = await supabase.from('service_requests').select('id, current_amount, target_amount').eq('id', serviceRequestId).maybeSingle()
         const current = Number(sr?.current_amount || 0)
-        const next = Number((current + paidInr).toFixed(2))
+        const next = Number((current + creditedInr).toFixed(2))
         const target = Number(sr?.target_amount || 0)
         const remaining = target > 0 ? Number(Math.max(0, target - next).toFixed(2)) : null
         await supabase.from('service_requests').update({ current_amount: next, remaining_amount: remaining, updated_at: nowIso }).eq('id', serviceRequestId)
@@ -116,7 +125,7 @@ export async function POST(request: NextRequest) {
           service_request_id: serviceRequestId,
           contributor_id: verify.company_ca.company_user_id,
           contribution_type: 'attendance_payment',
-          amount: paidInr,
+          amount: creditedInr,
           status: 'paid',
           reference_text: `Aggregated attendance payment ${attendanceEntryIds.length} entries`,
           meta: { attendance_entry_ids: attendanceEntryIds, razorpay_order_id, razorpay_payment_id }
@@ -124,14 +133,14 @@ export async function POST(request: NextRequest) {
 
         const { data: sr } = await supabase.from('service_requests').select('id, current_amount, target_amount').eq('id', serviceRequestId).maybeSingle()
         const current = Number(sr?.current_amount || 0)
-        const next = Number((current + paidInr).toFixed(2))
+        const next = Number((current + creditedInr).toFixed(2))
         const target = Number(sr?.target_amount || 0)
         const remaining = target > 0 ? Number(Math.max(0, target - next).toFixed(2)) : null
         await supabase.from('service_requests').update({ current_amount: next, remaining_amount: remaining, updated_at: nowIso }).eq('id', serviceRequestId)
       }
     }
 
-    return NextResponse.json({ success: true, data: { message: 'Payment verified and reconciled', amountInr: paidInr } })
+    return NextResponse.json({ success: true, data: { message: 'Payment verified and reconciled', amountInr: paidInr, creditedInr } })
   } catch (error: any) {
     console.error('CA verify error:', error)
     return NextResponse.json({ error: error?.message || 'Failed to verify payment' }, { status: 500 })

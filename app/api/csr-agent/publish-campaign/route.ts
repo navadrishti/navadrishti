@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
 import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth'
 import { resolveCampaignCategoryInput, resolveCampaignLocationInput } from '@/lib/campaign-schema'
-import { socialFeedDb } from '@/lib/social-feed-db'
-import { buildCampaignSocialPost, buildCampaignSocialTags, resolveAppOrigin } from '@/lib/campaign-social-post'
+import { resolveAppOrigin } from '@/lib/campaign-social-post'
+import { verifyPaidCsrOffersForPublish } from '@/lib/csr-agent/campaign'
 
 export async function POST(request: NextRequest) {
   try {
@@ -43,8 +43,18 @@ export async function POST(request: NextRequest) {
       }, { status: 409 })
     }
 
+    const invitedOfferIds = Array.isArray(campaign?.impact_metrics?.invited_offer_ids)
+      ? campaign.impact_metrics.invited_offer_ids
+      : Array.isArray(impact.invited_offer_ids)
+        ? impact.invited_offer_ids
+        : []
+    if (invitedOfferIds.length > 0) {
+      await verifyPaidCsrOffersForPublish(campaignId, user.id)
+    }
+
     const category = resolveCampaignCategoryInput(campaign)
     const location = resolveCampaignLocationInput(campaign)
+    const campaignUrl = `${resolveAppOrigin(request)}/csr-campaigns/${campaignId}`
 
     const nextImpact = {
       ...impact,
@@ -53,6 +63,8 @@ export async function POST(request: NextRequest) {
       selected_lead_ngo_id: impact.selected_lead_ngo_id,
       selected_lead_ngo_name: impact.selected_lead_ngo_name,
       selected_lead_ngo_email: impact.selected_lead_ngo_email,
+      campaign_public_url: campaignUrl,
+      published_at: new Date().toISOString(),
     }
 
     const { data: updated, error: updateError } = await supabase
@@ -79,63 +91,6 @@ export async function POST(request: NextRequest) {
 
     if (updateError) throw updateError
 
-    let socialPostId: string | number | null = impact.social_post_id ?? null
-    let socialPostUrl: string | null = impact.social_post_url ?? null
-
-    if (!socialPostId) {
-      try {
-        const origin = resolveAppOrigin(request)
-        const campaignUrl = `${origin}/csr-campaigns/${campaignId}`
-        const postContent = buildCampaignSocialPost({
-          title: updated.title,
-          description: updated.description,
-          category: updated.category,
-          location: updated.location,
-          schedule_vii: updated.schedule_vii,
-          start_date: updated.start_date,
-          end_date: updated.end_date,
-          lead_ngo_name: impact.selected_lead_ngo_name,
-          campaign_url: campaignUrl,
-        })
-
-        const socialPost = await socialFeedDb.posts.create({
-          author_id: user.id,
-          content: postContent,
-          post_type: 'text',
-          tags: buildCampaignSocialTags({
-            title: updated.title,
-            category: updated.category,
-            schedule_vii: updated.schedule_vii,
-            campaign_url: campaignUrl,
-          }),
-          category: 'csr_campaign',
-          location: updated.location,
-          visibility: 'public',
-        })
-
-        socialPostId = socialPost?.id ?? null
-        socialPostUrl = socialPostId ? `${origin}/posts/${socialPostId}` : null
-
-        const impactWithSocial = {
-          ...nextImpact,
-          social_post_id: socialPostId,
-          social_post_url: socialPostUrl,
-          campaign_public_url: campaignUrl,
-          published_to_social_at: new Date().toISOString(),
-        }
-
-        await supabase
-          .from('campaigns')
-          .update({ impact_metrics: impactWithSocial })
-          .eq('id', campaignId)
-          .eq('company_id', user.id)
-
-        updated.impact_metrics = impactWithSocial
-      } catch (socialError) {
-        console.error('CSR campaign social post error (campaign still published):', socialError)
-      }
-    }
-
     await supabase.from('csr_audit_log').insert({
       entity_type: 'campaign',
       entity_id: campaignId,
@@ -145,7 +100,7 @@ export async function POST(request: NextRequest) {
         title: updated.title,
         category: updated.category,
         location: updated.location,
-        social_post_id: socialPostId,
+        campaign_url: campaignUrl,
       },
       created_by: user.id,
     })
@@ -153,8 +108,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: updated,
-      social_post_id: socialPostId,
-      campaign_url: `${resolveAppOrigin(request)}/csr-campaigns/${campaignId}`,
+      campaign_url: campaignUrl,
     })
   } catch (error) {
     console.error('CSR agent publish campaign error:', error)

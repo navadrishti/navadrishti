@@ -15,7 +15,6 @@ const deleteAccountSchema = z.object({
 // Helper function to delete all user-related data
 async function deleteUserData(userId: number, userEmail: string) {
   try {
-    console.log(`🗑️ Starting data deletion for user ${userId} (${userEmail})`);
     
     // Delete user addresses
     await supabase
@@ -95,10 +94,8 @@ async function deleteUserData(userId: number, userEmail: string) {
       .delete()
       .eq('user_id', userId);
     
-    console.log(`✅ Successfully deleted all related data for user ${userId}`);
-    
   } catch (error) {
-    console.error(`❌ Error deleting user data for ${userId}:`, error);
+    console.error(`Error deleting user data for ${userId}:`, error);
     throw new Error('Failed to delete user data');
   }
 }
@@ -148,8 +145,6 @@ export async function DELETE(req: NextRequest) {
       }, { status: 400 });
     }
     
-    console.log(`🚨 Account deletion requested for user: ${user.email} (ID: ${userId})`);
-    
     // Delete all user-related data first
     await deleteUserData(userId, user.email);
     
@@ -165,11 +160,6 @@ export async function DELETE(req: NextRequest) {
         error: 'Failed to delete account' 
       }, { status: 500 });
     }
-    
-    console.log(`💀 Account successfully deleted for user: ${user.email} (ID: ${userId})`);
-    
-    // Log the deletion for audit purposes
-    console.log(`📋 AUDIT LOG: Account deleted - User ID: ${userId}, Email: ${user.email}, Date: ${new Date().toISOString()}`);
     
     return NextResponse.json({
       message: 'Account has been successfully deleted',

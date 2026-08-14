@@ -5,6 +5,12 @@ import Razorpay from 'razorpay';
 import { db, supabase } from '@/lib/db';
 import { JWT_SECRET } from '@/lib/auth';
 import { resolveFundingTargetInr, resolveFundsRaisedInr } from '@/lib/service-request-allocation';
+import {
+  canContributeViaPlatform,
+  isGeneralNgoNetworkNeed,
+  parseServiceRequestRequirements,
+  releaseHeldTransfersForPayment,
+} from '@/lib/razorpay-route';
 
 interface JWTPayload {
   id: number;
@@ -68,15 +74,8 @@ export async function POST(
       return NextResponse.json({ error: 'Service request not found' }, { status: 404 });
     }
 
-    const requirements = (() => {
-      try {
-        return typeof serviceRequest.requirements === 'string'
-          ? JSON.parse(serviceRequest.requirements)
-          : (serviceRequest.requirements || {});
-      } catch {
-        return {};
-      }
-    })() as Record<string, any>;
+    const requirements = parseServiceRequestRequirements(serviceRequest.requirements) as Record<string, any>;
+    const isGeneralNeed = isGeneralNgoNetworkNeed(requirements);
 
     if (!isFinancialRequest(serviceRequest, requirements)) {
       return NextResponse.json({ error: 'Payments are enabled only for Financial Need requests' }, { status: 400 });
@@ -89,8 +88,8 @@ export async function POST(
       );
     }
 
-    if (decoded.user_type !== 'individual') {
-      return NextResponse.json({ error: 'Only individuals can verify direct contributions' }, { status: 403 });
+    if (!canContributeViaPlatform(decoded.user_type)) {
+      return NextResponse.json({ error: 'Only companies and individuals can verify direct contributions' }, { status: 403 });
     }
 
     const {
@@ -145,6 +144,12 @@ export async function POST(
     }
 
     const providerNotes = (providerOrder.notes || providerPayment.notes || {}) as Record<string, any>;
+    const expectedTotalInr = parseAmountToInr(providerNotes?.total_charge_inr);
+    if (expectedTotalInr > 0 && Math.abs(paidInr - expectedTotalInr) > 0.01) {
+      return NextResponse.json({ error: 'Paid amount does not match checkout total' }, { status: 400 });
+    }
+
+    const creditedInr = parseAmountToInr(providerNotes?.base_amount_inr) || paidInr;
     const providerRequestId = Number(providerNotes?.service_request_id || 0);
     if (providerRequestId > 0 && providerRequestId !== requestId) {
       return NextResponse.json({ error: 'Payment is linked to a different request' }, { status: 403 });
@@ -162,7 +167,7 @@ export async function POST(
       budget: requirements?.budget,
     });
 
-    if (targetInr <= 0) {
+    if (!isGeneralNeed && targetInr <= 0) {
       return NextResponse.json({ error: 'This request has no valid financial target configured' }, { status: 400 });
     }
 
@@ -266,8 +271,8 @@ export async function POST(
       });
     }
 
-    const nextRaisedInr = currentRaisedInr + paidInr;
-    const reachedTarget = nextRaisedInr >= targetInr;
+    const nextRaisedInr = currentRaisedInr + creditedInr;
+    const reachedTarget = !isGeneralNeed && targetInr > 0 && nextRaisedInr >= targetInr;
 
     const acceptedAssignments = await db.serviceVolunteers.getByRequestId(requestId);
     const matchingAssignment = (acceptedAssignments || []).find((item: any) =>
@@ -280,7 +285,7 @@ export async function POST(
       await supabase
         .from('service_volunteers')
         .update({
-          fulfilled_amount: Number((existingFulfilled + paidInr).toFixed(2)),
+          fulfilled_amount: Number((existingFulfilled + creditedInr).toFixed(2)),
           individual_done_at: matchingAssignment.individual_done_at || new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
@@ -371,6 +376,7 @@ export async function POST(
           razorpay_order_id,
           razorpay_payment_id,
           amount_inr: paidInr,
+          base_amount_inr: creditedInr,
           contributor_id: decoded.id,
           contributor_type: decoded.user_type,
           contributor_name: decoded.name || null,
@@ -394,7 +400,7 @@ export async function POST(
       updatePayload.remaining_quantity = serviceRequest.remaining_quantity ?? null;
     }
 
-    if (reachedTarget) {
+    if (reachedTarget && !isGeneralNeed) {
       updatePayload.status = 'completed';
     } else if (serviceRequest.status === 'active') {
       updatePayload.status = 'in_progress';
@@ -402,10 +408,17 @@ export async function POST(
 
     await db.serviceRequests.update(requestId, updatePayload);
 
+    if (reachedTarget && !isGeneralNeed) {
+      await releaseHeldTransfersForPayment({
+        razorpay,
+        razorpayPaymentId: String(razorpay_payment_id),
+      });
+    }
+
     return NextResponse.json({
       success: true,
       data: {
-        message: reachedTarget ? 'Payment verified. Request is now fulfilled.' : 'Payment verified successfully',
+        message: reachedTarget && !isGeneralNeed ? 'Payment verified. Request is now fulfilled.' : 'Payment verified successfully',
         fundsRaisedInr: Number(nextRaisedInr.toFixed(2)),
         targetInr,
         status: reachedTarget ? 'completed' : (updatePayload.status || serviceRequest.status)

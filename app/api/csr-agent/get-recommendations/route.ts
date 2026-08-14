@@ -8,17 +8,9 @@ import {
 } from "@/lib/csr-agent/find-service-offers";
 import { buildRequirementDetails } from "@/lib/csr-agent/recommendation-utils";
 
-type RecommendationDebug = {
-  reason: "coercion_validation_failed" | "input_validation_failed" | "matcher_error" | "fallback_ok" | "empty_results" | "ok" | "route_error";
-  message?: string;
-  details?: unknown;
-};
-
 type RecommendationResponse =
-  | { success: true; data: CapabilityMatch[]; debug?: RecommendationDebug }
-  | { success: false; error: string; details?: unknown; debug?: RecommendationDebug };
-
-const isDev = process.env.NODE_ENV !== "production";
+  | { success: true; data: CapabilityMatch[] }
+  | { success: false; error: string; details?: unknown };
 
 const RequestCoercionSchema = z
   .object({
@@ -194,15 +186,6 @@ export async function POST(request: NextRequest) {
           success: false,
           error: "Validation failed",
           details: coerced.error.flatten().fieldErrors,
-          ...(isDev
-            ? {
-                debug: {
-                  reason: "coercion_validation_failed",
-                  message: "Request payload failed route-level coercion validation",
-                  details: coerced.error.flatten().fieldErrors,
-                },
-              }
-            : {}),
         },
         { status: 400 }
       );
@@ -224,15 +207,6 @@ export async function POST(request: NextRequest) {
           success: false,
           error: "Validation failed",
           details: validation.error.flatten().fieldErrors,
-          ...(isDev
-            ? {
-                debug: {
-                  reason: "input_validation_failed",
-                  message: "Request payload failed matcher input validation",
-                  details: validation.error.flatten().fieldErrors,
-                },
-              }
-            : {}),
         },
         { status: 400 }
       );
@@ -247,14 +221,6 @@ export async function POST(request: NextRequest) {
         {
           success: false,
           error: err instanceof Error ? err.message : "Failed to fetch recommendations",
-          ...(isDev
-            ? {
-                debug: {
-                  reason: "matcher_error",
-                  message: err instanceof Error ? err.message : "Unknown matcher error",
-                },
-              }
-            : {}),
         },
         { status: 500 }
       );
@@ -265,14 +231,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json<RecommendationResponse>({
         success: true,
         data: primaryMatches,
-        ...(isDev
-          ? {
-              debug: {
-                reason: "ok",
-                message: "Matcher completed successfully",
-              },
-            }
-          : {}),
       });
     }
 
@@ -289,20 +247,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json<RecommendationResponse>({
       success: true,
       data: fallbackMatches,
-      ...(isDev
-        ? {
-            debug:
-              fallbackMatches.length > 0
-                ? {
-                    reason: "fallback_ok",
-                    message: "Primary matcher returned empty results; fallback service_offers query returned matches",
-                  }
-                : {
-                    reason: "empty_results",
-                    message: "Matcher and fallback query both returned no results",
-                  },
-          }
-        : {}),
     });
   } catch (error) {
     console.error("get-recommendations route error:", error);
@@ -310,14 +254,6 @@ export async function POST(request: NextRequest) {
       {
         success: false,
         error: "Internal server error",
-        ...(isDev
-          ? {
-              debug: {
-                reason: "route_error",
-                message: error instanceof Error ? error.message : "Unknown route error",
-              },
-            }
-          : {}),
       },
       { status: 500 }
     );

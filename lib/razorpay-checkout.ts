@@ -18,6 +18,8 @@ export type OpenRazorpayCheckoutOptions = {
     email?: string;
     contact?: string;
   };
+  /** Close app dialogs/modals before checkout opens (e.g. setDialogOpen(false)). */
+  onBeforeOpen?: () => void;
   onSuccess: (response: RazorpaySuccessResponse) => void | Promise<void>;
   onDismiss?: () => void;
   onFailure?: (error: { description?: string; reason?: string }) => void;
@@ -33,6 +35,127 @@ declare global {
 }
 
 let scriptPromise: Promise<void> | null = null;
+let cachedLocalLogoDataUrl: string | null | undefined;
+
+const DEFAULT_LOGO_PATH = '/photos/razorpay-logo.png';
+const DEFAULT_MERCHANT_NAME = 'Navadrishti LLP';
+
+function isLocalHostname(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
+}
+
+function getPublicAppOrigin(): string {
+  const configured = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') || '';
+  if (typeof window === 'undefined') {
+    return configured;
+  }
+
+  const { origin, hostname } = window.location;
+  if (isLocalHostname(hostname) && configured) {
+    return configured;
+  }
+
+  return origin || configured;
+}
+
+function buildPublicLogoUrl(image?: string): string | undefined {
+  const path = image || DEFAULT_LOGO_PATH;
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+
+  const origin = getPublicAppOrigin();
+  if (!origin) {
+    return path;
+  }
+
+  return `${origin}${path.startsWith('/') ? path : `/${path}`}`;
+}
+
+async function loadLocalLogoDataUrl(image?: string): Promise<string | undefined> {
+  if (typeof window === 'undefined') {
+    return undefined;
+  }
+
+  if (cachedLocalLogoDataUrl !== undefined) {
+    return cachedLocalLogoDataUrl || undefined;
+  }
+
+  const path = image || DEFAULT_LOGO_PATH;
+  try {
+    const response = await fetch(path);
+    if (!response.ok) {
+      cachedLocalLogoDataUrl = null;
+      return undefined;
+    }
+
+    const blob = await response.blob();
+    cachedLocalLogoDataUrl = await new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+
+    return cachedLocalLogoDataUrl || undefined;
+  } catch {
+    cachedLocalLogoDataUrl = null;
+    return undefined;
+  }
+}
+
+/** Razorpay checkout needs a reachable logo URL (PNG/JPG/WebP). Localhost URLs fail on Razorpay servers. */
+export async function resolveRazorpayCheckoutImageUrl(image?: string): Promise<string | undefined> {
+  if (typeof window !== 'undefined' && isLocalHostname(window.location.hostname)) {
+    const localDataUrl = await loadLocalLogoDataUrl(image);
+    if (localDataUrl) {
+      return localDataUrl;
+    }
+  }
+
+  const configured = process.env.NEXT_PUBLIC_RAZORPAY_LOGO_URL?.trim();
+  if (configured) {
+    return configured;
+  }
+
+  return buildPublicLogoUrl(image);
+}
+
+function waitForNextPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => resolve());
+    });
+  });
+}
+
+/** Remove Radix dialog/sheet overlays that stack under Razorpay and black out the page. */
+export function clearBlockingAppOverlays(): void {
+  if (typeof document === 'undefined') {
+    return;
+  }
+
+  document.body.style.pointerEvents = '';
+  document.body.style.overflow = '';
+  document.body.removeAttribute('data-scroll-locked');
+
+  const overlaySelectors = [
+    '[data-radix-dialog-overlay]',
+    '[data-radix-alert-dialog-overlay]',
+  ];
+
+  overlaySelectors.forEach((selector) => {
+    document.querySelectorAll(selector).forEach((node) => {
+      node.parentElement?.removeChild(node);
+    });
+  });
+
+  document.querySelectorAll('[role="dialog"][data-state="open"]').forEach((node) => {
+    const element = node as HTMLElement;
+    element.setAttribute('data-state', 'closed');
+    element.style.display = 'none';
+  });
+}
 
 export function loadRazorpayScript(): Promise<void> {
   if (typeof window === 'undefined') {
@@ -101,11 +224,18 @@ export async function openRazorpayCheckout(options: OpenRazorpayCheckoutOptions)
     throw new Error('Razorpay key is missing. Check NEXT_PUBLIC_RAZORPAY_KEY_ID.');
   }
 
+  options.onBeforeOpen?.();
+  await waitForNextPaint();
+  clearBlockingAppOverlays();
+
+  const checkoutImage = await resolveRazorpayCheckoutImageUrl(options.image);
+
   return new Promise<void>((resolve) => {
     let settled = false;
     const finish = () => {
       if (settled) return;
       settled = true;
+      clearBlockingAppOverlays();
       resolve();
     };
 
@@ -113,20 +243,22 @@ export async function openRazorpayCheckout(options: OpenRazorpayCheckoutOptions)
       key: options.keyId,
       amount: amountPaise,
       currency: options.currency || 'INR',
-      name: options.name || 'Navadrishti',
+      name: options.name || DEFAULT_MERCHANT_NAME,
       description: options.description || 'Payment',
-      image: options.image || '/photos/small-logo.svg',
+      image: checkoutImage,
       order_id: options.orderId,
       prefill: options.prefill || {},
       theme: { color: options.themeColor || '#2563eb' },
       modal: {
         ondismiss: () => {
+          clearBlockingAppOverlays();
           options.onDismiss?.();
           finish();
         },
         escape: true,
         backdropclose: true,
-        confirm_close: true,
+        confirm_close: false,
+        animation: true,
       },
       retry: {
         enabled: true,
@@ -149,6 +281,7 @@ export async function openRazorpayCheckout(options: OpenRazorpayCheckoutOptions)
       });
     });
 
+    clearBlockingAppOverlays();
     razorpay.open();
   });
 }

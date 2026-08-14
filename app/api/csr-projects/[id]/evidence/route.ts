@@ -224,3 +224,72 @@ export async function GET(
     return NextResponse.json({ error: 'Failed to load project evidence timeline' }, { status: 500 });
   }
 }
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id: projectId } = await params;
+    const body = await request.json();
+    const action = String(body?.action || '').trim();
+    const offerId = Number(body?.offer_id || 0);
+    const campaignId = String(body?.campaign_id || projectId).trim();
+
+    const { data: project, error: projectError } = await supabase
+      .from('csr_projects')
+      .select('*')
+      .eq('id', projectId)
+      .single();
+
+    if (projectError || !project) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    }
+
+    const hasAccess = await canAccessProject(request, project);
+    if (!hasAccess) {
+      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
+    }
+
+    if (
+      !['capability_rental_dispatch', 'capability_rental_link_tracking', 'capability_rental_sync_delivery'].includes(action) ||
+      !Number.isFinite(offerId) ||
+      offerId <= 0
+    ) {
+      return NextResponse.json({ error: 'Invalid capability delivery action' }, { status: 400 });
+    }
+
+    const dispatchType = String(body?.dispatch_type || '').trim();
+    const leg =
+      String(body?.leg || '').trim() === 'return' || dispatchType === 'return_delivered'
+        ? 'return'
+        : 'outbound';
+    const trackingId = String(body?.tracking_id || body?.trackingId || '').trim();
+
+    const {
+      linkCsrCapabilityRentalTracking,
+      syncCsrCapabilityRentalDelhivery,
+    } = await import('@/lib/csr-agent/campaign');
+
+    if (action === 'capability_rental_link_tracking') {
+      const rental = await linkCsrCapabilityRentalTracking({
+        campaignId,
+        offerId,
+        leg,
+        trackingId,
+      });
+      return NextResponse.json({ success: true, data: { rental } });
+    }
+
+    const rental = await syncCsrCapabilityRentalDelhivery({
+      campaignId,
+      offerId,
+      leg,
+      trackingId: trackingId || undefined,
+    });
+    return NextResponse.json({ success: true, data: { rental } });
+  } catch (error) {
+    console.error('CSR project capability dispatch error:', error);
+    return NextResponse.json({ error: 'Failed to update capability delivery' }, { status: 500 });
+  }
+}

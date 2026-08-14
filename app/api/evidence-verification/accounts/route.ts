@@ -7,7 +7,7 @@ import {
   generateUniqueCompanyCaId,
   getCompanyCaIdSuccessionOptions,
   isCompanyCaIdReusableForSuccession,
-} from '@/lib/company-ca-id-helper';
+} from '@/lib/company-ca';
 
 const createCompanyCASchema = z.object({
   name: z.string().min(2),
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
     // Default: get all company CA identities
     const { data, error } = await supabase
       .from('company_ca_identities')
-      .select('id, ca_id, user_id, company_user_id, status, permissions, created_at, users:user_id(id, name, email)')
+      .select('id, ca_id, user_id, company_user_id, status, permissions, must_change_password, created_at, users:user_id(id, name, email)')
       .eq('company_user_id', user.id)
       .order('created_at', { ascending: false });
 
@@ -134,6 +134,7 @@ export async function POST(request: NextRequest) {
         company_user_id: user.id,
         ca_id: assignedCaId,
         status: status ?? 'active',
+        must_change_password: true,
         permissions: permissions ?? {
           can_review_evidence: true,
           can_confirm_payments: true,

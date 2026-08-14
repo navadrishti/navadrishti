@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { StyledSelect } from "@/components/ui/styled-select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Search, Filter, Sparkles, ArrowRight, CheckCircle2, Pencil, Trash2 } from "lucide-react"
+import { Search, Sparkles, ArrowRight, CheckCircle2, Pencil, Trash2 } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
 import { CSR_SCHEDULE_VII_CATEGORIES } from "@/lib/categories"
 import { formatDisplayDate, isCampaignStarted, isVolunteerRegistrationPastDeadline } from "@/lib/format-date"
@@ -518,9 +518,6 @@ export default function CSRCampaignsPage() {
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center p-8 text-center">
-              <div className="mb-4 rounded-full bg-muted p-3">
-                <Filter className="h-6 w-6 text-muted-foreground" />
-              </div>
               <h3 className="mb-1 text-lg font-semibold">No campaigns found</h3>
               <p className="mb-4 text-muted-foreground">No campaigns match your current search or filters.</p>
               <Button

@@ -118,7 +118,7 @@ export async function GeminiChat(messages: ChatMessage[], retryCount = 0): Promi
       .join("")
       .trim();
 
-    if (!output) throw new Error("Gemini returned empty text parts.");
+    if (!output) throw new Error("Empty response from drafting service.");
     
     return output;
 
@@ -134,7 +134,7 @@ export async function GeminiChat(messages: ChatMessage[], retryCount = 0): Promi
     }
 
     // Pass the AbortError or standard errors back to the caller
-    if (error.name === "AbortError") throw new Error("Gemini request timed out.");
+    if (error.name === "AbortError") throw new Error("Drafting request timed out.");
     throw error;
   }
 }

@@ -13,7 +13,9 @@ import { Badge } from "@/components/ui/badge"
 import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription, SheetClose } from "@/components/ui/sheet"
 import { Award, Bell, ChevronDown, Menu, Search, ShoppingBag, X, GraduationCap, Briefcase, Building, LogIn, MessageSquare, ArrowLeft } from "lucide-react"
 import { VerificationBadge } from "@/components/verification-badge"
+import { visibleCaBadgeNumber } from "@/lib/auth"
 import { cn } from "@/lib/utils"
+import { getLaunchHeaderNavItems, isPhase1Launch, type LaunchHeaderNavItem } from "@/lib/access-control"
 
 interface ProfileSearchResult {
   id: number;
@@ -25,10 +27,34 @@ interface ProfileSearchResult {
   location?: string;
 }
 
-interface NavigationItem {
-  label: string;
-  href: string;
-  description: string;
+interface NavigationItem extends LaunchHeaderNavItem {}
+
+function HeaderNavLink({
+  item,
+  className,
+}: {
+  item: NavigationItem
+  className: string
+}) {
+  if (item.external) {
+    return (
+      <a
+        href={item.href}
+        target={item.href.startsWith('mailto:') ? undefined : '_blank'}
+        rel={item.href.startsWith('mailto:') ? undefined : 'noopener noreferrer'}
+        className={className}
+        title={item.description}
+      >
+        {item.label}
+      </a>
+    )
+  }
+
+  return (
+    <Link href={item.href} className={className} title={item.description}>
+      {item.label}
+    </Link>
+  )
 }
 
 export function Header({ className = '' }: { className?: string } = {}) {
@@ -162,12 +188,9 @@ export function Header({ className = '' }: { className?: string } = {}) {
     return 'Browse & post capability offers'
   }
 
-  const desktopNavItems: NavigationItem[] = [
-    {
-      label: 'Social',
-      href: '/home',
-      description: 'Latest posts and updates'
-    },
+  const phase1Header = isPhase1Launch()
+
+  const desktopNavItems = getLaunchHeaderNavItems([
     {
       label: 'NGO Network',
       href: '/ngo-network',
@@ -188,7 +211,7 @@ export function Header({ className = '' }: { className?: string } = {}) {
       href: '/csr-campaigns',
       description: 'Browse active initiatives'
     }
-  ]
+  ])
   
   return (
     <header className={`sticky top-0 z-50 w-full border-b bg-udaan-blue text-white ${className}`}>
@@ -196,20 +219,34 @@ export function Header({ className = '' }: { className?: string } = {}) {
         <Link href="/" className="flex shrink-0 items-center font-bold text-xl">
           <img src="/photos/logo.svg" alt="Navadrishti" className="h-36 w-36 shrink-0" />
         </Link>
-        <div className="hidden md:flex md:flex-1 md:items-center md:justify-end md:gap-4 lg:gap-6">
-          <nav className="order-2 flex items-center justify-end gap-1.5 lg:gap-2">
+        <div
+          className={cn(
+            "hidden md:flex md:flex-1 md:items-center md:gap-4 lg:gap-6",
+            phase1Header ? "md:justify-between" : "md:justify-end"
+          )}
+        >
+          <nav
+            className={cn(
+              "flex items-center gap-1.5 lg:gap-2",
+              phase1Header
+                ? "order-2 flex-1 justify-center"
+                : "order-2 justify-end"
+            )}
+          >
             {desktopNavItems.map((item) => (
-              <Link
+              <HeaderNavLink
                 key={`desktop-nav-${item.href}`}
-                href={item.href}
+                item={item}
                 className="whitespace-nowrap rounded-md px-2.5 py-1.5 text-sm font-medium text-white hover:text-udaan-orange focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors"
-                title={item.description}
-              >
-                {item.label}
-              </Link>
+              />
             ))}
           </nav>
-          <div className="relative order-1 mr-auto hidden md:block">
+          <div
+            className={cn(
+              "relative order-1 hidden md:block shrink-0",
+              !phase1Header && "mr-auto"
+            )}
+          >
             <div className="relative flex items-center z-50">
               <div className="relative border-2 border-gray-300 rounded-lg overflow-hidden">
                 <div className="relative bg-white">
@@ -271,7 +308,7 @@ export function Header({ className = '' }: { className?: string } = {}) {
               >
                 <div className="w-52 md:w-64 lg:w-72 xl:w-80 p-0 border-2 border-gray-300 rounded-lg shadow-lg overflow-hidden bg-white">
                     <div className="bg-white">
-                      <Command className="!bg-white" style={{ backgroundColor: 'white' }}>
+                      <Command shouldFilter={false} className="!bg-white" style={{ backgroundColor: 'white' }}>
                         <CommandList className={showAllResults ? "!bg-white max-h-80 overflow-y-auto" : "!bg-white"}>
                           {isSearching ? (
                             <div className="p-4 text-center text-muted-foreground">
@@ -382,17 +419,26 @@ export function Header({ className = '' }: { className?: string } = {}) {
                 <ChevronDown className="h-4 w-4 opacity-80" />
               </button>
 
-              {isProfileMenuOpen && (
-                <div className="absolute left-0 top-full mt-2 w-64 rounded-md border bg-white p-1 text-black shadow-lg">
-                  <div className="px-2 py-1.5 text-sm font-semibold text-gray-900">{user.name}</div>
-                  <div className="flex items-center gap-1.5 px-2 py-1.5 text-xs text-muted-foreground">
-                    <span className="truncate">{user.email} • {user.user_type.charAt(0).toUpperCase() + user.user_type.slice(1)}</span>
-                    <VerificationBadge
-                      status={user.verification_status || 'unverified'}
-                      size="sm"
-                      showText={false}
-                    />
+                    {isProfileMenuOpen && (
+                <div className="absolute left-0 top-full mt-2 w-64 overflow-hidden rounded-md border bg-white p-1 text-black shadow-lg">
+                  <div className="px-2 py-1.5 text-sm font-semibold text-gray-900 truncate">{user.name}</div>
+                  <div className="px-2 py-1 text-xs text-muted-foreground">
+                    <span className="block truncate">{user.email} • {user.user_type.charAt(0).toUpperCase() + user.user_type.slice(1)}</span>
                   </div>
+                  {user.verification_status === 'verified' ? (
+                    <div className="min-w-0 px-2 pb-1.5">
+                      <VerificationBadge
+                        status="verified"
+                        size="readable"
+                        showText={false}
+                        badgeNumber={
+                          visibleCaBadgeNumber(user.verification_status, user.profile_data || user.profile) ||
+                          user.ca_badge_number
+                        }
+                        className="max-w-full min-w-0"
+                      />
+                    </div>
+                  ) : null}
                   <div className="my-1 h-px bg-gray-200" />
                   <Link href={getDashboardLink()} className="block rounded px-2 py-2 text-sm text-gray-800 hover:bg-gray-100">Dashboard</Link>
                   <Link href="/help-support" className="block rounded px-2 py-2 text-sm text-gray-800 hover:bg-gray-100">Help & Support</Link>
@@ -492,7 +538,7 @@ export function Header({ className = '' }: { className?: string } = {}) {
                     {(searchQuery.length >= 1 || isSearching) && (
                       <div className="mt-3 border-2 border-gray-200 rounded-lg overflow-hidden">
                           <div className="bg-white">
-                            <Command>
+                            <Command shouldFilter={false}>
                               <CommandList className={showAllResults ? "max-h-80 overflow-y-auto" : ""}>
                                 {isSearching ? (
                                   <div className="p-4 text-center text-muted-foreground">
@@ -576,14 +622,11 @@ export function Header({ className = '' }: { className?: string } = {}) {
                   {/* Navigation */}
                   <nav className="grid gap-2 text-base font-medium mb-8">
                     {desktopNavItems.map((item) => (
-                      <Link
+                      <HeaderNavLink
                         key={`mobile-nav-${item.href}`}
-                        href={item.href}
+                        item={item}
                         className="flex items-center gap-3 px-3 py-2.5 text-white hover:bg-white/10 rounded-lg transition-colors"
-                        title={item.description}
-                      >
-                        <span>{item.label}</span>
-                      </Link>
+                      />
                     ))}
                   </nav>
 
@@ -591,14 +634,14 @@ export function Header({ className = '' }: { className?: string } = {}) {
                   <div className="border-t border-white/20 pt-6">
                     {user ? (
                       <div>
-                        <div className="flex items-center gap-4 mb-6">
+                        <div className="mb-6 flex min-w-0 items-center gap-4">
                           <Avatar className="h-12 w-12">
                             {user.profile_image && <AvatarImage src={user.profile_image} alt={user.name} />}
                             <AvatarFallback className="bg-udaan-orange text-white font-semibold text-lg">{getInitials(user.name)}</AvatarFallback>
                           </Avatar>
-                          <div className="grid gap-1">
-                            <p className="text-lg font-medium text-white">{user.name}</p>
-                            <p className="text-sm text-white/80">{user.email}</p>
+                          <div className="min-w-0 grid gap-1">
+                            <p className="truncate text-lg font-medium text-white">{user.name}</p>
+                            <p className="truncate text-sm text-white/80">{user.email}</p>
                           </div>
                         </div>
                         
@@ -654,32 +697,32 @@ export function Header({ className = '' }: { className?: string } = {}) {
 }
 
 type AuthBackButtonProps = {
-  fallbackHref?: string;
-  className?: string;
-  variant?: 'link' | 'button';
-};
+  fallbackHref?: string
+  className?: string
+  variant?: 'link' | 'button'
+}
 
 export function AuthBackButton({
   fallbackHref = '/',
   className,
   variant = 'link',
 }: AuthBackButtonProps) {
-  const router = useRouter();
+  const router = useRouter()
 
   const handleBack = () => {
     if (typeof window !== 'undefined') {
-      const referrer = document.referrer;
+      const referrer = document.referrer
       const hasSameOriginReferrer =
-        referrer.length > 0 && new URL(referrer).origin === window.location.origin;
+        referrer.length > 0 && new URL(referrer).origin === window.location.origin
 
       if (hasSameOriginReferrer || window.history.length > 1) {
-        router.back();
-        return;
+        router.back()
+        return
       }
     }
 
-    router.push(fallbackHref);
-  };
+    router.push(fallbackHref)
+  }
 
   if (variant === 'link') {
     return (
@@ -694,7 +737,7 @@ export function AuthBackButton({
         <ArrowLeft className="mr-1 h-4 w-4" />
         Back
       </button>
-    );
+    )
   }
 
   return (
@@ -710,7 +753,7 @@ export function AuthBackButton({
       <ArrowLeft className="mr-2 h-4 w-4" />
       Back
     </Button>
-  );
+  )
 }
 
 export function AuthCardBackRow({
@@ -720,5 +763,5 @@ export function AuthCardBackRow({
     <div className="text-sm">
       <AuthBackButton fallbackHref={fallbackHref} />
     </div>
-  );
+  )
 }

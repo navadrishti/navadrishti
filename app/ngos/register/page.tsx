@@ -10,9 +10,22 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Building2, Mail, Phone, MapPin, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { Textarea } from '@/components/ui/textarea'
+import { MultiSelectDropdown } from '@/components/ui/multi-select-dropdown'
+import { CSR_SCHEDULE_VII_CATEGORIES } from '@/lib/categories'
+import {
+  EMPTY_EXECUTION_CAPACITY,
+  EMPTY_GEOGRAPHIC_COVERAGE_AREA,
+  EMPTY_PAST_PROJECT,
+  INDIAN_STATES_AND_UTS,
+  buildNgoLocationDisplay,
+  normalizePincode,
+  validateNgoHeadquartersLocation,
+  type NgoExecutionCapacity,
+  type NgoGeographicCoverageArea,
+  type NgoPastProject,
+} from '@/lib/auth'
 import { useOtpSender } from '@/hooks/use-otp-sender'
 import { AuthCardBackRow } from '@/components/header'
 
@@ -24,6 +37,7 @@ export default function NGORegister() {
     password: '',
     confirmPassword: '',
     ngoVolunteerCapacity: '',
+    addressLine: '',
     city: '',
     state: '',
     pincode: '',
@@ -31,15 +45,10 @@ export default function NGORegister() {
     founded: '',
     sector: '',
     registrationDate: '',
-    twelveANumber: '',
-    eightyGNumber: '',
-    csr1RegistrationNumber: '',
-    bankDetails: '',
-    sectorsScheduleVii: '',
-    pastProjects: '',
-    geographicCoverage: '',
-    executionCapacity: '',
-    teamStrength: ''
+    sectorsScheduleVii: [] as string[],
+    pastProjects: [{ ...EMPTY_PAST_PROJECT }] as NgoPastProject[],
+    geographicCoverageAreas: [{ ...EMPTY_GEOGRAPHIC_COVERAGE_AREA }] as NgoGeographicCoverageArea[],
+    executionCapacity: { ...EMPTY_EXECUTION_CAPACITY } as NgoExecutionCapacity,
   })
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -81,32 +90,74 @@ export default function NGORegister() {
     }
   }
 
-  const uploadFileToCloudinary = async (file: File, folder: string = 'ngos') => {
-    const formData = new FormData();
-    formData.append('file', file);
-    
-    const token = localStorage.getItem('token');
-    if (!token) {
-      throw new Error('Authentication required');
-    }
+  const updatePastProject = (index: number, field: keyof NgoPastProject, value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      pastProjects: prev.pastProjects.map((project, projectIndex) =>
+        projectIndex === index ? { ...project, [field]: value } : project
+      ),
+    }))
+  }
 
-    const response = await fetch('/api/upload', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`
+  const addPastProject = () => {
+    setFormData((prev) => ({
+      ...prev,
+      pastProjects: [...prev.pastProjects, { ...EMPTY_PAST_PROJECT }],
+    }))
+  }
+
+  const removePastProject = (index: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      pastProjects:
+        prev.pastProjects.length === 1
+          ? [{ ...EMPTY_PAST_PROJECT }]
+          : prev.pastProjects.filter((_, projectIndex) => projectIndex !== index),
+    }))
+  }
+
+  const updateGeographicArea = (
+    index: number,
+    field: keyof NgoGeographicCoverageArea,
+    value: string
+  ) => {
+    setFormData((prev) => ({
+      ...prev,
+      geographicCoverageAreas: prev.geographicCoverageAreas.map((area, areaIndex) =>
+        areaIndex === index ? { ...area, [field]: value } : area
+      ),
+    }))
+  }
+
+  const addGeographicArea = () => {
+    setFormData((prev) => ({
+      ...prev,
+      geographicCoverageAreas: [...prev.geographicCoverageAreas, { ...EMPTY_GEOGRAPHIC_COVERAGE_AREA }],
+    }))
+  }
+
+  const removeGeographicArea = (index: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      geographicCoverageAreas:
+        prev.geographicCoverageAreas.length === 1
+          ? [{ ...EMPTY_GEOGRAPHIC_COVERAGE_AREA }]
+          : prev.geographicCoverageAreas.filter((_, areaIndex) => areaIndex !== index),
+    }))
+  }
+
+  const updateExecutionCapacity = (
+    field: keyof NgoExecutionCapacity,
+    value: string
+  ) => {
+    setFormData((prev) => ({
+      ...prev,
+      executionCapacity: {
+        ...prev.executionCapacity,
+        [field]: value,
       },
-      body: formData
-    });
-
-    if (!response.ok) {
-      throw new Error('Upload failed');
-    }
-
-    const result = await response.json();
-    return result.data.url;
-  };
-
-
+    }))
+  }
 
   const validateForm = () => {
     const errors: Record<string, string> = {}
@@ -146,51 +197,38 @@ export default function NGORegister() {
     if (!formData.city.trim()) {
       errors.city = 'City is required'
     }
-    
-    if (!formData.state.trim()) {
-      errors.state = 'State/Province is required'
+
+    const locationError = validateNgoHeadquartersLocation({
+      address_line: formData.addressLine,
+      city: formData.city,
+      state: formData.state,
+      pincode: formData.pincode,
+      country: formData.country,
+    })
+    if (locationError) {
+      if (!formData.addressLine.trim()) {
+        errors.addressLine = 'Registered office address is required'
+      }
+      if (!formData.state.trim()) {
+        errors.state = 'State / UT is required'
+      }
+      if (!formData.pincode.trim()) {
+        errors.pincode = 'Pincode is required'
+      } else if (formData.country === 'India' && !/^\d{6}$/.test(normalizePincode(formData.pincode, 'India'))) {
+        errors.pincode = 'Enter a valid 6-digit pincode'
+      } else if (locationError.includes('state or UT')) {
+        errors.state = 'Select a valid Indian state or UT'
+      }
     }
 
     if (!formData.registrationDate) {
       errors.registrationDate = 'Registration date is required'
     }
 
-    if (!formData.twelveANumber.trim()) {
-      errors.twelveANumber = '12A number is required'
+    if (formData.sectorsScheduleVii.length === 0) {
+      errors.sectorsScheduleVii = 'Select at least one Schedule VII sector'
     }
 
-    if (!formData.eightyGNumber.trim()) {
-      errors.eightyGNumber = '80G number is required'
-    }
-
-    if (!formData.csr1RegistrationNumber.trim()) {
-      errors.csr1RegistrationNumber = 'CSR-1 registration number is required'
-    }
-
-    if (!formData.bankDetails.trim()) {
-      errors.bankDetails = 'Bank details are required'
-    }
-
-    if (!formData.sectorsScheduleVii.trim()) {
-      errors.sectorsScheduleVii = 'Sectors worked (Schedule VII mapped) is required'
-    }
-
-    if (!formData.pastProjects.trim()) {
-      errors.pastProjects = 'Past projects are required'
-    }
-
-    if (!formData.geographicCoverage.trim()) {
-      errors.geographicCoverage = 'Geographic coverage is required'
-    }
-
-    if (!formData.executionCapacity.trim()) {
-      errors.executionCapacity = 'Execution capacity is required'
-    }
-
-    if (!formData.teamStrength.trim()) {
-      errors.teamStrength = 'Team strength is required'
-    }
-    
     setFormErrors(errors)
     return Object.keys(errors).length === 0
   }
@@ -226,34 +264,72 @@ export default function NGORegister() {
     try {
       setIsSubmitting(true)
 
-      
+      const normalizedPastProjects = formData.pastProjects
+        .map((project) => ({
+          title: project.title.trim(),
+          description: project.description.trim(),
+        }))
+        .filter((project) => project.title)
+
+      const normalizedGeographicCoverage = formData.geographicCoverageAreas
+        .map((area) => ({
+          region: area.region.trim(),
+          state: area.state.trim(),
+          district: area.district.trim(),
+          area_type: area.area_type,
+        }))
+        .filter((area) => area.state || area.region || area.district)
+
+      const normalizedExecutionCapacity = {
+        concurrent_projects: formData.executionCapacity.concurrent_projects.trim(),
+        annual_beneficiaries: formData.executionCapacity.annual_beneficiaries.trim(),
+        delivery_model: formData.executionCapacity.delivery_model,
+        notes: formData.executionCapacity.notes.trim(),
+      }
+      const hasExecutionCapacity = Boolean(
+        normalizedExecutionCapacity.concurrent_projects ||
+          normalizedExecutionCapacity.annual_beneficiaries ||
+          normalizedExecutionCapacity.delivery_model ||
+          normalizedExecutionCapacity.notes
+      )
+
+      const headquarters = {
+        address_line: formData.addressLine.trim(),
+        city: formData.city.trim(),
+        state: formData.state.trim(),
+        pincode: normalizePincode(formData.pincode, formData.country),
+        country: formData.country,
+      }
+
       // Prepare user data for signup
       const userData = {
         email: formData.email,
         password: formData.password,
         name: formData.ngoName,
         user_type: 'ngo' as const,
-        phone: formData.phone,
-        city: formData.city,
-        state_province: formData.state,
-        pincode: formData.pincode,
-        country: formData.country,
+        phone: formData.phone.trim(),
+        city: headquarters.city,
+        state_province: headquarters.state,
+        pincode: headquarters.pincode,
+        country: headquarters.country,
+        location: buildNgoLocationDisplay(headquarters),
         // exact capacity stored at top-level so DB column `ngo_volunteer_capacity` is set
         ngo_volunteer_capacity: formData.ngoVolunteerCapacity ? Number(String(formData.ngoVolunteerCapacity).replace(/[^0-9]/g, '')) : undefined,
         profile_data: {
           ngo_name: formData.ngoName,
           founded: formData.founded,
-          sector: formData.sector,
+          sector: formData.sectorsScheduleVii[0] || '',
           registration_date: formData.registrationDate,
-          twelve_a_number: formData.twelveANumber,
-          eighty_g_number: formData.eightyGNumber,
-          csr1_registration_number: formData.csr1RegistrationNumber,
-          bank_details: formData.bankDetails,
           sectors_schedule_vii: formData.sectorsScheduleVii,
-          past_projects: formData.pastProjects,
-          geographic_coverage: formData.geographicCoverage,
-          execution_capacity: formData.executionCapacity,
-          team_strength: formData.teamStrength
+          past_projects: normalizedPastProjects.length > 0 ? normalizedPastProjects : undefined,
+          geographic_coverage:
+            normalizedGeographicCoverage.length > 0 ? normalizedGeographicCoverage : undefined,
+          execution_capacity: hasExecutionCapacity ? normalizedExecutionCapacity : undefined,
+          ngo_headquarters: headquarters,
+          team_strength: String(formData.ngoVolunteerCapacity).trim(),
+          ngo_volunteer_capacity: formData.ngoVolunteerCapacity
+            ? Number(String(formData.ngoVolunteerCapacity).replace(/[^0-9]/g, ''))
+            : undefined,
         }
       }
       
@@ -262,8 +338,9 @@ export default function NGORegister() {
 
       toast.success('NGO account created successfully!');
       router.push('/ngos/dashboard');
-    } catch {
-      // Error state and user notification are handled in auth context
+    } catch (submitError) {
+      const message = submitError instanceof Error ? submitError.message : 'Registration failed'
+      toast.error(message)
     } finally {
       setIsSubmitting(false)
     }
@@ -290,10 +367,7 @@ export default function NGORegister() {
             
             {/* Basic NGO Information */}
             <div className="space-y-4">
-              <h3 className="text-lg font-medium flex items-center gap-2">
-                <Building2 className="h-5 w-5" />
-                NGO Information
-              </h3>
+              <h3 className="text-lg font-medium">NGO Information</h3>
               
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
@@ -307,31 +381,12 @@ export default function NGORegister() {
                   />
                   {formErrors.ngoName && <p className="text-sm text-red-500">{formErrors.ngoName}</p>}
                 </div>
-                
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="ngoVolunteerCapacity">Exact NGO size</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="ngoVolunteerCapacity"
-                      name="ngoVolunteerCapacity"
-                      value={formData.ngoVolunteerCapacity}
-                      onChange={handleChange}
-                      placeholder="Enter total staff/active volunteers (e.g. 42)"
-                      inputMode="numeric"
-                    />
-                    <span className="text-sm text-gray-600 self-center">people</span>
-                  </div>
-                  {formErrors.ngoVolunteerCapacity && <p className="text-sm text-red-500">{formErrors.ngoVolunteerCapacity}</p>}
-                </div>
               </div>
             </div>
             
             {/* Contact Information */}
             <div className="space-y-4">
-              <h3 className="text-lg font-medium flex items-center gap-2">
-                <Mail className="h-5 w-5" />
-                Contact Information
-              </h3>
+              <h3 className="text-lg font-medium">Contact Information</h3>
               
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-2">
@@ -413,6 +468,7 @@ export default function NGORegister() {
                     type="password"
                     value={formData.password}
                     onChange={handleChange}
+                    placeholder="At least 8 characters"
                   />
                   {formErrors.password && <p className="text-sm text-red-500">{formErrors.password}</p>}
                 </div>
@@ -425,6 +481,7 @@ export default function NGORegister() {
                     type="password"
                     value={formData.confirmPassword}
                     onChange={handleChange}
+                    placeholder="Re-enter your password"
                   />
                   {formErrors.confirmPassword && <p className="text-sm text-red-500">{formErrors.confirmPassword}</p>}
                 </div>
@@ -433,10 +490,7 @@ export default function NGORegister() {
             
             {/* NGO Details */}
             <div className="space-y-4">
-              <h3 className="text-lg font-medium flex items-center gap-2">
-                <Users className="h-5 w-5" />
-                NGO Details
-              </h3>
+              <h3 className="text-lg font-medium">NGO Details</h3>
               
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-2">
@@ -450,17 +504,6 @@ export default function NGORegister() {
                     value={formData.founded}
                     onChange={handleChange}
                     placeholder="2020"
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="sector">Sector</Label>
-                  <Input
-                    id="sector"
-                    name="sector"
-                    value={formData.sector}
-                    onChange={handleChange}
-                    placeholder="Education, Healthcare, Environment, etc."
                   />
                 </div>
 
@@ -477,188 +520,415 @@ export default function NGORegister() {
                   {formErrors.registrationDate && <p className="text-sm text-red-500">{formErrors.registrationDate}</p>}
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="teamStrength">Team Strength</Label>
-                  <Input
-                    id="teamStrength"
-                    name="teamStrength"
-                    value={formData.teamStrength}
-                    onChange={handleChange}
-                    placeholder="e.g. 45 full-time, 120 volunteers"
-                  />
-                  <p className="text-xs text-muted-foreground">Mention full-time team and active volunteers.</p>
-                  {formErrors.teamStrength && <p className="text-sm text-red-500">{formErrors.teamStrength}</p>}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="twelveANumber">12A Number</Label>
-                  <Input
-                    id="twelveANumber"
-                    name="twelveANumber"
-                    value={formData.twelveANumber}
-                    onChange={handleChange}
-                    placeholder="Enter 12A number"
-                  />
-                  <p className="text-xs text-muted-foreground">Enter the approval/reference number issued under section 12A/12AB.</p>
-                  {formErrors.twelveANumber && <p className="text-sm text-red-500">{formErrors.twelveANumber}</p>}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="eightyGNumber">80G Number</Label>
-                  <Input
-                    id="eightyGNumber"
-                    name="eightyGNumber"
-                    value={formData.eightyGNumber}
-                    onChange={handleChange}
-                    placeholder="Enter 80G number"
-                  />
-                  <p className="text-xs text-muted-foreground">Use the exemption certificate reference under section 80G.</p>
-                  {formErrors.eightyGNumber && <p className="text-sm text-red-500">{formErrors.eightyGNumber}</p>}
-                </div>
-
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="csr1RegistrationNumber">CSR-1 Registration Number</Label>
-                  <Input
-                    id="csr1RegistrationNumber"
-                    name="csr1RegistrationNumber"
-                    value={formData.csr1RegistrationNumber}
-                    onChange={handleChange}
-                    placeholder="Enter CSR-1 registration number"
-                  />
-                  <p className="text-xs text-muted-foreground">Provide the CSR-1 acknowledgment or registration reference.</p>
-                  {formErrors.csr1RegistrationNumber && <p className="text-sm text-red-500">{formErrors.csr1RegistrationNumber}</p>}
+                  <Label htmlFor="ngoVolunteerCapacity">Exact NGO size</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="ngoVolunteerCapacity"
+                      name="ngoVolunteerCapacity"
+                      value={formData.ngoVolunteerCapacity}
+                      onChange={handleChange}
+                      placeholder="Enter total staff/active volunteers (e.g. 42)"
+                      inputMode="numeric"
+                    />
+                    <span className="text-sm text-gray-600 self-center">people</span>
+                  </div>
+                  {formErrors.ngoVolunteerCapacity && <p className="text-sm text-red-500">{formErrors.ngoVolunteerCapacity}</p>}
                 </div>
+              </div>
+            </div>
 
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="bankDetails">Bank Details</Label>
-                  <Textarea
-                    id="bankDetails"
-                    name="bankDetails"
-                    value={formData.bankDetails}
-                    onChange={handleChange}
-                    placeholder="Provide account holder name, bank name, branch, account number (masked where needed), and IFSC"
-                    rows={3}
-                  />
-                  <p className="text-xs text-muted-foreground">Include account holder, bank/branch, account number, and IFSC.</p>
-                  {formErrors.bankDetails && <p className="text-sm text-red-500">{formErrors.bankDetails}</p>}
-                </div>
+            {/* Program Details */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-medium">Program Details</h3>
+              <p className="text-sm text-muted-foreground">
+                Schedule VII sectors are required. Other program details can be added now or updated later from your profile.
+              </p>
 
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="sectorsScheduleVii">Sectors Worked (Schedule VII Mapped)</Label>
-                  <Textarea
-                    id="sectorsScheduleVii"
-                    name="sectorsScheduleVii"
+                  <Label htmlFor="sectorsScheduleVii">Sectors Worked (Schedule VII)</Label>
+                  <MultiSelectDropdown
                     value={formData.sectorsScheduleVii}
-                    onChange={handleChange}
-                    placeholder="List sectors and map them to Schedule VII categories"
-                    rows={3}
+                    options={CSR_SCHEDULE_VII_CATEGORIES}
+                    placeholder="Select Schedule VII sectors"
+                    onValueChange={(value) => {
+                      setFormData((prev) => ({ ...prev, sectorsScheduleVii: value }))
+                      if (formErrors.sectorsScheduleVii) {
+                        setFormErrors((prev) => {
+                          const next = { ...prev }
+                          delete next.sectorsScheduleVii
+                          return next
+                        })
+                      }
+                    }}
                   />
-                  <p className="text-xs text-muted-foreground">Example: education (ii), healthcare (i), rural development (x).</p>
+                  <p className="text-xs text-muted-foreground">Choose all Schedule VII areas your NGO works in.</p>
                   {formErrors.sectorsScheduleVii && <p className="text-sm text-red-500">{formErrors.sectorsScheduleVii}</p>}
                 </div>
 
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="pastProjects">Past Projects</Label>
-                  <Textarea
-                    id="pastProjects"
-                    name="pastProjects"
-                    value={formData.pastProjects}
-                    onChange={handleChange}
-                    placeholder="Summarize key completed projects with outcomes"
-                    rows={3}
-                  />
-                  <p className="text-xs text-muted-foreground">Mention project name, location, period, and measurable outcomes.</p>
-                  {formErrors.pastProjects && <p className="text-sm text-red-500">{formErrors.pastProjects}</p>}
+                <div className="space-y-3 md:col-span-2">
+                  <div>
+                    <Label>Past Projects <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Add pre-platform project history here only once. After you join, new projects you run on Navadrishti are added automatically.
+                    </p>
+                  </div>
+
+                  {formData.pastProjects.map((project, index) => (
+                    <div key={`past-project-${index}`} className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-medium text-slate-900">Project {index + 1}</p>
+                        {formData.pastProjects.length > 1 ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 px-2 text-red-600 hover:text-red-700"
+                            onClick={() => removePastProject(index)}
+                          >
+                            Remove
+                          </Button>
+                        ) : null}
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor={`pastProjectTitle-${index}`}>Project title</Label>
+                        <Input
+                          id={`pastProjectTitle-${index}`}
+                          value={project.title}
+                          onChange={(e) => updatePastProject(index, 'title', e.target.value)}
+                          placeholder="e.g. Rural health camp 2023"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor={`pastProjectDescription-${index}`}>
+                          Description / outcomes <span className="text-muted-foreground font-normal">(optional)</span>
+                        </Label>
+                        <Textarea
+                          id={`pastProjectDescription-${index}`}
+                          value={project.description}
+                          onChange={(e) => updatePastProject(index, 'description', e.target.value)}
+                          placeholder="Location, period, beneficiaries, and measurable outcomes"
+                          rows={2}
+                        />
+                      </div>
+                    </div>
+                  ))}
+
+                  <Button type="button" variant="outline" size="sm" onClick={addPastProject}>
+                    Add another project
+                  </Button>
                 </div>
 
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="geographicCoverage">Geographic Coverage</Label>
-                  <Textarea
-                    id="geographicCoverage"
-                    name="geographicCoverage"
-                    value={formData.geographicCoverage}
-                    onChange={handleChange}
-                    placeholder="Mention states, districts, or regions where you operate"
-                    rows={2}
-                  />
-                  <p className="text-xs text-muted-foreground">List states/districts and whether operations are urban, rural, or both.</p>
-                  {formErrors.geographicCoverage && <p className="text-sm text-red-500">{formErrors.geographicCoverage}</p>}
+                <div className="space-y-3 md:col-span-2">
+                  <div>
+                    <Label>
+                      Geographic Coverage <span className="text-muted-foreground font-normal">(optional)</span>
+                    </Label>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Add each region where you operate with state, district, and area type.
+                    </p>
+                  </div>
+
+                  {formData.geographicCoverageAreas.map((area, index) => (
+                    <div
+                      key={`geographic-area-${index}`}
+                      className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/60 p-4"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-medium text-slate-900">Coverage area {index + 1}</p>
+                        {formData.geographicCoverageAreas.length > 1 ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 px-2 text-red-600 hover:text-red-700"
+                            onClick={() => removeGeographicArea(index)}
+                          >
+                            Remove
+                          </Button>
+                        ) : null}
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label htmlFor={`geoRegion-${index}`}>
+                            Region <span className="text-muted-foreground font-normal">(optional)</span>
+                          </Label>
+                          <Input
+                            id={`geoRegion-${index}`}
+                            value={area.region}
+                            onChange={(e) => updateGeographicArea(index, 'region', e.target.value)}
+                            placeholder="e.g. Western Maharashtra, North East"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor={`geoState-${index}`}>State / UT</Label>
+                          <Input
+                            id={`geoState-${index}`}
+                            value={area.state}
+                            onChange={(e) => updateGeographicArea(index, 'state', e.target.value)}
+                            placeholder="e.g. Maharashtra"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor={`geoDistrict-${index}`}>
+                            District <span className="text-muted-foreground font-normal">(optional)</span>
+                          </Label>
+                          <Input
+                            id={`geoDistrict-${index}`}
+                            value={area.district}
+                            onChange={(e) => updateGeographicArea(index, 'district', e.target.value)}
+                            placeholder="e.g. Pune, Kamrup"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor={`geoAreaType-${index}`}>
+                            Area type <span className="text-muted-foreground font-normal">(optional)</span>
+                          </Label>
+                          <Select
+                            value={area.area_type || 'unset'}
+                            onValueChange={(value) =>
+                              updateGeographicArea(
+                                index,
+                                'area_type',
+                                value === 'unset' ? '' : value
+                              )
+                            }
+                          >
+                            <SelectTrigger id={`geoAreaType-${index}`}>
+                              <SelectValue placeholder="Select area type" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="unset">Not specified</SelectItem>
+                              <SelectItem value="urban">Urban</SelectItem>
+                              <SelectItem value="rural">Rural</SelectItem>
+                              <SelectItem value="both">Urban & rural</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  <Button type="button" variant="outline" size="sm" onClick={addGeographicArea}>
+                    Add another coverage area
+                  </Button>
                 </div>
 
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="executionCapacity">Execution Capacity</Label>
-                  <Textarea
-                    id="executionCapacity"
-                    name="executionCapacity"
-                    value={formData.executionCapacity}
-                    onChange={handleChange}
-                    placeholder="Describe operational capacity, delivery model, and partner ecosystem"
-                    rows={3}
-                  />
-                  <p className="text-xs text-muted-foreground">Include implementation bandwidth, partner network, and reporting capability.</p>
-                  {formErrors.executionCapacity && <p className="text-sm text-red-500">{formErrors.executionCapacity}</p>}
+                <div className="space-y-3 md:col-span-2">
+                  <div>
+                    <Label>
+                      Execution Capacity <span className="text-muted-foreground font-normal">(optional)</span>
+                    </Label>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Share how much work your NGO can take on. All fields are optional.
+                    </p>
+                  </div>
+
+                  <div className="space-y-4 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="executionConcurrentProjects">
+                          Max concurrent projects <span className="text-muted-foreground font-normal">(optional)</span>
+                        </Label>
+                        <Input
+                          id="executionConcurrentProjects"
+                          value={formData.executionCapacity.concurrent_projects}
+                          onChange={(e) =>
+                            updateExecutionCapacity(
+                              'concurrent_projects',
+                              e.target.value.replace(/[^\d]/g, '')
+                            )
+                          }
+                          inputMode="numeric"
+                          placeholder="e.g. 5"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="executionAnnualBeneficiaries">
+                          Annual beneficiaries <span className="text-muted-foreground font-normal">(optional)</span>
+                        </Label>
+                        <Input
+                          id="executionAnnualBeneficiaries"
+                          value={formData.executionCapacity.annual_beneficiaries}
+                          onChange={(e) =>
+                            updateExecutionCapacity(
+                              'annual_beneficiaries',
+                              e.target.value.replace(/[^\d]/g, '')
+                            )
+                          }
+                          inputMode="numeric"
+                          placeholder="e.g. 10000"
+                        />
+                      </div>
+
+                      <div className="space-y-2 md:col-span-2">
+                        <Label htmlFor="executionDeliveryModel">
+                          Delivery model <span className="text-muted-foreground font-normal">(optional)</span>
+                        </Label>
+                        <Select
+                          value={formData.executionCapacity.delivery_model || 'unset'}
+                          onValueChange={(value) =>
+                            updateExecutionCapacity(
+                              'delivery_model',
+                              value === 'unset' ? '' : value
+                            )
+                          }
+                        >
+                          <SelectTrigger id="executionDeliveryModel">
+                            <SelectValue placeholder="Select delivery model" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="unset">Not specified</SelectItem>
+                            <SelectItem value="direct">Direct delivery</SelectItem>
+                            <SelectItem value="partner_led">Partner-led</SelectItem>
+                            <SelectItem value="hybrid">Hybrid (direct + partners)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2 md:col-span-2">
+                        <Label htmlFor="executionNotes">
+                          Additional notes <span className="text-muted-foreground font-normal">(optional)</span>
+                        </Label>
+                        <Textarea
+                          id="executionNotes"
+                          value={formData.executionCapacity.notes}
+                          onChange={(e) => updateExecutionCapacity('notes', e.target.value)}
+                          placeholder="Partner network, reporting cadence, or other capacity details"
+                          rows={2}
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
             
-            {/* Location Information */}
+            {/* NGO headquarters location */}
             <div className="space-y-4">
-              <h3 className="text-lg font-medium flex items-center gap-2">
-                <MapPin className="h-5 w-5" />
-                Location
-              </h3>
-              
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="city">City</Label>
-                  <Input
-                    id="city"
-                    name="city"
-                    value={formData.city}
+              <div>
+                <h3 className="text-lg font-medium">NGO Location</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Enter the registered office or primary headquarters of your NGO. We use this city, state, and pincode to match you with nearby CSR campaigns and company recommendations.
+                </p>
+              </div>
+
+              <div className="space-y-4 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="addressLine">Registered office address</Label>
+                  <Textarea
+                    id="addressLine"
+                    name="addressLine"
+                    value={formData.addressLine}
                     onChange={handleChange}
-                    placeholder="Mumbai, Delhi, etc."
+                    placeholder="Building, street, locality"
+                    rows={2}
                   />
-                  {formErrors.city && <p className="text-sm text-red-500">{formErrors.city}</p>}
+                  <p className="text-xs text-muted-foreground">
+                    Use the address where your NGO is registered or primarily operates from.
+                  </p>
+                  {formErrors.addressLine && <p className="text-sm text-red-500">{formErrors.addressLine}</p>}
                 </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="state">State/Province</Label>
-                  <Input
-                    id="state"
-                    name="state"
-                    value={formData.state}
-                    onChange={handleChange}
-                    placeholder="Maharashtra, Delhi, etc."
-                  />
-                  {formErrors.state && <p className="text-sm text-red-500">{formErrors.state}</p>}
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="pincode">Pincode</Label>
-                  <Input
-                    id="pincode"
-                    name="pincode"
-                    value={formData.pincode}
-                    onChange={handleChange}
-                    placeholder="400001"
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="country">Country</Label>
-                  <Select value={formData.country} onValueChange={(value) => handleSelectChange('country', value)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select country" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="India">India</SelectItem>
-                      <SelectItem value="Bangladesh">Bangladesh</SelectItem>
-                      <SelectItem value="Nepal">Nepal</SelectItem>
-                      <SelectItem value="Sri Lanka">Sri Lanka</SelectItem>
-                      <SelectItem value="Pakistan">Pakistan</SelectItem>
-                      <SelectItem value="Other">Other</SelectItem>
-                    </SelectContent>
-                  </Select>
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="city">City / Town</Label>
+                    <Input
+                      id="city"
+                      name="city"
+                      value={formData.city}
+                      onChange={handleChange}
+                      placeholder="e.g. Pune, Guwahati"
+                    />
+                    {formErrors.city && <p className="text-sm text-red-500">{formErrors.city}</p>}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="country">Country</Label>
+                    <Select
+                      value={formData.country}
+                      onValueChange={(value) => {
+                        handleSelectChange('country', value)
+                        if (value !== 'India') {
+                          setFormData((prev) => ({ ...prev, state: '' }))
+                        }
+                      }}
+                    >
+                      <SelectTrigger id="country">
+                        <SelectValue placeholder="Select country" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="India">India</SelectItem>
+                        <SelectItem value="Bangladesh">Bangladesh</SelectItem>
+                        <SelectItem value="Nepal">Nepal</SelectItem>
+                        <SelectItem value="Sri Lanka">Sri Lanka</SelectItem>
+                        <SelectItem value="Pakistan">Pakistan</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {formData.country === 'India' ? (
+                    <div className="space-y-2">
+                      <Label htmlFor="state">State / UT</Label>
+                      <Select
+                        value={formData.state || 'unset'}
+                        onValueChange={(value) => handleSelectChange('state', value === 'unset' ? '' : value)}
+                      >
+                        <SelectTrigger id="state">
+                          <SelectValue placeholder="Select state or UT" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="unset">Select state / UT</SelectItem>
+                          {INDIAN_STATES_AND_UTS.map((stateName) => (
+                            <SelectItem key={stateName} value={stateName}>
+                              {stateName}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {formErrors.state && <p className="text-sm text-red-500">{formErrors.state}</p>}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <Label htmlFor="state">State / Province</Label>
+                      <Input
+                        id="state"
+                        name="state"
+                        value={formData.state}
+                        onChange={handleChange}
+                        placeholder="State or province"
+                      />
+                      {formErrors.state && <p className="text-sm text-red-500">{formErrors.state}</p>}
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <Label htmlFor="pincode">Pincode / Postal code</Label>
+                    <Input
+                      id="pincode"
+                      name="pincode"
+                      value={formData.pincode}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          pincode: normalizePincode(e.target.value, prev.country),
+                        }))
+                      }
+                      inputMode="numeric"
+                      placeholder={formData.country === 'India' ? '6-digit pincode' : 'Postal code'}
+                      maxLength={formData.country === 'India' ? 6 : 12}
+                    />
+                    {formErrors.pincode && <p className="text-sm text-red-500">{formErrors.pincode}</p>}
+                  </div>
                 </div>
               </div>
             </div>
@@ -666,7 +936,7 @@ export default function NGORegister() {
 
             <div className="flex flex-col space-y-4">
               <Button type="submit" className="w-full" disabled={isSubmitting || !otpVerified.email}>
-                {isSubmitting ? 'Creating Account...' : 'Create NGO Account'}
+                {isSubmitting ? 'Creating account...' : 'Create NGO Account'}
               </Button>
               
               <div className="text-center text-sm">

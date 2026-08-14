@@ -46,9 +46,71 @@ export const IMPACT_AREA_OPTIONS = IMPACT_AREAS.map((value) => ({
 
 export const OFFER_TYPE_TRANSACTION_MATRIX: Record<OfferType, TransactionType[]> = {
   financial: ['donate'],
-  service: ['volunteer', 'sell'],
-  material: ['donate', 'rent', 'sell'],
-  infrastructure: ['rent', 'sell']
+  service: ['volunteer', 'rent'],
+  material: ['donate', 'rent'],
+  infrastructure: ['rent'],
+}
+
+export const CAPABILITY_NEED_REQUEST_TYPES: Record<OfferType, string[]> = {
+  financial: ['Financial Need'],
+  material: ['Material Need'],
+  service: ['Skill / Service Need'],
+  infrastructure: ['Infrastructure Project'],
+}
+
+export function getCapabilityNeedRequestTypes(offerType: OfferType | string | null | undefined): string[] {
+  if (isOfferType(offerType)) {
+    return CAPABILITY_NEED_REQUEST_TYPES[offerType]
+  }
+  return []
+}
+
+export function normalizeCapabilityTransactionType(
+  offerType: OfferType,
+  transactionType: unknown
+): TransactionType {
+  const normalized = isTransactionType(transactionType) ? transactionType : getDefaultTransactionType(offerType)
+  if (normalized === 'sell') {
+    return 'rent'
+  }
+  if (!isTransactionAllowedForOfferType(offerType, normalized)) {
+    return getDefaultTransactionType(offerType)
+  }
+  return normalized
+}
+
+export function isCapabilityRentalTransaction(transactionType: unknown): boolean {
+  const value = String(transactionType || '').toLowerCase()
+  return value === 'rent' || value === 'sell'
+}
+
+export function resolveCapabilityRentalRate(input: {
+  unit_rate?: unknown
+  price_amount?: unknown
+  offer_details?: Record<string, unknown> | null
+}): number {
+  const details =
+    input.offer_details && typeof input.offer_details === 'object' ? input.offer_details : {}
+  const rate = Number(input.unit_rate ?? details.unit_rate ?? input.price_amount ?? 0)
+  return Number.isFinite(rate) && rate > 0 ? rate : 0
+}
+
+export function dedupeSelectedNeedSummaries(
+  needs: SelectedNeedSummary[],
+  limit = 3
+): SelectedNeedSummary[] {
+  const seen = new Set<number>()
+  const deduped: SelectedNeedSummary[] = []
+
+  for (const need of needs) {
+    const id = Number(need.id)
+    if (!Number.isFinite(id) || id <= 0 || seen.has(id)) continue
+    seen.add(id)
+    deduped.push(need)
+    if (deduped.length >= limit) break
+  }
+
+  return deduped
 }
 
 export const CAPABILITY_KIND_BY_OFFER_TYPE: Record<OfferType, CapabilityKind> = {
@@ -152,6 +214,7 @@ export function isCapabilityOfferAvailableForListing(
     isAssigned?: boolean
     usage_records?: unknown[]
     status?: string | null
+    offer_details?: Record<string, unknown> | null
   } | null | undefined
 ): boolean {
   if (!offer) return false
@@ -160,12 +223,18 @@ export function isCapabilityOfferAvailableForListing(
   if (['inactive', 'completed', 'cancelled', 'paused'].includes(status)) return false
   if (offer.is_expired ?? isOfferExpired(offer)) return false
   if (isCapabilityOfferInUse(offer)) return false
+  const details = offer.offer_details && typeof offer.offer_details === 'object' ? offer.offer_details : {}
+  if (details.csr_rental_lock && typeof details.csr_rental_lock === 'object') {
+    const lock = details.csr_rental_lock as Record<string, unknown>
+    if (lock.paid_at) return false
+  }
   return true
 }
 
 export type SelectedNeedSummary = {
   id: number
   title: string
+  service_request_id?: number | null
   estimated_budget?: number | null
   target_amount?: number | null
   target_quantity?: number | null
@@ -218,30 +287,42 @@ function parseSelectedNeeds(meta: Record<string, unknown>) {
 }
 
 export function buildSelectedNeedSummary(meta: Record<string, unknown>): SelectedNeedSummary[] {
+  const linkedServiceRequestId =
+    Number(meta.linked_service_request_id ?? meta.service_request_id ?? 0) || null
   const selectedNeeds = parseSelectedNeeds(meta)
+
   if (selectedNeeds.length > 0) {
-    return selectedNeeds.slice(0, 5).map((need: Record<string, unknown>) => ({
-      id: Number(need.id),
-      title: String(need.title || 'Need'),
-      estimated_budget: need.estimated_budget != null ? Number(need.estimated_budget) : null,
-      target_amount: need.target_amount != null ? Number(need.target_amount) : null,
-      target_quantity: need.target_quantity != null ? Number(need.target_quantity) : null,
-      beneficiary_count: need.beneficiary_count != null ? Number(need.beneficiary_count) : null,
-    }))
+    return dedupeSelectedNeedSummaries(
+      selectedNeeds.map((need: Record<string, unknown>) => ({
+        id: Number(need.id),
+        title: String(need.title || 'Need'),
+        service_request_id:
+          Number(need.service_request_id ?? linkedServiceRequestId ?? need.id) || null,
+        estimated_budget: need.estimated_budget != null ? Number(need.estimated_budget) : null,
+        target_amount: need.target_amount != null ? Number(need.target_amount) : null,
+        target_quantity: need.target_quantity != null ? Number(need.target_quantity) : null,
+        beneficiary_count: need.beneficiary_count != null ? Number(need.beneficiary_count) : null,
+      })),
+      3
+    )
   }
 
   const selectedNeedIds = Array.isArray(meta.selected_need_ids)
     ? meta.selected_need_ids.map((item) => Number(item)).filter((id) => Number.isFinite(id) && id > 0)
     : []
 
-  return selectedNeedIds.slice(0, 5).map((id) => ({
-    id,
-    title: `Need #${id}`,
-    estimated_budget: null,
-    target_amount: null,
-    target_quantity: null,
-    beneficiary_count: null,
-  }))
+  return dedupeSelectedNeedSummaries(
+    selectedNeedIds.map((id) => ({
+      id,
+      title: `Need #${id}`,
+      service_request_id: linkedServiceRequestId ?? id,
+      estimated_budget: null,
+      target_amount: null,
+      target_quantity: null,
+      beneficiary_count: null,
+    })),
+    3
+  )
 }
 
 const USED_CLIENT_STATUSES = new Set(['accepted', 'completed', 'active', 'in_progress'])
@@ -363,6 +444,11 @@ export type CapabilityOfferSummary = CapabilityOfferListItem & {
   coverage_area?: string | null
   price_type?: string | null
   price_amount?: number | null
+  unit_rate?: number | null
+  billing_cycle?: string | null
+  payment_mode?: string | null
+  rate_currency?: string | null
+  offer_details?: Record<string, unknown> | null
   impact_area?: string[] | null
   applications_count?: number | null
   pending_applications?: number | null
@@ -412,4 +498,25 @@ export function formatOfferInrAmount(value: unknown): string {
 export function formatNeedLabel(need: SelectedNeedSummary): string {
   const amount = Number(need.estimated_budget ?? need.target_amount ?? 0)
   return amount > 0 ? `${need.title} · ${formatOfferInrAmount(amount)}` : need.title
+}
+
+export function formatCapabilityTransactionLabel(transactionType?: string | null): string {
+  const normalized = String(transactionType || '').toLowerCase()
+  if (normalized === 'rent' || normalized === 'sell') return 'Daily rental'
+  if (normalized === 'volunteer') return 'Volunteer'
+  if (normalized === 'donate') return 'Donate'
+  return normalized ? normalized.replace(/_/g, ' ') : 'Not set'
+}
+
+export function formatCapabilityRentalRateLabel(input: {
+  unit_rate?: unknown
+  price_amount?: unknown
+  offer_details?: Record<string, unknown> | null
+  transaction_type?: string | null
+}): string {
+  if (!isCapabilityRentalTransaction(input.transaction_type)) {
+    return 'Free'
+  }
+  const rate = resolveCapabilityRentalRate(input)
+  return rate > 0 ? `${formatOfferInrAmount(rate)} / day` : 'Not set'
 }

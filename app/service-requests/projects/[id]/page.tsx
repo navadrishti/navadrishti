@@ -7,6 +7,7 @@ import { ArrowLeft, Building, ChevronDown } from 'lucide-react';
 import { Header } from '@/components/header';
 import { DetailField, displayValue } from '@/components/detail-fields';
 import { formatDetailDate } from '@/lib/format-date';
+import { formatProjectExactAddress } from '@/lib/project-address';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -110,7 +111,7 @@ type ProjectRecord = {
 }
 
 function ProjectDetailFields({ project }: { project: ProjectRecord }) {
-  const exactAddress = project.exact_address || project.location
+  const exactAddress = formatProjectExactAddress(project.exact_address || project.location)
   const csrAvailable = project.csr_project_available_for_csr
 
   return (
@@ -125,7 +126,7 @@ function ProjectDetailFields({ project }: { project: ProjectRecord }) {
 
         <div className="grid grid-cols-1 gap-x-12 gap-y-6 md:grid-cols-2">
           <DetailField label="Project Category" value={displayValue(project.category)} />
-          <DetailField label="Project Exact Address" value={displayValue(exactAddress)} />
+          <DetailField label="Project Exact Address" value={exactAddress} />
         </div>
 
         <section className="space-y-3">
@@ -369,7 +370,7 @@ export default function ServiceRequestProjectDetailPage() {
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back
           </Button>
-          {user?.user_type === 'ngo' && Number(user?.id) === Number(payload?.project?.ngo?.id || projectId) && (
+          {user?.user_type === 'ngo' && Number(user?.id) === Number(payload?.project?.ngo_id || payload?.project?.ngo?.id) && (
             <Link href={`/service-requests/projects/${projectId}/edit`}>
               <Button variant="outline" className="w-full sm:w-auto">Edit Project</Button>
             </Link>

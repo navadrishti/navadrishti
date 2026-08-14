@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import Razorpay from 'razorpay';
 import { db, supabase } from '@/lib/db';
 import { JWT_SECRET } from '@/lib/auth';
+import { validateCapturedPaymentAmounts } from '@/lib/razorpay-route';
 
 interface JWTPayload {
   id: number;
@@ -126,7 +127,7 @@ export async function POST(
 
     const orderRow = await supabase
       .from('razorpay_payment_orders')
-      .select('id, service_request_id, payer_user_id, amount_inr')
+      .select('id, service_request_id, payer_user_id, amount_inr, order_notes')
       .eq('razorpay_order_id', razorpay_order_id)
       .maybeSingle();
 
@@ -139,6 +140,14 @@ export async function POST(
     }
 
     const paidInr = Number((Number(providerPayment.amount || 0) / 100).toFixed(2));
+    const amountCheck = validateCapturedPaymentAmounts({
+      orderNotes: (providerOrder.notes || orderRow.data.order_notes || {}) as Record<string, unknown>,
+      paidInr,
+    });
+    if (!amountCheck.ok) {
+      return NextResponse.json({ error: amountCheck.error }, { status: 400 });
+    }
+    const creditedInr = amountCheck.baseAmountInr;
     const serviceRequest = await db.serviceRequests.getById(linkedServiceRequestId);
     if (!serviceRequest) {
       return NextResponse.json({ error: 'Linked service request not found' }, { status: 404 });
@@ -146,7 +155,7 @@ export async function POST(
 
     const targetAmount = parseAmountToInr(serviceRequest.target_amount ?? serviceRequest.estimated_budget ?? serviceRequest.current_amount);
     const currentAmount = parseAmountToInr(serviceRequest.current_amount);
-    const nextAmount = Number((currentAmount + paidInr).toFixed(2));
+    const nextAmount = Number((currentAmount + creditedInr).toFixed(2));
     const nextRemaining = targetAmount > 0 ? Number(Math.max(0, targetAmount - nextAmount).toFixed(2)) : null;
 
     await supabase
@@ -155,7 +164,7 @@ export async function POST(
         service_request_id: linkedServiceRequestId,
         contributor_id: payerUserId,
         contribution_type: 'service_offer_payment',
-        amount: paidInr,
+        amount: creditedInr,
         quantity: null,
         status: 'paid',
         reference_text: `Service offer ${offerId}`,

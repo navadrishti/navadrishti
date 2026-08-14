@@ -7,9 +7,6 @@ if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && proce
     api_key: process.env.CLOUDINARY_API_KEY,
     api_secret: process.env.CLOUDINARY_API_SECRET,
   });
-  console.log('✅ Cloudinary configured successfully');
-} else {
-  console.warn('⚠️ Cloudinary configuration missing. Image uploads will not work.');
 }
 
 export { cloudinary };
@@ -35,7 +32,6 @@ export async function uploadToCloudinary(
 
     const result = await cloudinary.uploader.upload(file as string, uploadOptions);
     
-    console.log('✅ Image uploaded to Cloudinary:', result.public_id);
     return result;
   } catch (error) {
     console.error('❌ Cloudinary upload failed:', error);
@@ -47,7 +43,6 @@ export async function uploadToCloudinary(
 export async function deleteFromCloudinary(publicId: string): Promise<void> {
   try {
     await cloudinary.uploader.destroy(publicId);
-    console.log('✅ Image deleted from Cloudinary:', publicId);
   } catch (error) {
     console.error('❌ Failed to delete from Cloudinary:', error);
     throw new Error('Failed to delete image');

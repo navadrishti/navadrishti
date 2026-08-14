@@ -51,6 +51,7 @@ type ServiceOfferRow = {
     requirements: unknown
     tags: unknown
     valid_until?: string | null
+    status?: string | null
 }
 
 const toNumber = (value: unknown): number => {
@@ -239,7 +240,6 @@ export const findServiceOffers = async (input: InputSchemaType): Promise<Capabil
         throw new Error(`Error fetching service offers: ${filterError.message}`)
     }
     if (!filteredOffers || filteredOffers.length === 0) {
-        console.log("No offers passed initial filters")
         return []
     }
 
@@ -273,7 +273,25 @@ export const findServiceOffers = async (input: InputSchemaType): Promise<Capabil
         }
     }
 
-    const availableOffers = activeOffers.filter((offer) => !usedOfferIds.has(Number(offer.id)))
+    const availableOffers = activeOffers.filter((offer) => {
+        if (usedOfferIds.has(Number(offer.id))) return false
+        let details: Record<string, unknown> = {}
+        if (offer.requirements && typeof offer.requirements === 'object') {
+            details = offer.requirements as Record<string, unknown>
+        }
+        try {
+            const parsed = typeof offer.requirements === 'string' ? JSON.parse(offer.requirements) : null
+            if (parsed && typeof parsed === 'object') details = parsed as Record<string, unknown>
+        } catch {
+            // ignore
+        }
+        const lock = details.csr_rental_lock
+        if (lock && typeof lock === 'object' && (lock as Record<string, unknown>).paid_at) {
+            return false
+        }
+        if (String(offer.status || '').toLowerCase() === 'inactive') return false
+        return true
+    })
 
     if (availableOffers.length === 0) {
         return []
@@ -298,9 +316,6 @@ export const findServiceOffers = async (input: InputSchemaType): Promise<Capabil
             )
 
             const categoryScore = computeCategoryScore(offer, input, categoryTokens)
-            if (process.env.NODE_ENV !== 'production') {
-                console.log(`recommendation-debug offer=${offer.id} title="${offer.title}" similarity=${similarity.toFixed(3)} categoryScore=${categoryScore}`)
-            }
 
             const raw: Omit<CapabilityMatch, 'score'> = {
                 capability_id: offer.id,

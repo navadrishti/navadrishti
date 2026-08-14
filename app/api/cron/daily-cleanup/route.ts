@@ -1,14 +1,82 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { emailService } from '@/lib/email';
+import { processCsrCapabilityDailyCompliance, markCsrProjectCompleted, syncAllCsrCapabilityRentalsDelhivery } from '@/lib/csr-agent/campaign';
+import { getDocumentExpiries, dropExpiredCaComplianceTags } from '@/lib/auth';
+
+function asRecord(value: unknown): Record<string, any> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, any>)
+    : {};
+}
+
+async function processNgoDocumentExpiryJobs(now = new Date()) {
+  const stats = {
+    scanned: 0,
+    reminded: 0,
+    tags_dropped: 0,
+    errors: 0,
+  };
+
+  const { data: users, error } = await supabase
+    .from('users')
+    .select('id, verification_status, profile_data')
+    .eq('user_type', 'ngo')
+    .eq('verification_status', 'verified')
+    .limit(2000);
+
+  if (error) {
+    console.error('document expiry: failed to load NGOs', error);
+    return { ...stats, error: error.message };
+  }
+
+  for (const user of users || []) {
+    try {
+      const profileData = asRecord(user.profile_data);
+      if (profileData.reverification_pending) continue;
+
+      stats.scanned += 1;
+      const dropped = dropExpiredCaComplianceTags(profileData);
+      const rawExpiries = asRecord(profileData.document_expiries);
+      const nextExpiries = getDocumentExpiries(profileData);
+      const stripLegacyBankStatement = Object.prototype.hasOwnProperty.call(
+        rawExpiries,
+        'bank_statement'
+      );
+      if (!dropped.changed && !stripLegacyBankStatement) continue;
+
+      const reviewedAt = now.toISOString();
+      const { error: tagUpdateError } = await supabase
+        .from('users')
+        .update({
+          profile_data: {
+            ...dropped.profileData,
+            document_expiries: nextExpiries,
+          },
+          updated_at: reviewedAt,
+        })
+        .eq('id', user.id);
+      if (tagUpdateError) throw tagUpdateError;
+      stats.tags_dropped += dropped.dropped.length;
+    } catch (err) {
+      stats.errors += 1;
+      console.error(`document expiry: failed for user ${user.id}`, err);
+    }
+  }
+
+  return stats;
+}
 
 /**
  * Combined Daily Cleanup Cron Job
- * Runs once daily at 2:00 AM
+ * Runs once daily (see vercel.json)
  * 
  * Performs:
  * 1. Auto-rejection of expired service offers (pending > 5 days)
  * 2. Hashtag cleanup (removes inactive hashtags, updates trending)
+ * 3. Expire projects and their needs
+ * 4. CSR capability daily compliance / Delhivery sync
+ * 5. Drop expired optional CA compliance tags (12A / 80G / CSR-1 / FCRA). Never unverify.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -19,7 +87,6 @@ export async function GET(request: NextRequest) {
     if (process.env.CRON_SECRET) {
       const providedSecret = authHeader?.replace('Bearer ', '');
       if (providedSecret !== process.env.CRON_SECRET) {
-        console.log('Cron job unauthorized access attempt');
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       }
     }
@@ -27,14 +94,11 @@ export async function GET(request: NextRequest) {
     // Vercel cron jobs include this header
     const cronHeader = request.headers.get('x-vercel-cron');
     if (!cronHeader && process.env.NODE_ENV === 'production') {
-      console.log('Not a Vercel cron request');
       return NextResponse.json({ error: 'Not authorized' }, { status: 401 });
     }
 
-    console.log('🔄 Starting daily cleanup process...');
 
     // ========== TASK 1: AUTO-REJECT EXPIRED SERVICE OFFERS ==========
-    console.log('\n📋 Task 1: Auto-rejecting expired service offers...');
     
     const fiveDaysAgo = new Date();
     fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
@@ -58,7 +122,6 @@ export async function GET(request: NextRequest) {
     if (fetchError) {
       console.error('Error fetching expired offers:', fetchError);
     } else if (expiredOffers && expiredOffers.length > 0) {
-      console.log(`Found ${expiredOffers.length} expired offers to auto-reject`);
       
       for (const offer of expiredOffers) {
         try {
@@ -122,17 +185,14 @@ export async function GET(request: NextRequest) {
             }
           }
 
-          console.log(`✅ Auto-rejected offer ${offer.id}: "${offer.title}"`);
         } catch (offerError) {
           console.error(`Error processing offer ${offer.id}:`, offerError);
         }
       }
     } else {
-      console.log('✅ No expired offers found');
     }
 
     // ========== TASK 1B: EXPIRE CAPABILITY OFFERS PAST VALID_UNTIL ==========
-    console.log('\n⏳ Task 1B: Deactivating capability offers past valid_until...');
 
     const nowIso = new Date().toISOString();
     const { data: validityExpiredOffers, error: validityExpiredError } = await supabase
@@ -159,14 +219,11 @@ export async function GET(request: NextRequest) {
         }
 
         deactivatedOfferCount++;
-        console.log(`✅ Deactivated expired capability offer ${offer.id}: "${offer.title}"`);
       }
     } else {
-      console.log('✅ No capability offers to deactivate by valid_until');
     }
 
     // ========== TASK 2: HASHTAG CLEANUP ==========
-    console.log('\n#️⃣ Task 2: Cleaning up hashtags...');
     
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -212,7 +269,6 @@ export async function GET(request: NextRequest) {
             .eq('id', hashtag.id);
 
           if (!deleteError) {
-            console.log(`Removed hashtag: ${hashtag.tag} (0 mentions in 24h)`);
             hashtagStats.removed++;
           }
         } else {
@@ -251,16 +307,13 @@ export async function GET(request: NextRequest) {
 
           if (!trendingError) {
             hashtagStats.trendingUpdated = topHashtags.length;
-            console.log('Updated trending hashtags:', topHashtags.map(h => h.tag).join(', '));
           }
         }
       }
     }
 
-    console.log('✅ Hashtag cleanup completed. Stats:', hashtagStats);
 
     // ========== TASK 3: EXPIRE PROJECTS AND THEIR NEEDS ==========
-    console.log('\n⏳ Task 3: Expiring projects and associated needs past valid_until...');
     try {
       const nowIso = new Date().toISOString();
       const { data: expiredProjects, error: expiredProjectsError } = await supabase
@@ -273,7 +326,6 @@ export async function GET(request: NextRequest) {
       if (expiredProjectsError) {
         console.error('Error fetching expired projects:', expiredProjectsError);
       } else if (expiredProjects && expiredProjects.length > 0) {
-        console.log(`Found ${expiredProjects.length} projects to expire`);
         let expiredProjectCount = 0;
 
         for (const proj of expiredProjects) {
@@ -300,22 +352,53 @@ export async function GET(request: NextRequest) {
             }
 
             expiredProjectCount++;
-            console.log(`✅ Expired project ${proj.id} (${proj.title}) and its needs`);
           } catch (procErr) {
             console.error('Error processing project expiry:', procErr);
           }
         }
 
-        console.log(`Expired ${expiredProjectCount} projects during this run`);
       } else {
-        console.log('✅ No projects to expire');
       }
     } catch (expireErr) {
       console.error('Error in project expiry task:', expireErr);
     }
 
+    // ========== TASK 4: CSR CAPABILITY RENTAL SLAs, FINES, REMINDERS ==========
+    let csrComplianceStats = { refunds: 0, fines: 0, reminders: 0, suspended: 0 };
+    let csrDelhiverySyncStats = { synced: 0, retried: 0 };
+    try {
+      csrDelhiverySyncStats = await syncAllCsrCapabilityRentalsDelhivery();
+      csrComplianceStats = await processCsrCapabilityDailyCompliance();
+
+      const todayIso = new Date().toISOString();
+      const { data: endedCampaigns } = await supabase
+        .from('campaigns')
+        .select('id, end_date, status')
+        .eq('status', 'active')
+        .not('end_date', 'is', null)
+        .lt('end_date', todayIso)
+        .limit(200);
+
+      for (const campaign of endedCampaigns || []) {
+        await markCsrProjectCompleted({ campaignId: String(campaign.id) });
+        await supabase
+          .from('campaigns')
+          .update({ status: 'completed', updated_at: todayIso })
+          .eq('id', campaign.id);
+      }
+    } catch (csrComplianceErr) {
+      console.error('Error in CSR capability compliance task:', csrComplianceErr);
+    }
+
+    // ========== TASK 5: DROP EXPIRED OPTIONAL CA COMPLIANCE TAGS ==========
+    let documentExpiryStats = { scanned: 0, reminded: 0, tags_dropped: 0, errors: 0 };
+    try {
+      documentExpiryStats = await processNgoDocumentExpiryJobs();
+    } catch (documentExpiryErr) {
+      console.error('Error in NGO document expiry task:', documentExpiryErr);
+    }
+
     // ========== FINAL SUMMARY ==========
-    console.log('\n🎉 Daily cleanup process complete!');
 
     return NextResponse.json({
       success: true,
@@ -330,7 +413,10 @@ export async function GET(request: NextRequest) {
             organization: offer.organization?.name
           }))
         },
-        hashtagCleanup: hashtagStats
+        documentExpiry: documentExpiryStats,
+        hashtagCleanup: hashtagStats,
+        csrDelhiverySync: csrDelhiverySyncStats,
+        csrCapabilityCompliance: csrComplianceStats,
       }
     });
 

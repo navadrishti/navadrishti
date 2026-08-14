@@ -12,6 +12,8 @@ import {
   isTransactionType,
   OfferType,
   normalizeDateOnlyToEndOfDayIso,
+  normalizeCapabilityTransactionType,
+  resolveCapabilityRentalRate,
   sanitizeTextArray,
   parseCsvToStringArray,
   toNullableNumber,
@@ -112,12 +114,16 @@ const buildPriceInfo = (offerType: string, transactionType: string, body: Record
   }
 
   const priceType = body.price_type === 'negotiable' ? 'negotiable' : 'fixed'
-  const priceAmount = toNullablePositiveNumber(body.price_amount)
+  const dailyRate = resolveCapabilityRentalRate({
+    unit_rate: body.unit_rate,
+    price_amount: body.price_amount,
+    offer_details: body.offer_details,
+  })
 
   return {
     price_type: priceType,
-    price_amount: priceAmount ?? 0,
-    price_description: transactionType === 'rent' ? 'per day' : 'per unit / per kit'
+    price_amount: dailyRate,
+    price_description: 'per day',
   }
 }
 
@@ -127,24 +133,28 @@ const normalizeOfferDetailsForStorage = (
   details: Record<string, any>,
   body?: Record<string, any>
 ) => {
-  const mergedDetails = {
+  const mergedDetails: Record<string, any> = {
     ...details,
-    billing_cycle: body?.billing_cycle ?? details.billing_cycle ?? (transactionType === 'rent' ? 'daily' : null),
-    unit_rate: toNullablePositiveNumber(body?.unit_rate ?? details.unit_rate),
+    billing_cycle: body?.billing_cycle ?? details.billing_cycle ?? 'daily',
+    unit_rate: resolveCapabilityRentalRate({
+      unit_rate: body?.unit_rate ?? details.unit_rate,
+      price_amount: body?.price_amount ?? details.unit_rate,
+      offer_details: details,
+    }) || toNullablePositiveNumber(body?.unit_rate ?? details.unit_rate),
     rate_currency: body?.rate_currency ?? details.rate_currency ?? 'INR',
   }
 
   if (offerType === 'material') {
     return {
       ...mergedDetails,
-      available_to: transactionType === 'sell' ? null : (mergedDetails.available_to ?? null)
+      available_to: mergedDetails.available_to ?? null
     }
   }
 
   if (offerType === 'infrastructure') {
     return {
       ...mergedDetails,
-      available_to: transactionType === 'sell' ? null : (mergedDetails.available_to ?? null)
+      available_to: mergedDetails.available_to ?? null
     }
   }
 
@@ -160,13 +170,14 @@ const normalizeOffer = (offer: any) => {
     ? offer.offer_type
     : LEGACY_CATEGORY_TO_OFFER_TYPE[offer.category] || 'service'
 
-  const inferredTransactionType = isTransactionType(offer.transaction_type)
-    ? offer.transaction_type
-    : offer.price_type === 'free'
-      ? 'donate'
-      : offer.price_description?.toLowerCase().includes('day')
-        ? 'rent'
-        : 'sell'
+  const inferredTransactionType = normalizeCapabilityTransactionType(
+    normalizedOfferType,
+    isTransactionType(offer.transaction_type)
+      ? offer.transaction_type
+      : offer.price_type === 'free'
+        ? 'donate'
+        : 'rent'
+  )
 
   const skillsRequired = sanitizeTextArray(mergedDetails.skills_required)
   const facilities = sanitizeTextArray(mergedDetails.facilities)
@@ -180,6 +191,10 @@ const normalizeOffer = (offer: any) => {
     is_expired: isOfferExpired(offer),
     impact_area: Array.isArray(offer.impact_area) ? offer.impact_area : [],
     offer_details: mergedDetails,
+    unit_rate: toNullableNumber(offer.unit_rate ?? mergedDetails.unit_rate ?? offer.price_amount),
+    billing_cycle: offer.billing_cycle ?? mergedDetails.billing_cycle ?? null,
+    payment_mode: offer.payment_mode ?? mergedDetails.payment_mode ?? null,
+    rate_currency: offer.rate_currency ?? mergedDetails.rate_currency ?? 'INR',
 
     // Legacy compatibility fields consumed by cards/details.
     amount: toNullableNumber(offer.price_amount),
@@ -207,7 +222,13 @@ const validateIncomingBody = (body: Record<string, any>) => {
   }
 
   if (!isTransactionType(body.transaction_type)) {
-    return 'transaction_type must be one of: volunteer, donate, rent, sell.'
+    return 'transaction_type must be one of: volunteer, donate, rent.'
+  }
+
+  body.transaction_type = normalizeCapabilityTransactionType(body.offer_type, body.transaction_type)
+
+  if (body.transaction_type === 'sell') {
+    return 'Permanent sale is not supported. Use daily rental instead.'
   }
 
   if (!isTransactionAllowedForOfferType(body.offer_type, body.transaction_type)) {
@@ -517,9 +538,7 @@ export async function GET(request: NextRequest) {
 
 // POST - Create capability offer
 export async function POST(request: NextRequest) {
-  console.log('===== SERVICE OFFER CREATE START =====')
   try {
-    console.log('Step 1: Checking authentication')
     const authHeader = request.headers.get('authorization')
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
@@ -534,7 +553,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid authentication token' }, { status: 401 })
     }
 
-    console.log('Step 2: Getting user details')
     const { id: userId, verification_status, user_type } = decoded
 
     const { data: currentUser, error: currentUserError } = await supabase
@@ -547,7 +565,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'User account not found' }, { status: 404 })
     }
 
-    console.log('Step 3: Checking user type and verification')
     const effectiveUserType = currentUser.user_type || user_type
     const effectiveVerificationStatus = currentUser.verification_status || verification_status || 'unverified'
 
@@ -562,7 +579,6 @@ export async function POST(request: NextRequest) {
       }, { status: 403 })
     }
 
-    console.log('Step 4: Parsing request body')
     let body: Record<string, any>
     try {
       body = coerceIncomingBody(await request.json())
@@ -571,16 +587,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 })
     }
 
-    console.log('Step 5: Validating body', { title: body.title, offer_type: body.offer_type, transaction_type: body.transaction_type, impact_area_count: body.impact_area?.length })
     const validationError = validateIncomingBody(body)
     if (validationError) {
       console.error('Validation error:', validationError)
       return NextResponse.json({ error: validationError }, { status: 400 })
     }
 
-    console.log('Step 6: Building offer data')
     const offerType = body.offer_type as OfferType
-    const transactionType = body.transaction_type as import('@/lib/service-offers').TransactionType
+    const transactionType = normalizeCapabilityTransactionType(
+      offerType,
+      body.transaction_type as import('@/lib/service-offers').TransactionType
+    )
 
     const priceInfo = buildPriceInfo(offerType, transactionType, body)
 
@@ -590,6 +607,11 @@ export async function POST(request: NextRequest) {
       body.offer_details && typeof body.offer_details === 'object' ? body.offer_details : {},
       body
     )
+    const dailyRate = resolveCapabilityRentalRate({
+      unit_rate: body.unit_rate,
+      price_amount: priceInfo.price_amount,
+      offer_details: normalizedOfferDetails,
+    })
 
     const offerData = {
       creator_id: userId,
@@ -608,6 +630,10 @@ export async function POST(request: NextRequest) {
       price_type: priceInfo.price_type,
       price_amount: priceInfo.price_amount,
       price_description: priceInfo.price_description,
+      unit_rate: transactionType === 'rent' ? dailyRate : null,
+      billing_cycle: transactionType === 'rent' ? String(body.billing_cycle || normalizedOfferDetails.billing_cycle || 'daily') : null,
+      payment_mode: transactionType === 'rent' ? 'daily_due' : null,
+      rate_currency: String(body.rate_currency || normalizedOfferDetails.rate_currency || 'INR'),
       validity_days: toNullablePositiveNumber(body.validity_days),
       valid_until: normalizeDateOnlyToEndOfDayIso(body.valid_until || body.expires_at || normalizedOfferDetails.valid_until || null),
       status: 'inactive',
@@ -617,7 +643,6 @@ export async function POST(request: NextRequest) {
       admin_comments: null
     }
 
-    console.log('Step 7: Inserting offer into database')
     const { data: offer, error: offerError } = await insertWithSchemaFallback('service_offers', offerData)
 
     if (offerError) {
@@ -630,7 +655,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create service offer: no data returned' }, { status: 500 })
     }
 
-    console.log('Step 8: Inserting capability')
     const capabilityData = {
       service_offer_id: offer.id,
       capability_name: String(body.title || '').trim(),
@@ -642,8 +666,6 @@ export async function POST(request: NextRequest) {
       max_qty: 1,
       is_active: true
     }
-
-    console.log('Capability payload:', capabilityData)
 
     let capabilityWarning: string | null = null
     let capabilityId: number | null = null
@@ -660,14 +682,12 @@ export async function POST(request: NextRequest) {
         capabilityWarning = 'Capability offer created, but capability indexing could not be saved. Please contact support if you need recommendations.'
       } else if (capability) {
         capabilityId = capability.id
-        console.log('Capability created successfully:', capabilityId)
       }
     } catch (capabilitiesException) {
       console.error('Exception creating offer capability:', capabilitiesException)
       capabilityWarning = 'Capability offer created, but capability indexing could not be saved. Please contact support if you need recommendations.'
     }
 
-    console.log('Step 9: Returning success')
     const responseData: any = {
       id: offer.id,
       message: 'Capability offer created successfully and submitted for approval'
@@ -687,7 +707,7 @@ export async function POST(request: NextRequest) {
     }, { status: 201 })
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)
-    console.error('===== SERVICE OFFER CREATE ERROR =====', errorMessage, error)
+    console.error('Service offer create error:', error)
     return NextResponse.json({ error: `Failed to create service offer: ${errorMessage}` }, { status: 500 })
   }
 }

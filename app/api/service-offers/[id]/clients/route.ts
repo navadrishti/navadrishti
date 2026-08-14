@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, supabase } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
-import { isOfferExpired } from '@/lib/service-offers';
+import { isOfferExpired, getCapabilityNeedRequestTypes, isCapabilityRentalTransaction, dedupeSelectedNeedSummaries } from '@/lib/service-offers';
 
 // Interface for JWT payload
 interface JWTPayload {
@@ -22,17 +22,21 @@ function parseNeedIds(value: unknown): number[] {
 }
 
 function summarizeNeeds(needs: Array<Record<string, any>>) {
-  return needs.map((need) => ({
-    id: Number(need.id),
-    title: String(need.title || 'Need'),
-    status: String(need.status || '').toLowerCase(),
-    request_type: need.request_type || null,
-    estimated_budget: need.estimated_budget != null ? Number(need.estimated_budget) : null,
-    target_amount: need.target_amount != null ? Number(need.target_amount) : null,
-    target_quantity: need.target_quantity != null ? Number(need.target_quantity) : null,
-    beneficiary_count: need.beneficiary_count != null ? Number(need.beneficiary_count) : null,
-    project_id: need.project_id || null
-  }));
+  return dedupeSelectedNeedSummaries(
+    needs.map((need) => ({
+      id: Number(need.id),
+      title: String(need.title || 'Need'),
+      service_request_id: Number(need.id),
+      status: String(need.status || '').toLowerCase(),
+      request_type: need.request_type || null,
+      estimated_budget: need.estimated_budget != null ? Number(need.estimated_budget) : null,
+      target_amount: need.target_amount != null ? Number(need.target_amount) : null,
+      target_quantity: need.target_quantity != null ? Number(need.target_quantity) : null,
+      beneficiary_count: need.beneficiary_count != null ? Number(need.beneficiary_count) : null,
+      project_id: need.project_id || null
+    })),
+    1
+  )
 }
 
 // GET - Fetch clients for a service offer
@@ -162,9 +166,9 @@ export async function POST(
       return NextResponse.json({ error: 'This capability offer has expired.' }, { status: 409 });
     }
 
-    const needIds = parseNeedIds(selected_need_ids || service_request_ids || (service_request_id != null ? [service_request_id] : []));
+    const needIds = parseNeedIds(selected_need_ids || service_request_ids || (service_request_id != null ? [service_request_id] : [])).slice(0, 1);
     if (needIds.length === 0) {
-      return NextResponse.json({ error: 'Please select one or more active needs.' }, { status: 400 });
+      return NextResponse.json({ error: 'Please select one active need.' }, { status: 400 });
     }
 
     const { data: linkedNeeds, error: linkedNeedsError } = await supabase
@@ -179,7 +183,17 @@ export async function POST(
     }
 
     if (!Array.isArray(linkedNeeds) || linkedNeeds.length !== needIds.length) {
-      return NextResponse.json({ error: 'One or more selected needs are invalid or inactive.' }, { status: 400 });
+      return NextResponse.json({ error: 'The selected need is invalid or inactive.' }, { status: 400 });
+    }
+
+    const allowedRequestTypes = getCapabilityNeedRequestTypes(offer?.offer_type || '')
+    if (allowedRequestTypes.length > 0) {
+      const invalidType = linkedNeeds.some((need) => !allowedRequestTypes.includes(String(need.request_type || '')))
+      if (invalidType) {
+        return NextResponse.json({
+          error: `Selected need must match this capability type (${allowedRequestTypes.join(' or ')}).`,
+        }, { status: 400 });
+      }
     }
 
     const selectedNeeds = summarizeNeeds(linkedNeeds);
@@ -188,9 +202,10 @@ export async function POST(
       return sum + (Number.isFinite(amount) ? amount : 0);
     }, 0);
 
+    const isRentalOffer = isCapabilityRentalTransaction(offer?.transaction_type)
     const offerAmount = Number(offer?.price_amount || 0);
-    if (offerAmount > 0 && totalSelectedAmount > offerAmount) {
-      return NextResponse.json({ error: 'Selected needs exceed the offer value. Please choose needs within the offer amount.' }, { status: 400 });
+    if (!isRentalOffer && offerAmount > 0 && totalSelectedAmount > offerAmount) {
+      return NextResponse.json({ error: 'Selected need exceeds the offer value. Please choose a need within the offer amount.' }, { status: 400 });
     }
 
     const applicationMessage = String(message || '').trim() || `Applied for ${selectedNeeds.map((need) => need.title).join(', ')}`;

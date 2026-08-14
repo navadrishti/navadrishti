@@ -259,17 +259,17 @@ export async function generateCampaigns(input: GenerateCampaignsInput): Promise<
     return result.data.campaigns;
   } catch (err) {
     if (err instanceof GeminiError) {
-      console.error("Gemini API error:", err.message);
-      throw new Error(`Gemini API ${err.status}: ${err.message}`);
+      console.error("Campaign drafting API error:", err.message);
+      throw new Error("Campaign drafting is currently unavailable.");
     } 
 
     if (err instanceof Error && err.message) {
       if (err.message.includes("GEMINI_API_KEY is missing")) {
-        throw err;
+        throw new Error("Campaign drafting is currently unavailable.");
       }
 
       if (err.message.includes("API Key not found") || err.message.includes("API_KEY_INVALID")) {
-        throw new Error("Gemini API key is invalid or missing");
+        throw new Error("Campaign drafting is currently unavailable.");
       }
     }
 

@@ -3,8 +3,17 @@ import jwt from 'jsonwebtoken';
 import { db, supabase } from '@/lib/db';
 import { isNeedOpenForListing, isServiceRequestExpired } from '@/lib/service-request-allocation';
 import { resolveFundingTargetInr } from '@/lib/service-request-allocation';
-import { JWT_SECRET } from '@/lib/auth';
+import { JWT_SECRET, CSR_ELIGIBILITY_REQUIRED_MESSAGE } from '@/lib/auth';
+import { ngoUserIsCsrEligible } from '@/lib/server-auth';
 import { CSR_SCHEDULE_VII_CATEGORIES, SERVICE_REQUEST_TYPES } from '@/lib/categories';
+import { isHiddenNgoNetworkPaymentChannel } from '@/lib/razorpay-route';
+import {
+  formatProjectExactAddress,
+  parseProjectExactAddress,
+  projectAddressToLocationSummary,
+  serializeProjectExactAddress,
+  validateProjectExactAddress,
+} from '@/lib/project-address';
 
 // Interface for JWT payload
 interface JWTPayload {
@@ -350,7 +359,9 @@ export async function GET(request: NextRequest) {
     }
 
   // Ensure we have an array to process and handle old/new formats
-  const requestsToProcess = Array.isArray(serviceRequests) ? serviceRequests : [];
+  const requestsToProcess = (Array.isArray(serviceRequests) ? serviceRequests : []).filter(
+    (request: any) => !isHiddenNgoNetworkPaymentChannel(request)
+  );
   // Process the data to handle old and new formats
   const processedRequests = requestsToProcess.map((request: any) => {
       // Add ngo_name for backward compatibility with frontend
@@ -636,11 +647,20 @@ export async function POST(request: NextRequest) {
       if (projectPayload && !resolvedProjectId) {
         const projectTitle = String(projectPayload.title || '').trim();
         const projectDescription = String(projectPayload.description || '').trim();
-        const projectLocation = String(projectPayload.exact_address || projectPayload.location || location || '').trim();
         const projectTimeline = String(projectPayload.timeline || timeline || '').trim();
+        const addressInput = projectPayload.address && typeof projectPayload.address === 'object'
+          ? projectPayload.address
+          : projectPayload.exact_address || projectPayload.location || location || '';
+        const parsedProjectAddress = parseProjectExactAddress(addressInput);
+        const projectAddressError = validateProjectExactAddress(parsedProjectAddress);
+        if (projectAddressError) {
+          return NextResponse.json({ error: projectAddressError }, { status: 400 });
+        }
+        const serializedProjectAddress = serializeProjectExactAddress(parsedProjectAddress);
+        const projectLocationSummary = projectAddressToLocationSummary(parsedProjectAddress);
 
-        if ([projectTitle, projectDescription, projectLocation, projectTimeline].some((value) => !value)) {
-          return NextResponse.json({ error: 'Project title, description, exact address, and timeline are required' }, { status: 400 });
+        if ([projectTitle, projectDescription, projectTimeline].some((value) => !value)) {
+          return NextResponse.json({ error: 'Project title, description, and timeline are required' }, { status: 400 });
         }
 
         // Validate canonical project fields are provided and valid when creating nested project
@@ -657,20 +677,27 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: 'valid_until must be a valid date string for project creation' }, { status: 400 });
         }
 
+        const csrEligible = await ngoUserIsCsrEligible(userId);
+        const requestedCsrAvailable = projectPayload.csr_project_available_for_csr !== false;
+        if (requestedCsrAvailable && !csrEligible) {
+          return NextResponse.json({ error: CSR_ELIGIBILITY_REQUIRED_MESSAGE }, { status: 403 });
+        }
+
         const createdProject = await db.requestProjects.create({
           ngo_id: userId,
           title: projectTitle,
           description: projectDescription,
-          location: projectLocation,
-          exact_address: projectLocation,
+          location: projectLocationSummary,
+          exact_address: serializedProjectAddress,
           timeline: projectTimeline || null,
           expected_beneficiaries: expectedBeneficiaries,
-          valid_until: validUntil || null,
+          valid_until: validUntil ? new Date(validUntil).toISOString() : null,
+          csr_project_available_for_csr: csrEligible && requestedCsrAvailable,
           status: 'active'
         });
 
         resolvedProjectId = createdProject.id;
-        resolvedProjectLocation = projectLocation;
+        resolvedProjectLocation = formatProjectExactAddress(serializedProjectAddress);
       }
 
       let projectRecord: any = null

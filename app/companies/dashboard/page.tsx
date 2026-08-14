@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { createClient as createSupabaseClient } from '@/lib/supabase';
-import { Building, CheckCircle, HandHeart, MailCheck, Phone, Loader2, XCircle, Power, Trash2 } from 'lucide-react';
+import { Building, CheckCircle, HandHeart, MailCheck, Phone, Loader2, XCircle, Power, Trash2, KeyRound } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import ProtectedRoute from '@/components/protected-route';
 import { Header } from '@/components/header';
@@ -17,12 +17,21 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
-import { ProfileDashboardTab } from '@/components/profile-dashboard-tab';
+import { ProfileDashboardTab, PaymentHistoryPanel } from '@/components/profile-dashboard-tab';
 import { DashboardQuickSidebar } from '@/components/dashboard-quick-sidebar';
 import { ImpactReportsPanel } from '@/components/companies/impact-reports-panel';
 import { YourCapabilitiesPanel } from '@/components/service-card';
 import { AGENT_NAMES } from '@/lib/ai-suite'
+import { filterDashboardSidebarItems, resolvePhase1DashboardTab } from '@/lib/access-control';
 import { useToast } from '@/hooks/use-toast';
 import {
   formatAttendanceSummary,
@@ -562,7 +571,7 @@ function InlineSkillServiceFulfillment({
       await openRazorpayCheckout({
         keyId: payload.keyId,
         orderId: payload.orderId,
-        amountInr: Number(payload.amount),
+        amountInr: Number(payload.totalCharge || payload.amount),
         currency: payload.currency || 'INR',
         description: 'Daily rental settlement',
         themeColor: '#059669',
@@ -702,7 +711,7 @@ function CompanyDashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [mounted, setMounted] = useState(false);
-  const requestedTab = searchParams.get('tab') || 'profile';
+  const requestedTab = resolvePhase1DashboardTab(searchParams.get('tab') || 'profile');
   const activeTab = (() => {
     if (requestedTab === 'service-requests') return 'csr-projects';
     if (requestedTab === 'services-hired') return 'capability-offers';
@@ -739,6 +748,11 @@ function CompanyDashboardContent() {
   const [companyCAForm, setCompanyCAForm] = useState({ name: '', email: '', password: '', ca_id: '', auto_generate_ca_id: true });
   const [companyCAFeedback, setCompanyCAFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [lastCreatedCompanyCA, setLastCreatedCompanyCA] = useState<{ email: string; password: string; ca_id: string } | null>(null);
+  const [caResetDialogOpen, setCaResetDialogOpen] = useState(false);
+  const [caResetTarget, setCaResetTarget] = useState<any | null>(null);
+  const [caResetPassword, setCaResetPassword] = useState('');
+  const [caResetConfirmPassword, setCaResetConfirmPassword] = useState('');
+  const [resettingCaPassword, setResettingCaPassword] = useState(false);
   const [availableCompanyCaIds, setAvailableCompanyCaIds] = useState<any[]>([]);
   const highlightedRequestId = Number(searchParams.get('requestId') || '');
 
@@ -1010,14 +1024,6 @@ function CompanyDashboardContent() {
       });
 
       const payload = await response.json();
-      console.debug('fetchOfferRequests payload:', payload);
-      if (!payload?.success) {
-        console.debug('fetchOfferRequests returned no success flag', payload);
-      }
-      if (payload?.success && Array.isArray(payload.data) && payload.data.length === 0) {
-        console.debug('fetchOfferRequests: owner has 0 requests (payload.data empty)');
-      }
-
       setOfferRequests(payload.success ? (payload.data || []) : []);
     } catch {
       setOfferRequests([]);
@@ -1284,6 +1290,73 @@ function CompanyDashboardContent() {
     }
   };
 
+  const openCaResetPasswordDialog = (account: any) => {
+    setCaResetTarget(account);
+    setCaResetPassword('');
+    setCaResetConfirmPassword('');
+    setCaResetDialogOpen(true);
+  };
+
+  const closeCaResetPasswordDialog = () => {
+    setCaResetDialogOpen(false);
+    setCaResetTarget(null);
+    setCaResetPassword('');
+    setCaResetConfirmPassword('');
+  };
+
+  const handleResetCaPassword = async () => {
+    if (!caResetTarget?.id) return;
+
+    if (caResetPassword.length < 8) {
+      setCompanyCAFeedback({ type: 'error', message: 'Password must be at least 8 characters.' });
+      return;
+    }
+
+    if (caResetPassword !== caResetConfirmPassword) {
+      setCompanyCAFeedback({ type: 'error', message: 'Passwords do not match.' });
+      return;
+    }
+
+    try {
+      setResettingCaPassword(true);
+      setCompanyCAFeedback(null);
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setCompanyCAFeedback({ type: 'error', message: 'Please login again to continue.' });
+        return;
+      }
+
+      const response = await fetch(`/api/evidence-verification/accounts/${encodeURIComponent(String(caResetTarget.id))}`, {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'reset_password',
+          password: caResetPassword,
+        }),
+      });
+
+      const payload = await response.json();
+      if (!response.ok || !payload?.success) {
+        setCompanyCAFeedback({ type: 'error', message: payload?.error || 'Failed to reset CA password.' });
+        return;
+      }
+
+      setCompanyCAFeedback({
+        type: 'success',
+        message: `Password reset for ${caResetTarget.users?.name || caResetTarget.users?.email || 'CA'}. They must change it on next login.`,
+      });
+      closeCaResetPasswordDialog();
+      await fetchCompanyCAAccounts();
+    } catch {
+      setCompanyCAFeedback({ type: 'error', message: 'Failed to reset CA password.' });
+    } finally {
+      setResettingCaPassword(false);
+    }
+  };
+
   const updateCompanyCAStatus = async (identityId: string, status: 'active' | 'inactive') => {
     setCompanyCAFeedback(null);
 
@@ -1378,13 +1451,14 @@ function CompanyDashboardContent() {
 
   const activeCompanyCAAccounts = companyCAAccounts.filter((account: any) => account.status === 'active');
   const inactiveCompanyCAAccounts = companyCAAccounts.filter((account: any) => account.status !== 'active');
-  const sidebarItems = [
+  const sidebarItems = filterDashboardSidebarItems([
     { value: 'profile', label: 'Profile' },
     { value: 'capability-offers', label: 'Capability Offers' },
     { value: 'csr-projects', label: 'CSR Projects' },
-    { value: 'company-ca', label: 'CA Credentials' },
+    { value: 'company-ca', label: 'CA' },
     { value: 'impact-reports', label: 'Impact Reports' },
-  ];
+    { value: 'payments', label: 'Payments' },
+  ]);
 
   const navigateToTab = (value: string) => {
     if (value === 'capability-offers') {
@@ -2009,9 +2083,9 @@ function CompanyDashboardContent() {
 
                   <TabsContent value="company-ca" className="mt-4 space-y-4">
                     <div className="space-y-4 pt-1">
-                      <h3 className="font-semibold text-slate-900">Generate CA Credentials</h3>
+                      <h3 className="font-semibold text-slate-900">CA credentials</h3>
                       <p className="mt-1 text-sm text-slate-600">
-                        Create a scoped Company CA login for your internal compliance reviewer.
+                        Create a CA login for evidence verification on your CSR projects. Verification CAs use a separate portal at /ca/login.
                       </p>
 
                       <form className="mt-4 space-y-4" onSubmit={createCompanyCAAccount}>
@@ -2108,11 +2182,11 @@ function CompanyDashboardContent() {
 
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                           <Button type="submit" disabled={creatingCompanyCA} className="w-full sm:w-auto">
-                            {creatingCompanyCA ? 'Creating...' : 'Create CA Credentials'}
+                            {creatingCompanyCA ? 'Creating...' : 'Create CA account'}
                           </Button>
                           <Link href="/evidence-verification/login" className="w-full sm:w-auto">
                             <Button type="button" variant="outline" className="h-auto w-full whitespace-normal text-center sm:w-auto">
-                              Open Evidence Verification Portal
+                              Open CA portal
                             </Button>
                           </Link>
                         </div>
@@ -2130,14 +2204,14 @@ function CompanyDashboardContent() {
                           <p>CA ID: {lastCreatedCompanyCA.ca_id}</p>
                           <p>Email: {lastCreatedCompanyCA.email}</p>
                           <p>Password: {lastCreatedCompanyCA.password}</p>
-                          <p className="mt-1">Panel URL: /evidence-verification/login</p>
+                          <p className="mt-1">CA portal: /evidence-verification/login</p>
                         </div>
                       )}
                     </div>
 
                     <div className="space-y-3 pt-2">
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <h4 className="font-semibold text-slate-900">Existing Active CA Accounts</h4>
+                        <h4 className="font-semibold text-slate-900">Active CA accounts</h4>
                         <Button variant="outline" size="sm" onClick={fetchCompanyCAAccounts} className="w-full sm:w-auto">Refresh</Button>
                       </div>
                       {loadingCompanyCAAccounts ? (
@@ -2149,12 +2223,25 @@ function CompanyDashboardContent() {
                           {activeCompanyCAAccounts.map((account: any) => (
                             <div key={account.id} className="rounded-md border bg-slate-50 p-3 text-sm">
                               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                                <p className="font-medium text-slate-900">{account.users?.name || 'Company CA'}</p>
+                                <p className="font-medium text-slate-900">{account.users?.name || 'CA'}</p>
                                 <Badge variant="outline">{account.status}</Badge>
                               </div>
                               <p className="text-slate-600">{account.users?.email || 'No email'}</p>
                               {account.ca_id && <p className="mt-1 font-mono text-xs text-slate-500">CA ID: {account.ca_id}</p>}
+                              <p className={`mt-1 text-xs font-medium ${account.must_change_password ? 'text-amber-600' : 'text-emerald-600'}`}>
+                                {account.must_change_password ? 'Password reset required on next login' : 'Password set'}
+                              </p>
                               <div className="mt-2 flex items-center gap-2">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-8 w-8 p-0 text-slate-500 hover:bg-blue-50 hover:text-blue-600"
+                                  onClick={() => openCaResetPasswordDialog(account)}
+                                  title="Reset password"
+                                >
+                                  <KeyRound className="h-4 w-4" />
+                                </Button>
                                 <Button
                                   type="button"
                                   size="sm"
@@ -2169,7 +2256,7 @@ function CompanyDashboardContent() {
                                   size="sm"
                                   variant="ghost"
                                   className="h-8 w-8 p-0 text-slate-500 hover:bg-red-50 hover:text-red-600"
-                                  onClick={() => deleteCompanyCAAccount(String(account.id ?? ''), account.users?.name || 'Company CA')}
+                                  onClick={() => deleteCompanyCAAccount(String(account.id ?? ''), account.users?.name || 'CA')}
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
@@ -2181,17 +2268,27 @@ function CompanyDashboardContent() {
 
                       {!loadingCompanyCAAccounts && inactiveCompanyCAAccounts.length > 0 && (
                         <div className="mt-5 border-t pt-4">
-                          <h5 className="font-medium text-slate-900">Inactive CA Accounts</h5>
+                          <h5 className="font-medium text-slate-900">Inactive CA accounts</h5>
                           <div className="mt-3 space-y-2">
                             {inactiveCompanyCAAccounts.map((account: any) => (
                               <div key={account.id} className="rounded-md border bg-slate-50 p-3 text-sm">
                                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                                  <p className="font-medium text-slate-900">{account.users?.name || 'Company CA'}</p>
+                                  <p className="font-medium text-slate-900">{account.users?.name || 'CA'}</p>
                                   <Badge variant="outline">{account.status}</Badge>
                                 </div>
                                 <p className="text-slate-600">{account.users?.email || 'No email'}</p>
                                 {account.ca_id && <p className="mt-1 font-mono text-xs text-slate-500">CA ID: {account.ca_id}</p>}
                                 <div className="mt-2 flex items-center gap-2">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-8 w-8 p-0 text-slate-500 hover:bg-blue-50 hover:text-blue-600"
+                                    onClick={() => openCaResetPasswordDialog(account)}
+                                    title="Reset password"
+                                  >
+                                    <KeyRound className="h-4 w-4" />
+                                  </Button>
                                   <Button
                                     type="button"
                                     size="sm"
@@ -2206,7 +2303,7 @@ function CompanyDashboardContent() {
                                     size="sm"
                                     variant="ghost"
                                     className="h-8 w-8 p-0 text-slate-500 hover:bg-red-50 hover:text-red-600"
-                                    onClick={() => deleteCompanyCAAccount(String(account.id ?? ''), account.users?.name || 'Company CA')}
+                                    onClick={() => deleteCompanyCAAccount(String(account.id ?? ''), account.users?.name || 'CA')}
                                   >
                                     <Trash2 className="h-4 w-4" />
                                   </Button>
@@ -2219,8 +2316,62 @@ function CompanyDashboardContent() {
                     </div>
                   </TabsContent>
 
+                  <Dialog open={caResetDialogOpen} onOpenChange={(open) => (open ? setCaResetDialogOpen(true) : closeCaResetPasswordDialog())}>
+                    <DialogContent className="sm:max-w-md">
+                      <DialogHeader>
+                        <DialogTitle>Reset CA password</DialogTitle>
+                        <DialogDescription>
+                          Set a temporary password for{' '}
+                          <span className="font-medium text-slate-900">{caResetTarget?.users?.name || 'this CA'}</span>{' '}
+                          ({caResetTarget?.users?.email || 'no email'}). They will be required to change it on next login.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="ca-reset-password">New temporary password</Label>
+                          <Input
+                            id="ca-reset-password"
+                            type="password"
+                            value={caResetPassword}
+                            onChange={(event) => setCaResetPassword(event.target.value)}
+                            placeholder="Minimum 8 characters"
+                            autoComplete="new-password"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="ca-reset-confirm-password">Confirm password</Label>
+                          <Input
+                            id="ca-reset-confirm-password"
+                            type="password"
+                            value={caResetConfirmPassword}
+                            onChange={(event) => setCaResetConfirmPassword(event.target.value)}
+                            placeholder="Re-enter password"
+                            autoComplete="new-password"
+                          />
+                        </div>
+                      </div>
+                      <DialogFooter>
+                        <Button type="button" variant="outline" onClick={closeCaResetPasswordDialog} disabled={resettingCaPassword}>
+                          Cancel
+                        </Button>
+                        <Button type="button" onClick={handleResetCaPassword} disabled={resettingCaPassword}>
+                          {resettingCaPassword ? 'Resetting...' : 'Reset password'}
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+
                   <TabsContent value="impact-reports" className="mt-4">
                     <ImpactReportsPanel />
+                  </TabsContent>
+
+                  <TabsContent value="payments" className="mt-4">
+                    <PaymentHistoryPanel
+                      role="sent"
+                      title="Payment history"
+                      description="All Razorpay payments made from your company account on Navadrishti — financial needs, capability offers, NGO Network support, evidence verification, and engagement settlements."
+                      emptyMessage="No Razorpay payments recorded yet for your company account."
+                    />
                   </TabsContent>
                     </Tabs>
                   </CardContent>

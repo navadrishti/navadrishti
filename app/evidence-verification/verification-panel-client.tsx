@@ -18,6 +18,7 @@ import {
   EvidenceStatCard,
 } from '@/components/evidence-verification/portal-ui';
 import { openRazorpayCheckout } from '@/lib/razorpay-checkout';
+import { getTotalChargeLabel } from '@/components/profile-dashboard-tab';
 
 export default function VerificationPanelClient() {
   const router = useRouter();
@@ -153,20 +154,26 @@ export default function VerificationPanelClient() {
 
     return timeline
       .map((entry: any) => {
-        const pendingPayment = Array.isArray(entry.payments)
-          ? entry.payments.find((payment: any) => payment.payment_status === 'pending')
-          : null;
+        const milestone = entry?.milestone;
+        if (!milestone || String(milestone.status || '').toLowerCase() !== 'approved') {
+          return null;
+        }
 
-        if (!pendingPayment) return null;
+        const hasConfirmedPayment = Array.isArray(entry.payments)
+          ? entry.payments.some((payment: any) => payment.payment_status === 'confirmed')
+          : false;
+
+        if (hasConfirmedPayment) {
+          return null;
+        }
 
         return {
           projectId,
           projectTitle: project?.title || timelineData?.project?.title || 'Project',
-          ngoName: project?.ngo?.name || project?.ngo_user_id || 'NGO',
-          milestoneId: entry.milestone.id,
-          milestoneTitle: entry.milestone.title,
-          paymentReference: pendingPayment.payment_reference,
-          amount: pendingPayment.amount,
+          ngoName: project?.ngo?.name || project?.ngo_user_id || 'Lead NGO',
+          milestoneId: milestone.id,
+          milestoneTitle: milestone.title,
+          amount: milestone.amount,
         };
       })
       .filter(Boolean);
@@ -207,7 +214,7 @@ export default function VerificationPanelClient() {
       await openRazorpayCheckout({
         keyId: order.keyId,
         orderId: order.orderId,
-        amountInr: Number(order.amount),
+        amountInr: Number(order.totalCharge || order.amount),
         currency: order.currency || 'INR',
         description: `Payment for Request ${order.serviceRequestId || ''}`,
         themeColor: '#F47B20',
@@ -239,33 +246,54 @@ export default function VerificationPanelClient() {
     }
   };
 
-  const handlePaymentConfirm = async (item: any) => {
+  const handleMilestonePayment = async (item: any) => {
     setActionLoadingKey(`payment-${item.milestoneId}`);
     setPanelMessage('');
 
     try {
-      const response = await fetch(`/api/milestones/${item.milestoneId}/payment`, {
+      const orderRes = await fetch(`/api/milestones/${item.milestoneId}/payments/create-order`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          payment_reference: item.paymentReference,
-          amount: item.amount,
-          payment_status: 'confirmed',
-        }),
       });
 
-      const payload = await response.json();
-      if (!response.ok || !payload?.success) {
-        setPanelMessage(payload?.error || 'Failed to confirm payment.');
+      const orderPayload = await orderRes.json();
+      if (!orderRes.ok || !orderPayload?.success) {
+        setPanelMessage(orderPayload?.error || 'Failed to create milestone payment order');
         return;
       }
 
-      setPanelMessage('Payment confirmed successfully.');
-      await fetchProjectTimeline(item.projectId);
-      await loadPanel();
-    } catch {
-      setPanelMessage('Failed to confirm payment.');
+      const order = orderPayload.data;
+      await openRazorpayCheckout({
+        keyId: order.keyId,
+        orderId: order.orderId,
+        amountInr: Number(order.totalCharge || order.amount),
+        currency: order.currency || 'INR',
+        description: `Milestone payment: ${item.milestoneTitle}`,
+        themeColor: '#F47B20',
+        onSuccess: async (response) => {
+          const verifyRes = await fetch(`/api/milestones/${item.milestoneId}/payments/verify`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(response),
+          });
+          const verifyPayload = await verifyRes.json();
+          if (!verifyRes.ok || !verifyPayload?.success) {
+            setPanelMessage(verifyPayload?.error || 'Milestone payment verification failed');
+            return;
+          }
+
+          setPanelMessage(verifyPayload?.data?.message || 'Milestone payment successful');
+          await fetchProjectTimeline(item.projectId);
+          await loadPanel();
+        },
+        onFailure: (error) => {
+          setPanelMessage(error.description || error.reason || 'Milestone payment failed');
+        },
+      });
+    } catch (error: any) {
+      setPanelMessage(error?.message || 'Milestone payment failed');
     } finally {
       setActionLoadingKey(null);
     }
@@ -325,11 +353,11 @@ export default function VerificationPanelClient() {
         <div className="grid gap-4 md:grid-cols-2">
         <EvidenceSectionCard
           className="h-full"
-          title="Pending Payment Confirmation Queue"
-          description="Confirm transfer/receiving records after evidence approval."
+          title="Approved Milestone Payments"
+          description="Pay the lead NGO via Razorpay after milestone evidence is approved."
         >
           {pendingPaymentItems.length === 0 ? (
-            <p className="text-sm text-slate-600">No pending payment confirmations.</p>
+            <p className="text-sm text-slate-600">No approved milestones awaiting payment.</p>
           ) : (
             <div className="space-y-3">
               {pendingPaymentItems.map((item: any) => (
@@ -337,20 +365,22 @@ export default function VerificationPanelClient() {
                   key={`${item.projectId}-${item.milestoneId}-payment`}
                   title={item.projectTitle}
                   subtitle={item.ngoName}
-                  badge={<Badge variant="outline">Payment Pending</Badge>}
+                  badge={<Badge variant="outline">Approved</Badge>}
                   meta={
                     <EvidenceMetaGrid>
                       <p>Milestone: {item.milestoneTitle}</p>
-                      <p>Reference: {item.paymentReference}</p>
-                      <p>Amount: Rs {item.amount || 0}</p>
+                      <p>Lead NGO receives: Rs {Number(item.amount || 0).toLocaleString('en-IN')}</p>
+                      <p>Total due: {getTotalChargeLabel(Number(item.amount || 0))}</p>
                     </EvidenceMetaGrid>
                   }
                   footer={
                     <Button
-                      onClick={() => handlePaymentConfirm(item)}
+                      onClick={() => handleMilestonePayment(item)}
                       disabled={actionLoadingKey === `payment-${item.milestoneId}`}
                     >
-                      {actionLoadingKey === `payment-${item.milestoneId}` ? 'Confirming...' : 'Confirm Payment'}
+                      {actionLoadingKey === `payment-${item.milestoneId}`
+                        ? 'Opening Razorpay...'
+                        : `Pay ${getTotalChargeLabel(Number(item.amount || 0))}`}
                     </Button>
                   }
                 />

@@ -438,7 +438,7 @@ export default function CACaseDetailPage() {
           <Card className="bg-white border-blue-200">
             <CardHeader>
               <CardTitle className="text-blue-900">Documents ({caseData.documents.length})</CardTitle>
-              <CardDescription className="text-blue-600">Click to view and review OCR results</CardDescription>
+              <CardDescription className="text-blue-600">Click to view and review document fields</CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
               {caseData.documents.map((doc) => {
@@ -514,7 +514,7 @@ export default function CACaseDetailPage() {
               {currentOcr && (
                 <Card className="bg-white border-blue-200">
                   <CardHeader>
-                    <CardTitle className="text-blue-900">OCR Extraction Results</CardTitle>
+                    <CardTitle className="text-blue-900">Document fields</CardTitle>
                     <CardDescription className="text-blue-600">
                       Confidence: {(currentOcr.confidence_score * 100).toFixed(1)}%
                     </CardDescription>
@@ -575,7 +575,7 @@ export default function CACaseDetailPage() {
 
                     {/* Extracted Data */}
                     <div className="space-y-2">
-                      <Label>Extracted Data</Label>
+                      <Label>Document fields</Label>
                       <div className="bg-blue-50 rounded-lg p-4 space-y-2">
                         {Object.entries(currentOcr.structured_data).map(([key, value]) => (
                           <div key={key} className="grid grid-cols-2 gap-4">
@@ -590,7 +590,7 @@ export default function CACaseDetailPage() {
 
                     {/* Extracted Text */}
                     <div className="space-y-2">
-                      <Label>Full Extracted Text</Label>
+                      <Label>Full document text</Label>
                       <Textarea 
                         value={currentOcr.extracted_text} 
                         readOnly 

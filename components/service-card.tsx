@@ -10,7 +10,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { 
   Star, MapPin, Calendar, Target, Clock, IndianRupee, 
   HeartHandshake, UserRound, Building, Users, Shield, 
-  Edit, Eye, MoreVertical, Trash2, ArrowRight, User, Briefcase 
+  Edit, Eye, MoreVertical, Trash2, ArrowRight, User, Briefcase,
+  Truck, CheckCircle2, Loader2,
 } from "lucide-react"
 import { VerificationBadge } from "./verification-badge"
 import { formatPrice, getRequestUrgencyLevel } from "@/lib/utils"
@@ -24,11 +25,22 @@ import {
   formatUsageStatusLabel,
   formatOfferInrAmount,
   formatNeedLabel,
+  dedupeSelectedNeedSummaries,
+  formatCapabilityRentalRateLabel,
+  isCapabilityRentalTransaction,
   type CapabilityOfferSummary,
   type CapabilityOfferUsageRecord,
   type CapabilityOfferPastReason,
 } from "@/lib/service-offers"
 import { useAuth } from "@/lib/auth-context"
+import { useToast } from "@/hooks/use-toast"
+import {
+  formatDeliveryTrackingStatus,
+  getDeliveryTrackingEvents,
+  isDeliveredTrackingStatus,
+  isPickedUpTrackingStatus,
+} from "@/lib/service-request-allocation"
+import { csrDeliveryLegToTrackingMeta, type CsrCapabilityDeliveryLeg } from "@/lib/service-engagement"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import Link from "next/link"
 
@@ -438,11 +450,9 @@ export function ServiceCard({
     || priceDescriptionLower.includes('free');
   const pricingModeLabel = isVolunteerPricing
     ? 'volunteer'
-    : normalizedTransactionType === 'rent'
+    : isCapabilityRentalTransaction(normalizedTransactionType)
       ? 'per day'
-      : normalizedTransactionType === 'sell'
-        ? 'fixed total'
-        : normalizedPriceType === 'hourly'
+      : normalizedPriceType === 'hourly'
           ? 'per hour'
           : normalizedPriceType === 'project based'
             ? 'project based'
@@ -459,14 +469,10 @@ export function ServiceCard({
     Boolean(wage_info?.negotiable) ||
     Boolean(price_description)
   );
-  const hasDuplicateRentDescription = normalizedTransactionType === 'rent' && (
+  const hasDuplicateRentDescription = isCapabilityRentalTransaction(normalizedTransactionType) && (
     priceDescriptionLower.includes('rent') ||
     priceDescriptionLower.includes('per day') ||
     priceDescriptionLower.includes('/day')
-  );
-  const hasDuplicateSellDescription = normalizedTransactionType === 'sell' && (
-    priceDescriptionLower.includes('sell') ||
-    priceDescriptionLower.includes('fixed total')
   );
   const hasDuplicateVolunteerDescription = isVolunteerPricing && (
     priceDescriptionLower.includes('volunteer') ||
@@ -487,7 +493,6 @@ export function ServiceCard({
   ].includes(priceDescriptionLower);
   const shouldShowPriceDescription = Boolean(normalizedPriceDescription)
     && !hasDuplicateRentDescription
-    && !hasDuplicateSellDescription
     && !hasDuplicateVolunteerDescription
     && !isDuplicateOfferDescriptorPriceDescription
     && !isGenericFallbackPriceDescription;
@@ -1156,9 +1161,15 @@ function formatDashboardLocation(offer: CapabilityOfferSummary) {
 }
 
 function formatDashboardPrice(offer: CapabilityOfferSummary) {
-  const transactionType = String(offer.transaction_type || '').toLowerCase()
-  const requiresPricing = transactionType === 'rent' || transactionType === 'sell'
-  if (!requiresPricing || offer.price_type === 'free') return 'Free'
+  if (isCapabilityRentalTransaction(offer.transaction_type)) {
+    return formatCapabilityRentalRateLabel({
+      unit_rate: offer.unit_rate,
+      price_amount: offer.price_amount,
+      offer_details: offer.offer_details,
+      transaction_type: offer.transaction_type,
+    })
+  }
+  if (offer.price_type === 'free') return 'Free'
   if (offer.price_amount && Number(offer.price_amount) > 0) {
     return `INR ${Number(offer.price_amount).toLocaleString('en-IN')}`
   }
@@ -1183,7 +1194,7 @@ function DashboardDetailItem({ label, value }: { label: string; value: string })
 }
 
 function UsageRecordSection({ usage }: { usage: CapabilityOfferUsageRecord }) {
-  const needs = Array.isArray(usage.selected_needs) ? usage.selected_needs : []
+  const needs = dedupeSelectedNeedSummaries(Array.isArray(usage.selected_needs) ? usage.selected_needs : [], 3)
   const trackHref = usage.assignment_id
     ? `/service-request-assignments/${usage.assignment_id}`
     : usage.linked_service_request_id
@@ -1242,8 +1253,10 @@ function UsageRecordSection({ usage }: { usage: CapabilityOfferUsageRecord }) {
         <div className="space-y-2">
           <p className="text-xs text-gray-500">Linked needs</p>
           <div className="flex flex-wrap gap-2">
-            {needs.map((need) => (
-              <Link key={need.id} href={`/service-requests/${need.id}`}>
+            {needs.map((need) => {
+              const href = `/service-requests/${need.service_request_id ?? need.id}`
+              return (
+              <Link key={need.id} href={href}>
                 <Badge
                   variant="secondary"
                   className="border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
@@ -1251,7 +1264,8 @@ function UsageRecordSection({ usage }: { usage: CapabilityOfferUsageRecord }) {
                   {formatNeedLabel(need)}
                 </Badge>
               </Link>
-            ))}
+              )
+            })}
           </div>
         </div>
       ) : usage.linked_service_request_id ? (
@@ -1493,5 +1507,182 @@ export function YourCapabilitiesPanel({
         )}
       </TabsContent>
     </Tabs>
+  )
+}
+
+export function InlineCsrCapabilityDelhivery({
+  campaignId,
+  offerId,
+  leg,
+  delivery,
+  canRetry = false,
+  onUpdated,
+}: {
+  campaignId: string
+  offerId: number
+  leg: 'outbound' | 'return'
+  delivery?: CsrCapabilityDeliveryLeg | null
+  canRetry?: boolean
+  onUpdated?: (nextLeg: CsrCapabilityDeliveryLeg | null | undefined) => void | Promise<void>
+}) {
+  const { toast } = useToast()
+  const [busy, setBusy] = useState(false)
+  const meta = useMemo(() => csrDeliveryLegToTrackingMeta(delivery), [delivery])
+  const events = useMemo(() => getDeliveryTrackingEvents(meta), [meta])
+  const statusLabel = formatDeliveryTrackingStatus(meta)
+  const hasAwb = Boolean(String(delivery?.tracking_id || '').trim())
+  const bookingError = String(delivery?.booking_error || '').trim()
+  const pickedUp = isPickedUpTrackingStatus(meta.delivery_tracking_last_status as string | undefined)
+  const delivered = isDeliveredTrackingStatus(meta.delivery_tracking_last_status as string | undefined)
+  const bookingPending = !hasAwb && !bookingError && !delivered
+
+  const handleSync = async (showToast = true) => {
+    if (!hasAwb) return
+    setBusy(true)
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) throw new Error('Please sign in again')
+
+      const response = await fetch('/api/campaigns/lead-assignments', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'capability_rental_sync_delivery',
+          campaign_id: campaignId,
+          offer_id: offerId,
+          leg,
+        }),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.error || 'Could not refresh Delhivery status')
+      }
+
+      const nextLeg =
+        leg === 'outbound'
+          ? data?.data?.rental?.outbound_delivery
+          : data?.data?.rental?.return_delivery
+
+      if (showToast) {
+        toast({
+          title: 'Delivery status updated',
+          description: nextLeg?.last_status || statusLabel,
+        })
+      }
+
+      await onUpdated?.(nextLeg)
+    } catch (error) {
+      if (showToast) {
+        toast({
+          title: 'Status refresh failed',
+          description: error instanceof Error ? error.message : 'Could not refresh Delhivery status',
+          variant: 'destructive',
+        })
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleRetry = async () => {
+    setBusy(true)
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) throw new Error('Please sign in again')
+
+      const response = await fetch('/api/campaigns/lead-assignments', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'capability_rental_retry_booking',
+          campaign_id: campaignId,
+          offer_id: offerId,
+          leg,
+        }),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.error || 'Could not retry Delhivery booking')
+      }
+
+      const nextLeg =
+        leg === 'outbound'
+          ? data?.data?.rental?.outbound_delivery
+          : data?.data?.rental?.return_delivery
+
+      toast({
+        title: hasAwb ? 'Delhivery booking retried' : 'Delhivery shipment scheduled',
+        description: nextLeg?.tracking_id ? `AWB ${nextLeg.tracking_id}` : 'Booking submitted',
+      })
+
+      await onUpdated?.(nextLeg)
+    } catch (error) {
+      toast({
+        title: 'Booking retry failed',
+        description: error instanceof Error ? error.message : 'Could not retry Delhivery booking',
+        variant: 'destructive',
+      })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const title = leg === 'outbound' ? 'Outbound delivery to project' : 'Return delivery to owner'
+
+  return (
+    <div className="rounded-md border border-slate-200 bg-slate-50/80 p-3 space-y-2">
+      <div className="flex items-start gap-2">
+        <Truck className="mt-0.5 h-4 w-4 text-indigo-700 shrink-0" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-slate-900">{title}</p>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            {delivered ? (
+              <span className="inline-flex items-center gap-1 text-green-700">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                Delivered
+              </span>
+            ) : pickedUp ? (
+              <span className="text-indigo-700">In transit · {statusLabel}</span>
+            ) : hasAwb ? (
+              <span className="text-indigo-700">AWB {delivery?.tracking_id} · {statusLabel}</span>
+            ) : bookingPending ? (
+              <span className="inline-flex items-center gap-1 text-indigo-700">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Scheduling Delhivery pickup…
+              </span>
+            ) : (
+              <span className="text-red-700">{bookingError || 'Delhivery booking pending'}</span>
+            )}
+          </div>
+        </div>
+        {hasAwb && !delivered ? (
+          <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs" disabled={busy} onClick={() => void handleSync()}>
+            Refresh
+          </Button>
+        ) : null}
+      </div>
+
+      {bookingError && canRetry ? (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between rounded border border-red-200 bg-red-50/70 px-2 py-2">
+          <p className="text-xs text-red-800">{bookingError}</p>
+          <Button type="button" size="sm" variant="outline" className="h-7" disabled={busy} onClick={() => void handleRetry()}>
+            {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Retry booking'}
+          </Button>
+        </div>
+      ) : null}
+
+      {events.length > 0 ? (
+        <p className="text-[11px] text-muted-foreground truncate">
+          Latest: {events[0]?.status}
+          {events[0]?.location ? ` · ${events[0].location}` : ''}
+        </p>
+      ) : null}
+    </div>
   )
 }

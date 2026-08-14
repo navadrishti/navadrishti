@@ -1,4 +1,5 @@
 import { CSR_SCHEDULE_VII_CATEGORIES } from '@/lib/categories'
+import { formatPastProjectsForSearch, ngoIsCsrEligible } from '@/lib/auth'
 
 export type CampaignMatchInput = {
   campaignName?: string
@@ -94,10 +95,14 @@ export function scoreNgosForCampaign(ngos: any[], input: CampaignMatchInput, lim
   const stateLower = String(input.state || '').toLowerCase()
   const requiredVolunteers = Number(input.volunteers_needed || 0)
 
-  const scored = (ngos || []).map((ngo: any) => {
+  const scored = (ngos || [])
+    .filter((ngo: any) => ngoIsCsrEligible(ngo.verification_status, ngo.profile_data))
+    .map((ngo: any) => {
     const profile = ngo.profile_data && typeof ngo.profile_data === 'object' ? ngo.profile_data : {}
     const focus = String(profile.focus_areas || profile.cause_areas || profile.sectors || '')
-    const past = String(profile.past_projects || profile.experience || profile.description || '')
+    const past =
+      formatPastProjectsForSearch(profile.past_projects) ||
+      String(profile.experience || profile.description || '')
     const profileText = `${focus} ${past} ${String(ngo.name || '')}`.toLowerCase()
 
     let score = 15

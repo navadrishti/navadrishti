@@ -66,8 +66,6 @@ export async function POST(req: NextRequest) {
     // Clean up the used token
     resetTokens.delete(token);
     
-    console.log(`✅ Password reset successful for user: ${email}`);
-    
     return NextResponse.json({
       message: 'Password has been successfully reset',
       success: true
