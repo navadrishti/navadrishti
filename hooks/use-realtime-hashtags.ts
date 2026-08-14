@@ -170,7 +170,6 @@ export function useTrendingHashtags(limit: number = 5): UseTrendingHashtagsRetur
       }
     } catch (err) {
       // Silent failure for background refresh
-      console.log('Silent refresh failed, will retry in 5 minutes');
     }
   }, [limit]);
 

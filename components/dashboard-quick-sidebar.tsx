@@ -57,7 +57,7 @@ export function DashboardQuickSidebar({
       'w-full justify-start',
       'border text-left shadow-none truncate',
       isActive
-        ? '!border-blue-600 !bg-blue-600 !text-white hover:!bg-blue-600 hover:!text-white'
+        ? '!border-udaan-blue !bg-udaan-blue !text-white hover:!bg-udaan-blue hover:!text-white'
         : 'border-slate-200 bg-white text-slate-900 hover:bg-slate-50 hover:text-slate-900',
     ].join(' ')
 

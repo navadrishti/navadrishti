@@ -378,7 +378,6 @@ export function PostsFeed({ userId, limit = 10, refreshTrigger, showAllPosts = f
                 }
               }
             } catch (error) {
-              console.log('Share tracking error:', error);
               if (!user || !token) {
                 localStorage.removeItem(`shared_post_${postId}`);
               }
@@ -1075,9 +1074,9 @@ function PostCard({
                 {getInitials(post.user.name || post.user.email || 'U')}
               </AvatarFallback>
             </Avatar>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-semibold text-sm hover:text-blue-600 transition-colors">{post.user.name}</h3>
+            <div className="min-w-0">
+              <div className="flex min-w-0 items-center gap-2">
+                <h3 className="truncate text-sm font-semibold transition-colors hover:text-blue-600">{post.user.name}</h3>
                 {post.user.verification_status === 'verified' && (
                   <VerificationBadge status="verified" size="sm" showText={false} />
                 )}

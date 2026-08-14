@@ -268,9 +268,6 @@ export default function ServiceOffersPage() {
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center">
-              <div className="mb-4 rounded-full bg-muted p-3">
-                <Search size={24} className="text-muted-foreground" />
-              </div>
               <h3 className="mb-1 text-lg font-semibold">No capabilities found</h3>
               <p className="mb-4 text-muted-foreground">
                 No capability offers match your current search or filters.

@@ -144,7 +144,7 @@ export default function CreateServiceOfferPage() {
     OFFER_TYPE_TRANSACTION_MATRIX[formData.offer_type].includes(option.value)
   )
 
-  const requiresPricing = formData.transaction_type === 'rent' || formData.transaction_type === 'sell'
+  const requiresPricing = formData.transaction_type === 'rent'
 
   const setField = <K extends keyof FormData>(name: K, value: FormData[K]) => {
     setFormData((prev) => ({ ...prev, [name]: value }))
@@ -235,8 +235,9 @@ export default function CreateServiceOfferPage() {
     setFormData((prev) => ({
       ...prev,
       transaction_type: transactionType,
-      price_type: transactionType === 'rent' || transactionType === 'sell' ? 'fixed' : 'free',
-      price_amount: transactionType === 'rent' || transactionType === 'sell' ? prev.price_amount : ''
+      price_type: transactionType === 'rent' ? 'fixed' : 'free',
+      price_amount: transactionType === 'rent' ? prev.price_amount : '',
+      unit_rate: transactionType === 'rent' ? prev.unit_rate : '',
     }))
   }
 
@@ -274,7 +275,7 @@ export default function CreateServiceOfferPage() {
         quantity: toNullablePositiveNumber(formData.material_quantity),
         unit: formData.material_unit.trim() || null,
         available_from: formData.material_available_from || null,
-        available_to: formData.transaction_type === 'sell' ? null : (formData.material_available_to || null)
+        available_to: formData.material_available_to || null
       }
     }
 
@@ -284,7 +285,7 @@ export default function CreateServiceOfferPage() {
       capacity: toNullablePositiveNumber(formData.infra_capacity),
       facilities: parseCsvToStringArray(formData.facilities),
       available_from: formData.infra_available_from || null,
-      available_to: formData.transaction_type === 'sell' ? null : (formData.infra_available_to || null)
+      available_to: formData.infra_available_to || null
     }
   }
 
@@ -308,19 +309,16 @@ export default function CreateServiceOfferPage() {
 
     if (requiresPricing) {
       if (!['fixed', 'negotiable'].includes(formData.price_type)) {
-        return 'For rent/sell offers, choose fixed or negotiable pricing.'
+        return 'For rental offers, choose fixed or negotiable pricing.'
       }
 
-      if (toNullablePositiveNumber(formData.price_amount) === null) {
-        return 'Please enter a valid price amount for rent/sell offers.'
+      const dailyRate = toNullablePositiveNumber(formData.unit_rate) ?? toNullablePositiveNumber(formData.price_amount)
+      if (dailyRate === null) {
+        return 'Please enter a valid daily rental rate.'
       }
 
-      if (formData.transaction_type === 'rent' && toNullablePositiveNumber(formData.unit_rate) === null) {
-        return 'Please enter a valid unit rate for rent offers (e.g., 10 per day).'
-      }
-
-      if (formData.transaction_type === 'rent' && !formData.billing_cycle) {
-        return 'Please select a billing cycle for rent offers.'
+      if (!formData.billing_cycle) {
+        return 'Please select a billing cycle for rental offers.'
       }
 
     }
@@ -344,7 +342,10 @@ export default function CreateServiceOfferPage() {
 
     const forcedFreePricing = formData.offer_type === 'financial' || formData.transaction_type === 'volunteer' || formData.transaction_type === 'donate'
     const priceType = forcedFreePricing ? 'free' : formData.price_type
-    const priceAmount = forcedFreePricing ? 0 : Number(formData.price_amount)
+    const dailyRate = requiresPricing
+      ? (toNullablePositiveNumber(formData.unit_rate) ?? toNullablePositiveNumber(formData.price_amount) ?? 0)
+      : 0
+    const priceAmount = forcedFreePricing ? 0 : dailyRate
 
     const payload = {
       title: formData.title.trim(),
@@ -362,8 +363,9 @@ export default function CreateServiceOfferPage() {
       valid_until: formData.valid_until || null,
       price_type: priceType,
       price_amount: priceAmount,
-      unit_rate: toNullablePositiveNumber(formData.unit_rate),
-      billing_cycle: formData.billing_cycle || null,
+      unit_rate: requiresPricing ? dailyRate : null,
+      billing_cycle: requiresPricing ? (formData.billing_cycle || 'daily') : null,
+      payment_mode: requiresPricing ? 'daily_due' : null,
       rate_currency: formData.rate_currency || 'INR',
       offer_details: buildOfferDetails()
     }
@@ -426,7 +428,7 @@ export default function CreateServiceOfferPage() {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
-                    <Label htmlFor="unit_rate">Unit Rate (e.g., 10)</Label>
+                    <Label htmlFor="unit_rate">Daily Rental Rate (INR) *</Label>
                     <Input id="unit_rate" name="unit_rate" type="number" min="0" value={formData.unit_rate} onChange={handleTextInput} />
                   </div>
                   <div>
@@ -558,7 +560,7 @@ export default function CreateServiceOfferPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Pricing</CardTitle>
-                <CardDescription>Pricing is only used for rent/sell. Financial/donate/volunteer are free by design.</CardDescription>
+                <CardDescription>Pricing applies to daily rental offers only. Financial, donate, and volunteer capabilities are free.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -571,7 +573,7 @@ export default function CreateServiceOfferPage() {
                     />
                   </div>
                   <div>
-                    <Label htmlFor="price_amount">Price Amount {requiresPricing ? '*' : ''}</Label>
+                    <Label htmlFor="price_amount">Daily Rate (synced) {requiresPricing ? '*' : ''}</Label>
                     <Input
                       id="price_amount"
                       name="price_amount"
@@ -744,12 +746,10 @@ export default function CreateServiceOfferPage() {
                       <Label htmlFor="material_available_from">Available From</Label>
                       <Input id="material_available_from" name="material_available_from" type="date" value={formData.material_available_from} onChange={handleTextInput} />
                     </div>
-                    {formData.transaction_type !== 'sell' && (
-                      <div>
-                        <Label htmlFor="material_available_to">Available To</Label>
-                        <Input id="material_available_to" name="material_available_to" type="date" value={formData.material_available_to} onChange={handleTextInput} />
-                      </div>
-                    )}
+                    <div>
+                      <Label htmlFor="material_available_to">Available To</Label>
+                      <Input id="material_available_to" name="material_available_to" type="date" value={formData.material_available_to} onChange={handleTextInput} />
+                    </div>
                   </div>
                 )}
 
@@ -782,12 +782,10 @@ export default function CreateServiceOfferPage() {
                       <Label htmlFor="infra_available_from">Available From</Label>
                       <Input id="infra_available_from" name="infra_available_from" type="date" value={formData.infra_available_from} onChange={handleTextInput} />
                     </div>
-                    {formData.transaction_type !== 'sell' && (
-                      <div>
-                        <Label htmlFor="infra_available_to">Available To</Label>
-                        <Input id="infra_available_to" name="infra_available_to" type="date" value={formData.infra_available_to} onChange={handleTextInput} />
-                      </div>
-                    )}
+                    <div>
+                      <Label htmlFor="infra_available_to">Available To</Label>
+                      <Input id="infra_available_to" name="infra_available_to" type="date" value={formData.infra_available_to} onChange={handleTextInput} />
+                    </div>
                   </div>
                 )}
               </CardContent>

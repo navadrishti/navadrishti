@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Users, Building2, Building, ArrowRight, Search, Check, X, FileText, Eye, Download } from 'lucide-react';
+import { ArrowRight, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import {
   Dialog,
@@ -14,10 +14,9 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
-import Image from 'next/image';
+import { CAVerificationReview, caReviewDescription, isCaReviewLocked } from '@/components/ca-verification-review';
 
 interface Individual {
   id: number;
@@ -41,6 +40,7 @@ interface NGO {
   email: string;
   ngo_description: string;
   verification_status: string;
+  reverification_pending?: boolean;
 }
 
 type FilterStatus = 'unverified' | 'verified' | 'all';
@@ -51,44 +51,43 @@ const TABS: { label: string; value: FilterStatus }[] = [
   { label: 'All',        value: 'all'         },
 ];
 
-function StatusBadge({ status }: { status: string }) {
-  const isVerified = status === 'verified';
+const QUEUE_ITEM_HEIGHT = 'h-[6.5rem]';
+const QUEUE_LIST_HEIGHT = 'h-[20.5rem]';
+const QUEUE_ITEM_CLASS =
+  `${QUEUE_ITEM_HEIGHT} shrink-0 cursor-pointer overflow-hidden rounded-lg border border-slate-100 bg-white p-3`;
+
+function StatusBadge({ status, reverification }: { status: string; reverification?: boolean }) {
+  const normalized = reverification ? 'reverification' : (status || '').toLowerCase();
+  const styles =
+    normalized === 'verified'
+      ? 'border-green-200 bg-green-50 text-green-700 text-xs'
+      : normalized === 'rejected'
+        ? 'border-red-200 bg-red-50 text-red-700 text-xs'
+        : 'border-amber-200 bg-amber-50 text-amber-700 text-xs';
   return (
-    <Badge
-      variant="outline"
-      className={
-        isVerified
-          ? 'border-green-200 bg-green-50 text-green-700 text-xs'
-          : 'border-amber-200 bg-amber-50 text-amber-700 text-xs'
-      }
-    >
-      {status}
+    <Badge variant="outline" className={styles}>
+      {normalized === 'pending' ? 'pending review' : normalized || 'unverified'}
     </Badge>
   );
 }
 
 function ColumnCard({
   title,
-  icon,
-  bgClass,
   count,
   href,
   loading,
   children,
 }: {
   title: string;
-  icon: React.ReactNode;
-  bgClass: string;
   count: number;
   href: string;
   loading: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <Card className="flex flex-col">
+    <Card className="flex h-full flex-col">
       <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2 text-base">
-          <span className={`p-1.5 rounded-lg ${bgClass}`}>{icon}</span>
+        <CardTitle className="flex items-center gap-2 text-base text-udaan-blue">
           {title}
           <span className="ml-auto text-xs font-normal text-slate-500 bg-slate-100 rounded-full px-2 py-0.5">
             {count}
@@ -97,18 +96,18 @@ function ColumnCard({
         <p className="text-xs text-slate-400">Scroll to see all results</p>
       </CardHeader>
 
-      <CardContent className="flex-1 flex flex-col px-4 pb-2">
-        <div className="overflow-y-auto max-h-80 space-y-2 pr-1">
+      <CardContent className="flex min-h-0 flex-1 flex-col px-4 pb-2">
+        <div className={`${QUEUE_LIST_HEIGHT} space-y-2 overflow-y-auto overflow-x-hidden pr-1`}>
           {loading
-            ? [1, 2, 3].map(i => <Skeleton key={i} className="h-20 rounded-lg" />)
+            ? [1, 2, 3].map(i => <Skeleton key={i} className={`${QUEUE_ITEM_HEIGHT} rounded-lg`} />)
             : children}
         </div>
       </CardContent>
 
-      <div className="px-4 pb-4 pt-2 border-t border-slate-100">
+      <div className="relative z-10 px-4 pb-4 pt-2 border-t border-slate-100">
         <Link
           href={href}
-          className="inline-flex items-center justify-center gap-1 w-full h-8 rounded-md border border-input bg-background text-xs font-medium text-slate-700 hover:bg-slate-100"
+          className="inline-flex items-center justify-center gap-1 w-full h-8 rounded-md border border-input bg-background text-xs font-medium text-udaan-blue"
         >
           See full list <ArrowRight className="w-3 h-3" />
         </Link>
@@ -128,7 +127,9 @@ export default function CADashboardClient() {
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [selectedType, setSelectedType] = useState<'individuals' | 'companies' | 'ngos' | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [reviewLoading, setReviewLoading] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
+  const [complianceTags, setComplianceTags] = useState<string[]>([]);
 
   useEffect(() => {
     fetchData();
@@ -139,21 +140,16 @@ export default function CADashboardClient() {
       setLoading(true);
       setError('');
 
-      const [individualsRes, companiesRes, ngosRes] = await Promise.all([
-        fetch(`/api/ca/individuals?status=${filterStatus}`, { credentials: 'include' }),
-        fetch(`/api/ca/companies?status=${filterStatus}`,  { credentials: 'include' }),
-        fetch(`/api/ca/ngos?status=${filterStatus}`,       { credentials: 'include' }),
-      ]);
+      const response = await fetch(`/api/ca/queue?status=${filterStatus}`, { credentials: 'include' });
+      const payload = await response.json();
 
-      const [individualsData, companiesData, ngosData] = await Promise.all([
-        individualsRes.json(),
-        companiesRes.json(),
-        ngosRes.json(),
-      ]);
+      if (!response.ok) {
+        throw new Error(payload.error || 'Failed to load verification queue');
+      }
 
-      setIndividuals(individualsData.data || []);
-      setCompanies(companiesData.data     || []);
-      setNGOs(ngosData.data               || []);
+      setIndividuals(payload.individuals || []);
+      setCompanies(payload.companies || []);
+      setNGOs(payload.ngos || []);
     } catch (err: any) {
       setError(err?.message || 'Failed to load data');
     } finally {
@@ -167,8 +163,7 @@ export default function CADashboardClient() {
     individuals.filter(ind =>
       !q ||
       ind.name.toLowerCase().includes(q) ||
-      ind.email.toLowerCase().includes(q) ||
-      ind.profession.toLowerCase().includes(q)
+      ind.email.toLowerCase().includes(q)
     ), [individuals, q]);
 
   const filteredCompanies = useMemo(() =>
@@ -187,14 +182,37 @@ export default function CADashboardClient() {
       ngo.ngo_description.toLowerCase().includes(q)
     ), [ngos, q]);
 
-  const handleItemClick = (item: any, type: 'individuals' | 'companies' | 'ngos') => {
+  const handleItemClick = async (item: any, type: 'individuals' | 'companies' | 'ngos') => {
     setSelectedItem(item);
     setSelectedType(type);
     setRejectionReason('');
+    setComplianceTags(
+      isCaReviewLocked(item) && Array.isArray(item.allotted_compliance_tags)
+        ? item.allotted_compliance_tags
+        : []
+    );
+    setReviewLoading(true);
+    try {
+      const response = await fetch(`/api/ca/review?type=${type}&id=${item.id}`, { credentials: 'include' });
+      const data = await response.json();
+      if (response.ok && data.data) {
+        setSelectedItem(data.data);
+        setComplianceTags(
+          isCaReviewLocked(data.data) && Array.isArray(data.data.allotted_compliance_tags)
+            ? data.data.allotted_compliance_tags
+            : []
+        );
+      }
+    } catch (error) {
+      console.error('Failed to load review details:', error);
+    } finally {
+      setReviewLoading(false);
+    }
   };
 
   const handleAction = async (action: 'approve' | 'reject') => {
     if (!selectedItem || !selectedType) return;
+    if (isCaReviewLocked(selectedItem)) return;
 
     if (action === 'reject' && !rejectionReason.trim()) {
       alert('Please provide a reason for rejection');
@@ -211,25 +229,28 @@ export default function CADashboardClient() {
           entity_type: selectedType,
           entity_id: selectedItem.id,
           action: action === 'approve' ? 'approve' : 'reject',
-          reason: rejectionReason
+          reason: rejectionReason,
+          compliance_tags: selectedType === 'ngos' ? complianceTags : undefined,
         })
       });
 
+      const data = await response.json().catch(() => ({}));
       if (response.ok) {
-        alert(`${selectedType.slice(0, -1)} ${action}d successfully`);
+        alert(data.message || `${selectedItem.name || selectedItem.company_name || selectedItem.ngo_name} ${action === 'approve' ? 'approved' : 'rejected'}`);
         // Remove from the list
         if (selectedType === 'individuals') {
           setIndividuals(individuals.filter(ind => ind.id !== selectedItem.id));
         } else if (selectedType === 'companies') {
           setCompanies(companies.filter(comp => comp.id !== selectedItem.id));
-        } else if (selectedType === 'ngos') {
+        } else {
           setNGOs(ngos.filter(ngo => ngo.id !== selectedItem.id));
         }
         setSelectedItem(null);
         setSelectedType(null);
         setRejectionReason('');
+        setComplianceTags([]);
       } else {
-        alert('Failed to process action');
+        alert(data.error || 'Failed to process action');
       }
     } catch (error) {
       console.error('Action failed:', error);
@@ -294,8 +315,6 @@ export default function CADashboardClient() {
         {/* Individuals */}
         <ColumnCard
           title="Individuals"
-          icon={<Users className="h-4 w-4 text-blue-600" />}
-          bgClass="bg-blue-50"
           count={filteredIndividuals.length}
           href="/ca/individuals"
           loading={loading}
@@ -305,12 +324,19 @@ export default function CADashboardClient() {
           ) : filteredIndividuals.map(ind => (
             <div
               key={ind.id}
-              className="p-3 rounded-lg border border-slate-100 bg-blue-50/40 cursor-pointer hover:bg-blue-100/60 transition-colors"
+              role="button"
+              tabIndex={0}
+              className={QUEUE_ITEM_CLASS}
               onClick={() => handleItemClick(ind, 'individuals')}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  handleItemClick(ind, 'individuals')
+                }
+              }}
             >
-              <p className="text-sm font-medium text-slate-900">{ind.name}</p>
-              <p className="text-xs text-slate-500">{ind.profession}</p>
-              <p className="text-xs text-slate-400">{ind.email}</p>
+              <p className="truncate text-sm font-medium text-slate-900">{ind.name}</p>
+              <p className="truncate text-xs text-slate-400">{ind.email}</p>
               <div className="mt-2"><StatusBadge status={ind.verification_status} /></div>
             </div>
           ))}
@@ -319,8 +345,6 @@ export default function CADashboardClient() {
         {/* Companies */}
         <ColumnCard
           title="Companies"
-          icon={<Building2 className="h-4 w-4 text-purple-600" />}
-          bgClass="bg-purple-50"
           count={filteredCompanies.length}
           href="/ca/companies"
           loading={loading}
@@ -330,12 +354,20 @@ export default function CADashboardClient() {
           ) : filteredCompanies.map(comp => (
             <div
               key={comp.id}
-              className="p-3 rounded-lg border border-slate-100 bg-purple-50/40 cursor-pointer hover:bg-purple-100/60 transition-colors"
+              role="button"
+              tabIndex={0}
+              className={QUEUE_ITEM_CLASS}
               onClick={() => handleItemClick(comp, 'companies')}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  handleItemClick(comp, 'companies')
+                }
+              }}
             >
-              <p className="text-sm font-medium text-slate-900">{comp.company_name}</p>
-              <p className="text-xs text-slate-500 line-clamp-1">{comp.business_description}</p>
-              <p className="text-xs text-slate-400">{comp.email}</p>
+              <p className="truncate text-sm font-medium text-slate-900">{comp.company_name}</p>
+              <p className="truncate text-xs text-slate-500">{comp.business_description}</p>
+              <p className="truncate text-xs text-slate-400">{comp.email}</p>
               <div className="mt-2"><StatusBadge status={comp.verification_status} /></div>
             </div>
           ))}
@@ -344,8 +376,6 @@ export default function CADashboardClient() {
         {/* NGOs */}
         <ColumnCard
           title="NGOs"
-          icon={<Building className="h-4 w-4 text-green-600" />}
-          bgClass="bg-green-50"
           count={filteredNGOs.length}
           href="/ca/ngos"
           loading={loading}
@@ -355,13 +385,21 @@ export default function CADashboardClient() {
           ) : filteredNGOs.map(ngo => (
             <div
               key={ngo.id}
-              className="p-3 rounded-lg border border-slate-100 bg-green-50/40 cursor-pointer hover:bg-green-100/60 transition-colors"
+              role="button"
+              tabIndex={0}
+              className={QUEUE_ITEM_CLASS}
               onClick={() => handleItemClick(ngo, 'ngos')}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  handleItemClick(ngo, 'ngos')
+                }
+              }}
             >
-              <p className="text-sm font-medium text-slate-900">{ngo.ngo_name}</p>
-              <p className="text-xs text-slate-500 line-clamp-1">{ngo.ngo_description}</p>
-              <p className="text-xs text-slate-400">{ngo.email}</p>
-              <div className="mt-2"><StatusBadge status={ngo.verification_status} /></div>
+              <p className="truncate text-sm font-medium text-slate-900">{ngo.ngo_name}</p>
+              <p className="truncate text-xs text-slate-500">{ngo.ngo_description}</p>
+              <p className="truncate text-xs text-slate-400">{ngo.email}</p>
+              <div className="mt-2"><StatusBadge status={ngo.verification_status} reverification={ngo.reverification_pending} /></div>
             </div>
           ))}
         </ColumnCard>
@@ -377,145 +415,29 @@ export default function CADashboardClient() {
               {selectedType === 'ngos' && selectedItem?.ngo_name}
             </DialogTitle>
             <DialogDescription>
-              Review and verify this {selectedType?.slice(0, -1)}'s details
+              {selectedType
+                ? isCaReviewLocked(selectedItem)
+                  ? 'View verified details'
+                  : selectedItem?.reverification_pending
+                    ? 'Review updated certificates and re-allot tags'
+                    : caReviewDescription(selectedType)
+                : ''}
             </DialogDescription>
           </DialogHeader>
 
-          {selectedItem && (
+          {selectedItem && selectedType && (
             <div className="space-y-6">
-              {/* Basic Information */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Basic Information</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {selectedType === 'individuals' && (
-                      <>
-                        <div><label className="text-sm font-medium">Full Name</label><p className="text-sm text-slate-600">{selectedItem.name}</p></div>
-                        <div><label className="text-sm font-medium">Aadhaar Number</label><p className="text-sm text-slate-600">{selectedItem.aadhaar}</p></div>
-                        <div><label className="text-sm font-medium">PAN Number</label><p className="text-sm text-slate-600">{selectedItem.pan}</p></div>
-                        <div><label className="text-sm font-medium">Email</label><p className="text-sm text-slate-600">{selectedItem.email}</p></div>
-                        <div><label className="text-sm font-medium">Phone</label><p className="text-sm text-slate-600">{selectedItem.phone}</p></div>
-                        <div><label className="text-sm font-medium">Profession</label><p className="text-sm text-slate-600">{selectedItem.profession}</p></div>
-                      </>
-                    )}
-                    {selectedType === 'companies' && (
-                      <>
-                        <div><label className="text-sm font-medium">Company Name</label><p className="text-sm text-slate-600">{selectedItem.company_name}</p></div>
-                        <div><label className="text-sm font-medium">GST Number</label><p className="text-sm text-slate-600">{selectedItem.gst}</p></div>
-                        <div><label className="text-sm font-medium">PAN Number</label><p className="text-sm text-slate-600">{selectedItem.pan}</p></div>
-                        <div><label className="text-sm font-medium">CIN</label><p className="text-sm text-slate-600">{selectedItem.cin}</p></div>
-                        <div><label className="text-sm font-medium">Email</label><p className="text-sm text-slate-600">{selectedItem.email}</p></div>
-                        <div><label className="text-sm font-medium">Phone</label><p className="text-sm text-slate-600">{selectedItem.phone}</p></div>
-                      </>
-                    )}
-                    {selectedType === 'ngos' && (
-                      <>
-                        <div><label className="text-sm font-medium">NGO Name</label><p className="text-sm text-slate-600">{selectedItem.ngo_name}</p></div>
-                        <div><label className="text-sm font-medium">Registration Number</label><p className="text-sm text-slate-600">{selectedItem.registration_number}</p></div>
-                        <div><label className="text-sm font-medium">FCRA Number</label><p className="text-sm text-slate-600">{selectedItem.fcra_number}</p></div>
-                        <div><label className="text-sm font-medium">PAN Number</label><p className="text-sm text-slate-600">{selectedItem.pan}</p></div>
-                        <div><label className="text-sm font-medium">Email</label><p className="text-sm text-slate-600">{selectedItem.email}</p></div>
-                        <div><label className="text-sm font-medium">Phone</label><p className="text-sm text-slate-600">{selectedItem.phone}</p></div>
-                      </>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+              <CAVerificationReview
+                item={selectedItem}
+                type={selectedType}
+                ocrLoading={reviewLoading}
+                complianceTags={complianceTags}
+                onComplianceTagsChange={isCaReviewLocked(selectedItem) ? undefined : setComplianceTags}
+                readOnly={isCaReviewLocked(selectedItem)}
+              />
 
-              {/* Document Viewer */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <FileText className="w-5 h-5" />
-                    Documents
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {selectedType === 'individuals' && (
-                      <>
-                        {selectedItem.aadhaar_card_url && (
-                          <div className="border rounded p-3">
-                            <p className="text-sm font-medium mb-2">Aadhaar Card</p>
-                            <div className="relative w-full h-32 bg-gray-100 rounded overflow-hidden mb-2">
-                              <Image src={selectedItem.aadhaar_card_url} alt="Aadhaar Card" fill className="object-cover" />
-                            </div>
-                            <Button size="sm" variant="outline" onClick={() => window.open(selectedItem.aadhaar_card_url, '_blank')}>
-                              <Eye className="w-3 h-3 mr-1" /> View
-                            </Button>
-                          </div>
-                        )}
-                        {selectedItem.pan_card_url && (
-                          <div className="border rounded p-3">
-                            <p className="text-sm font-medium mb-2">PAN Card</p>
-                            <div className="relative w-full h-32 bg-gray-100 rounded overflow-hidden mb-2">
-                              <Image src={selectedItem.pan_card_url} alt="PAN Card" fill className="object-cover" />
-                            </div>
-                            <Button size="sm" variant="outline" onClick={() => window.open(selectedItem.pan_card_url, '_blank')}>
-                              <Eye className="w-3 h-3 mr-1" /> View
-                            </Button>
-                          </div>
-                        )}
-                      </>
-                    )}
-                    {selectedType === 'companies' && (
-                      <>
-                        {selectedItem.pan_card_url && (
-                          <div className="border rounded p-3">
-                            <p className="text-sm font-medium mb-2">PAN Card</p>
-                            <div className="relative w-full h-32 bg-gray-100 rounded overflow-hidden mb-2">
-                              <Image src={selectedItem.pan_card_url} alt="PAN Card" fill className="object-cover" />
-                            </div>
-                            <Button size="sm" variant="outline" onClick={() => window.open(selectedItem.pan_card_url, '_blank')}>
-                              <Eye className="w-3 h-3 mr-1" /> View
-                            </Button>
-                          </div>
-                        )}
-                        {selectedItem.gst_certificate_url && (
-                          <div className="border rounded p-3">
-                            <p className="text-sm font-medium mb-2">GST Certificate</p>
-                            <div className="w-full h-32 bg-gray-100 rounded flex items-center justify-center mb-2">
-                              <FileText className="w-8 h-8 text-gray-400" />
-                            </div>
-                            <Button size="sm" variant="outline" onClick={() => window.open(selectedItem.gst_certificate_url, '_blank')}>
-                              <Eye className="w-3 h-3 mr-1" /> View
-                            </Button>
-                          </div>
-                        )}
-                      </>
-                    )}
-                    {selectedType === 'ngos' && (
-                      <>
-                        {selectedItem.pan_card_url && (
-                          <div className="border rounded p-3">
-                            <p className="text-sm font-medium mb-2">PAN Card</p>
-                            <div className="relative w-full h-32 bg-gray-100 rounded overflow-hidden mb-2">
-                              <Image src={selectedItem.pan_card_url} alt="PAN Card" fill className="object-cover" />
-                            </div>
-                            <Button size="sm" variant="outline" onClick={() => window.open(selectedItem.pan_card_url, '_blank')}>
-                              <Eye className="w-3 h-3 mr-1" /> View
-                            </Button>
-                          </div>
-                        )}
-                        {selectedItem.fcra_certificate_url && (
-                          <div className="border rounded p-3">
-                            <p className="text-sm font-medium mb-2">FCRA Certificate</p>
-                            <div className="w-full h-32 bg-gray-100 rounded flex items-center justify-center mb-2">
-                              <FileText className="w-8 h-8 text-gray-400" />
-                            </div>
-                            <Button size="sm" variant="outline" onClick={() => window.open(selectedItem.fcra_certificate_url, '_blank')}>
-                              <Eye className="w-3 h-3 mr-1" /> View
-                            </Button>
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-
+              {!isCaReviewLocked(selectedItem) ? (
+                <>
               {/* Rejection Reason */}
               <div>
                 <label className="text-sm font-medium">Rejection Reason (if rejecting)</label>
@@ -531,22 +453,22 @@ export default function CADashboardClient() {
               <div className="flex gap-3 pt-4">
                 <Button
                   onClick={() => handleAction('approve')}
-                  disabled={actionLoading}
+                  disabled={actionLoading || reviewLoading}
                   className="flex-1 bg-green-600 hover:bg-green-700"
                 >
-                  {actionLoading ? 'Processing...' : 'Approve'}
-                  <Check className="w-4 h-4 ml-2" />
-                </Button>
-                <Button
-                  onClick={() => handleAction('reject')}
-                  disabled={actionLoading}
-                  variant="destructive"
-                  className="flex-1"
-                >
-                  {actionLoading ? 'Processing...' : 'Reject'}
-                  <X className="w-4 h-4 ml-2" />
+                    {actionLoading ? 'Processing...' : 'Approve'}
+                  </Button>
+                  <Button
+                    onClick={() => handleAction('reject')}
+                    disabled={actionLoading || reviewLoading}
+                    variant="destructive"
+                    className="flex-1"
+                  >
+                    {actionLoading ? 'Processing...' : 'Reject'}
                 </Button>
               </div>
+                </>
+              ) : null}
             </div>
           )}
         </DialogContent>

@@ -29,20 +29,20 @@ export const notify = {
   /**
    * Show warning notification
    */
-  warning: (message: string, description?: string) => {
+  warning: (message: string, description?: string, duration = 4500) => {
     toast.warning(message, {
       description,
-      duration: 4500,
+      duration,
     });
   },
 
   /**
    * Show info notification
    */
-  info: (message: string, description?: string) => {
+  info: (message: string, description?: string, duration = 4000) => {
     toast.info(message, {
       description,
-      duration: 4000,
+      duration,
     });
   },
 

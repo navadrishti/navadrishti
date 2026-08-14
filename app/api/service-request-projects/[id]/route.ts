@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import jwt from 'jsonwebtoken'
 import { db } from '@/lib/db'
-import { JWT_SECRET } from '@/lib/auth'
+import { JWT_SECRET, CSR_ELIGIBILITY_REQUIRED_MESSAGE } from '@/lib/auth'
+import { ngoUserIsCsrEligible } from '@/lib/server-auth'
+import {
+  formatProjectExactAddress,
+  parseProjectExactAddress,
+  projectAddressToLocationSummary,
+  serializeProjectExactAddress,
+  validateProjectExactAddress,
+} from '@/lib/project-address'
 
 interface JWTPayload {
   id: number
@@ -37,23 +45,40 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     const updates: any = {}
     if (body.title !== undefined) updates.title = String(body.title).trim() || undefined
     if (body.description !== undefined) updates.description = String(body.description).trim() || null
-    if (body.exact_address !== undefined || body.location !== undefined) {
-      const loc = String(body.exact_address || body.location || existing.exact_address || existing.location || '').trim()
-      if (loc) {
-        updates.location = loc
-        updates.exact_address = loc
+    if (body.address !== undefined || body.exact_address !== undefined || body.location !== undefined) {
+      const addressInput =
+        body.address && typeof body.address === 'object'
+          ? body.address
+          : body.exact_address ?? body.location ?? existing.exact_address ?? existing.location
+
+      const parsedAddress = parseProjectExactAddress(addressInput)
+      const addressError = validateProjectExactAddress(parsedAddress)
+      if (addressError) {
+        return NextResponse.json({ error: addressError }, { status: 400 })
       }
+
+      const serializedAddress = serializeProjectExactAddress(parsedAddress)
+      updates.exact_address = serializedAddress
+      updates.location = projectAddressToLocationSummary(parsedAddress)
     }
     if (body.timeline !== undefined) updates.timeline = String(body.timeline).trim() || null
-    if (body.expected_beneficiaries !== undefined) updates.expected_beneficiaries = Number(body.expected_beneficiaries) || null
+    if (body.expected_beneficiaries !== undefined) {
+      updates.expected_beneficiaries = Number(body.expected_beneficiaries) || null
+    }
     if (body.valid_until !== undefined) {
       const validUntil = String(body.valid_until || '').trim()
       if (validUntil && Number.isNaN(new Date(validUntil).getTime())) {
         return NextResponse.json({ error: 'valid_until must be a valid date string' }, { status: 400 })
       }
-      updates.valid_until = validUntil || null
+      updates.valid_until = validUntil ? new Date(validUntil).toISOString() : null
     }
-    if (body.csr_project_available_for_csr !== undefined) updates.csr_project_available_for_csr = !!body.csr_project_available_for_csr
+    if (body.csr_project_available_for_csr !== undefined) {
+      const requested = !!body.csr_project_available_for_csr
+      if (requested && !(await ngoUserIsCsrEligible(decoded.id))) {
+        return NextResponse.json({ error: CSR_ELIGIBILITY_REQUIRED_MESSAGE }, { status: 403 })
+      }
+      updates.csr_project_available_for_csr = requested
+    }
 
     updates.updated_at = new Date().toISOString()
 
@@ -61,7 +86,14 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 
     const updated = await db.requestProjects.getById(projectId)
 
-    return NextResponse.json({ success: true, data: updated })
+    return NextResponse.json({
+      success: true,
+      data: {
+        ...updated,
+        address: parseProjectExactAddress(updated?.exact_address || updated?.location),
+        formatted_address: formatProjectExactAddress(updated?.exact_address || updated?.location),
+      },
+    })
   } catch (error) {
     console.error('Failed to update project:', error)
     return NextResponse.json({ error: 'Failed to update project' }, { status: 500 })

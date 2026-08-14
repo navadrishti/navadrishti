@@ -1,8 +1,8 @@
 import { NextRequest } from 'next/server';
-import { verifyToken, type UserData } from '@/lib/auth';
+import { verifyToken, ngoIsCsrEligible, type UserData } from '@/lib/auth';
 import { verifyNavadrishtCAToken, type NavadrishtCATokenPayload } from '@/lib/navadrishti-ca-auth';
 import { supabase } from '@/lib/db';
-import { ensureCompanyCaIdAssigned } from '@/lib/company-ca-id-helper';
+import { ensureCompanyCaIdAssigned } from '@/lib/company-ca';
 
 function extractBearerToken(authHeader: string | null): string | null {
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -33,6 +33,17 @@ export function assertUserType(user: UserData, allowed: Array<UserData['user_typ
   if (!allowed.includes(user.user_type)) {
     throw new Error('Insufficient permissions');
   }
+}
+
+export async function ngoUserIsCsrEligible(userId: number): Promise<boolean> {
+  const { data } = await supabase
+    .from('users')
+    .select('user_type, verification_status, profile_data')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (!data || data.user_type !== 'ngo') return false;
+  return ngoIsCsrEligible(data.verification_status, data.profile_data);
 }
 
 function extractCAToken(request: NextRequest): string | null {

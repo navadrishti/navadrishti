@@ -3,14 +3,66 @@
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import Image from 'next/image';
-import { Loader2 } from 'lucide-react';
+import { Menu, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { ConsoleFooter } from '@/components/console-footer';
+import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet';
+import { cn } from '@/lib/utils';
+
+const navItems = [
+  { label: 'Dashboard', href: '/ca' },
+  { label: 'Change Password', href: '/ca/change-password' },
+];
+
+function CADashboardSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="space-y-2">
+        <Skeleton className="h-9 w-80 max-w-full" />
+        <Skeleton className="h-4 w-96 max-w-full" />
+      </div>
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <Skeleton className="h-10 flex-1" />
+        <Skeleton className="h-10 w-56" />
+      </div>
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+        {[1, 2, 3].map((column) => (
+          <Card key={column} className="flex h-full flex-col">
+            <CardHeader className="space-y-2 pb-2">
+              <Skeleton className="h-5 w-28" />
+              <Skeleton className="h-3 w-36" />
+            </CardHeader>
+            <CardContent className="flex-1 space-y-2 px-4 pb-2">
+              <div className="h-[20.5rem] space-y-2">
+                {[1, 2, 3].map((row) => (
+                  <Skeleton key={row} className="h-[6.5rem] rounded-lg" />
+                ))}
+              </div>
+            </CardContent>
+            <div className="px-4 pb-4 pt-2">
+              <Skeleton className="h-8 w-full" />
+            </div>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function CALayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [ready, setReady] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const isLoginRoute = pathname === '/ca/login';
   const isChangePasswordRoute = pathname === '/ca/change-password';
 
@@ -29,7 +81,7 @@ export default function CALayout({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        const response = await fetch('/api/ca/verify', {
+        const response = await fetch('/api/ca/auth/verify', {
           method: 'GET',
           credentials: 'include',
         });
@@ -52,9 +104,13 @@ export default function CALayout({ children }: { children: React.ReactNode }) {
     };
   }, [isChangePasswordRoute, isLoginRoute, router]);
 
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [pathname]);
+
   const handleLogout = async () => {
     try {
-      await fetch('/api/ca/logout', {
+      await fetch('/api/ca/auth/logout', {
         method: 'POST',
         credentials: 'include'
       });
@@ -70,89 +126,127 @@ export default function CALayout({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const isNavActive = (href: string) => {
+    if (href === '/ca/change-password') return pathname.startsWith('/ca/change-password');
+    return (
+      pathname === '/ca' ||
+      pathname.startsWith('/ca/individuals') ||
+      pathname.startsWith('/ca/companies') ||
+      pathname.startsWith('/ca/ngos')
+    );
+  };
+
+  const desktopNavLinkClass = (href: string) =>
+    cn(
+      'whitespace-nowrap rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors',
+      isNavActive(href) ? 'text-udaan-orange' : 'text-white hover:text-udaan-orange'
+    );
+
+  const mobileNavLinkClass = (href: string) =>
+    cn(
+      'block rounded-md px-3 py-2.5 text-sm font-medium transition-colors',
+      isNavActive(href) ? 'bg-white/15 text-udaan-orange' : 'text-white hover:bg-white/10 hover:text-udaan-orange'
+    );
+
   if (isLoginRoute || isChangePasswordRoute) {
     return <>{children}</>;
   }
 
-  if (!ready) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-blue-50">
-        <div className="text-center">
-          <Loader2 className="mx-auto h-8 w-8 animate-spin text-blue-600" />
-          <p className="mt-4 text-blue-600">Checking authentication...</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-blue-50">
-      <header className="sticky top-0 z-50 border-b border-blue-700 bg-blue-600">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex h-16 items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div>
-                <h1 className="text-xl font-bold text-white">Navadrishti CA Console</h1>
-                <p className="text-xs text-blue-100">Chartered Accountant Login Portal</p>
-              </div>
-            </div>
+    <div className="flex min-h-screen flex-col bg-blue-50">
+      <header className="sticky top-0 z-50 w-full shrink-0 border-b bg-udaan-blue text-white">
+        <div className="udaan-container flex h-16 items-center justify-between gap-3 px-4 md:px-6">
+          <Link href="/ca" className="flex min-w-0 shrink items-center font-bold text-xl">
+            <img src="/photos/logo.svg" alt="Navadrishti" className="h-28 w-28 shrink-0 sm:h-36 sm:w-36" />
+          </Link>
 
-            <nav className="hidden items-center space-x-4 md:flex">
-              <Link href="/ca">
-                <Button variant="ghost" size="sm" className="text-white hover:bg-blue-700 hover:text-white">
-                  Dashboard
-                </Button>
-              </Link>
-              <Link href="/ca/cases">
-                <Button variant="ghost" size="sm" className="text-white hover:bg-blue-700 hover:text-white">
-                  History
-                </Button>
-              </Link>
-              <Link href="/ca/change-password">
-                <Button variant="ghost" size="sm" className="text-white hover:bg-blue-700 hover:text-white">
-                  Change Password
-                </Button>
-              </Link>
+          <div className="hidden items-center gap-3 md:flex lg:gap-4">
+            <nav className="flex items-center gap-1.5 lg:gap-2">
+              {navItems.map((item) => (
+                <Link key={item.href} href={item.href} className={desktopNavLinkClass(item.href)}>
+                  {item.label}
+                </Link>
+              ))}
             </nav>
 
-            <div className="flex items-center space-x-4">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleLogout}
-                className="border-orange-500 bg-orange-500 text-white hover:border-orange-600 hover:bg-orange-600 hover:text-white hover:shadow-lg hover:shadow-orange-500/50"
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleLogout}
+              className="border-orange-500 bg-orange-500 text-white hover:border-orange-500 hover:bg-orange-500 hover:text-white"
+            >
+              Logout
+            </Button>
+          </div>
+
+          <div className="md:hidden">
+            <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon" className="text-white hover:bg-white/10">
+                  <Menu className="h-5 w-5" />
+                  <span className="sr-only">Open menu</span>
+                </Button>
+              </SheetTrigger>
+
+              <SheetContent
+                side="right"
+                className="w-full border-l border-white/10 bg-udaan-blue p-0 text-white sm:max-w-sm [&>button]:hidden"
               >
-                Logout
-              </Button>
-            </div>
+                <SheetTitle className="sr-only">CA console menu</SheetTitle>
+                <SheetDescription className="sr-only">
+                  Navigation and account actions for the CA console
+                </SheetDescription>
+
+                <div className="flex h-full flex-col">
+                  <div className="flex items-center justify-between border-b border-white/20 px-4 py-3">
+                    <Link href="/ca" className="flex items-center" onClick={() => setMobileMenuOpen(false)}>
+                      <img src="/photos/logo.svg" alt="Navadrishti" className="h-24 w-24" />
+                    </Link>
+                    <SheetClose asChild>
+                      <Button variant="ghost" size="icon" className="text-white hover:bg-white/10">
+                        <X className="h-5 w-5" />
+                        <span className="sr-only">Close menu</span>
+                      </Button>
+                    </SheetClose>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-4">
+                    <nav className="space-y-1">
+                      {navItems.map((item) => (
+                        <SheetClose asChild key={item.href}>
+                          <Link href={item.href} className={mobileNavLinkClass(item.href)}>
+                            {item.label}
+                          </Link>
+                        </SheetClose>
+                      ))}
+                    </nav>
+                  </div>
+
+                  <div className="border-t border-white/20 p-4">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-11 w-full border-orange-500 bg-orange-500 text-white hover:border-orange-500 hover:bg-orange-500 hover:text-white"
+                      onClick={() => {
+                        setMobileMenuOpen(false);
+                        void handleLogout();
+                      }}
+                    >
+                      Logout
+                    </Button>
+                  </div>
+                </div>
+              </SheetContent>
+            </Sheet>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        {children}
+      <main className="udaan-container w-full flex-1 px-4 py-8 sm:px-6 lg:px-8">
+        {ready ? children : <CADashboardSkeleton />}
       </main>
 
-      <footer className="mt-12 border-t border-blue-700 bg-blue-600">
-        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between text-sm text-blue-100">
-            <div className="flex items-center gap-2">
-              <span>© 2026</span>
-              <Image
-                src="/photos/small-logo.svg"
-                alt="Navadrishti logo"
-                width={18}
-                height={18}
-                className="h-[18px] w-[18px]"
-              />
-              <p>Navadrishti. CA Verification System.</p>
-            </div>
-            <div className="flex items-center space-x-1">
-              <span>ICAI Empanelled Portal</span>
-            </div>
-          </div>
-        </div>
-      </footer>
+      <ConsoleFooter />
     </div>
   );
 }

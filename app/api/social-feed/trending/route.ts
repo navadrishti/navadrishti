@@ -40,7 +40,6 @@ export async function GET(request: NextRequest) {
         })
       }
     } catch (functionError) {
-      console.log('Real-time trending function not available, using fallback query')
     }
 
     // Fallback: Direct query to hashtags table
@@ -82,7 +81,6 @@ export async function GET(request: NextRequest) {
     }
 
     // Final fallback: Extract hashtags from recent posts
-    console.log('Hashtags table empty, extracting from recent posts')
     
     const { data: posts, error: postsError } = await supabase
       .from('posts')

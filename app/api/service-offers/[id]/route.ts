@@ -11,6 +11,8 @@ import {
   isTransactionType,
   OfferType,
   normalizeDateOnlyToEndOfDayIso,
+  normalizeCapabilityTransactionType,
+  resolveCapabilityRentalRate,
   sanitizeTextArray,
   parseCsvToStringArray,
   TransactionType,
@@ -81,12 +83,16 @@ const buildPriceInfo = (offerType: string, transactionType: string, body: Record
   }
 
   const priceType = body.price_type === 'negotiable' ? 'negotiable' : 'fixed'
-  const priceAmount = toNullablePositiveNumber(body.price_amount)
+  const dailyRate = resolveCapabilityRentalRate({
+    unit_rate: body.unit_rate,
+    price_amount: body.price_amount,
+    offer_details: body.offer_details,
+  })
 
   return {
     price_type: priceType,
-    price_amount: priceAmount ?? 0,
-    price_description: transactionType === 'rent' ? 'per day' : 'per unit / per kit'
+    price_amount: dailyRate,
+    price_description: 'per day',
   }
 }
 
@@ -96,24 +102,28 @@ const normalizeOfferDetailsForStorage = (
   details: Record<string, any>,
   body?: Record<string, any>
 ) => {
-  const mergedDetails = {
+  const mergedDetails: Record<string, any> = {
     ...details,
-    billing_cycle: body?.billing_cycle ?? details.billing_cycle ?? (transactionType === 'rent' ? 'daily' : null),
-    unit_rate: toNullablePositiveNumber(body?.unit_rate ?? details.unit_rate),
+    billing_cycle: body?.billing_cycle ?? details.billing_cycle ?? 'daily',
+    unit_rate: resolveCapabilityRentalRate({
+      unit_rate: body?.unit_rate ?? details.unit_rate,
+      price_amount: body?.price_amount ?? details.unit_rate,
+      offer_details: details,
+    }) || toNullablePositiveNumber(body?.unit_rate ?? details.unit_rate),
     rate_currency: body?.rate_currency ?? details.rate_currency ?? 'INR',
   }
 
   if (offerType === 'material') {
     return {
       ...mergedDetails,
-      available_to: transactionType === 'sell' ? null : (mergedDetails.available_to ?? null)
+      available_to: mergedDetails.available_to ?? null
     }
   }
 
   if (offerType === 'infrastructure') {
     return {
       ...mergedDetails,
-      available_to: transactionType === 'sell' ? null : (mergedDetails.available_to ?? null)
+      available_to: mergedDetails.available_to ?? null
     }
   }
 
@@ -160,7 +170,16 @@ const validateIncomingOfferBody = (body: Record<string, any>) => {
   }
 
   if (!isTransactionType(body.transaction_type)) {
-    return 'transaction_type must be one of: volunteer, donate, rent, sell.'
+    return 'transaction_type must be one of: volunteer, donate, rent.'
+  }
+
+  body.transaction_type = normalizeCapabilityTransactionType(
+    body.offer_type as OfferType,
+    body.transaction_type
+  )
+
+  if (body.transaction_type === 'sell') {
+    return 'Permanent sale is not supported. Use daily rental instead.'
   }
 
   if (!isTransactionAllowedForOfferType(body.offer_type, body.transaction_type)) {
@@ -176,29 +195,34 @@ const validateIncomingOfferBody = (body: Record<string, any>) => {
     return 'impact_area contains invalid values.'
   }
 
-  const requiresPricing = body.transaction_type === 'rent' || body.transaction_type === 'sell'
+  if (!body.valid_until && !body.expires_at && !(body.offer_details && body.offer_details.valid_until)) {
+    return 'valid_until is required for all offers.'
+  }
+
+  const validUntilValue = body.valid_until || body.expires_at || (body.offer_details && body.offer_details.valid_until)
+  const validUntilIso = normalizeDateOnlyToEndOfDayIso(validUntilValue)
+  const validUntilMs = validUntilIso ? Date.parse(validUntilIso) : Number.NaN
+  if (Number.isNaN(validUntilMs)) {
+    return 'valid_until must be a valid date.'
+  }
+
+  if (validUntilMs < Date.now()) {
+    return 'valid_until must be in the future.'
+  }
+
+  const requiresPricing = body.transaction_type === 'rent'
   if (requiresPricing) {
-    if (!['fixed', 'negotiable'].includes(String(body.price_type || ''))) {
-      return 'price_type must be fixed or negotiable for rent/sell offers.'
+    if (!['fixed', 'negotiable'].includes(String(body.price_type || 'fixed'))) {
+      return 'price_type must be fixed or negotiable for rental offers.'
     }
 
-    if (toNullablePositiveNumber(body.price_amount) === null) {
-      return 'price_amount must be a positive number for rent/sell offers.'
-    }
-
-    const validUntilValue = body.valid_until || body.expires_at
-    if (!validUntilValue) {
-      return 'valid_until is required for rent/sell offers.'
-    }
-
-    const validUntilIso = normalizeDateOnlyToEndOfDayIso(validUntilValue)
-    const validUntilMs = validUntilIso ? Date.parse(validUntilIso) : Number.NaN
-    if (Number.isNaN(validUntilMs)) {
-      return 'valid_until must be a valid date.'
-    }
-
-    if (validUntilMs < Date.now()) {
-      return 'valid_until must be in the future.'
+    const dailyRate = resolveCapabilityRentalRate({
+      unit_rate: body.unit_rate,
+      price_amount: body.price_amount,
+      offer_details: body.offer_details,
+    })
+    if (dailyRate <= 0) {
+      return 'Daily rental rate must be a positive number.'
     }
   }
 
@@ -214,13 +238,14 @@ const normalizeOffer = (offer: any, capabilities: any[]) => {
     ? offer.offer_type
     : LEGACY_CATEGORY_TO_OFFER_TYPE[offer.category] || 'service'
 
-  const inferredTransactionType = isTransactionType(offer.transaction_type)
-    ? offer.transaction_type
-    : offer.price_type === 'free'
-      ? 'donate'
-      : offer.price_description?.toLowerCase().includes('day')
-        ? 'rent'
-        : getDefaultTransactionType(normalizedOfferType)
+  const inferredTransactionType = normalizeCapabilityTransactionType(
+    normalizedOfferType,
+    isTransactionType(offer.transaction_type)
+      ? offer.transaction_type
+      : offer.price_type === 'free'
+        ? 'donate'
+        : 'rent'
+  )
 
   return {
     ...offer,
@@ -229,6 +254,10 @@ const normalizeOffer = (offer: any, capabilities: any[]) => {
     transaction_type: inferredTransactionType,
     impact_area: Array.isArray(offer.impact_area) ? offer.impact_area : [],
     offer_details: mergedDetails,
+    unit_rate: toNullableNumber(offer.unit_rate ?? mergedDetails.unit_rate ?? offer.price_amount),
+    billing_cycle: offer.billing_cycle ?? mergedDetails.billing_cycle ?? null,
+    payment_mode: offer.payment_mode ?? mergedDetails.payment_mode ?? null,
+    rate_currency: offer.rate_currency ?? mergedDetails.rate_currency ?? 'INR',
     capabilities,
 
     // Legacy compatibility fields consumed by pages/components.
@@ -246,61 +275,7 @@ const normalizeOffer = (offer: any, capabilities: any[]) => {
   }
 }
 
-const validateIncomingBody = (body: Record<string, any>) => {
-  if (!body.title || !body.description || !body.offer_type || !body.transaction_type) {
-    return 'Missing required fields: title, description, offer_type, transaction_type.'
-  }
-
-  if (!isOfferType(body.offer_type)) {
-    return 'offer_type must be one of: financial, material, service, infrastructure.'
-  }
-
-  if (!isTransactionType(body.transaction_type)) {
-    return 'transaction_type must be one of: volunteer, donate, rent, sell.'
-  }
-
-  if (!isTransactionAllowedForOfferType(body.offer_type, body.transaction_type)) {
-    return `transaction_type ${body.transaction_type} is not allowed for offer_type ${body.offer_type}.`
-  }
-
-  if (!Array.isArray(body.impact_area) || body.impact_area.length === 0) {
-    return 'Please select at least one impact area.'
-  }
-
-  const invalidImpactArea = body.impact_area.some((area: string) => !(IMPACT_AREAS as readonly string[]).includes(area))
-  if (invalidImpactArea) {
-    return 'impact_area contains invalid values.'
-  }
-
-  const requiresPricing = body.transaction_type === 'rent' || body.transaction_type === 'sell'
-  // Require validity end date for all offer updates
-  if (!body.valid_until && !body.expires_at && !(body.offer_details && body.offer_details.valid_until)) {
-    return 'valid_until is required for all offers.'
-  }
-
-  const validUntilValue = body.valid_until || body.expires_at || (body.offer_details && body.offer_details.valid_until)
-  const validUntilIso = normalizeDateOnlyToEndOfDayIso(validUntilValue)
-  const validUntilMs = validUntilIso ? Date.parse(validUntilIso) : Number.NaN
-  if (Number.isNaN(validUntilMs)) {
-    return 'valid_until must be a valid date.'
-  }
-
-  if (validUntilMs < Date.now()) {
-    return 'valid_until must be in the future.'
-  }
-
-  if (requiresPricing) {
-    if (!['fixed', 'negotiable'].includes(String(body.price_type || ''))) {
-      return 'price_type must be fixed or negotiable for rent/sell offers.'
-    }
-
-    if (toNullablePositiveNumber(body.price_amount) === null) {
-      return 'price_amount must be a positive number for rent/sell offers.'
-    }
-  }
-
-  return null
-}
+const validateIncomingBody = validateIncomingOfferBody
 
 const coerceIncomingBody = (body: Record<string, any>) => {
   if (!Array.isArray(body.impact_area)) {
@@ -404,7 +379,10 @@ export async function PUT(
     }
 
     const offerType = body.offer_type as OfferType
-    const transactionType = body.transaction_type as TransactionType
+    const transactionType = normalizeCapabilityTransactionType(
+      offerType,
+      body.transaction_type as TransactionType
+    )
 
     const existingOffer = await db.serviceOffers.getById(offerId)
     if (!existingOffer) {
@@ -423,6 +401,11 @@ export async function PUT(
       body.offer_details && typeof body.offer_details === 'object' ? body.offer_details : {},
       body
     )
+    const dailyRate = resolveCapabilityRentalRate({
+      unit_rate: body.unit_rate,
+      price_amount: priceInfo.price_amount,
+      offer_details: normalizedOfferDetails,
+    })
 
     const updateData = {
       title: String(body.title || '').trim(),
@@ -440,6 +423,10 @@ export async function PUT(
       price_type: priceInfo.price_type,
       price_amount: priceInfo.price_amount,
       price_description: priceInfo.price_description,
+      unit_rate: transactionType === 'rent' ? dailyRate : null,
+      billing_cycle: transactionType === 'rent' ? (body.billing_cycle || normalizedOfferDetails.billing_cycle || 'daily') : null,
+      payment_mode: transactionType === 'rent' ? (body.payment_mode || 'daily_due') : null,
+      rate_currency: body.rate_currency || normalizedOfferDetails.rate_currency || 'INR',
       validity_days: toNullablePositiveNumber(body.validity_days),
       valid_until: normalizeDateOnlyToEndOfDayIso(body.valid_until || body.expires_at || normalizedOfferDetails.valid_until || null),
       updated_at: new Date().toISOString()

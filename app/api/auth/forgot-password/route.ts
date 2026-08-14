@@ -41,9 +41,6 @@ export async function POST(req: NextRequest) {
       // Generate password reset URL
       const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`;
       
-      console.log(`Password reset requested for ${email}`);
-      console.log(`Reset URL: ${resetUrl}`);
-      
       try {
         // Send password reset email
         const emailHtml = generatePasswordResetEmail(resetUrl, email);
@@ -53,18 +50,14 @@ export async function POST(req: NextRequest) {
           html: emailHtml
         });
         
-        if (emailSent) {
-          console.log(`✅ Password reset email sent to: ${email}`);
-        } else {
-          console.error(`❌ Failed to send password reset email to: ${email}`);
+        if (!emailSent.success) {
+          console.error(`Failed to send password reset email to: ${email}`);
         }
         
       } catch (emailError) {
         console.error('Failed to send reset email:', emailError);
         // Don't expose email sending errors to prevent information leakage
       }
-    } else {
-      console.log(`Password reset requested for non-existent email: ${email}`);
     }
     
     // Always return success message to prevent email enumeration

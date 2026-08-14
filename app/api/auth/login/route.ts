@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { comparePassword, generateToken } from '@/lib/auth';
-import { isCompanyCAUser } from '@/lib/company-ca-visibility';
+import { isCompanyCAUser } from '@/lib/company-ca';
 
 // Validation schema for login
 const loginSchema = z.object({
@@ -26,8 +26,6 @@ export async function POST(req: NextRequest) {
     const user = await db.users.findByEmail(email);
     
     if (!user) {
-      // No user found with this email
-      console.log(`Login attempt failed: No user found with email ${email}`);
       return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
     }
 
@@ -42,19 +40,8 @@ export async function POST(req: NextRequest) {
     const isPasswordValid = await comparePassword(password, user.password);
     
     if (!isPasswordValid) {
-      // Password doesn't match
-      console.log(`Login attempt failed: Invalid password for user ${email}`);
       return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
     }
-    
-    // Generate JWT token with verification status
-    console.log('=== Login Debug ===');
-    console.log('User from database:', {
-      id: user.id,
-      email: user.email,
-      user_type: user.user_type,
-      verification_status: user.verification_status
-    });
     
     const userData = {
       id: user.id,
@@ -66,9 +53,7 @@ export async function POST(req: NextRequest) {
       phone_verified: user.phone_verified || false
     };
 
-    console.log('User data for token:', userData);
     const token = generateToken(userData);
-    console.log(`User ${email} logged in successfully`);    // Create response with cookie
     const response = NextResponse.json({
       message: 'Login successful',
       user: userData,

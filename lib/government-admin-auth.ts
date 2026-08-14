@@ -1,4 +1,4 @@
-import jwt from 'jsonwebtoken';
+import jwt, { type SignOptions } from 'jsonwebtoken';
 import { NextRequest } from 'next/server';
 import { comparePassword, hashPassword, JWT_SECRET } from '@/lib/auth';
 import { supabase } from '@/lib/db';
@@ -46,7 +46,9 @@ export function generateGovernmentAdminToken(account: GovernmentAdminAccount): s
     role: account.role,
   };
 
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: process.env.GOVT_ADMIN_JWT_EXPIRES_IN || '12h' });
+  return jwt.sign(payload, JWT_SECRET, {
+    expiresIn: (process.env.GOVT_ADMIN_JWT_EXPIRES_IN || '12h') as SignOptions['expiresIn'],
+  });
 }
 
 export function verifyGovernmentAdminToken(token: string): GovernmentAdminTokenPayload | null {
