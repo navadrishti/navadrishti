@@ -221,23 +221,26 @@ export function Header({ className = '' }: { className?: string } = {}) {
         </Link>
         <div
           className={cn(
-            "hidden md:flex md:flex-1 md:items-center md:gap-4 lg:gap-6",
-            phase1Header ? "md:justify-between" : "md:justify-end"
+            "hidden md:flex md:flex-1 md:items-center",
+            phase1Header ? "md:justify-between md:gap-4 lg:gap-6" : "md:justify-end md:gap-4 lg:gap-6"
           )}
         >
           <nav
             className={cn(
-              "flex items-center gap-1.5 lg:gap-2",
+              "flex items-center",
               phase1Header
-                ? "order-2 flex-1 justify-center"
-                : "order-2 justify-end"
+                ? "order-2 min-w-0 flex-1 justify-center gap-5 lg:gap-8"
+                : "order-2 justify-end gap-1.5 lg:gap-2"
             )}
           >
             {desktopNavItems.map((item) => (
               <HeaderNavLink
                 key={`desktop-nav-${item.href}`}
                 item={item}
-                className="whitespace-nowrap rounded-md px-2.5 py-1.5 text-sm font-medium text-white hover:text-udaan-orange focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors"
+                className={cn(
+                  "whitespace-nowrap rounded-md py-1.5 text-sm font-medium text-white hover:text-udaan-orange focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors",
+                  phase1Header ? "px-3 lg:px-4" : "px-2.5"
+                )}
               />
             ))}
           </nav>
@@ -403,11 +406,14 @@ export function Header({ className = '' }: { className?: string } = {}) {
             <div
               onMouseEnter={openProfileMenu}
               onMouseLeave={() => closeProfileMenuWithDelay()}
-              className="relative order-3"
+              className={cn(
+                "relative order-3",
+                phase1Header && "shrink-0"
+              )}
             >
               <button
                 type="button"
-                className="inline-flex h-10 items-center gap-2 rounded-md bg-transparent px-2.5 text-white hover:text-udaan-orange transition-colors"
+                className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md bg-transparent px-2.5 text-white hover:text-udaan-orange transition-colors"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={(e) => e.preventDefault()}
               >
@@ -415,13 +421,20 @@ export function Header({ className = '' }: { className?: string } = {}) {
                   {user.profile_image && <AvatarImage src={user.profile_image} alt={user.name} />}
                   <AvatarFallback className="bg-udaan-orange text-white">{getInitials(user.name)}</AvatarFallback>
                 </Avatar>
-                <span className="max-w-[120px] truncate text-sm font-medium">{profileTriggerLabel}</span>
+                <span
+                  className={cn(
+                    "text-sm font-medium",
+                    phase1Header ? "whitespace-nowrap" : "max-w-[120px] truncate"
+                  )}
+                >
+                  {profileTriggerLabel}
+                </span>
                 <ChevronDown className="h-4 w-4 opacity-80" />
               </button>
 
                     {isProfileMenuOpen && (
-                <div className="absolute left-0 top-full mt-2 w-64 overflow-hidden rounded-md border bg-white p-1 text-black shadow-lg">
-                  <div className="px-2 py-1.5 text-sm font-semibold text-gray-900 truncate">{user.name}</div>
+                <div className="absolute right-0 top-full mt-2 min-w-64 w-max max-w-sm overflow-hidden rounded-md border bg-white p-1 text-black shadow-lg">
+                  <div className="px-2 py-1.5 text-sm font-semibold leading-5 text-gray-900">{user.name}</div>
                   <div className="px-2 py-1 text-xs text-muted-foreground">
                     <span className="block truncate">{user.email} • {user.user_type.charAt(0).toUpperCase() + user.user_type.slice(1)}</span>
                   </div>
