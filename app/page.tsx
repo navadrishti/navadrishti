@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { Header } from '@/components/header';
+import { shouldShowRootSubNavbar } from '@/lib/access-control';
 
 // Photo grid - using public images
 const photos = [
@@ -43,11 +44,8 @@ const repeatRow = <T,>(row: T[]) => [...row, ...row];
 const DOWNLOAD_APP_URL = 'https://navadrishti.in';
 
 const rootSubnavItems = [
-  { label: 'Government Administrator', href: '/government-admin/login' },
   { label: 'Evidence Verification Portal', href: '/evidence-verification/login' },
-  { label: 'Navadrishti CA Portal', href: '/ca/login' },
-  { label: 'District Analytics Portal', href: '/government-admin/district-dashboard' },
-  { label: 'State Analytics Portal', href: '/government-admin/state-dashboard' },
+  { label: 'Partner CA Portal', href: '/ca/login' },
   { label: 'About Us', href: 'https://navadrishti.in', external: true },
   { label: 'Contact Us', href: 'mailto:connect@navadrishti.in' },
 ] as const;
@@ -157,7 +155,7 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-white flex flex-col">
       <style>{scrollAnimations}</style>
-      <RootSubNavbar />
+      {shouldShowRootSubNavbar() ? <RootSubNavbar /> : null}
       <Header />
 
       {/* Photo Grid Background Container */}

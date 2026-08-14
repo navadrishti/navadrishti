@@ -2,9 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { supabase } from '@/lib/db';
 import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth';
+import { resetCompanyCaPassword } from '@/lib/company-ca';
 
-const updateSchema = z.object({
-  status: z.enum(['active', 'inactive'])
+const statusUpdateSchema = z.object({
+  status: z.enum(['active', 'inactive']),
+});
+
+const passwordResetSchema = z.object({
+  action: z.literal('reset_password'),
+  password: z.string().min(8),
 });
 
 export async function PATCH(
@@ -16,21 +22,14 @@ export async function PATCH(
     assertUserType(user, ['company']);
 
     const body = await request.json();
-    const parsed = updateSchema.safeParse(body);
-
-    if (!parsed.success) {
-      return NextResponse.json({ error: parsed.error.issues[0]?.message || 'Invalid payload' }, { status: 400 });
-    }
 
     const resolvedParams = await Promise.resolve(params);
     const identityIdRaw = resolvedParams?.identityId;
     const identityId = typeof identityIdRaw === 'string' ? decodeURIComponent(identityIdRaw).trim() : '';
 
     if (!identityId) {
-      return NextResponse.json({ error: 'Invalid company CA identity id' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid CA identity id' }, { status: 400 });
     }
-
-    const { status } = parsed.data;
 
     const { data: existing, error: findError } = await supabase
       .from('company_ca_identities')
@@ -40,8 +39,31 @@ export async function PATCH(
       .single();
 
     if (findError || !existing) {
-      return NextResponse.json({ error: 'Company CA identity not found' }, { status: 404 });
+      return NextResponse.json({ error: 'CA identity not found' }, { status: 404 });
     }
+
+    const passwordReset = passwordResetSchema.safeParse(body);
+    if (passwordReset.success) {
+      const updated = await resetCompanyCaPassword({
+        identityId,
+        companyUserId: user.id,
+        password: passwordReset.data.password,
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: 'CA password reset successfully. The CA must change it on next login.',
+        data: updated,
+      });
+    }
+
+    const parsed = statusUpdateSchema.safeParse(body);
+
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0]?.message || 'Invalid payload' }, { status: 400 });
+    }
+
+    const { status } = parsed.data;
 
     const { data: updated, error: updateError } = await supabase
       .from('company_ca_identities')

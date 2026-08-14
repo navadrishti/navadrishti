@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
+import { ngoIsCsrEligible } from '@/lib/auth'
 import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth'
 
 type LeadInviteRow = {
@@ -142,6 +143,21 @@ export async function POST(request: NextRequest) {
     }
     if (!Number.isFinite(ngoId) || ngoId <= 0) {
       return NextResponse.json({ error: 'Valid ngoId is required' }, { status: 400 })
+    }
+
+    if (action !== 'revoke') {
+      const { data: ngoRow } = await supabase
+        .from('users')
+        .select('user_type, verification_status, profile_data')
+        .eq('id', ngoId)
+        .maybeSingle()
+
+      if (!ngoRow || ngoRow.user_type !== 'ngo' || !ngoIsCsrEligible(ngoRow.verification_status, ngoRow.profile_data)) {
+        return NextResponse.json(
+          { error: 'Lead NGO invites are limited to CA-tagged CSR-1 NGOs' },
+          { status: 400 }
+        )
+      }
     }
 
     let campaign: any = null

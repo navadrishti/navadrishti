@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
-import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth'
+import { CSR_ELIGIBILITY_REQUIRED_MESSAGE } from '@/lib/auth'
+import { getAuthUserFromRequest, assertUserType, ngoUserIsCsrEligible } from '@/lib/server-auth'
 
 function normalizeInvites(raw: unknown) {
   if (!Array.isArray(raw)) return []
@@ -18,6 +19,10 @@ export async function POST(request: NextRequest) {
     const user = getAuthUserFromRequest(request)
     if (!user) return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     assertUserType(user, ['ngo'])
+
+    if (!(await ngoUserIsCsrEligible(user.id))) {
+      return NextResponse.json({ error: CSR_ELIGIBILITY_REQUIRED_MESSAGE }, { status: 403 })
+    }
 
     const body = await request.json()
     const campaignId = body?.campaign_id

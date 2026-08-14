@@ -13,6 +13,14 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { StyledSelect } from '@/components/ui/styled-select'
 import { SERVICE_REQUEST_CATEGORIES } from '@/lib/categories'
+import { INDIAN_STATES_AND_UTS, ngoIsCsrEligible } from '@/lib/auth'
+import {
+  EMPTY_PROJECT_ADDRESS,
+  formatProjectExactAddress,
+  parseProjectExactAddress,
+  toProjectAddressDateInput,
+  type ProjectExactAddress,
+} from '@/lib/project-address'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton, SkeletonHeader, SkeletonForm, SkeletonButton } from '@/components/ui/skeleton'
 import { useToast } from '@/hooks/use-toast'
@@ -34,18 +42,17 @@ const budgetRanges = [
   'Negotiable'
 ]
 
-export default function EditProjectPage({ params }: { params: Promise<{ id: string }> | { id: string } }) {
-  const { id } = // params may be a Promise in newer Next.js; unwrap using React.use
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
-    typeof params === 'object' && 'then' in params ? use(params) : params
+export default function EditProjectPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
   const router = useRouter()
   const { user } = useAuth()
+  const csrEligible = ngoIsCsrEligible(user?.verification_status, user?.profile_data || user?.profile)
   const { toast } = useToast()
 
   const [loading, setLoading] = useState(true)
   const [savingProject, setSavingProject] = useState(false)
   const [project, setProject] = useState<any | null>(null)
+  const [projectAddress, setProjectAddress] = useState<ProjectExactAddress>({ ...EMPTY_PROJECT_ADDRESS })
   const [needs, setNeeds] = useState<any[]>([])
   const [newNeeds, setNewNeeds] = useState<NeedDraft[]>([createEmptyNeed()])
 
@@ -70,7 +77,12 @@ export default function EditProjectPage({ params }: { params: Promise<{ id: stri
             router.push('/service-requests')
             return
           }
-          setProject(found)
+          setProject({
+            ...found,
+            valid_until: toProjectAddressDateInput(found.valid_until),
+            csr_project_available_for_csr: found.csr_project_available_for_csr !== false,
+          })
+          setProjectAddress(parseProjectExactAddress(found.exact_address || found.location))
 
           const needsResp = await fetch(`/api/service-requests?projectId=${found.id}`, { headers: { Authorization: `Bearer ${token}` } })
           const needsData = await needsResp.json()
@@ -96,19 +108,24 @@ export default function EditProjectPage({ params }: { params: Promise<{ id: stri
       const resp = await fetch(`/api/service-request-projects/${project.id}`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+        body: JSON.stringify({
           title: project.title,
           description: project.description,
-          exact_address: project.exact_address || project.location,
+          address: projectAddress,
           timeline: project.timeline,
           expected_beneficiaries: project.expected_beneficiaries,
           valid_until: project.valid_until,
-          csr_project_available_for_csr: project.csr_project_available_for_csr
+          csr_project_available_for_csr: csrEligible && project.csr_project_available_for_csr !== false,
         })
       })
       const data = await resp.json()
       if (resp.ok && data.success) {
-        setProject(data.data)
+        setProject({
+          ...data.data,
+          valid_until: toProjectAddressDateInput(data.data.valid_until),
+          csr_project_available_for_csr: data.data.csr_project_available_for_csr !== false,
+        })
+        setProjectAddress(parseProjectExactAddress(data.data.exact_address || data.data.location))
         toast({ title: 'Saved', description: 'Project updated' })
       } else {
         toast({ title: 'Error', description: data.error || 'Failed to update project', variant: 'destructive' })
@@ -209,17 +226,79 @@ export default function EditProjectPage({ params }: { params: Promise<{ id: stri
                   <Input value={project?.title || ''} onChange={(e) => setProject((p: any) => ({ ...p, title: e.target.value }))} />
                 </div>
                 <div>
-                  <Label>Exact Address</Label>
-                  <Input value={project?.exact_address || project?.location || ''} onChange={(e) => setProject((p: any) => ({ ...p, exact_address: e.target.value }))} />
+                  <Label>Expected beneficiaries</Label>
+                  <Input type="number" value={String(project?.expected_beneficiaries || '')} onChange={(e) => setProject((p: any) => ({ ...p, expected_beneficiaries: Number(e.target.value) }))} />
                 </div>
                 <div className="md:col-span-2">
                   <Label>Description</Label>
                   <Textarea value={project?.description || ''} onChange={(e) => setProject((p: any) => ({ ...p, description: e.target.value }))} rows={3} />
                 </div>
-                <div>
-                  <Label>Expected beneficiaries</Label>
-                  <Input type="number" value={String(project?.expected_beneficiaries || '')} onChange={(e) => setProject((p: any) => ({ ...p, expected_beneficiaries: Number(e.target.value) }))} />
+
+                <div className="md:col-span-2 space-y-4 rounded-md border border-slate-200 p-4">
+                  <div>
+                    <h4 className="text-sm font-medium">Project Exact Address</h4>
+                    <p className="text-xs text-muted-foreground">Provide the complete on-ground project location.</p>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="md:col-span-2">
+                      <Label>Street / Building / Landmark</Label>
+                      <Input
+                        value={projectAddress.address_line}
+                        onChange={(e) => setProjectAddress((prev) => ({ ...prev, address_line: e.target.value }))}
+                        placeholder="House no., street, landmark"
+                      />
+                    </div>
+                    <div>
+                      <Label>Region</Label>
+                      <Input
+                        value={projectAddress.region}
+                        onChange={(e) => setProjectAddress((prev) => ({ ...prev, region: e.target.value }))}
+                        placeholder="e.g. NCR"
+                      />
+                    </div>
+                    <div>
+                      <Label>District</Label>
+                      <Input
+                        value={projectAddress.district}
+                        onChange={(e) => setProjectAddress((prev) => ({ ...prev, district: e.target.value }))}
+                        placeholder="e.g. Gautam Buddha Nagar"
+                      />
+                    </div>
+                    <div>
+                      <Label>City / Town *</Label>
+                      <Input
+                        value={projectAddress.city}
+                        onChange={(e) => setProjectAddress((prev) => ({ ...prev, city: e.target.value }))}
+                        placeholder="e.g. Greater Noida"
+                      />
+                    </div>
+                    <div>
+                      <Label>State / UT *</Label>
+                      <StyledSelect
+                        value={projectAddress.state}
+                        options={[...INDIAN_STATES_AND_UTS]}
+                        placeholder="Select state / UT"
+                        onValueChange={(value) => setProjectAddress((prev) => ({ ...prev, state: value }))}
+                      />
+                    </div>
+                    <div>
+                      <Label>Pincode *</Label>
+                      <Input
+                        value={projectAddress.pincode}
+                        onChange={(e) => setProjectAddress((prev) => ({ ...prev, pincode: e.target.value.replace(/\D/g, '').slice(0, 6) }))}
+                        placeholder="6-digit pincode"
+                      />
+                    </div>
+                    <div>
+                      <Label>Country</Label>
+                      <Input
+                        value={projectAddress.country}
+                        onChange={(e) => setProjectAddress((prev) => ({ ...prev, country: e.target.value }))}
+                      />
+                    </div>
+                  </div>
                 </div>
+
                 <div>
                   <Label>Valid Until</Label>
                   <Input type="date" value={project?.valid_until || ''} onChange={(e) => setProject((p: any) => ({ ...p, valid_until: e.target.value }))} />
@@ -228,7 +307,26 @@ export default function EditProjectPage({ params }: { params: Promise<{ id: stri
                   <Label>Timeline</Label>
                   <Input placeholder="e.g. Oct-Dec 2026" value={project?.timeline || ''} onChange={(e) => setProject((p: any) => ({ ...p, timeline: e.target.value }))} />
                 </div>
-                {/* selected_lead_ngo_id and assigned_company_user_id are managed by system/process. Not editable here. */}
+                {csrEligible ? (
+                <div className="md:col-span-2 flex items-start gap-3 rounded-md border bg-white p-3">
+                  <input
+                    id="project_available_for_csr"
+                    type="checkbox"
+                    checked={project?.csr_project_available_for_csr !== false}
+                    onChange={(e) => setProject((p: any) => ({ ...p, csr_project_available_for_csr: e.target.checked }))}
+                    className="mt-1 h-4 w-4 rounded border-slate-300"
+                  />
+                  <div>
+                    <Label htmlFor="project_available_for_csr" className="text-sm font-medium">Available for CSR takeover</Label>
+                    <p className="text-xs text-muted-foreground">Disable this if the project should stay NGO-managed and never enter the CSR marketplace.</p>
+                  </div>
+                </div>
+                ) : (
+                <div className="md:col-span-2 rounded-md border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-sm font-medium text-slate-900">CSR takeover unavailable</p>
+                  <p className="text-xs text-muted-foreground">A live CA-allotted CSR-1 tag is required before companies can take over this project.</p>
+                </div>
+                )}
               </div>
 
               <div className="flex flex-col gap-3 pt-4 sm:flex-row">

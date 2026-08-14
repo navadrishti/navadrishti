@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, supabase } from '@/lib/db';
-import { withAuth, UserData } from '@/lib/auth';
+import { withAuth, UserData, backfillNgoComplianceProfileData, backfillNgoDocumentExpiries, summarizeDocumentExpiries, ngoIsCsrEligible, getCaComplianceTags } from '@/lib/auth';
+import { applyCaBadgeToProfile } from '@/lib/navadrishti-ca-auth';
 
 async function handler(req: NextRequest) {
   try {
@@ -25,7 +26,9 @@ async function handler(req: NextRequest) {
         .eq('user_id', user.id)
         .single();
       if (verification) {
-        verificationStatus = verification.verification_status;
+        verificationStatus = freshUserData.verification_status === 'verified'
+          ? 'verified'
+          : verification.verification_status;
         verificationDetails = verification;
       }
     } else if (freshUserData.user_type === 'company') {
@@ -35,7 +38,9 @@ async function handler(req: NextRequest) {
         .eq('user_id', user.id)
         .single();
       if (verification) {
-        verificationStatus = verification.verification_status;
+        verificationStatus = freshUserData.verification_status === 'verified'
+          ? 'verified'
+          : verification.verification_status;
         verificationDetails = verification;
       }
     } else if (freshUserData.user_type === 'ngo') {
@@ -45,8 +50,43 @@ async function handler(req: NextRequest) {
         .eq('user_id', user.id)
         .single();
       if (verification) {
-        verificationStatus = verification.verification_status;
+        verificationStatus = freshUserData.verification_status === 'verified'
+          ? 'verified'
+          : verification.verification_status;
         verificationDetails = verification;
+      }
+    }
+
+    let profileData = (freshUserData.profile_data && typeof freshUserData.profile_data === 'object')
+      ? freshUserData.profile_data as Record<string, unknown>
+      : {};
+
+    if (freshUserData.user_type === 'ngo') {
+      const backfill = backfillNgoComplianceProfileData(profileData);
+      profileData = backfill.profileData;
+      const expiryBackfill = backfillNgoDocumentExpiries(profileData);
+      profileData = expiryBackfill.profileData;
+
+      if (backfill.changed || expiryBackfill.changed) {
+        await supabase
+          .from('users')
+          .update({ profile_data: profileData })
+          .eq('id', user.id);
+        freshUserData.profile_data = profileData;
+      }
+    }
+
+    let caBadgeNumber: string | null = null;
+    if (verificationStatus === 'verified') {
+      const attached = applyCaBadgeToProfile(profileData, user.id);
+      profileData = attached.profileData;
+      caBadgeNumber = attached.badge;
+      if (attached.changed) {
+        await supabase
+          .from('users')
+          .update({ profile_data: profileData })
+          .eq('id', user.id);
+        freshUserData.profile_data = profileData;
       }
     }
     
@@ -63,16 +103,29 @@ async function handler(req: NextRequest) {
         email_verified_at: freshUserData.email_verified_at,
         phone_verified_at: freshUserData.phone_verified_at,
         verification_status: verificationStatus,
+        ca_badge_number: caBadgeNumber,
+        csr_eligible:
+          freshUserData.user_type === 'ngo'
+            ? ngoIsCsrEligible(verificationStatus, profileData)
+            : false,
+        ca_compliance_tags:
+          freshUserData.user_type === 'ngo' ? getCaComplianceTags(profileData, verificationStatus) : [],
+        reverification_pending: Boolean(profileData.reverification_pending),
+        document_expiry_summary:
+          freshUserData.user_type === 'ngo' ? summarizeDocumentExpiries(profileData) : null,
         verification_details: verificationDetails,
         profile_image: freshUserData.profile_image || null,
+        cover_image: typeof profileData.cover_image === 'string' ? profileData.cover_image : null,
         city: freshUserData.city,
         state_province: freshUserData.state_province,
         pincode: freshUserData.pincode,
         country: freshUserData.country,
+        location: freshUserData.location || '',
+        ngo_volunteer_capacity: freshUserData.ngo_volunteer_capacity ?? null,
         created_at: freshUserData.created_at,
-        profile_data: freshUserData.profile_data || {},
+        profile_data: profileData,
         // For backward compatibility, also extract profile fields
-        profile: freshUserData.profile_data || {}
+        profile: profileData
       }
     });
     

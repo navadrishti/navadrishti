@@ -3,6 +3,11 @@ import jwt from 'jsonwebtoken';
 import Razorpay from 'razorpay';
 import { db, supabase } from '@/lib/db';
 import { JWT_SECRET } from '@/lib/auth';
+import {
+  buildPricingResponse,
+  createPlatformPricedOrder,
+  isRazorpayRouteEnabled,
+} from '@/lib/razorpay-route';
 
 interface JWTPayload {
   id: number;
@@ -74,12 +79,12 @@ export async function POST(
       return NextResponse.json({ error: 'This application is not linked to a service request, so payment cannot be created' }, { status: 400 });
     }
 
-    const amountInr = Math.max(
+    const baseAmountInr = Math.max(
       0,
       parseAmountToInr(application.proposed_amount || offer.price_amount || application.response_meta?.payment_amount_inr || 0)
     );
 
-    if (amountInr <= 0) {
+    if (baseAmountInr <= 0) {
       return NextResponse.json({ success: true, data: { paymentRequired: false, amountInr: 0 } });
     }
 
@@ -91,19 +96,23 @@ export async function POST(
     }
 
     const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret });
-    const order = await razorpay.orders.create({
-      amount: Math.round(amountInr * 100),
-      currency: 'INR',
+    const ngoUserId = Number(offer.creator_id || offer.ngo_id || 0);
+    const { order, pricing, orderNotes } = await createPlatformPricedOrder({
+      razorpay,
+      baseAmountInr,
       receipt: `so_${offerId}_${payerUserId}_${Date.now()}`,
+      paymentKind: 'service_offer',
+      beneficiaryUserId: ngoUserId > 0 ? ngoUserId : undefined,
+      beneficiaryName: offer.creator_name || offer.ngo_name || 'NGO',
       notes: {
         service_offer_id: String(offerId),
         service_client_id: String(application.id),
         service_request_id: String(linkedServiceRequestId),
-        payer_user_id: String(payerUserId)
-      }
+        payer_user_id: String(payerUserId),
+        target_type: 'service_offer',
+      },
     });
 
-    const ngoUserId = Number(offer.creator_id || offer.ngo_id || 0);
     const nowIso = new Date().toISOString();
 
     await supabase.from('razorpay_payment_orders').upsert({
@@ -113,15 +122,16 @@ export async function POST(
       ngo_user_id: ngoUserId > 0 ? ngoUserId : payerUserId,
       razorpay_order_id: String(order.id),
       receipt: String(order.receipt || `so_${offerId}_${payerUserId}`),
-      amount_inr: Number(amountInr.toFixed(2)),
-      amount_paise: Math.round(amountInr * 100),
+      amount_inr: Number(pricing.totalChargeInr.toFixed(2)),
+      amount_paise: pricing.totalChargePaise,
       currency: String(order.currency || 'INR'),
       order_status: 'created',
       order_notes: {
         offer_id: offerId,
         service_client_id: application.id,
         service_request_id: linkedServiceRequestId,
-        target_type: 'service_offer'
+        target_type: 'service_offer',
+        ...orderNotes,
       },
       updated_at: nowIso
     }, { onConflict: 'razorpay_order_id' });
@@ -130,15 +140,16 @@ export async function POST(
       success: true,
       data: {
         orderId: order.id,
-        amount: amountInr,
+        ...buildPricingResponse(pricing),
         currency: order.currency,
         keyId,
         offerId,
         clientId: payerUserId,
         serviceRequestId: linkedServiceRequestId,
         offerTitle: offer.title,
-        offerPrice: amountInr,
-        paymentRequired: true
+        offerPrice: baseAmountInr,
+        paymentRequired: true,
+        routeEnabled: isRazorpayRouteEnabled(),
       }
     });
   } catch (error: any) {

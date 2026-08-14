@@ -72,8 +72,6 @@ export async function POST(req: NextRequest) {
       updated_at: new Date().toISOString()
     });
     
-    console.log(`✅ Password changed successfully for user: ${user.email}`);
-    
     return NextResponse.json({
       message: 'Password has been successfully changed',
       success: true

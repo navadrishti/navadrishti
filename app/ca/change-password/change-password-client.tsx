@@ -35,7 +35,7 @@ export default function CAChangePasswordClient() {
 
     try {
       setLoading(true);
-      const response = await fetch('/api/ca/change-password', {
+      const response = await fetch('/api/ca/auth/change-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -124,7 +124,7 @@ export default function CAChangePasswordClient() {
 
               <Button
                 type="submit"
-                className="h-11 w-full bg-blue-600 text-white hover:bg-blue-700"
+                className="h-11 w-full bg-udaan-blue text-white hover:bg-udaan-blue/90"
                 disabled={loading}
               >
                 {loading ? (

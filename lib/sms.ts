@@ -9,10 +9,7 @@ export async function sendSMS(options: SMSOptions): Promise<boolean> {
   try {
     // Check if SMS service is configured
     if (!process.env.MSG91_API_KEY || !process.env.MSG91_TEMPLATE_ID) {
-      console.log('📱 SMS (Service not configured):');
-      console.log('Phone:', options.phone);
-      console.log('OTP:', options.otp);
-      return true;
+      return false;
     }
 
     // MSG91 SMS API Integration
@@ -34,15 +31,14 @@ export async function sendSMS(options: SMSOptions): Promise<boolean> {
     const smsData = await smsResponse.json();
     
     if (!smsResponse.ok) {
-      console.error('❌ SMS sending failed:', smsData);
+      console.error('SMS sending failed:', smsData);
       return false;
     }
 
-    console.log('📱 SMS sent successfully to:', options.phone);
     return true;
 
   } catch (error) {
-    console.error('❌ SMS service error:', error);
+    console.error('SMS service error:', error);
     return false;
   }
 }

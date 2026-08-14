@@ -63,6 +63,16 @@ const nextConfig = {
         destination: '/api/evidence-verification/:path*',
         permanent: true,
       },
+      {
+        source: '/home',
+        destination: '/',
+        permanent: false,
+      },
+      {
+        source: '/posts/:path*',
+        destination: '/',
+        permanent: false,
+      },
     ]
   },
 }

@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
 import { db, supabase } from '@/lib/db';
-import { JWT_SECRET } from '@/lib/auth';
+import { JWT_SECRET, CSR_ELIGIBILITY_REQUIRED_MESSAGE } from '@/lib/auth';
+import { ngoUserIsCsrEligible } from '@/lib/server-auth';
+import {
+  parseProjectExactAddress,
+  projectAddressToLocationSummary,
+  serializeProjectExactAddress,
+  validateProjectExactAddress,
+} from '@/lib/project-address';
 
 interface JWTPayload {
   id: number;
@@ -105,11 +112,20 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const title = String(body.title || '').trim();
     const description = String(body.description || '').trim();
-    const exactAddress = String(body.exact_address || body.location || '').trim();
+    const addressInput = body.address && typeof body.address === 'object'
+      ? body.address
+      : body.exact_address || body.location || '';
+    const parsedAddress = parseProjectExactAddress(addressInput);
+    const addressError = validateProjectExactAddress(parsedAddress);
+    if (addressError) {
+      return NextResponse.json({ error: addressError }, { status: 400 });
+    }
+    const serializedAddress = serializeProjectExactAddress(parsedAddress);
+    const locationSummary = projectAddressToLocationSummary(parsedAddress);
     const timeline = String(body.timeline || '').trim();
 
-    if (!title || !exactAddress) {
-      return NextResponse.json({ error: 'Project title and exact address are required' }, { status: 400 });
+    if (!title) {
+      return NextResponse.json({ error: 'Project title is required' }, { status: 400 });
     }
 
     const volunteersNeeded = Number(body.volunteers_needed) || null;
@@ -124,16 +140,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'valid_until must be a valid date string' }, { status: 400 });
     }
 
+    const csrEligible = await ngoUserIsCsrEligible(decoded.id);
+    const requestedCsrAvailable = body.csr_project_available_for_csr !== false;
+    if (requestedCsrAvailable && !csrEligible) {
+      return NextResponse.json({ error: CSR_ELIGIBILITY_REQUIRED_MESSAGE }, { status: 403 });
+    }
+
     const project = await db.requestProjects.create({
       ngo_id: decoded.id,
       title,
       description,
-      location: exactAddress,
-      exact_address: exactAddress,
+      location: locationSummary,
+      exact_address: serializedAddress,
       timeline: timeline || null,
       volunteers_needed: volunteersNeeded,
       expected_beneficiaries: expectedBeneficiaries,
-      valid_until: validUntil || null,
+      valid_until: validUntil ? new Date(validUntil).toISOString() : null,
+      csr_project_available_for_csr: csrEligible && requestedCsrAvailable,
       status: 'active'
     });
 

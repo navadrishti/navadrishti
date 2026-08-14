@@ -16,13 +16,14 @@ import { Label } from '@/components/ui/label';
 import { Clock, CheckCircle, AlertTriangle, HeartHandshake, Trash2, Plus, Building, TicketCheck, MailCheck, Phone, Loader2, XCircle } from 'lucide-react';
 import { formatDisplayDate, formatCampaignLeadLifecycleLabel, type CampaignLeadLifecycle } from '@/lib/format-date';
 import Link from 'next/link';
-import { cn } from '@/lib/utils';
+import { cn, smoothScrollToElement } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { SkeletonOrderItem } from '@/components/ui/skeleton';
-import { ProfileDashboardTab } from '@/components/profile-dashboard-tab';
+import { ProfileDashboardTab, PaymentHistoryPanel } from '@/components/profile-dashboard-tab';
+import { YourCapabilitiesPanel, InlineCsrCapabilityDelhivery } from '@/components/service-card';
 import { DashboardQuickSidebar } from '@/components/dashboard-quick-sidebar';
 import { CampaignVolunteerAssignmentCard, type CampaignVolunteerAssignmentItem } from '@/components/campaign-volunteer-assignment-card';
-import { YourCapabilitiesPanel } from '@/components/service-card';
+import { filterDashboardSidebarItems, resolvePhase1DashboardTab } from '@/lib/access-control';
 import {
   formatDeliveryTrackingStatus,
   getDeliveryTrackingEvents,
@@ -84,7 +85,7 @@ const getOfferRequestBucket = (request: OfferRequestItem) => {
 const formatSelectedNeeds = (request: OfferRequestItem) => {
   const summaryNeeds = Array.isArray(request.selected_need_summary) ? request.selected_need_summary : [];
   if (summaryNeeds.length > 0) {
-    return summaryNeeds.map((need: any) => {
+    return summaryNeeds.slice(0, 3).map((need: any) => {
       const title = String(need?.title || 'Need');
       const amount = Number(need?.estimated_budget ?? need?.target_amount ?? 0);
       return amount > 0 ? `${title} | INR ${amount.toLocaleString('en-IN')}` : title;
@@ -311,10 +312,18 @@ function NeedDetailLink({
 function CampaignAssignmentDetails({
   assignment,
   roleLabel,
+  capabilityRentals = [],
+  onRentalUpdated,
 }: {
   assignment: CampaignLeadAssignment;
   roleLabel: string;
+  capabilityRentals?: any[];
+  onRentalUpdated?: () => void | Promise<void>;
 }) {
+  const campaignRentals = capabilityRentals.filter(
+    (row) => String(row.campaign_id) === String(assignment.campaign_id)
+  );
+
   return (
     <div className="space-y-3">
       <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
@@ -366,6 +375,42 @@ function CampaignAssignmentDetails({
           </p>
         </div>
       </div>
+
+      {campaignRentals.length > 0 ? (
+        <div className="space-y-2 border-t border-slate-100 pt-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Capability logistics</p>
+          {campaignRentals.map((row) => {
+            const rental = row.rental || {};
+            const offerId = Number(rental.service_offer_id || 0);
+            const showReturn =
+              ['return_pending', 'project_active', 'return_delivered', 'completed'].includes(String(rental.status || '')) ||
+              Boolean(rental.return_delivery?.tracking_id);
+
+            return (
+              <div key={`${row.campaign_id}-${offerId}`} className="space-y-2">
+                <p className="text-xs font-medium text-slate-700">{row.offer_title || `Offer #${offerId}`}</p>
+                <InlineCsrCapabilityDelhivery
+                  campaignId={String(row.campaign_id)}
+                  offerId={offerId}
+                  leg="outbound"
+                  delivery={rental.outbound_delivery}
+                  onUpdated={() => void onRentalUpdated?.()}
+                />
+                {showReturn ? (
+                  <InlineCsrCapabilityDelhivery
+                    campaignId={String(row.campaign_id)}
+                    offerId={offerId}
+                    leg="return"
+                    delivery={rental.return_delivery}
+                    canRetry={row.role === 'lead_ngo'}
+                    onUpdated={() => void onRentalUpdated?.()}
+                  />
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
 
       <div className="flex flex-wrap gap-2 pt-1">
         <Button asChild variant="outline" size="sm">
@@ -840,7 +885,7 @@ function InlineSkillServiceFulfillment({
       await openRazorpayCheckout({
         keyId: payload.keyId,
         orderId: payload.orderId,
-        amountInr: Number(payload.amount),
+        amountInr: Number(payload.totalCharge || payload.amount),
         currency: payload.currency || 'INR',
         description: 'Daily rental settlement',
         themeColor: '#059669',
@@ -1366,7 +1411,7 @@ function NGODashboardContent() {
   const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const activeTab = searchParams.get('tab') || 'profile';
+  const activeTab = resolvePhase1DashboardTab(searchParams.get('tab') || 'profile');
 
   // State for real service data
   const [serviceOffers, setServiceOffers] = useState<any[]>([]);
@@ -1386,6 +1431,8 @@ function NGODashboardContent() {
   const [loadingCampaignVolunteerAssignments, setLoadingCampaignVolunteerAssignments] = useState(false);
   const [loadingCampaignLeadInvitations, setLoadingCampaignLeadInvitations] = useState(false);
   const [loadingCampaignLeadAssignments, setLoadingCampaignLeadAssignments] = useState(false);
+  const [csrCapabilityRentals, setCsrCapabilityRentals] = useState<any[]>([]);
+  const [loadingCsrCapabilityRentals, setLoadingCsrCapabilityRentals] = useState(false);
   const [respondingCampaignLeadInviteId, setRespondingCampaignLeadInviteId] = useState<string | null>(null);
   const [ongoingNeeds, setOngoingNeeds] = useState<any[]>([]);
   const [historyNeeds, setHistoryNeeds] = useState<any[]>([]);
@@ -1404,12 +1451,13 @@ function NGODashboardContent() {
   const [csrProjectsTab, setCsrProjectsTab] = useState<'invitations' | 'ongoing' | 'completed'>('invitations');
   const [csrProjectsSectionTab, setCsrProjectsSectionTab] = useState<'ngo-projects' | 'other-csr'>('ngo-projects');
   const [deletingRequest, setDeletingRequest] = useState<number | null>(null);
-  const sidebarItems = [
+  const sidebarItems = filterDashboardSidebarItems([
     { value: 'profile', label: 'Profile' },
     { value: 'service-offers', label: 'Capability Offers' },
     { value: 'service-requests', label: 'Your Needs' },
     { value: 'csr-projects', label: 'CSR Projects' },
-  ];
+    { value: 'payments', label: 'Payments' },
+  ]);
 
   // Handle service request deletion
   const handleDeleteRequest = async (requestId: number, requestTitle: string) => {
@@ -1462,7 +1510,6 @@ function NGODashboardContent() {
       const token = localStorage.getItem('token');
       if (!token) return;
 
-      console.log('Fetching service offers...');
       const response = await fetch('/api/service-offers?view=my-offers&include_expired=true&limit=50', {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -1470,10 +1517,8 @@ function NGODashboardContent() {
       });
 
       const data = await response.json();
-      console.log('Service offers response:', data);
       if (data.success) {
         setServiceOffers(data.data || []);
-        console.log('Service offers set:', data.data?.length || 0, 'items');
       } else {
         console.error('Service offers fetch failed:', data.error);
       }
@@ -1683,6 +1728,32 @@ function NGODashboardContent() {
       setCampaignLeadAssignments([]);
     } finally {
       setLoadingCampaignLeadAssignments(false);
+    }
+  };
+
+  const fetchCsrCapabilityRentals = async () => {
+    try {
+      setLoadingCsrCapabilityRentals(true);
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setCsrCapabilityRentals([]);
+        return;
+      }
+
+      const response = await fetch('/api/campaigns/lead-assignments?rentals=1', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const payload = await response.json();
+      if (response.ok && payload?.success) {
+        setCsrCapabilityRentals(Array.isArray(payload.data) ? payload.data : []);
+      } else {
+        setCsrCapabilityRentals([]);
+      }
+    } catch (error) {
+      console.error('Error fetching CSR capability rentals:', error);
+      setCsrCapabilityRentals([]);
+    } finally {
+      setLoadingCsrCapabilityRentals(false);
     }
   };
 
@@ -2116,7 +2187,8 @@ function NGODashboardContent() {
       fetchCampaignLeadInvitations(),
       fetchCampaignLeadAssignments(),
       fetchCampaignVolunteerAssignments(),
-      fetchCSRProjects()
+      fetchCSRProjects(),
+      fetchCsrCapabilityRentals(),
     ]);
   };
 
@@ -2167,12 +2239,10 @@ function NGODashboardContent() {
     };
 
     const loadData = async () => {
-      console.log('NGO Dashboard: Starting to fetch all data for user:', user.id);
       setLoadingData(true);
       await runAutoUpdate();
       await refreshDashboardData();
       setLoadingData(false);
-      console.log('NGO Dashboard: Finished fetching all data');
     };
 
     loadData();
@@ -2203,6 +2273,32 @@ function NGODashboardContent() {
     user?.phone_verified &&
     user?.verification_status === 'verified'
   );
+  const [networkListingEligible, setNetworkListingEligible] = useState<boolean | null>(null);
+  const [payoutDetailsSaved, setPayoutDetailsSaved] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!user?.id || user.user_type !== 'ngo') {
+      setNetworkListingEligible(null);
+      return;
+    }
+
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    fetch('/api/profile/update?scope=payout', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((response) => response.json())
+      .then((data) => {
+        if (data?.success) {
+          setNetworkListingEligible(Boolean(data.networkListingEligible ?? data.routeReady));
+          setPayoutDetailsSaved(Boolean(data.hasPayoutDetails));
+        }
+      })
+      .catch(() => {
+        setNetworkListingEligible(null);
+      });
+  }, [user?.id, user?.user_type]);
 
   const getProjectBucket = (project: any): 'invitation' | 'ongoing' | 'completed' => {
     const status = String(project?.project_status || '').toLowerCase().trim();
@@ -2276,6 +2372,27 @@ function NGODashboardContent() {
     router.replace(`/ngos/dashboard?tab=${value}`, { scroll: false });
   };
 
+  const scrollToPayoutBankSection = () => {
+    const attemptScroll = (retries = 12) => {
+      const target = document.getElementById('ngo-payout-bank-section');
+      if (target) {
+        smoothScrollToElement(target, { offset: 96, duration: 1100, delay: 220 });
+        return;
+      }
+      if (retries > 0) {
+        window.setTimeout(() => attemptScroll(retries - 1), 80);
+      }
+    };
+
+    if (activeTab !== 'profile') {
+      navigateToTab('profile');
+      window.setTimeout(attemptScroll, 260);
+      return;
+    }
+
+    attemptScroll();
+  };
+
   return (
     <ProtectedRoute userTypes={['ngo']}>
       <div className="flex min-h-screen flex-col">
@@ -2292,6 +2409,36 @@ function NGODashboardContent() {
               </div>
             </div>
 
+            {allVerified && networkListingEligible === false ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+                    <div>
+                      <p className="font-medium text-amber-900">
+                        {payoutDetailsSaved
+                          ? 'Connect Razorpay payout to join the NGO Network'
+                          : 'Complete payout setup to join the NGO Network'}
+                      </p>
+                      <p className="mt-1 text-sm text-amber-800">
+                        {payoutDetailsSaved
+                          ? 'Connect Razorpay payout below to finish setup and appear on the NGO Network.'
+                          : 'Save your payout bank details, then connect Razorpay to appear on the NGO Network.'}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
+                    onClick={scrollToPayoutBankSection}
+                  >
+                    {payoutDetailsSaved ? 'Connect Razorpay payout' : 'Set up payout account'}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
               <DashboardQuickSidebar
                 items={sidebarItems}
@@ -2301,7 +2448,7 @@ function NGODashboardContent() {
                 triggerLabel="Dashboard sections"
               />
 
-              <div className="lg:col-span-8">
+              <div className={sidebarItems.length > 1 ? 'lg:col-span-8' : 'lg:col-span-12'}>
                 <Card>
                   <CardContent className="pt-6">
                     <Tabs value={activeTab} onValueChange={(value) => {
@@ -2337,6 +2484,27 @@ function NGODashboardContent() {
                           createLabel="Create Your First Service Offer"
                           emptyDescription="Publish capability offers for NGOs to discover and apply."
                         />
+                        {csrCapabilityRentals.filter((row) => row.role === 'provider').map((row) => {
+                          const rental = row.rental || {};
+                          const offerId = Number(rental.service_offer_id || 0);
+                          if (!offerId) return null;
+                          return (
+                            <div key={`provider-rental-${row.campaign_id}-${offerId}`} className="rounded-md border bg-white p-3 space-y-2">
+                              <p className="text-sm font-medium text-slate-900">
+                                CSR rental · {row.offer_title || `Offer #${offerId}`}
+                              </p>
+                              <p className="text-xs text-muted-foreground">{row.campaign_title || 'CSR campaign'}</p>
+                              <InlineCsrCapabilityDelhivery
+                                campaignId={String(row.campaign_id)}
+                                offerId={offerId}
+                                leg="outbound"
+                                delivery={rental.outbound_delivery}
+                                canRetry
+                                onUpdated={() => void fetchCsrCapabilityRentals()}
+                              />
+                            </div>
+                          );
+                        })}
                       </TabsContent>
 
                       <TabsContent value="your-applications" className="mt-4 space-y-3">
@@ -2852,6 +3020,7 @@ function NGODashboardContent() {
                               void fetchCSRProjects();
                               void fetchCampaignLeadInvitations();
                               void fetchCampaignLeadAssignments();
+                              void fetchCsrCapabilityRentals();
                             }}
                           >
                             Refresh
@@ -2933,7 +3102,12 @@ function NGODashboardContent() {
                             <>
                               {ongoingCampaignLeadAssignments.map((assignment) => (
                                 <div key={`campaign-lead-${assignment.id}`} className="rounded-md border bg-white p-4">
-                                  <CampaignAssignmentDetails assignment={assignment} roleLabel="Lead NGO" />
+                                  <CampaignAssignmentDetails
+                                    assignment={assignment}
+                                    roleLabel="Lead NGO"
+                                    capabilityRentals={csrCapabilityRentals}
+                                    onRentalUpdated={fetchCsrCapabilityRentals}
+                                  />
                                 </div>
                               ))}
                               {ongoingCampaignVolunteerAssignments.map((assignment) => (
@@ -3043,7 +3217,12 @@ function NGODashboardContent() {
                             <>
                               {completedCampaignLeadAssignments.map((assignment) => (
                                 <div key={`campaign-lead-completed-${assignment.id}`} className="rounded-md border bg-white p-4">
-                                  <CampaignAssignmentDetails assignment={assignment} roleLabel="Lead NGO" />
+                                  <CampaignAssignmentDetails
+                                    assignment={assignment}
+                                    roleLabel="Lead NGO"
+                                    capabilityRentals={csrCapabilityRentals}
+                                    onRentalUpdated={fetchCsrCapabilityRentals}
+                                  />
                                 </div>
                               ))}
                               {completedCampaignVolunteerAssignments.map((assignment) => (
@@ -3110,6 +3289,15 @@ function NGODashboardContent() {
                     )}
                       </TabsContent>
                     </Tabs>
+                  </TabsContent>
+
+                  <TabsContent value="payments" className="mt-4">
+                    <PaymentHistoryPanel
+                      role="received"
+                      title="Received payments"
+                      description="All Razorpay payments received by your NGO on Navadrishti — direct support, financial needs, capability offers, and engagement settlements."
+                      emptyMessage="No Razorpay payments received yet on your NGO account."
+                    />
                   </TabsContent>
                     </Tabs>
                   </CardContent>

@@ -10,7 +10,6 @@ import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useAuth } from '@/lib/auth-context'
-import { Shield, Lock, Trash, AlertTriangle } from 'lucide-react'
 import Link from 'next/link'
 
 // Delete Account Dialog - moved inline since only used here
@@ -42,8 +41,7 @@ function DeleteAccountDialog({ open, onOpenChange, onConfirm, loading, error }: 
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-destructive">
-            <Trash className="h-5 w-5" />
+          <DialogTitle className="text-destructive">
             Delete Account
           </DialogTitle>
           <DialogDescription>This action is permanent and cannot be undone.</DialogDescription>
@@ -52,24 +50,20 @@ function DeleteAccountDialog({ open, onOpenChange, onConfirm, loading, error }: 
         {step === 1 && (
           <div className="space-y-4">
             <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4">
-              <div className="flex items-start gap-3">
-                <AlertTriangle className="h-5 w-5 text-destructive mt-0.5 flex-shrink-0" />
-                <div className="space-y-2">
-                  <h4 className="font-semibold text-destructive">Warning: This will permanently delete:</h4>
-                  <ul className="text-sm text-muted-foreground space-y-1">
-                    <li>• Your account and profile information</li>
-                    <li>• Your service requests and applications</li>
-                    <li>• All verification records</li>
-                  </ul>
-                </div>
+              <div className="space-y-2">
+                <h4 className="font-semibold text-destructive">Warning: This will permanently delete:</h4>
+                <ul className="text-sm text-muted-foreground space-y-1">
+                  <li>• Your account and profile information</li>
+                  <li>• Your service requests and applications</li>
+                  <li>• All verification records</li>
+                </ul>
               </div>
             </div>
 
             {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
 
             <div className="space-y-2">
-              <Label htmlFor="password" className="flex items-center gap-2">
-                <Shield className="h-4 w-4" />
+              <Label htmlFor="password">
                 Enter your current password to continue
               </Label>
               <Input
@@ -87,14 +81,11 @@ function DeleteAccountDialog({ open, onOpenChange, onConfirm, loading, error }: 
         {step === 2 && (
           <div className="space-y-4">
             <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4">
-              <div className="flex items-start gap-3">
-                <AlertTriangle className="h-5 w-5 text-destructive mt-0.5" />
-                <div>
-                  <h4 className="font-semibold text-destructive">Final Confirmation Required</h4>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    This is your last chance to cancel.
-                  </p>
-                </div>
+              <div>
+                <h4 className="font-semibold text-destructive">Final Confirmation Required</h4>
+                <p className="text-sm text-muted-foreground mt-1">
+                  This is your last chance to cancel.
+                </p>
               </div>
             </div>
 
@@ -333,8 +324,7 @@ export default function SettingsPage() {
           <div className="grid gap-6">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Lock className="h-5 w-5" />
+                <CardTitle>
                   Change Password
                 </CardTitle>
                 <CardDescription>
@@ -396,8 +386,7 @@ export default function SettingsPage() {
 
             <Card className="border-destructive/50">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-destructive">
-                  <Trash className="h-5 w-5" />
+                <CardTitle className="text-destructive">
                   Danger Zone
                 </CardTitle>
                 <CardDescription>
@@ -410,7 +399,6 @@ export default function SettingsPage() {
                   className="w-full"
                   onClick={() => setDeleteDialogOpen(true)}
                 >
-                  <Trash className="h-4 w-4 mr-2" />
                   Delete Account
                 </Button>
                 <p className="text-sm text-muted-foreground mt-2">

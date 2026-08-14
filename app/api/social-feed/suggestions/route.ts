@@ -60,7 +60,6 @@ export async function GET(request: NextRequest) {
             }))
           }
         } catch (rpcError) {
-          console.log('RPC function not available, using manual query')
         }
 
         // Fallback: Manual location-based query

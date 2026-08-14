@@ -3,6 +3,25 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { notify } from './notifications';
+import { getDocumentExpiryAlertCopy } from './auth';
+
+const DOCUMENT_EXPIRY_ALERT_DURATION_MS = 18000;
+const documentExpiryAlertKey = (userId: number) => `navadrishti:document-expiry-alert:${userId}`;
+
+function notifyDocumentExpiryForUser(user: User) {
+  if (typeof window === 'undefined' || user.user_type !== 'ngo') return;
+
+  const key = documentExpiryAlertKey(user.id);
+  if (sessionStorage.getItem(key)) return;
+
+  const copy = getDocumentExpiryAlertCopy(user.profile_data || user.profile);
+  if (!copy) return;
+
+  sessionStorage.setItem(key, '1');
+  window.setTimeout(() => {
+    notify.info(copy.title, copy.description, DOCUMENT_EXPIRY_ALERT_DURATION_MS);
+  }, 800);
+}
 
 // Types
 export interface User {
@@ -11,6 +30,7 @@ export interface User {
   name: string;
   user_type: 'individual' | 'ngo' | 'company';
   profile_image?: string;
+  cover_image?: string;
   profile?: Record<string, any>;
   // Location fields for nearby functionality
   city?: string;
@@ -27,8 +47,16 @@ export interface User {
   phone_verified?: boolean;
   phone_verified_at?: string;
   // Document verification status
-  verification_status?: 'verified' | 'unverified' | 'pending';
+  verification_status?: 'verified' | 'unverified' | 'pending' | 'suspended';
+  ca_badge_number?: string | null;
+  csr_eligible?: boolean;
+  ca_compliance_tags?: string[];
   verification_details?: any;
+  profile_data?: Record<string, any>;
+  document_expiry_summary?: {
+    has_expired: boolean;
+    has_due_soon: boolean;
+  } | null;
 }
 
 interface AuthContextType {
@@ -93,6 +121,8 @@ const getFriendlySignupErrorMessage = (data: any, status: number) => {
   return 'Unable to create account. Please try again.';
 };
 
+const isInvalidAuthResponse = (status: number) => status === 401 || status === 404;
+
 // Create provider
 export function AuthProvider({ children, initialUser = null, initialToken = null }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(initialUser);
@@ -146,7 +176,7 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
         return data.user as User;
       }
 
-      if (response.status === 401) {
+      if (isInvalidAuthResponse(response.status)) {
         persistAuthSnapshot(null, null);
         setToken(null);
         setUser(null);
@@ -241,6 +271,11 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
     syncAuthFromStorage();
   }, []);
 
+  useEffect(() => {
+    if (loading || !user) return;
+    notifyDocumentExpiryForUser(user);
+  }, [loading, user]);
+
   // Verify token and fetch current user
   useEffect(() => {
     const verifyTokenAsync = async () => {
@@ -267,7 +302,7 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
           setUser(data.user);
           // Update localStorage with fresh user data
           persistAuthSnapshot(cleanToken, data.user);
-        } else if (response.status === 401) {
+        } else if (isInvalidAuthResponse(response.status)) {
           setToken(null);
           setUser(null);
           persistAuthSnapshot(null, null);
@@ -375,6 +410,10 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
 
   // Logout function
   const logout = () => {
+    if (user?.id && typeof window !== 'undefined') {
+      sessionStorage.removeItem(documentExpiryAlertKey(user.id));
+    }
+
     setToken(null);
     setUser(null);
     setError(null);
@@ -419,7 +458,7 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
         const data = await response.json();
         setUser(data.user);
         persistAuthSnapshot(token, data.user);
-      } else if (response.status === 401) {
+      } else if (isInvalidAuthResponse(response.status)) {
         setToken(null);
         setUser(null);
         persistAuthSnapshot(null, null);

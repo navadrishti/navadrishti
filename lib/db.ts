@@ -24,31 +24,6 @@ export function createServerClient() {
   return supabase
 }
 
-// Helper function for backward compatibility - converts to direct Supabase queries
-export async function executeQuery({ query, values = [] }: { query: string; values?: any[] }) {
-  try {
-    // Log the problematic query for debugging
-    console.error('⚠️  DEPRECATED executeQuery called:', {
-      query: query.substring(0, 100) + '...',
-      values: values.length,
-      stack: new Error().stack?.split('\n')[2]?.trim()
-    });
-    
-    // Return empty array for SELECT queries, throw error for others
-    if (query.trim().toUpperCase().startsWith('SELECT')) {
-      console.warn('Returning empty result for SELECT query. This API needs migration to Supabase client.');
-      return [];
-    }
-    
-    // For non-SELECT queries, throw an error to prevent data corruption
-    throw new Error('executeQuery function is deprecated. This API needs to be converted to use Supabase client directly.');
-    
-  } catch (error) {
-    console.error('Database query error:', error);
-    throw error;
-  }
-}
-
 // Modern Supabase helpers (recommended approach)
 export const db = {
   // Users
@@ -158,43 +133,64 @@ export const db = {
 
       if (error) throw error;
 
-      // If valid_until was updated, propagate the canonical valid_until to active linked service_requests
-      try {
-        if (projectData && projectData.valid_until) {
-          const { data: needs, error: needsError } = await supabase
-            .from('service_requests')
-            .select('id, project_context')
-            .eq('project_id', id)
-            .not('status', 'in', '(completed,cancelled)');
+      const shouldPropagate =
+        projectData &&
+        (
+          projectData.valid_until !== undefined ||
+          projectData.csr_project_available_for_csr !== undefined ||
+          projectData.exact_address !== undefined ||
+          projectData.location !== undefined ||
+          projectData.expected_beneficiaries !== undefined
+        );
 
-          if (!needsError && Array.isArray(needs) && needs.length > 0) {
-            const now = new Date().toISOString();
-            for (const need of needs) {
-              try {
-                const existingCtx = need.project_context && typeof need.project_context === 'object'
-                  ? need.project_context
-                  : (typeof need.project_context === 'string' ? JSON.parse(need.project_context || '{}') : {});
+      if (shouldPropagate) {
+        const { data: needs, error: needsError } = await supabase
+          .from('service_requests')
+          .select('id, project_context')
+          .eq('project_id', id)
+          .not('status', 'in', '(completed,cancelled)');
 
-                const nextCtx = {
-                  ...existingCtx,
-                  project: {
-                    ...(existingCtx.project && typeof existingCtx.project === 'object' ? existingCtx.project : {}),
-                    valid_until: projectData.valid_until
-                  }
-                };
+        if (!needsError && Array.isArray(needs) && needs.length > 0) {
+          const now = new Date().toISOString();
+          for (const need of needs) {
+            try {
+              const existingCtx = need.project_context && typeof need.project_context === 'object'
+                ? need.project_context
+                : (typeof need.project_context === 'string' ? JSON.parse(need.project_context || '{}') : {});
 
-                await supabase
-                  .from('service_requests')
-                  .update({ project_context: nextCtx, updated_at: now })
-                  .eq('id', need.id);
-              } catch (e) {
-                console.warn('Failed to propagate valid_until to need', need.id, e);
+              const nextCtx: Record<string, any> = {
+                ...existingCtx,
+                project: {
+                  ...(existingCtx.project && typeof existingCtx.project === 'object' ? existingCtx.project : {}),
+                },
+              };
+
+              if (projectData.valid_until !== undefined) {
+                nextCtx.project_valid_until = projectData.valid_until;
+                nextCtx.project.valid_until = projectData.valid_until;
               }
+              if (projectData.csr_project_available_for_csr !== undefined) {
+                nextCtx.csr_project_available_for_csr = projectData.csr_project_available_for_csr;
+                nextCtx.project.csr_project_available_for_csr = projectData.csr_project_available_for_csr;
+              }
+              if (projectData.exact_address !== undefined) {
+                nextCtx.project_location = projectData.exact_address;
+                nextCtx.project.exact_address = projectData.exact_address;
+              }
+              if (projectData.expected_beneficiaries !== undefined) {
+                nextCtx.project_expected_beneficiaries = projectData.expected_beneficiaries;
+                nextCtx.project.expected_beneficiaries = projectData.expected_beneficiaries;
+              }
+
+              await supabase
+                .from('service_requests')
+                .update({ project_context: nextCtx, updated_at: now })
+                .eq('id', need.id);
+            } catch (e) {
+              console.warn('Failed to propagate project fields to need', need.id, e);
             }
           }
         }
-      } catch (e) {
-        console.warn('Error while propagating valid_until to linked needs:', e);
       }
 
       return data;

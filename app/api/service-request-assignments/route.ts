@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import jwt from 'jsonwebtoken'
 import { supabase } from '@/lib/db'
-import { JWT_SECRET } from '@/lib/auth'
+import { JWT_SECRET, ngoIsCsrEligible, CSR_ELIGIBILITY_REQUIRED_MESSAGE } from '@/lib/auth'
+import { ngoUserIsCsrEligible } from '@/lib/server-auth'
 
 interface JWTPayload {
   id: number;
@@ -122,8 +123,8 @@ export async function GET(request: NextRequest) {
           location,
           timeline,
           project_id,
-          project:service_request_projects!project_id(id, title, description, location, exact_address, timeline),
-          requester:users!ngo_id(id, name, email)
+          project:service_request_projects!project_id(id, title, description, location, exact_address, timeline, csr_project_available_for_csr),
+          requester:users!ngo_id(id, name, email, verification_status, profile_data)
         `)
         .not('project_id', 'is', null)
         .neq('ngo_id', userId)
@@ -187,6 +188,8 @@ export async function GET(request: NextRequest) {
         const normalizedNeed = need as any
         const normalizedProject = Array.isArray(normalizedNeed.project) ? normalizedNeed.project[0] : normalizedNeed.project
         const normalizedRequester = Array.isArray(normalizedNeed.requester) ? normalizedNeed.requester[0] : normalizedNeed.requester
+        if (normalizedProject?.csr_project_available_for_csr === false) continue
+        if (!ngoIsCsrEligible(normalizedRequester?.verification_status, normalizedRequester?.profile_data)) continue
         const projectId = String(need.project_id)
         const existing = grouped.get(projectId) || {
           project_id: projectId,
@@ -406,7 +409,7 @@ export async function GET(request: NextRequest) {
       {
         const response = await supabase
           .from('service_request_projects')
-          .select('id, ngo_id, title, description, location, exact_address, timeline, status, valid_until, expected_beneficiaries, updated_at, created_at, ngo:users!ngo_id(id, name, email, location, city, state_province, country, phone, ngo_volunteer_capacity, industry, pincode, profile_data)')
+          .select('id, ngo_id, title, description, location, exact_address, timeline, status, valid_until, expected_beneficiaries, csr_project_available_for_csr, updated_at, created_at, ngo:users!ngo_id(id, name, email, location, city, state_province, country, phone, ngo_volunteer_capacity, industry, pincode, profile_data)')
           .eq('id', projectId)
           .maybeSingle()
 
@@ -422,7 +425,7 @@ export async function GET(request: NextRequest) {
         
         const { data: projectWithoutNgo, error: projectErrorWithoutNgo } = await supabase
           .from('service_request_projects')
-          .select('id, ngo_id, title, description, location, exact_address, timeline, status, valid_until, expected_beneficiaries, updated_at, created_at')
+          .select('id, ngo_id, title, description, location, exact_address, timeline, status, valid_until, expected_beneficiaries, csr_project_available_for_csr, updated_at, created_at')
           .eq('id', projectId)
           .maybeSingle()
 
@@ -476,7 +479,11 @@ export async function GET(request: NextRequest) {
         ? {
             ...project,
             category: String(firstNeedContext.project_category || (needsList[0] as any)?.category || '').trim() || null,
-            csr_project_available_for_csr: firstNeedContext.csr_project_available_for_csr !== false,
+            csr_project_available_for_csr:
+              project.csr_project_available_for_csr ??
+              (firstNeedContext.csr_project_available_for_csr !== undefined
+                ? firstNeedContext.csr_project_available_for_csr !== false
+                : true),
             expected_beneficiaries: project.expected_beneficiaries ?? (firstNeedContext.project_expected_beneficiaries != null
               ? Number(firstNeedContext.project_expected_beneficiaries)
               : null),
@@ -1162,6 +1169,23 @@ export async function POST(request: NextRequest) {
     const needIds = activeNeeds.map((item: any) => item.id)
 
     if (action === 'apply-project') {
+      const ownerNgoId = Number(activeNeeds[0]?.ngo_id || 0)
+      if (!(await ngoUserIsCsrEligible(ownerNgoId))) {
+        return NextResponse.json({ error: CSR_ELIGIBILITY_REQUIRED_MESSAGE }, { status: 403 })
+      }
+
+      const { data: projectRow } = await supabase
+        .from('service_request_projects')
+        .select('csr_project_available_for_csr')
+        .eq('id', projectId)
+        .maybeSingle()
+
+      if (projectRow?.csr_project_available_for_csr === false) {
+        return NextResponse.json({
+          error: 'This project is locked for CSR and cannot accept new company applications.'
+        }, { status: 409 })
+      }
+
       const unavailableNeeds = activeNeeds.filter((item: any) => !isProjectAvailableForCsr(item))
       if (unavailableNeeds.length > 0) {
         return NextResponse.json({
@@ -1216,6 +1240,26 @@ export async function POST(request: NextRequest) {
 
       if (ngoIds.length === 0) {
         return NextResponse.json({ error: 'At least one NGO id is required' }, { status: 400 })
+      }
+
+      const { data: ngoRows, error: ngoRowsError } = await supabase
+        .from('users')
+        .select('id, user_type, verification_status, profile_data')
+        .in('id', ngoIds)
+
+      if (ngoRowsError) throw ngoRowsError
+
+      const eligibleNgoIds = new Set(
+        (ngoRows || [])
+          .filter((row: any) => row.user_type === 'ngo' && ngoIsCsrEligible(row.verification_status, row.profile_data))
+          .map((row: any) => Number(row.id))
+      )
+
+      if (eligibleNgoIds.size !== ngoIds.length) {
+        return NextResponse.json(
+          { error: 'Lead NGO invites are limited to CA-tagged CSR-1 NGOs' },
+          { status: 400 }
+        )
       }
 
       const requestOwnerNgoId = Number(activeNeeds[0]?.ngo_id || 0)
@@ -1396,6 +1440,10 @@ export async function PUT(request: NextRequest) {
       const decision = String(body.decision || '').trim().toLowerCase()
       if (!inviteId || !['accepted', 'rejected'].includes(decision)) {
         return NextResponse.json({ error: 'inviteId and decision are required' }, { status: 400 })
+      }
+
+      if (decision === 'accepted' && !(await ngoUserIsCsrEligible(userId))) {
+        return NextResponse.json({ error: CSR_ELIGIBILITY_REQUIRED_MESSAGE }, { status: 403 })
       }
 
       const { data: invite, error: inviteError } = await supabase

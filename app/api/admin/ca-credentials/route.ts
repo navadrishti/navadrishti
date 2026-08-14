@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { assertAdminUser } from '@/lib/admin-auth';
-import { createNavadrishtCAAccount } from '@/lib/navadrishti-ca-auth';
+import { createNavadrishtCAAccount, resetNavadrishtCAPasswordByAdmin } from '@/lib/navadrishti-ca-auth';
 import crypto from 'crypto';
 
 // Generate a random CA ID
@@ -146,18 +146,44 @@ export async function PUT(request: NextRequest) {
   try {
     assertAdminUser(request);
 
-    const { accountId, action } = await request.json();
+    const { accountId, action, password } = await request.json();
 
     if (!accountId || !action) {
       return NextResponse.json(
-        { error: 'accountId and action (activate/deactivate) are required' },
+        { error: 'accountId and action are required' },
         { status: 400 }
       );
     }
 
+    if (action === 'reset_password') {
+      const newPassword = String(password || '').trim();
+      if (newPassword.length < 8) {
+        return NextResponse.json(
+          { error: 'Password must be at least 8 characters' },
+          { status: 400 }
+        );
+      }
+
+      const updatedAccount = await resetNavadrishtCAPasswordByAdmin(Number(accountId), newPassword);
+
+      return NextResponse.json({
+        success: true,
+        message: 'CA password reset successfully. The CA must change it on next login.',
+        data: {
+          id: updatedAccount.id,
+          ca_id: updatedAccount.ca_id,
+          username: updatedAccount.username,
+          display_name: updatedAccount.display_name,
+          active: updatedAccount.active,
+          must_change_password: updatedAccount.must_change_password,
+          updated_at: updatedAccount.updated_at,
+        },
+      });
+    }
+
     if (!['activate', 'deactivate'].includes(action)) {
       return NextResponse.json(
-        { error: 'action must be "activate" or "deactivate"' },
+        { error: 'action must be "activate", "deactivate", or "reset_password"' },
         { status: 400 }
       );
     }

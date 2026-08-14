@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
-import { hashPassword, generateToken } from '@/lib/auth';
+import { hashPassword, generateToken, validateNgoHeadquartersLocation, validateCompanyHeadquartersLocation, normalizePincode, buildNgoLocationDisplay } from '@/lib/auth';
 
 const parseNumeric = (value: unknown): number | null => {
   if (value === null || value === undefined) return null;
@@ -35,14 +35,7 @@ const validateProfileRequirements = (userType: 'individual' | 'ngo' | 'company',
   if (userType === 'ngo') {
     const requiredNgoFields: Array<{ key: string; label: string }> = [
       { key: 'registration_date', label: 'Registration Date' },
-      { key: 'twelve_a_number', label: '12A Number' },
-      { key: 'eighty_g_number', label: '80G Number' },
-      { key: 'csr1_registration_number', label: 'CSR-1 Registration Number' },
-      { key: 'bank_details', label: 'Bank Details' },
-      { key: 'sectors_schedule_vii', label: 'Sectors Worked (Schedule VII Mapped)' },
-      { key: 'past_projects', label: 'Past Projects' },
-      { key: 'geographic_coverage', label: 'Geographic Coverage' },
-      { key: 'execution_capacity', label: 'Execution Capacity' },
+      { key: 'sectors_schedule_vii', label: 'Sectors Worked (Schedule VII)' },
       { key: 'team_strength', label: 'Team Strength' }
     ];
 
@@ -55,38 +48,6 @@ const validateProfileRequirements = (userType: 'individual' | 'ngo' | 'company',
     const teamStrength = parseInteger(profile.team_strength);
     if (teamStrength === null || teamStrength <= 0) {
       return 'Team Strength must be a valid positive number for NGO registration.';
-    }
-  }
-
-  if (userType === 'company') {
-    const requiredCompanyFields: Array<{ key: string; label: string }> = [
-      { key: 'net_worth', label: 'Net Worth' },
-      { key: 'turnover', label: 'Turnover' },
-      { key: 'net_profit', label: 'Net Profit' },
-      { key: 'csr_vision', label: 'CSR Vision' },
-      { key: 'focus_areas_schedule_vii', label: 'Focus Areas (Schedule VII Mapped)' },
-      { key: 'implementation_model', label: 'Implementation Model' },
-      { key: 'governance_mechanism', label: 'Governance Mechanism' }
-    ];
-
-    for (const field of requiredCompanyFields) {
-      if (!hasMeaningfulValue(profile[field.key])) {
-        return `${field.label} is required for Company registration.`;
-      }
-    }
-
-    const netWorth = parseNumeric(profile.net_worth);
-    const turnover = parseNumeric(profile.turnover);
-    const netProfit = parseNumeric(profile.net_profit);
-
-    if (netWorth === null || netWorth < 0) {
-      return 'Net Worth must be a valid non-negative number for Company registration.';
-    }
-    if (turnover === null || turnover < 0) {
-      return 'Turnover must be a valid non-negative number for Company registration.';
-    }
-    if (netProfit === null) {
-      return 'Net Profit must be a valid number for Company registration.';
     }
   }
 
@@ -104,6 +65,7 @@ const signupSchema = z.object({
   state_province: z.string().optional(),
   pincode: z.string().optional(),
   country: z.string().optional(),
+  location: z.string().optional(),
   profile_data: z.record(z.any()).optional(),
   ngo_volunteer_capacity: z.union([z.number().int(), z.string()]).optional()
 });
@@ -143,8 +105,55 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
     
-    const { email, password, name, user_type, phone, city, state_province, pincode, country, profile_data, ngo_volunteer_capacity } = validationResult.data;
+    const { email, password, name, user_type, phone, city, state_province, pincode, country, location, profile_data, ngo_volunteer_capacity } = validationResult.data;
     const profile = profile_data || {};
+
+    if (user_type === 'ngo') {
+      const headquarters = (profile.ngo_headquarters && typeof profile.ngo_headquarters === 'object')
+        ? profile.ngo_headquarters as Record<string, unknown>
+        : {};
+
+      const locationError = validateNgoHeadquartersLocation({
+        address_line: String(headquarters.address_line || profile.registered_address || ''),
+        city: city || String(headquarters.city || profile.city || ''),
+        state: state_province || String(headquarters.state || profile.state || ''),
+        pincode: pincode || String(headquarters.pincode || profile.pincode || ''),
+        country: country || String(headquarters.country || profile.country || 'India'),
+      });
+
+      if (locationError) {
+        return NextResponse.json({
+          error: locationError,
+          code: 'VALIDATION_ERROR',
+        }, { status: 400 });
+      }
+    }
+
+    if (user_type === 'company') {
+      const headquarters = (profile.company_headquarters && typeof profile.company_headquarters === 'object')
+        ? profile.company_headquarters as Record<string, unknown>
+        : {};
+
+      const locationError = validateCompanyHeadquartersLocation({
+        address_line: String(headquarters.address_line || profile.registered_address || ''),
+        city: city || String(headquarters.city || profile.city || ''),
+        state: state_province || String(headquarters.state || profile.state || ''),
+        pincode: pincode || String(headquarters.pincode || profile.pincode || ''),
+        country: country || String(headquarters.country || profile.country || 'India'),
+      });
+
+      if (locationError) {
+        return NextResponse.json({
+          error: locationError,
+          code: 'VALIDATION_ERROR',
+        }, { status: 400 });
+      }
+    }
+
+    const normalizedPincode =
+      user_type === 'ngo' || user_type === 'company'
+        ? normalizePincode(String(pincode || ''), country || 'India')
+        : pincode;
     const parsedNgoCapacity = (() => {
       if (ngo_volunteer_capacity === undefined || ngo_volunteer_capacity === null) return null;
       if (typeof ngo_volunteer_capacity === 'number') return Math.max(0, Math.trunc(ngo_volunteer_capacity));
@@ -184,8 +193,25 @@ export async function POST(req: NextRequest) {
       phone,
       city,
       state_province,
-      pincode,
+      pincode: normalizedPincode,
       country,
+      location: location || (user_type === 'ngo'
+        ? buildNgoLocationDisplay({
+            address_line: String((profile.ngo_headquarters as Record<string, unknown> | undefined)?.address_line || ''),
+            city: city || '',
+            state: state_province || '',
+            pincode: String(normalizedPincode || ''),
+            country: country || 'India',
+          })
+        : user_type === 'company'
+          ? buildNgoLocationDisplay({
+              address_line: String((profile.company_headquarters as Record<string, unknown> | undefined)?.address_line || ''),
+              city: city || '',
+              state: state_province || '',
+              pincode: String(normalizedPincode || ''),
+              country: country || 'India',
+            })
+          : undefined),
       profile_data: profile,
       // include top-level column if provided
       ...(parsedNgoCapacity !== null ? { ngo_volunteer_capacity: parsedNgoCapacity } : {})

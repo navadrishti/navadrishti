@@ -1,10 +1,16 @@
 import type { ReactNode } from 'react';
+import { ConsoleFooter } from '@/components/console-footer';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
 export function EvidencePortalShell({ children }: { children: ReactNode }) {
-  return <div className="flex w-full flex-1 flex-col">{children}</div>;
+  return (
+    <div className="flex min-h-0 w-full flex-1 flex-col">
+      {children}
+      <ConsoleFooter />
+    </div>
+  );
 }
 
 export function EvidencePortalMain({
@@ -19,7 +25,7 @@ export function EvidencePortalMain({
   return (
     <main
       className={cn(
-        'udaan-container w-full space-y-6 py-8',
+        'udaan-container w-full flex-1 space-y-6 py-8',
         narrow && 'max-w-4xl',
         className
       )}

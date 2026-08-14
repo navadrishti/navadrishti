@@ -2,8 +2,27 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
+import { cn } from "@/lib/utils"
 import { UserPlus } from "lucide-react"
 import { ReactNode } from "react"
+
+export function ProfileCoverMedia({
+  src,
+  className,
+  alt = "",
+}: {
+  src?: string | null
+  className?: string
+  alt?: string
+}) {
+  return (
+    <div className={cn("relative overflow-hidden bg-gradient-to-r from-[#0067b9] to-[#003d6e]", className)}>
+      {src ? (
+        <img src={src} alt={alt} className="absolute inset-0 h-full w-full object-cover" />
+      ) : null}
+    </div>
+  )
+}
 
 interface ProfileCardProps {
   // Original props
@@ -63,7 +82,8 @@ export function ProfileCard({
   return (
     <Card className="overflow-hidden group">
       <CardHeader className="p-0">
-        <div className="h-24 bg-blue-600 relative">
+        <div className="relative">
+          <ProfileCoverMedia className="h-24 w-full" alt="" />
           <div className="absolute inset-0 bg-white/10 backdrop-blur-[2px] transition-all duration-500 group-hover:backdrop-blur-none"></div>
           {badge}
         </div>

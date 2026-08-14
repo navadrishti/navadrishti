@@ -9,6 +9,13 @@ import { Header } from '@/components/header'
 import ProtectedRoute from '@/components/protected-route'
 import { useAuth } from '@/lib/auth-context'
 import { CSR_SCHEDULE_VII_CATEGORIES, SERVICE_REQUEST_CATEGORIES } from '@/lib/categories'
+import { INDIAN_STATES_AND_UTS, ngoIsCsrEligible } from '@/lib/auth'
+import {
+  EMPTY_PROJECT_ADDRESS,
+  formatProjectExactAddress,
+  validateProjectExactAddress,
+  type ProjectExactAddress,
+} from '@/lib/project-address'
 
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
@@ -170,11 +177,13 @@ const parseBudgetUpperBound = (budget: string): number | null => {
 export default function CreateServiceRequestPage() {
   const router = useRouter()
   const { user } = useAuth()
+  const csrEligible = ngoIsCsrEligible(user?.verification_status, user?.profile_data || user?.profile)
   const [loading, setLoading] = useState(false)
   const [loadingProjects, setLoadingProjects] = useState(false)
   const [error, setError] = useState('')
   const [projectMode, setProjectMode] = useState<'new' | 'existing'>('new')
-  const [projectAvailableForCsr, setProjectAvailableForCsr] = useState(true)
+  const [projectAvailableForCsr, setProjectAvailableForCsr] = useState(false)
+  const [projectAddress, setProjectAddress] = useState<ProjectExactAddress>({ ...EMPTY_PROJECT_ADDRESS })
   const [projects, setProjects] = useState<RequestProject[]>([])
   const [needs, setNeeds] = useState<NeedDraft[]>([createEmptyNeed()])
   const [serviceOffers, setServiceOffers] = useState<ServiceOfferLite[]>([])
@@ -211,6 +220,10 @@ export default function CreateServiceRequestPage() {
     skill_duration: '',
     infrastructure_scope: ''
   })
+
+  useEffect(() => {
+    if (csrEligible) setProjectAvailableForCsr(true)
+  }, [csrEligible])
 
   useEffect(() => {
     const rawDraft = localStorage.getItem('nd_ngo_ai_request_draft')
@@ -502,8 +515,12 @@ export default function CreateServiceRequestPage() {
   }, [projectMode])
 
   const activeProjectLocation = projectMode === 'existing'
-    ? projects.find((project) => project.id === formData.projectId)?.exact_address || projects.find((project) => project.id === formData.projectId)?.location || formData.project_location
-    : formData.project_location
+    ? formatProjectExactAddress(
+        projects.find((project) => project.id === formData.projectId)?.exact_address
+          || projects.find((project) => project.id === formData.projectId)?.location
+          || ''
+      )
+    : formatProjectExactAddress(projectAddress)
 
   const getTargetCoverageValue = (need: NeedDraft): number | null => {
     if (need.request_type === 'Financial Need') {
@@ -763,9 +780,17 @@ export default function CreateServiceRequestPage() {
       return
     }
 
-    if (projectMode === 'new' && [formData.project_title, formData.project_description, formData.project_location, formData.project_timeline, formData.project_expected_beneficiaries, formData.project_valid_until].some(isBlank)) {
-      setError('Project title, description, exact address, timeline, expected beneficiaries and validity date are required.')
+    if (projectMode === 'new' && [formData.project_title, formData.project_description, formData.project_timeline, formData.project_expected_beneficiaries, formData.project_valid_until].some(isBlank)) {
+      setError('Project title, description, timeline, expected beneficiaries and validity date are required.')
       return
+    }
+
+    if (projectMode === 'new') {
+      const addressError = validateProjectExactAddress(projectAddress)
+      if (addressError) {
+        setError(addressError)
+        return
+      }
     }
 
     if (projectMode === 'new' && (isBlank(formData.project_category) || !CSR_SCHEDULE_VII_CATEGORIES.includes(formData.project_category))) {
@@ -781,11 +806,6 @@ export default function CreateServiceRequestPage() {
 
       if (String(formData.project_description).trim().length < 20) {
         setError('Project description must be at least 20 characters.')
-        return
-      }
-
-      if (String(formData.project_location).trim().length < 10) {
-        setError('Project exact address must be detailed enough to locate the project.')
         return
       }
 
@@ -831,15 +851,16 @@ export default function CreateServiceRequestPage() {
       ? {
           title: formData.project_title,
           description: formData.project_description,
-          location: formData.project_location,
-          exact_address: formData.project_location,
+          address: projectAddress,
           timeline: formData.project_timeline,
           category: formData.project_category,
-          csr_project_available_for_csr: projectAvailableForCsr,
+          csr_project_available_for_csr: csrEligible && projectAvailableForCsr,
           expected_beneficiaries: Number(formData.project_expected_beneficiaries),
           valid_until: formData.project_valid_until
         }
       : null
+
+    const formattedProjectAddress = formatProjectExactAddress(projectAddress)
 
     try {
       const token = localStorage.getItem('token')
@@ -901,11 +922,12 @@ export default function CreateServiceRequestPage() {
             current_quantity: need.current_quantity,
             project_context: {
               project_title: formData.project_title,
-              project_location: formData.project_location,
+              project_location: formattedProjectAddress,
               project_description: formData.project_description,
                 project_timeline: formData.project_timeline,
                 project_category: formData.project_category,
-                csr_project_available_for_csr: projectAvailableForCsr
+                project_valid_until: formData.project_valid_until,
+                csr_project_available_for_csr: csrEligible && projectAvailableForCsr
             },
             details: {
               material_items: need.material_items,
@@ -1058,9 +1080,70 @@ export default function CreateServiceRequestPage() {
                             onValueChange={(value) => handleSelect('project_category', value)}
                           />
                         </div>
-                        <div>
-                          <Label htmlFor="project_location">Project Exact Address *</Label>
-                          <Input id="project_location" name="project_location" value={formData.project_location} onChange={handleInput} placeholder="Street, area, city, state, pincode" required />
+                        <div className="md:col-span-2 space-y-4 rounded-md border border-slate-200 p-4">
+                          <div>
+                            <Label>Project Exact Address *</Label>
+                            <p className="text-xs text-muted-foreground">Street, region, district, city, state, and pincode.</p>
+                          </div>
+                          <div className="grid gap-4 md:grid-cols-2">
+                            <div className="md:col-span-2">
+                              <Label htmlFor="project_address_line">Street / Building / Landmark</Label>
+                              <Input
+                                id="project_address_line"
+                                value={projectAddress.address_line}
+                                onChange={(e) => setProjectAddress((prev) => ({ ...prev, address_line: e.target.value }))}
+                                placeholder="House no., street, landmark"
+                                required
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="project_region">Region</Label>
+                              <Input
+                                id="project_region"
+                                value={projectAddress.region}
+                                onChange={(e) => setProjectAddress((prev) => ({ ...prev, region: e.target.value }))}
+                                placeholder="e.g. NCR"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="project_district">District</Label>
+                              <Input
+                                id="project_district"
+                                value={projectAddress.district}
+                                onChange={(e) => setProjectAddress((prev) => ({ ...prev, district: e.target.value }))}
+                                placeholder="e.g. Gautam Buddha Nagar"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="project_city">City / Town *</Label>
+                              <Input
+                                id="project_city"
+                                value={projectAddress.city}
+                                onChange={(e) => setProjectAddress((prev) => ({ ...prev, city: e.target.value }))}
+                                placeholder="e.g. Greater Noida"
+                                required
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="project_state">State / UT *</Label>
+                              <StyledSelect
+                                value={projectAddress.state}
+                                options={[...INDIAN_STATES_AND_UTS]}
+                                placeholder="Select state / UT"
+                                onValueChange={(value) => setProjectAddress((prev) => ({ ...prev, state: value }))}
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="project_pincode">Pincode *</Label>
+                              <Input
+                                id="project_pincode"
+                                value={projectAddress.pincode}
+                                onChange={(e) => setProjectAddress((prev) => ({ ...prev, pincode: e.target.value.replace(/\D/g, '').slice(0, 6) }))}
+                                placeholder="6-digit pincode"
+                                required
+                              />
+                            </div>
+                          </div>
                         </div>
                         <div className="md:col-span-2">
                           <Label htmlFor="project_description">Project Description *</Label>
@@ -1079,6 +1162,7 @@ export default function CreateServiceRequestPage() {
                           <Label htmlFor="project_valid_until">Project Valid Until *</Label>
                           <Input id="project_valid_until" name="project_valid_until" type="date" value={formData.project_valid_until || ''} onChange={handleInput} required />
                         </div>
+                        {csrEligible ? (
                         <div className="md:col-span-2 flex items-start gap-3 rounded-md border bg-white p-3">
                           <input
                             id="project_available_for_csr"
@@ -1092,6 +1176,12 @@ export default function CreateServiceRequestPage() {
                             <p className="text-xs text-muted-foreground">Disable this if the project should stay NGO-managed and never enter the CSR marketplace.</p>
                           </div>
                         </div>
+                        ) : (
+                        <div className="md:col-span-2 rounded-md border border-slate-200 bg-slate-50 p-3">
+                          <p className="text-sm font-medium text-slate-900">CSR takeover unavailable</p>
+                          <p className="text-xs text-muted-foreground">A live CA-allotted CSR-1 tag is required before companies can take over this project.</p>
+                        </div>
+                        )}
                       </div>
                     )}
                       </div>

@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         data: [],
-        message: 'No NGOs are registered on the platform yet.',
+        message: 'No CSR-1 tagged NGOs are available for this campaign yet.',
       })
     }
 

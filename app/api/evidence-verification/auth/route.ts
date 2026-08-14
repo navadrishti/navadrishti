@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db, supabase } from '@/lib/db';
 import { comparePassword, generateToken } from '@/lib/auth';
-import { ensureCompanyCaIdAssigned } from '@/lib/company-ca-id-helper';
+import { ensureCompanyCaIdAssigned } from '@/lib/company-ca';
 
 const loginSchema = z.object({
   email: z.string().email(),

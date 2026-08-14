@@ -55,17 +55,19 @@ export async function POST(request: NextRequest) {
 
       const message = err instanceof Error ? err.message : "LLM call failed";
       const canFallback =
+        message.includes("currently unavailable") ||
         message.includes("GEMINI_API_KEY") ||
         message.includes("Gemini API key") ||
         message.includes("API Key not found") ||
         message.includes("Failed to parse LLM response") ||
         message.includes("Gemini API 400") ||
-        message.includes("Gemini request timed out")
+        message.includes("Gemini request timed out") ||
+        message.includes("Invalid LLM response")
 
       if (!canFallback) {
         const status = message.includes(" 429:") ? 429 : 502;
         return NextResponse.json<CampaignResponse>(
-          { success: false, error: message },
+          { success: false, error: "Campaign drafting is currently unavailable. Please try again." },
           { status }
         );
       }
