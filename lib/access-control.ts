@@ -6,10 +6,10 @@
  */
 
 export type UserType = 'individual' | 'ngo' | 'company';
-export type VerificationStatus = 'verified' | 'unverified' | 'pending';
+export type VerificationStatus = 'verified' | 'unverified' | 'pending' | 'suspended';
 
 export interface User {
-  id: string;
+  id: number;
   user_type: UserType;
   verification_status: VerificationStatus;
   email_verified?: boolean;
@@ -236,4 +236,126 @@ export function canAccessRoute(userType: UserType | undefined, routePath: string
   if (!allowedUserTypes) return true; // Route has no specific restrictions
   
   return allowedUserTypes.includes(userType);
+}
+
+// --- Launch phase gating ---
+
+export type LaunchPhase = 1 | 2;
+
+export type LaunchHeaderNavItem = {
+  label: string;
+  href: string;
+  description: string;
+  external?: boolean;
+};
+
+export const NAVADRISHTI_ABOUT_URL = 'https://navadrishti.in';
+export const NAVADRISHTI_CONTACT_HREF = 'mailto:connect@navadrishti.in';
+
+const PHASE1_BLOCKED_ROUTE_PREFIXES = [
+  '/service-requests',
+  '/service-offers',
+  '/csr-campaigns',
+  '/companies/csr-agent',
+  '/companies/csr-budget',
+  '/companies/csr-health',
+  '/companies/impact-reports',
+  '/ngos/ai-agent',
+  '/ngos/ngo-agent',
+  '/ngos/ngo-matching',
+] as const;
+
+/** Permanently disabled — do not re-enable in Phase 2. */
+const PERMANENTLY_BLOCKED_ROUTE_PREFIXES = ['/government-admin'] as const;
+
+export function getLaunchPhase(): LaunchPhase {
+  const raw = String(process.env.NEXT_PUBLIC_LAUNCH_PHASE || '2').trim();
+  return raw === '1' ? 1 : 2;
+}
+
+export function isPhase1Launch(): boolean {
+  return getLaunchPhase() === 1;
+}
+
+export function isPermanentlyBlockedPath(pathname: string): boolean {
+  return PERMANENTLY_BLOCKED_ROUTE_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  );
+}
+
+export function isPhase1BlockedPath(pathname: string): boolean {
+  if (isPermanentlyBlockedPath(pathname)) {
+    return true;
+  }
+
+  if (!isPhase1Launch()) {
+    return false;
+  }
+
+  return PHASE1_BLOCKED_ROUTE_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  );
+}
+
+export function getLaunchPhaseRedirectPath(): string {
+  return '/ngo-network';
+}
+
+export function getLaunchHeaderNavItems(phase2Items: LaunchHeaderNavItem[]): LaunchHeaderNavItem[] {
+  if (!isPhase1Launch()) {
+    return phase2Items;
+  }
+
+  return [
+    {
+      label: 'NGO Network',
+      href: '/ngo-network',
+      description: 'Browse verified NGOs',
+    },
+    {
+      label: 'About Us',
+      href: NAVADRISHTI_ABOUT_URL,
+      description: 'About Navadrishti',
+      external: true,
+    },
+    {
+      label: 'Contact Us',
+      href: NAVADRISHTI_CONTACT_HREF,
+      description: 'Contact Navadrishti',
+    },
+  ];
+}
+
+export function shouldShowRootSubNavbar(): boolean {
+  return !isPhase1Launch();
+}
+
+export function shouldShowPayoutAccountPanel(
+  userType: 'individual' | 'ngo' | 'company' | string | null | undefined
+): boolean {
+  if (userType === 'ngo') {
+    return true;
+  }
+
+  if (userType === 'individual' || userType === 'company') {
+    return !isPhase1Launch();
+  }
+
+  return false;
+}
+
+export function filterDashboardSidebarItems<T extends { value: string }>(items: T[]): T[] {
+  if (!isPhase1Launch()) {
+    return items;
+  }
+
+  return items.filter((item) => item.value === 'profile');
+}
+
+export function resolvePhase1DashboardTab(requestedTab: string | null | undefined): string {
+  if (!isPhase1Launch()) {
+    return requestedTab || 'profile';
+  }
+
+  return 'profile';
 }

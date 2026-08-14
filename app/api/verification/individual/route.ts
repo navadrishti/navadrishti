@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import jwt from 'jsonwebtoken';
-import { JWT_SECRET } from '@/lib/auth';
+import { JWT_SECRET, requireBankStatementDocument } from '@/lib/auth';
 
 function isValidAadhaarNumber(aadhaarNumber: string): boolean {
   return /^\d{12}$/.test(aadhaarNumber);
@@ -43,8 +43,17 @@ export async function POST(req: NextRequest) {
     const { action, documentType, aadhaarNumber, panNumber, documents } = await req.json();
 
     switch (action) {
-      case 'initiate':
-        return await initiateVerification(userId, documentType, documents);
+      case 'initiate': {
+        const bankStatementError = requireBankStatementDocument(documents);
+        if (bankStatementError) return bankStatementError;
+        return await initiateVerification(userId, documentType, documents, aadhaarNumber, panNumber);
+      }
+
+      case 'reverify': {
+        const bankStatementError = requireBankStatementDocument(documents);
+        if (bankStatementError) return bankStatementError;
+        return await reverifyVerification(userId, documentType, documents, aadhaarNumber, panNumber);
+      }
       
       case 'verify-aadhaar':
         return await verifyAadhaar(userId, aadhaarNumber);
@@ -64,21 +73,38 @@ export async function POST(req: NextRequest) {
   }
 }
 
-async function initiateVerification(userId: number, documentType: 'aadhaar' | 'pan', documents?: Record<string, string>) {
+async function initiateVerification(
+  userId: number,
+  documentType: 'aadhaar' | 'pan',
+  documents?: Record<string, string>,
+  aadhaarNumber?: string,
+  panNumber?: string
+) {
   try {
+    const entered = {
+      aadhaar: typeof aadhaarNumber === 'string' ? aadhaarNumber.replace(/\s/g, '') : '',
+      pan: typeof panNumber === 'string' ? panNumber.trim().toUpperCase() : '',
+    };
+
     // Create or update verification record
     const existingVerification = await db.individualVerifications.findByUserId(userId);
+
+    const verificationPayload: Record<string, any> = {
+      verification_status: 'pending',
+      updated_at: new Date().toISOString(),
+      aadhaar_verified: false,
+      pan_verified: false,
+    };
+    if (entered.aadhaar) verificationPayload.aadhaar_number = entered.aadhaar;
+    if (entered.pan) verificationPayload.pan_number = entered.pan;
 
     if (!existingVerification) {
       await db.individualVerifications.create({
         user_id: userId,
-        verification_status: 'pending'
+        ...verificationPayload,
       });
     } else {
-      await db.individualVerifications.update(userId, {
-        verification_status: 'pending',
-        updated_at: new Date().toISOString()
-      });
+      await db.individualVerifications.update(userId, verificationPayload);
     }
 
     const user = await db.users.findById(userId);
@@ -95,6 +121,7 @@ async function initiateVerification(userId: number, documentType: 'aadhaar' | 'p
           individual: {
             ...(existingVerificationDocs.individual || {}),
             documents: documents || {},
+            entered_fields: entered,
             submitted_at: new Date().toISOString(),
             status: 'pending'
           }
@@ -119,6 +146,64 @@ async function initiateVerification(userId: number, documentType: 'aadhaar' | 'p
     return NextResponse.json({
       error: error.message || 'Failed to initiate verification',
       code: 'INITIATION_FAILED'
+    }, { status: 500 });
+  }
+}
+
+async function reverifyVerification(
+  userId: number,
+  documentType: 'aadhaar' | 'pan',
+  documents?: Record<string, string>,
+  aadhaarNumber?: string,
+  panNumber?: string
+) {
+  try {
+    const user = await db.users.findById(userId);
+    if (!user || user.verification_status !== 'verified') {
+      return NextResponse.json({ error: 'Only verified users can request reverification' }, { status: 400 });
+    }
+
+    const existingVerification = await db.individualVerifications.findByUserId(userId);
+    if (!existingVerification || existingVerification.verification_status !== 'verified') {
+      return NextResponse.json({ error: 'Only verified users can request reverification' }, { status: 400 });
+    }
+
+    const existingProfileData = (user.profile_data && typeof user.profile_data === 'object') ? user.profile_data : {};
+    const existingVerificationDocs = (existingProfileData.verification_documents && typeof existingProfileData.verification_documents === 'object')
+      ? existingProfileData.verification_documents
+      : {};
+
+    await db.users.update(userId, {
+      profile_data: {
+        ...existingProfileData,
+        reverification_pending: true,
+        verification_documents: {
+          ...existingVerificationDocs,
+          individual: {
+            ...(existingVerificationDocs.individual || {}),
+            reverification_status: 'pending',
+            reverification_documents: documents || {},
+            reverification_submitted_at: new Date().toISOString(),
+            entered_fields: {
+              aadhaar: typeof aadhaarNumber === 'string' ? aadhaarNumber.replace(/\s/g, '') : '',
+              pan: typeof panNumber === 'string' ? panNumber.trim().toUpperCase() : '',
+            },
+          }
+        }
+      }
+    });
+
+    return NextResponse.json({
+      success: true,
+      mode: 'reverification',
+      message: 'Reverification submitted. You remain verified while your updated documents are reviewed.',
+      documentType
+    });
+  } catch (error: any) {
+    console.error('Individual reverification error:', error);
+    return NextResponse.json({
+      error: error.message || 'Failed to submit reverification',
+      code: 'REVERIFICATION_FAILED'
     }, { status: 500 });
   }
 }
@@ -237,11 +322,18 @@ export async function GET(req: NextRequest) {
       });
     }
     
+    const profileData = (user.profile_data && typeof user.profile_data === 'object') ? user.profile_data : {};
+    const effectiveStatus = user.verification_status === 'verified'
+      ? 'verified'
+      : (verification.verification_status || 'unverified');
+
     return NextResponse.json({
-      verified: verification.verification_status === 'verified',
+      verified: effectiveStatus === 'verified',
       aadhaarVerified: verification.aadhaar_verified || false,
       panVerified: verification.pan_verified || false,
-      status: verification.verification_status || 'unverified',
+      status: effectiveStatus,
+      verification_status: effectiveStatus,
+      reverification_pending: Boolean(profileData.reverification_pending),
       verifiedAt: verification.verification_date,
       level: user.verification_level || 'basic'
     });

@@ -1,64 +1,216 @@
 "use client"
 
-import { use, useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
+import Link from "next/link"
+import { useParams } from "next/navigation"
 import { Header } from "@/components/header"
-import { PostsFeed } from "@/components/posts-feed"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { ArrowLeft, Calendar, MapPin, Award, TrendingUp, Heart, Users, Target, Trophy, Loader2, FileText, Briefcase, Download, ExternalLink, MailCheck, Phone } from "lucide-react"
-import { VerificationBadge } from "@/components/verification-badge"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  ArrowLeft,
+  Calendar,
+  MapPin,
+  Mail,
+  Phone,
+} from "lucide-react"
+import { PHONE_VERIFICATION_ENABLED, formatGeographicCoverageArea, visibleCaBadgeNumber } from "@/lib/auth"
+import { formatDisplayDate } from "@/lib/format-date"
+import { formatProjectExactAddress } from "@/lib/project-address"
 import { useAuth } from "@/lib/auth-context"
-import { useIsMobile } from "@/hooks/use-mobile"
+import {
+  ComplianceBadge,
+  type ComplianceBadgeKind,
+  NgoComplianceBadges,
+  VerificationBadge,
+} from "@/components/verification-badge"
+import { ProfileCoverMedia } from "@/components/profile-card"
+import { DocumentFileViewer } from "@/components/ca-verification-review"
+import { NgoPayDialog } from "@/components/profile-dashboard-tab"
 
-interface ImpactProfileProps {
-  params: Promise<{
-    id: string
+const COMPLIANCE_DOC_ORDER = ["twelve_a", "eighty_g", "csr1", "fcra"] as const
+const COMPLIANCE_DOC_LABELS: Record<(typeof COMPLIANCE_DOC_ORDER)[number], string> = {
+  twelve_a: "12A",
+  eighty_g: "80G",
+  csr1: "CSR-1",
+  fcra: "FCRA",
+}
+
+function isComplianceDocKey(key: string): key is (typeof COMPLIANCE_DOC_ORDER)[number] {
+  return (COMPLIANCE_DOC_ORDER as readonly string[]).includes(key)
+}
+
+type NgoPublicProfile = {
+  sectors_schedule_vii?: string[]
+  registration_type?: string | null
+  registration_number?: string | null
+  fcra_number?: string | null
+  fcra_expiry_date?: string | null
+  document_expiries?: Array<{
+    key: string
+    label: string
+    number?: string | null
+    valid_until: string
+    status: "ok" | "due_soon" | "expired"
   }>
+  founded?: string | number | null
+  volunteer_capacity?: string | number | null
+  office_address?: string | null
+  geographic_coverage_preview?: string | null
+  past_projects?: Array<{
+    title: string
+    description?: string
+    source?: "registration" | "platform"
+    category?: string
+    location?: string
+    timeline?: string
+    expected_beneficiaries?: number | null
+    valid_until?: string | null
+    status?: string
+  }>
+  work_areas?: Array<{ region: string; state: string; district: string; area_type: string }>
+  execution_capacity?: {
+    concurrent_projects: string
+    annual_beneficiaries: string
+    delivery_model: string
+    notes: string
+  } | null
+  compliance_documents?: Array<{
+    key: string
+    label: string
+    url: string
+    registration_number?: string | null
+  }>
+  ca_compliance_tags?: string[]
+  accepts_payments?: boolean
+  csr_eligible?: boolean
 }
 
 interface UserProfile {
   id: number
   name: string
   email: string
+  phone?: string | null
   email_verified?: boolean
   phone_verified?: boolean
   user_type: string
   location: string
   profile_image: string
+  cover_image?: string | null
   city: string
+  state_province?: string | null
+  pincode?: string | null
+  country?: string | null
   created_at: string
   verification_status?: string
+  website?: string | null
+  bio?: string | null
   profile_data?: {
     bio?: string
+    ca_badge_number?: string | null
   }
+  ngo_public?: NgoPublicProfile
+  verification_details?: Record<string, unknown> | null
+  ca_badge_number?: string | null
 }
 
-export default function ImpactProfilePage({ params }: ImpactProfileProps) {
-  const { id } = use(params)
-  const { token } = useAuth()
+const DELIVERY_MODEL_LABELS: Record<string, string> = {
+  direct: "Direct delivery",
+  partner_led: "Partner-led",
+  hybrid: "Hybrid (direct + partners)",
+}
+
+function ProfileSection({
+  title,
+  children,
+  empty,
+}: {
+  title: string
+  children: React.ReactNode
+  empty?: boolean
+}) {
+  if (empty) return null
+
+  return (
+    <section className="space-y-3">
+      <h2 className="text-base font-semibold text-slate-900">{title}</h2>
+      {children}
+    </section>
+  )
+}
+
+function InfoRow({ label, value }: { label: string; value?: string | number | null }) {
+  const text = value === null || value === undefined ? "" : String(value).trim()
+  return (
+    <div>
+      <p className="text-sm text-gray-500">{label}</p>
+      <p className="font-medium text-slate-900">{text || "Not set"}</p>
+    </div>
+  )
+}
+
+function VerificationStatusRow({
+  allVerified,
+  emailVerified,
+  phoneVerified,
+  badgeNumber,
+}: {
+  allVerified: boolean
+  emailVerified: boolean
+  phoneVerified: boolean
+  badgeNumber?: string | null
+}) {
+  const partialLabels = [
+    emailVerified ? "Email Verified" : null,
+    PHONE_VERIFICATION_ENABLED && phoneVerified ? "Phone Verified" : null,
+  ].filter(Boolean)
+
+  return (
+    <div className="min-w-0">
+      <p className="text-sm text-gray-500">Verification status</p>
+      {allVerified ? (
+        <VerificationBadge
+          status="verified"
+          size="xl"
+          showText={true}
+          badgeNumber={badgeNumber}
+          className="mt-1 max-w-full"
+        />
+      ) : (
+        <p className="font-medium text-slate-900">
+          {partialLabels.length > 0 ? partialLabels.join(", ") : "Unverified"}
+        </p>
+      )}
+    </div>
+  )
+}
+
+function formatUserType(userType?: string) {
+  const value = String(userType || "").trim().toLowerCase()
+  if (value === "ngo") return "NGO"
+  if (value === "individual") return "Individual"
+  if (value === "company") return "Company"
+  return value ? value.charAt(0).toUpperCase() + value.slice(1) : "Not set"
+}
+
+function formatVolunteerCapacity(value?: string | number | null) {
+  if (value === null || value === undefined) return "Not set"
+  const text = String(value).trim()
+  if (!text) return "Not set"
+  return /people/i.test(text) ? text : `${text} people`
+}
+
+export default function ImpactProfilePage() {
+  const params = useParams<{ id: string }>()
+  const id = String(params?.id || "")
   const fetchingRef = useRef(false)
-  const isMobile = useIsMobile()
+  const { user } = useAuth()
 
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
-  const [statsLoading, setStatsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [stats, setStats] = useState({
-    posts: 0,
-    serviceRequests: 0,
-    serviceOffers: 0,
-    volunteeredServices: 0,
-    clientProjects: 0,
-    reactions: 0,
-    comments: 0,
-    followers: 0,
-    following: 0
-  })
-  const [showAllProfilePosts, setShowAllProfilePosts] = useState(false)
-  const [showAllAchievements, setShowAllAchievements] = useState(false)
+  const [viewingDoc, setViewingDoc] = useState<{ url: string; label: string } | null>(null)
+  const [payDialogOpen, setPayDialogOpen] = useState(false)
 
   useEffect(() => {
     const fetchProfileData = async () => {
@@ -69,269 +221,145 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
         setLoading(true)
         setError(null)
 
-        const headers: HeadersInit = {}
-        if (token) {
-          headers['Authorization'] = `Bearer ${token}`
-        }
-
-        // Fetch user profile first (critical path)
         const profileRes = await fetch(`/api/profile/${id}`)
         const profileData = await profileRes.json()
 
         if (!profileRes.ok || !profileData.success) {
-          setError(profileData.error || 'Profile not found')
-          setLoading(false)
+          setError(profileData.error || "Profile not found")
           return
         }
 
         setProfile(profileData.profile)
-        setLoading(false)
-        setStatsLoading(true)
-
-        // Fetch all other data in parallel (non-blocking)
-        const [
-          postsRes,
-          requestsRes,
-          offersRes,
-          volunteerRes,
-          clientsRes
-        ] = await Promise.allSettled([
-          fetch(`/api/posts?userId=${id}&limit=100`, { headers }),
-          fetch(`/api/service-requests?userId=${id}`, { headers }),
-          fetch(`/api/service-offers?ngoId=${id}`, { headers }),
-          fetch(`/api/service-volunteers?volunteerId=${id}`, { headers }),
-          fetch(`/api/service-clients?clientId=${id}`, { headers })
-        ])
-
-        // Parse JSON responses once and store them
-        let postsData: any = null
-        let requestsData: any = null
-        let offersData: any = null
-        let volunteerData: any = null
-        let clientsData: any = null
-
-        if (postsRes.status === 'fulfilled' && postsRes.value.ok) {
-          postsData = await postsRes.value.json()
-        }
-        if (requestsRes.status === 'fulfilled' && requestsRes.value.ok) {
-          requestsData = await requestsRes.value.json()
-        }
-        if (offersRes.status === 'fulfilled' && offersRes.value.ok) {
-          offersData = await offersRes.value.json()
-        }
-        if (volunteerRes.status === 'fulfilled' && volunteerRes.value.ok) {
-          volunteerData = await volunteerRes.value.json()
-        }
-        if (clientsRes.status === 'fulfilled' && clientsRes.value.ok) {
-          clientsData = await clientsRes.value.json()
-        }
-
-        const newStats = {
-          posts: postsData?.data?.length || 0,
-          serviceRequests: requestsData?.requests?.length || 0,
-          serviceOffers: offersData?.offers?.length || offersData?.data?.length || 0,
-          volunteeredServices: volunteerData?.volunteers?.length || volunteerData?.data?.length || 0,
-          clientProjects: clientsData?.clients?.length || clientsData?.data?.length || 0,
-          reactions: 0,
-          comments: 0,
-          followers: 0,
-          following: 0
-        }
-
-        setStats(newStats)
-        setStatsLoading(false)
-
       } catch (err: any) {
-        console.error('Profile fetch error:', err)
-        setError(err.message || 'Failed to load profile')
-        setLoading(false)
-        setStatsLoading(false)
+        console.error("Profile fetch error:", err)
+        setError(err.message || "Failed to load profile")
       } finally {
+        setLoading(false)
         fetchingRef.current = false
       }
     }
 
     if (id) {
+      setViewingDoc(null)
       fetchProfileData()
     }
   }, [id])
 
   const getInitials = (name: string) => {
     if (!name) return "U"
-    return name.split(' ').map(n => n[0]).join('').toUpperCase()
+    return name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
   }
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
-    return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+    return date.toLocaleDateString("en-US", { month: "long", year: "numeric" })
   }
 
   const allVerified = Boolean(
     profile?.email_verified &&
-    profile?.phone_verified &&
-    profile?.verification_status === 'verified'
+      (PHONE_VERIFICATION_ENABLED ? profile?.phone_verified : true) &&
+      profile?.verification_status === "verified"
   )
+  const caBadgeNumber =
+    visibleCaBadgeNumber(profile?.verification_status, profile?.profile_data) ||
+    (allVerified ? profile?.ca_badge_number || null : null)
+  const bio = profile?.bio || profile?.profile_data?.bio || ""
+  const isNgo = profile?.user_type === "ngo"
+  const ngo = profile?.ngo_public
+  const canPay = user?.user_type === "individual" || user?.user_type === "company"
+  const isNgoViewer = user?.user_type === "ngo"
+  const canPayThisNgo =
+    Boolean(isNgo) &&
+    canPay &&
+    Boolean(ngo?.accepts_payments ?? allVerified) &&
+    (user?.user_type !== "company" || Boolean(ngo?.csr_eligible || ngo?.ca_compliance_tags?.includes("csr1")))
+  const scheduleViiSector = ngo?.sectors_schedule_vii?.[0]?.trim() || ""
+  const volunteerCapacityText = formatVolunteerCapacity(ngo?.volunteer_capacity)
+  const pastProjects = ngo?.past_projects || []
+  const workAreas = ngo?.work_areas || []
+  const executionCapacity = ngo?.execution_capacity
+  const caTags = new Set(ngo?.ca_compliance_tags || [])
+  const complianceCards = (() => {
+    type Card = {
+      key: string
+      kind: ComplianceBadgeKind | null
+      label: string
+      number?: string | null
+      valid_until?: string | null
+      status?: "ok" | "due_soon" | "expired"
+      url?: string | null
+      verified: boolean
+    }
+    const byKey = new Map<string, Card>()
 
-  const achievementBadges = [
-    ...(stats.posts >= 5
-      ? [{
-          id: 'content-creator',
-          title: 'Content Creator',
-          description: `Created ${stats.posts} posts`,
-          label: 'Active Contributor'
-        }]
-      : []),
-    ...(stats.volunteeredServices >= 3
-      ? [{
-          id: 'volunteer-hero',
-          title: 'Volunteer Hero',
-          description: `Volunteered for ${stats.volunteeredServices} services`,
-          label: 'Community Helper'
-        }]
-      : []),
-    ...(stats.serviceRequests >= 5
-      ? [{
-          id: 'opportunity-builder',
-          title: 'Opportunity Builder',
-          description: `Created ${stats.serviceRequests} service requests`,
-          label: 'Community Organizer'
-        }]
-      : []),
-    ...(stats.clientProjects >= 5
-      ? [{
-          id: 'reliable-collaborator',
-          title: 'Reliable Collaborator',
-          description: `Joined ${stats.clientProjects} service projects`,
-          label: 'Trusted Participant'
-        }]
-      : []),
-    ...(stats.serviceRequests >= 3
-      ? [{
-          id: 'opportunity-creator',
-          title: 'Opportunity Creator',
-          description: `Created ${stats.serviceRequests} service requests`,
-          label: 'NGO Leader'
-        }]
-      : []),
-    ...(stats.serviceOffers >= 3
-      ? [{
-          id: 'service-provider',
-          title: 'Service Provider',
-          description: `Offered ${stats.serviceOffers} professional services`,
-          label: 'NGO Professional'
-        }]
-      : []),
-    ...(profile?.verification_status === 'verified'
-      ? [{
-          id: 'verified-member',
-          title: 'Verified Member',
-          description: 'Successfully verified account',
-          label: 'Trusted User'
-        }]
-      : []),
-  ]
+    for (const item of ngo?.document_expiries || []) {
+      if (!isComplianceDocKey(item.key)) continue
+      byKey.set(item.key, {
+        key: item.key,
+        kind: item.key,
+        label: item.label || COMPLIANCE_DOC_LABELS[item.key],
+        number: item.number,
+        valid_until: item.valid_until,
+        status: item.status,
+        url: null,
+        verified: caTags.has(item.key),
+      })
+    }
 
-  const visibleAchievements = showAllAchievements ? achievementBadges : achievementBadges.slice(0, 3)
-  const impactMetricItems = [
-    {
-      label: 'Overall Impact Score',
-      value: (stats.posts * 1) + (stats.volunteeredServices * 10) + (stats.serviceRequests * 5) + (stats.serviceOffers * 8) + (stats.clientProjects * 4),
-      detail: 'Points earned from all activities'
-    },
-    {
-      label: 'Social Engagement',
-      value: `${stats.posts} posts`,
-      detail: `${stats.posts} posts × 1 point`
-    },
-    {
-      label: 'Volunteer Impact',
-      value: `${stats.volunteeredServices} services`,
-      detail: `${stats.volunteeredServices} services × 10 points`
-    },
-    {
-      label: 'Service Requests',
-      value: `${stats.serviceRequests} requests`,
-      detail: `${stats.serviceRequests} requests × 5 points`
-    },
-    {
-      label: 'Service Offers',
-      value: `${stats.serviceOffers} offers`,
-      detail: `${stats.serviceOffers} offers × 8 points`
-    },
-    {
-      label: 'Project Participation',
-      value: `${stats.clientProjects} projects`,
-      detail: `${stats.clientProjects} projects × 4 points`
-    },
-  ]
+    for (const doc of ngo?.compliance_documents || []) {
+      if (!isComplianceDocKey(doc.key)) continue
+      const existing = byKey.get(doc.key)
+      if (existing) {
+        existing.url = doc.url
+        existing.number = existing.number || doc.registration_number
+        existing.label = existing.label || doc.label || COMPLIANCE_DOC_LABELS[doc.key]
+        existing.verified = existing.verified || caTags.has(doc.key)
+      } else {
+        byKey.set(doc.key, {
+          key: doc.key,
+          kind: doc.key,
+          label: doc.label || COMPLIANCE_DOC_LABELS[doc.key],
+          number: doc.registration_number,
+          url: doc.url,
+          verified: caTags.has(doc.key),
+        })
+      }
+    }
 
-  const previewPostLimit = isMobile ? 3 : 6
-  const profilePostsLimit = showAllProfilePosts ? 20 : previewPostLimit
+    return COMPLIANCE_DOC_ORDER.map((key) => byKey.get(key)).filter(
+      (card): card is Card => Boolean(card)
+    )
+  })()
 
   if (loading) {
     return (
       <>
         <Header />
         <div className="container mx-auto px-4 py-8">
-          <Card className="mb-8">
+          <Card className="mb-8 overflow-hidden animate-pulse">
+            <div className="h-36 bg-slate-100 sm:h-48" />
             <CardContent className="pt-6">
-              <div className="flex flex-col md:flex-row gap-6">
-                {/* Avatar Skeleton */}
-                <div className="h-32 w-32 rounded-full bg-white animate-pulse" />
-                
+              <div className="flex flex-col gap-6 md:flex-row">
+                <div className="-mt-16 h-32 w-32 rounded-full border-4 border-white bg-slate-100" />
                 <div className="flex-1 space-y-4">
-                  {/* Name and badges skeleton */}
-                  <div className="space-y-2">
-                    <div className="h-9 w-64 bg-white rounded animate-pulse" />
-                    <div className="flex gap-4">
-                      <div className="h-4 w-32 bg-white rounded animate-pulse" />
-                      <div className="h-4 w-40 bg-white rounded animate-pulse" />
-                    </div>
-                    <div className="h-6 w-24 bg-white rounded-full animate-pulse" />
-                  </div>
-                  
-                  {/* Stats skeleton */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
-                    {[1, 2, 3, 4].map((i) => (
-                      <div key={i} className="p-3 bg-white rounded-lg border border-gray-200">
-                        <div className="h-8 w-16 bg-white rounded animate-pulse mx-auto mb-2" />
-                        <div className="h-4 w-20 bg-white rounded animate-pulse mx-auto" />
-                      </div>
-                    ))}
-                  </div>
+                  <div className="h-9 w-64 rounded bg-slate-100" />
+                  <div className="h-4 w-48 rounded bg-slate-100" />
+                  <div className="h-4 w-56 rounded bg-slate-100" />
                 </div>
               </div>
             </CardContent>
           </Card>
-
-          {/* Tabs skeleton */}
-          <div className="space-y-6">
-            <div className="flex gap-2 border-b">
-              {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="h-10 w-32 bg-white rounded-t animate-pulse" />
-              ))}
-            </div>
-            
-            {/* Content skeleton */}
-            <Card>
-              <CardHeader>
-                <div className="h-6 w-48 bg-white rounded animate-pulse" />
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="p-4 border rounded-lg space-y-3">
-                    <div className="flex gap-4">
-                      <div className="h-12 w-12 rounded-full bg-white animate-pulse" />
-                      <div className="flex-1 space-y-2">
-                        <div className="h-4 w-3/4 bg-white rounded animate-pulse" />
-                        <div className="h-4 w-1/2 bg-white rounded animate-pulse" />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          </div>
+          <Card className="animate-pulse">
+            <CardContent className="space-y-4 py-6">
+              <div className="h-5 w-40 rounded bg-slate-100" />
+              <div className="h-4 w-full rounded bg-slate-100" />
+              <div className="h-4 w-5/6 rounded bg-slate-100" />
+            </CardContent>
+          </Card>
         </div>
       </>
     )
@@ -343,9 +371,12 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
         <Header />
         <div className="container mx-auto px-4 py-8">
           <Card>
-            <CardContent className="pt-6 text-center py-12">
-              <p className="text-red-600 mb-4">{error || 'Profile not found'}</p>
-              <Button onClick={() => window.history.back()} className="hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0">
+            <CardContent className="py-12 pt-6 text-center">
+              <p className="mb-4 text-red-600">{error || "Profile not found"}</p>
+              <Button
+                onClick={() => window.history.back()}
+                className="hover:bg-transparent focus-visible:bg-transparent focus-visible:ring-0 active:bg-transparent"
+              >
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Back
               </Button>
@@ -356,262 +387,325 @@ export default function ImpactProfilePage({ params }: ImpactProfileProps) {
     )
   }
 
-
   return (
     <>
       <Header />
       <div className="container mx-auto px-4 py-8">
-        <Card className="mb-8">
-          <CardContent className="pt-6">
-            <div className="flex flex-col md:flex-row gap-6">
-              <Avatar className="h-32 w-32">
+        <Card className="mb-8 overflow-hidden">
+          <ProfileCoverMedia src={profile.cover_image} className="h-36 w-full sm:h-48" alt="" />
+          <CardContent className="pt-0">
+            <div className="flex flex-col gap-6 md:flex-row">
+              <Avatar className="z-10 -mt-12 h-28 w-28 border-4 border-white shadow-sm sm:h-32 sm:w-32">
                 <AvatarImage src={profile.profile_image} />
-                <AvatarFallback className="text-3xl bg-udaan-orange text-white">
+                <AvatarFallback className="bg-udaan-orange text-3xl text-white">
                   {getInitials(profile.name)}
                 </AvatarFallback>
               </Avatar>
-            
-            <div className="flex-1">
-              <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between mb-4">
-                <div className="min-w-0">
-                  <div className="flex flex-col items-start gap-1 mb-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
-                    <h1 className="text-3xl font-bold text-gray-900">
-                      {profile.name}
-                    </h1>
-                    <div className="flex items-center gap-1">
-                      {allVerified ? (
-                        <VerificationBadge status="verified" size="sm" showText={false} />
+
+              <div className="min-w-0 flex-1 md:pt-4">
+                <div className="mb-4 flex flex-col gap-3">
+                  <div className="flex flex-col items-start gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+                    <h1 className="min-w-0 break-words text-3xl font-bold text-gray-900">{profile.name}</h1>
+                    {allVerified ? (
+                      <VerificationBadge
+                        status="verified"
+                        size="xl"
+                        showText={false}
+                        badgeNumber={caBadgeNumber}
+                        className="max-w-full"
+                      />
+                    ) : null}
+                  </div>
+                  {isNgo ? (
+                    <NgoComplianceBadges
+                      tags={ngo?.ca_compliance_tags}
+                      registrationType={ngo?.registration_type}
+                      size="lg"
+                      className="max-w-full"
+                    />
+                  ) : null}
+
+                  {isNgo && !isNgoViewer ? (
+                    <div className="flex flex-wrap items-center gap-2">
+                      {canPayThisNgo ? (
+                        <Button
+                          size="sm"
+                          className="bg-emerald-700 text-white hover:bg-emerald-800"
+                          onClick={() => setPayDialogOpen(true)}
+                        >
+                          Pay
+                        </Button>
+                      ) : canPay ? (
+                        <Button size="sm" variant="outline" disabled>
+                          Payout setup pending
+                        </Button>
                       ) : (
-                        <>
-                          {profile.email_verified && <MailCheck className="h-5 w-5 text-green-600" />}
-                          {profile.phone_verified && <Phone className="h-5 w-5 text-green-600" />}
-                          <VerificationBadge status={profile.verification_status || 'unverified'} size="sm" showText={false} />
-                        </>
+                        <Button asChild size="sm" variant="outline">
+                          <Link href="/login">
+                            Log in to pay
+                          </Link>
+                        </Button>
                       )}
                     </div>
-                  </div>
-                  <div className="flex flex-col gap-2 text-gray-600 text-sm mb-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4 sm:gap-y-2">
-                    {(profile.city || profile.location) && (
+                  ) : null}
+
+                  {profile.email ? (
+                    <p className="flex items-start gap-1.5 text-sm text-gray-600">
+                      <Mail className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
+                      <a href={`mailto:${profile.email}`} className="break-all hover:text-emerald-700 hover:underline">
+                        {profile.email}
+                      </a>
+                    </p>
+                  ) : null}
+
+                  {profile.phone ? (
+                    <p className="flex items-start gap-1.5 text-sm text-gray-600">
+                      <Phone className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
+                      <a
+                        href={`tel:${profile.phone.replace(/\s+/g, "")}`}
+                        className="break-all hover:text-emerald-700 hover:underline"
+                      >
+                        {profile.phone}
+                      </a>
+                    </p>
+                  ) : null}
+
+                  <div className="flex flex-col gap-2 text-sm text-gray-600 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4">
+                    {(profile.city || profile.location) && !isNgo ? (
                       <span className="flex items-center gap-1">
                         <MapPin className="h-4 w-4" />
                         {profile.city || profile.location}
                       </span>
-                    )}
+                    ) : null}
                     <span className="flex items-center gap-2">
                       <Calendar className="h-4 w-4" />
                       Joined {formatDate(profile.created_at)}
                     </span>
-                    <Badge variant="outline" className="w-fit capitalize whitespace-nowrap shrink-0 self-start sm:self-auto">
-                      {profile.user_type}
-                    </Badge>
                   </div>
-                  {profile.profile_data?.bio && (
-                    <div className="mt-4">
-                      <p className="text-sm font-medium text-gray-500 mb-1">About</p>
-                      <p className="text-gray-700 whitespace-pre-wrap">{profile.profile_data.bio}</p>
-                    </div>
-                  )}
-                </div>
-                <div className="grid grid-cols-2 gap-3 xl:w-[34rem]">
-                  <div className="rounded-lg bg-white px-4 py-3 text-left">
-                    <p className="text-2xl font-bold text-orange-500">{stats.posts}</p>
-                    <p className="text-sm text-gray-900">Posts</p>
-                  </div>
-                  <div className="rounded-lg bg-white px-4 py-3 text-left">
-                    <p className="text-2xl font-bold text-orange-500">{stats.serviceRequests}</p>
-                    <p className="text-sm text-gray-900">Service Requests</p>
-                  </div>
-                  <div className="rounded-lg bg-white px-4 py-3 text-left">
-                    <p className="text-2xl font-bold text-orange-500">{stats.serviceOffers}</p>
-                    <p className="text-sm text-gray-900">Service Offers</p>
-                  </div>
-                  <div className="rounded-lg bg-white px-4 py-3 text-left">
-                    <p className="text-2xl font-bold text-orange-500">{stats.volunteeredServices}</p>
-                    <p className="text-sm text-gray-900">Volunteered</p>
+
+                  <div className="mt-2">
+                    <p className="mb-1 text-sm font-medium text-gray-500">About</p>
+                    <p className="whitespace-pre-wrap text-gray-700">{bio || "Not set"}</p>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
 
-      <div className="col-span-1 lg:col-span-12">
         <Card>
-          <Tabs defaultValue="posts" className="w-full">
-            <CardHeader>
-              <TabsList className="grid min-h-[4.25rem] w-full grid-cols-3 gap-1 rounded-md bg-slate-100 p-1 sm:min-h-[3rem]">
-                <TabsTrigger value="posts" className="min-w-0 px-2 py-3 text-[11px] leading-snug sm:py-2 sm:text-sm">
-                  Posts
-                </TabsTrigger>
-                <TabsTrigger value="profile" className="min-w-0 px-2 py-3 text-[11px] leading-snug sm:py-2 sm:text-sm">
-                  Profile Information
-                </TabsTrigger>
-                <TabsTrigger value="achievements" className="min-w-0 px-2 py-3 text-[11px] leading-snug sm:py-2 sm:text-sm">
-                  Achievements
-                </TabsTrigger>
-              </TabsList>
-            </CardHeader>
-
-            <CardContent>
-              <TabsContent value="posts" className="p-0">
-              <Card>
-                <CardHeader>
-                  <CardTitle>{showAllProfilePosts ? 'All Posts' : 'Recent Posts'}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="max-h-[70vh] overflow-y-auto pr-2 [scrollbar-gutter:stable]">
-                    <PostsFeed
-                      userId={profile.id}
-                      showAllPosts={showAllProfilePosts}
-                      limit={profilePostsLimit}
-                      showPostedDate={true}
+          <CardHeader>
+            <CardTitle>{isNgo ? "Organization Profile" : "Profile Information"}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-8">
+            {isNgo ? (
+              <>
+                <ProfileSection title="Organization Details">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <InfoRow label="User type" value={formatUserType(profile.user_type)} />
+                    <InfoRow label="Schedule VII" value={scheduleViiSector || undefined} />
+                    <InfoRow
+                      label="Coverage"
+                      value={
+                        workAreas.length > 0
+                          ? workAreas.map((area) => formatGeographicCoverageArea(area)).join("; ")
+                          : ngo?.geographic_coverage_preview || undefined
+                      }
+                    />
+                    <InfoRow label="Volunteer capacity" value={volunteerCapacityText === "Not set" ? undefined : volunteerCapacityText} />
+                    <InfoRow label="Registration type" value={ngo?.registration_type || undefined} />
+                    <InfoRow label="Registration number" value={ngo?.registration_number || undefined} />
+                    <InfoRow label="FCRA number" value={ngo?.fcra_number || undefined} />
+                    <InfoRow
+                      label="FCRA expiry"
+                      value={
+                        ngo?.fcra_expiry_date
+                          ? formatDisplayDate(ngo.fcra_expiry_date)
+                          : ngo?.document_expiries?.find((item) => item.key === "fcra")
+                            ? formatDisplayDate(
+                                ngo.document_expiries.find((item) => item.key === "fcra")!.valid_until
+                              )
+                            : undefined
+                      }
+                    />
+                    <InfoRow
+                      label="Founded"
+                      value={ngo?.founded ? String(ngo.founded) : undefined}
+                    />
+                    <VerificationStatusRow
+                      allVerified={allVerified}
+                      emailVerified={Boolean(profile.email_verified)}
+                      phoneVerified={Boolean(profile.phone_verified)}
+                      badgeNumber={caBadgeNumber}
                     />
                   </div>
-                  {!statsLoading && stats.posts > previewPostLimit && (
-                    <div className="mt-4 flex justify-center">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setShowAllProfilePosts((prev) => !prev)}
-                      >
-                        {showAllProfilePosts ? 'Show Less' : 'View All'}
-                      </Button>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-              </TabsContent>
+                </ProfileSection>
 
-              <TabsContent value="profile" className="p-0">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Profile Information</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {statsLoading ? (
-                    <div className="space-y-4 animate-pulse">
-                      {[1, 2, 3, 4].map((i) => (
-                        <div key={i} className="space-y-2">
-                          <div className="h-3 w-24 bg-gray-200 rounded" />
-                          <div className="h-4 w-40 bg-gray-200 rounded" />
+                {complianceCards.length > 0 ? (
+                  <ProfileSection title="Compliance Documents">
+                    {viewingDoc ? (
+                      <DocumentFileViewer
+                        url={viewingDoc.url}
+                        label={viewingDoc.label}
+                        onBack={() => setViewingDoc(null)}
+                      />
+                    ) : (
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {complianceCards.map((item) => (
+                        <div key={item.key} className="rounded-lg border bg-white p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="font-medium text-slate-900">{item.label}</p>
+                              {item.number ? (
+                                <p className="mt-1 text-sm text-slate-600">Ref: {item.number}</p>
+                              ) : null}
+                              {item.valid_until ? (
+                                <p className="mt-2 text-sm text-slate-700">
+                                  Valid until {formatDisplayDate(item.valid_until)}
+                                </p>
+                              ) : null}
+                              {item.status === "expired" ? (
+                                <p className="mt-1 text-xs font-medium text-red-600">Expired</p>
+                              ) : item.status === "due_soon" ? (
+                                <p className="mt-1 text-xs font-medium text-amber-700">Expiring soon</p>
+                              ) : null}
+                              {item.url ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setViewingDoc({ url: item.url!, label: item.label })}
+                                  className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-orange-600 hover:text-orange-700"
+                                >
+                                  View
+                                </button>
+                              ) : null}
+                            </div>
+                            {item.verified && item.kind ? (
+                              <ComplianceBadge
+                                kind={item.kind}
+                                size="xl"
+                                showText={false}
+                                className="opacity-60"
+                              />
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    )}
+                  </ProfileSection>
+                ) : null}
+
+                <ProfileSection title="Registered Office Address">
+                  <div className="rounded-lg border bg-slate-50/70 p-4">
+                    <p className="text-sm font-medium text-slate-900">{ngo?.office_address || "Not set"}</p>
+                  </div>
+                </ProfileSection>
+
+                <ProfileSection title="Past Projects">
+                  {pastProjects.length > 0 ? (
+                    <div className="space-y-3">
+                      {pastProjects.map((project, index) => {
+                        const location = formatProjectExactAddress(project.location)
+                        return (
+                          <div key={`${project.title}-${index}`} className="space-y-3 rounded-lg border bg-white p-4">
+                            <div>
+                              <p className="font-medium text-slate-900">{project.title}</p>
+                              {project.source ? (
+                                <p className="mt-1 text-xs text-slate-500">
+                                  {project.source === "platform" ? "Created on Navadrishti" : "Added during registration"}
+                                </p>
+                              ) : null}
+                            </div>
+                            {project.description ? (
+                              <p className="whitespace-pre-wrap break-words text-sm text-slate-600">{project.description}</p>
+                            ) : null}
+                            <div className="grid gap-3 md:grid-cols-2">
+                              <InfoRow label="Category" value={project.category} />
+                              <InfoRow label="Status" value={project.status} />
+                              <InfoRow label="Location" value={location !== "Not set" ? location : undefined} />
+                              <InfoRow label="Timeline" value={project.timeline} />
+                              <InfoRow
+                                label="Expected beneficiaries"
+                                value={
+                                  project.expected_beneficiaries
+                                    ? Number(project.expected_beneficiaries).toLocaleString("en-IN")
+                                    : undefined
+                                }
+                              />
+                              <InfoRow
+                                label="Valid until"
+                                value={project.valid_until ? formatDisplayDate(project.valid_until) : undefined}
+                              />
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-600">0</p>
+                  )}
+                </ProfileSection>
+
+                <ProfileSection title="Work Areas">
+                  {workAreas.length > 0 ? (
+                    <div className="space-y-3">
+                      {workAreas.map((area, index) => (
+                        <div key={`${area.state}-${area.district}-${index}`} className="rounded-lg border bg-white p-4">
+                          <p className="text-sm font-medium text-slate-900">{formatGeographicCoverageArea(area)}</p>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <div className="space-y-4">
-                      <div>
-                        <p className="text-sm text-gray-500 mb-1">User Type</p>
-                        <p className="font-medium capitalize">{profile.user_type}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-gray-500 mb-1">Email</p>
-                        <p className="font-medium">{profile.email}</p>
-                      </div>
-                      {(profile.city || profile.location) && (
-                        <div>
-                          <p className="text-sm text-gray-500 mb-1">Location</p>
-                          <p className="font-medium">{profile.city || profile.location}</p>
-                        </div>
-                      )}
-                      <div>
-                        <p className="text-sm text-gray-500 mb-1">Member Since</p>
-                        <p className="font-medium">{formatDate(profile.created_at)}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-gray-500 mb-1">Verification Status</p>
-                        <div className="flex items-center gap-2">
-                          <VerificationBadge
-                            status={(profile.verification_status || 'unverified') as any}
-                            size="sm"
-                            showText={false}
-                          />
-                        </div>
-                      </div>
-                    </div>
+                    <p className="text-sm text-slate-600">Not set</p>
                   )}
-                </CardContent>
-              </Card>
-              </TabsContent>
+                </ProfileSection>
 
-              <TabsContent value="achievements" className="p-0">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                  <CardTitle>Achievements & Impact</CardTitle>
-                  {!statsLoading && achievementBadges.length > 3 && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setShowAllAchievements((prev) => !prev)}
-                    >
-                      {showAllAchievements ? 'Show Less' : 'View All'}
-                    </Button>
-                  )}
-                </CardHeader>
-                <CardContent>
-                  <div className="grid gap-6 lg:grid-cols-2">
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-base">Achievement Badges</CardTitle>
-                      </div>
-                      {statsLoading ? (
-                        <div className="grid gap-4 md:grid-cols-2">
-                          {[1, 2, 3].map((i) => (
-                            <div key={i} className="p-4 rounded-lg border border-gray-200 bg-white animate-pulse">
-                              <div className="flex flex-col space-y-3">
-                                <div className="h-6 w-32 bg-gray-200 rounded" />
-                                <div className="h-4 w-40 bg-gray-100 rounded" />
-                                <div className="h-3 w-24 bg-gray-100 rounded" />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="grid gap-4 md:grid-cols-2">
-                          {visibleAchievements.map((badge) => (
-                            <div key={badge.id} className="p-4 rounded-lg border border-gray-200 bg-white">
-                              <p className="font-semibold">{badge.title}</p>
-                              <p className="text-sm text-gray-600">{badge.description}</p>
-                              <p className="text-xs text-gray-400 mt-2">{badge.label}</p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <CardTitle className="text-base">Impact Metrics</CardTitle>
-                      </div>
-                      {statsLoading ? (
-                        <div className="grid gap-x-10 gap-y-5 md:grid-cols-2">
-                          {[1, 2, 3, 4, 5, 6].map((i) => (
-                            <div key={i} className="space-y-1 animate-pulse">
-                              <div className="h-4 w-44 rounded bg-gray-200" />
-                              <div className="h-3 w-64 rounded bg-gray-100" />
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="grid gap-x-10 gap-y-6 md:grid-cols-2 text-left">
-                          {impactMetricItems.map((item) => (
-                            <div key={item.label} className="space-y-1">
-                              <p className="text-sm font-medium text-gray-900">{item.label}: <span className="font-semibold text-orange-500">{item.value}</span></p>
-                              <p className="text-xs text-gray-600">{item.detail}</p>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                <ProfileSection title="Execution Capacity" empty={!executionCapacity}>
+                  <div className="grid gap-4 rounded-lg border bg-white p-4 md:grid-cols-2">
+                    <InfoRow label="Concurrent projects" value={executionCapacity?.concurrent_projects} />
+                    <InfoRow label="Annual beneficiaries" value={executionCapacity?.annual_beneficiaries} />
+                    <InfoRow
+                      label="Delivery model"
+                      value={
+                        executionCapacity?.delivery_model
+                          ? DELIVERY_MODEL_LABELS[executionCapacity.delivery_model] ||
+                            executionCapacity.delivery_model
+                          : undefined
+                      }
+                    />
+                    <div className="md:col-span-2">
+                      <InfoRow label="Notes" value={executionCapacity?.notes} />
                     </div>
                   </div>
-                </CardContent>
-              </Card>
-              </TabsContent>
-            </CardContent>
-          </Tabs>
+                </ProfileSection>
+
+              </>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2">
+                <InfoRow label="User type" value={formatUserType(profile.user_type)} />
+                <InfoRow label="Contact email" value={profile.email} />
+                <InfoRow label="Contact phone" value={profile.phone || undefined} />
+                <InfoRow label="Member since" value={formatDate(profile.created_at)} />
+                <InfoRow label="Location" value={profile.city || profile.location || undefined} />
+                <VerificationStatusRow
+                  allVerified={allVerified}
+                  emailVerified={Boolean(profile.email_verified)}
+                  phoneVerified={Boolean(profile.phone_verified)}
+                  badgeNumber={caBadgeNumber}
+                />
+                {profile.website ? <InfoRow label="Website" value={profile.website} /> : null}
+              </div>
+            )}
+          </CardContent>
         </Card>
       </div>
-      </div>
+      {isNgo && !isNgoViewer ? (
+        <NgoPayDialog
+          ngo={profile ? { id: profile.id, name: profile.name, email: profile.email } : null}
+          open={payDialogOpen}
+          onOpenChange={setPayDialogOpen}
+        />
+      ) : null}
     </>
   )
 }

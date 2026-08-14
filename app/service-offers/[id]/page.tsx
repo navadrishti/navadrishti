@@ -15,9 +15,13 @@ import {
   IMPACT_AREA_OPTIONS,
   OFFER_TYPE_OPTIONS,
   TRANSACTION_TYPE_OPTIONS,
+  getCapabilityNeedRequestTypes,
+  isCapabilityRentalTransaction,
   isOfferType,
+  resolveCapabilityRentalRate,
   type OfferType,
 } from '@/lib/service-offers'
+import { isNeedOpenForListing } from '@/lib/service-request-allocation'
 import { SkeletonHeader, SkeletonAvatarText, SkeletonTextLines, SkeletonBigBox } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -173,7 +177,7 @@ function CapabilityOfferDetailsSection({ offer }: { offer: CapabilityOfferDetail
   const details = offer.offer_details && typeof offer.offer_details === 'object' ? offer.offer_details : {}
   const offerType = isOfferType(offer.offer_type) ? offer.offer_type : 'service'
   const transactionType = String(offer.transaction_type || '').toLowerCase()
-  const requiresPricing = transactionType === 'rent' || transactionType === 'sell'
+  const requiresPricing = isCapabilityRentalTransaction(transactionType)
   const images = parseImages(offer.images).length > 0
     ? parseImages(offer.images)
     : parseImages(details.images as string[] | string | undefined)
@@ -228,9 +232,7 @@ function CapabilityOfferDetailsSection({ offer }: { offer: CapabilityOfferDetail
           <DetailField label="Quantity" value={displayValue(details.quantity)} />
           <DetailField label="Unit" value={displayValue(details.unit)} />
           <DetailField label="Available From" value={formatOfferDetailDate(details.available_from as string | null)} />
-          {transactionType !== 'sell' ? (
-            <DetailField label="Available To" value={formatOfferDetailDate(details.available_to as string | null)} />
-          ) : null}
+          <DetailField label="Available To" value={formatOfferDetailDate(details.available_to as string | null)} />
         </>
       )
     }
@@ -241,9 +243,7 @@ function CapabilityOfferDetailsSection({ offer }: { offer: CapabilityOfferDetail
         <DetailField label="Capacity" value={displayValue(details.capacity)} />
         <DetailField label="Facilities" value={displayValue(facilities)} />
         <DetailField label="Available From" value={formatOfferDetailDate(details.available_from as string | null)} />
-        {transactionType !== 'sell' ? (
-          <DetailField label="Available To" value={formatOfferDetailDate(details.available_to as string | null)} />
-        ) : null}
+        <DetailField label="Available To" value={formatOfferDetailDate(details.available_to as string | null)} />
       </>
     )
   }
@@ -396,10 +396,15 @@ export default function ServiceOfferDetailPage() {
       fetchOfferDetails()
       if (isAuthenticated && user) {
         checkExistingApplication()
-        fetchNgoNeeds()
       }
     }
   }, [offerId, isAuthenticated, user])
+
+  useEffect(() => {
+    if (isAuthenticated && user?.user_type === 'ngo' && offer) {
+      fetchNgoNeeds()
+    }
+  }, [offer?.id, offer?.offer_type, isAuthenticated, user?.id, user?.user_type])
 
   const fetchOfferDetails = async () => {
     try {
@@ -440,10 +445,12 @@ export default function ServiceOfferDetailPage() {
   }
 
   const fetchNgoNeeds = async () => {
-    if (!user || user.user_type !== 'ngo') {
+    if (!user || user.user_type !== 'ngo' || !offer) {
       setNgoNeeds([])
       return
     }
+
+    const allowedRequestTypes = getCapabilityNeedRequestTypes(offer.offer_type)
 
     try {
       setLoadingNgoNeeds(true)
@@ -462,7 +469,11 @@ export default function ServiceOfferDetailPage() {
       const requests = Array.isArray(data?.data) ? data.data : []
       setNgoNeeds(
         requests
-          .filter((request: any) => !['completed', 'cancelled'].includes(String(request.status || '').toLowerCase()))
+          .filter((request: any) => isNeedOpenForListing(request))
+          .filter((request: any) => {
+            if (allowedRequestTypes.length === 0) return true
+            return allowedRequestTypes.includes(String(request.request_type || ''))
+          })
           .map((request: any) => ({
             id: Number(request.id),
             title: String(request.title || 'Need'),
@@ -524,18 +535,19 @@ export default function ServiceOfferDetailPage() {
     if (selectedNeedIds.length === 0) {
       toast({
         title: 'Select a need',
-        description: 'Please select one or more active needs before submitting.',
+        description: 'Please select one active need before submitting.',
         variant: "destructive"
       })
       return
     }
 
+    const isRentalOffer = isCapabilityRentalTransaction(offer?.transaction_type)
     const selectedNeedTotalAmount = selectedNeedSummaries.reduce((sum, need) => {
       const amount = Number(need.estimated_budget ?? need.target_amount ?? 0)
       return sum + (Number.isFinite(amount) ? amount : 0)
     }, 0)
 
-    if (Number.isFinite(Number(offer?.price_amount || 0)) && selectedNeedTotalAmount > Number(offer?.price_amount || 0)) {
+    if (!isRentalOffer && Number.isFinite(Number(offer?.price_amount || 0)) && selectedNeedTotalAmount > Number(offer?.price_amount || 0)) {
       toast({
         title: 'Selection exceeds offer value',
         description: 'Please choose needs whose total value fits within the offer amount.',
@@ -641,7 +653,7 @@ export default function ServiceOfferDetailPage() {
       await openRazorpayCheckout({
         keyId: orderData.keyId,
         orderId: orderData.orderId,
-        amountInr: Number(orderData.amount),
+        amountInr: Number(orderData.totalCharge || orderData.amount),
         currency: orderData.currency,
         description: `Payment for ${offer.title}`,
         prefill: {
@@ -987,7 +999,7 @@ export default function ServiceOfferDetailPage() {
                                 <span className="text-sm font-medium">Applying as NGO</span>
                               </div>
                           <p className="text-sm text-muted-foreground">
-                                Select one or more of your active needs. The request will be linked to the selected needs only.
+                                Select one active need that matches this capability type. Billing is daily rental — not a permanent sale.
                           </p>
                         </div>
 
@@ -995,7 +1007,7 @@ export default function ServiceOfferDetailPage() {
                           <div className="flex items-center justify-between gap-3">
                             <Label>Active needs</Label>
                             <span className="text-xs text-muted-foreground">
-                              {selectedNeedIds.length ? `${selectedNeedIds.length} selected` : 'Choose at least one'}
+                              {selectedNeedIds.length ? '1 selected' : 'Choose one need'}
                             </span>
                           </div>
 
@@ -1022,10 +1034,7 @@ export default function ServiceOfferDetailPage() {
                                     <Checkbox
                                       checked={isSelected}
                                       onCheckedChange={(checked) => {
-                                        setSelectedNeedIds((current) => {
-                                          if (checked) return [...new Set([...current, need.id])]
-                                          return current.filter((value) => value !== need.id)
-                                        })
+                                        setSelectedNeedIds(checked ? [need.id] : [])
                                       }}
                                       className="mt-0.5"
                                     />

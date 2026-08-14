@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Building, Briefcase, User } from 'lucide-react';
 import { AuthCardBackRow } from '@/components/header';
 
 export default function RegisterPage() {
@@ -21,7 +20,6 @@ export default function RegisterPage() {
         <CardContent className="grid gap-4">
           <Link href="/individuals/register" passHref>
             <Button className="w-full justify-start h-16" variant="outline">
-              <User className="mr-2 h-5 w-5" />
               <div className="flex flex-col items-start">
                 <span>Register as Individual</span>
                 <span className="text-xs text-gray-500">For professionals seeking opportunities</span>
@@ -31,7 +29,6 @@ export default function RegisterPage() {
           
           <Link href="/ngos/register" passHref>
             <Button className="w-full justify-start h-16" variant="outline">
-              <Building className="mr-2 h-5 w-5" />
               <div className="flex flex-col items-start">
                 <span>Register as NGO</span>
                 <span className="text-xs text-gray-500">For non-profit organizations</span>
@@ -41,7 +38,6 @@ export default function RegisterPage() {
           
           <Link href="/companies/register" passHref>
             <Button className="w-full justify-start h-16" variant="outline">
-              <Briefcase className="mr-2 h-5 w-5" />
               <div className="flex flex-col items-start">
                 <span>Register as Company</span>
                 <span className="text-xs text-gray-500">For businesses looking to hire or support</span>

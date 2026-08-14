@@ -10,11 +10,22 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Building, Mail, Phone, Globe, MapPin, Users, Briefcase } from "lucide-react"
 import { toast } from 'sonner'
 import { useOtpSender } from '@/hooks/use-otp-sender'
 import { Textarea } from '@/components/ui/textarea'
+import { MultiSelectDropdown } from '@/components/ui/multi-select-dropdown'
 import { AuthCardBackRow } from '@/components/header'
+import {
+  CSR_SCHEDULE_VII_CATEGORIES,
+  COMPANY_CSR_GOVERNANCE_MECHANISMS,
+  COMPANY_CSR_IMPLEMENTATION_MODELS,
+} from '@/lib/categories'
+import {
+  INDIAN_STATES_AND_UTS,
+  buildNgoLocationDisplay,
+  normalizePincode,
+  validateCompanyHeadquartersLocation,
+} from '@/lib/auth'
 
 export default function CompanyRegistration() {
   const [formData, setFormData] = useState({
@@ -26,6 +37,7 @@ export default function CompanyRegistration() {
     confirmPassword: '',
     companySize: '',
     website: '',
+    addressLine: '',
     city: '',
     state: '',
     pincode: '',
@@ -36,7 +48,7 @@ export default function CompanyRegistration() {
     turnover: '',
     netProfit: '',
     csrVision: '',
-    focusAreasScheduleVii: '',
+    focusAreasScheduleVii: [] as string[],
     implementationModel: '',
     governanceMechanism: ''
   })
@@ -116,41 +128,31 @@ export default function CompanyRegistration() {
     if (!formData.companySize) {
       errors.companySize = 'Company size is required'
     }
-    
-    if (!formData.city.trim()) {
-      errors.city = 'City is required'
-    }
-    
-    if (!formData.state.trim()) {
-      errors.state = 'State/Province is required'
-    }
 
-    if (!formData.netWorth.trim()) {
-      errors.netWorth = 'Net worth is required'
-    }
-
-    if (!formData.turnover.trim()) {
-      errors.turnover = 'Turnover is required'
-    }
-
-    if (!formData.netProfit.trim()) {
-      errors.netProfit = 'Net profit is required'
-    }
-
-    if (!formData.csrVision.trim()) {
-      errors.csrVision = 'CSR vision is required'
-    }
-
-    if (!formData.focusAreasScheduleVii.trim()) {
-      errors.focusAreasScheduleVii = 'Focus areas (Schedule VII mapped) are required'
-    }
-
-    if (!formData.implementationModel.trim()) {
-      errors.implementationModel = 'Implementation model is required'
-    }
-
-    if (!formData.governanceMechanism.trim()) {
-      errors.governanceMechanism = 'Governance mechanism is required'
+    const locationError = validateCompanyHeadquartersLocation({
+      address_line: formData.addressLine,
+      city: formData.city,
+      state: formData.state,
+      pincode: formData.pincode,
+      country: formData.country,
+    })
+    if (locationError) {
+      if (!formData.addressLine.trim()) {
+        errors.addressLine = 'Registered office address is required'
+      }
+      if (!formData.city.trim()) {
+        errors.city = 'City is required'
+      }
+      if (!formData.state.trim()) {
+        errors.state = 'State / UT is required'
+      }
+      if (!formData.pincode.trim()) {
+        errors.pincode = 'Pincode is required'
+      } else if (formData.country === 'India' && !/^\d{6}$/.test(normalizePincode(formData.pincode, 'India'))) {
+        errors.pincode = 'Enter a valid 6-digit pincode'
+      } else if (locationError.includes('state or UT')) {
+        errors.state = 'Select a valid Indian state or UT'
+      }
     }
     
     setFormErrors(errors)
@@ -215,33 +217,46 @@ export default function CompanyRegistration() {
     try {
       setIsSubmitting(true)
 
-      
-      // Prepare user data for signup
+      const headquarters = {
+        address_line: formData.addressLine.trim(),
+        city: formData.city.trim(),
+        state: formData.state.trim(),
+        pincode: normalizePincode(formData.pincode, formData.country),
+        country: formData.country,
+      }
+
+      const profileData: Record<string, unknown> = {
+        company_name: formData.companyName,
+        industry: formData.industry,
+        company_size: formData.companySize,
+        company_headquarters: headquarters,
+      }
+
+      if (formData.website.trim()) profileData.website = formData.website.trim()
+      if (formData.founded) profileData.founded = parseInt(formData.founded)
+      if (formData.sector.trim()) profileData.sector = formData.sector.trim()
+      if (formData.netWorth.trim()) profileData.net_worth = formData.netWorth.trim()
+      if (formData.turnover.trim()) profileData.turnover = formData.turnover.trim()
+      if (formData.netProfit.trim()) profileData.net_profit = formData.netProfit.trim()
+      if (formData.csrVision.trim()) profileData.csr_vision = formData.csrVision.trim()
+      if (formData.focusAreasScheduleVii.length > 0) {
+        profileData.focus_areas_schedule_vii = formData.focusAreasScheduleVii
+      }
+      if (formData.implementationModel) profileData.implementation_model = formData.implementationModel
+      if (formData.governanceMechanism) profileData.governance_mechanism = formData.governanceMechanism
+
       const userData = {
         email: formData.email,
         password: formData.password,
         name: formData.companyName,
         user_type: 'company' as const,
-        phone: formData.phone,
-        city: formData.city,
-        state_province: formData.state,
-        pincode: formData.pincode,
-        country: formData.country,
-        profile_data: {
-          company_name: formData.companyName,
-          industry: formData.industry,
-          company_size: formData.companySize,
-          website: formData.website,
-          founded: formData.founded,
-          sector: formData.sector,
-          net_worth: formData.netWorth,
-          turnover: formData.turnover,
-          net_profit: formData.netProfit,
-          csr_vision: formData.csrVision,
-          focus_areas_schedule_vii: formData.focusAreasScheduleVii,
-          implementation_model: formData.implementationModel,
-          governance_mechanism: formData.governanceMechanism
-        }
+        phone: formData.phone.trim(),
+        city: headquarters.city,
+        state_province: headquarters.state,
+        pincode: headquarters.pincode,
+        country: headquarters.country,
+        location: buildNgoLocationDisplay(headquarters),
+        profile_data: profileData,
       }
       
       // Call signup function from auth context
@@ -277,10 +292,7 @@ export default function CompanyRegistration() {
             
             {/* Basic Company Information */}
             <div className="space-y-4">
-              <h3 className="text-lg font-medium flex items-center gap-2">
-                <Building className="h-5 w-5" />
-                Company Information
-              </h3>
+              <h3 className="text-lg font-medium">Company Information</h3>
               
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-2 md:col-span-2">
@@ -352,10 +364,7 @@ export default function CompanyRegistration() {
             
             {/* Contact Information */}
             <div className="space-y-4">
-              <h3 className="text-lg font-medium flex items-center gap-2">
-                <Mail className="h-5 w-5" />
-                Contact Information
-              </h3>
+              <h3 className="text-lg font-medium">Contact Information</h3>
               
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-2">
@@ -415,7 +424,7 @@ export default function CompanyRegistration() {
                     </div>
                   )}
                 </div>
-                
+
                 <div className="space-y-2">
                   <Label htmlFor="phone">Phone Number</Label>
                   <Input
@@ -457,11 +466,8 @@ export default function CompanyRegistration() {
             
             {/* Company Details */}
             <div className="space-y-4">
-              <h3 className="text-lg font-medium flex items-center gap-2">
-                <Briefcase className="h-5 w-5" />
-                Company Details
-              </h3>
-              
+              <h3 className="text-lg font-medium">Company Details</h3>
+
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="founded">Year Founded</Label>
@@ -476,7 +482,7 @@ export default function CompanyRegistration() {
                     placeholder="2020"
                   />
                 </div>
-                
+
                 <div className="space-y-2">
                   <Label htmlFor="sector">Sector</Label>
                   <Input
@@ -487,9 +493,105 @@ export default function CompanyRegistration() {
                     placeholder="IT, Finance, Manufacturing, etc."
                   />
                 </div>
+              </div>
+            </div>
+
+            {/* CSR Program Details */}
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-lg font-medium">CSR Program Details</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Optional details that help with CSR matching. You can add or update these later from your profile.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="focusAreasScheduleVii">
+                    Focus Areas (Schedule VII){' '}
+                    <span className="font-normal text-muted-foreground">(optional)</span>
+                  </Label>
+                  <MultiSelectDropdown
+                    value={formData.focusAreasScheduleVii}
+                    options={CSR_SCHEDULE_VII_CATEGORIES}
+                    placeholder="Select Schedule VII focus areas"
+                    onValueChange={(value) => {
+                      setFormData((prev) => ({ ...prev, focusAreasScheduleVii: value }))
+                      if (formErrors.focusAreasScheduleVii) {
+                        setFormErrors((prev) => {
+                          const next = { ...prev }
+                          delete next.focusAreasScheduleVii
+                          return next
+                        })
+                      }
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">Choose all Schedule VII areas your CSR programs focus on.</p>
+                  {formErrors.focusAreasScheduleVii && (
+                    <p className="text-sm text-red-500">{formErrors.focusAreasScheduleVii}</p>
+                  )}
+                </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="netWorth">Net Worth</Label>
+                  <Label htmlFor="implementationModel">
+                    Implementation Model{' '}
+                    <span className="font-normal text-muted-foreground">(optional)</span>
+                  </Label>
+                  <Select
+                    value={formData.implementationModel || 'unset'}
+                    onValueChange={(value) => {
+                      handleSelectChange('implementationModel', value === 'unset' ? '' : value)
+                    }}
+                  >
+                    <SelectTrigger id="implementationModel">
+                      <SelectValue placeholder="Select implementation model" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="unset">Select implementation model</SelectItem>
+                      {COMPANY_CSR_IMPLEMENTATION_MODELS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {formErrors.implementationModel && (
+                    <p className="text-sm text-red-500">{formErrors.implementationModel}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="governanceMechanism">
+                    Governance Mechanism{' '}
+                    <span className="font-normal text-muted-foreground">(optional)</span>
+                  </Label>
+                  <Select
+                    value={formData.governanceMechanism || 'unset'}
+                    onValueChange={(value) => {
+                      handleSelectChange('governanceMechanism', value === 'unset' ? '' : value)
+                    }}
+                  >
+                    <SelectTrigger id="governanceMechanism">
+                      <SelectValue placeholder="Select governance mechanism" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="unset">Select governance mechanism</SelectItem>
+                      {COMPANY_CSR_GOVERNANCE_MECHANISMS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {formErrors.governanceMechanism && (
+                    <p className="text-sm text-red-500">{formErrors.governanceMechanism}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="netWorth">
+                    Net Worth <span className="font-normal text-muted-foreground">(optional)</span>
+                  </Label>
                   <Input
                     id="netWorth"
                     name="netWorth"
@@ -498,11 +600,12 @@ export default function CompanyRegistration() {
                     placeholder="e.g. INR 120 Cr"
                   />
                   <p className="text-xs text-muted-foreground">Use latest audited financial year figures.</p>
-                  {formErrors.netWorth && <p className="text-sm text-red-500">{formErrors.netWorth}</p>}
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="turnover">Turnover</Label>
+                  <Label htmlFor="turnover">
+                    Turnover <span className="font-normal text-muted-foreground">(optional)</span>
+                  </Label>
                   <Input
                     id="turnover"
                     name="turnover"
@@ -511,11 +614,12 @@ export default function CompanyRegistration() {
                     placeholder="e.g. INR 450 Cr"
                   />
                   <p className="text-xs text-muted-foreground">Enter annual turnover from latest audited statements.</p>
-                  {formErrors.turnover && <p className="text-sm text-red-500">{formErrors.turnover}</p>}
                 </div>
 
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="netProfit">Net Profit</Label>
+                  <Label htmlFor="netProfit">
+                    Net Profit <span className="font-normal text-muted-foreground">(optional)</span>
+                  </Label>
                   <Input
                     id="netProfit"
                     name="netProfit"
@@ -524,11 +628,12 @@ export default function CompanyRegistration() {
                     placeholder="e.g. INR 35 Cr"
                   />
                   <p className="text-xs text-muted-foreground">Provide post-tax net profit for the latest financial year.</p>
-                  {formErrors.netProfit && <p className="text-sm text-red-500">{formErrors.netProfit}</p>}
                 </div>
 
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="csrVision">CSR Vision</Label>
+                  <Label htmlFor="csrVision">
+                    CSR Vision <span className="font-normal text-muted-foreground">(optional)</span>
+                  </Label>
                   <Textarea
                     id="csrVision"
                     name="csrVision"
@@ -538,115 +643,121 @@ export default function CompanyRegistration() {
                     rows={3}
                   />
                   <p className="text-xs text-muted-foreground">Keep it concise: long-term impact goals and intended beneficiaries.</p>
-                  {formErrors.csrVision && <p className="text-sm text-red-500">{formErrors.csrVision}</p>}
                 </div>
+              </div>
+            </div>
 
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="focusAreasScheduleVii">Focus Areas (Schedule VII Mapped)</Label>
-                  <Textarea
-                    id="focusAreasScheduleVii"
-                    name="focusAreasScheduleVii"
-                    value={formData.focusAreasScheduleVii}
-                    onChange={handleChange}
-                    placeholder="List focus areas and map to Schedule VII categories"
-                    rows={3}
-                  />
-                  <p className="text-xs text-muted-foreground">Example: education (ii), healthcare (i), environment (iv).</p>
-                  {formErrors.focusAreasScheduleVii && <p className="text-sm text-red-500">{formErrors.focusAreasScheduleVii}</p>}
-                </div>
+            {/* Company Location */}
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-lg font-medium">Company Location</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Enter your registered office or primary company headquarters. We use this for CSR matching and regional recommendations.
+                </p>
+              </div>
 
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="implementationModel">Implementation Model</Label>
+              <div className="space-y-4 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
+                <div className="space-y-2">
+                  <Label htmlFor="addressLine">Registered office address</Label>
                   <Textarea
-                    id="implementationModel"
-                    name="implementationModel"
-                    value={formData.implementationModel}
+                    id="addressLine"
+                    name="addressLine"
+                    value={formData.addressLine}
                     onChange={handleChange}
-                    placeholder="Direct implementation, NGO partners, hybrid model, etc."
+                    placeholder="Building, street, locality"
                     rows={2}
                   />
-                  <p className="text-xs text-muted-foreground">State whether delivery is direct, partner-led, or hybrid.</p>
-                  {formErrors.implementationModel && <p className="text-sm text-red-500">{formErrors.implementationModel}</p>}
+                  {formErrors.addressLine && <p className="text-sm text-red-500">{formErrors.addressLine}</p>}
                 </div>
 
-                <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="governanceMechanism">Governance Mechanism</Label>
-                  <Textarea
-                    id="governanceMechanism"
-                    name="governanceMechanism"
-                    value={formData.governanceMechanism}
-                    onChange={handleChange}
-                    placeholder="Describe CSR governance, approval, and monitoring mechanisms"
-                    rows={3}
-                  />
-                  <p className="text-xs text-muted-foreground">Include committee structure, approvals, and monitoring/reporting cadence.</p>
-                  {formErrors.governanceMechanism && <p className="text-sm text-red-500">{formErrors.governanceMechanism}</p>}
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="city">City / Town</Label>
+                    <Input
+                      id="city"
+                      name="city"
+                      value={formData.city}
+                      onChange={handleChange}
+                      placeholder="e.g. Pune, Mumbai"
+                    />
+                    {formErrors.city && <p className="text-sm text-red-500">{formErrors.city}</p>}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="country">Country</Label>
+                    <Select
+                      value={formData.country}
+                      onValueChange={(value) => {
+                        handleSelectChange('country', value)
+                        if (value !== 'India') {
+                          setFormData((prev) => ({ ...prev, state: '' }))
+                        }
+                      }}
+                    >
+                      <SelectTrigger id="country">
+                        <SelectValue placeholder="Select country" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="India">India</SelectItem>
+                        <SelectItem value="Bangladesh">Bangladesh</SelectItem>
+                        <SelectItem value="Nepal">Nepal</SelectItem>
+                        <SelectItem value="Sri Lanka">Sri Lanka</SelectItem>
+                        <SelectItem value="Pakistan">Pakistan</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {formData.country === 'India' ? (
+                    <div className="space-y-2">
+                      <Label htmlFor="state">State / UT</Label>
+                      <Select
+                        value={formData.state || 'unset'}
+                        onValueChange={(value) => handleSelectChange('state', value === 'unset' ? '' : value)}
+                      >
+                        <SelectTrigger id="state">
+                          <SelectValue placeholder="Select state or UT" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="unset">Select state / UT</SelectItem>
+                          {INDIAN_STATES_AND_UTS.map((stateName) => (
+                            <SelectItem key={stateName} value={stateName}>
+                              {stateName}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {formErrors.state && <p className="text-sm text-red-500">{formErrors.state}</p>}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <Label htmlFor="state">State / Province</Label>
+                      <Input
+                        id="state"
+                        name="state"
+                        value={formData.state}
+                        onChange={handleChange}
+                        placeholder="State or province"
+                      />
+                      {formErrors.state && <p className="text-sm text-red-500">{formErrors.state}</p>}
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <Label htmlFor="pincode">Pincode</Label>
+                    <Input
+                      id="pincode"
+                      name="pincode"
+                      value={formData.pincode}
+                      onChange={handleChange}
+                      placeholder={formData.country === 'India' ? '6-digit pincode' : 'Postal code'}
+                      inputMode="numeric"
+                    />
+                    {formErrors.pincode && <p className="text-sm text-red-500">{formErrors.pincode}</p>}
+                  </div>
                 </div>
               </div>
             </div>
-            
-            {/* Location Information */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-medium flex items-center gap-2">
-                <MapPin className="h-5 w-5" />
-                Location
-              </h3>
-              
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="city">City</Label>
-                  <Input
-                    id="city"
-                    name="city"
-                    value={formData.city}
-                    onChange={handleChange}
-                    placeholder="Mumbai, Delhi, etc."
-                  />
-                  {formErrors.city && <p className="text-sm text-red-500">{formErrors.city}</p>}
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="state">State/Province</Label>
-                  <Input
-                    id="state"
-                    name="state"
-                    value={formData.state}
-                    onChange={handleChange}
-                    placeholder="Maharashtra, Delhi, etc."
-                  />
-                  {formErrors.state && <p className="text-sm text-red-500">{formErrors.state}</p>}
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="pincode">Pincode</Label>
-                  <Input
-                    id="pincode"
-                    name="pincode"
-                    value={formData.pincode}
-                    onChange={handleChange}
-                    placeholder="400001"
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="country">Country</Label>
-                  <Select value={formData.country} onValueChange={(value) => handleSelectChange('country', value)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select country" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="India">India</SelectItem>
-                      <SelectItem value="Bangladesh">Bangladesh</SelectItem>
-                      <SelectItem value="Nepal">Nepal</SelectItem>
-                      <SelectItem value="Sri Lanka">Sri Lanka</SelectItem>
-                      <SelectItem value="Pakistan">Pakistan</SelectItem>
-                      <SelectItem value="Other">Other</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </div>
-            
 
             <div className="flex flex-col space-y-4">
               <Button type="submit" className="w-full" disabled={isSubmitting || !otpVerified.email}>

@@ -1,11 +1,19 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Check, Copy, Power, RefreshCw, Trash2 } from 'lucide-react';
+import { Check, Copy, KeyRound, Power, RefreshCw, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -40,6 +48,10 @@ export function NavadrishtCAManagement() {
   const [autoGenerateCaId, setAutoGenerateCaId] = useState(true);
   const [availableCaIds, setAvailableCaIds] = useState<CaIdGroup[]>([]);
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [resetTarget, setResetTarget] = useState<NavadrishtCAAccount | null>(null);
+  const [resetPassword, setResetPassword] = useState('');
+  const [resetConfirmPassword, setResetConfirmPassword] = useState('');
 
   useEffect(() => {
     fetchAccounts();
@@ -124,6 +136,61 @@ export function NavadrishtCAManagement() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  const openResetPasswordDialog = (account: NavadrishtCAAccount) => {
+    setResetTarget(account);
+    setResetPassword('');
+    setResetConfirmPassword('');
+    setResetDialogOpen(true);
+  };
+
+  const closeResetPasswordDialog = () => {
+    setResetDialogOpen(false);
+    setResetTarget(null);
+    setResetPassword('');
+    setResetConfirmPassword('');
+  };
+
+  const handleResetPassword = async () => {
+    if (!resetTarget) return;
+
+    if (resetPassword.length < 8) {
+      toast.error('Password must be at least 8 characters');
+      return;
+    }
+
+    if (resetPassword !== resetConfirmPassword) {
+      toast.error('Passwords do not match');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const response = await fetch('/api/admin/ca-credentials', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          accountId: resetTarget.id,
+          action: 'reset_password',
+          password: resetPassword,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error);
+      }
+
+      toast.success(`Password reset for ${resetTarget.username}. They must change it on next login.`);
+      closeResetPasswordDialog();
+      fetchAccounts();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to reset CA password');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleToggleActivation = async (accountId: number, action: 'activate' | 'deactivate') => {
     const confirmed = window.confirm(
       `Are you sure you want to ${action} this CA account? ${
@@ -190,7 +257,7 @@ export function NavadrishtCAManagement() {
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-2xl font-semibold text-slate-900">CA credentials</h1>
-            <p className="text-sm text-slate-600">Create, deactivate, reactivate, or permanently delete CA accounts.</p>
+            <p className="text-sm text-slate-600">Create, reset passwords, deactivate, reactivate, or permanently delete CA accounts.</p>
           </div>
         </div>
 
@@ -333,6 +400,17 @@ export function NavadrishtCAManagement() {
                           type="button"
                           size="sm"
                           variant="ghost"
+                          className="h-8 w-8 p-0 text-slate-500 hover:bg-blue-50 hover:text-blue-600"
+                          onClick={() => openResetPasswordDialog(account)}
+                          disabled={loading}
+                          title="Reset password"
+                        >
+                          <KeyRound className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
                           className="h-8 w-8 p-0 text-slate-500 hover:bg-orange-50 hover:text-orange-600"
                           onClick={() => handleToggleActivation(account.id, account.active ? 'deactivate' : 'activate')}
                           disabled={loading}
@@ -396,6 +474,51 @@ export function NavadrishtCAManagement() {
             </CardContent>
           </Card>
         </div>
+
+        <Dialog open={resetDialogOpen} onOpenChange={(open) => (open ? setResetDialogOpen(true) : closeResetPasswordDialog())}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Reset CA password</DialogTitle>
+              <DialogDescription>
+                Set a temporary password for{' '}
+                <span className="font-medium text-slate-900">{resetTarget?.display_name}</span>{' '}
+                ({resetTarget?.username}). They will be required to change it on next login.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="reset_password">New temporary password</Label>
+                <Input
+                  id="reset_password"
+                  type="password"
+                  value={resetPassword}
+                  onChange={(e) => setResetPassword(e.target.value)}
+                  placeholder="Minimum 8 characters"
+                  autoComplete="new-password"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="reset_confirm_password">Confirm password</Label>
+                <Input
+                  id="reset_confirm_password"
+                  type="password"
+                  value={resetConfirmPassword}
+                  onChange={(e) => setResetConfirmPassword(e.target.value)}
+                  placeholder="Re-enter password"
+                  autoComplete="new-password"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={closeResetPasswordDialog} disabled={loading}>
+                Cancel
+              </Button>
+              <Button type="button" onClick={handleResetPassword} disabled={loading}>
+                {loading ? 'Resetting...' : 'Reset password'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

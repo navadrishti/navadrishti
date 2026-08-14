@@ -8,9 +8,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Shield, Loader2, AlertCircle } from 'lucide-react';
+import { Loader2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { AuthCardBackRow } from '@/components/header';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export default function CALoginPage() {
   const router = useRouter();
@@ -33,7 +34,7 @@ export default function CALoginPage() {
           return;
         }
 
-        const response = await fetch('/api/ca/verify', {
+        const response = await fetch('/api/ca/auth/verify', {
           method: 'GET',
           credentials: 'include',
         });
@@ -89,9 +90,9 @@ export default function CALoginPage() {
         setError('');
 
         if (data.must_change_password) {
-          router.push('/ca/change-password');
+          router.replace('/ca/change-password');
         } else {
-          router.push('/ca');
+          router.replace('/ca');
         }
       } else {
         setError(data.error || 'Login failed');
@@ -107,10 +108,29 @@ export default function CALoginPage() {
 
   if (checkingAuth) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100">
-        <div className="text-center">
-          <Loader2 className="mx-auto h-8 w-8 animate-spin text-blue-600" />
-          <p className="mt-4 text-blue-600">Checking authentication...</p>
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100 p-4">
+        <div className="w-full max-w-md space-y-8">
+          <div className="space-y-3 text-center">
+            <Skeleton className="mx-auto h-8 w-40" />
+            <Skeleton className="mx-auto h-4 w-64 max-w-full" />
+          </div>
+          <Card className="border-2 border-slate-200 shadow-none">
+            <CardHeader className="space-y-3">
+              <Skeleton className="mx-auto h-7 w-24" />
+              <Skeleton className="mx-auto h-4 w-56 max-w-full" />
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-20" />
+                <Skeleton className="h-10 w-full" />
+              </div>
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-20" />
+                <Skeleton className="h-10 w-full" />
+              </div>
+              <Skeleton className="h-10 w-full" />
+            </CardContent>
+          </Card>
         </div>
       </div>
     );
@@ -169,7 +189,7 @@ export default function CALoginPage() {
 
               <Button
                 type="submit"
-                className="w-full"
+                className="w-full hover:bg-primary hover:text-primary-foreground"
                 disabled={loading || !username || !password}
               >
                 {loading ? (
@@ -178,10 +198,7 @@ export default function CALoginPage() {
                     Signing in...
                   </>
                 ) : (
-                  <>
-                    <Shield className="mr-2 h-4 w-4" />
-                    Sign In
-                  </>
+                  'Sign In'
                 )}
               </Button>
             </form>

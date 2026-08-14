@@ -4,9 +4,10 @@ import { supabase } from '@/lib/db';
 import { extractHashtagsFromContent, normalizeHashtagKey } from '@/lib/hashtag-utils';
 
 export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const limit = parseInt(searchParams.get('limit') || '5');
+
   try {
-    const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get('limit') || '5');
 
     // Calculate time boundaries for daily and weekly mentions
     const now = new Date();
@@ -130,14 +131,6 @@ export async function GET(request: NextRequest) {
       count: formattedData.length,
       timestamp: new Date().toISOString(),
       message: formattedData.length === 0 ? 'No trending hashtags - all hashtags have 0 mentions in past 24 hours' : undefined,
-      debug: {
-        calculatedAt: now.toISOString(),
-        todayStart: todayStart.toISOString(),
-        weekStart: weekStart.toISOString(),
-        postsAnalyzed: recentPosts?.length || 0,
-        totalHashtagsFound: mergedHashtags.size,
-        hashtagsWithDailyMentions: sortedHashtags.length
-      }
     });
 
   } catch (error: any) {

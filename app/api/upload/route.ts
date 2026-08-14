@@ -17,14 +17,6 @@ cloudinary.config({
 export async function POST(request: NextRequest) {
   try {
     // Validate Cloudinary configuration
-    const configStatus = {
-      cloud_name: !!process.env.CLOUDINARY_CLOUD_NAME,
-      api_key: !!process.env.CLOUDINARY_API_KEY,
-      api_secret: !!process.env.CLOUDINARY_API_SECRET
-    };
-    
-    console.log('Cloudinary Config Check:', configStatus);
-    
     if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
       const missingVars = [];
       if (!process.env.CLOUDINARY_CLOUD_NAME) missingVars.push('CLOUDINARY_CLOUD_NAME');
@@ -59,23 +51,22 @@ export async function POST(request: NextRequest) {
     // Get the uploaded file
     const formData = await request.formData();
     const file = formData.get('file') as File;
+    const folderField = formData.get('folder');
+    const documentKeyField = formData.get('documentKey');
     
     if (!file) {
-      console.error('No file provided in upload request');
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
-    // Log file information for debugging
-    console.log('Upload attempt:', {
-      fileName: file.name,
-      fileType: file.type,
-      fileSize: file.size,
-      userId: userId
-    });
+    const requestedFolder =
+      typeof folderField === 'string' && folderField.trim() ? folderField.trim() : '';
+    const documentKey =
+      typeof documentKeyField === 'string' && documentKeyField.trim()
+        ? documentKeyField.trim().replace(/[^a-zA-Z0-9/_-]/g, '_')
+        : 'file';
 
     // Check file size (max 10MB)
     if (file.size > 10 * 1024 * 1024) {
-      console.error('File too large:', { size: file.size, maxSize: 10 * 1024 * 1024 });
       return NextResponse.json({ error: 'File too large. Maximum size is 10MB.' }, { status: 413 });
     }
 
@@ -97,10 +88,11 @@ export async function POST(request: NextRequest) {
 
     // Determine resource type and upload options
     const resourceType = isDocument ? 'raw' : 'image';
+    const uploadFolder = requestedFolder || (isDocument ? 'documents' : 'images');
     const uploadOptions: any = {
       resource_type: resourceType,
-      folder: isDocument ? 'documents' : 'images',
-      public_id: `${userId}_${Date.now()}`,
+      folder: uploadFolder,
+      public_id: `${documentKey}_${userId}_${Date.now()}`,
     };
     
     // Add transformations only for images
@@ -124,13 +116,6 @@ export async function POST(request: NextRequest) {
     });
 
     const result = uploadResult as any;
-
-    console.log('Upload successful:', {
-      fileName: file.name,
-      url: result.secure_url,
-      publicId: result.public_id,
-      resourceType: resourceType
-    });
 
     return NextResponse.json({
       success: true,

@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { getNavadrishtCAFromRequest } from '@/lib/navadrishti-ca-auth';
+import { verifyNavadrishtCAToken } from '@/lib/navadrishti-ca-auth';
+import { supabase } from '@/lib/db';
 import CAChangePasswordClient from './change-password-client';
 
 export default async function CAChangePasswordPage() {
@@ -11,18 +12,18 @@ export default async function CAChangePasswordPage() {
     redirect('/ca/login');
   }
 
-  try {
-    const account = await getNavadrishtCAFromRequest({ cookies: () => cookieStore } as any);
-    if (!account) {
-      redirect('/ca/login');
-    }
+  const decoded = verifyNavadrishtCAToken(token);
+  if (!decoded?.id) {
+    redirect('/ca/login');
+  }
 
-    // Allow access to change password page regardless of must_change_password
-    // Users can change password voluntarily from navbar
-    // if (!account.must_change_password) {
-    //   redirect('/ca');
-    // }
-  } catch (error) {
+  const { data: account } = await supabase
+    .from('navadrishti_ca_accounts')
+    .select('id, active')
+    .eq('id', decoded.id)
+    .maybeSingle();
+
+  if (!account || account.active === false) {
     redirect('/ca/login');
   }
 

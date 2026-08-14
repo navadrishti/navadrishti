@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Shield, Loader2, AlertCircle } from 'lucide-react';
+import { Loader2, AlertCircle } from 'lucide-react';
 import { AuthCardBackRow } from '@/components/header';
 
 export default function EvidenceVerificationLoginPage() {
@@ -150,10 +150,7 @@ export default function EvidenceVerificationLoginPage() {
                     Signing in...
                   </>
                 ) : (
-                  <>
-                    <Shield className="mr-2 h-4 w-4" />
-                    Sign In
-                  </>
+                  'Sign In'
                 )}
               </Button>
             </form>

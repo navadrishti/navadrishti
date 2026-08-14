@@ -22,6 +22,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { openRazorpayCheckout } from '@/lib/razorpay-checkout'
+import { PlatformPaymentSummary, getTotalChargeLabel } from '@/components/profile-dashboard-tab'
 
 interface ServiceRequest {
   id: number
@@ -928,7 +929,7 @@ export default function ServiceRequestDetailPage() {
       await openRazorpayCheckout({
         keyId: orderData.keyId,
         orderId: orderData.orderId,
-        amountInr: Number(orderData.amount),
+        amountInr: Number(orderData.totalCharge || orderData.amount),
         currency: orderData.currency,
         description: `Contribution for: ${orderData.requestTitle}`,
         prefill: {
@@ -1213,12 +1214,12 @@ export default function ServiceRequestDetailPage() {
                             <div>
                               <p className="text-sm font-semibold text-slate-900">Contribute via Razorpay</p>
                               <p className="text-xs text-slate-500">
-                                Volunteer by paying any amount up to INR {fundsRemainingInr.toLocaleString('en-IN')} remaining.
+                                Enter the amount the NGO should receive. Platform fee and GST are added on top at checkout.
                               </p>
                             </div>
 
                             <div className="space-y-2">
-                              <Label htmlFor="paymentAmount">Contribution amount</Label>
+                              <Label htmlFor="paymentAmount">NGO receives (INR)</Label>
                               <div className="relative">
                                 <IndianRupee className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
                                 <input
@@ -1232,12 +1233,15 @@ export default function ServiceRequestDetailPage() {
                                   placeholder="Amount"
                                 />
                               </div>
+                              <PlatformPaymentSummary
+                                baseAmountInr={Math.min(parseAmountToInr(paymentAmount), fundsRemainingInr || 0)}
+                              />
                             </div>
 
                             <Button onClick={handleContribute} disabled={paying} className="h-11 w-full">
                               {paying
                                 ? 'Opening Razorpay...'
-                                : `Pay INR ${Math.min(parseAmountToInr(paymentAmount) || 0, fundsRemainingInr || 0).toLocaleString('en-IN')}`}
+                                : `Pay ${getTotalChargeLabel(Math.min(parseAmountToInr(paymentAmount) || 0, fundsRemainingInr || 0))}`}
                             </Button>
                           </div>
                         )}

@@ -8,8 +8,10 @@ import {
   resolveFundsRaisedInr,
 } from '@/lib/service-request-allocation';
 import jwt from 'jsonwebtoken';
-import { JWT_SECRET } from '@/lib/auth';
+import { JWT_SECRET, CSR_ELIGIBILITY_REQUIRED_MESSAGE } from '@/lib/auth';
+import { ngoUserIsCsrEligible } from '@/lib/server-auth';
 import { CSR_SCHEDULE_VII_CATEGORIES, SERVICE_REQUEST_TYPES } from '@/lib/categories';
+import { isHiddenNgoNetworkPaymentChannel } from '@/lib/razorpay-route';
 
 // Interface for JWT payload
 interface JWTPayload {
@@ -138,7 +140,6 @@ export async function GET(
     const serviceRequest = await db.serviceRequests.getById(requestId);
 
     if (!serviceRequest) {
-      console.log('Service request not found in database');
       return NextResponse.json({ 
         success: false, 
         error: 'Service request not found' 
@@ -294,6 +295,10 @@ export async function PUT(
       : projectAvailabilityRaw == null
         ? undefined
         : String(projectAvailabilityRaw).toLowerCase() !== 'false';
+
+    if (projectAvailableForCsr === true && !(await ngoUserIsCsrEligible(userId))) {
+      return NextResponse.json({ error: CSR_ELIGIBILITY_REQUIRED_MESSAGE }, { status: 403 });
+    }
 
     if (!SERVICE_REQUEST_TYPES.includes(normalizedRequestType)) {
       return NextResponse.json({ error: 'Invalid request_type. Use one of Financial Need, Material Need, Skill / Service Need, Infrastructure Project.' }, { status: 400 });
@@ -508,6 +513,10 @@ export async function DELETE(
 
     if (existingRequest.requester_id !== userId) {
       return NextResponse.json({ error: 'You can only delete your own service requests' }, { status: 403 });
+    }
+
+    if (isHiddenNgoNetworkPaymentChannel(existingRequest)) {
+      return NextResponse.json({ error: 'This internal payment channel cannot be deleted' }, { status: 403 });
     }
 
     if (isLockedCsrProject(existingRequest)) {

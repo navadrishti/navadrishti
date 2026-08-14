@@ -10,6 +10,7 @@ import {
   isDailyRentalAssignment,
   verifyRazorpaySignature,
 } from '@/lib/engagement-settlement'
+import { validateCapturedPaymentAmounts } from '@/lib/razorpay-route'
 
 interface JWTPayload {
   id: number
@@ -80,9 +81,23 @@ export async function POST(
         return NextResponse.json({ error: 'Payment not captured yet' }, { status: 409 })
       }
 
+      const { data: orderRow } = await supabase
+        .from('razorpay_payment_orders')
+        .select('order_notes')
+        .eq('razorpay_order_id', razorpay_order_id)
+        .maybeSingle()
+
       const paidInr = Number((Number(payment.amount || 0) / 100).toFixed(2))
+      const amountCheck = validateCapturedPaymentAmounts({
+        orderNotes: (orderRow?.order_notes || {}) as Record<string, unknown>,
+        paidInr,
+      })
+      if (!amountCheck.ok) {
+        return NextResponse.json({ error: amountCheck.error }, { status: 400 })
+      }
+
       const meta = await finalizeEngagementSettlement(assignment, {
-        settledAmount: paidInr,
+        settledAmount: amountCheck.baseAmountInr,
         settlementMode: 'razorpay',
         razorpayOrderId: razorpay_order_id,
         razorpayPaymentId: razorpay_payment_id,
@@ -95,7 +110,7 @@ export async function POST(
 
       return NextResponse.json({
         success: true,
-        data: { settled: true, settledAmount: paidInr, meta },
+        data: { settled: true, settledAmount: amountCheck.baseAmountInr, paidInr, meta },
       })
     }
 
@@ -110,6 +125,10 @@ export async function POST(
           meta: result.meta,
         },
       })
+    }
+
+    if (!('orderId' in result)) {
+      throw new Error('Failed to create settlement payment order')
     }
 
     return NextResponse.json({

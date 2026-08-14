@@ -7,6 +7,16 @@ import { Sparkles, X } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
 import { AGENT_CTA } from "@/lib/ai-suite"
 
+function LogoOrIcon({ className }: { className?: string }) {
+  return (
+    <img
+      src="/photos/CTA.svg"
+      alt="ND"
+      className={`${className ?? ""} object-contain`}
+    />
+  )
+}
+
 export function AIAgentCTA() {
   const { user } = useAuth()
   const pathname = usePathname()
@@ -60,16 +70,6 @@ export function AIAgentCTA() {
 
     return () => window.clearInterval(timer)
   }, [showExpanded, mounted, user?.user_type])
-
-  function LogoOrIcon({ className }: { className?: string }) {
-    return (
-      <img
-        src="/photos/CTA.svg"
-        alt="ND"
-        className={`${className ?? ''} object-contain`}
-      />
-    )
-  }
 
   const aiAgentCta = !mounted || !user ? null : (user.user_type === 'company'
     ? AGENT_CTA.company

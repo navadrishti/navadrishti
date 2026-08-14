@@ -13,7 +13,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useOtpSender } from '@/hooks/use-otp-sender';
 
 import { toast } from 'sonner';
-import { MapPin } from 'lucide-react';
 import { AuthCardBackRow } from '@/components/header';
 
 export default function IndividualRegister() {
@@ -151,7 +150,7 @@ export default function IndividualRegister() {
         password: formData.password,
         name: formData.name,
         user_type: 'individual' as const,
-        phone: formData.phone,
+        phone: formData.phone.trim(),
         city: formData.city,
         state_province: formData.state,
         pincode: formData.pincode,
@@ -262,7 +261,7 @@ export default function IndividualRegister() {
                   </div>
                 )}
               </div>
-              
+
               <div className="space-y-2">
                 <Label htmlFor="phone">Phone Number</Label>
                 <Input
@@ -320,10 +319,7 @@ export default function IndividualRegister() {
             
             {/* Location Information */}
             <div className="space-y-4">
-              <h3 className="text-lg font-medium flex items-center gap-2">
-                <MapPin className="h-5 w-5" />
-                Location Information
-              </h3>
+              <h3 className="text-lg font-medium">Location Information</h3>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="city">City</Label>

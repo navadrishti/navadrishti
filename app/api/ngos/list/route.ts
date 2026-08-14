@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
+import { ngoIsCsrEligible } from '@/lib/auth';
 
 const tokenize = (value: string) =>
   value
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest) {
     // fetch richer NGO data so we can score locally
     let query = supabase
       .from('users')
-      .select('id, name, email, city, state_province, profile_data')
+      .select('id, name, email, city, state_province, profile_data, verification_status')
       .eq('user_type', 'ngo')
 
     if (q) {
@@ -30,7 +31,16 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
-    const rows = (ngos ?? []).map((ngo: any) => {
+    const rows = (ngos ?? [])
+      .filter((ngo: any) => {
+        const profile = ngo.profile_data && typeof ngo.profile_data === 'object' ? ngo.profile_data : {}
+        const isDemo =
+          profile.is_demo === true ||
+          String(ngo.name || '').toLowerCase().includes('demo') ||
+          String(ngo.email || '').toLowerCase().includes('demo')
+        return !isDemo && ngoIsCsrEligible(ngo.verification_status, profile)
+      })
+      .map((ngo: any) => {
       const profile = ngo.profile_data && typeof ngo.profile_data === 'object' ? ngo.profile_data : {}
       return {
         id: ngo.id,
@@ -39,9 +49,8 @@ export async function GET(request: NextRequest) {
         city: ngo.city || profile.city || '',
         state: ngo.state_province || profile.state_province || '',
         impact_areas: Array.isArray(profile.impact_areas) ? profile.impact_areas : (typeof profile.impact_areas === 'string' ? profile.impact_areas.split(/[,;|]/).map((s: string) => s.trim()) : []),
-        is_demo: profile.is_demo === true || String(ngo.name || '').toLowerCase().includes('demo') || String(ngo.email || '').toLowerCase().includes('demo')
       }
-    }).filter((r: any) => !r.is_demo)
+    })
 
     if (!q) {
       return NextResponse.json({ success: true, ngos: rows.slice(0, limit) })

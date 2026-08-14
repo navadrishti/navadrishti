@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
 import jwt from 'jsonwebtoken'
 import { JWT_SECRET } from '@/lib/auth'
-import { getCompanyCAUserIdSet } from '@/lib/company-ca-visibility'
+import { getCompanyCAUserIdSet } from '@/lib/company-ca'
+import { fetchUserPaymentHistory } from '@/lib/razorpay-route'
+import { fetchCompanyCsrCapabilityFines } from '@/lib/csr-agent/campaign'
 
 interface JWTPayload {
   id: number;
@@ -16,6 +18,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const type = searchParams.get('type')
+    const view = searchParams.get('view')
     const limit = parseInt(searchParams.get('limit') || '50')
     const verified_only = searchParams.get('verified') === 'true'
     
@@ -32,6 +35,37 @@ export async function GET(request: NextRequest) {
       decoded = jwt.verify(token, JWT_SECRET) as JWTPayload
     } catch (jwtError) {
       return NextResponse.json({ error: 'Invalid authentication token' }, { status: 401 })
+    }
+
+    if (view === 'payment-history') {
+      const role = String(searchParams.get('role') || 'sent').toLowerCase() === 'received' ? 'received' : 'sent'
+      const historyLimit = Math.min(Number(searchParams.get('limit') || 100), 300)
+
+      if (role === 'received' && decoded.user_type !== 'ngo') {
+        return NextResponse.json({ error: 'Only NGOs can view received payment history' }, { status: 403 })
+      }
+
+      try {
+        const payments = await fetchUserPaymentHistory({
+          userId: decoded.id,
+          userType: decoded.user_type,
+          role,
+          limit: historyLimit,
+        })
+
+        return NextResponse.json({
+          success: true,
+          data: payments,
+          fines: decoded.user_type === 'company'
+            ? await fetchCompanyCsrCapabilityFines(decoded.id)
+            : [],
+          role,
+          total: payments.length,
+        })
+      } catch (historyError) {
+        console.error('Payment history error:', historyError)
+        return NextResponse.json({ error: 'Failed to fetch payment history' }, { status: 500 })
+      }
     }
 
     // Build query

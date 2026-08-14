@@ -1,7 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { createClient } from '@supabase/supabase-js';
-import { verifyToken } from '@/lib/auth';
+import { buildNgoLocationDisplay, verifyToken } from '@/lib/auth';
+import { assertUserType, getAuthUserFromRequest } from '@/lib/server-auth';
+import {
+  buildNgoPayoutStatusResponse,
+  buildPayoutProfileUpdate,
+  formatNgoBankDetailsSummary,
+  getBeneficiaryPayoutStatus,
+  getNgoPayoutLinkStatus,
+  onboardNgoRazorpayLinkedAccount,
+  parseNgoPayoutAccountFromProfile,
+  parseProfileData,
+  refreshNgoRazorpayLinkStatus,
+  sanitizePayoutAccountInput,
+  validateNgoPayoutAccount,
+  type NgoPayoutAccount,
+} from '@/lib/razorpay-route';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -26,6 +41,276 @@ const updateProfileSchema = z.object({
   ngo_volunteer_capacity: z.union([z.number().int(), z.string()]).optional()
 });
 
+async function loadPayoutUser(userId: number) {
+  const { data, error } = await supabase
+    .from('users')
+    .select('id, email, name, phone, city, state_province, pincode, profile_data, user_type')
+    .eq('id', userId)
+    .in('user_type', ['ngo', 'individual', 'company'])
+    .maybeSingle();
+
+  if (error || !data) {
+    throw new Error('Profile not found.');
+  }
+
+  return data;
+}
+
+function buildPayoutStatusMessage(
+  user: { id: number; name?: string | null; user_type?: string | null },
+  response: ReturnType<typeof buildNgoPayoutStatusResponse>
+) {
+  if (user.user_type === 'ngo') {
+    return getBeneficiaryPayoutStatus(user.id, user.name || undefined).then((check) => check.message);
+  }
+
+  if (response.hasPayoutDetails) {
+    if (user.user_type === 'individual') {
+      return Promise.resolve(
+        'Payout bank details saved. Razorpay merchant connection for capability and service payouts will be enabled in a future update.'
+      );
+    }
+
+    return Promise.resolve(
+      'Payout bank details saved. Razorpay merchant connection for capability and CSR payouts will be enabled in a future update.'
+    );
+  }
+
+  return Promise.resolve('Add payout bank details so you can receive payments when merchant payouts are enabled.');
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    if (request.nextUrl.searchParams.get('scope') !== 'payout') {
+      return NextResponse.json({ error: 'Unsupported profile scope' }, { status: 400 });
+    }
+
+    const authUser = getAuthUserFromRequest(request);
+    assertUserType(authUser, ['ngo', 'individual', 'company']);
+
+    const user = await loadPayoutUser(authUser.id);
+    const response = buildNgoPayoutStatusResponse(user);
+    if (user.user_type !== 'ngo') {
+      response.canConnect = false;
+    }
+    response.payoutStatusMessage = await buildPayoutStatusMessage(user, response);
+
+    return NextResponse.json({ success: true, ...response });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to load payout account.';
+    const status = message.includes('Authentication') || message.includes('permissions') ? 401 : 400;
+    return NextResponse.json({ error: message }, { status });
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  let connectAttempt = false;
+
+  try {
+    const authUser = getAuthUserFromRequest(request);
+    assertUserType(authUser, ['ngo', 'individual', 'company']);
+
+    const body = await request.json();
+    if (body?.scope !== 'payout') {
+      return NextResponse.json({ error: 'Unsupported profile scope' }, { status: 400 });
+    }
+
+    const user = await loadPayoutUser(authUser.id);
+    const currentProfile = parseProfileData(user.profile_data);
+    const action = String(body?.action || '').trim();
+
+    if (action === 'connect' && user.user_type !== 'ngo') {
+      return NextResponse.json(
+        { error: 'Razorpay payout connection is only available for NGOs right now. You can save bank details for future merchant payouts.' },
+        { status: 400 }
+      );
+    }
+
+    if (action === 'save') {
+      const existingPayout = parseNgoPayoutAccountFromProfile(currentProfile);
+      const payoutAccount = sanitizePayoutAccountInput(body?.payoutAccount as Partial<NgoPayoutAccount>);
+
+      if (
+        (!payoutAccount.account_number || payoutAccount.account_number.includes('*')) &&
+        existingPayout?.account_number
+      ) {
+        payoutAccount.account_number = existingPayout.account_number;
+      }
+
+      const validationError = validateNgoPayoutAccount(payoutAccount);
+      if (validationError) {
+        return NextResponse.json({ error: validationError }, { status: 400 });
+      }
+
+      const profilePatch = buildPayoutProfileUpdate({
+        payoutAccount,
+        currentProfile,
+      });
+
+      const nextProfile = {
+        ...currentProfile,
+        ...profilePatch,
+      };
+
+      const { error } = await supabase
+        .from('users')
+        .update({
+          profile_data: nextProfile,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', authUser.id);
+
+      if (error) {
+        throw new Error('Failed to save payout account details.');
+      }
+
+      const savedResponse = buildNgoPayoutStatusResponse({
+        id: authUser.id,
+        name: user.name,
+        profile_data: nextProfile,
+      });
+      if (user.user_type !== 'ngo') {
+        savedResponse.canConnect = false;
+      }
+      savedResponse.payoutStatusMessage = await buildPayoutStatusMessage(user, savedResponse);
+
+      return NextResponse.json({
+        success: true,
+        message: profilePatch.razorpay_link_status === 'needs_reconnect'
+          ? 'Payout bank details updated. Reconnect your Razorpay payout account to apply the new bank information.'
+          : 'Payout bank details saved.',
+        ...savedResponse,
+      });
+    }
+
+    if (action === 'connect') {
+      connectAttempt = true;
+      const payoutAccount = parseNgoPayoutAccountFromProfile(currentProfile);
+
+      if (!payoutAccount) {
+        return NextResponse.json(
+          { error: 'Add and save payout bank details before connecting Razorpay.' },
+          { status: 400 }
+        );
+      }
+
+      const validationError = validateNgoPayoutAccount(payoutAccount);
+      if (validationError) {
+        return NextResponse.json({ error: validationError }, { status: 400 });
+      }
+
+      const existingLinkedAccountId = String(currentProfile.razorpay_linked_account_id || '').trim() || null;
+      const existingProductId = String(currentProfile.razorpay_route_product_id || '').trim() || null;
+      const linkStatus = getNgoPayoutLinkStatus(currentProfile);
+
+      if (linkStatus === 'active' && existingLinkedAccountId && existingProductId) {
+        const refreshed = await refreshNgoRazorpayLinkStatus({
+          linkedAccountId: existingLinkedAccountId,
+          productId: existingProductId,
+        });
+
+        const refreshedProfile = {
+          ...currentProfile,
+          razorpay_link_status: refreshed.status,
+          razorpay_link_updated_at: new Date().toISOString(),
+          razorpay_link_error: undefined,
+        };
+
+        await supabase
+          .from('users')
+          .update({
+            profile_data: refreshedProfile,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', authUser.id);
+
+        return NextResponse.json({
+          success: true,
+          message: refreshed.message,
+          ...buildNgoPayoutStatusResponse({
+            id: authUser.id,
+            name: user.name,
+            profile_data: refreshedProfile,
+          }),
+        });
+      }
+
+      const onboarding = await onboardNgoRazorpayLinkedAccount({
+        userId: user.id,
+        email: user.email,
+        phone: user.phone,
+        ngoName: String(currentProfile.ngo_name || user.name || payoutAccount.account_holder_name),
+        city: user.city,
+        state: user.state_province,
+        pincode: user.pincode,
+        payoutAccount,
+        existingLinkedAccountId,
+        existingProductId,
+      });
+
+      const nextProfile = {
+        ...currentProfile,
+        razorpay_linked_account_id: onboarding.linkedAccountId,
+        razorpay_route_product_id: onboarding.productId || undefined,
+        razorpay_link_status: onboarding.status,
+        razorpay_link_error: onboarding.error || undefined,
+        razorpay_link_updated_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase
+        .from('users')
+        .update({
+          profile_data: nextProfile,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', authUser.id);
+
+      if (error) {
+        throw new Error('Connected to Razorpay, but failed to save linked account details.');
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: onboarding.message,
+        ...buildNgoPayoutStatusResponse({
+          id: authUser.id,
+          name: user.name,
+          profile_data: nextProfile,
+        }),
+      });
+    }
+
+    return NextResponse.json({ error: 'Unsupported payout action' }, { status: 400 });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to update payout account.';
+    const status = message.includes('Authentication') || message.includes('permissions') ? 401 : 400;
+
+    try {
+      if (connectAttempt) {
+        const authUser = getAuthUserFromRequest(request);
+        const user = await loadPayoutUser(authUser.id);
+        const currentProfile = parseProfileData(user.profile_data);
+        await supabase
+          .from('users')
+          .update({
+            profile_data: {
+              ...currentProfile,
+              razorpay_link_status: 'failed',
+              razorpay_link_error: message,
+              razorpay_link_updated_at: new Date().toISOString(),
+            },
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', authUser.id);
+      }
+    } catch {
+      // Ignore secondary persistence errors.
+    }
+
+    return NextResponse.json({ error: message }, { status });
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -46,6 +331,7 @@ export async function POST(request: NextRequest) {
       bio,
       location,
       timezone,
+      ngo_volunteer_capacity,
       profile_data
     } = body;
 
@@ -65,6 +351,7 @@ export async function POST(request: NextRequest) {
     if (phone_verified !== undefined) updateData.phone_verified = phone_verified;
     if (phone_verified_at !== undefined) updateData.phone_verified_at = phone_verified_at;
     if (profileImageUrl !== undefined) updateData.profile_image = profileImageUrl;
+    const coverImageUrl = body.coverImageUrl;
     if (city !== undefined) updateData.city = city;
     if (state_province !== undefined) updateData.state_province = state_province;
     if (pincode !== undefined) updateData.pincode = pincode;
@@ -72,27 +359,86 @@ export async function POST(request: NextRequest) {
     if (phone !== undefined) updateData.phone = phone;
     if (location !== undefined) updateData.location = location;
     if (timezone !== undefined) updateData.timezone = timezone;
+    if (bio !== undefined) updateData.bio = bio;
+
+    if (ngo_volunteer_capacity !== undefined && ngo_volunteer_capacity !== null) {
+      const raw = ngo_volunteer_capacity;
+      const parsed =
+        typeof raw === 'number'
+          ? Math.trunc(raw)
+          : String(raw).match(/\d+/)
+            ? Number(String(raw).match(/\d+/)![0])
+            : null;
+      if (parsed !== null) {
+        updateData.ngo_volunteer_capacity = parsed;
+      }
+    }
 
     // Handle profile_data for additional fields (including bio)
+    const { data: currentUser, error: fetchError } = await supabase
+      .from('users')
+      .select('profile_data, user_type, city, state_province, pincode, country')
+      .eq('id', userId)
+      .single();
+
+    if (fetchError) {
+      console.error('Error fetching current user data:', fetchError);
+      return NextResponse.json(
+        { error: 'Failed to fetch current user data' },
+        { status: 500 }
+      );
+    }
+
     if (profile_data && typeof profile_data === 'object') {
-      // Get current profile_data first
-      const { data: currentUser, error: fetchError } = await supabase
-        .from('users')
-        .select('profile_data')
-        .eq('id', userId)
-        .single();
-
-      if (fetchError) {
-        console.error('Error fetching current user data:', fetchError);
-        return NextResponse.json(
-          { error: 'Failed to fetch current user data' },
-          { status: 500 }
-        );
-      }
-
       const currentProfileData = currentUser?.profile_data || {};
-      const newProfileData = { ...currentProfileData, ...profile_data };
+      const incomingProfileData = { ...profile_data };
+      if (currentUser?.user_type === 'ngo') {
+        delete incomingProfileData.past_projects;
+      }
+      const newProfileData = { ...currentProfileData, ...incomingProfileData };
+      if (bio !== undefined) {
+        newProfileData.bio = bio;
+      }
       updateData.profile_data = newProfileData;
+    } else if (bio !== undefined) {
+      const currentProfileData = currentUser?.profile_data || {};
+      updateData.profile_data = { ...currentProfileData, bio };
+    }
+
+    if (coverImageUrl !== undefined) {
+      const currentProfileData = updateData.profile_data || currentUser?.profile_data || {};
+      updateData.profile_data = {
+        ...currentProfileData,
+        cover_image: typeof coverImageUrl === 'string' ? coverImageUrl.trim() : '',
+      };
+    }
+
+    if (
+      (currentUser?.user_type === 'ngo' || currentUser?.user_type === 'company') &&
+      location === undefined &&
+      (city !== undefined ||
+        state_province !== undefined ||
+        pincode !== undefined ||
+        country !== undefined ||
+        (profile_data &&
+          typeof profile_data === 'object' &&
+          ((profile_data.ngo_headquarters && typeof profile_data.ngo_headquarters === 'object') ||
+            (profile_data.company_headquarters && typeof profile_data.company_headquarters === 'object'))))
+    ) {
+      const mergedProfile = updateData.profile_data || currentUser?.profile_data || {};
+      const headquartersKey = currentUser?.user_type === 'company' ? 'company_headquarters' : 'ngo_headquarters';
+      const headquarters =
+        mergedProfile[headquartersKey] && typeof mergedProfile[headquartersKey] === 'object'
+          ? (mergedProfile[headquartersKey] as Record<string, unknown>)
+          : {};
+
+      updateData.location = buildNgoLocationDisplay({
+        address_line: String(headquarters.address_line || ''),
+        city: String(city ?? currentUser?.city ?? ''),
+        state: String(state_province ?? currentUser?.state_province ?? ''),
+        pincode: String(pincode ?? currentUser?.pincode ?? ''),
+        country: String(country ?? currentUser?.country ?? 'India'),
+      });
     }
 
     // Only proceed if there's data to update
@@ -174,7 +520,7 @@ export async function PUT(request: NextRequest) {
     if (updateData.ngo_volunteer_capacity !== undefined && updateData.ngo_volunteer_capacity !== null) {
       const raw = updateData.ngo_volunteer_capacity;
       const parsed = typeof raw === 'number' ? Math.trunc(raw) : (String(raw).match(/\d+/) ? Number(String(raw).match(/\d+/)![0]) : null);
-      updateData.ngo_volunteer_capacity = parsed;
+      updateData.ngo_volunteer_capacity = parsed ?? undefined;
     }
 
     const cleanUpdateData = Object.fromEntries(

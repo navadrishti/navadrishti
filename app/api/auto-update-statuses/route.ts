@@ -16,8 +16,6 @@ export async function POST(request: NextRequest) {
     const decoded = jwt.verify(token, JWT_SECRET) as any;
     const { id: userId } = decoded;
 
-    console.log(`🔄 Auto-checking service request statuses for NGO ${userId}`);
-
     // Get all active/open service requests for this NGO
     const { data: requests } = await supabase
       .from('service_requests')
@@ -52,8 +50,6 @@ export async function POST(request: NextRequest) {
 
         // Check if request should be marked as completed
         if (workingVolunteers === 0 && completedCount > 0) {
-          console.log(`🔄 Auto-updating "${request.title}" to completed status`);
-          
           await supabase
             .from('service_requests')
             .update({ 
@@ -67,8 +63,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log(`✅ Auto-update complete: ${updatedCount} requests updated out of ${requests.length} checked`);
-
     return NextResponse.json({
       success: true,
       message: `Auto-update complete: ${updatedCount} requests updated out of ${requests.length} checked`,
@@ -77,7 +71,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('❌ Error in auto-update service request statuses:', error);
+    console.error('Error in auto-update service request statuses:', error);
     return NextResponse.json(
       { error: 'Failed to auto-update service request statuses', details: error.message },
       { status: 500 }

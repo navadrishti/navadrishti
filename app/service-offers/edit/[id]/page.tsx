@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useEffect, useState } from 'react'
+import { use, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Loader2 } from 'lucide-react'
@@ -145,13 +145,13 @@ export default function EditServiceOfferPage({ params }: { params: Promise<{ id:
   const transactionOptionsForOfferType = TRANSACTION_TYPE_OPTIONS.filter((option) =>
     OFFER_TYPE_TRANSACTION_MATRIX[formData.offer_type].includes(option.value)
   )
-  const requiresPricing = formData.transaction_type === 'rent' || formData.transaction_type === 'sell'
+  const requiresPricing = formData.transaction_type === 'rent'
 
   const setField = <K extends keyof FormData>(name: K, value: FormData[K]) => {
     setFormData((prev) => ({ ...prev, [name]: value }))
   }
 
-  const imagesTextareaRef = React.useRef<HTMLTextAreaElement | null>(null)
+  const imagesTextareaRef = useRef<HTMLTextAreaElement | null>(null)
 
   const parseImageUrls = (value: string) => {
     return value
@@ -236,8 +236,9 @@ export default function EditServiceOfferPage({ params }: { params: Promise<{ id:
     setFormData((prev) => ({
       ...prev,
       transaction_type: transactionType,
-      price_type: transactionType === 'rent' || transactionType === 'sell' ? 'fixed' : 'free',
-      price_amount: transactionType === 'rent' || transactionType === 'sell' ? prev.price_amount : ''
+      price_type: transactionType === 'rent' ? 'fixed' : 'free',
+      price_amount: transactionType === 'rent' ? prev.price_amount : '',
+      unit_rate: transactionType === 'rent' ? prev.unit_rate : '',
     }))
   }
 
@@ -276,6 +277,13 @@ export default function EditServiceOfferPage({ params }: { params: Promise<{ id:
           valid_until: offer.valid_until ? String(offer.valid_until).slice(0, 10) : '',
           price_type: offer.price_type || 'free',
           price_amount: Number.isFinite(Number(offer.price_amount)) ? Number(offer.price_amount) : '',
+          unit_rate: Number.isFinite(Number(offer.unit_rate))
+            ? Number(offer.unit_rate)
+            : Number.isFinite(Number(details.unit_rate))
+              ? Number(details.unit_rate)
+              : '',
+          billing_cycle: String(offer.billing_cycle || details.billing_cycle || 'daily'),
+          rate_currency: String(offer.rate_currency || details.rate_currency || 'INR'),
 
           funding_type: details.funding_type || '',
           budget_amount: Number.isFinite(Number(details.budget_amount)) ? Number(details.budget_amount) : '',
@@ -354,7 +362,7 @@ export default function EditServiceOfferPage({ params }: { params: Promise<{ id:
         quantity: toNullablePositiveNumber(formData.material_quantity),
         unit: formData.material_unit.trim() || null,
         available_from: formData.material_available_from || null,
-        available_to: formData.transaction_type === 'sell' ? null : (formData.material_available_to || null)
+        available_to: formData.material_available_to || null
       }
     }
 
@@ -364,7 +372,7 @@ export default function EditServiceOfferPage({ params }: { params: Promise<{ id:
       capacity: toNullablePositiveNumber(formData.infra_capacity),
       facilities: parseCsvToStringArray(formData.facilities),
       available_from: formData.infra_available_from || null,
-      available_to: formData.transaction_type === 'sell' ? null : (formData.infra_available_to || null)
+      available_to: formData.infra_available_to || null
     }
   }
 
@@ -388,11 +396,16 @@ export default function EditServiceOfferPage({ params }: { params: Promise<{ id:
 
     if (requiresPricing) {
       if (!['fixed', 'negotiable'].includes(formData.price_type)) {
-        return 'For rent/sell offers, choose fixed or negotiable pricing.'
+        return 'For rental offers, choose fixed or negotiable pricing.'
       }
 
-      if (toNullablePositiveNumber(formData.price_amount) === null) {
-        return 'Please enter a valid price amount for rent/sell offers.'
+      const dailyRate = toNullablePositiveNumber(formData.unit_rate) ?? toNullablePositiveNumber(formData.price_amount)
+      if (dailyRate === null) {
+        return 'Please enter a valid daily rental rate.'
+      }
+
+      if (!formData.billing_cycle) {
+        return 'Please select a billing cycle for rental offers.'
       }
 
         if (formData.transaction_type === 'rent' && toNullablePositiveNumber((formData as any).unit_rate) === null) {
@@ -425,7 +438,10 @@ export default function EditServiceOfferPage({ params }: { params: Promise<{ id:
 
     const forcedFreePricing = formData.offer_type === 'financial' || formData.transaction_type === 'volunteer' || formData.transaction_type === 'donate'
     const priceType = forcedFreePricing ? 'free' : formData.price_type
-    const priceAmount = forcedFreePricing ? 0 : Number(formData.price_amount)
+    const dailyRate = requiresPricing
+      ? (toNullablePositiveNumber(formData.unit_rate) ?? toNullablePositiveNumber(formData.price_amount) ?? 0)
+      : 0
+    const priceAmount = forcedFreePricing ? 0 : dailyRate
 
     const payload = {
       title: formData.title.trim(),
@@ -443,9 +459,10 @@ export default function EditServiceOfferPage({ params }: { params: Promise<{ id:
       valid_until: formData.valid_until || null,
       price_type: priceType,
       price_amount: priceAmount,
-      unit_rate: toNullablePositiveNumber((formData as any).unit_rate),
-      billing_cycle: (formData as any).billing_cycle || null,
-      rate_currency: (formData as any).rate_currency || 'INR',
+      unit_rate: requiresPricing ? dailyRate : null,
+      billing_cycle: requiresPricing ? (formData.billing_cycle || 'daily') : null,
+      payment_mode: requiresPricing ? 'daily_due' : null,
+      rate_currency: formData.rate_currency || 'INR',
       offer_details: buildOfferDetails()
     }
 
@@ -630,7 +647,7 @@ export default function EditServiceOfferPage({ params }: { params: Promise<{ id:
               <Card>
                 <CardHeader>
                   <CardTitle>Pricing</CardTitle>
-                  <CardDescription>Pricing is only used for rent/sell. Financial/donate/volunteer are free by design.</CardDescription>
+                  <CardDescription>Pricing applies to daily rental offers only. Financial, donate, and volunteer capabilities are free.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -643,7 +660,7 @@ export default function EditServiceOfferPage({ params }: { params: Promise<{ id:
                       />
                     </div>
                     <div>
-                      <Label htmlFor="price_amount">Price Amount {requiresPricing ? '*' : ''}</Label>
+                      <Label htmlFor="price_amount">Daily Rate (synced) {requiresPricing ? '*' : ''}</Label>
                       <Input
                         id="price_amount"
                         name="price_amount"
@@ -826,12 +843,10 @@ export default function EditServiceOfferPage({ params }: { params: Promise<{ id:
                         <Label htmlFor="material_available_from">Available From</Label>
                         <Input id="material_available_from" name="material_available_from" type="date" value={formData.material_available_from} onChange={handleTextInput} />
                       </div>
-                      {formData.transaction_type !== 'sell' && (
-                        <div>
-                          <Label htmlFor="material_available_to">Available To</Label>
-                          <Input id="material_available_to" name="material_available_to" type="date" value={formData.material_available_to} onChange={handleTextInput} />
-                        </div>
-                      )}
+                      <div>
+                        <Label htmlFor="material_available_to">Available To</Label>
+                        <Input id="material_available_to" name="material_available_to" type="date" value={formData.material_available_to} onChange={handleTextInput} />
+                      </div>
                     </div>
                   )}
 
@@ -864,12 +879,10 @@ export default function EditServiceOfferPage({ params }: { params: Promise<{ id:
                         <Label htmlFor="infra_available_from">Available From</Label>
                         <Input id="infra_available_from" name="infra_available_from" type="date" value={formData.infra_available_from} onChange={handleTextInput} />
                       </div>
-                      {formData.transaction_type !== 'sell' && (
-                        <div>
-                          <Label htmlFor="infra_available_to">Available To</Label>
-                          <Input id="infra_available_to" name="infra_available_to" type="date" value={formData.infra_available_to} onChange={handleTextInput} />
-                        </div>
-                      )}
+                      <div>
+                        <Label htmlFor="infra_available_to">Available To</Label>
+                        <Input id="infra_available_to" name="infra_available_to" type="date" value={formData.infra_available_to} onChange={handleTextInput} />
+                      </div>
                     </div>
                   )}
                 </CardContent>

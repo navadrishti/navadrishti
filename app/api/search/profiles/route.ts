@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { getCompanyCAUserIdSet } from '@/lib/company-ca-visibility';
+import { getCompanyCAUserIdSet } from '@/lib/company-ca';
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,11 +16,7 @@ export async function GET(request: NextRequest) {
     }
 
     const searchTerm = query.trim().toLowerCase();
-
-    // Search profiles in users table by name only with hierarchical ordering
-    const { data: profiles, error } = await supabase
-      .from('users')
-      .select(`
+    const profileSelect = `
         id,
         name,
         email,
@@ -30,9 +26,31 @@ export async function GET(request: NextRequest) {
         city,
         state_province,
         location
-      `)
-      .ilike('name', `%${searchTerm}%`)
-      .limit(limit);
+      `;
+
+    // Fetch prefix matches first, then broader matches so short queries (e.g. "s")
+    // still surface relevant names before applying the response limit.
+    const fetchLimit = Math.max(limit * 12, 48);
+    const [{ data: prefixProfiles, error: prefixError }, { data: containsProfiles, error: containsError }] =
+      await Promise.all([
+        supabase
+          .from('users')
+          .select(profileSelect)
+          .ilike('name', `${searchTerm}%`)
+          .limit(fetchLimit),
+        supabase
+          .from('users')
+          .select(profileSelect)
+          .ilike('name', `%${searchTerm}%`)
+          .not('name', 'ilike', `${searchTerm}%`)
+          .limit(fetchLimit),
+      ]);
+
+    const error = prefixError || containsError;
+    const mergedProfiles = [...(prefixProfiles ?? []), ...(containsProfiles ?? [])];
+    const uniqueProfiles = Array.from(
+      new Map(mergedProfiles.map((profile) => [profile.id, profile])).values()
+    );
 
     if (error) {
       console.error('Profile search error:', error);
@@ -42,8 +60,8 @@ export async function GET(request: NextRequest) {
       }, { status: 500 });
     }
 
-    const companyCAIds = await getCompanyCAUserIdSet((profiles ?? []).map((profile) => Number(profile.id)));
-    const visibleProfiles = (profiles ?? []).filter((profile) => !companyCAIds.has(Number(profile.id)));
+    const companyCAIds = await getCompanyCAUserIdSet(uniqueProfiles.map((profile) => Number(profile.id)));
+    const visibleProfiles = uniqueProfiles.filter((profile) => !companyCAIds.has(Number(profile.id)));
 
     // Sort results by hierarchy: names starting with search term first, then by position of match
     const sortedProfiles = visibleProfiles.sort((a, b) => {
@@ -67,8 +85,8 @@ export async function GET(request: NextRequest) {
       return aIndex - bIndex;
     });
 
-    // Format the results for frontend
-    const formattedProfiles = sortedProfiles?.map(profile => ({
+    // Format the results for frontend (apply response limit after relevance sort)
+    const formattedProfiles = sortedProfiles?.slice(0, limit).map(profile => ({
       id: profile.id,
       name: profile.name || 'Unknown User',
       email: profile.email || '',

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ChevronLeft, Check, X, FileText, Eye, Download, Users, Building2, Building } from 'lucide-react';
+import { ChevronLeft, FileText, Users, Building2, Building } from 'lucide-react';
 import Link from 'next/link';
 import {
   Dialog,
@@ -14,7 +14,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
-import Image from 'next/image';
+import { CAVerificationReview, caReviewDescription, isCaReviewLocked } from '@/components/ca-verification-review';
 
 interface VerificationDetail {
   id: number;
@@ -31,7 +31,9 @@ export default function VerificationDetailsPage({ type }: VerificationDetailsPag
   const [loading, setLoading] = useState(true);
   const [selectedItem, setSelectedItem] = useState<VerificationDetail | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [reviewLoading, setReviewLoading] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
+  const [complianceTags, setComplianceTags] = useState<string[]>([]);
 
   useEffect(() => {
     fetchItems();
@@ -40,7 +42,9 @@ export default function VerificationDetailsPage({ type }: VerificationDetailsPag
   const fetchItems = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/ca/${type}?status=unverified`);
+      const response = await fetch(`/api/ca/queue?type=${type}&status=unverified`, {
+        credentials: 'include',
+      });
       const data = await response.json();
       setItems(data.data || []);
     } catch (error) {
@@ -50,8 +54,36 @@ export default function VerificationDetailsPage({ type }: VerificationDetailsPag
     }
   };
 
+  const openReview = async (item: VerificationDetail) => {
+    setSelectedItem(item);
+    setRejectionReason('');
+    setComplianceTags(
+      isCaReviewLocked(item) && Array.isArray(item.allotted_compliance_tags)
+        ? item.allotted_compliance_tags
+        : []
+    );
+    setReviewLoading(true);
+    try {
+      const response = await fetch(`/api/ca/review?type=${type}&id=${item.id}`, { credentials: 'include' });
+      const data = await response.json();
+      if (response.ok && data.data) {
+        setSelectedItem(data.data);
+        setComplianceTags(
+          isCaReviewLocked(data.data) && Array.isArray(data.data.allotted_compliance_tags)
+            ? data.data.allotted_compliance_tags
+            : []
+        );
+      }
+    } catch (error) {
+      console.error('Failed to load review details:', error);
+    } finally {
+      setReviewLoading(false);
+    }
+  };
+
   const handleAction = async (action: 'approve' | 'reject') => {
     if (!selectedItem) return;
+    if (isCaReviewLocked(selectedItem)) return;
 
     if (action === 'reject' && !rejectionReason.trim()) {
       alert('Please provide a reason for rejection');
@@ -63,19 +95,25 @@ export default function VerificationDetailsPage({ type }: VerificationDetailsPag
       const response = await fetch('/api/ca/verification-action', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           entity_type: type,
           entity_id: selectedItem.id,
           action: action === 'approve' ? 'approve' : 'reject',
-          reason: rejectionReason
+          reason: rejectionReason,
+          compliance_tags: type === 'ngos' ? complianceTags : undefined,
         })
       });
 
+      const data = await response.json().catch(() => ({}));
       if (response.ok) {
-        alert(`${type.slice(0, -1)} ${action}d successfully`);
+        alert(data.message || `${selectedItem.name || selectedItem.company_name || selectedItem.ngo_name} ${action === 'approve' ? 'approved' : 'rejected'}`);
         setItems(items.filter(item => item.id !== selectedItem.id));
         setSelectedItem(null);
         setRejectionReason('');
+        setComplianceTags([]);
+      } else {
+        alert(data.error || 'Failed to process action');
       }
     } catch (error) {
       console.error('Action failed:', error);
@@ -96,7 +134,7 @@ export default function VerificationDetailsPage({ type }: VerificationDetailsPag
 
   const getIcon = () => {
     switch (type) {
-      case 'individuals': return <Users className="h-5 w-5 text-blue-600" />;
+      case 'individuals': return <Users className="h-5 w-5 text-udaan-blue" />;
       case 'companies': return <Building2 className="h-5 w-5 text-purple-600" />;
       case 'ngos': return <Building className="h-5 w-5 text-green-600" />;
     }
@@ -114,7 +152,7 @@ export default function VerificationDetailsPage({ type }: VerificationDetailsPag
     if (type === 'individuals') {
       return {
         title: item.name,
-        subtitle: item.profession,
+        subtitle: item.phone || '',
         email: item.email,
         status: item.verification_status
       };
@@ -177,8 +215,8 @@ export default function VerificationDetailsPage({ type }: VerificationDetailsPag
             return (
               <Card
                 key={item.id}
-                className={`cursor-pointer hover:shadow-lg transition-shadow ${getBgClass()}/40 hover:${getBgClass()}/60`}
-                onClick={() => setSelectedItem(item)}
+                className={`cursor-pointer bg-white`}
+                onClick={() => openReview(item)}
               >
                 <CardHeader className="pb-3">
                   <CardTitle className="text-lg line-clamp-1">{display.title}</CardTitle>
@@ -190,7 +228,11 @@ export default function VerificationDetailsPage({ type }: VerificationDetailsPag
                     <Badge variant="outline">
                       {item.documents_verified || 0}/{item.documents_total || 0} docs
                     </Badge>
-                    <span className="text-xs text-gray-500">Click to review</span>
+                    {item.reverification_pending ? (
+                      <span className="text-xs text-slate-500">Reverification</span>
+                    ) : (
+                      <span className="text-xs text-gray-500">Click to review</span>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -219,145 +261,28 @@ export default function VerificationDetailsPage({ type }: VerificationDetailsPag
                 )}
               </DialogTitle>
               <DialogDescription>
-                Review and verify this {type.slice(0, -1)}'s details
+                {isCaReviewLocked(selectedItem)
+                  ? 'View verified details'
+                  : caReviewDescription(type)}
+                {selectedItem?.reverification_pending
+                  ? ' Review updated certificates and re-allot tags.'
+                  : ''}
               </DialogDescription>
             </DialogHeader>
 
             {selectedItem && (
               <div className="space-y-6">
-                {/* Basic Information */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Basic Information</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {type === 'individuals' && (
-                        <>
-                          <div><label className="text-sm font-medium">Full Name</label><p className="text-sm text-slate-600">{selectedItem.name}</p></div>
-                          <div><label className="text-sm font-medium">Aadhaar Number</label><p className="text-sm text-slate-600">{selectedItem.aadhaar}</p></div>
-                          <div><label className="text-sm font-medium">PAN Number</label><p className="text-sm text-slate-600">{selectedItem.pan}</p></div>
-                          <div><label className="text-sm font-medium">Email</label><p className="text-sm text-slate-600">{selectedItem.email}</p></div>
-                          <div><label className="text-sm font-medium">Phone</label><p className="text-sm text-slate-600">{selectedItem.phone}</p></div>
-                          <div><label className="text-sm font-medium">Profession</label><p className="text-sm text-slate-600">{selectedItem.profession}</p></div>
-                        </>
-                      )}
-                      {type === 'companies' && (
-                        <>
-                          <div><label className="text-sm font-medium">Company Name</label><p className="text-sm text-slate-600">{selectedItem.company_name}</p></div>
-                          <div><label className="text-sm font-medium">GST Number</label><p className="text-sm text-slate-600">{selectedItem.gst}</p></div>
-                          <div><label className="text-sm font-medium">PAN Number</label><p className="text-sm text-slate-600">{selectedItem.pan}</p></div>
-                          <div><label className="text-sm font-medium">CIN</label><p className="text-sm text-slate-600">{selectedItem.cin}</p></div>
-                          <div><label className="text-sm font-medium">Email</label><p className="text-sm text-slate-600">{selectedItem.email}</p></div>
-                          <div><label className="text-sm font-medium">Phone</label><p className="text-sm text-slate-600">{selectedItem.phone}</p></div>
-                        </>
-                      )}
-                      {type === 'ngos' && (
-                        <>
-                          <div><label className="text-sm font-medium">NGO Name</label><p className="text-sm text-slate-600">{selectedItem.ngo_name}</p></div>
-                          <div><label className="text-sm font-medium">Registration Number</label><p className="text-sm text-slate-600">{selectedItem.registration_number}</p></div>
-                          <div><label className="text-sm font-medium">FCRA Number</label><p className="text-sm text-slate-600">{selectedItem.fcra_number}</p></div>
-                          <div><label className="text-sm font-medium">PAN Number</label><p className="text-sm text-slate-600">{selectedItem.pan}</p></div>
-                          <div><label className="text-sm font-medium">Email</label><p className="text-sm text-slate-600">{selectedItem.email}</p></div>
-                          <div><label className="text-sm font-medium">Phone</label><p className="text-sm text-slate-600">{selectedItem.phone}</p></div>
-                        </>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
+                <CAVerificationReview
+                  item={selectedItem}
+                  type={type}
+                  ocrLoading={reviewLoading}
+                  complianceTags={complianceTags}
+                  onComplianceTagsChange={isCaReviewLocked(selectedItem) ? undefined : setComplianceTags}
+                  readOnly={isCaReviewLocked(selectedItem)}
+                />
 
-                {/* Document Viewer */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <FileText className="w-5 h-5" />
-                      Documents
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {type === 'individuals' && (
-                        <>
-                          {selectedItem.aadhaar_card_url && (
-                            <div className="border rounded p-3">
-                              <p className="text-sm font-medium mb-2">Aadhaar Card</p>
-                              <div className="relative w-full h-32 bg-gray-100 rounded overflow-hidden mb-2">
-                                <Image src={selectedItem.aadhaar_card_url} alt="Aadhaar Card" fill className="object-cover" />
-                              </div>
-                              <Button size="sm" variant="outline" onClick={() => window.open(selectedItem.aadhaar_card_url, '_blank')}>
-                                <Eye className="w-3 h-3 mr-1" /> View
-                              </Button>
-                            </div>
-                          )}
-                          {selectedItem.pan_card_url && (
-                            <div className="border rounded p-3">
-                              <p className="text-sm font-medium mb-2">PAN Card</p>
-                              <div className="relative w-full h-32 bg-gray-100 rounded overflow-hidden mb-2">
-                                <Image src={selectedItem.pan_card_url} alt="PAN Card" fill className="object-cover" />
-                              </div>
-                              <Button size="sm" variant="outline" onClick={() => window.open(selectedItem.pan_card_url, '_blank')}>
-                                <Eye className="w-3 h-3 mr-1" /> View
-                              </Button>
-                            </div>
-                          )}
-                        </>
-                      )}
-                      {type === 'companies' && (
-                        <>
-                          {selectedItem.pan_card_url && (
-                            <div className="border rounded p-3">
-                              <p className="text-sm font-medium mb-2">PAN Card</p>
-                              <div className="relative w-full h-32 bg-gray-100 rounded overflow-hidden mb-2">
-                                <Image src={selectedItem.pan_card_url} alt="PAN Card" fill className="object-cover" />
-                              </div>
-                              <Button size="sm" variant="outline" onClick={() => window.open(selectedItem.pan_card_url, '_blank')}>
-                                <Eye className="w-3 h-3 mr-1" /> View
-                              </Button>
-                            </div>
-                          )}
-                          {selectedItem.gst_certificate_url && (
-                            <div className="border rounded p-3">
-                              <p className="text-sm font-medium mb-2">GST Certificate</p>
-                              <div className="w-full h-32 bg-gray-100 rounded flex items-center justify-center mb-2">
-                                <FileText className="w-8 h-8 text-gray-400" />
-                              </div>
-                              <Button size="sm" variant="outline" onClick={() => window.open(selectedItem.gst_certificate_url, '_blank')}>
-                                <Eye className="w-3 h-3 mr-1" /> View
-                              </Button>
-                            </div>
-                          )}
-                        </>
-                      )}
-                      {type === 'ngos' && (
-                        <>
-                          {selectedItem.pan_card_url && (
-                            <div className="border rounded p-3">
-                              <p className="text-sm font-medium mb-2">PAN Card</p>
-                              <div className="relative w-full h-32 bg-gray-100 rounded overflow-hidden mb-2">
-                                <Image src={selectedItem.pan_card_url} alt="PAN Card" fill className="object-cover" />
-                              </div>
-                              <Button size="sm" variant="outline" onClick={() => window.open(selectedItem.pan_card_url, '_blank')}>
-                                <Eye className="w-3 h-3 mr-1" /> View
-                              </Button>
-                            </div>
-                          )}
-                          {selectedItem.fcra_certificate_url && (
-                            <div className="border rounded p-3">
-                              <p className="text-sm font-medium mb-2">FCRA Certificate</p>
-                              <div className="w-full h-32 bg-gray-100 rounded flex items-center justify-center mb-2">
-                                <FileText className="w-8 h-8 text-gray-400" />
-                              </div>
-                              <Button size="sm" variant="outline" onClick={() => window.open(selectedItem.fcra_certificate_url, '_blank')}>
-                                <Eye className="w-3 h-3 mr-1" /> View
-                              </Button>
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-
+                {!isCaReviewLocked(selectedItem) ? (
+                <>
                 {/* Rejection Reason */}
                 <div>
                   <label className="text-sm font-medium">Rejection Reason (if rejecting)</label>
@@ -373,22 +298,22 @@ export default function VerificationDetailsPage({ type }: VerificationDetailsPag
                 <div className="flex gap-3 pt-4">
                   <Button
                     onClick={() => handleAction('approve')}
-                    disabled={actionLoading}
+                    disabled={actionLoading || reviewLoading}
                     className="flex-1 bg-green-600 hover:bg-green-700"
                   >
                     {actionLoading ? 'Processing...' : 'Approve'}
-                    <Check className="w-4 h-4 ml-2" />
                   </Button>
                   <Button
                     onClick={() => handleAction('reject')}
-                    disabled={actionLoading}
+                    disabled={actionLoading || reviewLoading}
                     variant="destructive"
                     className="flex-1"
                   >
                     {actionLoading ? 'Processing...' : 'Reject'}
-                    <X className="w-4 h-4 ml-2" />
                   </Button>
                 </div>
+                </>
+                ) : null}
               </div>
             )}
           </DialogContent>

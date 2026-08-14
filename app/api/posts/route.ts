@@ -74,7 +74,6 @@ export async function GET(request: NextRequest) {
         user = result;
       } catch (error) {
         // Continue without user if token is invalid (allow viewing posts)
-        console.log('Invalid token, continuing without authentication');
       }
     }
 

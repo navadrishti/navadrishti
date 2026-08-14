@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
+import { isCapabilityRentalTransaction, resolveCapabilityRentalRate } from '@/lib/service-offers';
 
 interface JWTPayload {
   id: number;
@@ -60,7 +61,7 @@ export async function PUT(
 
     const { data: offer, error: offerError } = await supabase
       .from('service_offers')
-      .select('id, creator_id, valid_until, transaction_type, price_amount, offer_details')
+      .select('id, creator_id, valid_until, transaction_type, price_amount, unit_rate, offer_details')
       .eq('id', targetRequest.service_offer_id)
       .single();
 
@@ -162,14 +163,16 @@ export async function PUT(
         : {};
 
       const offerDetails = safeParseJson(offer.offer_details)
-      const isRent = offer.transaction_type === 'rent'
-      const dailyRate = Number(
-        offerDetails.unit_rate ??
-          offer.price_amount ??
-          currentMeta.rate_per_unit ??
+      const isRent = isCapabilityRentalTransaction(offer.transaction_type)
+      const dailyRate = resolveCapabilityRentalRate({
+        unit_rate: offer.unit_rate,
+        price_amount: offer.price_amount,
+        offer_details: offerDetails,
+      }) || Number(
+        currentMeta.rate_per_unit ??
           targetRequest.proposed_amount ??
           0
-      ) || 0
+      )
       const billingCycle = isRent
         ? String(offerDetails.billing_cycle || currentMeta.billing_cycle || targetRequest.billing_cycle || 'daily')
         : String(currentMeta.billing_cycle || targetRequest.billing_cycle || 'one_time')

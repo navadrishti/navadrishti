@@ -2,6 +2,11 @@ import crypto from 'crypto'
 import Razorpay from 'razorpay'
 import { supabase } from '@/lib/db'
 import { formatAttendanceSummary } from '@/lib/service-request-allocation'
+import {
+  buildPricingResponse,
+  createPlatformPricedOrder,
+  isRazorpayRouteEnabled,
+} from '@/lib/razorpay-route'
 
 function safeJson(value: unknown): Record<string, any> {
   if (!value) return {}
@@ -149,10 +154,13 @@ export async function createEngagementSettlementOrder(assignment: Record<string,
   }
 
   const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret })
-  const order = await razorpay.orders.create({
-    amount: Math.round(outstanding * 100),
-    currency: 'INR',
+  const beneficiaryUserId = Number(assignment.owner_user_id || 0)
+  const { order, pricing, orderNotes } = await createPlatformPricedOrder({
+    razorpay,
+    baseAmountInr: outstanding,
     receipt: `assign_${assignment.id}_${Date.now()}`,
+    paymentKind: 'engagement_settlement',
+    beneficiaryUserId: beneficiaryUserId > 0 ? beneficiaryUserId : undefined,
     notes: {
       assignment_id: String(assignment.id),
       target_type: String(assignment.target_type || ''),
@@ -173,17 +181,18 @@ export async function createEngagementSettlementOrder(assignment: Record<string,
       : null,
     contribution_id: null,
     payer_user_id: payerUserId,
-    ngo_user_id: Number(assignment.owner_user_id || payerUserId),
+    ngo_user_id: beneficiaryUserId > 0 ? beneficiaryUserId : payerUserId,
     razorpay_order_id: String(order.id),
     receipt: String(order.receipt || `assign_${assignment.id}`),
-    amount_inr: Number(outstanding.toFixed(2)),
-    amount_paise: Math.round(outstanding * 100),
+    amount_inr: Number(pricing.totalChargeInr.toFixed(2)),
+    amount_paise: pricing.totalChargePaise,
     currency: 'INR',
     order_status: 'created',
     order_notes: {
       assignment_id: assignment.id,
       target_type: assignment.target_type,
       settlement_scope: 'daily_rental',
+      ...orderNotes,
     },
     updated_at: nowIso,
   }, { onConflict: 'razorpay_order_id' })
@@ -192,9 +201,10 @@ export async function createEngagementSettlementOrder(assignment: Record<string,
     paymentRequired: true,
     outstanding,
     orderId: order.id,
-    amount: outstanding,
+    ...buildPricingResponse(pricing),
     currency: order.currency,
     keyId,
+    routeEnabled: isRazorpayRouteEnabled(),
   }
 }
 

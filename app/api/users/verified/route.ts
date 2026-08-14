@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { getCompanyCAUserIdSet } from '@/lib/company-ca-visibility';
+import { getCompanyCAUserIdSet } from '@/lib/company-ca';
 
 export async function GET(request: NextRequest) {
   try {
@@ -52,7 +52,6 @@ export async function GET(request: NextRequest) {
                              error?.message?.includes('Database timeout') ||
                              error?.message?.includes('Database connection failed');
     
-    console.log('🔄 Database unavailable, returning empty list for graceful degradation');
     
     return NextResponse.json({
       success: true, // Return success to prevent UI errors

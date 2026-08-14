@@ -65,6 +65,20 @@ type AdminUserItem = {
   profile_image?: string | null;
   created_at?: string;
   updated_at?: string;
+  reverification_pending?: boolean;
+};
+
+type ReverificationSummary = {
+  user_id: number;
+  name: string;
+  email: string;
+  user_type: string;
+  verification_status: string;
+  submitted_at: string | null;
+  reverification_status: string;
+  current_documents: Record<string, string>;
+  pending_documents: Record<string, string>;
+  pending_compliance_documents: Record<string, string>;
 };
 
 type OverviewData = {
@@ -474,6 +488,123 @@ function UserFullDetails({ user }: { user: any }) {
   );
 }
 
+const REVERIFICATION_DOCUMENT_LABELS: Record<string, string> = {
+  individualAadhaar: 'Aadhaar Card',
+  individualPanCard: 'PAN Card',
+  bankStatement: 'Bank Statement (Last 6 months)',
+  ngoRegistrationCertificate: 'Registration Certificate',
+  ngoPanCard: 'PAN Card of NGO',
+  ngoAddressProof: 'Address Proof',
+  ngoTrustOrMoaAoa: 'Trust Deed / MOA / AOA',
+  ngoFcraPhoto: 'FCRA Registration Document',
+  ngoTwelveACertificate: '12A Certificate',
+  ngoEightyGCertificate: '80G Certificate',
+  ngoCsr1Certificate: 'CSR-1 Certificate',
+  companyIncorporationCertificate: 'Certificate of Incorporation',
+  companyPanCard: 'PAN Card of Company',
+  companyGstCertificate: 'GST Certificate',
+  companyAddressProof: 'Company Address Proof',
+  twelve_a: '12A Certificate',
+  eighty_g: '80G Certificate',
+  csr1: 'CSR-1 Certificate',
+};
+
+function ReverificationDocumentList({
+  title,
+  documents,
+}: {
+  title: string;
+  documents: Record<string, string>;
+}) {
+  const entries = Object.entries(documents || {}).filter(([, url]) => typeof url === 'string' && url.trim());
+
+  return (
+    <AdminDetailSection title={title}>
+      {entries.length === 0 ? (
+        <p className="text-sm text-slate-500">No documents in this set.</p>
+      ) : (
+        <div className="space-y-2">
+          {entries.map(([key, url]) => (
+            <div key={key} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-blue-100 bg-slate-50 px-3 py-2">
+              <span className="text-sm font-medium text-slate-800">
+                {REVERIFICATION_DOCUMENT_LABELS[key] || key}
+              </span>
+              <a href={url} target="_blank" rel="noreferrer" className="text-sm text-blue-700 hover:underline">
+                Open document
+              </a>
+            </div>
+          ))}
+        </div>
+      )}
+    </AdminDetailSection>
+  );
+}
+
+function ReverificationReviewPanel({
+  summary,
+  rejectReason,
+  onRejectReasonChange,
+  onApprove,
+  onReject,
+  processing,
+}: {
+  summary: ReverificationSummary;
+  rejectReason: string;
+  onRejectReasonChange: (value: string) => void;
+  onApprove: () => void;
+  onReject: () => void;
+  processing: boolean;
+}) {
+  return (
+    <div className="space-y-4 rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-amber-900">Pending reverification</p>
+          <p className="mt-1 text-xs text-amber-800">
+            Submitted {summary.submitted_at ? new Date(summary.submitted_at).toLocaleString('en-IN') : 'recently'}.
+            User stays verified until you approve or reject.
+          </p>
+        </div>
+        <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">Review required</Badge>
+      </div>
+
+      <ReverificationDocumentList title="Current documents on file" documents={summary.current_documents} />
+      <ReverificationDocumentList title="Updated documents submitted" documents={summary.pending_documents} />
+      {Object.keys(summary.pending_compliance_documents || {}).length > 0 ? (
+        <ReverificationDocumentList title="Updated compliance certificates" documents={summary.pending_compliance_documents} />
+      ) : null}
+
+      <div className="space-y-2">
+        <label className="text-sm font-medium text-slate-700">Rejection reason (optional)</label>
+        <Textarea
+          value={rejectReason}
+          onChange={(e) => onRejectReasonChange(e.target.value)}
+          rows={3}
+          placeholder="Explain why the updated documents were rejected"
+          className="border-amber-200 bg-white text-slate-900 placeholder:text-slate-400"
+        />
+      </div>
+
+      <div className="flex flex-wrap gap-3">
+        <Button
+          onClick={onApprove}
+          disabled={processing}
+          className="bg-emerald-600 hover:bg-emerald-500"
+        >
+          {processing ? 'Processing...' : 'Approve reverification'}
+        </Button>
+        <Button
+          onClick={onReject}
+          disabled={processing}
+          variant="destructive"
+        >
+          {processing ? 'Processing...' : 'Reject reverification'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function TicketFullDetails({ ticket }: { ticket: any }) {
   if (!ticket) return null;
   return (
@@ -802,6 +933,11 @@ export default function AdminPage() {
   const [savingProject, setSavingProject] = useState(false);
   const [deletingProject, setDeletingProject] = useState(false);
   const [adminUsers, setAdminUsers] = useState<AdminUserItem[]>([]);
+  const [pendingReverifications, setPendingReverifications] = useState<ReverificationSummary[]>([]);
+  const [selectedReverification, setSelectedReverification] = useState<ReverificationSummary | null>(null);
+  const [reverificationRejectReason, setReverificationRejectReason] = useState('');
+  const [processingReverification, setProcessingReverification] = useState(false);
+  const [showReverificationOnly, setShowReverificationOnly] = useState(false);
   const [selectedUser, setSelectedUser] = useState<AdminUserItem | null>(null);
   const [userDraft, setUserDraft] = useState(emptyUserDraft);
   const [savingUser, setSavingUser] = useState(false);
@@ -893,11 +1029,24 @@ export default function AdminPage() {
 
       const usersResponse = await fetch('/api/admin/users?limit=200', { credentials: 'include' });
       const usersData = await usersResponse.json();
+      const reverificationsResponse = await fetch('/api/admin/reverifications?limit=200', { credentials: 'include' });
+      const reverificationsData = await reverificationsResponse.json();
+      const reverificationItems: ReverificationSummary[] = reverificationsResponse.ok && reverificationsData?.success
+        ? (Array.isArray(reverificationsData.reverifications) ? reverificationsData.reverifications : [])
+        : [];
+      const reverificationIds = new Set(reverificationItems.map((item) => item.user_id));
+
       if (usersResponse.ok && usersData?.success) {
-        setAdminUsers(Array.isArray(usersData.users) ? usersData.users : []);
+        const nextUsers = (Array.isArray(usersData.users) ? usersData.users : []).map((item: AdminUserItem) => ({
+          ...item,
+          reverification_pending: reverificationIds.has(item.id),
+        }));
+        setAdminUsers(nextUsers);
       } else {
         setAdminUsers([]);
       }
+
+      setPendingReverifications(reverificationItems);
 
       const [projectsResponse, requestsResponse, postsResponse, ticketsResponse, campaignsResponse] = await Promise.all([
         fetch('/api/admin/service-request-projects?limit=200', { credentials: 'include' }),
@@ -1223,12 +1372,84 @@ export default function AdminPage() {
     });
   };
 
-  const selectUser = (userItem: AdminUserItem) => {
+  const selectUser = async (userItem: AdminUserItem) => {
     setSelectedUser(userItem);
     setUserDraft({
       user_type: userItem.user_type || 'individual',
       verification_status: userItem.verification_status || 'unverified',
     });
+    setReverificationRejectReason('');
+    setSelectedReverification(null);
+
+    try {
+      const response = await fetch(`/api/admin/users/${encodeURIComponent(userItem.id)}/reverification`, {
+        credentials: 'include',
+      });
+      const data = await response.json();
+      if (response.ok && data?.success && data?.reverification) {
+        setSelectedReverification(data.reverification);
+      }
+    } catch {
+      // keep list snapshot only
+    }
+  };
+
+  const refreshReverificationState = async (userId: number) => {
+    const [usersResponse, reverificationsResponse] = await Promise.all([
+      fetch('/api/admin/users?limit=200', { credentials: 'include' }),
+      fetch('/api/admin/reverifications?limit=200', { credentials: 'include' }),
+    ]);
+
+    const usersData = await usersResponse.json();
+    const reverificationsData = await reverificationsResponse.json();
+    const reverificationItems: ReverificationSummary[] = reverificationsResponse.ok && reverificationsData?.success
+      ? (Array.isArray(reverificationsData.reverifications) ? reverificationsData.reverifications : [])
+      : [];
+    const reverificationIds = new Set(reverificationItems.map((item) => item.user_id));
+
+    if (usersResponse.ok && usersData?.success) {
+      const nextUsers = (Array.isArray(usersData.users) ? usersData.users : []).map((item: AdminUserItem) => ({
+        ...item,
+        reverification_pending: reverificationIds.has(item.id),
+      }));
+      setAdminUsers(nextUsers);
+      setSelectedUser((current) => current?.id === userId
+        ? nextUsers.find((item) => item.id === userId) || current
+        : current);
+    }
+
+    setPendingReverifications(reverificationItems);
+    setSelectedReverification(null);
+    setReverificationRejectReason('');
+  };
+
+  const handleReverificationAction = async (action: 'approve' | 'reject') => {
+    if (!selectedUser) return;
+
+    try {
+      setProcessingReverification(true);
+      const response = await fetch(`/api/admin/users/${encodeURIComponent(selectedUser.id)}/reverification`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          action,
+          reason: action === 'reject' ? reverificationRejectReason : undefined,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.error || 'Failed to process reverification');
+      }
+
+      sonnerToast.success(data.message || (action === 'approve' ? 'Reverification approved' : 'Reverification rejected'));
+      await refreshReverificationState(selectedUser.id);
+    } catch (error: any) {
+      sonnerToast.error(error?.message || 'Failed to process reverification');
+    } finally {
+      setProcessingReverification(false);
+    }
   };
 
   const saveUser = async () => {
@@ -1600,9 +1821,12 @@ export default function AdminPage() {
   }, [adminProjects, projectQuery]);
 
   const filteredUsers = useMemo(() => {
+    const baseUsers = showReverificationOnly
+      ? adminUsers.filter((item) => item.reverification_pending)
+      : adminUsers;
     const query = userQuery.trim();
-    if (!query) return adminUsers;
-    return adminUsers.filter((item) => (
+    if (!query) return baseUsers;
+    return baseUsers.filter((item) => (
       textMatch(item.name, query)
       || textMatch(item.email, query)
       || textMatch(item.user_type, query)
@@ -1611,7 +1835,7 @@ export default function AdminPage() {
       || textMatch(item.state_province, query)
       || textMatch(item.id, query)
     ));
-  }, [adminUsers, userQuery]);
+  }, [adminUsers, userQuery, showReverificationOnly]);
 
   const filteredRequests = useMemo(() => {
     const query = requestQuery.trim();
@@ -1961,6 +2185,42 @@ export default function AdminPage() {
                     <p className="text-sm font-medium text-slate-700">Loaded users</p>
                     <p className="mt-1 text-2xl font-bold text-slate-900">{userCount}</p>
                   </div>
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-amber-900">Pending reverifications</p>
+                        <p className="mt-1 text-2xl font-bold text-amber-900">{pendingReverifications.length}</p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant={showReverificationOnly ? 'default' : 'outline'}
+                        className={showReverificationOnly ? 'bg-amber-600 hover:bg-amber-500' : 'border-amber-300 bg-white text-amber-800 hover:bg-amber-100'}
+                        onClick={() => setShowReverificationOnly((current) => !current)}
+                      >
+                        {showReverificationOnly ? 'Showing queue' : 'Show queue only'}
+                      </Button>
+                    </div>
+                  </div>
+                  {pendingReverifications.length > 0 ? (
+                    <div className="space-y-2">
+                      {pendingReverifications.slice(0, 5).map((item) => (
+                        <button
+                          key={item.user_id}
+                          type="button"
+                          onClick={() => {
+                            const matchedUser = adminUsers.find((userItem) => userItem.id === item.user_id);
+                            if (matchedUser) {
+                              void selectUser(matchedUser);
+                            }
+                          }}
+                          className="w-full rounded-xl border border-amber-200 bg-white px-3 py-2 text-left hover:bg-amber-50"
+                        >
+                          <p className="text-sm font-medium text-slate-900">{item.name}</p>
+                          <p className="text-xs text-slate-500">{item.email}</p>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
                   {filteredUsers.map((adminUser) => (
                     <button key={adminUser.id} onClick={() => selectUser(adminUser)} className={`w-full rounded-2xl border p-4 text-left transition duration-200 overflow-hidden ${selectedUser?.id === adminUser.id ? 'border-blue-400 bg-blue-50' : 'border-blue-100 bg-white hover:bg-slate-50'}`}>
                       <div className="flex items-center justify-between gap-2 min-w-0">
@@ -1970,6 +2230,9 @@ export default function AdminPage() {
                         </div>
                         <div className="flex flex-col items-end gap-1 shrink-0">
                           <Badge className={statusTone(adminUser.verification_status)}>{adminUser.verification_status}</Badge>
+                          {adminUser.reverification_pending ? (
+                            <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">Reverify pending</Badge>
+                          ) : null}
                           <span className="text-xs text-slate-500">{adminUser.user_type}</span>
                         </div>
                       </div>
@@ -1989,6 +2252,16 @@ export default function AdminPage() {
                     <p className="text-sm text-slate-500">Select a user to edit it.</p>
                   ) : (
                     <>
+                      {selectedReverification ? (
+                        <ReverificationReviewPanel
+                          summary={selectedReverification}
+                          rejectReason={reverificationRejectReason}
+                          onRejectReasonChange={setReverificationRejectReason}
+                          onApprove={() => handleReverificationAction('approve')}
+                          onReject={() => handleReverificationAction('reject')}
+                          processing={processingReverification}
+                        />
+                      ) : null}
                       <UserFullDetails user={selectedUser} />
                       <div className="grid gap-3 md:grid-cols-2">
                         <Select value={userDraft.user_type} onValueChange={(value) => setUserDraft((prev) => ({ ...prev, user_type: value as any }))}>

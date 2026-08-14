@@ -186,6 +186,170 @@ function extractTrackingId(payload: any, fallbackTrackingId: string): string {
   );
 }
 
+export type DelhiveryPartyAddress = {
+  name: string;
+  phone: string;
+  address: string;
+  city: string;
+  state: string;
+  pincode: string;
+  country?: string;
+};
+
+export type CreateDelhiveryShipmentInput = {
+  orderId: string;
+  pickupLocationName: string;
+  consignee: DelhiveryPartyAddress;
+  seller: DelhiveryPartyAddress;
+  paymentMode?: 'Prepaid' | 'COD';
+  weightGrams?: number;
+  quantity?: number;
+  productDescription?: string;
+  totalAmountInr?: number;
+};
+
+export type DelhiveryShipmentResult = {
+  success: boolean;
+  waybill: string | null;
+  orderId: string;
+  status: string | null;
+  remark: string | null;
+  raw: unknown;
+};
+
+export function isDelhiveryBookingConfigured(): boolean {
+  return Boolean(process.env.DELHIVERY_API_TOKEN && process.env.DELHIVERY_PICKUP_LOCATION_NAME);
+}
+
+export function sanitizeDelhiveryText(value: string): string {
+  return String(value || '')
+    .replace(/[&\\#%;]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 240);
+}
+
+function normalizeDelhiveryPhone(value: unknown): string {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (digits.length >= 10) {
+    return digits.slice(-10);
+  }
+  return digits;
+}
+
+function normalizeDelhiveryPincode(value: unknown): string {
+  return String(value || '').replace(/\D/g, '').slice(0, 6);
+}
+
+export async function createDelhiveryShipment(
+  input: CreateDelhiveryShipmentInput
+): Promise<DelhiveryShipmentResult> {
+  const { token, baseUrl, timeoutMs } = getDelhiveryConfig();
+  const pickupLocationName = String(input.pickupLocationName || process.env.DELHIVERY_PICKUP_LOCATION_NAME || '').trim();
+  if (!pickupLocationName) {
+    throw new Error('DELHIVERY_PICKUP_LOCATION_NAME is not configured');
+  }
+
+  const consigneePhone = normalizeDelhiveryPhone(input.consignee.phone);
+  const sellerPhone = normalizeDelhiveryPhone(input.seller.phone);
+  const consigneePin = normalizeDelhiveryPincode(input.consignee.pincode);
+  const sellerPin = normalizeDelhiveryPincode(input.seller.pincode);
+
+  if (consigneePhone.length < 10) throw new Error('Consignee phone number is required for Delhivery booking');
+  if (sellerPhone.length < 10) throw new Error('Pickup contact phone number is required for Delhivery booking');
+  if (consigneePin.length !== 6) throw new Error('Consignee pincode must be 6 digits');
+  if (sellerPin.length !== 6) throw new Error('Pickup pincode must be 6 digits');
+
+  const payload = {
+    pickup_location: { name: pickupLocationName },
+    shipments: [
+      {
+        order: sanitizeDelhiveryText(input.orderId),
+        name: sanitizeDelhiveryText(input.consignee.name),
+        add: sanitizeDelhiveryText(input.consignee.address),
+        city: sanitizeDelhiveryText(input.consignee.city),
+        state: sanitizeDelhiveryText(input.consignee.state),
+        country: sanitizeDelhiveryText(input.consignee.country || 'India'),
+        pin: consigneePin,
+        phone: consigneePhone,
+        payment_mode: input.paymentMode || 'Prepaid',
+        weight: String(Math.max(100, Number(input.weightGrams || 500))),
+        quantity: Math.max(1, Number(input.quantity || 1)),
+        seller_name: sanitizeDelhiveryText(input.seller.name),
+        seller_add: sanitizeDelhiveryText(input.seller.address),
+        return_add: sanitizeDelhiveryText(input.seller.address),
+        return_city: sanitizeDelhiveryText(input.seller.city),
+        return_state: sanitizeDelhiveryText(input.seller.state),
+        return_pin: sellerPin,
+        return_phone: sellerPhone,
+        return_country: sanitizeDelhiveryText(input.seller.country || 'India'),
+        products_desc: sanitizeDelhiveryText(input.productDescription || 'CSR capability material'),
+        total_amount: Math.max(1, Number(input.totalAmountInr || 1)),
+      },
+    ],
+  };
+
+  const requestBody = `format=json&data=${JSON.stringify(payload)}`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}/api/cmu/create.json`, {
+      method: 'POST',
+      headers: {
+        ...buildHeaders(token),
+        'Content-Type': 'application/json',
+      },
+      body: requestBody,
+      signal: controller.signal,
+    });
+  } catch (error: any) {
+    clearTimeout(timeout);
+    throw new Error(
+      error?.name === 'AbortError'
+        ? `Delhivery booking timed out after ${timeoutMs}ms`
+        : error?.message || 'Delhivery booking request failed'
+    );
+  }
+  clearTimeout(timeout);
+
+  const rawText = await response.text();
+  let raw: any;
+  try {
+    raw = JSON.parse(rawText);
+  } catch {
+    raw = { message: rawText };
+  }
+
+  if (!response.ok) {
+    throw new Error(String(raw?.rmk || raw?.message || rawText || `HTTP ${response.status}`));
+  }
+
+  const packages = Array.isArray(raw?.packages) ? raw.packages : [];
+  const firstPackage = packages[0] && typeof packages[0] === 'object' ? packages[0] : {};
+  const waybill = firstString([
+    firstPackage?.waybill,
+    firstPackage?.Waybill,
+    raw?.waybill,
+    raw?.awb,
+  ]);
+  const success = Boolean(raw?.success) && Boolean(waybill);
+
+  if (!success) {
+    throw new Error(String(raw?.rmk || raw?.error || 'Delhivery did not return a waybill'));
+  }
+
+  return {
+    success: true,
+    waybill: waybill || null,
+    orderId: input.orderId,
+    status: firstString([firstPackage?.status, raw?.status]) || 'booked',
+    remark: firstString([raw?.rmk, raw?.remark]),
+    raw,
+  };
+}
+
 async function fetchTrackingPayload(trackingId: string): Promise<unknown> {
   const { token, baseUrl, timeoutMs } = getDelhiveryConfig();
 

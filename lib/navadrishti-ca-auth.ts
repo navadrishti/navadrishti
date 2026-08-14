@@ -1,7 +1,47 @@
-import jwt from 'jsonwebtoken';
+import { createHash } from 'crypto';
+import jwt, { type SignOptions } from 'jsonwebtoken';
 import { NextRequest } from 'next/server';
-import { comparePassword, hashPassword, JWT_SECRET } from '@/lib/auth';
+import { comparePassword, getCaBadgeNumber, hashPassword, JWT_SECRET } from '@/lib/auth';
 import { supabase } from '@/lib/db';
+
+export function issueCaBadgeNumber(userId: number, profileData?: unknown): string {
+  const existing = getCaBadgeNumber(profileData);
+  if (existing) return existing;
+
+  const digest = createHash('sha256')
+    .update(`navadrishti-ca-badge:${userId}:${JWT_SECRET}`)
+    .digest('hex')
+    .slice(0, 8)
+    .toUpperCase();
+
+  return `ND-CA-${digest}`;
+}
+
+export function applyCaBadgeToProfile(
+  profileData: Record<string, any>,
+  userId: number,
+  meta?: { verifiedAt?: string; verifiedBy?: string }
+) {
+  const existing = getCaBadgeNumber(profileData);
+  const badge = existing || issueCaBadgeNumber(userId, profileData);
+  const next: Record<string, any> = {
+    ...profileData,
+    ca_badge_number: badge,
+  };
+
+  if (meta?.verifiedAt && !profileData.ca_verified_at) {
+    next.ca_verified_at = meta.verifiedAt;
+  }
+  if (meta?.verifiedBy) {
+    next.ca_verified_by = meta.verifiedBy;
+  }
+
+  return {
+    profileData: next,
+    badge,
+    changed: existing !== badge,
+  };
+}
 
 export type NavadrishtCAAccount = {
   id: number;
@@ -15,11 +55,12 @@ export type NavadrishtCAAccount = {
   updated_at?: string;
 };
 
-type NavadrishtCATokenPayload = {
+export type NavadrishtCATokenPayload = {
   id: number;
   ca_id: string;
   username: string;
   display_name: string;
+  email?: string;
 };
 
 export function generateNavadrishtCAToken(account: NavadrishtCAAccount): string {
@@ -30,7 +71,9 @@ export function generateNavadrishtCAToken(account: NavadrishtCAAccount): string 
     display_name: account.display_name,
   };
 
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: process.env.CA_JWT_EXPIRES_IN || '12h' });
+  return jwt.sign(payload, JWT_SECRET, {
+    expiresIn: (process.env.CA_JWT_EXPIRES_IN || '12h') as SignOptions['expiresIn'],
+  });
 }
 
 export function verifyNavadrishtCAToken(token: string): NavadrishtCATokenPayload | null {
@@ -117,6 +160,23 @@ export async function updateNavadrishtCAPassword(accountId: number, password: st
     .update({
       password_hash,
       must_change_password: false,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', accountId)
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return data as NavadrishtCAAccount;
+}
+
+export async function resetNavadrishtCAPasswordByAdmin(accountId: number, temporaryPassword: string) {
+  const password_hash = await hashPassword(temporaryPassword);
+  const { data, error } = await supabase
+    .from('navadrishti_ca_accounts')
+    .update({
+      password_hash,
+      must_change_password: true,
       updated_at: new Date().toISOString(),
     })
     .eq('id', accountId)
