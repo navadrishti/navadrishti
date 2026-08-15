@@ -57,7 +57,7 @@ const tabButtonClass = (active: boolean) =>
 
 const filterButtonClass = (active: boolean) =>
   cn(
-    'inline-flex h-10 w-full items-center justify-center rounded-md border px-3 text-sm font-medium',
+    'inline-flex h-10 w-full items-center justify-center whitespace-nowrap rounded-md border px-2 text-sm font-medium',
     active
       ? 'border-udaan-blue bg-udaan-blue text-white'
       : 'border-slate-200 bg-white text-slate-700'

@@ -18,29 +18,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
     }
 
-    // Generate admin session token
+    // Generate admin-only session token (never a platform user id)
     const adminToken = generateToken({
-      id: -1, // Special admin ID
+      id: -1,
       email: 'admin@system.local',
-      name: 'System Administrator',
-      user_type: 'admin' as any
+      name: 'Administrator',
+      user_type: 'admin' as any,
     });
 
-    // Set admin token in cookie
-    const response = NextResponse.json({ 
-      success: true, 
+    const response = NextResponse.json({
+      success: true,
       message: 'Admin login successful',
       role: 'admin',
       admin: {
-        username: adminUsername
-      }
+        username: adminUsername,
+        display_name: 'Administrator',
+      },
     });
 
+    // Clear any stale path-scoped admin cookie, then set the live session cookie.
     response.cookies.set('admin-token', '', {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
       expires: new Date(0),
+      maxAge: 0,
       path: '/api/admin',
     });
 

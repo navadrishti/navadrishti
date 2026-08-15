@@ -291,6 +291,14 @@ export function isPhase1Launch(): boolean {
   return getLaunchPhase() === 1;
 }
 
+/** Browser tab / document title for the active launch phase. */
+export function getSiteDocumentTitle(): string {
+  if (isPhase1Launch()) {
+    return 'Navadrishti | CA-Verified NGO Directory for India';
+  }
+  return 'Navadrishti | Digital OS for Social Impact';
+}
+
 export function isPermanentlyBlockedPath(pathname: string): boolean {
   return PERMANENTLY_BLOCKED_ROUTE_PREFIXES.some((prefix) =>
     matchesRoutePrefix(pathname, prefix)

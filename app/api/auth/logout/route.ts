@@ -2,35 +2,33 @@ import { NextResponse } from 'next/server';
 
 export async function POST() {
   try {
-    // Create response with cleared cookies
-    const response = NextResponse.json({ 
+    const response = NextResponse.json({
       message: 'Logged out successfully',
-      success: true 
+      success: true,
     });
 
-    // Clear all authentication cookies
+    // Must match login cookie attributes or the browser will keep the httpOnly token.
     response.cookies.set('token', '', {
       path: '/',
       expires: new Date(0),
+      maxAge: 0,
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax'
+      sameSite: 'strict',
     });
 
     response.cookies.set('user', '', {
       path: '/',
       expires: new Date(0),
+      maxAge: 0,
       httpOnly: false,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax'
+      sameSite: 'strict',
     });
 
     return response;
   } catch (error) {
     console.error('Logout error:', error);
-    return NextResponse.json(
-      { error: 'Logout failed' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Logout failed' }, { status: 500 });
   }
 }

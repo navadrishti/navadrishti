@@ -9,10 +9,17 @@ import { Toaster } from 'sonner'
 import Script from 'next/script'
 import { Analytics } from '@vercel/analytics/next'
 import { SpeedInsights } from '@vercel/speed-insights/next'
-import { verifyToken } from '@/lib/auth'
+import { verifyToken, isPlatformUserSession } from '@/lib/auth'
+import { getSiteDocumentTitle } from '@/lib/access-control'
+
+const siteTitle = getSiteDocumentTitle()
 
 export const metadata: Metadata = {
-  title: 'Navadrishti | Digital OS for Social Impact',
+  title: {
+    absolute: siteTitle,
+    default: siteTitle,
+  },
+  applicationName: siteTitle,
   description: 'Created by Shubhendu Chakrabarti',
   generator: 'Shubhendu Chakrabarti',
   icons: {
@@ -31,7 +38,8 @@ export default async function RootLayout({
   const shouldInjectProtectionScript = process.env.NODE_ENV === 'production'
   const cookieStore = await cookies()
   const token = cookieStore.get('token')?.value || null
-  const initialUser = token ? verifyToken(token) : null
+  const decoded = token ? verifyToken(token) : null
+  const initialUser = isPlatformUserSession(decoded) ? decoded : null
 
   return (
     <html lang="en">

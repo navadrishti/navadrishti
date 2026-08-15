@@ -144,7 +144,7 @@ export function Header({ className = '' }: { className?: string } = {}) {
   }
 
   const handleLogout = async () => {
-    logout()
+    await logout()
     await smoothNavigate(router, '/', { delay: 100 })
   }
 
@@ -402,7 +402,7 @@ export function Header({ className = '' }: { className?: string } = {}) {
                   {user.profile_image && <AvatarImage src={user.profile_image} alt={user.name} />}
                   <AvatarFallback className="bg-udaan-orange text-white">{getInitials(user.name)}</AvatarFallback>
                 </Avatar>
-                <span className="max-w-[96px] truncate text-sm font-medium">
+                <span className="max-w-[148px] truncate text-sm font-medium">
                   {profileTriggerLabel}
                 </span>
                 <ChevronDown className="h-4 w-4 shrink-0 opacity-80" />
