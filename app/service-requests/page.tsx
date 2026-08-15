@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, Suspense, useMemo } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Header } from '@/components/header'
@@ -9,13 +9,31 @@ import { Input } from '@/components/ui/input'
 import { StyledSelect } from '@/components/ui/styled-select'
 import { ServiceCard } from '@/components/service-card'
 import { Skeleton, SkeletonCTA } from '@/components/ui/skeleton'
-import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card'
-import { Search, ArrowRight, Plus } from 'lucide-react'
+import { Card, CardContent } from '@/components/ui/card'
+import { Search, ArrowRight, Plus, MapPin } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
-import { getServiceRequestCategoriesWithAll } from '@/lib/categories'
+import { CSR_SCHEDULE_VII_CATEGORIES, SERVICE_REQUEST_TYPES } from '@/lib/categories'
 
-const categories = getServiceRequestCategoriesWithAll()
+const compactControlClass = 'h-9 text-sm'
+
+const CATEGORY_OPTIONS = [
+  { value: 'all', label: 'All categories' },
+  ...CSR_SCHEDULE_VII_CATEGORIES.map((category) => ({ value: category, label: category })),
+]
+
+const NEED_TYPE_OPTIONS = [
+  { value: 'all', label: 'All need types' },
+  ...SERVICE_REQUEST_TYPES.map((type) => ({ value: type, label: type })),
+]
+
+const URGENCY_OPTIONS = [
+  { value: 'all', label: 'Any urgency' },
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+  { value: 'critical', label: 'Critical' },
+]
 
 function ServiceRequestCardSkeleton() {
   return (
@@ -82,7 +100,12 @@ function ServiceRequestsContent() {
   const searchParams = useSearchParams()
   const [mounted, setMounted] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
-  const [selectedCategory, setSelectedCategory] = useState('All Categories')
+  const [locationFilter, setLocationFilter] = useState('')
+  const [selectedCategory, setSelectedCategory] = useState('all')
+  const [selectedNeedType, setSelectedNeedType] = useState('all')
+  const [selectedUrgency, setSelectedUrgency] = useState('all')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [debouncedLocation, setDebouncedLocation] = useState('')
   const [currentView, setCurrentView] = useState('all')
   const [requests, setRequests] = useState<Record<string, any[]>>({
     all: []
@@ -95,10 +118,28 @@ function ServiceRequestsContent() {
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm.trim())
+      setDebouncedLocation(locationFilter.trim())
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [searchTerm, locationFilter])
   
   const serviceRequests = requests[currentView] || []
   const authReady = mounted && !authLoading
   const isNGO = authReady && user?.user_type === 'ngo'
+
+  const hasActiveFilters = useMemo(
+    () =>
+      Boolean(debouncedSearch)
+      || Boolean(debouncedLocation)
+      || selectedCategory !== 'all'
+      || selectedNeedType !== 'all'
+      || selectedUrgency !== 'all',
+    [debouncedSearch, debouncedLocation, selectedCategory, selectedNeedType, selectedUrgency]
+  )
 
   useEffect(() => {
     const tab = searchParams.get('tab')
@@ -171,8 +212,11 @@ function ServiceRequestsContent() {
     
     const params = new URLSearchParams({
       view: 'all',
-      ...(selectedCategory !== 'All Categories' && { category: selectedCategory }),
-      ...(searchTerm && { search: searchTerm }),
+      ...(selectedCategory !== 'all' && { category: selectedCategory }),
+      ...(selectedNeedType !== 'all' && { request_type: selectedNeedType }),
+      ...(selectedUrgency !== 'all' && { urgency: selectedUrgency }),
+      ...(debouncedSearch && { search: debouncedSearch }),
+      ...(debouncedLocation && { location: debouncedLocation }),
       ...(user?.id && { userId: user.id.toString() })
     })
     
@@ -192,13 +236,22 @@ function ServiceRequestsContent() {
     }
   }
 
-  useEffect(() => { fetchRequests() }, [selectedCategory, searchTerm, currentView, user?.id])
+  useEffect(() => {
+    if (!authReady) return
+    fetchRequests()
+  }, [selectedCategory, selectedNeedType, selectedUrgency, debouncedSearch, debouncedLocation, currentView, user?.id, authReady])
+
+  const clearFilters = () => {
+    setSearchTerm('')
+    setLocationFilter('')
+    setDebouncedSearch('')
+    setDebouncedLocation('')
+    setSelectedCategory('all')
+    setSelectedNeedType('all')
+    setSelectedUrgency('all')
+  }
 
   const filteredRequests = serviceRequests
-  const isHistoryRequest = (request: any) => {
-    const status = String(request?.status || '').toLowerCase()
-    return status === 'completed' || status === 'cancelled'
-  }
   const hasAcceptedApplicant = (request: any) => {
     const count = Number(request?.accepted_volunteers_count ?? request?.volunteers_count ?? 0)
     return Number.isFinite(count) && count > 0
@@ -232,7 +285,6 @@ function ServiceRequestsContent() {
           </div>
         </div>
 
-        {/* Create Need CTA */}
         {loading ? (
           user && isNGO && <SkeletonCTA />
         ) : user && isNGO && (
@@ -258,28 +310,71 @@ function ServiceRequestsContent() {
           </div>
         )}
         
-        <div className="mb-6 grid gap-6 md:grid-cols-2">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              type="search"
-              placeholder="Search needs..."
-              className="pl-8"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+        <section className="mb-6 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+          <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+            Filters
           </div>
-          <div className="flex gap-4">
-            <div className="relative flex-1">
-              <StyledSelect
-                value={selectedCategory}
-                options={categories}
-                placeholder="Select project category"
-                onValueChange={setSelectedCategory}
+
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+              <Input
+                type="search"
+                placeholder="Search needs..."
+                className={`${compactControlClass} pl-8`}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
+
+            <div className="relative">
+              <MapPin className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+              <Input
+                value={locationFilter}
+                onChange={(e) => setLocationFilter(e.target.value)}
+                placeholder="State or city"
+                className={`${compactControlClass} pl-8`}
+              />
+            </div>
+
+            <StyledSelect
+              value={selectedCategory}
+              options={CATEGORY_OPTIONS}
+              placeholder="All categories"
+              onValueChange={setSelectedCategory}
+              className={compactControlClass}
+            />
+
+            <StyledSelect
+              value={selectedNeedType}
+              options={NEED_TYPE_OPTIONS}
+              placeholder="All need types"
+              onValueChange={setSelectedNeedType}
+              className={compactControlClass}
+            />
+
+            <StyledSelect
+              value={selectedUrgency}
+              options={URGENCY_OPTIONS}
+              placeholder="Any urgency"
+              onValueChange={setSelectedUrgency}
+              className={compactControlClass}
+            />
           </div>
-        </div>
+
+          <div className="mt-3 flex flex-col gap-2 border-t border-slate-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-slate-500">
+              {loading
+                ? 'Loading needs...'
+                : `${filteredRequests.length} need${filteredRequests.length === 1 ? '' : 's'} match your filters`}
+            </p>
+            {hasActiveFilters ? (
+              <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-slate-600" onClick={clearFilters}>
+                Clear filters
+              </Button>
+            ) : null}
+          </div>
+        </section>
 
         <div className="min-h-[400px]">
           {loading ? (
@@ -330,10 +425,7 @@ function ServiceRequestsContent() {
               <p className="mb-4 text-muted-foreground">
                 No NGO needs match your current search or filters.
               </p>
-              <Button variant="outline" onClick={() => {
-                setSearchTerm('');
-                setSelectedCategory('All Categories');
-              }}>
+              <Button variant="outline" onClick={clearFilters}>
                 Clear Filters
               </Button>
             </div>

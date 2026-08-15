@@ -13,6 +13,7 @@ export async function POST(request: NextRequest) {
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
       expires: new Date(0),
+      maxAge: 0,
       path: '/api/admin',
     });
 
@@ -20,7 +21,8 @@ export async function POST(request: NextRequest) {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
-      maxAge: 0, // Immediately expire
+      expires: new Date(0),
+      maxAge: 0,
       path: '/',
     });
 

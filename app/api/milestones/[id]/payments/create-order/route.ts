@@ -3,6 +3,10 @@ import Razorpay from 'razorpay';
 import { supabase } from '@/lib/db';
 import { getEvidenceApproverContext } from '@/lib/server-evidence-approver-auth';
 import {
+  assertNgoLiveCsr1,
+  CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE,
+} from '@/lib/server-auth';
+import {
   assertBeneficiaryRouteReady,
   buildPricingOrderNotes,
   buildPricingResponse,
@@ -76,6 +80,11 @@ export async function POST(
     const leadNgoUserId = Number(project.ngo_user_id || 0);
     if (!Number.isFinite(leadNgoUserId) || leadNgoUserId <= 0) {
       return NextResponse.json({ error: 'Lead NGO is not configured for this project' }, { status: 400 });
+    }
+
+    const csrGate = await assertNgoLiveCsr1(leadNgoUserId, CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE);
+    if (!csrGate.ok) {
+      return NextResponse.json({ error: csrGate.error }, { status: 403 });
     }
 
     const { data: leadNgo } = await supabase

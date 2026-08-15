@@ -325,6 +325,7 @@ export async function GET(request: NextRequest) {
     const view = rawView === 'hired' ? 'my-responses' : rawView
     const location = searchParams.get('location')
     const offerTypeFilter = searchParams.get('offer_type')
+    const transactionTypeFilter = searchParams.get('transaction_type')
     const includeExpired = searchParams.get('include_expired') === 'true'
 
     let authenticatedUserId = null
@@ -439,6 +440,15 @@ export async function GET(request: NextRequest) {
         offer.city?.toLowerCase().includes(locationLower)
           || offer.state_province?.toLowerCase().includes(locationLower)
           || offer.coverage_area?.toLowerCase().includes(locationLower)
+          || offer.location?.toLowerCase().includes(locationLower)
+          || offer.location_scope?.toLowerCase().includes(locationLower)
+      )
+    }
+
+    if (transactionTypeFilter && transactionTypeFilter !== 'all' && transactionTypeFilter !== 'All Transactions') {
+      const transactionLower = transactionTypeFilter.toLowerCase()
+      filteredOffers = filteredOffers.filter(
+        (offer) => String(offer.transaction_type || '').toLowerCase() === transactionLower
       )
     }
 

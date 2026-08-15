@@ -58,6 +58,23 @@ async function processNgoDocumentExpiryJobs(now = new Date()) {
         .eq('id', user.id);
       if (tagUpdateError) throw tagUpdateError;
       stats.tags_dropped += dropped.dropped.length;
+
+      // Mid-project edge: if CSR-1 lapsed, stop new CSR takeovers on this NGO's open projects.
+      // Ongoing assigned work is not deleted; company funding is blocked separately via live CSR-1 checks.
+      if (dropped.dropped.includes('csr1')) {
+        const { error: lockError } = await supabase
+          .from('service_request_projects')
+          .update({
+            csr_project_available_for_csr: false,
+            updated_at: reviewedAt,
+          })
+          .eq('ngo_id', user.id)
+          .eq('csr_project_available_for_csr', true)
+          .not('status', 'in', '(completed,cancelled,expired)');
+        if (lockError) {
+          console.error(`document expiry: failed to lock CSR availability for user ${user.id}`, lockError);
+        }
+      }
     } catch (err) {
       stats.errors += 1;
       console.error(`document expiry: failed for user ${user.id}`, err);

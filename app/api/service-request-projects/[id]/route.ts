@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import jwt from 'jsonwebtoken'
 import { db } from '@/lib/db'
-import { JWT_SECRET, CSR_ELIGIBILITY_REQUIRED_MESSAGE } from '@/lib/auth'
-import { ngoUserIsCsrEligible } from '@/lib/server-auth'
+import { JWT_SECRET, CSR_ELIGIBILITY_REQUIRED_MESSAGE, CSR_OWN_PROJECT_TIMELINE_MESSAGE } from '@/lib/auth'
+import { ngoUserIsCsrEligible, ngoUserIsCsrEligibleForProject } from '@/lib/server-auth'
 import {
   formatProjectExactAddress,
   parseProjectExactAddress,
@@ -77,7 +77,30 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       if (requested && !(await ngoUserIsCsrEligible(decoded.id))) {
         return NextResponse.json({ error: CSR_ELIGIBILITY_REQUIRED_MESSAGE }, { status: 403 })
       }
+      const existing = await db.requestProjects.getById(projectId)
+      const coverageProject = {
+        valid_until:
+          updates.valid_until !== undefined ? updates.valid_until : existing?.valid_until,
+        timeline: updates.timeline !== undefined ? updates.timeline : existing?.timeline,
+      }
+      if (requested && !(await ngoUserIsCsrEligibleForProject(decoded.id, coverageProject))) {
+        return NextResponse.json({ error: CSR_OWN_PROJECT_TIMELINE_MESSAGE }, { status: 403 })
+      }
       updates.csr_project_available_for_csr = requested
+    } else if (updates.valid_until !== undefined || updates.timeline !== undefined) {
+      // Extending project window past CSR-1 coverage auto-locks CSR availability.
+      const existing = await db.requestProjects.getById(projectId)
+      const coverageProject = {
+        valid_until:
+          updates.valid_until !== undefined ? updates.valid_until : existing?.valid_until,
+        timeline: updates.timeline !== undefined ? updates.timeline : existing?.timeline,
+      }
+      if (
+        existing?.csr_project_available_for_csr !== false &&
+        !(await ngoUserIsCsrEligibleForProject(decoded.id, coverageProject))
+      ) {
+        updates.csr_project_available_for_csr = false
+      }
     }
 
     updates.updated_at = new Date().toISOString()

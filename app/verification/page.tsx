@@ -609,7 +609,7 @@ export default function VerificationPage() {
         return;
       }
 
-      setSuccess('Verification details submitted successfully. Documents uploaded as per your verification type.');
+      setSuccess('Verification details submitted successfully. Documents uploaded as per your verification type. CA review typically takes 24–48 hours — please check back after that period to see if your verified badge has been issued.');
     } catch (submissionError: any) {
       setError(submissionError?.message || 'Failed to submit verification details. Please try again.');
     } finally {
@@ -652,21 +652,25 @@ export default function VerificationPage() {
       <div className="max-w-4xl mx-auto p-6 space-y-6">
         <Card>
           <CardHeader>
-            <CardTitle className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+            <CardTitle className="flex min-w-0 items-center gap-x-3">
               <CheckCircle className="h-5 w-5 shrink-0 text-green-600" />
               <span>You're all set</span>
-              <VerificationBadge
-                status="verified"
-                size="xl"
-                showText={false}
-                badgeNumber={caBadgeNumber}
-                className="max-w-full min-w-0"
-              />
             </CardTitle>
             <CardDescription>
-              {caBadgeNumber
-                ? 'Your documents are CA-verified.'
-                : 'Your email and document verification are already complete.'}
+              {caBadgeNumber ? (
+                <span className="inline-flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
+                  <span>Your documents are CA-verified. Your badge number is :</span>
+                  <VerificationBadge
+                    status="verified"
+                    size="sm"
+                    showText={false}
+                    badgeNumber={caBadgeNumber}
+                    className="max-w-full min-w-0 align-middle"
+                  />
+                </span>
+              ) : (
+                'Your email and document verification are already complete.'
+              )}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -742,6 +746,12 @@ export default function VerificationPage() {
             : 'Complete both pages to submit your verification request.'}
         </p>
       </div>
+
+      <Alert>
+        <AlertDescription>
+          CA document verification typically takes 24–48 hours. Please check back after that period to see if your CA-verified badge has been issued.
+        </AlertDescription>
+      </Alert>
 
       <Card>
         <CardContent className="pt-6">

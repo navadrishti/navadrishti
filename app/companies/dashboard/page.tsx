@@ -39,6 +39,7 @@ import {
   isDailyRentalEngagementMeta,
 } from '@/lib/service-request-allocation';
 import { openRazorpayCheckout } from '@/lib/razorpay-checkout';
+import { resolveProjectCsrCoverageEndDate } from '@/lib/auth';
 interface OfferRequestItem {
   id: number;
   service_offer_id: number;
@@ -239,6 +240,7 @@ interface NgoDirectoryItem {
   id: number;
   name: string;
   email?: string;
+  csr1_valid_until?: string | null;
 }
 
 const formatStatusLabel = (status: string): string => {
@@ -879,10 +881,11 @@ function CompanyDashboardContent() {
   const fetchNgoDirectory = async () => {
     try {
       setLoadingNgoDirectory(true);
-      const response = await fetch('/api/ngos/list');
+      const response = await fetch('/api/ngos/list?limit=250');
       const payload = await response.json();
       if (response.ok && payload?.success) {
-        setNgoDirectory(Array.isArray(payload.ngos) ? payload.ngos : []);
+        const rows = Array.isArray(payload.data) ? payload.data : Array.isArray(payload.ngos) ? payload.ngos : [];
+        setNgoDirectory(rows);
       } else {
         setNgoDirectory([]);
       }
@@ -895,6 +898,16 @@ function CompanyDashboardContent() {
 
   const inviteLeadNgosFromDashboard = async (projectId: string, ngoIds: number[]) => {
     try {
+      const assignment = csrTrackingAssignments.find((row) => row.project_id === projectId);
+      if (Number(assignment?.selected_lead_ngo_id || 0) > 0) {
+        toast({
+          title: 'Lead already assigned',
+          description: 'A lead NGO is already selected for this project.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
       setInvitingProjectId(projectId);
       const token = localStorage.getItem('token');
       if (!token) {
@@ -1883,23 +1896,29 @@ function CompanyDashboardContent() {
                                 <div className="rounded-md border bg-emerald-50 p-2 text-xs text-emerald-800">
                                   Selected Lead NGO: {assignment.selected_lead_ngo_name || 'NGO'} {assignment.selected_lead_ngo_email ? `(${assignment.selected_lead_ngo_email})` : ''}
                                 </div>
-                              ) : null}
-
+                              ) : (
                               <div className="rounded-md border bg-slate-50 p-3 space-y-3">
                                 <p className="text-sm font-medium text-slate-900">Invite Lead NGOs</p>
-                                <p className="text-xs text-slate-600">Suggested NGOs appear first. You can also search and invite directly from results.</p>
 
                                 {(() => {
                                   const term = String(inviteSearchByProject[assignment.project_id] || '').toLowerCase().trim();
-                                  const hasSelectedLeadNgo = Number(assignment.selected_lead_ngo_id || 0) > 0;
                                   const inviteEntries: Array<[number, any]> = (assignment.lead_ngo_invites || [])
                                     .map((invite) => [Number(invite.ngo_id), invite] as [number, any])
                                     .filter(([ngoId]) => Number.isFinite(ngoId) && ngoId > 0);
 
                                   const inviteByNgoId = new Map<number, any>(inviteEntries);
 
+                                  const workEnd = resolveProjectCsrCoverageEndDate({
+                                    valid_until: assignment.project_valid_until,
+                                    timeline: assignment.project_timeline,
+                                  });
                                   const availableNgos = ngoDirectory
-                                    .filter((ngo) => ngo.id !== Number(assignment.lead_ngo_id));
+                                    .filter((ngo) => ngo.id !== Number(assignment.lead_ngo_id))
+                                    .filter((ngo) => {
+                                      if (!workEnd) return false;
+                                      const expiry = String(ngo.csr1_valid_until || '').trim();
+                                      return Boolean(expiry) && expiry >= workEnd;
+                                    });
 
                                   const suggestedNgos = availableNgos.slice(0, 4);
                                   const suggestedIds = new Set(suggestedNgos.map((ngo) => ngo.id));
@@ -1927,7 +1946,6 @@ function CompanyDashboardContent() {
                                     const inviteRecord = inviteByNgoId.get(ngo.id);
                                     const inviteStatus = String(inviteRecord?.status || '').toLowerCase();
                                     const alreadyInvited = !!inviteRecord;
-                                    const canInvite = !hasSelectedLeadNgo && !alreadyInvited;
 
                                     return (
                                       <div key={`${assignment.project_id}-${ngo.id}`} className="flex items-center justify-between gap-3 rounded-md border bg-white p-3 hover:bg-[#eaf4ff] transition-colors">
@@ -1946,11 +1964,7 @@ function CompanyDashboardContent() {
                                           {inviteRecord?.selected_as_lead ? (
                                             <Badge variant="secondary">Lead NGO</Badge>
                                           ) : null}
-                                          {hasSelectedLeadNgo && !alreadyInvited ? (
-                                            <Button size="sm" variant="outline" disabled>
-                                              Lead Finalized
-                                            </Button>
-                                          ) : alreadyInvited ? (
+                                          {alreadyInvited ? (
                                             <Badge variant="outline" className={getStatusBadgeClass(inviteStatus)}>
                                               {formatLeadNgoInviteStatusLabel(inviteStatus)}
                                             </Badge>
@@ -1958,7 +1972,7 @@ function CompanyDashboardContent() {
                                             <Button
                                               size="sm"
                                               variant="outline"
-                                              disabled={!allVerified || !canInvite || invitingProjectId === assignment.project_id}
+                                              disabled={!allVerified || invitingProjectId === assignment.project_id}
                                               onClick={() => inviteLeadNgosFromDashboard(assignment.project_id, [ngo.id])}
                                             >
                                               {invitingProjectId === assignment.project_id ? 'Inviting...' : 'Invite'}
@@ -2005,18 +2019,13 @@ function CompanyDashboardContent() {
                                               )}
                                             </div>
                                           ) : null}
-
-                                          {hasSelectedLeadNgo ? (
-                                            <p className="text-xs text-emerald-700">Lead NGO is already finalized for this project. New invites are disabled.</p>
-                                          ) : null}
                                         </div>
                                       )}
                                     </>
                                   );
                                 })()}
-
-                                {/* Optional note removed per product request */}
                               </div>
+                              )}
 
                               <div className="flex justify-end">
                                 <Link href={`/service-requests/projects/${assignment.project_id}`}>

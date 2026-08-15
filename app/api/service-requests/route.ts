@@ -3,8 +3,8 @@ import jwt from 'jsonwebtoken';
 import { db, supabase } from '@/lib/db';
 import { isNeedOpenForListing, isServiceRequestExpired } from '@/lib/service-request-allocation';
 import { resolveFundingTargetInr } from '@/lib/service-request-allocation';
-import { JWT_SECRET, CSR_ELIGIBILITY_REQUIRED_MESSAGE } from '@/lib/auth';
-import { ngoUserIsCsrEligible } from '@/lib/server-auth';
+import { JWT_SECRET, CSR_ELIGIBILITY_REQUIRED_MESSAGE, CSR_OWN_PROJECT_TIMELINE_MESSAGE } from '@/lib/auth';
+import { ngoUserIsCsrEligible, ngoUserIsCsrEligibleForProject } from '@/lib/server-auth';
 import { CSR_SCHEDULE_VII_CATEGORIES, SERVICE_REQUEST_TYPES } from '@/lib/categories';
 import { isHiddenNgoNetworkPaymentChannel } from '@/lib/razorpay-route';
 import {
@@ -245,6 +245,9 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const category = searchParams.get('category');
     const search = searchParams.get('search');
+    const location = searchParams.get('location');
+    const requestType = searchParams.get('request_type');
+    const urgency = searchParams.get('urgency');
     const userId = searchParams.get('userId');
     const projectId = searchParams.get('projectId');
     const rawView = searchParams.get('view'); // 'all', 'my-requests', 'my-responses' (legacy: 'volunteering')
@@ -534,6 +537,56 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const searchTerm = String(search || '').trim().toLowerCase();
+    const locationTerm = String(location || '').trim().toLowerCase();
+    const requestTypeFilter = String(requestType || '').trim();
+    const urgencyFilter = String(urgency || '').trim().toLowerCase();
+
+    if (searchTerm || locationTerm || requestTypeFilter || urgencyFilter) {
+      finalRequests = finalRequests.filter((item: any) => {
+        if (requestTypeFilter && requestTypeFilter !== 'all' && requestTypeFilter !== 'All Types') {
+          if (String(item.request_type || '').trim() !== requestTypeFilter) return false;
+        }
+
+        if (urgencyFilter && urgencyFilter !== 'all') {
+          if (String(item.urgency_level || '').toLowerCase() !== urgencyFilter) return false;
+        }
+
+        if (locationTerm) {
+          const locationHaystack = [
+            item.location,
+            item.project?.location,
+            item.project?.exact_address,
+          ]
+            .map((value) => String(value || '').toLowerCase())
+            .join(' ');
+          if (!locationHaystack.includes(locationTerm)) return false;
+        }
+
+        if (searchTerm) {
+          const searchHaystack = [
+            item.title,
+            item.description,
+            item.category,
+            item.request_type,
+            item.ngo_name,
+            item.requester?.name,
+            item.location,
+            item.tags,
+          ]
+            .map((value) => {
+              if (Array.isArray(value)) return value.join(' ');
+              return String(value || '');
+            })
+            .join(' ')
+            .toLowerCase();
+          if (!searchHaystack.includes(searchTerm)) return false;
+        }
+
+        return true;
+      });
+    }
+
     return NextResponse.json({
       success: true,
       data: finalRequests
@@ -682,6 +735,13 @@ export async function POST(request: NextRequest) {
         if (requestedCsrAvailable && !csrEligible) {
           return NextResponse.json({ error: CSR_ELIGIBILITY_REQUIRED_MESSAGE }, { status: 403 });
         }
+        const csrCoversTimeline = await ngoUserIsCsrEligibleForProject(userId, {
+          valid_until: validUntil,
+          timeline: projectTimeline,
+        });
+        if (requestedCsrAvailable && !csrCoversTimeline) {
+          return NextResponse.json({ error: CSR_OWN_PROJECT_TIMELINE_MESSAGE }, { status: 403 });
+        }
 
         const createdProject = await db.requestProjects.create({
           ngo_id: userId,
@@ -692,7 +752,7 @@ export async function POST(request: NextRequest) {
           timeline: projectTimeline || null,
           expected_beneficiaries: expectedBeneficiaries,
           valid_until: validUntil ? new Date(validUntil).toISOString() : null,
-          csr_project_available_for_csr: csrEligible && requestedCsrAvailable,
+          csr_project_available_for_csr: csrEligible && requestedCsrAvailable && csrCoversTimeline,
           status: 'active'
         });
 

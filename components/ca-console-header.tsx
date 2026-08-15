@@ -156,13 +156,13 @@ export function CAConsoleHeader({
               <Avatar className="h-9 w-9">
                 <AvatarFallback className="bg-udaan-orange text-white">{initials}</AvatarFallback>
               </Avatar>
-              <span className="hidden max-w-[120px] truncate text-sm font-medium lg:inline">{displayName}</span>
+              <span className="hidden max-w-[148px] truncate text-sm font-medium lg:inline">{displayName}</span>
               <ChevronDown className="h-4 w-4 opacity-80" />
             </button>
 
             {isProfileMenuOpen ? (
-              <div className="absolute right-0 top-full mt-2 w-64 rounded-md border bg-white p-1 text-black shadow-lg">
-                <div className="px-2 py-1.5 text-sm font-semibold text-gray-900">{displayName}</div>
+              <div className="absolute right-0 top-full mt-2 w-56 overflow-hidden rounded-md border bg-white p-1 text-black shadow-lg">
+                <div className="truncate px-2 py-1.5 text-sm font-semibold text-gray-900">{displayName}</div>
                 {emailLabel ? (
                   <div className="px-2 py-1.5 text-xs text-muted-foreground">
                     <span className="truncate">{emailLabel}</span>

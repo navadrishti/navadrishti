@@ -40,11 +40,15 @@ export async function GET(request: NextRequest) {
     }
 
     if (search && search.trim()) {
-      const term = search.trim();
-      query = query.or(`title.ilike.%${term}%,description.ilike.%${term}%,ticket_id.ilike.%${term}%`);
+      const term = search.trim().replace(/[%_,]/g, '');
+      if (term) {
+        query = query.or(
+          `title.ilike.%${term}%,description.ilike.%${term}%,ticket_id.ilike.%${term}%,user_name.ilike.%${term}%,user_email.ilike.%${term}%`
+        );
+      }
     }
 
-    query = query.limit(limit);
+    query = query.limit(search?.trim() ? 100 : limit);
 
     const { data, error } = await query;
     if (error) throw error;
