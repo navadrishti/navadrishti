@@ -242,7 +242,7 @@ export async function POST(request: NextRequest) {
       ? campaign.impact_metrics
       : {}
 
-    if (impact.lead_ngo_accepted) {
+    if (impact.lead_ngo_accepted || Number(impact.selected_lead_ngo_id || 0) > 0) {
       return NextResponse.json({ error: 'A lead NGO has already accepted for this campaign draft.' }, { status: 409 })
     }
 

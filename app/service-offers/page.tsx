@@ -1,25 +1,37 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react';
-import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
-import { Header } from '@/components/header';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { ServiceCard } from '@/components/service-card';
-import { StyledSelect } from '@/components/ui/styled-select';
-import { SkeletonServiceCard, SkeletonCTA, SkeletonServiceOffer } from '@/components/ui/skeleton';
-import { Search, ArrowRight, Plus } from 'lucide-react';
-import { useAuth } from '@/lib/auth-context';
-import { useToast } from '@/hooks/use-toast';
+import { useState, useCallback, useEffect, useMemo } from 'react'
+import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
+import { Header } from '@/components/header'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { ServiceCard } from '@/components/service-card'
+import { StyledSelect } from '@/components/ui/styled-select'
+import { SkeletonCTA, SkeletonServiceOffer } from '@/components/ui/skeleton'
+import { Search, ArrowRight, Plus, MapPin } from 'lucide-react'
+import { useAuth } from '@/lib/auth-context'
+import { useToast } from '@/hooks/use-toast'
+import { IMPACT_AREA_OPTIONS, OFFER_TYPE_OPTIONS } from '@/lib/service-offers'
 
-const types = [
-  { value: 'All Types', label: 'All Types' },
-  { value: 'financial', label: 'Financial' },
-  { value: 'material', label: 'Material' },
-  { value: 'service', label: 'Service / Skill' },
-  { value: 'infrastructure', label: 'Infrastructure' }
-];
+const compactControlClass = 'h-9 text-sm'
+
+const TYPE_OPTIONS = [
+  { value: 'all', label: 'All types' },
+  ...OFFER_TYPE_OPTIONS,
+]
+
+const IMPACT_OPTIONS = [
+  { value: 'all', label: 'All impact areas' },
+  ...IMPACT_AREA_OPTIONS,
+]
+
+const TRANSACTION_OPTIONS = [
+  { value: 'all', label: 'All transactions' },
+  { value: 'volunteer', label: 'Volunteer' },
+  { value: 'donate', label: 'Donate' },
+  { value: 'rent', label: 'Rent' },
+]
 
 export default function ServiceOffersPage() {
   const { user } = useAuth();
@@ -28,8 +40,12 @@ export default function ServiceOffersPage() {
 
   const [mounted, setMounted] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedType, setSelectedType] = useState('All Types');
+  const [selectedType, setSelectedType] = useState('all');
+  const [selectedImpact, setSelectedImpact] = useState('all');
+  const [selectedTransaction, setSelectedTransaction] = useState('all');
   const [locationFilter, setLocationFilter] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [debouncedLocation, setDebouncedLocation] = useState('');
 
   const [serviceOffers, setServiceOffers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,9 +54,27 @@ export default function ServiceOffersPage() {
 
   const canCreateOffers = mounted && !!user && ['ngo', 'company', 'individual'].includes(user.user_type);
 
+  const hasActiveFilters = useMemo(
+    () =>
+      Boolean(debouncedSearch)
+      || Boolean(debouncedLocation)
+      || selectedType !== 'all'
+      || selectedImpact !== 'all'
+      || selectedTransaction !== 'all',
+    [debouncedSearch, debouncedLocation, selectedType, selectedImpact, selectedTransaction]
+  );
+
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm.trim());
+      setDebouncedLocation(locationFilter.trim());
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm, locationFilter]);
 
   useEffect(() => {
     const rawView = searchParams.get('view') || searchParams.get('tab');
@@ -101,14 +135,20 @@ export default function ServiceOffersPage() {
       setError('');
 
       const params = new URLSearchParams();
-      if (selectedType !== 'All Types') {
+      if (selectedType !== 'all') {
         params.append('offer_type', selectedType);
       }
-      if (searchTerm) {
-        params.append('search', searchTerm);
+      if (selectedImpact !== 'all') {
+        params.append('category', selectedImpact);
       }
-      if (locationFilter) {
-        params.append('location', locationFilter);
+      if (selectedTransaction !== 'all') {
+        params.append('transaction_type', selectedTransaction);
+      }
+      if (debouncedSearch) {
+        params.append('search', debouncedSearch);
+      }
+      if (debouncedLocation) {
+        params.append('location', debouncedLocation);
       }
       if (user?.id) {
         params.append('userId', user.id.toString());
@@ -128,11 +168,21 @@ export default function ServiceOffersPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedType, searchTerm, locationFilter, user?.id]);
+  }, [selectedType, selectedImpact, selectedTransaction, debouncedSearch, debouncedLocation, user?.id]);
 
   useEffect(() => {
     fetchServiceOffers();
   }, [fetchServiceOffers]);
+
+  const clearFilters = () => {
+    setSearchTerm('');
+    setLocationFilter('');
+    setDebouncedSearch('');
+    setDebouncedLocation('');
+    setSelectedType('all');
+    setSelectedImpact('all');
+    setSelectedTransaction('all');
+  };
 
   const filteredOffers = serviceOffers;
 
@@ -193,28 +243,71 @@ export default function ServiceOffersPage() {
           </div>
         )}
 
-        <div className="mb-6 grid gap-6 md:grid-cols-2">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              type="search"
-              placeholder="Search capabilities..."
-              className="pl-8"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+        <section className="mb-6 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+          <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+            Filters
           </div>
-          <div className="flex gap-4">
-            <div className="relative flex-1">
-              <StyledSelect
-                value={selectedType}
-                options={types}
-                placeholder="Select type"
-                onValueChange={setSelectedType}
+
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+              <Input
+                type="search"
+                placeholder="Search capabilities..."
+                className={`${compactControlClass} pl-8`}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
+
+            <div className="relative">
+              <MapPin className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+              <Input
+                value={locationFilter}
+                onChange={(e) => setLocationFilter(e.target.value)}
+                placeholder="State or city"
+                className={`${compactControlClass} pl-8`}
+              />
+            </div>
+
+            <StyledSelect
+              value={selectedType}
+              options={TYPE_OPTIONS}
+              placeholder="All types"
+              onValueChange={setSelectedType}
+              className={compactControlClass}
+            />
+
+            <StyledSelect
+              value={selectedImpact}
+              options={IMPACT_OPTIONS}
+              placeholder="All impact areas"
+              onValueChange={setSelectedImpact}
+              className={compactControlClass}
+            />
+
+            <StyledSelect
+              value={selectedTransaction}
+              options={TRANSACTION_OPTIONS}
+              placeholder="All transactions"
+              onValueChange={setSelectedTransaction}
+              className={compactControlClass}
+            />
           </div>
-        </div>
+
+          <div className="mt-3 flex flex-col gap-2 border-t border-slate-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-slate-500">
+              {loading
+                ? 'Loading capabilities...'
+                : `${filteredOffers.length} ${filteredOffers.length === 1 ? 'capability' : 'capabilities'} match your filters`}
+            </p>
+            {hasActiveFilters ? (
+              <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-slate-600" onClick={clearFilters}>
+                Clear filters
+              </Button>
+            ) : null}
+          </div>
+        </section>
 
         <div className="min-h-[400px]">
           {loading ? (
@@ -272,13 +365,7 @@ export default function ServiceOffersPage() {
               <p className="mb-4 text-muted-foreground">
                 No capability offers match your current search or filters.
               </p>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setSearchTerm('');
-                  setSelectedType('All Types');
-                }}
-              >
+              <Button variant="outline" onClick={clearFilters}>
                 Clear Filters
               </Button>
             </div>

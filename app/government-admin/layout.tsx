@@ -3,6 +3,10 @@
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
+import {
+  getLaunchBlockedRedirectPath,
+  isLaunchBlockedPath,
+} from '@/lib/access-control';
 
 export default function GovernmentAdminLayout({
   children,
@@ -12,12 +16,18 @@ export default function GovernmentAdminLayout({
   const pathname = usePathname();
   const router = useRouter();
   const [ready, setReady] = useState(false);
+  const launchBlocked = isLaunchBlockedPath(pathname || '/government-admin');
   const isPublicRoute =
     pathname === '/government-admin/login' ||
     pathname === '/government-admin/change-password';
 
   useEffect(() => {
-    if (isPublicRoute) return;
+    if (!launchBlocked) return;
+    router.replace(getLaunchBlockedRedirectPath(pathname || '/government-admin'));
+  }, [launchBlocked, pathname, router]);
+
+  useEffect(() => {
+    if (launchBlocked || isPublicRoute) return;
 
     let cancelled = false;
 
@@ -53,7 +63,18 @@ export default function GovernmentAdminLayout({
     return () => {
       cancelled = true;
     };
-  }, [isPublicRoute, router]);
+  }, [isPublicRoute, launchBlocked, router]);
+
+  if (launchBlocked) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-blue-50">
+        <div className="text-center">
+          <Loader2 className="mx-auto h-8 w-8 animate-spin text-blue-600" />
+          <p className="mt-4 text-blue-600">Redirecting...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (isPublicRoute) {
     return <>{children}</>;

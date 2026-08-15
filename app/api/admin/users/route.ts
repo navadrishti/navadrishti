@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from('users')
-      .select('id, name, email, user_type, verification_status, city, state_province, profile_image, created_at, updated_at')
+      .select('id, name, email, phone, user_type, verification_status, account_status, locked_until, city, state_province, profile_image, profile_data, created_at, updated_at')
       .order('updated_at', { ascending: false })
       .limit(limit);
 

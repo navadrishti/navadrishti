@@ -1263,9 +1263,15 @@ export async function POST(request: NextRequest) {
 
       const { data: inviteProjectRow } = await supabase
         .from('service_request_projects')
-        .select('valid_until, timeline')
+        .select('valid_until, timeline, selected_lead_ngo_id')
         .eq('id', projectId)
         .maybeSingle()
+
+      if (Number(inviteProjectRow?.selected_lead_ngo_id || 0) > 0) {
+        return NextResponse.json({
+          error: 'A lead NGO is already assigned to this project. Additional invites are not allowed.'
+        }, { status: 409 })
+      }
 
       for (const row of ngoRows || []) {
         if (row.user_type !== 'ngo') {

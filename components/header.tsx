@@ -387,7 +387,7 @@ export function Header({ className = '' }: { className?: string } = {}) {
               onMouseEnter={openProfileMenu}
               onMouseLeave={() => closeProfileMenuWithDelay()}
               className={cn(
-                "relative order-3",
+                "relative order-3 shrink-0",
                 phase1Header && "shrink-0"
               )}
             >
@@ -396,30 +396,26 @@ export function Header({ className = '' }: { className?: string } = {}) {
                 className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md bg-transparent px-2.5 text-white hover:text-udaan-orange transition-colors"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={(e) => e.preventDefault()}
+                title={profileTriggerLabel}
               >
-                <Avatar className="h-9 w-9">
+                <Avatar className="h-9 w-9 shrink-0">
                   {user.profile_image && <AvatarImage src={user.profile_image} alt={user.name} />}
                   <AvatarFallback className="bg-udaan-orange text-white">{getInitials(user.name)}</AvatarFallback>
                 </Avatar>
-                <span
-                  className={cn(
-                    "text-sm font-medium",
-                    phase1Header ? "whitespace-nowrap" : "max-w-[120px] truncate"
-                  )}
-                >
+                <span className="max-w-[96px] truncate text-sm font-medium">
                   {profileTriggerLabel}
                 </span>
-                <ChevronDown className="h-4 w-4 opacity-80" />
+                <ChevronDown className="h-4 w-4 shrink-0 opacity-80" />
               </button>
 
                     {isProfileMenuOpen && (
-                <div className="absolute right-0 top-full mt-2 min-w-64 w-max max-w-sm overflow-hidden rounded-md border bg-white p-1 text-black shadow-lg">
-                  <div className="px-2 py-1.5 text-sm font-semibold leading-5 text-gray-900">{user.name}</div>
+                <div className="absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-md border bg-white p-1 text-black shadow-lg">
+                  <div className="truncate px-2 py-1.5 text-sm font-semibold leading-5 text-gray-900">{user.name}</div>
                   <div className="px-2 py-1 text-xs text-muted-foreground">
                     <span className="block truncate">{user.email} • {user.user_type.charAt(0).toUpperCase() + user.user_type.slice(1)}</span>
                   </div>
                   {user.verification_status === 'verified' ? (
-                    <div className="min-w-0 px-2 pb-1.5">
+                    <div className="min-w-0 overflow-hidden px-2 pb-1.5">
                       <VerificationBadge
                         status="verified"
                         size="readable"
