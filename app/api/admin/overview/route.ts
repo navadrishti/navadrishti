@@ -30,7 +30,6 @@ export async function GET(request: NextRequest) {
     const allProjects = await safeQuery('service_request_projects summary', supabase.from('service_request_projects').select('id, status'), [] as any[]);
     const allPosts = await safeQuery('posts summary', supabase.from('posts').select('id, visibility'), [] as any[]);
     const allTickets = await safeQuery('support_tickets summary', supabase.from('support_tickets').select('ticket_id, status'), [] as any[]);
-    const allAnnouncements = await safeQuery('platform_announcements summary', supabase.from('platform_announcements').select('id'), [] as any[]);
 
     const requests = await safeQuery(
       'service_requests recent',
@@ -113,16 +112,6 @@ export async function GET(request: NextRequest) {
       [] as any[],
     );
 
-    const announcements = await safeQuery(
-      'platform_announcements recent',
-      supabase
-        .from('platform_announcements')
-        .select('id, type, title, created_at')
-        .order('created_at', { ascending: false })
-        .limit(5),
-      [] as any[],
-    );
-
     const countsByUserType = users.reduce((acc: Record<string, number>, user: any) => {
       const key = String(user.user_type || 'unknown');
       acc[key] = (acc[key] || 0) + 1;
@@ -175,7 +164,6 @@ export async function GET(request: NextRequest) {
           total_projects: allProjects.length,
           total_posts: allPosts.length,
           total_support_tickets: allTickets.length,
-          total_announcements: allAnnouncements.length,
         },
         counts: {
           users_by_type: countsByUserType,
@@ -207,7 +195,6 @@ export async function GET(request: NextRequest) {
           service_request_projects: projects,
           posts,
           support_tickets: tickets,
-          announcements,
         },
       },
     });

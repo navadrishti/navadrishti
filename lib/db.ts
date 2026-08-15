@@ -945,12 +945,10 @@ export const db = {
     },
 
     async getByTicketId(ticketId: string) {
+      // No FK from sender_id → users in schema; do not embed users!sender_id.
       const { data, error } = await supabase
         .from('support_ticket_messages')
-        .select(`
-          *,
-          sender:users!sender_id(id, name, email, user_type, profile_image)
-        `)
+        .select('*')
         .eq('ticket_id', ticketId)
         .order('created_at', { ascending: true });
 

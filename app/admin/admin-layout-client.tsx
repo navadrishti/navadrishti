@@ -22,7 +22,6 @@ export { AdminPortalMain, AdminPortalShell };
 
 const navItems = [
   { label: 'Dashboard', href: '/admin' },
-  { label: 'Announcements', href: '/admin/announcements' },
 ];
 
 interface AdminConsoleHeaderProps {
@@ -81,10 +80,10 @@ export function AdminConsoleHeader({
   };
 
   const isNavActive = (href: string) => {
-    if (href === '/admin/announcements') {
-      return pathname.startsWith('/admin/announcements');
+    if (href === '/admin') {
+      return pathname === '/admin';
     }
-    return pathname === '/admin';
+    return pathname === href || pathname.startsWith(`${href}/`);
   };
 
   const navLinkClass = (href: string) =>
@@ -148,24 +147,25 @@ export function AdminConsoleHeader({
           <div
             onMouseEnter={openProfileMenu}
             onMouseLeave={() => closeProfileMenuWithDelay()}
-            className="relative"
+            className="relative shrink-0"
           >
             <button
               type="button"
               className="inline-flex h-10 items-center gap-2 rounded-md bg-transparent px-2.5 text-white transition-colors hover:text-udaan-orange"
               onMouseDown={(event) => event.preventDefault()}
               onClick={(event) => event.preventDefault()}
+              title={displayName}
             >
-              <Avatar className="h-9 w-9">
+              <Avatar className="h-9 w-9 shrink-0">
                 <AvatarFallback className="bg-udaan-orange text-white">{initials}</AvatarFallback>
               </Avatar>
-              <span className="hidden max-w-[120px] truncate text-sm font-medium lg:inline">{displayName}</span>
-              <ChevronDown className="h-4 w-4 opacity-80" />
+              <span className="hidden max-w-[96px] truncate text-sm font-medium lg:inline">{displayName}</span>
+              <ChevronDown className="h-4 w-4 shrink-0 opacity-80" />
             </button>
 
             {isProfileMenuOpen ? (
-              <div className="absolute right-0 top-full mt-2 w-56 rounded-md border bg-white p-1 text-black shadow-lg">
-                <div className="px-2 py-1.5 text-sm font-semibold text-gray-900">{displayName}</div>
+              <div className="absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-md border bg-white p-1 text-black shadow-lg">
+                <div className="truncate px-2 py-1.5 text-sm font-semibold text-gray-900">{displayName}</div>
                 <div className="px-2 py-1.5 text-xs text-muted-foreground">Platform administrator</div>
                 <div className="my-1 h-px bg-gray-200" />
                 <button

@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
     await db.supportTicketMessages.create({
       ticket_id: ticketId,
       sender_id: decoded.id,
-      sender_type: decoded.user_type,
+      sender_type: 'user',
       message_type: 'user_initial',
       content: description,
       attachment_url: uploaded.secure_url,

@@ -133,7 +133,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     await db.supportTicketMessages.create({
       ticket_id: ticketId,
       sender_id: user.id,
-      sender_type: user.user_type,
+      sender_type: 'user',
       message_type: 'user_reply',
       content: message,
       created_at: new Date().toISOString(),
