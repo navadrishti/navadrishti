@@ -156,7 +156,7 @@ export function CAConsoleHeader({
               <Avatar className="h-9 w-9">
                 <AvatarFallback className="bg-udaan-orange text-white">{initials}</AvatarFallback>
               </Avatar>
-              <span className="hidden max-w-[96px] truncate text-sm font-medium lg:inline">{displayName}</span>
+              <span className="hidden max-w-[148px] truncate text-sm font-medium lg:inline">{displayName}</span>
               <ChevronDown className="h-4 w-4 opacity-80" />
             </button>
 

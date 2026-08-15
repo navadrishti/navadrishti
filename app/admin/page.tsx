@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/lib/auth-context';
 import { DashboardQuickSidebar } from '@/components/dashboard-quick-sidebar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -142,7 +141,7 @@ type SupportTicketMessage = {
 
 const supportFilterButtonClass = (active: boolean) =>
   cn(
-    'inline-flex h-10 w-full items-center justify-center rounded-md border px-3 text-sm font-medium',
+    'inline-flex h-10 w-full items-center justify-center whitespace-nowrap rounded-md border px-2 text-sm font-medium',
     active
       ? 'border-udaan-blue bg-udaan-blue text-white'
       : 'border-slate-200 bg-white text-slate-700'
@@ -976,7 +975,6 @@ export function AdminRefundsPanel() {
 
 export default function AdminPage() {
   const router = useRouter();
-  const { user } = useAuth();
 
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -1306,20 +1304,22 @@ export default function AdminPage() {
   }, [activeTab, supportStatusFilter, supportQuery]);
 
   const handleLogout = async () => {
-    const authCookieNames = ['token', 'user', 'ca-token', 'evidence-verification-token', 'navadrishti-ca-token', 'admin-token', 'govt-admin-token'];
-    const clearAuthCookies = () => {
-      try {
-        authCookieNames.forEach((name) => {
-          document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Lax;`;
-          document.cookie = `${name}=; Path=/api/admin; Max-Age=0; SameSite=Lax;`;
-        });
-      } catch (e) {}
-    };
+    try {
+      sessionStorage.removeItem('admin_tab_session');
+    } catch {
+      // ignore
+    }
 
     try {
       await fetch('/api/admin/logout', { method: 'POST', credentials: 'include' });
     } finally {
-      clearAuthCookies();
+      // Only clear the non-httpOnly leftovers; httpOnly admin-token is cleared by the API.
+      try {
+        document.cookie = 'admin-token=; Path=/; Max-Age=0; SameSite=Strict';
+        document.cookie = 'admin-token=; Path=/api/admin; Max-Age=0; SameSite=Strict';
+      } catch {
+        // ignore
+      }
       router.push('/admin/login');
     }
   };
@@ -2049,7 +2049,7 @@ export default function AdminPage() {
     return (
       <AdminPortalShell>
         <AdminConsoleHeader
-          accountName={user?.name}
+          accountName="Administrator"
           onLogout={handleLogout}
           onRefresh={refreshDashboard}
         />
@@ -2068,7 +2068,7 @@ export default function AdminPage() {
   return (
     <AdminPortalShell>
       <AdminConsoleHeader
-        accountName={user?.name}
+        accountName="Administrator"
         onLogout={handleLogout}
         onRefresh={refreshDashboard}
       />
@@ -2839,15 +2839,28 @@ export default function AdminPage() {
                             <p className="text-sm text-slate-500">No messages yet.</p>
                           ) : (
                             <div className="space-y-3 rounded-lg border bg-slate-50 p-4">
-                              {messages.map((message) => (
+                              {messages.map((message) => {
+                                const ticketUserName =
+                                  selectedTicketDetail.user_name
+                                  || selectedTicketDetail.user?.name
+                                  || 'User';
+                                const senderLabel =
+                                  message.sender_type === 'admin'
+                                    ? 'Administrator'
+                                    : ticketUserName;
+
+                                return (
                                 <div key={message.id} className={`rounded-lg border p-3 text-sm ${message.sender_type === 'admin' ? 'bg-udaan-blue/5 border-udaan-blue/20' : 'bg-white'}`}>
                                   <div className="mb-1 flex items-center justify-between gap-2 text-xs text-slate-500">
-                                    <span className="font-medium capitalize text-slate-700">{message.sender_type}</span>
-                                    <span>{new Date(message.created_at).toLocaleString('en-IN', { timeZone: 'UTC' })}</span>
+                                    <span className="min-w-0 max-w-[70%] truncate font-medium text-slate-700" title={senderLabel}>
+                                      {senderLabel}
+                                    </span>
+                                    <span className="shrink-0">{new Date(message.created_at).toLocaleString('en-IN', { timeZone: 'UTC' })}</span>
                                   </div>
                                   <p className="whitespace-pre-wrap text-slate-800">{message.content}</p>
                                 </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           )}
                         </div>

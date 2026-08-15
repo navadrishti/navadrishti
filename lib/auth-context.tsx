@@ -66,7 +66,7 @@ interface AuthContextType {
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
   signup: (userData: SignupData) => Promise<void>;
-  logout: () => void;
+  logout: () => void | Promise<void>;
   clearError: () => void;
   updateUser: (userData: Partial<User>) => void;
   refreshUser: () => Promise<void>;
@@ -171,6 +171,12 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
 
       if (response.ok) {
         const data = await response.json();
+        if (!data?.user?.id || Number(data.user.id) <= 0) {
+          persistAuthSnapshot(null, null);
+          setToken(null);
+          setUser(null);
+          return null;
+        }
         setUser(data.user);
         persistAuthSnapshot(authToken, data.user);
         return data.user as User;
@@ -203,6 +209,9 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
 
       if (response.ok) {
         const data = await response.json();
+        if (!data?.user?.id || Number(data.user.id) <= 0) {
+          return null;
+        }
         setUser(data.user);
         persistUserSnapshot(data.user);
         return data.user as User;
@@ -408,8 +417,8 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
     }
   };
 
-  // Logout function
-  const logout = () => {
+  // Logout function — always clear the httpOnly platform cookie via API
+  const logout = async () => {
     if (user?.id && typeof window !== 'undefined') {
       sessionStorage.removeItem(documentExpiryAlertKey(user.id));
     }
@@ -422,9 +431,18 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
     persistAuthSnapshot(null, null);
     initialUserRef.current = null;
     
-    // Clear auth cookies if they exist
-    document.cookie = 'token=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
-    document.cookie = 'user=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include',
+      });
+    } catch (error) {
+      console.error('Platform logout request failed:', error);
+    }
+
+    // Best-effort clear of any non-httpOnly leftovers
+    document.cookie = 'token=; Path=/; Max-Age=0; SameSite=Strict';
+    document.cookie = 'user=; Path=/; Max-Age=0; SameSite=Strict';
     
     notify.info('You have been logged out');
   };

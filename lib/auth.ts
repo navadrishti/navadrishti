@@ -106,6 +106,15 @@ export function verifyToken(token: string): UserData | null {
   }
 }
 
+/** Platform end-user sessions only — never treat console admin JWTs as users. */
+export function isPlatformUserSession(user: UserData | null | undefined): user is UserData {
+  if (!user) return false;
+  if (!Number.isFinite(Number(user.id)) || Number(user.id) <= 0) return false;
+  if (String(user.user_type || '').toLowerCase() === 'admin') return false;
+  if (String(user.email || '').toLowerCase() === 'admin@system.local') return false;
+  return true;
+}
+
 // Function to hash password
 export async function hashPassword(password: string): Promise<string> {
   const salt = await bcrypt.genSalt(10);
@@ -139,7 +148,7 @@ export function withAuth(handler: Function) {
 
       // Verify token
       const user = verifyToken(token);
-      if (!user) {
+      if (!isPlatformUserSession(user)) {
         return NextResponse.json({ error: 'Invalid or expired token' }, { status: 401 });
       }
 
