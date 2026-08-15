@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth';
+import { getAuthUserFromRequest, assertUserType, assertNgoCsr1CoversWork } from '@/lib/server-auth';
+import { CSR_WORK_END_DATE_REQUIRED_MESSAGE } from '@/lib/auth';
 
 export async function POST(
   request: NextRequest,
@@ -20,7 +21,7 @@ export async function POST(
 
     const { data: project, error: projectError } = await supabase
       .from('csr_projects')
-      .select('*')
+      .select('*, campaigns(end_date, start_date)')
       .eq('id', projectId)
       .eq('company_user_id', user.id)
       .single();
@@ -37,6 +38,22 @@ export async function POST(
 
     if (ngoError || !ngoUser || ngoUser.user_type !== 'ngo') {
       return NextResponse.json({ error: 'Target user is not a valid NGO account' }, { status: 400 });
+    }
+
+    const campaign = Array.isArray(project.campaigns) ? project.campaigns[0] : project.campaigns;
+    const workEnd =
+      project.end_date ||
+      project.deadline_at ||
+      project.valid_until ||
+      campaign?.end_date ||
+      null;
+    if (!workEnd) {
+      return NextResponse.json({ error: CSR_WORK_END_DATE_REQUIRED_MESSAGE }, { status: 400 });
+    }
+
+    const coverageGate = await assertNgoCsr1CoversWork(ngoUserId, workEnd);
+    if (!coverageGate.ok) {
+      return NextResponse.json({ error: coverageGate.error }, { status: 403 });
     }
 
     const { data: updatedProject, error: updateError } = await supabase

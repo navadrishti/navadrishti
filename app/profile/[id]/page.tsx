@@ -14,7 +14,7 @@ import {
   Mail,
   Phone,
 } from "lucide-react"
-import { PHONE_VERIFICATION_ENABLED, formatGeographicCoverageArea, visibleCaBadgeNumber } from "@/lib/auth"
+import { PHONE_VERIFICATION_ENABLED, formatGeographicCoverageArea, isCaVerifiedAccount, visibleCaBadgeNumber } from "@/lib/auth"
 import { formatDisplayDate } from "@/lib/format-date"
 import { formatProjectExactAddress } from "@/lib/project-address"
 import { useAuth } from "@/lib/auth-context"
@@ -272,9 +272,11 @@ export default function ImpactProfilePage() {
   const ngo = profile?.ngo_public
   const canPay = user?.user_type === "individual" || user?.user_type === "company"
   const isNgoViewer = user?.user_type === "ngo"
+  const payerCaVerified = isCaVerifiedAccount(user?.verification_status)
   const canPayThisNgo =
     Boolean(isNgo) &&
     canPay &&
+    payerCaVerified &&
     Boolean(ngo?.accepts_payments ?? allVerified) &&
     (user?.user_type !== "company" || Boolean(ngo?.csr_eligible || ngo?.ca_compliance_tags?.includes("csr1")))
   const scheduleViiSector = ngo?.sectors_schedule_vii?.[0]?.trim() || ""
@@ -435,6 +437,10 @@ export default function ImpactProfilePage() {
                         >
                           Pay
                         </Button>
+                      ) : canPay && !payerCaVerified ? (
+                        <Button size="sm" variant="outline" disabled>
+                          Verification required
+                        </Button>
                       ) : canPay ? (
                         <Button size="sm" variant="outline" disabled>
                           Payout setup pending
@@ -442,7 +448,7 @@ export default function ImpactProfilePage() {
                       ) : (
                         <Button asChild size="sm" variant="outline">
                           <Link href="/login">
-                            Log in to pay
+                            Sign in to pay
                           </Link>
                         </Button>
                       )}

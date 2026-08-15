@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import jwt from 'jsonwebtoken'
 import { supabase } from '@/lib/db'
-import { JWT_SECRET, ngoIsCsrEligible, CSR_ELIGIBILITY_REQUIRED_MESSAGE } from '@/lib/auth'
-import { ngoUserIsCsrEligible } from '@/lib/server-auth'
+import {
+  JWT_SECRET,
+  assertCsr1CoversProject,
+  ngoIsCsrEligibleForProject,
+  CSR_ELIGIBILITY_REQUIRED_MESSAGE,
+} from '@/lib/auth'
+import { assertNgoCsr1CoversProject } from '@/lib/server-auth'
 
 interface JWTPayload {
   id: number;
@@ -123,7 +128,7 @@ export async function GET(request: NextRequest) {
           location,
           timeline,
           project_id,
-          project:service_request_projects!project_id(id, title, description, location, exact_address, timeline, csr_project_available_for_csr),
+          project:service_request_projects!project_id(id, title, description, location, exact_address, timeline, valid_until, csr_project_available_for_csr),
           requester:users!ngo_id(id, name, email, verification_status, profile_data)
         `)
         .not('project_id', 'is', null)
@@ -189,7 +194,13 @@ export async function GET(request: NextRequest) {
         const normalizedProject = Array.isArray(normalizedNeed.project) ? normalizedNeed.project[0] : normalizedNeed.project
         const normalizedRequester = Array.isArray(normalizedNeed.requester) ? normalizedNeed.requester[0] : normalizedNeed.requester
         if (normalizedProject?.csr_project_available_for_csr === false) continue
-        if (!ngoIsCsrEligible(normalizedRequester?.verification_status, normalizedRequester?.profile_data)) continue
+        if (
+          !ngoIsCsrEligibleForProject(normalizedRequester?.verification_status, normalizedRequester?.profile_data, {
+            valid_until: normalizedProject?.valid_until || need.valid_until,
+            timeline: normalizedProject?.timeline || need.timeline,
+          })
+        )
+          continue
         const projectId = String(need.project_id)
         const existing = grouped.get(projectId) || {
           project_id: projectId,
@@ -1170,15 +1181,16 @@ export async function POST(request: NextRequest) {
 
     if (action === 'apply-project') {
       const ownerNgoId = Number(activeNeeds[0]?.ngo_id || 0)
-      if (!(await ngoUserIsCsrEligible(ownerNgoId))) {
-        return NextResponse.json({ error: CSR_ELIGIBILITY_REQUIRED_MESSAGE }, { status: 403 })
-      }
-
       const { data: projectRow } = await supabase
         .from('service_request_projects')
-        .select('csr_project_available_for_csr')
+        .select('csr_project_available_for_csr, valid_until, timeline')
         .eq('id', projectId)
         .maybeSingle()
+
+      const ownerCoverage = await assertNgoCsr1CoversProject(ownerNgoId, projectRow)
+      if (!ownerCoverage.ok) {
+        return NextResponse.json({ error: ownerCoverage.error }, { status: 403 })
+      }
 
       if (projectRow?.csr_project_available_for_csr === false) {
         return NextResponse.json({
@@ -1249,17 +1261,24 @@ export async function POST(request: NextRequest) {
 
       if (ngoRowsError) throw ngoRowsError
 
-      const eligibleNgoIds = new Set(
-        (ngoRows || [])
-          .filter((row: any) => row.user_type === 'ngo' && ngoIsCsrEligible(row.verification_status, row.profile_data))
-          .map((row: any) => Number(row.id))
-      )
+      const { data: inviteProjectRow } = await supabase
+        .from('service_request_projects')
+        .select('valid_until, timeline')
+        .eq('id', projectId)
+        .maybeSingle()
 
-      if (eligibleNgoIds.size !== ngoIds.length) {
-        return NextResponse.json(
-          { error: 'Lead NGO invites are limited to CA-tagged CSR-1 NGOs' },
-          { status: 400 }
-        )
+      for (const row of ngoRows || []) {
+        if (row.user_type !== 'ngo') {
+          return NextResponse.json({ error: CSR_ELIGIBILITY_REQUIRED_MESSAGE }, { status: 400 })
+        }
+        const gate = assertCsr1CoversProject(row.verification_status, row.profile_data, inviteProjectRow)
+        if (!gate.ok) {
+          return NextResponse.json({ error: gate.error }, { status: 400 })
+        }
+      }
+
+      if ((ngoRows || []).length !== ngoIds.length) {
+        return NextResponse.json({ error: CSR_ELIGIBILITY_REQUIRED_MESSAGE }, { status: 400 })
       }
 
       const requestOwnerNgoId = Number(activeNeeds[0]?.ngo_id || 0)
@@ -1442,10 +1461,6 @@ export async function PUT(request: NextRequest) {
         return NextResponse.json({ error: 'inviteId and decision are required' }, { status: 400 })
       }
 
-      if (decision === 'accepted' && !(await ngoUserIsCsrEligible(userId))) {
-        return NextResponse.json({ error: CSR_ELIGIBILITY_REQUIRED_MESSAGE }, { status: 403 })
-      }
-
       const { data: invite, error: inviteError } = await supabase
         .from('service_request_contributions')
         .select('id, contributor_id, status, meta')
@@ -1456,6 +1471,21 @@ export async function PUT(request: NextRequest) {
       if (inviteError) throw inviteError
       if (!invite || Number(invite.contributor_id) !== Number(userId)) {
         return NextResponse.json({ error: 'Invitation not found' }, { status: 404 })
+      }
+
+      if (decision === 'accepted') {
+        const inviteProjectId = String(invite?.meta?.project_id || '').trim()
+        const { data: inviteProject } = inviteProjectId
+          ? await supabase
+              .from('service_request_projects')
+              .select('valid_until, timeline')
+              .eq('id', inviteProjectId)
+              .maybeSingle()
+          : { data: null }
+        const inviteCoverage = await assertNgoCsr1CoversProject(userId, inviteProject)
+        if (!inviteCoverage.ok) {
+          return NextResponse.json({ error: inviteCoverage.error }, { status: 403 })
+        }
       }
 
       const currentInviteStatus = String(invite.status || '').toLowerCase()
@@ -1585,6 +1615,16 @@ export async function PUT(request: NextRequest) {
         return NextResponse.json({ error: 'projectId and ngoId are required' }, { status: 400 })
       }
 
+      const { data: selectProjectRow } = await supabase
+        .from('service_request_projects')
+        .select('valid_until, timeline')
+        .eq('id', projectId)
+        .maybeSingle()
+      const selectCoverage = await assertNgoCsr1CoversProject(ngoId, selectProjectRow)
+      if (!selectCoverage.ok) {
+        return NextResponse.json({ error: selectCoverage.error }, { status: 403 })
+      }
+
       const { data: acceptedInvite, error: acceptedInviteError } = await supabase
         .from('service_request_contributions')
         .select('id, status, meta')
@@ -1668,6 +1708,18 @@ export async function PUT(request: NextRequest) {
 
     if (!projectId || !Number.isFinite(companyId) || !['accepted', 'rejected'].includes(decision)) {
       return NextResponse.json({ error: 'projectId, companyId and decision are required' }, { status: 400 })
+    }
+
+    if (decision === 'accepted') {
+      const { data: acceptProjectRow } = await supabase
+        .from('service_request_projects')
+        .select('valid_until, timeline')
+        .eq('id', projectId)
+        .maybeSingle()
+      const acceptCoverage = await assertNgoCsr1CoversProject(userId, acceptProjectRow)
+      if (!acceptCoverage.ok) {
+        return NextResponse.json({ error: acceptCoverage.error }, { status: 403 })
+      }
     }
 
     if (decision === 'accepted') {

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { Header } from "@/components/header"
@@ -10,6 +10,12 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { StyledSelect } from "@/components/ui/styled-select"
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion"
 import { useAuth } from "@/lib/auth-context"
 import { ProfileCoverMedia } from "@/components/profile-card"
 import { NgoPayDialog } from "@/components/profile-dashboard-tab"
@@ -19,8 +25,10 @@ import {
   ArrowRight,
   Mail,
   MapPin,
+  RefreshCw,
   Search,
 } from "lucide-react"
+import { isCaVerifiedAccount } from "@/lib/auth"
 
 interface NgoCompliance {
   verified: boolean
@@ -125,10 +133,206 @@ function ngoComplianceTags(ngo: NGO) {
   ].filter((tag): tag is string => Boolean(tag))
 }
 
+function NgoNetworkCard({
+  ngo,
+  canPay,
+  payerCaVerified,
+  isNgoViewer,
+  userId,
+  userType,
+  onPay,
+}: {
+  ngo: NGO
+  canPay: boolean
+  payerCaVerified: boolean
+  isNgoViewer: boolean
+  userId?: number
+  userType?: string
+  onPay: (ngo: NGO) => void
+}) {
+  const canPayNgo =
+    canPay &&
+    payerCaVerified &&
+    (ngo.accepts_payments ?? ngo.compliance.verified) &&
+    (userType !== "company" || Boolean(ngo.csr_eligible || ngo.compliance.csr1))
+  const sectorLabels = ngo.sectors_schedule_vii?.length
+    ? ngo.sectors_schedule_vii
+    : ngo.sector
+      ? [ngo.sector]
+      : []
+
+  return (
+    <article className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+      <div className="relative lg:hidden">
+        <ProfileCoverMedia src={ngo.cover_image} className="h-28 w-full" alt="" />
+        <div className="absolute -bottom-8 left-4 h-16 w-16 overflow-hidden rounded-lg border-2 border-white bg-slate-50 shadow-sm">
+          {ngo.profile_image ? (
+            <Image
+              src={ngo.profile_image}
+              alt={ngo.name}
+              width={64}
+              height={64}
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-udaan-orange text-sm font-bold text-white">
+              {getInitials(ngo.name)}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="p-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+          <div className="mx-auto hidden h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50 lg:mx-0 lg:flex">
+            {ngo.profile_image ? (
+              <Image
+                src={ngo.profile_image}
+                alt={ngo.name}
+                width={96}
+                height={96}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center bg-udaan-orange text-xl font-bold text-white">
+                {getInitials(ngo.name)}
+              </div>
+            )}
+          </div>
+
+          <div className="min-w-0 flex-1 pt-6 lg:pt-0">
+            <h2 className="flex min-w-0 flex-wrap items-center gap-2 text-xl font-bold text-slate-900">
+              <span className="min-w-0 break-words">{ngo.name}</span>
+              {ngo.compliance.verified ? (
+                <VerificationBadge
+                  status="verified"
+                  size="readable"
+                  showText={false}
+                  badgeNumber={ngo.ca_badge_number}
+                  className="max-w-full min-w-0"
+                />
+              ) : null}
+            </h2>
+
+            <p className="mt-1.5 flex items-start gap-1.5 text-sm text-slate-600">
+              <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
+              <span>{ngo.location || "Location not listed"}</span>
+            </p>
+
+            {sectorLabels.length > 0 ? (
+              <p className="mt-1 text-xs font-medium text-slate-500">
+                Sector: {sectorLabels.join("; ")}
+              </p>
+            ) : null}
+
+            {!isNgoViewer && ngo.email ? (
+              <p className="mt-1.5 flex items-start gap-1.5 text-sm text-slate-600">
+                <Mail className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
+                <a href={`mailto:${ngo.email}`} className="break-all hover:text-emerald-700 hover:underline">
+                  {ngo.email}
+                </a>
+              </p>
+            ) : null}
+
+            {ngo.geographic_coverage_preview ? (
+              <p className="mt-1.5 text-xs text-slate-500">
+                Coverage: {ngo.geographic_coverage_preview}
+              </p>
+            ) : null}
+
+            {ngo.mission ? (
+              <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-700">{ngo.mission}</p>
+            ) : null}
+
+            <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-600">
+              <span>
+                <span className="font-medium text-slate-800">{ngo.projects_completed_count || 0}</span>
+                {' '}
+                {(ngo.projects_completed_count || 0) === 1 ? 'project completed' : 'projects completed'}
+              </span>
+              <span>
+                <span className="font-medium text-slate-800">{ngo.projects_ongoing_count || 0}</span>
+                {' '}
+                {(ngo.projects_ongoing_count || 0) === 1 ? 'ongoing project' : 'ongoing projects'}
+              </span>
+              <span>
+                <span className="font-medium text-slate-800">{ngo.projects_active_count || 0}</span>
+                {' '}
+                {(ngo.projects_active_count || 0) === 1 ? 'active project' : 'active projects'}
+              </span>
+              {ngo.execution_capacity ? (
+                <span>Capacity: {ngo.execution_capacity}</span>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="flex w-full shrink-0 flex-col gap-2 lg:w-56">
+            <div className="flex min-h-7 min-w-0 max-w-full flex-wrap items-center gap-x-2.5 gap-y-1.5">
+              <NgoComplianceBadges
+                tags={ngoComplianceTags(ngo)}
+                registrationType={ngo.registration_type}
+                size="lg"
+                className="max-w-full"
+              />
+            </div>
+
+            <Button
+              asChild
+              size="sm"
+              className="h-9 w-full bg-emerald-700 text-white hover:bg-emerald-800"
+            >
+              <Link href={`/profile/${ngo.id}`}>
+                View profile
+                <ArrowRight className="ml-2 h-3.5 w-3.5" />
+              </Link>
+            </Button>
+
+            {canPayNgo ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-9 w-full"
+                onClick={() => onPay(ngo)}
+              >
+                Pay
+              </Button>
+            ) : canPay && !payerCaVerified ? (
+              <Button size="sm" variant="outline" className="h-9 w-full" disabled>
+                Verification required
+              </Button>
+            ) : canPay ? (
+              <Button size="sm" variant="outline" className="h-9 w-full" disabled>
+                Payout setup pending
+              </Button>
+            ) : isNgoViewer ? (
+              ngo.id !== userId && ngo.email ? (
+                <Button asChild size="sm" variant="outline" className="h-9 w-full">
+                  <a href={`mailto:${ngo.email}`}>
+                    Contact
+                  </a>
+                </Button>
+              ) : null
+            ) : (
+              <Button asChild size="sm" variant="outline" className="h-9 w-full">
+                <Link href="/login">
+                  Sign in to pay
+                </Link>
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    </article>
+  )
+}
+
 export default function NGONetworkPage() {
   const { user } = useAuth()
   const [ngos, setNgos] = useState<NGO[]>([])
+  const [recommended, setRecommended] = useState<NGO[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingRecommended, setLoadingRecommended] = useState(false)
+  const [refreshingRecommended, setRefreshingRecommended] = useState(false)
   const [search, setSearch] = useState("")
   const [location, setLocation] = useState("")
   const [selectedSector, setSelectedSector] = useState("all")
@@ -142,6 +346,7 @@ export default function NGONetworkPage() {
 
   const canPay = user?.user_type === "individual" || user?.user_type === "company"
   const isNgoViewer = user?.user_type === "ngo"
+  const payerCaVerified = isCaVerifiedAccount(user?.verification_status)
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -176,6 +381,49 @@ export default function NGONetworkPage() {
       .finally(() => setLoading(false))
   }, [debouncedSearch, debouncedLocation, selectedSector, selectedCompliance, selectedRegistration, verifiedOnly])
 
+  const fetchRecommended = useCallback(async (opts?: { refresh?: boolean }) => {
+    if (!user?.id) {
+      setRecommended([])
+      return
+    }
+
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null
+    if (!token) {
+      setRecommended([])
+      return
+    }
+
+    const isRefresh = Boolean(opts?.refresh)
+    if (isRefresh) setRefreshingRecommended(true)
+    else setLoadingRecommended(true)
+
+    try {
+      const params = new URLSearchParams({
+        recommend: "1",
+        verified_only: "true",
+        shuffle: "1",
+      })
+      const response = await fetch(`/api/ngos/network?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await response.json()
+      if (response.ok && data?.success) {
+        setRecommended(Array.isArray(data.recommended) ? data.recommended : [])
+      } else {
+        setRecommended([])
+      }
+    } catch {
+      setRecommended([])
+    } finally {
+      if (isRefresh) setRefreshingRecommended(false)
+      else setLoadingRecommended(false)
+    }
+  }, [user?.id])
+
+  useEffect(() => {
+    fetchRecommended()
+  }, [fetchRecommended])
+
   const hasActiveFilters = Boolean(
     debouncedSearch ||
     debouncedLocation ||
@@ -201,6 +449,8 @@ export default function NGONetworkPage() {
     setPayDialogOpen(true)
   }
 
+  const showRecommendedSection = Boolean(user?.id)
+
   return (
     <div className="flex min-h-screen flex-col bg-slate-50">
       <Header />
@@ -212,6 +462,65 @@ export default function NGONetworkPage() {
             Discover verified NGOs, review their profiles and contact details, then pay them directly via Navadrishti.
           </p>
         </div>
+
+        {showRecommendedSection ? (
+          <section className="mb-4 rounded-lg border border-slate-200 bg-white shadow-sm">
+            <Accordion type="single" collapsible defaultValue="recommended">
+              <AccordionItem value="recommended" className="border-0">
+                <div className="flex items-center gap-2 px-3">
+                  <AccordionTrigger className="flex-1 py-3 text-left hover:no-underline [&[data-state=open]>svg]:rotate-180">
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                      Recommended for you
+                    </span>
+                  </AccordionTrigger>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 shrink-0 gap-1.5 px-2 text-xs text-slate-600 hover:bg-transparent hover:text-slate-600"
+                    disabled={loadingRecommended || refreshingRecommended}
+                    onClick={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      fetchRecommended({ refresh: true })
+                    }}
+                  >
+                    <RefreshCw
+                      className={`h-3.5 w-3.5 ${refreshingRecommended ? "animate-spin" : ""}`}
+                    />
+                    Refresh
+                  </Button>
+                </div>
+                <AccordionContent className="space-y-0 px-3 pb-3">
+                  <div className="space-y-3 border-t border-slate-100 pt-3">
+                    {loadingRecommended ? (
+                      Array.from({ length: 2 }).map((_, index) => (
+                        <NGONetworkRowSkeleton key={`rec-skel-${index}`} />
+                      ))
+                    ) : recommended.length === 0 ? (
+                      <div className="rounded-md border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                        No strong matches yet. Add location and focus details to your profile to improve recommendations.
+                      </div>
+                    ) : (
+                      recommended.map((ngo) => (
+                        <NgoNetworkCard
+                          key={`recommended-${ngo.id}`}
+                          ngo={ngo}
+                          canPay={canPay}
+                          payerCaVerified={payerCaVerified}
+                          isNgoViewer={isNgoViewer}
+                          userId={user?.id}
+                          userType={user?.user_type}
+                          onPay={openPayDialog}
+                        />
+                      ))
+                    )}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+          </section>
+        ) : null}
 
         <section className="mb-4 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
           <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
@@ -304,180 +613,18 @@ export default function NGONetworkPage() {
               ) : null}
             </div>
           ) : (
-            ngos.map((ngo) => {
-              const canPayNgo =
-                canPay &&
-                (ngo.accepts_payments ?? ngo.compliance.verified) &&
-                (user?.user_type !== "company" || Boolean(ngo.csr_eligible || ngo.compliance.csr1))
-              const sectorLabels = ngo.sectors_schedule_vii?.length
-                ? ngo.sectors_schedule_vii
-                : ngo.sector
-                  ? [ngo.sector]
-                  : []
-
-              return (
-                <article
-                  key={ngo.id}
-                  className="overflow-hidden rounded-lg border border-slate-200 bg-white"
-                >
-                  <div className="relative lg:hidden">
-                    <ProfileCoverMedia src={ngo.cover_image} className="h-28 w-full" alt="" />
-                    <div className="absolute -bottom-8 left-4 h-16 w-16 overflow-hidden rounded-lg border-2 border-white bg-slate-50 shadow-sm">
-                      {ngo.profile_image ? (
-                        <Image
-                          src={ngo.profile_image}
-                          alt={ngo.name}
-                          width={64}
-                          height={64}
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center bg-udaan-orange text-sm font-bold text-white">
-                          {getInitials(ngo.name)}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="p-4">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-                    <div className="mx-auto hidden h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50 lg:mx-0 lg:flex">
-                      {ngo.profile_image ? (
-                        <Image
-                          src={ngo.profile_image}
-                          alt={ngo.name}
-                          width={96}
-                          height={96}
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center bg-udaan-orange text-xl font-bold text-white">
-                          {getInitials(ngo.name)}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="min-w-0 flex-1 pt-6 lg:pt-0">
-                      <h2 className="flex min-w-0 flex-wrap items-center gap-2 text-xl font-bold text-slate-900">
-                        <span className="min-w-0 break-words">{ngo.name}</span>
-                        {ngo.compliance.verified ? (
-                          <VerificationBadge
-                            status="verified"
-                            size="readable"
-                            showText={false}
-                            badgeNumber={ngo.ca_badge_number}
-                            className="max-w-full min-w-0"
-                          />
-                        ) : null}
-                      </h2>
-
-                      <p className="mt-1.5 flex items-start gap-1.5 text-sm text-slate-600">
-                        <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
-                        <span>{ngo.location || "Location not listed"}</span>
-                      </p>
-
-                      {sectorLabels.length > 0 ? (
-                        <p className="mt-1 text-xs font-medium text-slate-500">
-                          Sector: {sectorLabels.join("; ")}
-                        </p>
-                      ) : null}
-
-                      {!isNgoViewer && ngo.email ? (
-                        <p className="mt-1.5 flex items-start gap-1.5 text-sm text-slate-600">
-                          <Mail className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
-                          <a href={`mailto:${ngo.email}`} className="break-all hover:text-emerald-700 hover:underline">
-                            {ngo.email}
-                          </a>
-                        </p>
-                      ) : null}
-
-                      {ngo.geographic_coverage_preview ? (
-                        <p className="mt-1.5 text-xs text-slate-500">
-                          Coverage: {ngo.geographic_coverage_preview}
-                        </p>
-                      ) : null}
-
-                      {ngo.mission ? (
-                        <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-700">{ngo.mission}</p>
-                      ) : null}
-
-                      <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-600">
-                        <span>
-                          <span className="font-medium text-slate-800">{ngo.projects_completed_count || 0}</span>
-                          {' '}
-                          {(ngo.projects_completed_count || 0) === 1 ? 'project completed' : 'projects completed'}
-                        </span>
-                        <span>
-                          <span className="font-medium text-slate-800">{ngo.projects_ongoing_count || 0}</span>
-                          {' '}
-                          {(ngo.projects_ongoing_count || 0) === 1 ? 'ongoing project' : 'ongoing projects'}
-                        </span>
-                        <span>
-                          <span className="font-medium text-slate-800">{ngo.projects_active_count || 0}</span>
-                          {' '}
-                          {(ngo.projects_active_count || 0) === 1 ? 'active project' : 'active projects'}
-                        </span>
-                        {ngo.execution_capacity ? (
-                          <span>Capacity: {ngo.execution_capacity}</span>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    <div className="flex w-full shrink-0 flex-col gap-2 lg:w-56">
-                      <div className="flex min-h-7 min-w-0 max-w-full flex-wrap items-center gap-x-2.5 gap-y-1.5">
-                        <NgoComplianceBadges
-                          tags={ngoComplianceTags(ngo)}
-                          registrationType={ngo.registration_type}
-                          size="lg"
-                          className="max-w-full"
-                        />
-                      </div>
-
-                      <Button
-                        asChild
-                        size="sm"
-                        className="h-9 w-full bg-emerald-700 text-white hover:bg-emerald-800"
-                      >
-                        <Link href={`/profile/${ngo.id}`}>
-                          View profile
-                          <ArrowRight className="ml-2 h-3.5 w-3.5" />
-                        </Link>
-                      </Button>
-
-                      {canPayNgo ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-9 w-full"
-                          onClick={() => openPayDialog(ngo)}
-                        >
-                          Pay
-                        </Button>
-                      ) : canPay ? (
-                        <Button size="sm" variant="outline" className="h-9 w-full" disabled>
-                          Payout setup pending
-                        </Button>
-                      ) : isNgoViewer ? (
-                        ngo.id !== user?.id && ngo.email ? (
-                          <Button asChild size="sm" variant="outline" className="h-9 w-full">
-                            <a href={`mailto:${ngo.email}`}>
-                              Contact
-                            </a>
-                          </Button>
-                        ) : null
-                      ) : (
-                        <Button asChild size="sm" variant="outline" className="h-9 w-full">
-                          <Link href="/login">
-                            Log in to pay
-                          </Link>
-                        </Button>
-                      )}
-                    </div>
-                    </div>
-                  </div>
-                </article>
-              )
-            })
+            ngos.map((ngo) => (
+              <NgoNetworkCard
+                key={ngo.id}
+                ngo={ngo}
+                canPay={canPay}
+                payerCaVerified={payerCaVerified}
+                isNgoViewer={isNgoViewer}
+                userId={user?.id}
+                userType={user?.user_type}
+                onPay={openPayDialog}
+              />
+            ))
           )}
         </section>
 

@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { getEvidenceApproverContext } from '@/lib/server-evidence-approver-auth';
+import {
+  assertNgoLiveCsr1,
+  CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE,
+} from '@/lib/server-auth';
 
 export async function POST(
   request: NextRequest,
@@ -39,6 +43,14 @@ export async function POST(
 
     if (projectError || !project) {
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
+    }
+
+    const leadNgoUserId = Number(project.ngo_user_id || 0);
+    if (Number.isFinite(leadNgoUserId) && leadNgoUserId > 0) {
+      const csrGate = await assertNgoLiveCsr1(leadNgoUserId, CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE);
+      if (!csrGate.ok) {
+        return NextResponse.json({ error: csrGate.error }, { status: 403 });
+      }
     }
 
     const approver = await getEvidenceApproverContext(request, project.company_user_id);

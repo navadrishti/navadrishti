@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
-import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth'
+import { getAuthUserFromRequest, assertUserType, assertNgoCsr1CoversWork } from '@/lib/server-auth'
 import { resolveCampaignCategoryInput, resolveCampaignLocationInput } from '@/lib/campaign-schema'
 import { resolveAppOrigin } from '@/lib/campaign-social-post'
 import { verifyPaidCsrOffersForPublish } from '@/lib/csr-agent/campaign'
+import { CSR_WORK_END_DATE_REQUIRED_MESSAGE } from '@/lib/auth'
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,7 +24,7 @@ export async function POST(request: NextRequest) {
 
     const { data: existing, error: fetchError } = await supabase
       .from('campaigns')
-      .select('id, status, impact_metrics')
+      .select('id, status, impact_metrics, end_date')
       .eq('id', campaignId)
       .eq('company_id', user.id)
       .maybeSingle()
@@ -37,10 +38,21 @@ export async function POST(request: NextRequest) {
       ? existing.impact_metrics
       : {}
 
-    if (!impact.lead_ngo_accepted || !Number(impact.selected_lead_ngo_id || 0)) {
+    const leadNgoId = Number(impact.selected_lead_ngo_id || 0)
+    if (!impact.lead_ngo_accepted || !leadNgoId) {
       return NextResponse.json({
         error: 'A lead NGO must accept the invite from their dashboard before this campaign can be published.',
       }, { status: 409 })
+    }
+
+    const endDate = campaign.end_date ?? existing.end_date
+    if (!endDate) {
+      return NextResponse.json({ error: CSR_WORK_END_DATE_REQUIRED_MESSAGE }, { status: 400 })
+    }
+
+    const coverageGate = await assertNgoCsr1CoversWork(leadNgoId, endDate)
+    if (!coverageGate.ok) {
+      return NextResponse.json({ error: coverageGate.error }, { status: 403 })
     }
 
     const invitedOfferIds = Array.isArray(campaign?.impact_metrics?.invited_offer_ids)
@@ -81,7 +93,7 @@ export async function POST(request: NextRequest) {
         impact_metrics: nextImpact,
         milestones: campaign.milestones ?? [],
         start_date: campaign.start_date ?? null,
-        end_date: campaign.end_date ?? null,
+        end_date: endDate,
         status: 'active',
       })
       .eq('id', campaignId)
