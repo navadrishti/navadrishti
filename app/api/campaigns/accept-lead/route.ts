@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
-import { CSR_ELIGIBILITY_REQUIRED_MESSAGE } from '@/lib/auth'
-import { getAuthUserFromRequest, assertUserType, ngoUserIsCsrEligible } from '@/lib/server-auth'
+import { CSR_ELIGIBILITY_REQUIRED_MESSAGE, CSR_TIMELINE_COVERAGE_REQUIRED_MESSAGE, CSR_WORK_END_DATE_REQUIRED_MESSAGE } from '@/lib/auth'
+import { getAuthUserFromRequest, assertUserType, ngoUserIsCsrEligible, assertNgoCsr1CoversWork } from '@/lib/server-auth'
 
 function normalizeInvites(raw: unknown) {
   if (!Array.isArray(raw)) return []
@@ -37,6 +37,15 @@ export async function POST(request: NextRequest) {
     if (fetchErr || !campaign) {
       console.error('Failed to fetch campaign for accept:', fetchErr)
       return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
+    }
+
+    if (!campaign.end_date) {
+      return NextResponse.json({ error: CSR_WORK_END_DATE_REQUIRED_MESSAGE }, { status: 403 })
+    }
+
+    const coverageGate = await assertNgoCsr1CoversWork(user.id, campaign.end_date)
+    if (!coverageGate.ok) {
+      return NextResponse.json({ error: coverageGate.error || CSR_TIMELINE_COVERAGE_REQUIRED_MESSAGE }, { status: 403 })
     }
 
     const impact = campaign.impact_metrics && typeof campaign.impact_metrics === 'object' ? campaign.impact_metrics : {}

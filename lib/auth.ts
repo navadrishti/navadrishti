@@ -106,6 +106,15 @@ export function verifyToken(token: string): UserData | null {
   }
 }
 
+/** Platform end-user sessions only — never treat console admin JWTs as users. */
+export function isPlatformUserSession(user: UserData | null | undefined): user is UserData {
+  if (!user) return false;
+  if (!Number.isFinite(Number(user.id)) || Number(user.id) <= 0) return false;
+  if (String(user.user_type || '').toLowerCase() === 'admin') return false;
+  if (String(user.email || '').toLowerCase() === 'admin@system.local') return false;
+  return true;
+}
+
 // Function to hash password
 export async function hashPassword(password: string): Promise<string> {
   const salt = await bcrypt.genSalt(10);
@@ -139,7 +148,7 @@ export function withAuth(handler: Function) {
 
       // Verify token
       const user = verifyToken(token);
-      if (!user) {
+      if (!isPlatformUserSession(user)) {
         return NextResponse.json({ error: 'Invalid or expired token' }, { status: 401 });
       }
 
@@ -287,6 +296,92 @@ export function getCaBadgeNumber(profileData: unknown): string | null {
 export function visibleCaBadgeNumber(verificationStatus: unknown, profileData: unknown): string | null {
   if (String(verificationStatus || '').trim().toLowerCase() !== 'verified') return null;
   return getCaBadgeNumber(profileData);
+}
+
+/** True when CA has approved document verification (badge-eligible account). */
+export function isCaVerifiedAccount(verificationStatus: unknown): boolean {
+  return String(verificationStatus || '').trim().toLowerCase() === 'verified';
+}
+
+export const CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE =
+  'Only CA-verified accounts can pay NGOs. Submit your documents for verification, then check back after CA approval (typically 24–48 hours).';
+
+export function normalizePhoneDigits(phone: unknown): string {
+  return String(phone || '').replace(/\D/g, '');
+}
+
+export type AdminModerationState = {
+  permanently_banned?: boolean;
+  banned_at?: string | null;
+  banned_email?: string | null;
+  banned_phone?: string | null;
+  suspended_at?: string | null;
+  suspended_until?: string | null;
+  suspend_days?: number | null;
+  reason?: string | null;
+};
+
+export function getAdminModeration(profileData: unknown): AdminModerationState {
+  const profile =
+    profileData && typeof profileData === 'object' && !Array.isArray(profileData)
+      ? (profileData as Record<string, unknown>)
+      : {};
+  const moderation = profile.admin_moderation;
+  return moderation && typeof moderation === 'object' && !Array.isArray(moderation)
+    ? (moderation as AdminModerationState)
+    : {};
+}
+
+export function isPermanentlyBannedAccount(input: {
+  account_status?: unknown;
+  profile_data?: unknown;
+}): boolean {
+  const status = String(input.account_status || '').trim().toLowerCase();
+  if (status === 'banned' || status === 'deactivated') return true;
+  return getAdminModeration(input.profile_data).permanently_banned === true;
+}
+
+export function getAccountLockUntil(input: {
+  locked_until?: unknown;
+  account_status?: unknown;
+  profile_data?: unknown;
+}): Date | null {
+  const lockedUntilRaw = input.locked_until;
+  if (lockedUntilRaw) {
+    const lockedUntil = new Date(String(lockedUntilRaw));
+    if (!Number.isNaN(lockedUntil.getTime()) && lockedUntil.getTime() > Date.now()) {
+      return lockedUntil;
+    }
+  }
+
+  const moderationUntil = getAdminModeration(input.profile_data).suspended_until;
+  if (moderationUntil) {
+    const until = new Date(String(moderationUntil));
+    if (!Number.isNaN(until.getTime()) && until.getTime() > Date.now()) {
+      return until;
+    }
+  }
+
+  return null;
+}
+
+export function getAccountAccessBlockReason(input: {
+  account_status?: unknown;
+  locked_until?: unknown;
+  profile_data?: unknown;
+}): string | null {
+  if (isPermanentlyBannedAccount(input)) {
+    return 'This account has been permanently banned and cannot sign in or register again with the same email or phone.';
+  }
+  const until = getAccountLockUntil(input);
+  if (until) {
+    return `This account is suspended until ${until.toISOString().slice(0, 10)}.`;
+  }
+  const status = String(input.account_status || '').trim().toLowerCase();
+  if (status === 'suspended') {
+    return 'This account is currently suspended.';
+  }
+  return null;
 }
 
 export const CA_COMPLIANCE_TAG_KEYS = ['twelve_a', 'eighty_g', 'csr1', 'fcra'] as const;
@@ -463,7 +558,34 @@ export function inferCaComplianceTags(profileData: unknown): CaComplianceTagKey[
     .map((option) => option.key);
 }
 
-export function getCaComplianceTags(profileData: unknown, verificationStatus?: unknown): CaComplianceTagKey[] {
+function complianceTagExpiryValue(
+  profileData: unknown,
+  tag: CaComplianceTagKey
+): unknown {
+  const data = asNgoRecord(profileData);
+  const expiries = getDocumentExpiries(profileData);
+  if (tag === 'fcra') {
+    return expiries.fcra?.valid_until || data.fcra_expiry_date;
+  }
+  return expiries[tag]?.valid_until;
+}
+
+/** Keep only CA tags that are still within their certificate validity. */
+export function filterLiveCaComplianceTags(
+  profileData: unknown,
+  tags: CaComplianceTagKey[]
+): CaComplianceTagKey[] {
+  return tags.filter((tag) => !expiryBlocksComplianceTag(complianceTagExpiryValue(profileData, tag)));
+}
+
+/**
+ * Stored CA tags as allotted (before live expiry filtering).
+ * Prefer getCaComplianceTags() for gating / UI so expired certs do not count.
+ */
+export function getStoredCaComplianceTags(
+  profileData: unknown,
+  verificationStatus?: unknown
+): CaComplianceTagKey[] {
   if (verificationStatus && String(verificationStatus).trim().toLowerCase() !== 'verified') {
     return [];
   }
@@ -476,27 +598,250 @@ export function getCaComplianceTags(profileData: unknown, verificationStatus?: u
   return inferCaComplianceTags(profileData);
 }
 
+export function getCaComplianceTags(profileData: unknown, verificationStatus?: unknown): CaComplianceTagKey[] {
+  return filterLiveCaComplianceTags(
+    profileData,
+    getStoredCaComplianceTags(profileData, verificationStatus)
+  );
+}
+
 export function ngoIsCsrEligible(verificationStatus: unknown, profileData: unknown): boolean {
   return getCaComplianceTags(profileData, verificationStatus).includes('csr1');
 }
 
+export function getCaComplianceTagExpiry(
+  profileData: unknown,
+  tag: CaComplianceTagKey
+): string | null {
+  return normalizeExpiryDate(complianceTagExpiryValue(profileData, tag));
+}
+
+function utcMsFromIsoDay(iso: string): number | null {
+  const normalized = normalizeExpiryDate(iso);
+  if (!normalized) return null;
+  const [y, m, d] = normalized.split('-').map(Number);
+  return Date.UTC(y, m - 1, d);
+}
+
+/**
+ * Parse a project timeline into an end-day ISO date.
+ * Relative durations (e.g. "3 months") are added onto baseMs (prefer valid_until).
+ */
+export function parseProjectTimelineEndDate(
+  timeline: unknown,
+  baseMs: number = Date.UTC(
+    new Date().getFullYear(),
+    new Date().getMonth(),
+    new Date().getDate()
+  )
+): string | null {
+  const text = String(timeline || '').trim();
+  if (!text || /^(anytime|not specified|none|n\/a|-)$/i.test(text)) return null;
+
+  const direct = normalizeExpiryDate(text);
+  if (direct) return direct;
+
+  const isoRange = text.match(
+    /(\d{4}[/\-.]\d{1,2}[/\-.]\d{1,2}).{0,20}?(\d{4}[/\-.]\d{1,2}[/\-.]\d{1,2})/
+  );
+  if (isoRange) {
+    return normalizeExpiryDate(isoRange[2]) || normalizeExpiryDate(isoRange[1]);
+  }
+
+  const quarter = text.match(/\bQ([1-4])\s*[/\-]?\s*(\d{4})\b/i);
+  if (quarter) {
+    const q = Number(quarter[1]);
+    const year = Number(quarter[2]);
+    const endMonth = q * 3;
+    const endDay = endMonth === 2 ? 28 : [4, 6, 9, 11].includes(endMonth) ? 30 : 31;
+    return toIsoExpiryDate(year, endMonth, endDay);
+  }
+
+  const monthNames =
+    'jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?';
+  const monthRange = text.match(
+    new RegExp(
+      `\\b(${monthNames})\\b(?:\\s*[-–—/to]+\\s*\\b(${monthNames})\\b)?(?:\\s*[,/\\s]+)?(\\d{4})\\b`,
+      'i'
+    )
+  );
+  if (monthRange) {
+    const monthIndex = (name: string) => {
+      const key = name.slice(0, 3).toLowerCase();
+      return ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'].indexOf(
+        key
+      );
+    };
+    const endName = monthRange[2] || monthRange[1];
+    const year = Number(monthRange[3]);
+    const endMonth = monthIndex(endName) + 1;
+    if (endMonth > 0 && Number.isFinite(year)) {
+      const endDay = endMonth === 2 ? 28 : [4, 6, 9, 11].includes(endMonth) ? 30 : 31;
+      return toIsoExpiryDate(year, endMonth, endDay);
+    }
+  }
+
+  const relativeMatch = text.match(/(\d+)\s*(day|days|week|weeks|month|months|year|years)\b/i);
+  if (relativeMatch) {
+    const amount = Number(relativeMatch[1]);
+    if (!Number.isFinite(amount) || amount <= 0) return null;
+    const unit = relativeMatch[2].toLowerCase();
+    const base = new Date(baseMs);
+    if (Number.isNaN(base.getTime())) return null;
+    const next = new Date(base.getTime());
+    if (unit.startsWith('day')) next.setUTCDate(next.getUTCDate() + amount);
+    else if (unit.startsWith('week')) next.setUTCDate(next.getUTCDate() + amount * 7);
+    else if (unit.startsWith('month')) next.setUTCMonth(next.getUTCMonth() + amount);
+    else if (unit.startsWith('year')) next.setUTCFullYear(next.getUTCFullYear() + amount);
+    return toIsoExpiryDate(next.getUTCFullYear(), next.getUTCMonth() + 1, next.getUTCDate());
+  }
+
+  const parsed = new Date(text);
+  if (!Number.isNaN(parsed.getTime())) {
+    return toIsoExpiryDate(parsed.getFullYear(), parsed.getMonth() + 1, parsed.getDate());
+  }
+
+  return null;
+}
+
+/**
+ * Latest date a project can run: max(valid_until, timeline end).
+ * Relative timelines are added onto valid_until when present (else today).
+ */
+export function resolveProjectCsrCoverageEndDate(input: {
+  valid_until?: unknown;
+  timeline?: unknown;
+  base_date?: unknown;
+}): string | null {
+  const validUntil = normalizeExpiryDate(input.valid_until);
+  const baseIso = normalizeExpiryDate(input.base_date) || validUntil;
+  const baseMs = baseIso
+    ? utcMsFromIsoDay(baseIso) ??
+      Date.UTC(new Date().getFullYear(), new Date().getMonth(), new Date().getDate())
+    : Date.UTC(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
+
+  const timelineEnd = parseProjectTimelineEndDate(input.timeline, baseMs);
+  const candidates = [validUntil, timelineEnd].filter((value): value is string => Boolean(value));
+  if (candidates.length === 0) return null;
+  return candidates.sort()[candidates.length - 1];
+}
+
+/** Prefer structured end dates (campaign end_date / project coverage end). */
+export function resolveCsrWorkEndDate(input: {
+  end_date?: unknown;
+  valid_until?: unknown;
+  timeline?: unknown;
+  timeline_end?: unknown;
+}): string | null {
+  const projectCoverage = resolveProjectCsrCoverageEndDate({
+    valid_until: input.valid_until,
+    timeline: input.timeline || input.timeline_end,
+  });
+  return normalizeExpiryDate(input.end_date) || projectCoverage || null;
+}
+
+/**
+ * Live CSR-1 tag whose certificate validity covers the full CSR work window.
+ * Prevents inviting/suggesting/taking over work that would outlast CSR-1.
+ * If workEnd is missing, returns false when requireWorkEnd is true; otherwise live-only.
+ */
+export function ngoIsCsrEligibleForWorkThrough(
+  verificationStatus: unknown,
+  profileData: unknown,
+  requiredThrough: unknown,
+  options?: { requireWorkEnd?: boolean }
+): boolean {
+  if (!ngoIsCsrEligible(verificationStatus, profileData)) return false;
+
+  const workEnd = normalizeExpiryDate(requiredThrough);
+  if (!workEnd) {
+    return options?.requireWorkEnd ? false : true;
+  }
+
+  const csr1Expiry = getCaComplianceTagExpiry(profileData, 'csr1');
+  if (!csr1Expiry) return false;
+
+  // ISO YYYY-MM-DD compares correctly lexicographically
+  return csr1Expiry >= workEnd;
+}
+
+export function ngoIsCsrEligibleForProject(
+  verificationStatus: unknown,
+  profileData: unknown,
+  project: { valid_until?: unknown; timeline?: unknown } | null | undefined,
+  options?: { requireWorkEnd?: boolean }
+): boolean {
+  const coverageEnd = resolveProjectCsrCoverageEndDate({
+    valid_until: project?.valid_until,
+    timeline: project?.timeline,
+  });
+  return ngoIsCsrEligibleForWorkThrough(
+    verificationStatus,
+    profileData,
+    coverageEnd,
+    { requireWorkEnd: options?.requireWorkEnd ?? true }
+  );
+}
+
 export const CSR_ELIGIBILITY_REQUIRED_MESSAGE =
   'Only NGOs with a live CA-allotted CSR-1 tag can participate in CSR funding, takeover, or lead-NGO roles.';
+
+export const CSR_TIMELINE_COVERAGE_REQUIRED_MESSAGE =
+  'CSR-1 must remain valid through the full project/campaign window (valid-until and timeline). NGOs whose certificate expires earlier cannot be suggested, invited, or selected for this work.';
+
+export const CSR_WORK_END_DATE_REQUIRED_MESSAGE =
+  'A campaign/project end date is required so CSR-1 coverage can be verified through the full work window.';
+
+export const CSR_OWN_PROJECT_TIMELINE_MESSAGE =
+  'Your CSR-1 certificate must remain valid through this project’s full window (valid-until and timeline) before you can make it available for company CSR takeover.';
+
+export const CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE =
+  'Company CSR payments require the NGO to have a live CA-allotted CSR-1 tag. If it expired mid-project, update and reverify the CSR-1 certificate before funding continues.';
+
+/** Engagement gate: live CSR-1 + concrete work end + coverage through that end. */
+export function assertCsr1CoversRequiredThrough(
+  verificationStatus: unknown,
+  profileData: unknown,
+  requiredThrough: unknown
+): { ok: true } | { ok: false; error: string } {
+  if (!ngoIsCsrEligible(verificationStatus, profileData)) {
+    return { ok: false, error: CSR_ELIGIBILITY_REQUIRED_MESSAGE };
+  }
+  if (!normalizeExpiryDate(requiredThrough)) {
+    return { ok: false, error: CSR_WORK_END_DATE_REQUIRED_MESSAGE };
+  }
+  if (!ngoIsCsrEligibleForWorkThrough(verificationStatus, profileData, requiredThrough, { requireWorkEnd: true })) {
+    return { ok: false, error: CSR_TIMELINE_COVERAGE_REQUIRED_MESSAGE };
+  }
+  return { ok: true };
+}
+
+export function assertCsr1CoversProject(
+  verificationStatus: unknown,
+  profileData: unknown,
+  project: { valid_until?: unknown; timeline?: unknown } | null | undefined
+): { ok: true } | { ok: false; error: string } {
+  const coverageEnd = resolveProjectCsrCoverageEndDate({
+    valid_until: project?.valid_until,
+    timeline: project?.timeline,
+  });
+  if (!coverageEnd) {
+    return {
+      ok: false,
+      error:
+        'Project valid-until or timeline is required so CSR-1 coverage can be verified through the full work window.',
+    };
+  }
+  return assertCsr1CoversRequiredThrough(verificationStatus, profileData, coverageEnd);
+}
 
 export function dropExpiredCaComplianceTags(profileData: Record<string, unknown>): {
   profileData: Record<string, unknown>;
   dropped: CaComplianceTagKey[];
   changed: boolean;
 } {
-  const current = getCaComplianceTags(profileData, 'verified');
-  const expiries = getDocumentExpiries(profileData);
-  const expiryByTag: Record<CaComplianceTagKey, unknown> = {
-    twelve_a: expiries.twelve_a?.valid_until,
-    eighty_g: expiries.eighty_g?.valid_until,
-    csr1: expiries.csr1?.valid_until,
-    fcra: expiries.fcra?.valid_until || profileData.fcra_expiry_date,
-  };
-  const next = current.filter((tag) => !expiryBlocksComplianceTag(expiryByTag[tag]));
+  const current = getStoredCaComplianceTags(profileData, 'verified');
+  const next = filterLiveCaComplianceTags(profileData, current);
   const dropped = current.filter((tag) => !next.includes(tag));
 
   return {

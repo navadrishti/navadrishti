@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
-import { hashPassword, generateToken, validateNgoHeadquartersLocation, validateCompanyHeadquartersLocation, normalizePincode, buildNgoLocationDisplay } from '@/lib/auth';
+import { hashPassword, generateToken, validateNgoHeadquartersLocation, validateCompanyHeadquartersLocation, normalizePincode, buildNgoLocationDisplay, normalizePhoneDigits, isPermanentlyBannedAccount } from '@/lib/auth';
+import { supabase } from '@/lib/db';
 
 const parseNumeric = (value: unknown): number | null => {
   if (value === null || value === undefined) return null;
@@ -174,7 +175,38 @@ export async function POST(req: NextRequest) {
     const existingUser = await db.users.findByEmail(email);
     
     if (existingUser) {
+      if (isPermanentlyBannedAccount(existingUser)) {
+        return NextResponse.json(
+          { error: 'This email is permanently banned and cannot be used to create a new account.' },
+          { status: 403 }
+        );
+      }
       return NextResponse.json({ error: 'User with this email already exists' }, { status: 409 });
+    }
+
+    const phoneDigits = normalizePhoneDigits(phone);
+    if (phoneDigits) {
+      const [{ data: statusBanned }, { data: flagBanned }] = await Promise.all([
+        supabase
+          .from('users')
+          .select('id, phone, account_status, profile_data')
+          .in('account_status', ['banned', 'deactivated'])
+          .limit(500),
+        supabase
+          .from('users')
+          .select('id, phone, account_status, profile_data')
+          .contains('profile_data', { admin_moderation: { permanently_banned: true } })
+          .limit(500),
+      ]);
+
+      const bannedRows = [...(statusBanned || []), ...(flagBanned || [])];
+      const bannedPhoneHit = bannedRows.some((row) => normalizePhoneDigits(row.phone) === phoneDigits);
+      if (bannedPhoneHit) {
+        return NextResponse.json(
+          { error: 'This phone number is permanently banned and cannot be used to create a new account.' },
+          { status: 403 }
+        );
+      }
     }
     
     // Hash password

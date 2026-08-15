@@ -9,7 +9,7 @@ import { Header } from '@/components/header'
 import ProtectedRoute from '@/components/protected-route'
 import { useAuth } from '@/lib/auth-context'
 import { CSR_SCHEDULE_VII_CATEGORIES, SERVICE_REQUEST_CATEGORIES } from '@/lib/categories'
-import { INDIAN_STATES_AND_UTS, ngoIsCsrEligible } from '@/lib/auth'
+import { INDIAN_STATES_AND_UTS, ngoIsCsrEligible, ngoIsCsrEligibleForProject } from '@/lib/auth'
 import {
   EMPTY_PROJECT_ADDRESS,
   formatProjectExactAddress,
@@ -199,6 +199,8 @@ export default function CreateServiceRequestPage() {
     project_location: '',
     project_timeline: '',
     project_category: '',
+    project_expected_beneficiaries: '',
+    project_valid_until: '',
     title: '',
     description: '',
     request_type: '',
@@ -221,9 +223,20 @@ export default function CreateServiceRequestPage() {
     infrastructure_scope: ''
   })
 
+  const csrCoversProjectEnd = ngoIsCsrEligibleForProject(
+    user?.verification_status,
+    user?.profile_data || user?.profile,
+    {
+      valid_until: formData.project_valid_until,
+      timeline: formData.project_timeline,
+    }
+  )
+  const canOfferForCsr = csrEligible && csrCoversProjectEnd
+
   useEffect(() => {
-    if (csrEligible) setProjectAvailableForCsr(true)
-  }, [csrEligible])
+    if (canOfferForCsr) setProjectAvailableForCsr(true)
+    else setProjectAvailableForCsr(false)
+  }, [canOfferForCsr])
 
   useEffect(() => {
     const rawDraft = localStorage.getItem('nd_ngo_ai_request_draft')
@@ -854,7 +867,7 @@ export default function CreateServiceRequestPage() {
           address: projectAddress,
           timeline: formData.project_timeline,
           category: formData.project_category,
-          csr_project_available_for_csr: csrEligible && projectAvailableForCsr,
+          csr_project_available_for_csr: canOfferForCsr && projectAvailableForCsr,
           expected_beneficiaries: Number(formData.project_expected_beneficiaries),
           valid_until: formData.project_valid_until
         }
@@ -927,7 +940,7 @@ export default function CreateServiceRequestPage() {
                 project_timeline: formData.project_timeline,
                 project_category: formData.project_category,
                 project_valid_until: formData.project_valid_until,
-                csr_project_available_for_csr: csrEligible && projectAvailableForCsr
+                csr_project_available_for_csr: canOfferForCsr && projectAvailableForCsr
             },
             details: {
               material_items: need.material_items,
@@ -1162,7 +1175,7 @@ export default function CreateServiceRequestPage() {
                           <Label htmlFor="project_valid_until">Project Valid Until *</Label>
                           <Input id="project_valid_until" name="project_valid_until" type="date" value={formData.project_valid_until || ''} onChange={handleInput} required />
                         </div>
-                        {csrEligible ? (
+                        {canOfferForCsr ? (
                         <div className="md:col-span-2 flex items-start gap-3 rounded-md border bg-white p-3">
                           <input
                             id="project_available_for_csr"
@@ -1179,7 +1192,11 @@ export default function CreateServiceRequestPage() {
                         ) : (
                         <div className="md:col-span-2 rounded-md border border-slate-200 bg-slate-50 p-3">
                           <p className="text-sm font-medium text-slate-900">CSR takeover unavailable</p>
-                          <p className="text-xs text-muted-foreground">A live CA-allotted CSR-1 tag is required before companies can take over this project.</p>
+                          <p className="text-xs text-muted-foreground">
+                            {csrEligible
+                              ? 'Your CSR-1 must remain valid through the full project window (Valid Until and Timeline) before companies can take over this project.'
+                              : 'A live CA-allotted CSR-1 tag is required before companies can take over this project.'}
+                          </p>
                         </div>
                         )}
                       </div>

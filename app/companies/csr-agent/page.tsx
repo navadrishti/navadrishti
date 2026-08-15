@@ -1270,10 +1270,18 @@ export default function CSRAgentPage() {
         projectData.city,
         projectData.state,
         projectData.volunteerRequirement,
+        projectData.endDate,
       ]
         .map((value) => String(value || "").trim())
         .join("|"),
-    [projectData.campaignName, projectData.category, projectData.city, projectData.state, projectData.volunteerRequirement],
+    [
+      projectData.campaignName,
+      projectData.category,
+      projectData.city,
+      projectData.state,
+      projectData.volunteerRequirement,
+      projectData.endDate,
+    ],
   )
 
   useEffect(() => {
@@ -1341,7 +1349,7 @@ export default function CSRAgentPage() {
   useEffect(() => {
     if (!mounted || !user?.id || !token) return
     if (hasLockedLeadNgo) return
-    if (!projectData.campaignName?.trim() || !projectData.category?.trim()) {
+    if (!projectData.campaignName?.trim() || !projectData.category?.trim() || !projectData.endDate?.trim()) {
       setNgoDirectory([])
       lastNgoSuggestionKeyRef.current = null
       return
@@ -1359,6 +1367,7 @@ export default function CSRAgentPage() {
           city: projectData.city || '',
           state: projectData.state || '',
           volunteers_needed: Number(projectData.volunteerRequirement || 0),
+          end_date: projectData.endDate || '',
           limit: 30,
         }
 

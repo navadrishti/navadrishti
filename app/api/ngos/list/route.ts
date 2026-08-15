@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { ngoIsCsrEligible } from '@/lib/auth';
+import {
+  getCaComplianceTagExpiry,
+  ngoIsCsrEligible,
+  ngoIsCsrEligibleForWorkThrough,
+  normalizeExpiryDate,
+} from '@/lib/auth';
 
 const tokenize = (value: string) =>
   value
@@ -14,6 +19,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const q = String(searchParams.get('q') || '').trim();
     const limit = Number(searchParams.get('limit') || 30) || 30;
+    const endDate = normalizeExpiryDate(searchParams.get('end_date') || searchParams.get('endDate'));
 
     // fetch richer NGO data so we can score locally
     let query = supabase
@@ -38,7 +44,13 @@ export async function GET(request: NextRequest) {
           profile.is_demo === true ||
           String(ngo.name || '').toLowerCase().includes('demo') ||
           String(ngo.email || '').toLowerCase().includes('demo')
-        return !isDemo && ngoIsCsrEligible(ngo.verification_status, profile)
+        if (isDemo) return false
+        if (endDate) {
+          return ngoIsCsrEligibleForWorkThrough(ngo.verification_status, profile, endDate, {
+            requireWorkEnd: true,
+          })
+        }
+        return ngoIsCsrEligible(ngo.verification_status, profile)
       })
       .map((ngo: any) => {
       const profile = ngo.profile_data && typeof ngo.profile_data === 'object' ? ngo.profile_data : {}
@@ -48,38 +60,28 @@ export async function GET(request: NextRequest) {
         email: ngo.email,
         city: ngo.city || profile.city || '',
         state: ngo.state_province || profile.state_province || '',
-        impact_areas: Array.isArray(profile.impact_areas) ? profile.impact_areas : (typeof profile.impact_areas === 'string' ? profile.impact_areas.split(/[,;|]/).map((s: string) => s.trim()) : []),
+        focus_areas: profile.focus_areas || profile.cause_areas || '',
+        verification_status: ngo.verification_status,
+        csr1_valid_until: getCaComplianceTagExpiry(profile, 'csr1'),
       }
     })
 
-    if (!q) {
-      return NextResponse.json({ success: true, ngos: rows.slice(0, limit) })
-    }
+    // optional local relevance ranking if q provided
+    const ranked = q
+      ? rows
+          .map((row) => {
+            const hay = `${row.name} ${row.city} ${row.state} ${row.focus_areas}`.toLowerCase()
+            const tokens = tokenize(q)
+            const score = tokens.reduce((sum, token) => sum + (hay.includes(token) ? 1 : 0), 0)
+            return { row, score }
+          })
+          .sort((a, b) => b.score - a.score)
+          .map((entry) => entry.row)
+      : rows
 
-    const tokens = tokenize(q)
-
-    const scored = rows.map((r: any) => {
-      let score = 0
-      const hay = `${r.name} ${r.email} ${r.city} ${r.state} ${(r.impact_areas || []).join(' ')}`.toLowerCase()
-      if (tokens.length === 0) score = 1
-      for (const t of tokens) {
-        if (hay.includes(t)) score += 10
-      }
-      // give stronger weight to city/state exact matches
-      const qLower = q.toLowerCase()
-      if (r.city && qLower.includes(r.city.toLowerCase())) score += 30
-      if (r.state && qLower.includes(r.state.toLowerCase())) score += 20
-      // impact area boost
-      for (const area of (r.impact_areas || [])) {
-        if (!area) continue
-        for (const t of tokens) if (area.toLowerCase().includes(t)) score += 8
-      }
-      return { ...r, score }
-    }).sort((a: any, b: any) => b.score - a.score)
-
-    return NextResponse.json({ success: true, ngos: scored.slice(0, limit).map((r: any) => ({ id: r.id, name: r.name, email: r.email })) })
-  } catch (error: any) {
-    console.error('NGO list fetch error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to fetch NGO list', details: error.message }, { status: 500 });
+    return NextResponse.json({ success: true, data: ranked.slice(0, limit) });
+  } catch (error) {
+    console.error('NGO list error:', error);
+    return NextResponse.json({ error: 'Failed to list NGOs' }, { status: 500 });
   }
 }

@@ -27,6 +27,14 @@ export async function POST(request: NextRequest) {
     const body = (await request.json()) as ScoreRequest
     const limit = Math.min(Math.max(Number(body.limit || 10), 1), 30)
 
+    if (!String(body.end_date || '').trim()) {
+      return NextResponse.json({
+        success: true,
+        data: [],
+        message: 'Campaign end date is required before CSR-1 coverage can be scored for lead NGO suggestions.',
+      })
+    }
+
     const { data: ngos, error } = await supabase
       .from('users')
       .select('id, name, email, city, state_province, profile_data, ngo_volunteer_capacity, verification_status')
@@ -45,7 +53,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         data: [],
-        message: 'No CSR-1 tagged NGOs are available for this campaign yet.',
+        message:
+          'No CSR-1 tagged NGOs cover this campaign end date yet. CSR-1 must remain valid through the full campaign timeline.',
       })
     }
 

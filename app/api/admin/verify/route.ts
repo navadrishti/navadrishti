@@ -3,14 +3,12 @@ import { verifyToken } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
   try {
-    // Check for admin token in cookies
     const adminToken = request.cookies.get('admin-token')?.value;
-    
+
     if (!adminToken) {
       return NextResponse.json({ error: 'No admin token found' }, { status: 401 });
     }
 
-    // Verify admin token
     try {
       const decoded = verifyToken(adminToken);
 
@@ -18,13 +16,17 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'Invalid admin token' }, { status: 401 });
       }
 
-      return NextResponse.json({ 
-        success: true, 
+      const username = process.env.ADMIN_USERNAME || 'admin';
+
+      return NextResponse.json({
+        success: true,
         admin: {
-          username: 'admin'
-        }
+          username,
+          display_name: 'Administrator',
+          role: 'admin',
+        },
       });
-    } catch (error) {
+    } catch {
       return NextResponse.json({ error: 'Invalid admin token' }, { status: 401 });
     }
   } catch (error) {

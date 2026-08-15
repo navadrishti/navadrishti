@@ -144,7 +144,7 @@ export function Header({ className = '' }: { className?: string } = {}) {
   }
 
   const handleLogout = async () => {
-    logout()
+    await logout()
     await smoothNavigate(router, '/', { delay: 100 })
   }
 
@@ -219,37 +219,17 @@ export function Header({ className = '' }: { className?: string } = {}) {
         <Link href="/" className="flex shrink-0 items-center font-bold text-xl">
           <img src="/photos/logo.svg" alt="Navadrishti" className="h-36 w-36 shrink-0" />
         </Link>
-        <div
-          className={cn(
-            "hidden md:flex md:flex-1 md:items-center",
-            phase1Header ? "md:justify-between md:gap-4 lg:gap-6" : "md:justify-end md:gap-4 lg:gap-6"
-          )}
-        >
-          <nav
-            className={cn(
-              "flex items-center",
-              phase1Header
-                ? "order-2 min-w-0 flex-1 justify-center gap-5 lg:gap-8"
-                : "order-2 justify-end gap-1.5 lg:gap-2"
-            )}
-          >
+        <div className="hidden md:flex md:flex-1 md:items-center md:justify-end md:gap-4 lg:gap-6">
+          <nav className="order-2 flex shrink-0 items-center justify-end gap-1.5 lg:gap-2">
             {desktopNavItems.map((item) => (
               <HeaderNavLink
                 key={`desktop-nav-${item.href}`}
                 item={item}
-                className={cn(
-                  "whitespace-nowrap rounded-md py-1.5 text-sm font-medium text-white hover:text-udaan-orange focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors",
-                  phase1Header ? "px-3 lg:px-4" : "px-2.5"
-                )}
+                className="whitespace-nowrap rounded-md px-2.5 py-1.5 text-sm font-medium text-white hover:text-udaan-orange focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors"
               />
             ))}
           </nav>
-          <div
-            className={cn(
-              "relative order-1 hidden md:block shrink-0",
-              !phase1Header && "mr-auto"
-            )}
-          >
+          <div className="relative order-1 mr-auto hidden md:block shrink-0">
             <div className="relative flex items-center z-50">
               <div className="relative border-2 border-gray-300 rounded-lg overflow-hidden">
                 <div className="relative bg-white">
@@ -407,7 +387,7 @@ export function Header({ className = '' }: { className?: string } = {}) {
               onMouseEnter={openProfileMenu}
               onMouseLeave={() => closeProfileMenuWithDelay()}
               className={cn(
-                "relative order-3",
+                "relative order-3 shrink-0",
                 phase1Header && "shrink-0"
               )}
             >
@@ -416,30 +396,26 @@ export function Header({ className = '' }: { className?: string } = {}) {
                 className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md bg-transparent px-2.5 text-white hover:text-udaan-orange transition-colors"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={(e) => e.preventDefault()}
+                title={profileTriggerLabel}
               >
-                <Avatar className="h-9 w-9">
+                <Avatar className="h-9 w-9 shrink-0">
                   {user.profile_image && <AvatarImage src={user.profile_image} alt={user.name} />}
                   <AvatarFallback className="bg-udaan-orange text-white">{getInitials(user.name)}</AvatarFallback>
                 </Avatar>
-                <span
-                  className={cn(
-                    "text-sm font-medium",
-                    phase1Header ? "whitespace-nowrap" : "max-w-[120px] truncate"
-                  )}
-                >
+                <span className="max-w-[148px] truncate text-sm font-medium">
                   {profileTriggerLabel}
                 </span>
-                <ChevronDown className="h-4 w-4 opacity-80" />
+                <ChevronDown className="h-4 w-4 shrink-0 opacity-80" />
               </button>
 
                     {isProfileMenuOpen && (
-                <div className="absolute right-0 top-full mt-2 min-w-64 w-max max-w-sm overflow-hidden rounded-md border bg-white p-1 text-black shadow-lg">
-                  <div className="px-2 py-1.5 text-sm font-semibold leading-5 text-gray-900">{user.name}</div>
+                <div className="absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-md border bg-white p-1 text-black shadow-lg">
+                  <div className="truncate px-2 py-1.5 text-sm font-semibold leading-5 text-gray-900">{user.name}</div>
                   <div className="px-2 py-1 text-xs text-muted-foreground">
                     <span className="block truncate">{user.email} • {user.user_type.charAt(0).toUpperCase() + user.user_type.slice(1)}</span>
                   </div>
                   {user.verification_status === 'verified' ? (
-                    <div className="min-w-0 px-2 pb-1.5">
+                    <div className="min-w-0 overflow-hidden px-2 pb-1.5">
                       <VerificationBadge
                         status="verified"
                         size="readable"

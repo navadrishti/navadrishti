@@ -9,12 +9,39 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { StyledSelect } from "@/components/ui/styled-select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Search, Sparkles, ArrowRight, CheckCircle2, Pencil, Trash2 } from "lucide-react"
+import { Search, Sparkles, ArrowRight, CheckCircle2, Pencil, Trash2, MapPin } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
 import { CSR_SCHEDULE_VII_CATEGORIES } from "@/lib/categories"
 import { formatDisplayDate, isCampaignStarted, isVolunteerRegistrationPastDeadline } from "@/lib/format-date"
 import { getVolunteerButtonState, sumVolunteerApplicationCount } from "@/lib/campaign-volunteer-utils"
 import { AGENT_NAMES, AGENT_ROUTES } from "@/lib/ai-suite"
+
+const compactControlClass = "h-9 text-sm"
+
+const BUDGET_OPTIONS = [
+  { value: "all", label: "Any budget" },
+  { value: "under_1l", label: "Under ₹1L" },
+  { value: "1l_10l", label: "₹1L – ₹10L" },
+  { value: "10l_50l", label: "₹10L – ₹50L" },
+  { value: "50l_plus", label: "₹50L+" },
+]
+
+const VOLUNTEER_SLOT_OPTIONS = [
+  { value: "all", label: "Any volunteer slots" },
+  { value: "open", label: "Slots open" },
+  { value: "full", label: "No open slots" },
+]
+
+const matchesBudgetBand = (budgetInr: number | null | undefined, band: string) => {
+  if (band === "all") return true
+  const amount = Number(budgetInr || 0)
+  if (!Number.isFinite(amount) || amount <= 0) return false
+  if (band === "under_1l") return amount < 100_000
+  if (band === "1l_10l") return amount >= 100_000 && amount < 1_000_000
+  if (band === "10l_50l") return amount >= 1_000_000 && amount < 5_000_000
+  if (band === "50l_plus") return amount >= 5_000_000
+  return true
+}
 
 const getInitials = (name: string) => {
   const parts = name.trim().split(/\s+/).filter(Boolean)
@@ -55,6 +82,7 @@ interface Campaign {
   invitedOffers?: number
   volunteerCount?: number
   volunteerLimit?: number
+  budgetInr?: number | null
   appliedByCurrentUser?: boolean
   companyId?: number | null
   companyInitials?: string
@@ -73,6 +101,7 @@ interface CampaignApiItem {
   status: string | null
   company_id: number | null
   company_name?: string | null
+  budget_inr?: number | null
   created_at: string
   start_date?: string | null
   end_date?: string | null
@@ -148,7 +177,10 @@ export default function CSRCampaignsPage() {
   const { user } = useAuth()
   const allVerified = Boolean(user?.email_verified && user?.phone_verified && user?.verification_status === 'verified')
   const [searchQuery, setSearchQuery] = useState("")
+  const [locationFilter, setLocationFilter] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("all")
+  const [selectedBudget, setSelectedBudget] = useState("all")
+  const [selectedVolunteerSlots, setSelectedVolunteerSlots] = useState("all")
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [loading, setLoading] = useState(true)
   const [isHydrated, setIsHydrated] = useState(false)
@@ -187,6 +219,7 @@ export default function CSRCampaignsPage() {
       invitedOffers: Array.isArray(metrics.invited_offer_ids) ? metrics.invited_offer_ids.length : 0,
       volunteerCount,
       volunteerLimit,
+      budgetInr: Number(item.budget_inr || 0) > 0 ? Number(item.budget_inr) : null,
       appliedByCurrentUser,
       companyId: item.company_id,
       companyInitials: getInitials(companyName || 'Company'),
@@ -277,14 +310,45 @@ export default function CSRCampaignsPage() {
 
   const categories = useMemo(() => ['all', ...CSR_SCHEDULE_VII_CATEGORIES], [])
 
+  const hasActiveFilters = useMemo(
+    () =>
+      Boolean(searchQuery.trim())
+      || Boolean(locationFilter.trim())
+      || selectedCategory !== 'all'
+      || selectedBudget !== 'all'
+      || selectedVolunteerSlots !== 'all',
+    [searchQuery, locationFilter, selectedCategory, selectedBudget, selectedVolunteerSlots]
+  )
+
   const filteredCampaigns = campaigns.filter(campaign => {
-    const matchesSearch = campaign.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         campaign.company.toLowerCase().includes(searchQuery.toLowerCase())
+    const query = searchQuery.trim().toLowerCase()
+    const locationTerm = locationFilter.trim().toLowerCase()
+    const matchesSearch = !query
+      || campaign.title.toLowerCase().includes(query)
+      || campaign.company.toLowerCase().includes(query)
+      || campaign.description.toLowerCase().includes(query)
+    const matchesLocation = !locationTerm || campaign.location.toLowerCase().includes(locationTerm)
     const matchesCategory = selectedCategory === 'all' || campaign.category === selectedCategory
+    const matchesBudget = matchesBudgetBand(campaign.budgetInr, selectedBudget)
+    const limit = Number(campaign.volunteerLimit || 0)
+    const count = Number(campaign.volunteerCount || 0)
+    const hasOpenSlots = limit > 0 && count < limit
+    const matchesVolunteerSlots =
+      selectedVolunteerSlots === 'all'
+      || (selectedVolunteerSlots === 'open' && hasOpenSlots)
+      || (selectedVolunteerSlots === 'full' && !hasOpenSlots)
     const isUpcoming = !isCampaignStarted(campaign.start_date)
     const isDraftHiddenFromPublic = String(campaign.status || '').toLowerCase() === 'draft' && !isCompanyOwner(campaign.companyId)
-    return matchesSearch && matchesCategory && isUpcoming && !isDraftHiddenFromPublic
+    return matchesSearch && matchesLocation && matchesCategory && matchesBudget && matchesVolunteerSlots && isUpcoming && !isDraftHiddenFromPublic
   })
+
+  const clearFilters = () => {
+    setSearchQuery('')
+    setLocationFilter('')
+    setSelectedCategory('all')
+    setSelectedBudget('all')
+    setSelectedVolunteerSlots('all')
+  }
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -346,27 +410,70 @@ export default function CSRCampaignsPage() {
           </div>
         )}
 
-        <div className="mb-6 grid gap-6 md:grid-cols-2">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search campaigns by name or company..."
-              className="pl-8"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+        <section className="mb-6 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+          <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+            Filters
           </div>
-          <div className="flex gap-4">
-            <div className="relative flex-1">
-              <StyledSelect
-                value={selectedCategory}
-                options={categoryOptions}
-                placeholder="All Categories"
-                onValueChange={setSelectedCategory}
+
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+              <Input
+                placeholder="Search campaigns or company..."
+                className={`${compactControlClass} pl-8`}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
+
+            <div className="relative">
+              <MapPin className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+              <Input
+                value={locationFilter}
+                onChange={(e) => setLocationFilter(e.target.value)}
+                placeholder="State or city"
+                className={`${compactControlClass} pl-8`}
+              />
+            </div>
+
+            <StyledSelect
+              value={selectedCategory}
+              options={categoryOptions}
+              placeholder="All Categories"
+              onValueChange={setSelectedCategory}
+              className={compactControlClass}
+            />
+
+            <StyledSelect
+              value={selectedBudget}
+              options={BUDGET_OPTIONS}
+              placeholder="Any budget"
+              onValueChange={setSelectedBudget}
+              className={compactControlClass}
+            />
+
+            <StyledSelect
+              value={selectedVolunteerSlots}
+              options={VOLUNTEER_SLOT_OPTIONS}
+              placeholder="Any volunteer slots"
+              onValueChange={setSelectedVolunteerSlots}
+              className={compactControlClass}
+            />
           </div>
-        </div>
+
+          <div className="mt-3 flex flex-col gap-2 border-t border-slate-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-slate-500">
+              {loading
+                ? 'Loading campaigns...'
+                : `${filteredCampaigns.length} campaign${filteredCampaigns.length === 1 ? '' : 's'} match your filters`}
+            </p>
+            {hasActiveFilters ? (
+              <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-slate-600" onClick={clearFilters}>
+                Clear filters
+              </Button>
+            ) : null}
+          </div>
+        </section>
 
         <div className="min-h-[400px]">
           {loading ? (
@@ -522,10 +629,7 @@ export default function CSRCampaignsPage() {
               <p className="mb-4 text-muted-foreground">No campaigns match your current search or filters.</p>
               <Button
                 variant="outline"
-                onClick={() => {
-                  setSearchQuery("")
-                  setSelectedCategory("all")
-                }}
+                onClick={clearFilters}
               >
                 Clear Filters
               </Button>

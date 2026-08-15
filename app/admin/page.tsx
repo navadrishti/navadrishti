@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/lib/auth-context';
 import { DashboardQuickSidebar } from '@/components/dashboard-quick-sidebar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -18,8 +17,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast as sonnerToast } from 'sonner';
-import { GovernmentAdminManagement } from '@/components/government-admin-management';
 import { NavadrishtCAManagement } from '@/components/navadrishti-ca-management';
+import { DocumentFileViewer } from '@/components/ca-verification-review';
 import { AdminConsoleHeader, AdminPortalMain, AdminPortalShell } from './admin-layout-client';
 import {
   AdminConsoleSkeleton,
@@ -34,10 +33,13 @@ import {
 } from '@/components/evidence-verification/portal-ui';
 import { cn } from '@/lib/utils';
 import {
-  Gauge,
+  getAccountLockUntil,
+  getAdminModeration,
+  isPermanentlyBannedAccount,
+} from '@/lib/auth';
+import {
   PencilLine,
   Trash2,
-  Search,
 } from 'lucide-react';
 
 type ServiceOffer = {
@@ -58,11 +60,15 @@ type AdminUserItem = {
   id: number;
   name: string;
   email: string;
+  phone?: string | null;
   user_type: 'individual' | 'ngo' | 'company' | 'admin';
-  verification_status: 'unverified' | 'pending' | 'verified';
+  verification_status: 'unverified' | 'pending' | 'verified' | 'suspended';
+  account_status?: string | null;
+  locked_until?: string | null;
   city?: string | null;
   state_province?: string | null;
   profile_image?: string | null;
+  profile_data?: Record<string, unknown> | null;
   created_at?: string;
   updated_at?: string;
   reverification_pending?: boolean;
@@ -89,7 +95,6 @@ type OverviewData = {
     service_request_projects: Array<any>;
     posts: Array<any>;
     support_tickets: Array<any>;
-    announcements: Array<any>;
   };
 };
 
@@ -136,10 +141,10 @@ type SupportTicketMessage = {
 
 const supportFilterButtonClass = (active: boolean) =>
   cn(
-    'inline-flex h-10 w-full items-center justify-center rounded-md border px-3 text-sm font-medium transition-colors',
+    'inline-flex h-10 w-full items-center justify-center whitespace-nowrap rounded-md border px-2 text-sm font-medium',
     active
-      ? 'border-blue-600 bg-blue-600 text-white shadow-sm hover:border-blue-500 hover:bg-blue-500'
-      : 'border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700'
+      ? 'border-udaan-blue bg-udaan-blue text-white'
+      : 'border-slate-200 bg-white text-slate-700'
   );
 
 const emptyRequestDraft = {
@@ -169,6 +174,33 @@ const emptyUserDraft = {
   user_type: 'individual',
   verification_status: 'unverified',
 };
+
+function adminUserVerificationLabel(user: Pick<AdminUserItem, 'verification_status' | 'reverification_pending'>) {
+  if (user.reverification_pending) return 'reverification pending';
+  const status = String(user.verification_status || 'unverified').toLowerCase();
+  if (status === 'verified') return 'verified';
+  if (status === 'pending') return 'pending';
+  return 'unverified';
+}
+
+function adminUserVerificationBadgeClass(label: string) {
+  const normalized = label.toLowerCase();
+  if (normalized === 'verified') {
+    return 'pointer-events-none border-emerald-200 bg-emerald-100 text-emerald-800 hover:bg-emerald-100';
+  }
+  if (normalized === 'pending' || normalized === 'reverification pending') {
+    return 'pointer-events-none border-amber-200 bg-amber-100 text-amber-800 hover:bg-amber-100';
+  }
+  return 'pointer-events-none border-slate-200 bg-slate-100 text-slate-700 hover:bg-slate-100';
+}
+
+function adminUserModerationLabel(user: AdminUserItem) {
+  if (isPermanentlyBannedAccount(user)) return 'banned';
+  const until = getAccountLockUntil(user);
+  if (until) return `suspended until ${until.toISOString().slice(0, 10)}`;
+  if (String(user.account_status || '').toLowerCase() === 'suspended') return 'suspended';
+  return null;
+}
 
 const emptyPostDraft = {
   content: '',
@@ -245,10 +277,8 @@ const ADMIN_TAB_VALUES = new Set([
   'users',
   'requests',
   'campaigns',
-  'posts',
   'support',
   'refunds',
-  'government-admins',
   'ca-credentials',
 ]);
 
@@ -605,7 +635,35 @@ function ReverificationReviewPanel({
   );
 }
 
-function TicketFullDetails({ ticket }: { ticket: any }) {
+function supportStatusTone(status?: string | null) {
+  const normalized = String(status || '').toLowerCase();
+  if (normalized === 'open') return 'border-udaan-blue/30 bg-udaan-blue/10 text-udaan-blue';
+  if (normalized === 'in_progress') return 'border-amber-200 bg-amber-50 text-amber-800';
+  if (normalized === 'resolved') return 'border-emerald-200 bg-emerald-50 text-emerald-800';
+  if (normalized === 'closed') return 'border-slate-200 bg-slate-100 text-slate-700';
+  return 'border-slate-200 bg-slate-100 text-slate-700';
+}
+
+function SupportStatusTag({ status }: { status?: string | null }) {
+  return (
+    <span
+      className={cn(
+        'inline-flex shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-semibold capitalize',
+        supportStatusTone(status)
+      )}
+    >
+      {String(status || 'unknown').replace('_', ' ')}
+    </span>
+  );
+}
+
+function TicketFullDetails({
+  ticket,
+  onViewProof,
+}: {
+  ticket: any;
+  onViewProof?: (url: string) => void;
+}) {
   if (!ticket) return null;
   return (
     <AdminDetailSection title="Full ticket record">
@@ -617,7 +675,20 @@ function TicketFullDetails({ ticket }: { ticket: any }) {
           { label: 'User', value: formatAdminDetailValue(ticket.user_name || ticket.user?.name) },
           { label: 'User email', value: formatAdminDetailValue(ticket.user_email || ticket.user?.email) },
           { label: 'User type', value: formatAdminDetailValue(ticket.user_type || ticket.user?.user_type) },
-          { label: 'Proof URL', value: ticket.proof_url ? <a href={ticket.proof_url} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline">Open proof</a> : '—' },
+          {
+            label: 'Proof',
+            value: ticket.proof_url ? (
+              <button
+                type="button"
+                onClick={() => onViewProof?.(ticket.proof_url)}
+                className="text-udaan-blue"
+              >
+                Open proof
+              </button>
+            ) : (
+              '—'
+            ),
+          },
           { label: 'Created', value: formatAdminDetailValue(ticket.created_at) },
           { label: 'Updated', value: formatAdminDetailValue(ticket.updated_at) },
           { label: 'Resolved', value: formatAdminDetailValue(ticket.resolved_at) },
@@ -650,8 +721,8 @@ const filterButtonClass = (active: boolean) =>
   cn(
     'inline-flex h-10 w-full items-center justify-center rounded-md border px-3 text-sm font-medium transition-colors',
     active
-      ? 'border-blue-600 bg-blue-600 text-white shadow-sm hover:border-blue-500 hover:bg-blue-500'
-      : 'border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700'
+      ? 'border-udaan-blue bg-udaan-blue text-white'
+      : 'border-slate-200 bg-white text-slate-700 hover:border-udaan-blue/40 hover:bg-udaan-blue/[0.04] hover:text-udaan-blue'
   );
 
 const statusTone = (value?: string | null) => {
@@ -772,7 +843,7 @@ export function AdminRefundsPanel() {
             <button type="button" onClick={() => setFilter('refundable')} className={filterButtonClass(filter === 'refundable')}>Refundable</button>
             <button type="button" onClick={() => setFilter('refunded')} className={filterButtonClass(filter === 'refunded')}>Refunded</button>
           </div>
-          <Button type="button" className="h-10 w-full bg-blue-600 hover:bg-blue-500" onClick={loadPayments} disabled={loading}>
+          <Button type="button" className="h-10 w-full bg-udaan-blue text-white hover:bg-udaan-blue/90" onClick={loadPayments} disabled={loading}>
             {loading ? 'Refreshing...' : 'Refresh payments'}
           </Button>
 
@@ -904,7 +975,6 @@ export function AdminRefundsPanel() {
 
 export default function AdminPage() {
   const router = useRouter();
-  const { user } = useAuth();
 
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -917,6 +987,9 @@ export default function AdminPage() {
   const setActiveTab = useCallback((tab: string) => {
     if (!ADMIN_TAB_VALUES.has(tab)) return;
     persistAdminActiveTab(tab);
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    }
   }, []);
   const [overview, setOverview] = useState<OverviewData | null>(null);
   const [health, setHealth] = useState<HealthData | null>(null);
@@ -933,14 +1006,14 @@ export default function AdminPage() {
   const [savingProject, setSavingProject] = useState(false);
   const [deletingProject, setDeletingProject] = useState(false);
   const [adminUsers, setAdminUsers] = useState<AdminUserItem[]>([]);
-  const [pendingReverifications, setPendingReverifications] = useState<ReverificationSummary[]>([]);
   const [selectedReverification, setSelectedReverification] = useState<ReverificationSummary | null>(null);
   const [reverificationRejectReason, setReverificationRejectReason] = useState('');
   const [processingReverification, setProcessingReverification] = useState(false);
-  const [showReverificationOnly, setShowReverificationOnly] = useState(false);
   const [selectedUser, setSelectedUser] = useState<AdminUserItem | null>(null);
   const [userDraft, setUserDraft] = useState(emptyUserDraft);
   const [savingUser, setSavingUser] = useState(false);
+  const [suspendDays, setSuspendDays] = useState('7');
+  const [moderatingUser, setModeratingUser] = useState(false);
   const [adminProjects, setAdminProjects] = useState<any[]>([]);
   const [adminRequests, setAdminRequests] = useState<any[]>([]);
   const [adminPosts, setAdminPosts] = useState<any[]>([]);
@@ -956,10 +1029,10 @@ export default function AdminPage() {
   const [supportStatusFilter, setSupportStatusFilter] = useState<SupportTicketStatus | 'all'>('all');
   const [supportBucketFilter, setSupportBucketFilter] = useState<'open' | 'closed' | 'all'>('open');
   const [selectedTicketDetail, setSelectedTicketDetail] = useState<SupportTicket | null>(null);
+  const [viewingSupportProof, setViewingSupportProof] = useState<{ url: string; label: string } | null>(null);
   const [messages, setMessages] = useState<SupportTicketMessage[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
   const [statusUpdate, setStatusUpdate] = useState<SupportTicketStatus>('open');
-  const [adminNotes, setAdminNotes] = useState('');
   const [replyMessage, setReplyMessage] = useState('');
   const [replying, setReplying] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1046,8 +1119,6 @@ export default function AdminPage() {
         setAdminUsers([]);
       }
 
-      setPendingReverifications(reverificationItems);
-
       const [projectsResponse, requestsResponse, postsResponse, ticketsResponse, campaignsResponse] = await Promise.all([
         fetch('/api/admin/service-request-projects?limit=200', { credentials: 'include' }),
         fetch('/api/admin/service-requests?limit=200', { credentials: 'include' }),
@@ -1105,7 +1176,6 @@ export default function AdminPage() {
       setSelectedTicketDetail(data.ticket || null);
       setMessages(Array.isArray(data.messages) ? data.messages : []);
       setStatusUpdate((data.ticket?.status || 'open') as SupportTicketStatus);
-      setAdminNotes(data.ticket?.admin_notes || '');
     } catch (err: any) {
       sonnerToast.error(err?.message || 'Failed to load ticket');
     } finally {
@@ -1115,6 +1185,7 @@ export default function AdminPage() {
 
   const selectTicket = (ticket: SupportTicket) => {
     setSelectedTicketDetail(ticket);
+    setViewingSupportProof(null);
     setReplyMessage('');
     setTrackingLookupId('');
     setTrackingSnapshot(null);
@@ -1158,7 +1229,7 @@ export default function AdminPage() {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ status: statusUpdate, admin_notes: adminNotes, reply_message: replyMessage }),
+        body: JSON.stringify({ status: statusUpdate, reply_message: replyMessage }),
       });
       const data = await response.json();
       if (!response.ok || !data?.success) throw new Error(data?.error || 'Failed to send reply');
@@ -1182,7 +1253,7 @@ export default function AdminPage() {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ status: statusUpdate, admin_notes: adminNotes }),
+        body: JSON.stringify({ status: statusUpdate }),
       });
       const data = await response.json();
       if (!response.ok || !data?.success) throw new Error(data?.error || 'Failed to update ticket');
@@ -1222,24 +1293,33 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (activeTab !== 'support') return;
-    fetchTickets(supportStatusFilter === 'all' ? undefined : supportStatusFilter, supportQuery.trim() || undefined);
-  }, [activeTab, supportStatusFilter]);
+    const delay = supportQuery.trim() ? 300 : 0;
+    const timer = window.setTimeout(() => {
+      fetchTickets(
+        supportStatusFilter === 'all' ? undefined : supportStatusFilter,
+        supportQuery.trim() || undefined
+      );
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [activeTab, supportStatusFilter, supportQuery]);
 
   const handleLogout = async () => {
-    const authCookieNames = ['token', 'user', 'ca-token', 'evidence-verification-token', 'navadrishti-ca-token', 'admin-token', 'govt-admin-token'];
-    const clearAuthCookies = () => {
-      try {
-        authCookieNames.forEach((name) => {
-          document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Lax;`;
-          document.cookie = `${name}=; Path=/api/admin; Max-Age=0; SameSite=Lax;`;
-        });
-      } catch (e) {}
-    };
+    try {
+      sessionStorage.removeItem('admin_tab_session');
+    } catch {
+      // ignore
+    }
 
     try {
       await fetch('/api/admin/logout', { method: 'POST', credentials: 'include' });
     } finally {
-      clearAuthCookies();
+      // Only clear the non-httpOnly leftovers; httpOnly admin-token is cleared by the API.
+      try {
+        document.cookie = 'admin-token=; Path=/; Max-Age=0; SameSite=Strict';
+        document.cookie = 'admin-token=; Path=/api/admin; Max-Age=0; SameSite=Strict';
+      } catch {
+        // ignore
+      }
       router.push('/admin/login');
     }
   };
@@ -1418,7 +1498,6 @@ export default function AdminPage() {
         : current);
     }
 
-    setPendingReverifications(reverificationItems);
     setSelectedReverification(null);
     setReverificationRejectReason('');
   };
@@ -1470,12 +1549,79 @@ export default function AdminPage() {
       }
 
       sonnerToast.success('User updated');
-      setSelectedUser(data.data);
-      setAdminUsers((current) => current.map((item) => (item.id === data.data.id ? data.data : item)));
+      setSelectedUser({ ...data.data, reverification_pending: selectedUser.reverification_pending });
+      setAdminUsers((current) =>
+        current.map((item) =>
+          item.id === data.data.id
+            ? { ...data.data, reverification_pending: item.reverification_pending }
+            : item
+        )
+      );
     } catch (error: any) {
       sonnerToast.error(error?.message || 'Failed to update user');
     } finally {
       setSavingUser(false);
+    }
+  };
+
+  const moderateUser = async (action: 'suspend' | 'unsuspend' | 'ban' | 'unban' | 'delete') => {
+    if (!selectedUser) return;
+
+    if (action === 'delete') {
+      const confirmed = window.confirm(
+        `Delete ${selectedUser.name}? This cannot be undone. Related records may block deletion — use Ban instead if needed.`
+      );
+      if (!confirmed) return;
+    }
+    if (action === 'ban') {
+      const confirmed = window.confirm(
+        `Permanently ban ${selectedUser.name}? The same email and phone will be blocked from registering again.`
+      );
+      if (!confirmed) return;
+    }
+
+    try {
+      setModeratingUser(true);
+      if (action === 'delete') {
+        const response = await fetch(`/api/admin/users/${encodeURIComponent(selectedUser.id)}`, {
+          method: 'DELETE',
+          credentials: 'include',
+        });
+        const data = await response.json();
+        if (!response.ok || !data?.success) {
+          throw new Error(data?.error || 'Failed to delete user');
+        }
+        sonnerToast.success(data.message || 'Account deleted');
+        setAdminUsers((current) => current.filter((item) => item.id !== selectedUser.id));
+        setSelectedUser(null);
+        return;
+      }
+
+      const response = await fetch(`/api/admin/users/${encodeURIComponent(selectedUser.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          action,
+          days: action === 'suspend' ? Number(suspendDays || 7) : undefined,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.error || 'Failed to update account status');
+      }
+
+      sonnerToast.success(data.message || 'Account updated');
+      const nextUser = {
+        ...data.data,
+        reverification_pending: selectedUser.reverification_pending,
+      } as AdminUserItem;
+      setSelectedUser(nextUser);
+      setAdminUsers((current) => current.map((item) => (item.id === nextUser.id ? nextUser : item)));
+    } catch (error: any) {
+      sonnerToast.error(error?.message || 'Failed to update account');
+    } finally {
+      setModeratingUser(false);
     }
   };
 
@@ -1788,7 +1934,6 @@ export default function AdminPage() {
     pushActivities(recent.service_request_projects, 'project', (item) => 'CSR project added', (item) => item?.title || item?.ngo?.name || 'New project created');
     pushActivities(recent.posts, 'post', (item) => 'Post published', (item) => item?.content || item?.author?.name || 'New post created');
     pushActivities(recent.support_tickets, 'ticket', (item) => 'Support ticket opened', (item) => item?.title || item?.user_name || 'New ticket created');
-    pushActivities(recent.announcements, 'announcement', (item) => 'Announcement posted', (item) => item?.title || item?.content || 'New announcement created');
 
     return activities
       .sort((a, b) => b.timestamp - a.timestamp)
@@ -1821,12 +1966,9 @@ export default function AdminPage() {
   }, [adminProjects, projectQuery]);
 
   const filteredUsers = useMemo(() => {
-    const baseUsers = showReverificationOnly
-      ? adminUsers.filter((item) => item.reverification_pending)
-      : adminUsers;
     const query = userQuery.trim();
-    if (!query) return baseUsers;
-    return baseUsers.filter((item) => (
+    if (!query) return adminUsers;
+    return adminUsers.filter((item) => (
       textMatch(item.name, query)
       || textMatch(item.email, query)
       || textMatch(item.user_type, query)
@@ -1835,7 +1977,7 @@ export default function AdminPage() {
       || textMatch(item.state_province, query)
       || textMatch(item.id, query)
     ));
-  }, [adminUsers, userQuery, showReverificationOnly]);
+  }, [adminUsers, userQuery]);
 
   const filteredRequests = useMemo(() => {
     const query = requestQuery.trim();
@@ -1898,6 +2040,7 @@ export default function AdminPage() {
         || String(ticket.description || '').toLowerCase().includes(query)
         || String(ticket.ticket_id || '').toLowerCase().includes(query)
         || String(ticket.user_name || ticket.user?.name || '').toLowerCase().includes(query)
+        || String(ticket.user_email || ticket.user?.email || '').toLowerCase().includes(query)
       );
     });
   }, [tickets, supportQuery, supportStatusFilter, supportBucketFilter]);
@@ -1906,10 +2049,9 @@ export default function AdminPage() {
     return (
       <AdminPortalShell>
         <AdminConsoleHeader
-          accountName={user?.name}
+          accountName="Administrator"
           onLogout={handleLogout}
           onRefresh={refreshDashboard}
-          onSupport={() => setActiveTab('support')}
         />
 
         <AdminPortalMain className="max-w-7xl">
@@ -1926,10 +2068,9 @@ export default function AdminPage() {
   return (
     <AdminPortalShell>
       <AdminConsoleHeader
-        accountName={user?.name}
+        accountName="Administrator"
         onLogout={handleLogout}
         onRefresh={refreshDashboard}
-        onSupport={() => setActiveTab('support')}
       />
 
       <AdminPortalMain className="max-w-7xl">
@@ -1942,20 +2083,18 @@ export default function AdminPage() {
               { value: 'users', label: 'People' },
               { value: 'requests', label: 'Requests' },
               { value: 'campaigns', label: 'CSR Campaigns' },
-              { value: 'posts', label: 'Posts' },
               { value: 'support', label: 'Support' },
               { value: 'refunds', label: 'Refunds' },
-              { value: 'government-admins', label: 'Govt Admins' },
               { value: 'ca-credentials', label: 'CA Credentials' },
             ]}
             activeTab={activeTab}
             onSelect={setActiveTab}
-            desktopClassName="lg:col-span-3 lg:sticky lg:top-6"
+            desktopClassName="lg:col-span-3"
             triggerLabel="Admin Menu"
           />
 
           <Card className="h-full min-h-0 overflow-hidden border-slate-200 bg-white text-slate-900 shadow-sm lg:col-span-9">
-            <CardContent className="h-full min-h-0 overflow-y-auto pt-6 pr-4 lg:overflow-y-auto">
+            <CardContent className="h-full min-h-0 overflow-y-auto pt-6 pr-4 [scrollbar-gutter:stable] lg:overflow-y-auto">
             {activeTab === 'overview' && (
             <div className="mt-0 h-full min-h-0 space-y-6 overflow-y-auto pr-1">
               <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
@@ -2102,7 +2241,7 @@ export default function AdminPage() {
             )}
 
             {activeTab === 'projects' && (
-            <div className="grid h-full min-h-0 gap-6 overflow-x-hidden overflow-y-auto pr-1 xl:grid-cols-[0.85fr_1.15fr]">
+            <div className="grid h-full min-h-0 gap-6 overflow-x-hidden pr-1 xl:grid-cols-[0.85fr_1.15fr]">
               <Card className="min-w-0 border-blue-100 bg-white text-slate-900">
                 <CardHeader>
                   <CardTitle className="text-slate-900">CSR projects</CardTitle>
@@ -2185,42 +2324,6 @@ export default function AdminPage() {
                     <p className="text-sm font-medium text-slate-700">Loaded users</p>
                     <p className="mt-1 text-2xl font-bold text-slate-900">{userCount}</p>
                   </div>
-                  <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-medium text-amber-900">Pending reverifications</p>
-                        <p className="mt-1 text-2xl font-bold text-amber-900">{pendingReverifications.length}</p>
-                      </div>
-                      <Button
-                        type="button"
-                        variant={showReverificationOnly ? 'default' : 'outline'}
-                        className={showReverificationOnly ? 'bg-amber-600 hover:bg-amber-500' : 'border-amber-300 bg-white text-amber-800 hover:bg-amber-100'}
-                        onClick={() => setShowReverificationOnly((current) => !current)}
-                      >
-                        {showReverificationOnly ? 'Showing queue' : 'Show queue only'}
-                      </Button>
-                    </div>
-                  </div>
-                  {pendingReverifications.length > 0 ? (
-                    <div className="space-y-2">
-                      {pendingReverifications.slice(0, 5).map((item) => (
-                        <button
-                          key={item.user_id}
-                          type="button"
-                          onClick={() => {
-                            const matchedUser = adminUsers.find((userItem) => userItem.id === item.user_id);
-                            if (matchedUser) {
-                              void selectUser(matchedUser);
-                            }
-                          }}
-                          className="w-full rounded-xl border border-amber-200 bg-white px-3 py-2 text-left hover:bg-amber-50"
-                        >
-                          <p className="text-sm font-medium text-slate-900">{item.name}</p>
-                          <p className="text-xs text-slate-500">{item.email}</p>
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
                   {filteredUsers.map((adminUser) => (
                     <button key={adminUser.id} onClick={() => selectUser(adminUser)} className={`w-full rounded-2xl border p-4 text-left transition duration-200 overflow-hidden ${selectedUser?.id === adminUser.id ? 'border-blue-400 bg-blue-50' : 'border-blue-100 bg-white hover:bg-slate-50'}`}>
                       <div className="flex items-center justify-between gap-2 min-w-0">
@@ -2229,9 +2332,18 @@ export default function AdminPage() {
                           <p className="text-xs text-slate-500 truncate">{adminUser.email}</p>
                         </div>
                         <div className="flex flex-col items-end gap-1 shrink-0">
-                          <Badge className={statusTone(adminUser.verification_status)}>{adminUser.verification_status}</Badge>
-                          {adminUser.reverification_pending ? (
-                            <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">Reverify pending</Badge>
+                          {(() => {
+                            const verificationLabel = adminUserVerificationLabel(adminUser);
+                            return (
+                              <Badge className={adminUserVerificationBadgeClass(verificationLabel)}>
+                                {verificationLabel}
+                              </Badge>
+                            );
+                          })()}
+                          {adminUserModerationLabel(adminUser) ? (
+                            <Badge className="pointer-events-none border-rose-200 bg-rose-100 text-rose-800 hover:bg-rose-100">
+                              {adminUserModerationLabel(adminUser)}
+                            </Badge>
                           ) : null}
                           <span className="text-xs text-slate-500">{adminUser.user_type}</span>
                         </div>
@@ -2286,7 +2398,80 @@ export default function AdminPage() {
                         </Select>
                       </div>
                       <div className="flex flex-wrap gap-3">
-                        <Button onClick={saveUser} disabled={savingUser} className="bg-blue-600 hover:bg-blue-500"><PencilLine className="mr-2 h-4 w-4" />{savingUser ? 'Saving...' : 'Save changes'}</Button>
+                        <Button onClick={saveUser} disabled={savingUser || moderatingUser} className="bg-blue-600 hover:bg-blue-500"><PencilLine className="mr-2 h-4 w-4" />{savingUser ? 'Saving...' : 'Save changes'}</Button>
+                      </div>
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">Account moderation</p>
+                          {adminUserModerationLabel(selectedUser) ? (
+                            <p className="mt-2 text-xs font-medium text-rose-700">
+                              Current status: {adminUserModerationLabel(selectedUser)}
+                              {getAdminModeration(selectedUser.profile_data).reason
+                                ? ` · ${getAdminModeration(selectedUser.profile_data).reason}`
+                                : ''}
+                            </p>
+                          ) : (
+                            <p className="mt-2 text-xs text-slate-600">No active suspension or ban.</p>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap items-end gap-2">
+                          <div className="w-28">
+                            <label className="mb-1 block text-xs text-slate-600">Suspend days</label>
+                            <Input
+                              type="number"
+                              min={1}
+                              max={90}
+                              value={suspendDays}
+                              onChange={(event) => setSuspendDays(event.target.value)}
+                              className="border-blue-200 bg-white text-slate-900"
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            disabled={moderatingUser}
+                            className="border-amber-300 bg-white text-amber-800 hover:bg-amber-50"
+                            onClick={() => moderateUser('suspend')}
+                          >
+                            Suspend
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            disabled={moderatingUser}
+                            className="border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                            onClick={() => moderateUser('unsuspend')}
+                          >
+                            Clear suspension
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            disabled={moderatingUser}
+                            className="border-rose-300 bg-white text-rose-700 hover:bg-rose-50"
+                            onClick={() => moderateUser('ban')}
+                          >
+                            Permanently ban
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            disabled={moderatingUser}
+                            className="border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                            onClick={() => moderateUser('unban')}
+                          >
+                            Clear ban
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            disabled={moderatingUser}
+                            onClick={() => moderateUser('delete')}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete account
+                          </Button>
+                        </div>
                       </div>
                     </>
                   )}
@@ -2369,8 +2554,8 @@ export default function AdminPage() {
             )}
 
             {activeTab === 'campaigns' && (
-            <div className="grid h-full min-h-0 gap-6 overflow-x-hidden overflow-y-auto pr-1 xl:grid-cols-[0.85fr_1.15fr]">
-              <Card className="border-blue-100 bg-white text-slate-900 min-w-0">
+            <div className="grid h-full min-h-0 gap-6 overflow-x-hidden pr-1 xl:grid-cols-[0.85fr_1.15fr]">
+              <Card className="min-w-0 border-blue-100 bg-white text-slate-900">
                 <CardHeader>
                   <CardTitle className="text-slate-900">All CSR campaigns</CardTitle>
                   <Input
@@ -2446,97 +2631,36 @@ export default function AdminPage() {
             </div>
             )}
 
-            {activeTab === 'posts' && (
-            <div className="grid h-full min-h-0 gap-6 overflow-x-hidden overflow-y-auto pr-1 xl:grid-cols-[0.85fr_1.15fr]">
-              <Card className="border-blue-100 bg-white text-slate-900 min-w-0">
-                <CardHeader>
-                  <CardTitle className="text-slate-900">All posts</CardTitle>
-                  <Input
-                    value={postQuery}
-                    onChange={(e) => setPostQuery(e.target.value)}
-                    placeholder="Search post by id, author, text, category, visibility"
-                    className="mt-3 border-blue-200 bg-white text-slate-900 placeholder:text-slate-400"
-                  />
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {filteredPosts.map((post) => (
-                    <button key={post.id} onClick={() => selectPost(post)} className={`w-full rounded-xl border p-4 text-left transition duration-200 ${selectedPost?.id === post.id ? 'border-blue-400 bg-blue-50' : 'border-blue-100 bg-white hover:bg-slate-50'}`}>
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="font-semibold text-slate-900">{post.author?.name || 'Unknown author'}</p>
-                          <p className="text-xs text-slate-500">{new Date(post.created_at || post.published_at || Date.now()).toLocaleString('en-IN')}</p>
-                        </div>
-                        <Badge className={statusTone(post.visibility)}>{post.visibility || 'public'}</Badge>
-                      </div>
-                      <p className="mt-2 line-clamp-3 text-sm text-slate-600">{post.content}</p>
-                    </button>
-                  ))}
-                  {filteredPosts.length === 0 ? <p className="text-sm text-slate-500">No posts match your search.</p> : null}
-                </CardContent>
-              </Card>
-
-              <Card className="border-blue-100 bg-white text-slate-900">
-                <CardHeader>
-                  <CardTitle className="text-slate-900">Post editor</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {!selectedPost ? (
-                    <p className="text-sm text-slate-500">Select a post to edit it.</p>
-                  ) : (
-                    <>
-                      <PostFullDetails post={selectedPost} />
-                      <div className="grid gap-3 md:grid-cols-2">
-                        <Input value={postDraft.category} onChange={(e) => setPostDraft((prev) => ({ ...prev, category: e.target.value }))} placeholder="Category" className="border-blue-200 bg-white text-slate-900 placeholder:text-slate-400" />
-                        <Select value={postDraft.visibility} onValueChange={(value) => setPostDraft((prev) => ({ ...prev, visibility: value }))}>
-                          <SelectTrigger className="border-blue-200 bg-white text-slate-900">
-                            <SelectValue placeholder="Visibility" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {postVisibilityOptions.map((option) => (
-                              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Input value={postDraft.location} onChange={(e) => setPostDraft((prev) => ({ ...prev, location: e.target.value }))} placeholder="Location" className="md:col-span-2 border-blue-200 bg-white text-slate-900 placeholder:text-slate-400" />
-                        <Input value={postDraft.tags} onChange={(e) => setPostDraft((prev) => ({ ...prev, tags: e.target.value }))} placeholder="Tags, comma separated" className="md:col-span-2 border-blue-200 bg-white text-slate-900 placeholder:text-slate-400" />
-                      </div>
-                      <Textarea value={postDraft.content} onChange={(e) => setPostDraft((prev) => ({ ...prev, content: e.target.value }))} rows={8} placeholder="Post content" className="border-blue-200 bg-white text-slate-900 placeholder:text-slate-400" />
-                      <div className="flex flex-wrap gap-3">
-                        <Button onClick={savePost} disabled={savingPost} className="bg-cyan-600 hover:bg-cyan-500"><PencilLine className="mr-2 h-4 w-4" />{savingPost ? 'Saving...' : 'Save changes'}</Button>
-                        <Button onClick={deletePost} disabled={deletingPost} variant="destructive"><Trash2 className="mr-2 h-4 w-4" />{deletingPost ? 'Deleting...' : 'Delete post'}</Button>
-                        <Button variant="outline" className="border-blue-200 bg-white text-blue-700 hover:bg-blue-50" onClick={() => router.push(`/posts/${selectedPost.id}`)}>Open live page</Button>
-                      </div>
-                    </>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-            )}
-
             {activeTab === 'support' && (
             <div className="grid min-h-0 gap-6 overflow-x-hidden xl:grid-cols-2 xl:items-stretch">
-              <Card className="flex min-h-[36rem] flex-col border-blue-100 bg-white">
+              <Card className="flex min-h-[36rem] flex-col border-udaan-blue/15 bg-white">
                 <CardHeader className="border-b border-slate-100 pb-4">
-                  <CardTitle className="flex items-center gap-2 text-slate-900">
-                    <Search className="h-4 w-4 text-blue-600" />
+                  <CardTitle className="text-slate-900">
                     Ticket Inbox
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="flex flex-1 flex-col gap-4 pt-6">
-                  <Input
-                    value={supportQuery}
-                    onChange={(e) => setSupportQuery(e.target.value)}
-                    placeholder="Search title, description, ticket ID"
-                    className="h-10 border-blue-200 bg-white text-slate-900 placeholder:text-slate-400"
-                  />
-
                   <div className="space-y-2">
                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ticket bucket</p>
                     <div className="grid grid-cols-2 gap-2">
-                      <button type="button" onClick={() => setSupportBucketFilter('open')} className={supportFilterButtonClass(supportBucketFilter === 'open')}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSupportBucketFilter('open');
+                          setSupportStatusFilter('all');
+                        }}
+                        className={supportFilterButtonClass(supportBucketFilter === 'open')}
+                      >
                         Open Tickets
                       </button>
-                      <button type="button" onClick={() => setSupportBucketFilter('closed')} className={supportFilterButtonClass(supportBucketFilter === 'closed')}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSupportBucketFilter('closed');
+                          setSupportStatusFilter('all');
+                        }}
+                        className={supportFilterButtonClass(supportBucketFilter === 'closed')}
+                      >
                         Closed Tickets
                       </button>
                     </div>
@@ -2545,16 +2669,44 @@ export default function AdminPage() {
                   <div className="space-y-2">
                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status</p>
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                      <button type="button" onClick={() => setSupportStatusFilter('open')} className={supportFilterButtonClass(supportStatusFilter === 'open')}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSupportStatusFilter('open');
+                          setSupportBucketFilter('open');
+                        }}
+                        className={supportFilterButtonClass(supportStatusFilter === 'open')}
+                      >
                         Open
                       </button>
-                      <button type="button" onClick={() => setSupportStatusFilter('in_progress')} className={supportFilterButtonClass(supportStatusFilter === 'in_progress')}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSupportStatusFilter('in_progress');
+                          setSupportBucketFilter('open');
+                        }}
+                        className={supportFilterButtonClass(supportStatusFilter === 'in_progress')}
+                      >
                         In Progress
                       </button>
-                      <button type="button" onClick={() => setSupportStatusFilter('resolved')} className={supportFilterButtonClass(supportStatusFilter === 'resolved')}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSupportStatusFilter('resolved');
+                          setSupportBucketFilter('closed');
+                        }}
+                        className={supportFilterButtonClass(supportStatusFilter === 'resolved')}
+                      >
                         Resolved
                       </button>
-                      <button type="button" onClick={() => setSupportStatusFilter('closed')} className={supportFilterButtonClass(supportStatusFilter === 'closed')}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSupportStatusFilter('closed');
+                          setSupportBucketFilter('closed');
+                        }}
+                        className={supportFilterButtonClass(supportStatusFilter === 'closed')}
+                      >
                         Closed
                       </button>
                     </div>
@@ -2564,19 +2716,29 @@ export default function AdminPage() {
                     <Button
                       type="button"
                       variant="outline"
-                      className="h-10 w-full border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
-                      onClick={() => setSupportStatusFilter('all')}
+                      className="h-10 w-full border-slate-200 bg-white text-slate-700"
+                      onClick={() => {
+                        setSupportBucketFilter('all');
+                        setSupportStatusFilter('all');
+                      }}
                     >
                       Show all
                     </Button>
                     <Button
                       type="button"
-                      className="h-10 w-full bg-blue-600 hover:bg-blue-500"
+                      className="h-10 w-full bg-udaan-blue text-white hover:bg-udaan-blue/90"
                       onClick={() => fetchTickets(supportStatusFilter === 'all' ? undefined : supportStatusFilter, supportQuery.trim() || undefined)}
                     >
                       Refresh
                     </Button>
                   </div>
+
+                  <Input
+                    value={supportQuery}
+                    onChange={(e) => setSupportQuery(e.target.value)}
+                    placeholder="Search title, description, ticket ID, user"
+                    className="h-10 border-slate-200 bg-white text-slate-900 placeholder:text-slate-400"
+                  />
 
                   <div className="flex min-h-[14rem] flex-1 flex-col border-t border-slate-100 pt-4">
             {supportLoading ? (
@@ -2597,10 +2759,10 @@ export default function AdminPage() {
                             type="button"
                             onClick={() => selectTicket(ticket)}
                             className={cn(
-                              'w-full rounded-lg border bg-white p-4 text-left transition-all hover:border-blue-300 hover:shadow-sm',
+                              'w-full rounded-lg border border-slate-200 bg-white p-4 text-left outline-none focus-visible:outline-none',
                               selectedTicketDetail?.ticket_id === ticket.ticket_id
-                                ? 'border-blue-400 ring-1 ring-blue-200'
-                                : 'border-blue-100'
+                                ? 'border-udaan-blue bg-udaan-blue/[0.04]'
+                                : 'border-slate-200'
                             )}
                           >
                             <div className="flex items-start justify-between gap-3">
@@ -2610,7 +2772,7 @@ export default function AdminPage() {
                                   {ticket.ticket_id} • {ticket.user_name || ticket.user?.name || 'Unknown user'}
                                 </p>
                               </div>
-                              <Badge className={cn('shrink-0 capitalize', statusTone(ticket.status))}>{ticket.status.replace('_', ' ')}</Badge>
+                              <SupportStatusTag status={ticket.status} />
                             </div>
                             <p className="mt-2 line-clamp-2 text-sm text-gray-600">{ticket.description}</p>
                           </button>
@@ -2621,7 +2783,7 @@ export default function AdminPage() {
                 </CardContent>
               </Card>
 
-              <Card className="flex min-h-[36rem] flex-col border-blue-100 bg-white">
+              <Card className="flex min-h-[36rem] flex-col border-udaan-blue/15 bg-white">
                 <CardHeader className="border-b border-slate-100 pb-4">
                   <CardTitle className="text-slate-900">Ticket Details</CardTitle>
                 </CardHeader>
@@ -2632,6 +2794,12 @@ export default function AdminPage() {
                     </div>
                   ) : detailLoading ? (
                     <AdminTicketDetailSkeleton />
+                  ) : viewingSupportProof ? (
+                    <DocumentFileViewer
+                      url={viewingSupportProof.url}
+                      label={viewingSupportProof.label}
+                      onBack={() => setViewingSupportProof(null)}
+                    />
                   ) : (
                     <div className="flex-1 space-y-5 overflow-y-auto pr-1">
                         <div className="flex items-start justify-between gap-3">
@@ -2639,7 +2807,7 @@ export default function AdminPage() {
                             <p className="text-sm text-slate-500">Ticket ID</p>
                             <p className="text-lg font-semibold">{selectedTicketDetail.ticket_id}</p>
                           </div>
-                          <Badge className={`capitalize ${statusTone(selectedTicketDetail.status)}`}>{selectedTicketDetail.status}</Badge>
+                          <SupportStatusTag status={selectedTicketDetail.status} />
                         </div>
 
                         <div className="grid gap-4 md:grid-cols-2 text-sm">
@@ -2655,7 +2823,15 @@ export default function AdminPage() {
                           </div>
                         </div>
 
-                        <TicketFullDetails ticket={selectedTicketDetail} />
+                        <TicketFullDetails
+                          ticket={selectedTicketDetail}
+                          onViewProof={(url) =>
+                            setViewingSupportProof({
+                              url,
+                              label: `Proof · ${selectedTicketDetail.ticket_id}`,
+                            })
+                          }
+                        />
 
                         <div className="space-y-2">
                           <p className="text-sm font-medium text-slate-500">Messages</p>
@@ -2663,60 +2839,50 @@ export default function AdminPage() {
                             <p className="text-sm text-slate-500">No messages yet.</p>
                           ) : (
                             <div className="space-y-3 rounded-lg border bg-slate-50 p-4">
-                              {messages.map((message) => (
-                                <div key={message.id} className={`rounded-lg border p-3 text-sm ${message.sender_type === 'admin' ? 'bg-blue-50 border-blue-200' : 'bg-white'}`}>
+                              {messages.map((message) => {
+                                const ticketUserName =
+                                  selectedTicketDetail.user_name
+                                  || selectedTicketDetail.user?.name
+                                  || 'User';
+                                const senderLabel =
+                                  message.sender_type === 'admin'
+                                    ? 'Administrator'
+                                    : ticketUserName;
+
+                                return (
+                                <div key={message.id} className={`rounded-lg border p-3 text-sm ${message.sender_type === 'admin' ? 'bg-udaan-blue/5 border-udaan-blue/20' : 'bg-white'}`}>
                                   <div className="mb-1 flex items-center justify-between gap-2 text-xs text-slate-500">
-                                    <span className="font-medium capitalize text-slate-700">{message.sender_type}</span>
-                                    <span>{new Date(message.created_at).toLocaleString('en-IN', { timeZone: 'UTC' })}</span>
+                                    <span className="min-w-0 max-w-[70%] truncate font-medium text-slate-700" title={senderLabel}>
+                                      {senderLabel}
+                                    </span>
+                                    <span className="shrink-0">{new Date(message.created_at).toLocaleString('en-IN', { timeZone: 'UTC' })}</span>
                                   </div>
                                   <p className="whitespace-pre-wrap text-slate-800">{message.content}</p>
                                 </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           )}
-                        </div>
-
-                        <div className="space-y-2">
-                          <p className="text-sm font-medium text-slate-500">Admin Notes</p>
-                          <Textarea value={adminNotes} onChange={(e) => setAdminNotes(e.target.value)} rows={4} placeholder="Internal resolution notes" />
                         </div>
 
                         <div className="space-y-2 rounded-lg border bg-white p-4">
                           <p className="text-sm font-semibold text-slate-900">Reply to User</p>
                           <Textarea value={replyMessage} onChange={(e) => setReplyMessage(e.target.value)} rows={4} placeholder="Write the message the user should receive" />
-                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                            <Button onClick={sendReply} disabled={replying} className="h-10 w-full bg-blue-600 hover:bg-blue-500">
-                              {replying ? 'Sending...' : 'Send Reply'}
-                            </Button>
-                            <Button variant="outline" onClick={() => setStatusUpdate('in_progress')} className="h-10 w-full border-slate-200">
-                              Mark In Progress
-                            </Button>
-                            <Button variant="outline" onClick={() => setStatusUpdate('resolved')} className="h-10 w-full border-slate-200">
-                              Mark Resolved
-                            </Button>
-                          </div>
-                        </div>
-
-                        <div className="space-y-3 rounded-lg border bg-amber-50 p-4">
-                          <p className="text-sm font-semibold text-amber-900">Refunds</p>
-                          <p className="text-xs text-amber-800">
-                            Razorpay refunds are managed in the dedicated Refunds tab. Only admins can initiate refunds.
-                          </p>
-                          <Button type="button" variant="outline" className="h-10 w-full border-amber-300 bg-white text-amber-900 hover:bg-amber-100" onClick={() => setActiveTab('refunds')}>
-                            Open Refunds tab
+                          <Button onClick={sendReply} disabled={replying} className="h-10 w-full bg-udaan-blue text-white hover:bg-udaan-blue/90">
+                            {replying ? 'Sending...' : 'Send Reply'}
                           </Button>
                         </div>
 
-                        <div className="space-y-3 rounded-lg border bg-blue-50 p-4">
-                          <p className="text-sm font-semibold text-blue-900">Delhivery Tracking Lookup</p>
-                          <p className="text-xs text-blue-800">Use this to fetch live shipment status for donor-to-NGO deliveries.</p>
+                        <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
+                          <p className="text-sm font-semibold text-slate-900">Delhivery Tracking Lookup</p>
+                          <p className="text-xs text-slate-600">Use this to fetch live shipment status for donor-to-NGO deliveries.</p>
                           <div className="grid gap-3 md:grid-cols-[1fr_auto]">
-                            <Input value={trackingLookupId} onChange={(e) => setTrackingLookupId(e.target.value)} placeholder="Enter Delhivery tracking ID" />
-                            <Button onClick={lookupDeliveryTracking} disabled={trackingLookupLoading}>{trackingLookupLoading ? 'Checking...' : 'Track Shipment'}</Button>
+                            <Input value={trackingLookupId} onChange={(e) => setTrackingLookupId(e.target.value)} placeholder="Enter Delhivery tracking ID" className="border-slate-200 bg-white" />
+                            <Button onClick={lookupDeliveryTracking} disabled={trackingLookupLoading} className="bg-udaan-blue text-white hover:bg-udaan-blue/90">{trackingLookupLoading ? 'Checking...' : 'Track Shipment'}</Button>
                           </div>
 
                           {trackingSnapshot ? (
-                            <div className="space-y-2 rounded-md border bg-white p-3 text-sm">
+                            <div className="space-y-2 rounded-md border border-slate-200 bg-white p-3 text-sm">
                               <p><span className="font-medium text-gray-600">Provider:</span> {trackingSnapshot.provider || 'delhivery'}</p>
                               <p><span className="font-medium text-gray-600">Tracking ID:</span> {trackingSnapshot.trackingId || 'N/A'}</p>
                               <p><span className="font-medium text-gray-600">Current Status:</span> {trackingSnapshot.currentStatus || 'N/A'}</p>
@@ -2727,7 +2893,7 @@ export default function AdminPage() {
                                   <p className="font-medium text-gray-700">Recent Events</p>
                                   <div className="max-h-48 space-y-2 overflow-auto pr-1">
                                     {trackingSnapshot.events.slice(0, 6).map((event: any, index: number) => (
-                                      <div key={`${event.timestamp || 'event'}-${index}`} className="rounded border bg-slate-50 p-2 text-xs">
+                                      <div key={`${event.timestamp || 'event'}-${index}`} className="rounded border border-slate-200 bg-white p-2 text-xs">
                                         <p className="font-medium text-slate-800">{event.status || 'Update'}</p>
                                         <p className="text-slate-600">{event.location || 'Unknown location'}</p>
                                         <p className="text-slate-500">{event.timestamp ? new Date(event.timestamp).toLocaleString('en-IN', { timeZone: 'UTC' }) : 'Unknown time'}</p>
@@ -2743,15 +2909,23 @@ export default function AdminPage() {
                         <div className="grid gap-3 sm:grid-cols-2">
                           <div className="space-y-2">
                             <p className="text-sm font-medium text-gray-500">Update Status</p>
-                            <select value={statusUpdate} onChange={(e) => setStatusUpdate(e.target.value as SupportTicketStatus)} className="h-10 w-full rounded-md border bg-white px-3 text-sm">
-                              <option value="open">Open</option>
-                              <option value="in_progress">In Progress</option>
-                              <option value="resolved">Resolved</option>
-                              <option value="closed">Closed</option>
-                            </select>
+                            <Select
+                              value={statusUpdate}
+                              onValueChange={(value) => setStatusUpdate(value as SupportTicketStatus)}
+                            >
+                              <SelectTrigger className="h-10 border-blue-200 bg-white text-slate-900">
+                                <SelectValue placeholder="Select status" />
+                              </SelectTrigger>
+                              <SelectContent className="border-blue-100 bg-white">
+                                <SelectItem value="open">Open</SelectItem>
+                                <SelectItem value="in_progress">In Progress</SelectItem>
+                                <SelectItem value="resolved">Resolved</SelectItem>
+                                <SelectItem value="closed">Closed</SelectItem>
+                              </SelectContent>
+                            </Select>
                           </div>
                           <div className="flex items-end">
-                            <Button onClick={updateSelectedTicket} disabled={saving} className="h-10 w-full bg-blue-600 hover:bg-blue-500">
+                            <Button onClick={updateSelectedTicket} disabled={saving} className="h-10 w-full bg-udaan-blue text-white hover:bg-udaan-blue/90">
                               {saving ? 'Saving...' : 'Save Changes'}
                             </Button>
                           </div>
@@ -2765,10 +2939,6 @@ export default function AdminPage() {
 
             {activeTab === 'refunds' && (
             <AdminRefundsPanel />
-            )}
-
-            {activeTab === 'government-admins' && (
-            <GovernmentAdminManagement embedded />
             )}
 
             {activeTab === 'ca-credentials' && (

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
-import { comparePassword, generateToken } from '@/lib/auth';
+import { comparePassword, generateToken, getAccountAccessBlockReason } from '@/lib/auth';
 import { isCompanyCAUser } from '@/lib/company-ca';
 
 // Validation schema for login
@@ -34,6 +34,15 @@ export async function POST(req: NextRequest) {
         { error: 'This account is restricted to the Evidence Verification Portal. Use /evidence-verification/login.' },
         { status: 403 }
       );
+    }
+
+    const accessBlock = getAccountAccessBlockReason({
+      account_status: user.account_status,
+      locked_until: user.locked_until,
+      profile_data: user.profile_data,
+    });
+    if (accessBlock) {
+      return NextResponse.json({ error: accessBlock }, { status: 403 });
     }
     
     // Verify password

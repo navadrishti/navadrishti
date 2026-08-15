@@ -263,10 +263,24 @@ const PHASE1_BLOCKED_ROUTE_PREFIXES = [
   '/ngos/ai-agent',
   '/ngos/ngo-agent',
   '/ngos/ngo-matching',
+  // Phase 1 special portals allowed via URL: /ca and /admin only.
+  // Evidence Verification opens again from Phase 2.
+  '/evidence-verification',
 ] as const;
 
-/** Permanently disabled — do not re-enable in Phase 2. */
-const PERMANENTLY_BLOCKED_ROUTE_PREFIXES = ['/government-admin'] as const;
+/**
+ * Far-future / paused surfaces — blocked in every launch phase (including Phase 2).
+ * Covers government admin + analytics, and social posts (not shipping for now).
+ */
+const PERMANENTLY_BLOCKED_ROUTE_PREFIXES = [
+  '/government-admin',
+  '/posts',
+  '/home',
+] as const;
+
+function matchesRoutePrefix(pathname: string, prefix: string): boolean {
+  return pathname === prefix || pathname.startsWith(`${prefix}/`);
+}
 
 export function getLaunchPhase(): LaunchPhase {
   const raw = String(process.env.NEXT_PUBLIC_LAUNCH_PHASE || '2').trim();
@@ -277,24 +291,40 @@ export function isPhase1Launch(): boolean {
   return getLaunchPhase() === 1;
 }
 
+/** Browser tab / document title for the active launch phase. */
+export function getSiteDocumentTitle(): string {
+  if (isPhase1Launch()) {
+    return 'Navadrishti | CA-Verified NGO Directory for India';
+  }
+  return 'Navadrishti | Digital OS for Social Impact';
+}
+
 export function isPermanentlyBlockedPath(pathname: string): boolean {
-  return PERMANENTLY_BLOCKED_ROUTE_PREFIXES.some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  return PERMANENTLY_BLOCKED_ROUTE_PREFIXES.some((prefix) =>
+    matchesRoutePrefix(pathname, prefix)
   );
 }
 
 export function isPhase1BlockedPath(pathname: string): boolean {
-  if (isPermanentlyBlockedPath(pathname)) {
-    return true;
-  }
-
   if (!isPhase1Launch()) {
     return false;
   }
 
-  return PHASE1_BLOCKED_ROUTE_PREFIXES.some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  return PHASE1_BLOCKED_ROUTE_PREFIXES.some((prefix) =>
+    matchesRoutePrefix(pathname, prefix)
   );
+}
+
+/** True when the path must not be served for the current launch phase. */
+export function isLaunchBlockedPath(pathname: string): boolean {
+  return isPermanentlyBlockedPath(pathname) || isPhase1BlockedPath(pathname);
+}
+
+export function getLaunchBlockedRedirectPath(pathname: string): string {
+  if (isPermanentlyBlockedPath(pathname)) {
+    return '/';
+  }
+  return getLaunchPhaseRedirectPath();
 }
 
 export function getLaunchPhaseRedirectPath(): string {

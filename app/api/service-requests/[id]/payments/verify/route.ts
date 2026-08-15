@@ -4,6 +4,10 @@ import jwt from 'jsonwebtoken';
 import Razorpay from 'razorpay';
 import { db, supabase } from '@/lib/db';
 import { JWT_SECRET } from '@/lib/auth';
+import {
+  assertNgoLiveCsr1,
+  CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE,
+} from '@/lib/server-auth';
 import { resolveFundingTargetInr, resolveFundsRaisedInr } from '@/lib/service-request-allocation';
 import {
   canContributeViaPlatform,
@@ -90,6 +94,16 @@ export async function POST(
 
     if (!canContributeViaPlatform(decoded.user_type)) {
       return NextResponse.json({ error: 'Only companies and individuals can verify direct contributions' }, { status: 403 });
+    }
+
+    if (decoded.user_type === 'company') {
+      const ngoUserId = Number(
+        serviceRequest.ngo_id || serviceRequest.requester_id || serviceRequest.requester?.id || 0
+      );
+      const csrGate = await assertNgoLiveCsr1(ngoUserId, CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE);
+      if (!csrGate.ok) {
+        return NextResponse.json({ error: csrGate.error }, { status: 403 });
+      }
     }
 
     const {
