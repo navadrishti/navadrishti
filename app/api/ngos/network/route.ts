@@ -9,6 +9,8 @@ import {
   formatPastProjectsForSearch,
   getCoverImageUrl,
   getCaComplianceTags,
+  isCaVerifiedAccount,
+  CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE,
   mergeNgoPastProjects,
   ngoIsCsrEligible,
   summarizeExecutionCapacity,
@@ -16,6 +18,7 @@ import {
 } from '@/lib/auth';
 import { CSR_SCHEDULE_VII_CATEGORIES, normalizeCompanyFocusAreasScheduleVii } from '@/lib/categories';
 import { issueCaBadgeNumber } from '@/lib/navadrishti-ca-auth';
+import { rankRecommendedNgosForViewer } from '@/lib/csr-agent/recommendation-utils';
 import {
   buildPricingResponse,
   canContributeViaPlatform,
@@ -189,6 +192,57 @@ export async function GET(request: NextRequest) {
     const compliance = searchParams.get('compliance') || '';
     const registrationType = (searchParams.get('registration_type') || '').trim();
     const verifiedOnly = searchParams.get('verified_only') !== 'false';
+    const recommendMode = ['1', 'true', 'yes'].includes(
+      String(searchParams.get('recommend') || '').trim().toLowerCase()
+    );
+    const shuffleTies = !['0', 'false', 'no'].includes(
+      String(searchParams.get('shuffle') || '1').trim().toLowerCase()
+    );
+
+    let viewer: {
+      id: number
+      user_type: string
+      city: string | null
+      state_province: string | null
+      location: string | null
+      pincode: string | null
+      country: string | null
+      industry: string | null
+      profile_data: Record<string, unknown> | null
+    } | null = null;
+
+    if (recommendMode) {
+      const authHeader = request.headers.get('authorization');
+      const token = authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+      if (token) {
+        try {
+          const decoded = jwt.verify(token, JWT_SECRET) as PaymentJWTPayload;
+          const viewerId = Number(decoded.id || 0);
+          if (viewerId > 0) {
+            const { data: viewerRow } = await supabase
+              .from('users')
+              .select('id, user_type, city, state_province, location, pincode, country, industry, profile_data')
+              .eq('id', viewerId)
+              .maybeSingle();
+            if (viewerRow) {
+              viewer = {
+                id: Number(viewerRow.id),
+                user_type: String(viewerRow.user_type || ''),
+                city: viewerRow.city ?? null,
+                state_province: viewerRow.state_province ?? null,
+                location: viewerRow.location ?? null,
+                pincode: viewerRow.pincode ?? null,
+                country: viewerRow.country ?? null,
+                industry: viewerRow.industry ?? null,
+                profile_data: parseProfileData(viewerRow.profile_data),
+              };
+            }
+          }
+        } catch {
+          viewer = null;
+        }
+      }
+    }
 
     const verificationSelect = verifiedOnly
       ? 'ngo_verifications!inner(verification_status, sector, registration_type, ngo_name, fcra_number)'
@@ -311,6 +365,8 @@ export async function GET(request: NextRequest) {
         profile_image: row.profile_image ?? null,
         cover_image: getCoverImageUrl(profileData) || null,
         location: locationText || row.location || null,
+        city: row.city ?? null,
+        state_province: row.state_province ?? null,
         sector: scheduleViiSectors[0] || null,
         sectors_schedule_vii: scheduleViiSectors,
         registration_type: registrationTypeValue || null,
@@ -335,6 +391,36 @@ export async function GET(request: NextRequest) {
         search_haystack: buildSearchHaystack(row, profileData, ngoVerification, mapped, pastProjects),
       };
     });
+
+    if (recommendMode) {
+      if (!viewer) {
+        return Response.json({
+          success: true,
+          recommended: [],
+          ngos: [],
+          sectors: CSR_SCHEDULE_VII_CATEGORIES,
+          total: 0,
+        });
+      }
+
+      const recommendCatalog = verifiedOnly
+        ? ngos.filter((ngo) => ngo.compliance.verified)
+        : ngos;
+
+      const recommended = rankRecommendedNgosForViewer(recommendCatalog, viewer, {
+        poolSize: 6,
+        displaySize: 4,
+        shuffleTies,
+      }).map(({ search_haystack: _haystack, city: _city, state_province: _state, match_score: _score, ...ngo }) => ngo);
+
+      return Response.json({
+        success: true,
+        recommended,
+        ngos: [],
+        sectors: CSR_SCHEDULE_VII_CATEGORIES,
+        total: recommended.length,
+      });
+    }
 
     if (search) {
       const q = search.toLowerCase();
@@ -384,7 +470,7 @@ export async function GET(request: NextRequest) {
       ngos = ngos.filter((ngo) => normalizeNgoRegistrationType(ngo.registration_type) === wanted);
     }
 
-    const payload = ngos.map(({ search_haystack, ...ngo }) => ngo);
+    const payload = ngos.map(({ search_haystack, city, state_province, ...ngo }) => ngo);
 
     return Response.json({
       success: true,
@@ -412,6 +498,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Only companies and individuals can pay NGOs from the network' }, { status: 403 });
     }
 
+    const { data: payerRow } = await supabase
+      .from('users')
+      .select('id, verification_status')
+      .eq('id', decoded.id)
+      .maybeSingle();
+    if (!payerRow || !isCaVerifiedAccount(payerRow.verification_status)) {
+      return NextResponse.json({ error: CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE }, { status: 403 });
+    }
+
     const body = await request.json().catch(() => ({}));
     const action = String(body?.action || 'create-order').toLowerCase();
     const ngoUserId = Number(body?.ngoId || body?.ngo_id || 0);
@@ -434,16 +529,10 @@ export async function POST(request: NextRequest) {
     }
 
     if (decoded.user_type === 'company') {
-      const { data: ngoRow } = await supabase
-        .from('users')
-        .select('verification_status, profile_data')
-        .eq('id', ngoUserId)
-        .maybeSingle();
-      if (!ngoIsCsrEligible(ngoRow?.verification_status, ngoRow?.profile_data)) {
-        return NextResponse.json(
-          { error: 'Company CSR payments can only go to NGOs with a live CA-allotted CSR-1 tag' },
-          { status: 403 }
-        );
+      const { assertNgoLiveCsr1, CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE } = await import('@/lib/server-auth');
+      const csrGate = await assertNgoLiveCsr1(ngoUserId, CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE);
+      if (!csrGate.ok) {
+        return NextResponse.json({ error: csrGate.error }, { status: 403 });
       }
     }
 

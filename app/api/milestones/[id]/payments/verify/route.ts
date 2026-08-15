@@ -3,6 +3,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
 import { supabase } from '@/lib/db';
 import { getEvidenceApproverContext } from '@/lib/server-evidence-approver-auth';
+import {
+  assertNgoLiveCsr1,
+  CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE,
+} from '@/lib/server-auth';
 
 function safeSignatureMatch(expected: string, received: string): boolean {
   const expectedBuffer = Buffer.from(String(expected || ''), 'utf8');
@@ -62,6 +66,14 @@ export async function POST(
     }
 
     const approver = await getEvidenceApproverContext(request, project.company_user_id);
+
+    const leadNgoUserId = Number(project.ngo_user_id || 0);
+    if (Number.isFinite(leadNgoUserId) && leadNgoUserId > 0) {
+      const csrGate = await assertNgoLiveCsr1(leadNgoUserId, CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE);
+      if (!csrGate.ok) {
+        return NextResponse.json({ error: csrGate.error }, { status: 403 });
+      }
+    }
 
     const expected = crypto
       .createHmac('sha256', keySecret)

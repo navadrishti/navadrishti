@@ -39,6 +39,7 @@ import {
   isDailyRentalEngagementMeta,
 } from '@/lib/service-request-allocation';
 import { openRazorpayCheckout } from '@/lib/razorpay-checkout';
+import { resolveProjectCsrCoverageEndDate } from '@/lib/auth';
 interface OfferRequestItem {
   id: number;
   service_offer_id: number;
@@ -239,6 +240,7 @@ interface NgoDirectoryItem {
   id: number;
   name: string;
   email?: string;
+  csr1_valid_until?: string | null;
 }
 
 const formatStatusLabel = (status: string): string => {
@@ -879,10 +881,11 @@ function CompanyDashboardContent() {
   const fetchNgoDirectory = async () => {
     try {
       setLoadingNgoDirectory(true);
-      const response = await fetch('/api/ngos/list');
+      const response = await fetch('/api/ngos/list?limit=250');
       const payload = await response.json();
       if (response.ok && payload?.success) {
-        setNgoDirectory(Array.isArray(payload.ngos) ? payload.ngos : []);
+        const rows = Array.isArray(payload.data) ? payload.data : Array.isArray(payload.ngos) ? payload.ngos : [];
+        setNgoDirectory(rows);
       } else {
         setNgoDirectory([]);
       }
@@ -1887,7 +1890,7 @@ function CompanyDashboardContent() {
 
                               <div className="rounded-md border bg-slate-50 p-3 space-y-3">
                                 <p className="text-sm font-medium text-slate-900">Invite Lead NGOs</p>
-                                <p className="text-xs text-slate-600">Suggested NGOs appear first. You can also search and invite directly from results.</p>
+                                <p className="text-xs text-slate-600">Only NGOs whose live CSR-1 covers this project&apos;s full window (valid-until and timeline) are shown. Server checks apply again on invite.</p>
 
                                 {(() => {
                                   const term = String(inviteSearchByProject[assignment.project_id] || '').toLowerCase().trim();
@@ -1898,8 +1901,17 @@ function CompanyDashboardContent() {
 
                                   const inviteByNgoId = new Map<number, any>(inviteEntries);
 
+                                  const workEnd = resolveProjectCsrCoverageEndDate({
+                                    valid_until: assignment.project_valid_until,
+                                    timeline: assignment.project_timeline,
+                                  });
                                   const availableNgos = ngoDirectory
-                                    .filter((ngo) => ngo.id !== Number(assignment.lead_ngo_id));
+                                    .filter((ngo) => ngo.id !== Number(assignment.lead_ngo_id))
+                                    .filter((ngo) => {
+                                      if (!workEnd) return false;
+                                      const expiry = String(ngo.csr1_valid_until || '').trim();
+                                      return Boolean(expiry) && expiry >= workEnd;
+                                    });
 
                                   const suggestedNgos = availableNgos.slice(0, 4);
                                   const suggestedIds = new Set(suggestedNgos.map((ngo) => ngo.id));

@@ -13,7 +13,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { StyledSelect } from '@/components/ui/styled-select'
 import { SERVICE_REQUEST_CATEGORIES } from '@/lib/categories'
-import { INDIAN_STATES_AND_UTS, ngoIsCsrEligible } from '@/lib/auth'
+import { INDIAN_STATES_AND_UTS, ngoIsCsrEligible, ngoIsCsrEligibleForProject } from '@/lib/auth'
 import {
   EMPTY_PROJECT_ADDRESS,
   formatProjectExactAddress,
@@ -47,6 +47,14 @@ export default function EditProjectPage({ params }: { params: Promise<{ id: stri
   const router = useRouter()
   const { user } = useAuth()
   const csrEligible = ngoIsCsrEligible(user?.verification_status, user?.profile_data || user?.profile)
+  const canOfferForCsr = ngoIsCsrEligibleForProject(
+    user?.verification_status,
+    user?.profile_data || user?.profile,
+    {
+      valid_until: project?.valid_until,
+      timeline: project?.timeline,
+    }
+  )
   const { toast } = useToast()
 
   const [loading, setLoading] = useState(true)
@@ -115,7 +123,7 @@ export default function EditProjectPage({ params }: { params: Promise<{ id: stri
           timeline: project.timeline,
           expected_beneficiaries: project.expected_beneficiaries,
           valid_until: project.valid_until,
-          csr_project_available_for_csr: csrEligible && project.csr_project_available_for_csr !== false,
+          csr_project_available_for_csr: canOfferForCsr && project.csr_project_available_for_csr !== false,
         })
       })
       const data = await resp.json()
@@ -307,7 +315,7 @@ export default function EditProjectPage({ params }: { params: Promise<{ id: stri
                   <Label>Timeline</Label>
                   <Input placeholder="e.g. Oct-Dec 2026" value={project?.timeline || ''} onChange={(e) => setProject((p: any) => ({ ...p, timeline: e.target.value }))} />
                 </div>
-                {csrEligible ? (
+                {canOfferForCsr ? (
                 <div className="md:col-span-2 flex items-start gap-3 rounded-md border bg-white p-3">
                   <input
                     id="project_available_for_csr"
@@ -324,7 +332,11 @@ export default function EditProjectPage({ params }: { params: Promise<{ id: stri
                 ) : (
                 <div className="md:col-span-2 rounded-md border border-slate-200 bg-slate-50 p-3">
                   <p className="text-sm font-medium text-slate-900">CSR takeover unavailable</p>
-                  <p className="text-xs text-muted-foreground">A live CA-allotted CSR-1 tag is required before companies can take over this project.</p>
+                  <p className="text-xs text-muted-foreground">
+                    {csrEligible
+                      ? 'Your CSR-1 must remain valid through the full project window (Valid Until and Timeline) before companies can take over this project.'
+                      : 'A live CA-allotted CSR-1 tag is required before companies can take over this project.'}
+                  </p>
                 </div>
                 )}
               </div>

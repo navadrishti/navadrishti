@@ -219,37 +219,17 @@ export function Header({ className = '' }: { className?: string } = {}) {
         <Link href="/" className="flex shrink-0 items-center font-bold text-xl">
           <img src="/photos/logo.svg" alt="Navadrishti" className="h-36 w-36 shrink-0" />
         </Link>
-        <div
-          className={cn(
-            "hidden md:flex md:flex-1 md:items-center",
-            phase1Header ? "md:justify-between md:gap-4 lg:gap-6" : "md:justify-end md:gap-4 lg:gap-6"
-          )}
-        >
-          <nav
-            className={cn(
-              "flex items-center",
-              phase1Header
-                ? "order-2 min-w-0 flex-1 justify-center gap-5 lg:gap-8"
-                : "order-2 justify-end gap-1.5 lg:gap-2"
-            )}
-          >
+        <div className="hidden md:flex md:flex-1 md:items-center md:justify-end md:gap-4 lg:gap-6">
+          <nav className="order-2 flex shrink-0 items-center justify-end gap-1.5 lg:gap-2">
             {desktopNavItems.map((item) => (
               <HeaderNavLink
                 key={`desktop-nav-${item.href}`}
                 item={item}
-                className={cn(
-                  "whitespace-nowrap rounded-md py-1.5 text-sm font-medium text-white hover:text-udaan-orange focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors",
-                  phase1Header ? "px-3 lg:px-4" : "px-2.5"
-                )}
+                className="whitespace-nowrap rounded-md px-2.5 py-1.5 text-sm font-medium text-white hover:text-udaan-orange focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors"
               />
             ))}
           </nav>
-          <div
-            className={cn(
-              "relative order-1 hidden md:block shrink-0",
-              !phase1Header && "mr-auto"
-            )}
-          >
+          <div className="relative order-1 mr-auto hidden md:block shrink-0">
             <div className="relative flex items-center z-50">
               <div className="relative border-2 border-gray-300 rounded-lg overflow-hidden">
                 <div className="relative bg-white">

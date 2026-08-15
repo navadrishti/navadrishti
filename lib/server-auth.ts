@@ -1,5 +1,17 @@
 import { NextRequest } from 'next/server';
-import { verifyToken, ngoIsCsrEligible, type UserData } from '@/lib/auth';
+import {
+  CSR_ELIGIBILITY_REQUIRED_MESSAGE,
+  CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE,
+  CSR_TIMELINE_COVERAGE_REQUIRED_MESSAGE,
+  CSR_WORK_END_DATE_REQUIRED_MESSAGE,
+  assertCsr1CoversProject,
+  assertCsr1CoversRequiredThrough,
+  ngoIsCsrEligible,
+  ngoIsCsrEligibleForWorkThrough,
+  resolveProjectCsrCoverageEndDate,
+  verifyToken,
+  type UserData,
+} from '@/lib/auth';
 import { verifyNavadrishtCAToken, type NavadrishtCATokenPayload } from '@/lib/navadrishti-ca-auth';
 import { supabase } from '@/lib/db';
 import { ensureCompanyCaIdAssigned } from '@/lib/company-ca';
@@ -35,16 +47,91 @@ export function assertUserType(user: UserData, allowed: Array<UserData['user_typ
   }
 }
 
-export async function ngoUserIsCsrEligible(userId: number): Promise<boolean> {
+async function loadNgoComplianceRow(userId: number) {
   const { data } = await supabase
     .from('users')
     .select('user_type, verification_status, profile_data')
     .eq('id', userId)
     .maybeSingle();
+  if (!data || data.user_type !== 'ngo') return null;
+  return data;
+}
 
-  if (!data || data.user_type !== 'ngo') return false;
+export async function ngoUserIsCsrEligible(userId: number): Promise<boolean> {
+  const data = await loadNgoComplianceRow(userId);
+  if (!data) return false;
   return ngoIsCsrEligible(data.verification_status, data.profile_data);
 }
+
+export async function ngoUserIsCsrEligibleForWorkThrough(
+  userId: number,
+  requiredThrough: unknown,
+  options?: { requireWorkEnd?: boolean }
+): Promise<boolean> {
+  const data = await loadNgoComplianceRow(userId);
+  if (!data) return false;
+  return ngoIsCsrEligibleForWorkThrough(
+    data.verification_status,
+    data.profile_data,
+    requiredThrough,
+    options
+  );
+}
+
+export async function ngoUserIsCsrEligibleForProject(
+  userId: number,
+  project: { valid_until?: unknown; timeline?: unknown } | null | undefined
+): Promise<boolean> {
+  const data = await loadNgoComplianceRow(userId);
+  if (!data) return false;
+  return assertCsr1CoversProject(data.verification_status, data.profile_data, project).ok;
+}
+
+/** Live CSR-1 check for payment edges (certificate must be live at payment time). */
+export async function assertNgoLiveCsr1(
+  ngoUserId: number,
+  message: string = CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!(await ngoUserIsCsrEligible(ngoUserId))) {
+    return { ok: false, error: message };
+  }
+  return { ok: true };
+}
+
+/** Engagement gate: live CSR-1 covering a concrete campaign/project end date. */
+export async function assertNgoCsr1CoversWork(
+  ngoUserId: number,
+  requiredThrough: unknown
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const data = await loadNgoComplianceRow(ngoUserId);
+  if (!data) {
+    return { ok: false, error: CSR_ELIGIBILITY_REQUIRED_MESSAGE };
+  }
+  return assertCsr1CoversRequiredThrough(
+    data.verification_status,
+    data.profile_data,
+    requiredThrough
+  );
+}
+
+export async function assertNgoCsr1CoversProject(
+  ngoUserId: number,
+  project: { valid_until?: unknown; timeline?: unknown } | null | undefined
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const data = await loadNgoComplianceRow(ngoUserId);
+  if (!data) {
+    return { ok: false, error: CSR_ELIGIBILITY_REQUIRED_MESSAGE };
+  }
+  return assertCsr1CoversProject(data.verification_status, data.profile_data, project);
+}
+
+export {
+  CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE,
+  CSR_ELIGIBILITY_REQUIRED_MESSAGE,
+  CSR_TIMELINE_COVERAGE_REQUIRED_MESSAGE,
+  CSR_WORK_END_DATE_REQUIRED_MESSAGE,
+  resolveProjectCsrCoverageEndDate,
+};
 
 function extractCAToken(request: NextRequest): string | null {
   const navadrishtCAToken = request.cookies.get('navadrishti-ca-token')?.value;

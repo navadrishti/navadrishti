@@ -162,6 +162,47 @@ export async function PUT(req: Request) {
       );
     }
 
+    if (campaign.end_date) {
+      const { supabase } = await import("@/lib/db");
+      const { assertNgoCsr1CoversWork } = await import("@/lib/server-auth");
+      const { data: existing } = await supabase
+        .from("campaigns")
+        .select("end_date, impact_metrics")
+        .eq("id", campaign_id)
+        .eq("company_id", company_id)
+        .maybeSingle();
+      const impact =
+        existing?.impact_metrics && typeof existing.impact_metrics === "object"
+          ? existing.impact_metrics
+          : {};
+      const leadNgoId = Number(impact.selected_lead_ngo_id || 0);
+      const invites = Array.isArray(impact.lead_ngo_invites) ? impact.lead_ngo_invites : [];
+      const pendingInviteIds = invites
+        .map((invite: any) => Number(invite?.ngo_id || invite?.ngoId || 0))
+        .filter((id: number) => Number.isFinite(id) && id > 0);
+
+      if (leadNgoId > 0) {
+        const coverageGate = await assertNgoCsr1CoversWork(leadNgoId, campaign.end_date);
+        if (!coverageGate.ok) {
+          return NextResponse.json({ error: coverageGate.error }, { status: 403 });
+        }
+      } else if (pendingInviteIds.length > 0) {
+        for (const ngoId of [...new Set(pendingInviteIds)]) {
+          const coverageGate = await assertNgoCsr1CoversWork(ngoId, campaign.end_date);
+          if (!coverageGate.ok) {
+            return NextResponse.json(
+              {
+                error:
+                  coverageGate.error ||
+                  "CSR-1 must cover the updated campaign end date for every invited lead NGO.",
+              },
+              { status: 403 }
+            );
+          }
+        }
+      }
+    }
+
     // Passes strictly typed 'campaign' object to the service
     const result = await updateCampaignDb(campaign_id, company_id, campaign);
     return NextResponse.json(result);

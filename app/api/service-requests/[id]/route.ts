@@ -8,8 +8,8 @@ import {
   resolveFundsRaisedInr,
 } from '@/lib/service-request-allocation';
 import jwt from 'jsonwebtoken';
-import { JWT_SECRET, CSR_ELIGIBILITY_REQUIRED_MESSAGE } from '@/lib/auth';
-import { ngoUserIsCsrEligible } from '@/lib/server-auth';
+import { JWT_SECRET, CSR_ELIGIBILITY_REQUIRED_MESSAGE, CSR_OWN_PROJECT_TIMELINE_MESSAGE } from '@/lib/auth';
+import { ngoUserIsCsrEligible, ngoUserIsCsrEligibleForProject } from '@/lib/server-auth';
 import { CSR_SCHEDULE_VII_CATEGORIES, SERVICE_REQUEST_TYPES } from '@/lib/categories';
 import { isHiddenNgoNetworkPaymentChannel } from '@/lib/razorpay-route';
 
@@ -298,6 +298,25 @@ export async function PUT(
 
     if (projectAvailableForCsr === true && !(await ngoUserIsCsrEligible(userId))) {
       return NextResponse.json({ error: CSR_ELIGIBILITY_REQUIRED_MESSAGE }, { status: 403 });
+    }
+
+    const coverageThrough = {
+      valid_until:
+        projectPayload?.valid_until ||
+        project?.valid_until ||
+        project_context?.project_valid_until ||
+        null,
+      timeline:
+        projectPayload?.timeline ||
+        project?.timeline ||
+        project_context?.project_timeline ||
+        null,
+    };
+    if (
+      projectAvailableForCsr === true &&
+      !(await ngoUserIsCsrEligibleForProject(userId, coverageThrough))
+    ) {
+      return NextResponse.json({ error: CSR_OWN_PROJECT_TIMELINE_MESSAGE }, { status: 403 });
     }
 
     if (!SERVICE_REQUEST_TYPES.includes(normalizedRequestType)) {

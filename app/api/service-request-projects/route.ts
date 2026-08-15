@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
 import { db, supabase } from '@/lib/db';
-import { JWT_SECRET, CSR_ELIGIBILITY_REQUIRED_MESSAGE } from '@/lib/auth';
-import { ngoUserIsCsrEligible } from '@/lib/server-auth';
+import { JWT_SECRET, CSR_ELIGIBILITY_REQUIRED_MESSAGE, CSR_OWN_PROJECT_TIMELINE_MESSAGE } from '@/lib/auth';
+import { ngoUserIsCsrEligible, ngoUserIsCsrEligibleForProject } from '@/lib/server-auth';
 import {
   parseProjectExactAddress,
   projectAddressToLocationSummary,
@@ -145,6 +145,13 @@ export async function POST(request: NextRequest) {
     if (requestedCsrAvailable && !csrEligible) {
       return NextResponse.json({ error: CSR_ELIGIBILITY_REQUIRED_MESSAGE }, { status: 403 });
     }
+    const csrCoversTimeline = await ngoUserIsCsrEligibleForProject(decoded.id, {
+      valid_until: validUntil,
+      timeline,
+    });
+    if (requestedCsrAvailable && !csrCoversTimeline) {
+      return NextResponse.json({ error: CSR_OWN_PROJECT_TIMELINE_MESSAGE }, { status: 403 });
+    }
 
     const project = await db.requestProjects.create({
       ngo_id: decoded.id,
@@ -156,7 +163,7 @@ export async function POST(request: NextRequest) {
       volunteers_needed: volunteersNeeded,
       expected_beneficiaries: expectedBeneficiaries,
       valid_until: validUntil ? new Date(validUntil).toISOString() : null,
-      csr_project_available_for_csr: csrEligible && requestedCsrAvailable,
+      csr_project_available_for_csr: csrEligible && requestedCsrAvailable && csrCoversTimeline,
       status: 'active'
     });
 

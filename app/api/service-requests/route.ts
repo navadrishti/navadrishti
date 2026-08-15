@@ -3,8 +3,8 @@ import jwt from 'jsonwebtoken';
 import { db, supabase } from '@/lib/db';
 import { isNeedOpenForListing, isServiceRequestExpired } from '@/lib/service-request-allocation';
 import { resolveFundingTargetInr } from '@/lib/service-request-allocation';
-import { JWT_SECRET, CSR_ELIGIBILITY_REQUIRED_MESSAGE } from '@/lib/auth';
-import { ngoUserIsCsrEligible } from '@/lib/server-auth';
+import { JWT_SECRET, CSR_ELIGIBILITY_REQUIRED_MESSAGE, CSR_OWN_PROJECT_TIMELINE_MESSAGE } from '@/lib/auth';
+import { ngoUserIsCsrEligible, ngoUserIsCsrEligibleForProject } from '@/lib/server-auth';
 import { CSR_SCHEDULE_VII_CATEGORIES, SERVICE_REQUEST_TYPES } from '@/lib/categories';
 import { isHiddenNgoNetworkPaymentChannel } from '@/lib/razorpay-route';
 import {
@@ -682,6 +682,13 @@ export async function POST(request: NextRequest) {
         if (requestedCsrAvailable && !csrEligible) {
           return NextResponse.json({ error: CSR_ELIGIBILITY_REQUIRED_MESSAGE }, { status: 403 });
         }
+        const csrCoversTimeline = await ngoUserIsCsrEligibleForProject(userId, {
+          valid_until: validUntil,
+          timeline: projectTimeline,
+        });
+        if (requestedCsrAvailable && !csrCoversTimeline) {
+          return NextResponse.json({ error: CSR_OWN_PROJECT_TIMELINE_MESSAGE }, { status: 403 });
+        }
 
         const createdProject = await db.requestProjects.create({
           ngo_id: userId,
@@ -692,7 +699,7 @@ export async function POST(request: NextRequest) {
           timeline: projectTimeline || null,
           expected_beneficiaries: expectedBeneficiaries,
           valid_until: validUntil ? new Date(validUntil).toISOString() : null,
-          csr_project_available_for_csr: csrEligible && requestedCsrAvailable,
+          csr_project_available_for_csr: csrEligible && requestedCsrAvailable && csrCoversTimeline,
           status: 'active'
         });
 
