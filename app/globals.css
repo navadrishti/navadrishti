@@ -14,7 +14,6 @@ body {
   .product-brand {
     -webkit-user-select: none;
     user-select: none;
-    container-type: inline-size;
   }
 
   .product-brand img {
@@ -23,12 +22,9 @@ body {
     pointer-events: none;
   }
 
-  /* Scale powered-by to the logo + name row width */
   .product-brand-powered {
-    font-size: clamp(6px, 6.8cqi, 8px);
     letter-spacing: 0.02em;
     white-space: nowrap;
-    overflow: hidden;
   }
   
   .line-clamp-2 {
