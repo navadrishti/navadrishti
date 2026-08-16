@@ -1,9 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import Image from 'next/image';
 import { Header } from '@/components/header';
 import { shouldShowRootSubNavbar } from '@/lib/access-control';
+import { ProductBrand } from '@/components/product-brand';
 
 // Photo grid - using public images
 const photos = [
@@ -229,16 +229,7 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-center gap-3 text-sm text-white">
             <span className="text-white text-sm">© {new Date().getFullYear()}</span>
-            <div className="flex items-center gap-2">
-              <Image
-                src="/photos/small-logo.svg"
-                alt="Navadrishti logo"
-                width={20}
-                height={20}
-                className="h-[20px] w-[20px]"
-              />
-              <span className="font-semibold text-white">Navadrishti</span>
-            </div>
+            <ProductBrand size="xs" className="text-white" />
           </div>
         </div>
       </footer>

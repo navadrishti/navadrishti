@@ -14,7 +14,8 @@ import { ImageCarousel } from '@/components/ui/image-carousel'
 import {
   IMPACT_AREA_OPTIONS,
   OFFER_TYPE_OPTIONS,
-  TRANSACTION_TYPE_OPTIONS,
+  formatCapabilityRentalRateLabel,
+  formatCapabilityTransactionLabel,
   getCapabilityNeedRequestTypes,
   isCapabilityRentalTransaction,
   isOfferType,
@@ -259,9 +260,21 @@ function CapabilityOfferDetailsSection({ offer }: { offer: CapabilityOfferDetail
         </div>
 
         <div className="grid grid-cols-1 gap-x-12 gap-y-6 md:grid-cols-2">
-          <DetailField label="Unit Rate" value={displayValue(unitRate)} />
-          <DetailField label="Billing Cycle" value={labelForBillingCycle(billingCycle)} />
-          <DetailField label="Currency" value={displayValue(rateCurrency)} />
+          <DetailField
+            label="Daily Rate"
+            value={
+              requiresPricing
+                ? formatCapabilityRentalRateLabel({
+                    unit_rate: unitRate,
+                    price_amount: offer.price_amount,
+                    offer_details: details,
+                    transaction_type: offer.transaction_type,
+                  })
+                : 'Free'
+            }
+          />
+          <DetailField label="Billing Cycle" value={requiresPricing ? labelForBillingCycle(billingCycle) : 'Not applicable'} />
+          <DetailField label="Currency" value={requiresPricing ? displayValue(rateCurrency) : 'Not applicable'} />
         </div>
 
         <section className="space-y-3">
@@ -286,7 +299,7 @@ function CapabilityOfferDetailsSection({ offer }: { offer: CapabilityOfferDetail
 
         <div className="grid grid-cols-1 gap-x-12 gap-y-6 md:grid-cols-2">
           <DetailField label="Offer Type" value={labelForOption(OFFER_TYPE_OPTIONS, offerType)} />
-          <DetailField label="Transaction Type" value={labelForOption(TRANSACTION_TYPE_OPTIONS, offer.transaction_type)} />
+          <DetailField label="Transaction Type" value={formatCapabilityTransactionLabel(offer.transaction_type)} />
           <DetailField label="City" value={displayValue(offer.city)} />
           <DetailField label="State" value={displayValue(offer.state_province)} />
           <DetailField label="Pincode" value={displayValue(offer.pincode)} />
@@ -315,13 +328,16 @@ function CapabilityOfferDetailsSection({ offer }: { offer: CapabilityOfferDetail
           value={labelForPriceType(requiresPricing ? offer.price_type : 'free')}
         />
         <DetailField
-          label="Price Amount"
+          label="Daily Rate"
           value={
-            requiresPricing && offer.price_amount
-              ? `INR ${Number(offer.price_amount).toLocaleString('en-IN')}`
-              : requiresPricing
-                ? 'Not set'
-                : 'Free'
+            requiresPricing
+              ? formatCapabilityRentalRateLabel({
+                  unit_rate: unitRate,
+                  price_amount: offer.price_amount,
+                  offer_details: details,
+                  transaction_type: offer.transaction_type,
+                })
+              : 'Free'
           }
         />
         <DetailField label="Validity End Date" value={formatOfferDetailDate(offer.valid_until)} />

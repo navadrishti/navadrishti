@@ -19,7 +19,6 @@ import { formatDisplayDate } from "@/lib/format-date"
 import {
   IMPACT_AREA_OPTIONS,
   OFFER_TYPE_OPTIONS,
-  TRANSACTION_TYPE_OPTIONS,
   classifyCapabilityOffer,
   formatPastReasonLabel,
   formatUsageStatusLabel,
@@ -27,6 +26,7 @@ import {
   formatNeedLabel,
   dedupeSelectedNeedSummaries,
   formatCapabilityRentalRateLabel,
+  formatCapabilityTransactionLabel,
   isCapabilityRentalTransaction,
   type CapabilityOfferSummary,
   type CapabilityOfferUsageRecord,
@@ -451,7 +451,7 @@ export function ServiceCard({
   const pricingModeLabel = isVolunteerPricing
     ? 'volunteer'
     : isCapabilityRentalTransaction(normalizedTransactionType)
-      ? 'per day'
+      ? '/day'
       : normalizedPriceType === 'hourly'
           ? 'per hour'
           : normalizedPriceType === 'project based'
@@ -464,6 +464,8 @@ export function ServiceCard({
     hasOfferAmount ||
     hasWageRange ||
     isVolunteerPricing ||
+    isCapabilityRentalTransaction(normalizedTransactionType) ||
+    normalizedTransactionType === 'donate' ||
     Boolean(normalizedPriceType) ||
     Boolean(wage_info?.payment_frequency) ||
     Boolean(wage_info?.negotiable) ||
@@ -538,7 +540,18 @@ export function ServiceCard({
   const canHireServices = isIndividual || isCompany;
 
   const offerPriceLabel = (() => {
+    if (normalizedTransactionType === 'donate') return 'Free'
     if (isVolunteerPricing) return 'Volunteer'
+    if (isCapabilityRentalTransaction(normalizedTransactionType)) {
+      return formatCapabilityRentalRateLabel({
+        price_amount: hasPriceAmount
+          ? normalizedPriceAmount
+          : hasOfferAmount
+            ? normalizedOfferAmount
+            : wage_info?.min_amount,
+        transaction_type: normalizedTransactionType,
+      })
+    }
     if (hasPriceAmount) return formatPrice(normalizedPriceAmount)
     if (hasOfferAmount) return formatPrice(normalizedOfferAmount)
     if (wage_info?.min_amount) return formatPrice(wage_info.min_amount)
@@ -918,14 +931,29 @@ export function ServiceCard({
                 <span className="text-xs font-medium">Price Details</span>
               </div>
               <p className="text-sm font-medium text-slate-800">
-                {isVolunteerPricing ? 'Volunteer' : ''}
-                {!isVolunteerPricing && hasPriceAmount ? formatPrice(normalizedPriceAmount) : ''}
-                {!isVolunteerPricing && !hasPriceAmount && hasOfferAmount ? formatPrice(normalizedOfferAmount) : ''}
-                {!isVolunteerPricing && !hasPriceAmount && !hasOfferAmount && wage_info?.min_amount ? formatPrice(wage_info.min_amount) : ''}
-                {!isVolunteerPricing && !hasPriceAmount && !hasOfferAmount && wage_info?.min_amount && wage_info?.max_amount && ' - '}
-                {!isVolunteerPricing && !hasPriceAmount && !hasOfferAmount && wage_info?.max_amount ? formatPrice(wage_info.max_amount) : ''}
-                {!isVolunteerPricing && !hasPriceAmount && !hasOfferAmount && !hasWageRange && (normalizedPriceType || price_description) ? 'Custom pricing' : ''}
-                {pricingModeLabel && !isVolunteerPricing && !wage_info?.payment_frequency && (
+                {normalizedTransactionType === 'donate' ? 'Free' : ''}
+                {isVolunteerPricing && normalizedTransactionType !== 'donate' ? 'Volunteer' : ''}
+                {!isVolunteerPricing && normalizedTransactionType !== 'donate' && isCapabilityRentalTransaction(normalizedTransactionType)
+                  ? formatCapabilityRentalRateLabel({
+                      price_amount: hasPriceAmount
+                        ? normalizedPriceAmount
+                        : hasOfferAmount
+                          ? normalizedOfferAmount
+                          : wage_info?.min_amount,
+                      transaction_type: normalizedTransactionType,
+                    })
+                  : ''}
+                {!isVolunteerPricing && normalizedTransactionType !== 'donate' && !isCapabilityRentalTransaction(normalizedTransactionType) && hasPriceAmount ? formatPrice(normalizedPriceAmount) : ''}
+                {!isVolunteerPricing && normalizedTransactionType !== 'donate' && !isCapabilityRentalTransaction(normalizedTransactionType) && !hasPriceAmount && hasOfferAmount ? formatPrice(normalizedOfferAmount) : ''}
+                {!isVolunteerPricing && normalizedTransactionType !== 'donate' && !isCapabilityRentalTransaction(normalizedTransactionType) && !hasPriceAmount && !hasOfferAmount && wage_info?.min_amount ? formatPrice(wage_info.min_amount) : ''}
+                {!isVolunteerPricing && normalizedTransactionType !== 'donate' && !isCapabilityRentalTransaction(normalizedTransactionType) && !hasPriceAmount && !hasOfferAmount && wage_info?.min_amount && wage_info?.max_amount && ' - '}
+                {!isVolunteerPricing && normalizedTransactionType !== 'donate' && !isCapabilityRentalTransaction(normalizedTransactionType) && !hasPriceAmount && !hasOfferAmount && wage_info?.max_amount ? formatPrice(wage_info.max_amount) : ''}
+                {!isVolunteerPricing && normalizedTransactionType !== 'donate' && !isCapabilityRentalTransaction(normalizedTransactionType) && !hasPriceAmount && !hasOfferAmount && !hasWageRange && (normalizedPriceType || price_description) ? 'Custom pricing' : ''}
+                {pricingModeLabel
+                  && !isVolunteerPricing
+                  && normalizedTransactionType !== 'donate'
+                  && !isCapabilityRentalTransaction(normalizedTransactionType)
+                  && !wage_info?.payment_frequency && (
                   <span className="text-xs font-normal text-gray-600 ml-1">
                     {pricingModeLabel}
                   </span>
@@ -1358,7 +1386,7 @@ export function YourCapabilityOfferCard({ offer, pastReason }: YourCapabilityOff
         />
         <DashboardDetailItem
           label="Transaction Type"
-          value={dashboardLabelForOption(TRANSACTION_TYPE_OPTIONS, offer.transaction_type || undefined)}
+          value={formatCapabilityTransactionLabel(offer.transaction_type)}
         />
         <DashboardDetailItem label="Location" value={formatDashboardLocation(offer)} />
         <DashboardDetailItem label="Coverage Area" value={offer.coverage_area || 'Not set'} />

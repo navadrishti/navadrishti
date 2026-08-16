@@ -10,7 +10,7 @@ import Script from 'next/script'
 import { Analytics } from '@vercel/analytics/next'
 import { SpeedInsights } from '@vercel/speed-insights/next'
 import { verifyToken, isPlatformUserSession } from '@/lib/auth'
-import { getSiteDocumentTitle } from '@/lib/access-control'
+import { getSiteDocumentTitle, PRODUCT_LOGO_ICON_SRC } from '@/lib/access-control'
 
 const siteTitle = getSiteDocumentTitle()
 
@@ -23,7 +23,7 @@ export const metadata: Metadata = {
   description: 'Created by Shubhendu Chakrabarti',
   generator: 'Shubhendu Chakrabarti',
   icons: {
-    icon: '/photos/small-logo.svg',
+    icon: PRODUCT_LOGO_ICON_SRC,
   },
   verification: {
     google: 'gpXj_x31x2m48aHEkqZPfU5C4FYdOPT0p8DuazmFuxI',

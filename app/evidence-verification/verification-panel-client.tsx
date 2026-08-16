@@ -109,7 +109,7 @@ export default function VerificationPanelClient() {
           'user',
           'ca-token',
           'evidence-verification-token',
-          'navadrishti-ca-token',
+          'navadrishti-ca-token', // PLATFORM_CA_COOKIE — stable browser cookie name
           'admin-token',
           'govt-admin-token',
         ];

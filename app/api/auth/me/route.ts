@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, supabase } from '@/lib/db';
 import { withAuth, UserData, backfillNgoComplianceProfileData, backfillNgoDocumentExpiries, summarizeDocumentExpiries, ngoIsCsrEligible, getCaComplianceTags } from '@/lib/auth';
-import { applyCaBadgeToProfile } from '@/lib/navadrishti-ca-auth';
+import { applyCaBadgeToProfile } from '@/lib/platform-ca-auth';
 
 async function handler(req: NextRequest) {
   try {

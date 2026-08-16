@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,6 +11,7 @@ import { Loader2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { AuthCardBackRow } from '@/components/header';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ProductBrand } from '@/components/product-brand';
 
 export default function CALoginPage() {
   const router = useRouter();
@@ -205,20 +205,18 @@ export default function CALoginPage() {
           </CardContent>
         </Card>
 
-        <div className="mt-6 text-center text-sm text-gray-600">
-          <p className="mb-2">Forgot password? Contact administrator</p>
-          <p className="inline-flex items-center gap-2">
-            © 2026
-            <Image
-              src="/photos/small-logo.svg"
-              alt="Navadrishti logo"
-              width={14}
-              height={14}
-              className="h-3.5 w-3.5"
-            />
-            Navadrishti Platform
-          </p>
-        </div>
+          <div className="mt-6 flex flex-col items-center gap-2 text-center text-sm text-gray-600">
+            <p>Forgot password? Contact administrator</p>
+            <div className="inline-flex items-center gap-2">
+              <span>© 2026</span>
+              <ProductBrand
+                size="xs"
+                nameSuffix=" Platform"
+                nameClassName="text-gray-600"
+                poweredClassName="text-gray-500"
+              />
+            </div>
+          </div>
       </div>
     </div>
   );

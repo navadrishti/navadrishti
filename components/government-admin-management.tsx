@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { PRODUCT_NAME } from '@/lib/access-control';
 
 type GovernmentAdminRole = 'state_officer' | 'district_officer' | 'field_officer';
 
@@ -221,7 +222,7 @@ export function GovernmentAdminManagement({ embedded = false }: Props) {
         {!embedded ? (
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
-              <p className="text-xs font-medium uppercase tracking-[0.18em] text-blue-500">Navadrishti Admin</p>
+              <p className="text-xs font-medium uppercase tracking-[0.18em] text-blue-500 select-none">{PRODUCT_NAME} Admin</p>
               <h1 className="text-2xl font-semibold text-slate-900">Government project and officer credentials</h1>
               <p className="text-sm text-slate-600">Create manual project-linked credentials for state, district, and field officers.</p>
             </div>

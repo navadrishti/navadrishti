@@ -2,8 +2,10 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
+import { useRouter } from 'next/navigation';
 import { notify } from './notifications';
 import { getDocumentExpiryAlertCopy } from './auth';
+import { PRODUCT_NAME } from './access-control';
 
 const DOCUMENT_EXPIRY_ALERT_DURATION_MS = 18000;
 const documentExpiryAlertKey = (userId: number) => `navadrishti:document-expiry-alert:${userId}`;
@@ -125,11 +127,14 @@ const isInvalidAuthResponse = (status: number) => status === 401 || status === 4
 
 // Create provider
 export function AuthProvider({ children, initialUser = null, initialToken = null }: AuthProviderProps) {
+  const router = useRouter();
   const [user, setUser] = useState<User | null>(initialUser);
   const [token, setToken] = useState<string | null>(initialToken);
   const [loading, setLoading] = useState<boolean>(!initialUser && !initialToken);
   const [error, setError] = useState<string | null>(null);
   const initialUserRef = useRef<User | null>(initialUser);
+  // Bumped on logout so in-flight /me hydrations and Strict Mode remounts cannot revive the session.
+  const authEpochRef = useRef(0);
 
   const persistAuthSnapshot = useCallback((nextToken: string | null, nextUser: User | null) => {
     if (nextToken) {
@@ -162,12 +167,15 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
   }, []);
 
   const hydrateUserFromServer = useCallback(async (authToken: string, fallbackUser?: User | null) => {
+    const epoch = authEpochRef.current;
     try {
       const response = await fetch('/api/auth/me', {
         headers: {
           'Authorization': `Bearer ${authToken}`
         }
       });
+
+      if (epoch !== authEpochRef.current) return null;
 
       if (response.ok) {
         const data = await response.json();
@@ -192,6 +200,8 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
       console.error('User hydration error:', err);
     }
 
+    if (epoch !== authEpochRef.current) return null;
+
     if (fallbackUser) {
       setUser(fallbackUser);
       persistAuthSnapshot(authToken, fallbackUser);
@@ -202,10 +212,13 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
   }, [persistAuthSnapshot]);
 
   const hydrateUserFromCookie = useCallback(async () => {
+    const epoch = authEpochRef.current;
     try {
       const response = await fetch('/api/auth/me', {
         credentials: 'include'
       });
+
+      if (epoch !== authEpochRef.current) return null;
 
       if (response.ok) {
         const data = await response.json();
@@ -221,13 +234,16 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
     }
 
     return null;
-  }, []);
+  }, [persistUserSnapshot]);
 
   const syncAuthFromStorage = useCallback(async () => {
+    const epoch = authEpochRef.current;
     try {
       setLoading(true);
 
-      const storedToken = sessionStorage.getItem('token') || localStorage.getItem('token') || token;
+      // Never fall back to React state/props here — after logout, Strict Mode / Fast Refresh
+      // can remount with a stale SSR initialToken even though storage + cookie were cleared.
+      const storedToken = sessionStorage.getItem('token') || localStorage.getItem('token');
       const storedUser = sessionStorage.getItem('user') || localStorage.getItem('user');
 
       if (storedToken && storedToken !== 'undefined' && storedToken !== 'null') {
@@ -253,6 +269,7 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
         }
 
         const hydratedUser = await hydrateUserFromServer(cleanToken);
+        if (epoch !== authEpochRef.current) return;
         if (!hydratedUser) {
           setToken(null);
           setUser(null);
@@ -262,18 +279,22 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
       }
 
       const cookieUser = await hydrateUserFromCookie();
+      if (epoch !== authEpochRef.current) return;
       if (cookieUser) {
         setLoading(false);
         return;
       }
 
-      setUser(initialUserRef.current);
+      // No storage and no live cookie — force logged-out, ignore stale SSR initial* props.
+      setToken(null);
+      setUser(null);
+      initialUserRef.current = null;
       setLoading(false);
     } catch (error) {
       console.error('Error syncing auth state:', error);
       setLoading(false);
     }
-  }, [hydrateUserFromCookie, hydrateUserFromServer, token]);
+  }, [hydrateUserFromCookie, hydrateUserFromServer, persistAuthSnapshot]);
 
   // Load user from localStorage on initial render
   useEffect(() => {
@@ -289,6 +310,7 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
   useEffect(() => {
     const verifyTokenAsync = async () => {
       if (!token) return;
+      const epoch = authEpochRef.current;
       
       try {
         // Clean token before sending
@@ -305,6 +327,8 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
             'Authorization': `Bearer ${cleanToken}`
           }
         });
+
+        if (epoch !== authEpochRef.current) return;
         
         if (response.ok) {
           const data = await response.json();
@@ -321,14 +345,16 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
       } catch (error) {
         console.error('Token verification error:', error);
       } finally {
-        setLoading(false);
+        if (epoch === authEpochRef.current) {
+          setLoading(false);
+        }
       }
     };
     
     if (token) {
       verifyTokenAsync();
     }
-  }, [hydrateUserFromCookie, persistAuthSnapshot, token]);
+  }, [persistAuthSnapshot, token]);
 
   // Login function
   const login = async (email: string, password: string) => {
@@ -400,7 +426,7 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
 
       await hydrateUserFromServer(data.token, data.user);
       
-      notify.success(`Welcome to Navadrishti, ${data.user.name}!`);
+      notify.success(`Welcome to ${PRODUCT_NAME}, ${data.user.name}!`);
     } catch (error: any) {
       if (error?.handled) {
         throw error;
@@ -419,6 +445,8 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
 
   // Logout function — always clear the httpOnly platform cookie via API
   const logout = async () => {
+    authEpochRef.current += 1;
+
     if (user?.id && typeof window !== 'undefined') {
       sessionStorage.removeItem(documentExpiryAlertKey(user.id));
     }
@@ -440,9 +468,14 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
       console.error('Platform logout request failed:', error);
     }
 
-    // Best-effort clear of any non-httpOnly leftovers
+    // Best-effort clear of any non-httpOnly leftovers (match Secure both ways for local leftovers)
     document.cookie = 'token=; Path=/; Max-Age=0; SameSite=Strict';
+    document.cookie = 'token=; Path=/; Max-Age=0; SameSite=Strict; Secure';
     document.cookie = 'user=; Path=/; Max-Age=0; SameSite=Strict';
+    document.cookie = 'user=; Path=/; Max-Age=0; SameSite=Strict; Secure';
+
+    // Drop stale RSC auth props so Fast Refresh / remounts cannot revive the old JWT.
+    router.refresh();
     
     notify.info('You have been logged out');
   };
@@ -464,6 +497,7 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
   // Refresh user data from server
   const refreshUser = async () => {
     if (!token) return;
+    const epoch = authEpochRef.current;
     
     try {
       const response = await fetch('/api/auth/me', {
@@ -471,6 +505,8 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
           'Authorization': `Bearer ${token}`
         }
       });
+
+      if (epoch !== authEpochRef.current) return;
       
       if (response.ok) {
         const data = await response.json();
