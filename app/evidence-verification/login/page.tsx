@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { AuthCardBackRow } from '@/components/header';
+import { ProductBrand } from '@/components/product-brand';
 
 export default function EvidenceVerificationLoginPage() {
   const router = useRouter();
@@ -156,6 +157,17 @@ export default function EvidenceVerificationLoginPage() {
             </form>
           </CardContent>
         </Card>
+
+        <div className="mt-6 flex justify-center">
+          <div className="inline-flex items-center gap-2 text-sm text-gray-600">
+            <span>© {new Date().getFullYear()}</span>
+            <ProductBrand
+              size="xs"
+              nameClassName="text-gray-600"
+              poweredClassName="text-gray-500"
+            />
+          </div>
+        </div>
       </div>
     </div>
   );

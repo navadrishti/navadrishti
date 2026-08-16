@@ -1151,7 +1151,7 @@ function formatNgoNeedOfferValue(item: NgoNeedDashboardItem, assignment: NgoNeed
   }
   if (mode === 'skill_service') {
     const amount = Number(assignment.fulfillment_amount ?? assignment.assigned_amount ?? 0);
-    return amount > 0 ? `INR ${amount.toLocaleString('en-IN')} / day` : 'Daily rate not set';
+    return amount > 0 ? `INR ${amount.toLocaleString('en-IN')}/day` : 'Daily rate not set';
   }
 
   const quantity = Number(assignment.fulfillment_quantity ?? assignment.assigned_quantity ?? 0);

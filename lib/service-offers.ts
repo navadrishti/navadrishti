@@ -15,11 +15,10 @@ export const OFFER_TYPE_OPTIONS: { value: OfferType; label: string }[] = [
   { value: 'infrastructure', label: 'Infrastructure' }
 ]
 
-export const TRANSACTION_TYPE_OPTIONS: { value: TransactionType; label: string }[] = [
+export const TRANSACTION_TYPE_OPTIONS: { value: Exclude<TransactionType, 'sell'>; label: string }[] = [
   { value: 'volunteer', label: 'Volunteer' },
   { value: 'donate', label: 'Donate' },
   { value: 'rent', label: 'Rent' },
-  { value: 'sell', label: 'Sell' }
 ]
 
 export const IMPACT_AREAS = [
@@ -69,10 +68,11 @@ export function normalizeCapabilityTransactionType(
   offerType: OfferType,
   transactionType: unknown
 ): TransactionType {
-  const normalized = isTransactionType(transactionType) ? transactionType : getDefaultTransactionType(offerType)
-  if (normalized === 'sell') {
+  // Legacy permanent-sale offers are treated as daily rentals only.
+  if (String(transactionType || '').toLowerCase() === 'sell') {
     return 'rent'
   }
+  const normalized = isTransactionType(transactionType) ? transactionType : getDefaultTransactionType(offerType)
   if (!isTransactionAllowedForOfferType(offerType, normalized)) {
     return getDefaultTransactionType(offerType)
   }
@@ -140,7 +140,9 @@ export const isOfferType = (value: unknown): value is OfferType => {
 }
 
 export const isTransactionType = (value: unknown): value is TransactionType => {
-  return typeof value === 'string' && TRANSACTION_TYPE_OPTIONS.some((option) => option.value === value)
+  if (typeof value !== 'string') return false
+  if (value === 'sell') return true // legacy; always normalized to rent before write
+  return TRANSACTION_TYPE_OPTIONS.some((option) => option.value === value)
 }
 
 export const parseCsvToStringArray = (value: string): string[] => {
@@ -518,5 +520,5 @@ export function formatCapabilityRentalRateLabel(input: {
     return 'Free'
   }
   const rate = resolveCapabilityRentalRate(input)
-  return rate > 0 ? `${formatOfferInrAmount(rate)} / day` : 'Not set'
+  return rate > 0 ? `${formatOfferInrAmount(rate)}/day` : 'Not set'
 }

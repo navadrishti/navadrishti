@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/sheet';
 import { ChevronDown, Menu, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { PRODUCT_BRAND_CLASSNAME, PRODUCT_LOGO_SRC, PRODUCT_NAME } from '@/lib/access-control';
+import { ProductBrand } from '@/components/product-brand';
 
 const navItems = [
   { label: 'Dashboard', href: '/evidence-verification' },
@@ -122,16 +122,7 @@ export function CAConsoleHeader({
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-udaan-blue text-white">
       <div className="udaan-container flex h-16 items-center justify-between gap-3 px-4 md:px-6">
-        <Link href="/evidence-verification" className={`flex min-w-0 shrink items-center gap-2 font-bold text-xl text-white ${PRODUCT_BRAND_CLASSNAME}`}>
-          <img
-            src={PRODUCT_LOGO_SRC}
-            alt=""
-            aria-hidden="true"
-            draggable={false}
-            className="h-10 w-10 shrink-0 object-contain"
-          />
-          <span>{PRODUCT_NAME}</span>
-        </Link>
+        <ProductBrand href="/evidence-verification" />
 
         {/* Desktop navigation */}
         <div className="hidden items-center gap-4 md:flex lg:gap-6">
@@ -220,20 +211,11 @@ export function CAConsoleHeader({
 
               <div className="flex h-full flex-col">
                 <div className="flex items-center justify-between border-b border-white/20 px-4 py-3">
-                  <Link
+                  <ProductBrand
                     href="/evidence-verification"
-                    className={`flex items-center gap-2 font-bold text-xl text-white ${PRODUCT_BRAND_CLASSNAME}`}
+                    size="sm"
                     onClick={() => setMobileMenuOpen(false)}
-                  >
-                    <img
-                      src={PRODUCT_LOGO_SRC}
-                      alt=""
-                      aria-hidden="true"
-                      draggable={false}
-                      className="h-9 w-9 shrink-0 object-contain"
-                    />
-                    <span>{PRODUCT_NAME}</span>
-                  </Link>
+                  />
                   <SheetClose asChild>
                     <Button variant="ghost" size="icon" className="text-white hover:bg-white/10">
                       <X className="h-5 w-5" />

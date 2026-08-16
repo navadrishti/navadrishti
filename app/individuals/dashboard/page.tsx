@@ -707,7 +707,7 @@ function formatNgoRequestFulfillmentValue(application: IndividualNgoRequestAppli
   if (mode === 'financial' || mode === 'skill_service') {
     const amount = Number(application.assigned_amount ?? application.fulfillment_amount ?? 0);
     if (mode === 'skill_service') {
-      return amount > 0 ? `INR ${amount.toLocaleString('en-IN')} / day` : 'Daily rate not set';
+      return amount > 0 ? `INR ${amount.toLocaleString('en-IN')}/day` : 'Daily rate not set';
     }
     return amount > 0 ? `INR ${amount.toLocaleString('en-IN')}` : 'Amount not set';
   }
