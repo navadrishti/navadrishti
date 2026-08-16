@@ -11,7 +11,7 @@ import { Loader2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { AuthCardBackRow } from '@/components/header';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ProductBrand } from '@/components/product-brand';
+import { PRODUCT_NAME } from '@/lib/access-control';
 
 export default function CALoginPage() {
   const router = useRouter();
@@ -207,15 +207,7 @@ export default function CALoginPage() {
 
           <div className="mt-6 flex flex-col items-center gap-2 text-center text-sm text-gray-600">
             <p>Forgot password? Contact administrator</p>
-            <div className="inline-flex items-center gap-2">
-              <span>© 2026</span>
-              <ProductBrand
-                size="xs"
-                nameSuffix=" Platform"
-                nameClassName="text-gray-600"
-                poweredClassName="text-gray-500"
-              />
-            </div>
+            <p>© {new Date().getFullYear()} {PRODUCT_NAME} Platform</p>
           </div>
       </div>
     </div>
