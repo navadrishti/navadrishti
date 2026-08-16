@@ -18,7 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 
-type NavadrishtCAAccount = {
+type PlatformCAAccount = {
   id: number;
   ca_id: string;
   username: string;
@@ -36,8 +36,8 @@ type CaIdGroup = {
   createdAt?: string;
 };
 
-export function NavadrishtCAManagement() {
-  const [accounts, setAccounts] = useState<NavadrishtCAAccount[]>([]);
+export function PlatformCAManagement() {
+  const [accounts, setAccounts] = useState<PlatformCAAccount[]>([]);
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
     ca_id: '',
@@ -49,7 +49,7 @@ export function NavadrishtCAManagement() {
   const [availableCaIds, setAvailableCaIds] = useState<CaIdGroup[]>([]);
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
-  const [resetTarget, setResetTarget] = useState<NavadrishtCAAccount | null>(null);
+  const [resetTarget, setResetTarget] = useState<PlatformCAAccount | null>(null);
   const [resetPassword, setResetPassword] = useState('');
   const [resetConfirmPassword, setResetConfirmPassword] = useState('');
 
@@ -136,7 +136,7 @@ export function NavadrishtCAManagement() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const openResetPasswordDialog = (account: NavadrishtCAAccount) => {
+  const openResetPasswordDialog = (account: PlatformCAAccount) => {
     setResetTarget(account);
     setResetPassword('');
     setResetConfirmPassword('');
@@ -524,4 +524,4 @@ export function NavadrishtCAManagement() {
   );
 }
 
-export default NavadrishtCAManagement;
+export default PlatformCAManagement;

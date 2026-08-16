@@ -24,7 +24,7 @@ export async function sendSMS(options: SMSOptions): Promise<boolean> {
         mobile: options.phone.replace(/[^\d]/g, ''), // Clean phone number
         authkey: process.env.MSG91_API_KEY,
         otp: options.otp,
-        message: options.template || `Your Navadrishti verification code is ${options.otp}. Valid for 10 minutes. Do not share this code.`
+        message: options.template || `Your GRAM verification code is ${options.otp}. Valid for 10 minutes. Do not share this code.`
       })
     });
 
@@ -43,6 +43,6 @@ export async function sendSMS(options: SMSOptions): Promise<boolean> {
   }
 }
 
-export function generateOTPMessage(otp: string, appName: string = 'Navadrishti'): string {
+export function generateOTPMessage(otp: string, appName: string = 'GRAM'): string {
   return `Your ${appName} verification code is ${otp}. Valid for 10 minutes. Do not share this code with anyone.`;
 }

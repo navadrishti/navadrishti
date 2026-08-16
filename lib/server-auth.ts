@@ -12,7 +12,7 @@ import {
   verifyToken,
   type UserData,
 } from '@/lib/auth';
-import { verifyNavadrishtCAToken, type NavadrishtCATokenPayload } from '@/lib/navadrishti-ca-auth';
+import { verifyPlatformCAToken, PLATFORM_CA_COOKIE, type PlatformCATokenPayload } from '@/lib/platform-ca-auth';
 import { supabase } from '@/lib/db';
 import { ensureCompanyCaIdAssigned } from '@/lib/company-ca';
 
@@ -134,9 +134,9 @@ export {
 };
 
 function extractCAToken(request: NextRequest): string | null {
-  const navadrishtCAToken = request.cookies.get('navadrishti-ca-token')?.value;
-  if (navadrishtCAToken) {
-    return navadrishtCAToken;
+  const platformCAToken = request.cookies.get(PLATFORM_CA_COOKIE)?.value;
+  if (platformCAToken) {
+    return platformCAToken;
   }
 
   const oldCAToken = request.cookies.get('ca-token')?.value;
@@ -147,14 +147,14 @@ function extractCAToken(request: NextRequest): string | null {
   return extractBearerToken(request.headers.get('authorization'));
 }
 
-export function getCAFromRequest(request: NextRequest): NavadrishtCATokenPayload | null {
+export function getCAFromRequest(request: NextRequest): PlatformCATokenPayload | null {
   const token = extractCAToken(request);
 
   if (!token) {
     return null;
   }
 
-  const payload = verifyNavadrishtCAToken(token);
+  const payload = verifyPlatformCAToken(token);
   if (payload) {
     return payload;
   }

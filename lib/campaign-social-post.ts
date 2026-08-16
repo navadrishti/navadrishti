@@ -36,13 +36,13 @@ export function buildCampaignSocialPost(input: CampaignSocialPostInput): string 
   const title = String(input.title || readCampaignCategory(input) || 'CSR Campaign').trim()
   const category = readCampaignCategory(input) || 'Community development'
   const location = readCampaignLocation(input) || 'India'
-  const description = excerpt(String(input.description || '').trim() || 'A new corporate social responsibility campaign is now live on Navadrishti.')
+  const description = excerpt(String(input.description || '').trim() || 'A new corporate social responsibility campaign is now live on GRAM.')
   const leadNgo = String(input.lead_ngo_name || '').trim()
   const timeline = `${formatPostDate(input.start_date)} → ${formatPostDate(input.end_date)}`
   const categoryTag = slugHashtag(category)
 
   const lines = [
-    'New CSR Campaign on Navadrishti',
+    'New CSR Campaign on GRAM',
     '',
     title,
     '',
@@ -62,7 +62,7 @@ export function buildCampaignSocialPost(input: CampaignSocialPostInput): string 
     'Volunteer, partner, or follow the campaign here:',
     input.campaign_url,
     '',
-    `#CSR #SocialImpact #Campaign #${categoryTag} #Navadrishti`,
+    `#CSR #SocialImpact #Campaign #${categoryTag} #GRAM`,
   )
 
   return lines.join('\n')
@@ -75,7 +75,7 @@ export function buildCampaignSocialTags(input: CampaignSocialPostInput): string[
     'SocialImpact',
     'Campaign',
     slugHashtag(category || 'CSR'),
-    'Navadrishti',
+    'GRAM',
   ].map((tag) => stripHashtagPrefix(tag))
 }
 

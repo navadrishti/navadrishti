@@ -1,19 +1,20 @@
 import { NextResponse } from 'next/server';
 
-export async function POST() {
-  try {
-    const response = NextResponse.json({
-      message: 'Logged out successfully',
-      success: true,
-    });
+function clearAuthCookies(response: NextResponse) {
+  // Clear with the same attribute variants login may have used.
+  // Local leftovers can be Secure=false while a prior tunnel/prod test used Secure=true.
+  const variants = [
+    { secure: false },
+    { secure: true },
+  ] as const;
 
-    // Must match login cookie attributes or the browser will keep the httpOnly token.
+  for (const { secure } of variants) {
     response.cookies.set('token', '', {
       path: '/',
       expires: new Date(0),
       maxAge: 0,
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure,
       sameSite: 'strict',
     });
 
@@ -22,9 +23,23 @@ export async function POST() {
       expires: new Date(0),
       maxAge: 0,
       httpOnly: false,
-      secure: process.env.NODE_ENV === 'production',
+      secure,
       sameSite: 'strict',
     });
+  }
+
+  response.cookies.delete('token');
+  response.cookies.delete('user');
+}
+
+export async function POST() {
+  try {
+    const response = NextResponse.json({
+      message: 'Logged out successfully',
+      success: true,
+    });
+
+    clearAuthCookies(response);
 
     return response;
   } catch (error) {

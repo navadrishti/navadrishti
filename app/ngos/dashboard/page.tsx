@@ -3295,7 +3295,7 @@ function NGODashboardContent() {
                     <PaymentHistoryPanel
                       role="received"
                       title="Received payments"
-                      description="All Razorpay payments received by your NGO on Navadrishti — direct support, financial needs, capability offers, and engagement settlements."
+                      description="All Razorpay payments received by your NGO on GRAM — direct support, financial needs, capability offers, and engagement settlements."
                       emptyMessage="No Razorpay payments received yet on your NGO account."
                     />
                   </TabsContent>

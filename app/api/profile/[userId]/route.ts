@@ -17,7 +17,7 @@ import {
   listDocumentExpiryPublicItems,
   backfillNgoDocumentExpiries,
 } from '@/lib/auth';
-import { applyCaBadgeToProfile } from '@/lib/navadrishti-ca-auth';
+import { applyCaBadgeToProfile } from '@/lib/platform-ca-auth';
 import { isCompanyCAUser } from '@/lib/company-ca';
 import { isNgoRazorpayPayoutActive } from '@/lib/razorpay-route';
 

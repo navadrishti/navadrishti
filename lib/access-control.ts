@@ -1,8 +1,9 @@
 /**
- * Access Control System for Navadrishti Platform
- * 
+ * Access Control System for GRAM Platform
+ *
  * Defines permissions based on user type and verification status
  * Controls access to posts, service requests/offers, messaging, and dashboards.
+ * Company legal entity remains Navadrishti LLP.
  */
 
 export type UserType = 'individual' | 'ngo' | 'company';
@@ -252,6 +253,15 @@ export type LaunchHeaderNavItem = {
 export const NAVADRISHTI_ABOUT_URL = 'https://navadrishti.in';
 export const NAVADRISHTI_CONTACT_HREF = 'mailto:connect@navadrishti.in';
 
+/** Product brand (platform). Company legal entity remains Navadrishti LLP. */
+export const PRODUCT_NAME = 'GRAM';
+export const COMPANY_LEGAL_NAME = 'Navadrishti LLP';
+export const PRODUCT_LOGO_SRC = '/photos/Gram.svg';
+export const PRODUCT_LOGO_ICON_SRC = '/photos/Gram.svg';
+export const PRODUCT_LOGO_ALT = `${PRODUCT_NAME} logo`;
+/** Apply on logo + name lockups to block select/drag. */
+export const PRODUCT_BRAND_CLASSNAME = 'product-brand select-none';
+
 const PHASE1_BLOCKED_ROUTE_PREFIXES = [
   '/service-requests',
   '/service-offers',
@@ -294,9 +304,9 @@ export function isPhase1Launch(): boolean {
 /** Browser tab / document title for the active launch phase. */
 export function getSiteDocumentTitle(): string {
   if (isPhase1Launch()) {
-    return 'Navadrishti | CA-Verified NGO Directory for India';
+    return `${PRODUCT_NAME} | India's CA-Verified NGO Directory`;
   }
-  return 'Navadrishti | Digital OS for Social Impact';
+  return `${PRODUCT_NAME} | Digital OS for Social Impact`;
 }
 
 export function isPermanentlyBlockedPath(pathname: string): boolean {
@@ -345,13 +355,13 @@ export function getLaunchHeaderNavItems(phase2Items: LaunchHeaderNavItem[]): Lau
     {
       label: 'About Us',
       href: NAVADRISHTI_ABOUT_URL,
-      description: 'About Navadrishti',
+      description: 'About GRAM',
       external: true,
     },
     {
       label: 'Contact Us',
       href: NAVADRISHTI_CONTACT_HREF,
-      description: 'Contact Navadrishti',
+      description: 'Contact GRAM',
     },
   ];
 }

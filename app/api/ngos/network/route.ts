@@ -17,7 +17,7 @@ import {
   summarizeGeographicCoverage,
 } from '@/lib/auth';
 import { CSR_SCHEDULE_VII_CATEGORIES, normalizeCompanyFocusAreasScheduleVii } from '@/lib/categories';
-import { issueCaBadgeNumber } from '@/lib/navadrishti-ca-auth';
+import { issueCaBadgeNumber } from '@/lib/platform-ca-auth';
 import { rankRecommendedNgosForViewer } from '@/lib/csr-agent/recommendation-utils';
 import {
   buildPricingResponse,

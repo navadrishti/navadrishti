@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  getNavadrishtCAFromRequest,
-  generateNavadrishtCAToken,
-  updateNavadrishtCAPassword,
-  verifyNavadrishtCAPassword,
-} from '@/lib/navadrishti-ca-auth';
+  getPlatformCAFromRequest,
+  generatePlatformCAToken,
+  updatePlatformCAPassword,
+  verifyPlatformCAPassword,
+  PLATFORM_CA_COOKIE,
+} from '@/lib/platform-ca-auth';
 
 export async function POST(request: NextRequest) {
   try {
-    const account = await getNavadrishtCAFromRequest(request);
+    const account = await getPlatformCAFromRequest(request);
     if (!account) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
@@ -18,13 +19,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Current password and new password required' }, { status: 400 });
     }
 
-    const isValid = await verifyNavadrishtCAPassword(account.id, String(currentPassword));
+    const isValid = await verifyPlatformCAPassword(account.id, String(currentPassword));
     if (!isValid) {
       return NextResponse.json({ error: 'Current password is incorrect' }, { status: 401 });
     }
 
-    const updatedAccount = await updateNavadrishtCAPassword(account.id, String(newPassword));
-    const token = generateNavadrishtCAToken(updatedAccount);
+    const updatedAccount = await updatePlatformCAPassword(account.id, String(newPassword));
+    const token = generatePlatformCAToken(updatedAccount);
 
     const response = NextResponse.json({
       success: true,
@@ -38,7 +39,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    response.cookies.set('navadrishti-ca-token', token, {
+    response.cookies.set(PLATFORM_CA_COOKIE, token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
@@ -48,7 +49,7 @@ export async function POST(request: NextRequest) {
 
     return response;
   } catch (error: any) {
-    console.error('CA password change error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    console.error('CA change-password error:', error);
+    return NextResponse.json({ error: error?.message || 'Password update failed' }, { status: 500 });
   }
 }

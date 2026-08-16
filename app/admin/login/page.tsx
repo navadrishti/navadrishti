@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { AuthCardBackRow } from '@/components/header';
+import { PRODUCT_NAME } from '@/lib/access-control';
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -92,7 +93,7 @@ export default function AdminLoginPage() {
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
           <h1 className="mb-2 text-3xl font-bold text-gray-900">Admin Console</h1>
-          <p className="text-gray-600">Navadrishti Platform Administration</p>
+          <p className="text-gray-600 select-none">{PRODUCT_NAME} Platform Administration</p>
         </div>
 
         <Card className="border-2 border-slate-200 shadow-sm">
