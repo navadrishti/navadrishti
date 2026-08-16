@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { generateNavadrishtCAToken } from '@/lib/navadrishti-ca-auth';
-import { verifyNavadrishtCAPassword } from '@/lib/navadrishti-ca-auth';
+import {
+  generatePlatformCAToken,
+  verifyPlatformCAPassword,
+  PLATFORM_CA_ACCOUNTS_TABLE,
+  PLATFORM_CA_COOKIE,
+} from '@/lib/platform-ca-auth';
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,7 +17,7 @@ export async function POST(request: NextRequest) {
 
     // Look up CA account by username (no CA ID required)
     const { data: account, error } = await supabase
-      .from('navadrishti_ca_accounts')
+      .from(PLATFORM_CA_ACCOUNTS_TABLE)
       .select('*')
       .eq('username', username)
       .eq('active', true)
@@ -24,17 +28,17 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify password
-    const isValid = await verifyNavadrishtCAPassword(account.id, password);
+    const isValid = await verifyPlatformCAPassword(account.id, password);
     if (!isValid) {
       return NextResponse.json({ error: 'Invalid username or password' }, { status: 401 });
     }
 
     // Generate CA token
-    const token = generateNavadrishtCAToken(account);
+    const token = generatePlatformCAToken(account);
 
     // Update last_login_at
     await supabase
-      .from('navadrishti_ca_accounts')
+      .from(PLATFORM_CA_ACCOUNTS_TABLE)
       .update({ last_login_at: new Date().toISOString() })
       .eq('id', account.id);
 
@@ -49,7 +53,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    response.cookies.set('navadrishti-ca-token', token, {
+    response.cookies.set(PLATFORM_CA_COOKIE, token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
@@ -59,6 +63,6 @@ export async function POST(request: NextRequest) {
     return response;
   } catch (error: any) {
     console.error('CA login error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: 'Login failed' }, { status: 500 });
   }
 }

@@ -571,7 +571,7 @@ export default function NGORegister() {
                   <div>
                     <Label>Past Projects <span className="text-muted-foreground font-normal">(optional)</span></Label>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Add pre-platform project history here only once. After you join, new projects you run on Navadrishti are added automatically.
+                      Add pre-platform project history here only once. After you join, new projects you run on GRAM are added automatically.
                     </p>
                   </div>
 

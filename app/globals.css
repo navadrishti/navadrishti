@@ -10,6 +10,17 @@ body {
   .text-balance {
     text-wrap: balance;
   }
+
+  .product-brand {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  .product-brand img {
+    -webkit-user-drag: none;
+    user-drag: none;
+    pointer-events: none;
+  }
   
   .line-clamp-2 {
     display: -webkit-box;

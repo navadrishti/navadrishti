@@ -8,7 +8,7 @@ import {
   mergeNgoComplianceNumbers,
   buildNgoDocumentExpiries,
 } from '@/lib/auth';
-import { applyCaBadgeToProfile } from '@/lib/navadrishti-ca-auth';
+import { applyCaBadgeToProfile } from '@/lib/platform-ca-auth';
 
 type UserType = 'individual' | 'ngo' | 'company';
 

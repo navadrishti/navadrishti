@@ -1,24 +1,28 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { verifyNavadrishtCAToken } from '@/lib/navadrishti-ca-auth';
+import {
+  verifyPlatformCAToken,
+  PLATFORM_CA_COOKIE,
+  PLATFORM_CA_ACCOUNTS_TABLE,
+} from '@/lib/platform-ca-auth';
 import { supabase } from '@/lib/db';
 import CAChangePasswordClient from './change-password-client';
 
 export default async function CAChangePasswordPage() {
   const cookieStore = await cookies();
-  const token = cookieStore.get('navadrishti-ca-token')?.value;
+  const token = cookieStore.get(PLATFORM_CA_COOKIE)?.value;
 
   if (!token) {
     redirect('/ca/login');
   }
 
-  const decoded = verifyNavadrishtCAToken(token);
+  const decoded = verifyPlatformCAToken(token);
   if (!decoded?.id) {
     redirect('/ca/login');
   }
 
   const { data: account } = await supabase
-    .from('navadrishti_ca_accounts')
+    .from(PLATFORM_CA_ACCOUNTS_TABLE)
     .select('id, active')
     .eq('id', decoded.id)
     .maybeSingle();

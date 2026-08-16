@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getNavadrishtCAFromRequest } from '@/lib/navadrishti-ca-auth';
+import { getPlatformCAFromRequest } from '@/lib/platform-ca-auth';
 import { verifyToken } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
   try {
-    // Try new Navadrishti CA token first
-    const caAccount = await getNavadrishtCAFromRequest(request);
+    // Prefer platform CA cookie/session
+    const caAccount = await getPlatformCAFromRequest(request);
     if (caAccount) {
       return NextResponse.json({
         success: true,
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Fallback to old token for backwards compatibility
+    // Fallback to legacy ca-token for backwards compatibility
     const caToken = request.cookies.get('ca-token')?.value;
     if (!caToken) {
       return NextResponse.json({ error: 'No CA token found' }, { status: 401 });

@@ -2378,7 +2378,7 @@ function CompanyDashboardContent() {
                     <PaymentHistoryPanel
                       role="sent"
                       title="Payment history"
-                      description="All Razorpay payments made from your company account on Navadrishti — financial needs, capability offers, NGO Network support, evidence verification, and engagement settlements."
+                      description="All Razorpay payments made from your company account on GRAM — financial needs, capability offers, NGO Network support, evidence verification, and engagement settlements."
                       emptyMessage="No Razorpay payments recorded yet for your company account."
                     />
                   </TabsContent>

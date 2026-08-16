@@ -11,6 +11,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { AuthCardBackRow } from '@/components/header';
+import { PRODUCT_BRAND_CLASSNAME, PRODUCT_LOGO_ALT, PRODUCT_LOGO_ICON_SRC, PRODUCT_NAME } from '@/lib/access-control';
 
 export default function GovernmentAdminLoginPage() {
   const router = useRouter();
@@ -124,7 +125,7 @@ export default function GovernmentAdminLoginPage() {
             <AuthCardBackRow />
             <CardTitle className="text-2xl font-bold text-center">Sign In</CardTitle>
             <CardDescription className="text-center">
-              Enter the credentials created by the Navadrishti super admin
+              Enter the credentials created by the {PRODUCT_NAME} super admin
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -182,16 +183,17 @@ export default function GovernmentAdminLoginPage() {
 
         <div className="mt-6 text-center text-sm text-gray-600">
           <p className="mb-2">Access is restricted and all actions are audited</p>
-          <p className="inline-flex items-center gap-2">
+          <p className={`inline-flex items-center gap-2 ${PRODUCT_BRAND_CLASSNAME}`}>
             © 2026
             <Image
-              src="/photos/small-logo.svg"
-              alt="Navadrishti logo"
+              src={PRODUCT_LOGO_ICON_SRC}
+              alt={PRODUCT_LOGO_ALT}
               width={14}
               height={14}
+              draggable={false}
               className="h-3.5 w-3.5"
             />
-            Navadrishti Platform
+            {PRODUCT_NAME} Platform
           </p>
         </div>
       </div>

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { Header } from '@/components/header';
-import { shouldShowRootSubNavbar } from '@/lib/access-control';
+import { shouldShowRootSubNavbar, PRODUCT_BRAND_CLASSNAME, PRODUCT_LOGO_ALT, PRODUCT_LOGO_ICON_SRC, PRODUCT_NAME } from '@/lib/access-control';
 
 // Photo grid - using public images
 const photos = [
@@ -229,15 +229,16 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-center gap-3 text-sm text-white">
             <span className="text-white text-sm">© {new Date().getFullYear()}</span>
-            <div className="flex items-center gap-2">
+            <div className={`flex items-center gap-2 ${PRODUCT_BRAND_CLASSNAME}`}>
               <Image
-                src="/photos/small-logo.svg"
-                alt="Navadrishti logo"
+                src={PRODUCT_LOGO_ICON_SRC}
+                alt={PRODUCT_LOGO_ALT}
                 width={20}
                 height={20}
+                draggable={false}
                 className="h-[20px] w-[20px]"
               />
-              <span className="font-semibold text-white">Navadrishti</span>
+              <span className="font-semibold text-white">{PRODUCT_NAME}</span>
             </div>
           </div>
         </div>

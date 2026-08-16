@@ -459,7 +459,7 @@ export default function NGONetworkPage() {
         <div className="mb-4">
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">NGO Network</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Discover verified NGOs, review their profiles and contact details, then pay them directly via Navadrishti.
+            Discover verified NGOs, review their profiles and contact details, then pay them directly via GRAM.
           </p>
         </div>
 
