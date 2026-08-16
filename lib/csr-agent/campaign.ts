@@ -511,7 +511,7 @@ export async function processCsrCapabilityDailyCompliance() {
               if (companyUser.email) {
                 await emailService.sendEmail({
                   to: companyUser.email,
-                  subject: "Navadrishti account suspended — CSR capability penalty overdue",
+                  subject: "GRAM account suspended — CSR capability penalty overdue",
                   html: `<p>Your company account has been suspended because an outstanding CSR capability penalty was not cleared within ${CSR_FINE_CLEARANCE_DAYS} days.</p>`,
                   text: `Your company account has been suspended because an outstanding CSR capability penalty was not cleared within ${CSR_FINE_CLEARANCE_DAYS} days.`,
                 });
@@ -667,7 +667,7 @@ async function sendCsrFineReminder(companyUserId: number, pendingTotalInr: numbe
 
   await emailService.sendEmail({
     to: companyUser.email,
-    subject: "Reminder: CSR capability penalty pending on Navadrishti",
+    subject: "Reminder: CSR capability penalty pending on GRAM",
     html: `<p>Daily reminder: an outstanding CSR capability penalty of INR ${pendingTotalInr.toLocaleString("en-IN")} is pending. Unpaid balances accrue 2% daily. Clear within 10 days to avoid account suspension.</p>`,
     text: `Daily reminder: CSR capability penalty INR ${pendingTotalInr.toLocaleString("en-IN")} is pending.`,
   });
@@ -986,7 +986,7 @@ async function loadUserShippingAddress(userId: number): Promise<CsrShippingAddre
   }
 
   return {
-    name: String(user.name || profile.organization_name || "Navadrishti NGO").trim(),
+    name: String(user.name || profile.organization_name || "GRAM NGO").trim(),
     phone,
     addressLine,
     city: String(user.city || profile.city || "").trim() || "NA",

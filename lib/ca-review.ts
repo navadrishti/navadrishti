@@ -14,7 +14,7 @@ import {
   type CaComplianceTagKey,
 } from '@/lib/auth'
 import { getCAFromRequest } from '@/lib/server-auth'
-import { applyCaBadgeToProfile, type NavadrishtCATokenPayload } from '@/lib/navadrishti-ca-auth'
+import { applyCaBadgeToProfile, type PlatformCATokenPayload } from '@/lib/platform-ca-auth'
 import { extractVisibleKycFields, isGeminiOcrUnavailable } from '@/lib/gemini-vision'
 import {
   approveReverification,
@@ -499,7 +499,7 @@ function selectColumns(type: CAQueueType) {
   `
 }
 
-export function requireCA(request: NextRequest): NavadrishtCATokenPayload {
+export function requireCA(request: NextRequest): PlatformCATokenPayload {
   const ca = getCAFromRequest(request)
   if (!ca) {
     throw new Error('CA authentication required')
@@ -687,7 +687,7 @@ export async function applyCAVerificationAction(options: {
   action: 'approve' | 'reject'
   reason?: string
   compliance_tags?: unknown
-  ca: NavadrishtCATokenPayload
+  ca: PlatformCATokenPayload
 }) {
   const { type, id, action, reason, compliance_tags, ca } = options
   const { table, profileKey } = TYPE_CONFIG[type]

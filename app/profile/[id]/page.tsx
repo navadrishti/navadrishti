@@ -618,7 +618,7 @@ export default function ImpactProfilePage() {
                               <p className="font-medium text-slate-900">{project.title}</p>
                               {project.source ? (
                                 <p className="mt-1 text-xs text-slate-500">
-                                  {project.source === "platform" ? "Created on Navadrishti" : "Added during registration"}
+                                  {project.source === "platform" ? "Created on GRAM" : "Added during registration"}
                                 </p>
                               ) : null}
                             </div>

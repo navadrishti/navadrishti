@@ -1,24 +1,28 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { verifyNavadrishtCAToken } from '@/lib/navadrishti-ca-auth';
+import {
+  verifyPlatformCAToken,
+  PLATFORM_CA_COOKIE,
+  PLATFORM_CA_ACCOUNTS_TABLE,
+} from '@/lib/platform-ca-auth';
 import { supabase } from '@/lib/db';
 import CADashboardClient from './ca-dashboard-client';
 
 export default async function CADashboardPage() {
-  const caToken = (await cookies()).get('navadrishti-ca-token')?.value;
+  const caToken = (await cookies()).get(PLATFORM_CA_COOKIE)?.value;
 
   if (!caToken) {
     redirect('/ca/login');
   }
 
-  const decoded = verifyNavadrishtCAToken(caToken);
+  const decoded = verifyPlatformCAToken(caToken);
   if (!decoded) {
     redirect('/ca/login');
   }
 
   // Check if password change is mandatory
   const { data: account, error } = await supabase
-    .from('navadrishti_ca_accounts')
+    .from(PLATFORM_CA_ACCOUNTS_TABLE)
     .select('must_change_password')
     .eq('id', decoded.id)
     .single();

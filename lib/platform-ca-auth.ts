@@ -4,12 +4,20 @@ import { NextRequest } from 'next/server';
 import { comparePassword, getCaBadgeNumber, hashPassword, JWT_SECRET } from '@/lib/auth';
 import { supabase } from '@/lib/db';
 
+/**
+ * Wire/DB identifiers kept stable so existing CA sessions and rows keep working.
+ * Do not rename these without an explicit migration.
+ */
+export const PLATFORM_CA_COOKIE = 'navadrishti-ca-token';
+export const PLATFORM_CA_ACCOUNTS_TABLE = 'navadrishti_ca_accounts';
+const CA_BADGE_SALT_PREFIX = 'navadrishti-ca-badge';
+
 export function issueCaBadgeNumber(userId: number, profileData?: unknown): string {
   const existing = getCaBadgeNumber(profileData);
   if (existing) return existing;
 
   const digest = createHash('sha256')
-    .update(`navadrishti-ca-badge:${userId}:${JWT_SECRET}`)
+    .update(`${CA_BADGE_SALT_PREFIX}:${userId}:${JWT_SECRET}`)
     .digest('hex')
     .slice(0, 8)
     .toUpperCase();
@@ -43,7 +51,7 @@ export function applyCaBadgeToProfile(
   };
 }
 
-export type NavadrishtCAAccount = {
+export type PlatformCAAccount = {
   id: number;
   ca_id: string;
   username: string;
@@ -55,7 +63,7 @@ export type NavadrishtCAAccount = {
   updated_at?: string;
 };
 
-export type NavadrishtCATokenPayload = {
+export type PlatformCATokenPayload = {
   id: number;
   ca_id: string;
   username: string;
@@ -63,8 +71,8 @@ export type NavadrishtCATokenPayload = {
   email?: string;
 };
 
-export function generateNavadrishtCAToken(account: NavadrishtCAAccount): string {
-  const payload: NavadrishtCATokenPayload = {
+export function generatePlatformCAToken(account: PlatformCAAccount): string {
+  const payload: PlatformCATokenPayload = {
     id: account.id,
     ca_id: account.ca_id,
     username: account.username,
@@ -76,19 +84,19 @@ export function generateNavadrishtCAToken(account: NavadrishtCAAccount): string 
   });
 }
 
-export function verifyNavadrishtCAToken(token: string): NavadrishtCATokenPayload | null {
+export function verifyPlatformCAToken(token: string): PlatformCATokenPayload | null {
   try {
     if (!token || !token.trim()) return null;
     const cleanToken = token.replace(/["'\n\r\t]/g, '').replace(/^Bearer\s+/i, '').trim();
     if (!cleanToken) return null;
-    return jwt.verify(cleanToken, JWT_SECRET) as NavadrishtCATokenPayload;
+    return jwt.verify(cleanToken, JWT_SECRET) as PlatformCATokenPayload;
   } catch {
     return null;
   }
 }
 
-export function getNavadrishtCATokenFromRequest(request: NextRequest): string | null {
-  const cookieToken = request.cookies.get('navadrishti-ca-token')?.value?.trim();
+export function getPlatformCATokenFromRequest(request: NextRequest): string | null {
+  const cookieToken = request.cookies.get(PLATFORM_CA_COOKIE)?.value?.trim();
   if (cookieToken) return cookieToken;
 
   const authHeader = request.headers.get('authorization');
@@ -99,34 +107,36 @@ export function getNavadrishtCATokenFromRequest(request: NextRequest): string | 
   return null;
 }
 
-export async function getNavadrishtCAFromRequest(request: NextRequest): Promise<(NavadrishtCAAccount & { password_hash?: string }) | null> {
-  const token = getNavadrishtCATokenFromRequest(request);
+export async function getPlatformCAFromRequest(
+  request: NextRequest
+): Promise<(PlatformCAAccount & { password_hash?: string }) | null> {
+  const token = getPlatformCATokenFromRequest(request);
   if (!token) return null;
 
-  const decoded = verifyNavadrishtCAToken(token);
+  const decoded = verifyPlatformCAToken(token);
   if (!decoded?.id) return null;
 
   const { data, error } = await supabase
-    .from('navadrishti_ca_accounts')
+    .from(PLATFORM_CA_ACCOUNTS_TABLE)
     .select('*')
     .eq('id', decoded.id)
     .single();
 
   if (error || !data || data.active === false) return null;
-  return data as NavadrishtCAAccount & { password_hash?: string };
+  return data as PlatformCAAccount & { password_hash?: string };
 }
 
-export async function listNavadrishtCAAccounts() {
+export async function listPlatformCAAccounts() {
   const { data, error } = await supabase
-    .from('navadrishti_ca_accounts')
+    .from(PLATFORM_CA_ACCOUNTS_TABLE)
     .select('*')
     .order('created_at', { ascending: false });
 
   if (error) throw error;
-  return (data || []) as NavadrishtCAAccount[];
+  return (data || []) as PlatformCAAccount[];
 }
 
-export async function createNavadrishtCAAccount(input: {
+export async function createPlatformCAAccount(input: {
   ca_id: string;
   username: string;
   display_name: string;
@@ -136,7 +146,7 @@ export async function createNavadrishtCAAccount(input: {
   const password_hash = await hashPassword(input.temporaryPassword);
 
   const { data, error } = await supabase
-    .from('navadrishti_ca_accounts')
+    .from(PLATFORM_CA_ACCOUNTS_TABLE)
     .insert({
       ca_id: input.ca_id,
       username: input.username,
@@ -150,13 +160,13 @@ export async function createNavadrishtCAAccount(input: {
     .single();
 
   if (error) throw error;
-  return data as NavadrishtCAAccount;
+  return data as PlatformCAAccount;
 }
 
-export async function updateNavadrishtCAPassword(accountId: number, password: string) {
+export async function updatePlatformCAPassword(accountId: number, password: string) {
   const password_hash = await hashPassword(password);
   const { data, error } = await supabase
-    .from('navadrishti_ca_accounts')
+    .from(PLATFORM_CA_ACCOUNTS_TABLE)
     .update({
       password_hash,
       must_change_password: false,
@@ -167,13 +177,13 @@ export async function updateNavadrishtCAPassword(accountId: number, password: st
     .single();
 
   if (error) throw error;
-  return data as NavadrishtCAAccount;
+  return data as PlatformCAAccount;
 }
 
-export async function resetNavadrishtCAPasswordByAdmin(accountId: number, temporaryPassword: string) {
+export async function resetPlatformCAPasswordByAdmin(accountId: number, temporaryPassword: string) {
   const password_hash = await hashPassword(temporaryPassword);
   const { data, error } = await supabase
-    .from('navadrishti_ca_accounts')
+    .from(PLATFORM_CA_ACCOUNTS_TABLE)
     .update({
       password_hash,
       must_change_password: true,
@@ -184,12 +194,12 @@ export async function resetNavadrishtCAPasswordByAdmin(accountId: number, tempor
     .single();
 
   if (error) throw error;
-  return data as NavadrishtCAAccount;
+  return data as PlatformCAAccount;
 }
 
-export async function verifyNavadrishtCAPassword(accountId: number, password: string) {
+export async function verifyPlatformCAPassword(accountId: number, password: string) {
   const { data, error } = await supabase
-    .from('navadrishti_ca_accounts')
+    .from(PLATFORM_CA_ACCOUNTS_TABLE)
     .select('password_hash')
     .eq('id', accountId)
     .single();
@@ -198,10 +208,10 @@ export async function verifyNavadrishtCAPassword(accountId: number, password: st
   return comparePassword(password, data.password_hash);
 }
 
-export async function assertNavadrishtCA(request: NextRequest) {
-  const ca = await getNavadrishtCAFromRequest(request);
+export async function assertPlatformCA(request: NextRequest) {
+  const ca = await getPlatformCAFromRequest(request);
   if (!ca) {
-    throw new Error('Navadrishti CA authentication required');
+    throw new Error('CA authentication required');
   }
   return ca;
 }

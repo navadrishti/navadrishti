@@ -447,9 +447,13 @@ export async function GET(request: NextRequest) {
 
     if (transactionTypeFilter && transactionTypeFilter !== 'all' && transactionTypeFilter !== 'All Transactions') {
       const transactionLower = transactionTypeFilter.toLowerCase()
-      filteredOffers = filteredOffers.filter(
-        (offer) => String(offer.transaction_type || '').toLowerCase() === transactionLower
-      )
+      filteredOffers = filteredOffers.filter((offer) => {
+        const offerTransaction = String(offer.transaction_type || '').toLowerCase()
+        if (transactionLower === 'rent') {
+          return offerTransaction === 'rent' || offerTransaction === 'sell'
+        }
+        return offerTransaction === transactionLower
+      })
     }
 
     filteredOffers = filteredOffers.map((offer: any) => {

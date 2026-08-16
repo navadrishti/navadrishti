@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,6 +10,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { AuthCardBackRow } from '@/components/header';
+import { PRODUCT_NAME } from '@/lib/access-control';
+import { ProductBrand } from '@/components/product-brand';
 
 export default function GovernmentAdminLoginPage() {
   const router = useRouter();
@@ -124,7 +125,7 @@ export default function GovernmentAdminLoginPage() {
             <AuthCardBackRow />
             <CardTitle className="text-2xl font-bold text-center">Sign In</CardTitle>
             <CardDescription className="text-center">
-              Enter the credentials created by the Navadrishti super admin
+              Enter the credentials created by the {PRODUCT_NAME} super admin
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -180,20 +181,18 @@ export default function GovernmentAdminLoginPage() {
           </CardContent>
         </Card>
 
-        <div className="mt-6 text-center text-sm text-gray-600">
-          <p className="mb-2">Access is restricted and all actions are audited</p>
-          <p className="inline-flex items-center gap-2">
-            © 2026
-            <Image
-              src="/photos/small-logo.svg"
-              alt="Navadrishti logo"
-              width={14}
-              height={14}
-              className="h-3.5 w-3.5"
-            />
-            Navadrishti Platform
-          </p>
-        </div>
+          <div className="mt-6 flex flex-col items-center gap-2 text-center text-sm text-gray-600">
+            <p>Access is restricted and all actions are audited</p>
+            <div className="inline-flex items-center gap-2">
+              <span>© 2026</span>
+              <ProductBrand
+                size="xs"
+                nameSuffix=" Platform"
+                nameClassName="text-gray-600"
+                poweredClassName="text-gray-500"
+              />
+            </div>
+          </div>
       </div>
     </div>
   );

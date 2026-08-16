@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast as sonnerToast } from 'sonner';
-import { NavadrishtCAManagement } from '@/components/navadrishti-ca-management';
+import { PlatformCAManagement } from '@/components/platform-ca-management';
 import { DocumentFileViewer } from '@/components/ca-verification-review';
 import { AdminConsoleHeader, AdminPortalMain, AdminPortalShell } from './admin-layout-client';
 import {
@@ -2942,7 +2942,7 @@ export default function AdminPage() {
             )}
 
             {activeTab === 'ca-credentials' && (
-            <NavadrishtCAManagement />
+            <PlatformCAManagement />
             )}
             </CardContent>
             </Card>

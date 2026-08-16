@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { assertAdminUser } from '@/lib/admin-auth';
-import { createNavadrishtCAAccount, resetNavadrishtCAPasswordByAdmin } from '@/lib/navadrishti-ca-auth';
+import { createPlatformCAAccount, resetPlatformCAPasswordByAdmin, PLATFORM_CA_ACCOUNTS_TABLE } from '@/lib/platform-ca-auth';
 import crypto from 'crypto';
 
-// Generate a random CA ID
+// Generate a random CA ID (new accounts only; existing DB rows keep their ca_id values)
 function generateCaId(): string {
-  const randomSuffix = crypto.randomBytes(6).toString('hex');
-  return `navadrishti-ca-${randomSuffix}`;
+  const randomSuffix = crypto.randomBytes(6).toString('hex').toUpperCase();
+  return `ND-CA-${randomSuffix}`;
 }
 
 export async function GET(request: NextRequest) {
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     // If query=unique-ca-ids, return list of distinct CA IDs for reuse
     if (query === 'unique-ca-ids') {
       const { data, error } = await supabase
-        .from('navadrishti_ca_accounts')
+        .from(PLATFORM_CA_ACCOUNTS_TABLE)
         .select('ca_id, username, display_name, created_at')
         .order('created_at', { ascending: false });
 
@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
 
     // Default: return all CA accounts
     const { data, error } = await supabase
-      .from('navadrishti_ca_accounts')
+      .from(PLATFORM_CA_ACCOUNTS_TABLE)
       .select('id, ca_id, username, display_name, active, must_change_password, last_login_at, created_at, updated_at')
       .order('created_at', { ascending: false });
 
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
 
     // Check if account with this username already exists for the provided CA instance
     const { data: existing, error: checkError } = await supabase
-      .from('navadrishti_ca_accounts')
+      .from(PLATFORM_CA_ACCOUNTS_TABLE)
       .select('id')
       .eq('username', username)
       .eq('ca_id', ca_id)
@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const account = await createNavadrishtCAAccount({
+    const account = await createPlatformCAAccount({
       ca_id,
       username,
       display_name,
@@ -164,7 +164,7 @@ export async function PUT(request: NextRequest) {
         );
       }
 
-      const updatedAccount = await resetNavadrishtCAPasswordByAdmin(Number(accountId), newPassword);
+      const updatedAccount = await resetPlatformCAPasswordByAdmin(Number(accountId), newPassword);
 
       return NextResponse.json({
         success: true,
@@ -191,7 +191,7 @@ export async function PUT(request: NextRequest) {
     const isActive = action === 'activate';
 
     const { data, error } = await supabase
-      .from('navadrishti_ca_accounts')
+      .from(PLATFORM_CA_ACCOUNTS_TABLE)
       .update({ active: isActive, updated_at: new Date().toISOString() })
       .eq('id', accountId)
       .select()
@@ -243,7 +243,7 @@ export async function DELETE(request: NextRequest) {
 
     // Get account details before deletion (for response)
     const { data: account, error: fetchError } = await supabase
-      .from('navadrishti_ca_accounts')
+      .from(PLATFORM_CA_ACCOUNTS_TABLE)
       .select('id, ca_id, username, display_name')
       .eq('id', accountId)
       .single();
@@ -257,7 +257,7 @@ export async function DELETE(request: NextRequest) {
 
     // Delete the account
     const { error: deleteError } = await supabase
-      .from('navadrishti_ca_accounts')
+      .from(PLATFORM_CA_ACCOUNTS_TABLE)
       .delete()
       .eq('id', accountId);
 

@@ -1,4 +1,4 @@
-export const AI_SUITE_NAME = 'Navadrishti AI Suite'
+export const AI_SUITE_NAME = 'GRAM AI Suite'
 
 export const AGENT_NAMES = {
   atlas: 'Atlas',
