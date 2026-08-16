@@ -23,6 +23,7 @@ import {
   isOfferType,
   isTransactionAllowedForOfferType,
   isTransactionType,
+  normalizeCapabilityTransactionType,
   OFFER_TYPE_OPTIONS,
   OFFER_TYPE_TRANSACTION_MATRIX,
   OfferType,
@@ -257,9 +258,7 @@ export default function EditServiceOfferPage({ params }: { params: Promise<{ id:
         const offer = data?.data ?? data
         const details = offer.offer_details || {}
         const offerType = isOfferType(offer.offer_type) ? offer.offer_type : 'financial'
-        const transactionType = isTransactionType(offer.transaction_type)
-          ? offer.transaction_type
-          : getDefaultTransactionType(offerType)
+        const transactionType = normalizeCapabilityTransactionType(offerType, offer.transaction_type)
 
         setFormData({
           title: offer.title || '',
@@ -409,7 +408,7 @@ export default function EditServiceOfferPage({ params }: { params: Promise<{ id:
       }
 
         if (formData.transaction_type === 'rent' && toNullablePositiveNumber((formData as any).unit_rate) === null) {
-          return 'Please enter a valid unit rate for rent offers (e.g., 10 per day).'
+          return 'Please enter a valid daily rental rate (INR/day).'
         }
 
         if (formData.transaction_type === 'rent' && !(formData as any).billing_cycle) {
@@ -675,7 +674,7 @@ export default function EditServiceOfferPage({ params }: { params: Promise<{ id:
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
-                      <Label htmlFor="unit_rate">Unit Rate (e.g., 10)</Label>
+                      <Label htmlFor="unit_rate">Daily Rental Rate (INR)</Label>
                       <Input id="unit_rate" name="unit_rate" type="number" min="0" value={(formData as any).unit_rate} onChange={handleTextInput} />
                     </div>
                     <div>

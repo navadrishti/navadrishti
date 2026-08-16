@@ -261,6 +261,7 @@ export const PRODUCT_LOGO_ICON_SRC = '/photos/Gram.svg';
 export const PRODUCT_LOGO_ALT = `${PRODUCT_NAME} logo`;
 /** Apply on logo + name lockups to block select/drag. */
 export const PRODUCT_BRAND_CLASSNAME = 'product-brand select-none';
+export const PRODUCT_POWERED_BY = 'Powered by Navadrishti';
 
 const PHASE1_BLOCKED_ROUTE_PREFIXES = [
   '/service-requests',
