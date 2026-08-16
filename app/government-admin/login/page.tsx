@@ -11,7 +11,6 @@ import { Loader2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { AuthCardBackRow } from '@/components/header';
 import { PRODUCT_NAME } from '@/lib/access-control';
-import { ProductBrand } from '@/components/product-brand';
 
 export default function GovernmentAdminLoginPage() {
   const router = useRouter();
@@ -183,15 +182,7 @@ export default function GovernmentAdminLoginPage() {
 
           <div className="mt-6 flex flex-col items-center gap-2 text-center text-sm text-gray-600">
             <p>Access is restricted and all actions are audited</p>
-            <div className="inline-flex items-center gap-2">
-              <span>© 2026</span>
-              <ProductBrand
-                size="xs"
-                nameSuffix=" Platform"
-                nameClassName="text-gray-600"
-                poweredClassName="text-gray-500"
-              />
-            </div>
+            <p>© {new Date().getFullYear()} {PRODUCT_NAME} Platform</p>
           </div>
       </div>
     </div>

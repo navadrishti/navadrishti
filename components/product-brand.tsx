@@ -21,15 +21,21 @@ type ProductBrandProps = {
 const sizeStyles = {
   md: {
     icon: 'h-10 w-10',
-    name: 'text-xl font-bold',
+    name: 'text-xl font-bold leading-none',
+    powered: 'text-[10px] leading-tight',
+    gap: 'gap-2.5',
   },
   sm: {
     icon: 'h-9 w-9',
-    name: 'text-xl font-bold',
+    name: 'text-xl font-bold leading-none',
+    powered: 'text-[10px] leading-tight',
+    gap: 'gap-2',
   },
   xs: {
-    icon: 'h-[18px] w-[18px]',
-    name: 'text-sm font-semibold',
+    icon: 'h-7 w-7',
+    name: 'text-sm font-semibold leading-none',
+    powered: 'text-[10px] leading-tight',
+    gap: 'gap-2',
   },
 } as const;
 
@@ -45,33 +51,35 @@ export function ProductBrand({
   const styles = sizeStyles[size];
   const content = (
     <>
-      <span className={cn('flex items-center gap-2 leading-none', styles.name, nameClassName)}>
-        <img
-          src={PRODUCT_LOGO_SRC}
-          alt=""
-          aria-hidden="true"
-          draggable={false}
-          className={cn(styles.icon, 'shrink-0 object-contain')}
-        />
-        <span>
+      <img
+        src={PRODUCT_LOGO_SRC}
+        alt=""
+        aria-hidden="true"
+        draggable={false}
+        className={cn(styles.icon, 'shrink-0 object-contain')}
+      />
+      <span className="flex min-w-0 flex-col items-start justify-center gap-0.5">
+        <span className={cn(styles.name, nameClassName)}>
           {PRODUCT_NAME}
           {nameSuffix}
         </span>
-      </span>
-      <span
-        aria-hidden="true"
-        className={cn(
-          'product-brand-powered block w-full text-center font-medium leading-none',
-          poweredClassName ?? 'text-white/75'
-        )}
-      >
-        {PRODUCT_POWERED_BY}
+        <span
+          aria-hidden="true"
+          className={cn(
+            'product-brand-powered font-medium',
+            styles.powered,
+            poweredClassName ?? 'text-white/75'
+          )}
+        >
+          {PRODUCT_POWERED_BY}
+        </span>
       </span>
     </>
   );
 
   const sharedClassName = cn(
-    'inline-flex w-fit max-w-full shrink-0 flex-col items-stretch justify-center gap-0.5',
+    'inline-flex w-fit max-w-full shrink-0 items-center',
+    styles.gap,
     PRODUCT_BRAND_CLASSNAME,
     className
   );

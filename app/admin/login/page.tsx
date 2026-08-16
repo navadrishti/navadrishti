@@ -11,7 +11,6 @@ import { Loader2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { AuthCardBackRow } from '@/components/header';
 import { PRODUCT_NAME } from '@/lib/access-control';
-import { ProductBrand } from '@/components/product-brand';
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -92,16 +91,9 @@ export default function AdminLoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100 p-4">
       <div className="w-full max-w-md">
-        <div className="mb-8 flex flex-col items-center gap-3 text-center">
-          <ProductBrand
-            size="sm"
-            nameClassName="text-gray-900"
-            poweredClassName="text-gray-500"
-          />
-          <div>
-            <h1 className="mb-2 text-3xl font-bold text-gray-900">Admin Console</h1>
-            <p className="text-gray-600 select-none">{PRODUCT_NAME} Platform Administration</p>
-          </div>
+        <div className="mb-8 text-center">
+          <h1 className="mb-2 text-3xl font-bold text-gray-900">Admin Console</h1>
+          <p className="text-gray-600 select-none">{PRODUCT_NAME} Platform Administration</p>
         </div>
 
         <Card className="border-2 border-slate-200 shadow-sm">
@@ -171,15 +163,8 @@ export default function AdminLoginPage() {
           </CardContent>
         </Card>
 
-        <div className="mt-6 flex justify-center">
-          <div className="inline-flex items-center gap-2 text-sm text-gray-600">
-            <span>© {new Date().getFullYear()}</span>
-            <ProductBrand
-              size="xs"
-              nameClassName="text-gray-600"
-              poweredClassName="text-gray-500"
-            />
-          </div>
+        <div className="mt-6 text-center text-sm text-gray-600">
+          © {new Date().getFullYear()} {PRODUCT_NAME}
         </div>
       </div>
     </div>
