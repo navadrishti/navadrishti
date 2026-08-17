@@ -2,12 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { hashPassword } from '@/lib/auth';
+import { normalizeEmailAddress } from '@/lib/email';
 import {
   cleanupPasswordResetStores,
   deletePasswordResetToken,
   getPasswordResetToken,
-  normalizeResetEmail,
-} from '@/lib/password-reset';
+} from '../forgot-password/route';
 
 const resetPasswordSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     }
 
     const { resetToken, password } = validationResult.data;
-    const email = normalizeResetEmail(validationResult.data.email);
+    const email = normalizeEmailAddress(validationResult.data.email);
 
     cleanupPasswordResetStores();
 

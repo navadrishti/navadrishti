@@ -9,7 +9,10 @@
  */
 
 // Email service utility using NodeMailer
+import crypto from 'crypto';
+import { createClient } from '@supabase/supabase-js';
 import nodemailer from 'nodemailer';
+import { createServerClient } from '@/lib/db';
 
 interface EmailOptions {
   to: string;
@@ -294,7 +297,116 @@ export function generatePasswordResetEmail(resetUrl: string, userName?: string) 
   `;
 }
 
-// EmailService class for OOP-style email operations  
+const EMAIL_OTP_PREPARE_RATE_LIMIT_MS = 60 * 1000;
+const prepareRateLimitStore = new Map<string, number>();
+
+export const normalizeEmailAddress = (value: string) => value.trim().toLowerCase();
+
+const isAlreadyRegisteredSupabaseAuthError = (error: {
+  message?: string;
+  code?: string | number | null;
+}) => {
+  const code = String(error.code || '').toLowerCase();
+  const normalized = String(error.message || '').toLowerCase();
+  return (
+    code === 'email_exists' ||
+    normalized.includes('already exists') ||
+    normalized.includes('already registered') ||
+    normalized.includes('already been registered') ||
+    normalized.includes('duplicate') ||
+    normalized.includes('user already registered') ||
+    (normalized.includes('already') && normalized.includes('registered'))
+  );
+};
+
+const cleanupPrepareRateLimitStore = () => {
+  const now = Date.now();
+  for (const [email, timestamp] of prepareRateLimitStore.entries()) {
+    if (now - timestamp > EMAIL_OTP_PREPARE_RATE_LIMIT_MS * 2) {
+      prepareRateLimitStore.delete(email);
+    }
+  }
+};
+
+export async function prepareEmailOtpSession(emailInput: string): Promise<
+  | { ok: true }
+  | { ok: false; status: number; error: string }
+> {
+  const email = normalizeEmailAddress(emailInput);
+  cleanupPrepareRateLimitStore();
+
+  const lastPreparedAt = prepareRateLimitStore.get(email);
+  if (lastPreparedAt && Date.now() - lastPreparedAt < EMAIL_OTP_PREPARE_RATE_LIMIT_MS) {
+    const retryAfterSeconds = Math.ceil(
+      (EMAIL_OTP_PREPARE_RATE_LIMIT_MS - (Date.now() - lastPreparedAt)) / 1000
+    );
+    return {
+      ok: false,
+      status: 429,
+      error: `Please wait ${retryAfterSeconds}s before requesting another email OTP`,
+    };
+  }
+
+  const supabase = createServerClient();
+  const { error } = await supabase.auth.admin.createUser({
+    email,
+    password: crypto.randomBytes(24).toString('base64url'),
+    email_confirm: true,
+  });
+
+  if (error && !isAlreadyRegisteredSupabaseAuthError(error)) {
+    console.error('Prepare email OTP error:', error);
+    return { ok: false, status: 500, error: 'Failed to prepare email OTP session' };
+  }
+
+  prepareRateLimitStore.set(email, Date.now());
+  return { ok: true };
+}
+
+export async function verifyEmailOtpWithSupabase(
+  email: string,
+  token: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
+  );
+
+  const otpTypes: Array<'email' | 'signup'> = ['email', 'signup'];
+  let verificationError: Error | null = null;
+
+  for (const otpType of otpTypes) {
+    const { error } = await supabase.auth.verifyOtp({
+      email,
+      token,
+      type: otpType,
+    });
+
+    if (!error) {
+      return { ok: true };
+    }
+
+    verificationError = error;
+
+    const normalizedMessage = (error.message || '').toLowerCase();
+    const shouldTryFallback =
+      otpType === 'email' &&
+      (normalizedMessage.includes('invalid') ||
+        normalizedMessage.includes('expired') ||
+        normalizedMessage.includes('token') ||
+        normalizedMessage.includes('otp') ||
+        normalizedMessage.includes('email link'));
+
+    if (!shouldTryFallback) {
+      break;
+    }
+  }
+
+  const message = (verificationError?.message || 'Invalid email OTP').replace(/\btoken\b/gi, 'OTP');
+  return { ok: false, error: message };
+}
+
+// EmailService class for OOP-style email operations
 class EmailService {
   private transporter: nodemailer.Transporter | null = null;
 
