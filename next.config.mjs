@@ -46,6 +46,24 @@ const nextConfig = {
   turbopack: {
     root: process.cwd(),
   },
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          {
+            key: 'Link',
+            value:
+              '</llm.txt>; rel="alternate"; type="text/plain"; title="LLM context", </ai.txt>; rel="alternate"; type="text/plain"; title="AI discovery", <https://www.navadrishti.in/llms.txt>; rel="alternate"; type="text/plain"; title="Navadrishti LLP LLM context", <https://www.navadrishti.in/llms-full.txt>; rel="alternate"; type="text/plain"; title="Navadrishti LLP LLM full context"',
+          },
+          {
+            key: 'X-AI-Discovery',
+            value: 'https://www.navadrishti.in/llms.txt',
+          },
+        ],
+      },
+    ]
+  },
   async redirects() {
     return [
       {

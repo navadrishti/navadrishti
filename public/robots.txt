@@ -1,16 +1,41 @@
-# robots.txt for Navadrishti
+# GRAM by Navadrishti LLP — https://app.navadrishti.in
+
 User-agent: *
 Allow: /
+Disallow: /admin/
+Disallow: /api/
+Disallow: /settings/
 
-# Disallow admin and API routes
+User-agent: Googlebot
+Allow: /
 Disallow: /admin/
 Disallow: /api/
 
-# Disallow user-specific pages that require authentication
-Disallow: /settings/
+User-agent: Bingbot
+Allow: /
 
-# Sitemap
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: facebookexternalhit
+Allow: /
+
+User-agent: Twitterbot
+Allow: /
+
+# LLM / AI discovery
+# https://app.navadrishti.in/llm.txt
+# https://app.navadrishti.in/ai.txt
+# https://www.navadrishti.in/llms.txt
+# https://www.navadrishti.in/llms-full.txt
+
 Sitemap: https://app.navadrishti.in/sitemap.xml
-
-# LLM crawlers
-Allow: /llm.txt
