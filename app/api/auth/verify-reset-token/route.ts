@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import {
-  cleanupPasswordResetStores,
-  getPasswordResetToken,
-} from '@/lib/password-reset';
+import { cleanupPasswordResetStores, getPasswordResetToken } from '../forgot-password/route';
 
 const verifyTokenSchema = z.object({
   token: z.string().min(1, 'Token is required'),

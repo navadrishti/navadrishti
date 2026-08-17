@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { prepareEmailOtpSession } from '@/lib/email-otp';
+import { prepareEmailOtpSession } from '@/lib/email';
 
 const prepareEmailOtpSchema = z.object({
   email: z.string().email('Invalid email address'),
