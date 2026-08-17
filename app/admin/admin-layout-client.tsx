@@ -201,7 +201,7 @@ export function AdminConsoleHeader({
 
               <div className="flex h-full flex-col">
                 <div className="flex items-center justify-between border-b border-white/20 px-4 py-3">
-                  <ProductBrand href="/admin" size="sm" onClick={() => setMobileMenuOpen(false)} />
+                  <ProductBrand href="/admin" size="sm" nameClassName="text-white" poweredClassName="text-white/75" onClick={() => setMobileMenuOpen(false)} />
                   <SheetClose asChild>
                     <Button variant="ghost" size="icon" className="text-white hover:bg-white/10">
                       <X className="h-5 w-5" />

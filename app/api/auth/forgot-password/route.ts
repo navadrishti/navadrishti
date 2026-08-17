@@ -2,87 +2,124 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import crypto from 'crypto';
 import { db } from '@/lib/db';
-import { sendEmail, generatePasswordResetEmail } from '@/lib/email';
+import { normalizeEmailAddress, prepareEmailOtpSession, verifyEmailOtpWithSupabase } from '@/lib/email';
 
-// Validation schema
-const forgotPasswordSchema = z.object({
-  email: z.string().email('Invalid email address')
+const PASSWORD_RESET_TOKEN_TTL_MS = 15 * 60 * 1000;
+
+type PasswordResetTokenRecord = {
+  email: string;
+  userId: number;
+  expires: number;
+};
+
+const passwordResetTokens = new Map<string, PasswordResetTokenRecord>();
+
+const sendOtpSchema = z.object({
+  email: z.string().email('Invalid email address'),
 });
 
-// Store password reset tokens temporarily (in production, use Redis or database)
-const resetTokens = new Map<string, { email: string; expires: number }>();
+const verifyOtpSchema = z.object({
+  email: z.string().email('Invalid email address'),
+  otp: z.string().min(4, 'OTP is required'),
+});
+
+const cleanupExpiredResetTokens = () => {
+  const now = Date.now();
+  for (const [token, record] of passwordResetTokens.entries()) {
+    if (record.expires <= now) {
+      passwordResetTokens.delete(token);
+    }
+  }
+};
+
+const createPasswordResetToken = (email: string, userId: number) => {
+  const resetToken = crypto.randomBytes(32).toString('hex');
+  passwordResetTokens.set(resetToken, {
+    email: normalizeEmailAddress(email),
+    userId,
+    expires: Date.now() + PASSWORD_RESET_TOKEN_TTL_MS,
+  });
+  return resetToken;
+};
+
+export const getPasswordResetToken = (token: string) => passwordResetTokens.get(token);
+
+export const deletePasswordResetToken = (token: string) => {
+  passwordResetTokens.delete(token);
+};
+
+export { cleanupExpiredResetTokens as cleanupPasswordResetStores };
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const validationResult = forgotPasswordSchema.safeParse(body);
-    
-    if (!validationResult.success) {
-      return NextResponse.json({ 
-        error: validationResult.error.errors[0].message 
-      }, { status: 400 });
+
+    if (typeof body?.otp === 'string' && body.otp.trim()) {
+      const validationResult = verifyOtpSchema.safeParse(body);
+
+      if (!validationResult.success) {
+        return NextResponse.json(
+          { error: validationResult.error.errors[0].message },
+          { status: 400 }
+        );
+      }
+
+      const email = normalizeEmailAddress(validationResult.data.email);
+      const otp = validationResult.data.otp.trim();
+
+      cleanupExpiredResetTokens();
+
+      const user = await db.users.findByEmail(email);
+
+      if (!user) {
+        return NextResponse.json({ error: 'Account not found' }, { status: 404 });
+      }
+
+      const verification = await verifyEmailOtpWithSupabase(email, otp);
+
+      if (!verification.ok) {
+        return NextResponse.json({ error: verification.error }, { status: 400 });
+      }
+
+      const resetToken = createPasswordResetToken(email, user.id);
+
+      return NextResponse.json({
+        success: true,
+        message: 'OTP verified successfully',
+        resetToken,
+        accountName: user.name || user.email,
+        email,
+      });
     }
-    
-    const { email } = validationResult.data;
-    
-    // Check if user exists
+
+    const validationResult = sendOtpSchema.safeParse(body);
+
+    if (!validationResult.success) {
+      return NextResponse.json(
+        { error: validationResult.error.errors[0].message },
+        { status: 400 }
+      );
+    }
+
+    const email = normalizeEmailAddress(validationResult.data.email);
     const user = await db.users.findByEmail(email);
-    
-    // Always return success to prevent email enumeration attacks
-    // but only send email if user exists
+
     if (user) {
-      // Generate reset token
-      const resetToken = crypto.randomBytes(32).toString('hex');
-      const expires = Date.now() + 3600000; // 1 hour from now
-      
-      // Store token (in production, store in database with user_id)
-      resetTokens.set(resetToken, { email, expires });
-      
-      // Generate password reset URL
-      const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`;
-      
-      try {
-        // Send password reset email
-        const emailHtml = generatePasswordResetEmail(resetUrl, email);
-        const emailSent = await sendEmail({
-          to: email,
-          subject: 'Password Reset - GRAM',
-          html: emailHtml
-        });
-        
-        if (!emailSent.success) {
-          console.error(`Failed to send password reset email to: ${email}`);
-        }
-        
-      } catch (emailError) {
-        console.error('Failed to send reset email:', emailError);
-        // Don't expose email sending errors to prevent information leakage
+      const prepared = await prepareEmailOtpSession(email);
+      if (!prepared.ok) {
+        return NextResponse.json({ error: prepared.error }, { status: prepared.status });
       }
     }
-    
-    // Always return success message to prevent email enumeration
+
     return NextResponse.json({
-      message: 'If an account with that email exists, we have sent a password reset link.',
-      success: true
+      message: 'If an account with that email exists, we have sent a password reset OTP.',
+      success: true,
     });
-    
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Forgot password error:', error);
-    return NextResponse.json({ 
-      error: 'An error occurred while processing your request' 
-    }, { status: 500 });
+    return NextResponse.json(
+      { error: 'An error occurred while processing your request' },
+      { status: 500 }
+    );
   }
 }
-
-// Helper function to clean up expired tokens (call this periodically)
-export function cleanupExpiredTokens() {
-  const now = Date.now();
-  for (const [token, data] of resetTokens.entries()) {
-    if (data.expires < now) {
-      resetTokens.delete(token);
-    }
-  }
-}
-
-// Export the tokens map for use in other endpoints
-export { resetTokens };

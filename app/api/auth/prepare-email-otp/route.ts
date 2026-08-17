@@ -1,39 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import crypto from 'crypto';
-import { createServerClient } from '@/lib/db';
+import { prepareEmailOtpSession } from '@/lib/email';
 
 const prepareEmailOtpSchema = z.object({
-  email: z.string().email('Invalid email address')
+  email: z.string().email('Invalid email address'),
 });
-
-const PREPARE_RATE_LIMIT_MS = 60 * 1000;
-const prepareRateLimitStore = new Map<string, number>();
-
-const normalizeEmail = (value: string) => value.trim().toLowerCase();
-
-const isAlreadyRegisteredError = (error: { message?: string; code?: string | number | null }) => {
-  const code = String(error.code || '').toLowerCase();
-  const normalized = String(error.message || '').toLowerCase();
-  return (
-    code === 'email_exists' ||
-    normalized.includes('already exists') ||
-    normalized.includes('already registered') ||
-    normalized.includes('already been registered') ||
-    normalized.includes('duplicate') ||
-    normalized.includes('user already registered') ||
-    (normalized.includes('already') && normalized.includes('registered'))
-  );
-};
-
-const cleanupRateLimitStore = () => {
-  const now = Date.now();
-  for (const [email, timestamp] of prepareRateLimitStore.entries()) {
-    if (now - timestamp > PREPARE_RATE_LIMIT_MS * 2) {
-      prepareRateLimitStore.delete(email);
-    }
-  }
-};
 
 export async function POST(req: NextRequest) {
   try {
@@ -41,36 +12,21 @@ export async function POST(req: NextRequest) {
     const validationResult = prepareEmailOtpSchema.safeParse(body);
 
     if (!validationResult.success) {
-      return NextResponse.json({ error: validationResult.error.issues[0]?.message || 'Invalid email address' }, { status: 400 });
+      return NextResponse.json(
+        { error: validationResult.error.issues[0]?.message || 'Invalid email address' },
+        { status: 400 }
+      );
     }
 
-    const email = normalizeEmail(validationResult.data.email);
-    cleanupRateLimitStore();
+    const result = await prepareEmailOtpSession(validationResult.data.email);
 
-    const lastPreparedAt = prepareRateLimitStore.get(email);
-    if (lastPreparedAt && Date.now() - lastPreparedAt < PREPARE_RATE_LIMIT_MS) {
-      const retryAfterSeconds = Math.ceil((PREPARE_RATE_LIMIT_MS - (Date.now() - lastPreparedAt)) / 1000);
-      return NextResponse.json({ error: `Please wait ${retryAfterSeconds}s before requesting another email OTP` }, { status: 429 });
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: result.status });
     }
-
-    const supabase = createServerClient();
-
-    const { error } = await supabase.auth.admin.createUser({
-      email,
-      password: crypto.randomBytes(24).toString('base64url'),
-      email_confirm: true
-    });
-
-    if (error && !isAlreadyRegisteredError(error)) {
-      console.error('Prepare email OTP error:', error);
-      return NextResponse.json({ error: 'Failed to prepare email OTP session' }, { status: 500 });
-    }
-
-    prepareRateLimitStore.set(email, Date.now());
 
     return NextResponse.json({
       prepared: true,
-      message: 'Email OTP session prepared'
+      message: 'Email OTP session prepared',
     });
   } catch (error) {
     console.error('Prepare email OTP unexpected error:', error);
