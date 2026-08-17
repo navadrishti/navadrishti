@@ -26,6 +26,19 @@ body {
     letter-spacing: 0.02em;
     white-space: nowrap;
   }
+
+  .agent-only {
+    position: absolute;
+    left: -9999px;
+    top: auto;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    pointer-events: none;
+    user-select: none;
+  }
   
   .line-clamp-2 {
     display: -webkit-box;

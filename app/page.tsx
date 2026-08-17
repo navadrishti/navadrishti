@@ -2,7 +2,11 @@
 
 import Link from 'next/link';
 import { Header } from '@/components/header';
-import { shouldShowRootSubNavbar } from '@/lib/access-control';
+import {
+  NAVADRISHTI_ABOUT_URL,
+  NAVADRISHTI_CONTACT_HREF,
+  shouldShowRootSubNavbar,
+} from '@/lib/access-control';
 import { ProductBrand } from '@/components/product-brand';
 
 // Photo grid - using public images
@@ -44,8 +48,8 @@ const repeatRow = <T,>(row: T[]) => [...row, ...row];
 const rootSubnavItems = [
   { label: 'Evidence Verification Portal', href: '/evidence-verification/login' },
   { label: 'Partner CA Portal', href: '/ca/login' },
-  { label: 'About Us', href: 'https://navadrishti.in', external: true },
-  { label: 'Contact Us', href: 'mailto:connect@navadrishti.in' },
+  { label: 'About Us', href: NAVADRISHTI_ABOUT_URL, external: true },
+  { label: 'Contact Us', href: NAVADRISHTI_CONTACT_HREF },
 ] as const;
 
 // Animation keyframes
