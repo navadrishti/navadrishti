@@ -214,6 +214,8 @@ export function CAConsoleHeader({
                   <ProductBrand
                     href="/evidence-verification"
                     size="sm"
+                    nameClassName="text-white"
+                    poweredClassName="text-white/75"
                     onClick={() => setMobileMenuOpen(false)}
                   />
                   <SheetClose asChild>

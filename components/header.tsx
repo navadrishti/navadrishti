@@ -479,7 +479,7 @@ export function Header({ className = '' }: { className?: string } = {}) {
                 {/* Fixed Header */}
                 <div className="flex-shrink-0 py-2 px-3 border-b border-white/20 bg-udaan-blue">
                   <div className="flex items-center justify-between h-12">
-                    <ProductBrand href="/" size="sm" />
+                    <ProductBrand href="/" size="sm" nameClassName="text-white" poweredClassName="text-white/75" />
                     
                     <SheetClose asChild>
                       <Button 
