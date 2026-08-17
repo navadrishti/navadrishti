@@ -127,6 +127,67 @@ export function useOtpSender(setFormErrors: Dispatch<SetStateAction<FormErrors>>
     }
   };
 
+  const handleSendPasswordResetEmailOtp = async (emailInput: string) => {
+    const email = emailInput.trim();
+
+    if (otpCooldown.email > 0) {
+      toast.error(`Please wait ${otpCooldown.email}s before requesting another email OTP`);
+      return false;
+    }
+
+    if (!email) {
+      setFormErrors(prev => ({ ...prev, email: 'Email is required' }));
+      return false;
+    }
+
+    if (!emailRegex.test(email)) {
+      setFormErrors(prev => ({ ...prev, email: 'Email is invalid' }));
+      return false;
+    }
+
+    try {
+      setOtpSending(prev => ({ ...prev, email: true }));
+
+      const forgotResponse = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email }),
+      });
+
+      const forgotData = await forgotResponse.json();
+      if (!forgotResponse.ok) {
+        toast.error(forgotData.error || 'Failed to send email OTP');
+        return false;
+      }
+
+      const supabase = createClient();
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          shouldCreateUser: false,
+        },
+      });
+
+      if (error) {
+        toast.error(error.message || 'Failed to send email OTP');
+        return false;
+      }
+
+      setOtpSent(prev => ({ ...prev, email: true }));
+      setOtpVerified(prev => ({ ...prev, email: false }));
+      startCooldown('email');
+      toast.success('Email OTP sent successfully');
+      return true;
+    } catch {
+      toast.error('Failed to send email OTP. Please try again.');
+      return false;
+    } finally {
+      setOtpSending(prev => ({ ...prev, email: false }));
+    }
+  };
+
   const handleVerifyEmailOtp = async (emailInput: string, otpInput: string) => {
     const email = emailInput.trim();
     const otp = otpInput.trim();
@@ -316,6 +377,7 @@ export function useOtpSender(setFormErrors: Dispatch<SetStateAction<FormErrors>>
     otpVerifying,
     otpVerified,
     handleSendEmailOtp,
+    handleSendPasswordResetEmailOtp,
     handleVerifyEmailOtp,
     handleSendPhoneOtp,
     handleVerifyPhoneOtp,

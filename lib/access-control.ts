@@ -263,6 +263,45 @@ export const PRODUCT_LOGO_ALT = `${PRODUCT_NAME} logo`;
 export const PRODUCT_BRAND_CLASSNAME = 'product-brand select-none';
 export const PRODUCT_POWERED_BY = 'Powered by Navadrishti';
 
+/** Separately hosted field PWA (Navadrishti-PWA). */
+export const PWA_API_PREFIX = '/api/pwa';
+
+export function getPwaAppUrl(): string {
+  const raw =
+    process.env.NEXT_PUBLIC_PWA_URL ??
+    process.env.PWA_APP_URL ??
+    process.env.FIELD_APP_URL ??
+    '';
+  return String(raw).replace(/\/$/, '');
+}
+
+/** Upstream origin for /api/pwa/* gateway proxy (server-only). */
+export function getPwaUpstreamUrl(): string {
+  const raw =
+    process.env.PWA_UPSTREAM_URL ??
+    process.env.PWA_APP_URL ??
+    process.env.NEXT_PUBLIC_PWA_URL ??
+    '';
+  return String(raw).replace(/\/$/, '');
+}
+
+export function getPwaAllowedOrigins(): string[] {
+  const configured = [getPwaAppUrl(), process.env.PWA_CORS_ORIGIN ?? '']
+    .filter(Boolean)
+    .map((value) => String(value).replace(/\/$/, ''));
+
+  if (process.env.NODE_ENV !== 'production') {
+    configured.push('http://localhost:3001', 'http://127.0.0.1:3001');
+  }
+
+  return Array.from(new Set(configured));
+}
+
+export function isAllowedPwaOrigin(origin: string | null): boolean {
+  if (!origin) return false;
+  return getPwaAllowedOrigins().includes(origin.replace(/\/$/, ''));
+}
+
 const PHASE1_BLOCKED_ROUTE_PREFIXES = [
   '/service-requests',
   '/service-offers',

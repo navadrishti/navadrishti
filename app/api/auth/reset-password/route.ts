@@ -2,79 +2,85 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { hashPassword } from '@/lib/auth';
-import { resetTokens } from '../forgot-password/route';
+import {
+  cleanupPasswordResetStores,
+  deletePasswordResetToken,
+  getPasswordResetToken,
+  normalizeResetEmail,
+} from '@/lib/password-reset';
 
-// Validation schema
 const resetPasswordSchema = z.object({
-  token: z.string().min(1, 'Token is required'),
-  password: z.string().min(8, 'Password must be at least 8 characters')
+  email: z.string().email('Invalid email address'),
+  resetToken: z.string().min(1, 'Reset token is required'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
 });
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const validationResult = resetPasswordSchema.safeParse(body);
-    
+
     if (!validationResult.success) {
-      return NextResponse.json({ 
-        error: validationResult.error.errors[0].message 
-      }, { status: 400 });
+      return NextResponse.json(
+        { error: validationResult.error.errors[0].message },
+        { status: 400 }
+      );
     }
-    
-    const { token, password } = validationResult.data;
-    
-    // Check if token exists and is not expired
-    const tokenData = resetTokens.get(token);
-    
+
+    const { resetToken, password } = validationResult.data;
+    const email = normalizeResetEmail(validationResult.data.email);
+
+    cleanupPasswordResetStores();
+
+    const tokenData = getPasswordResetToken(resetToken);
+
     if (!tokenData) {
-      return NextResponse.json({ 
-        error: 'Invalid or expired reset token' 
-      }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Invalid or expired reset session. Please verify your OTP again.' },
+        { status: 400 }
+      );
     }
-    
-    // Check if token is expired
+
     if (tokenData.expires < Date.now()) {
-      // Clean up expired token
-      resetTokens.delete(token);
-      return NextResponse.json({ 
-        error: 'Reset token has expired' 
-      }, { status: 400 });
+      deletePasswordResetToken(resetToken);
+      return NextResponse.json(
+        { error: 'Reset session has expired. Please verify your OTP again.' },
+        { status: 400 }
+      );
     }
-    
-    const { email } = tokenData;
-    
-    // Find the user
+
+    if (tokenData.email !== email) {
+      return NextResponse.json(
+        { error: 'Invalid reset session for this email' },
+        { status: 400 }
+      );
+    }
+
     const user = await db.users.findByEmail(email);
-    
-    if (!user) {
-      // Clean up token since user doesn't exist
-      resetTokens.delete(token);
-      return NextResponse.json({ 
-        error: 'User not found' 
-      }, { status: 404 });
+
+    if (!user || user.id !== tokenData.userId) {
+      deletePasswordResetToken(resetToken);
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
-    
-    // Hash the new password
+
     const hashedPassword = await hashPassword(password);
-    
-    // Update user's password
+
     await db.users.update(user.id, {
       password: hashedPassword,
-      updated_at: new Date().toISOString()
+      updated_at: new Date().toISOString(),
     });
-    
-    // Clean up the used token
-    resetTokens.delete(token);
-    
+
+    deletePasswordResetToken(resetToken);
+
     return NextResponse.json({
       message: 'Password has been successfully reset',
-      success: true
+      success: true,
     });
-    
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Reset password error:', error);
-    return NextResponse.json({ 
-      error: 'An error occurred while resetting your password' 
-    }, { status: 500 });
+    return NextResponse.json(
+      { error: 'An error occurred while resetting your password' },
+      { status: 500 }
+    );
   }
 }
