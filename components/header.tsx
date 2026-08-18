@@ -23,6 +23,7 @@ import {
   type LaunchHeaderNavItem,
 } from "@/lib/access-control"
 import { ProductBrand } from "@/components/product-brand"
+import { Skeleton } from "@/components/ui/skeleton"
 
 interface ProfileSearchResult {
   id: number;
@@ -526,7 +527,12 @@ export function Header({ className = '' }: { className?: string } = {}) {
           linkClassName="rounded-md px-3 py-2 text-sm font-medium text-white hover:bg-white/10 hover:text-udaan-orange focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors"
         />
         <div className="shrink-0 border-t border-white/15 p-3">
-          {mounted && user ? (
+          {!mounted || loading ? (
+            <div className="flex flex-col gap-2">
+              <Skeleton className="h-10 w-full rounded-md bg-white/15" />
+              <Skeleton className="h-10 w-full rounded-md bg-udaan-orange/50" />
+            </div>
+          ) : user ? (
             <div
               onMouseEnter={openProfileMenu}
               onMouseLeave={() => closeProfileMenuWithDelay()}
@@ -756,7 +762,19 @@ export function Header({ className = '' }: { className?: string } = {}) {
 
                   {/* User Section */}
                   <div className="border-t border-white/20 pt-6">
-                    {user ? (
+                    {!mounted || loading ? (
+                      <div className="space-y-3 pb-8">
+                        <div className="mb-6 flex items-center gap-4">
+                          <Skeleton className="h-12 w-12 rounded-full bg-white/20" />
+                          <div className="grid flex-1 gap-2">
+                            <Skeleton className="h-5 w-36 bg-white/20" />
+                            <Skeleton className="h-4 w-44 bg-white/15" />
+                          </div>
+                        </div>
+                        <Skeleton className="h-12 w-full rounded-md bg-white/15" />
+                        <Skeleton className="h-12 w-full rounded-md bg-white/15" />
+                      </div>
+                    ) : user ? (
                       <div>
                         <div className="mb-6 flex min-w-0 items-center gap-4">
                           <Avatar className="h-12 w-12">
