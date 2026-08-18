@@ -28,6 +28,7 @@ import {
   restoreMobileChatScrollPosition,
   scrollAgentMessagesContainer,
 } from "@/lib/ai-agent-sessions"
+import { PRODUCT_LOGO_SRC } from "@/lib/access-control"
 import { AGENT_GREETINGS, AGENT_NAMES, agentLoadingLabel } from "@/lib/ai-suite"
 
 interface Message {
@@ -1916,7 +1917,7 @@ export default function NGOAIAgentPage() {
                             {message.role === 'assistant' && (
                               <div className="flex-shrink-0">
                                 <div className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm">
-                                  <img src="/photos/CTA.svg" alt="ND" className="h-7 w-7 object-contain" />
+                                  <img src={PRODUCT_LOGO_SRC} alt="GRAM" className="h-7 w-7 object-contain" />
                                 </div>
                               </div>
                             )}
@@ -2057,7 +2058,7 @@ export default function NGOAIAgentPage() {
                           <div className="flex gap-3 justify-start">
                             <div className="flex-shrink-0">
                               <div className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm">
-                                <img src="/photos/CTA.svg" alt="ND" className="h-7 w-7 object-contain" />
+                                <img src={PRODUCT_LOGO_SRC} alt="GRAM" className="h-7 w-7 object-contain" />
                               </div>
                             </div>
                             <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 shadow-sm">

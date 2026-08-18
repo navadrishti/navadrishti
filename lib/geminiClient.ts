@@ -1,19 +1,8 @@
-/**
- * GEMINI 2.0  PRODUCTION CLIENT  -> Change after July 1 because Gemini 2.0 will be deprecated.
- * * Purpose: Robust JSON generation for CSR Strategy Drafts.
- * Features: Exponential backoff, 429 Retry-After handling, Model rotation, 
- * JSON mode enforcement, and Abort signals.
- */
-
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
   content: string;
 }
 
-/**
- * Custom Error Class to help the UI distinguish between 
- * a "Rate Limit" and a "Safety Block."
- */
 export class GeminiError extends Error {
   constructor(public status: number, message: string, public isSafety?: boolean) {
     super(message);
@@ -21,37 +10,21 @@ export class GeminiError extends Error {
   }
 }
 
-/**
- * Main Chat Function
- * @param messages - Array of ChatMessages (OpenAI format)
- * @param retryCount - Internal counter for recursion
- */
 export async function GeminiChat(messages: ChatMessage[], retryCount = 0): Promise<string> {
-  
-  // 1. API KEY GUARD
-  // Prevents "undefined" being injected into the URL string.
   const API_KEY = process.env.GEMINI_API_KEY;
   if (!API_KEY) throw new Error("GEMINI_API_KEY is missing.");
 
-  // 2. MODEL ROTATION LOGIC
-  // We use GA (General Availability) models for stability in production.
   const PRIMARY = process.env.GEMINI_MODEL || "gemini-2.5-flash";
   const FALLBACK = process.env.GEMINI_FALLBACK_MODEL || "gemini-2.5-flash-lite";
   
-  // Logic: Attempts 0 & 1 use Primary. Attempts 2 & 3 use Fallback.
   const currentModel = retryCount < 2 ? PRIMARY : FALLBACK;
   const URL = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${API_KEY}`;
 
-  // 3. DATA TRANSFORMATION
-  // Gemini REST requires 'model' role instead of 'assistant' and 'parts' nesting.
   const conversation = messages.filter((m) => m.role !== "system");
   const systemMsg = messages.find((m) => m.role === "system");
   
-  // Guard: Gemini will return 400 if 'contents' is empty.
   if (conversation.length === 0) throw new Error("At least one user/assistant message is required.");
 
-  // 4. TIMEOUT (AbortController)
-  // Stops the request if the API hangs for > 20s to prevent server resource leaks.
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 60000);
 
@@ -64,7 +37,6 @@ export async function GeminiChat(messages: ChatMessage[], retryCount = 0): Promi
           role: m.role === "assistant" ? "model" : "user",
           parts: [{ text: m.content }],
         })),
-        // System instructions are passed separately in Gemini for better persona adherence
         ...(systemMsg && { 
           systemInstruction: { parts: [{ text: systemMsg.content }] } 
         }),

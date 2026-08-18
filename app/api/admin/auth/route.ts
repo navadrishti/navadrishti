@@ -9,11 +9,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Username and password required' }, { status: 400 });
     }
 
-    // Get admin credentials from environment variables
-    const adminUsername = process.env.ADMIN_USERNAME || 'admin';
-    const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
-    
-    // Check credentials
+    const adminUsername = process.env.ADMIN_USERNAME;
+    const adminPassword = process.env.ADMIN_PASSWORD;
+
+    if (!adminUsername || !adminPassword) {
+      console.error('Admin credentials are not configured');
+      return NextResponse.json({ error: 'Admin login is not configured' }, { status: 500 });
+    }
     if (username !== adminUsername || password !== adminPassword) {
       return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
     }

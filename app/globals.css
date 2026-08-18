@@ -6,6 +6,17 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+:root {
+  --platform-sidebar-width: 15rem;
+}
+
+@media (min-width: 768px) {
+  html:has(.platform-sidebar),
+  html:has(.platform-sidebar-skeleton) {
+    padding-left: var(--platform-sidebar-width);
+  }
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;
@@ -566,9 +577,10 @@ body {
   }
 }
 
-/* Page transition styles with enhanced animations */
+/* Page transition styles with enhanced animations.
+   Opacity-only so descendants can use position:fixed against the viewport. */
 .page-transition {
-  will-change: opacity, transform;
+  will-change: opacity;
   animation-duration: 0.4s;
   animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   animation-fill-mode: both;
@@ -580,7 +592,7 @@ body {
 
 .page-visible {
   opacity: 1;
-  transform: translateY(0);
+  transform: none;
 }
 
 .page-exiting {
@@ -591,22 +603,18 @@ body {
 @keyframes pageEnter {
   from {
     opacity: 0;
-    transform: translateY(8px) scale(0.98);
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
   }
 }
 
 @keyframes pageExit {
   from {
     opacity: 1;
-    transform: translateY(0) scale(1);
   }
   to {
     opacity: 0;
-    transform: translateY(-4px) scale(0.99);
   }
 }
 

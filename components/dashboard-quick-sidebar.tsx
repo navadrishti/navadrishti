@@ -2,8 +2,7 @@
 
 import { ReactNode, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
+import { cn } from '@/lib/utils'
 
 type SidebarItem = {
   value: string
@@ -17,6 +16,12 @@ interface DashboardQuickSidebarProps {
   desktopClassName?: string
   triggerLabel?: string
   children?: ReactNode
+}
+
+interface DashboardBodyLayoutProps {
+  sidebar: ReactNode
+  children: ReactNode
+  showSidebar?: boolean
 }
 
 function getSectionInitials(label: string): string {
@@ -35,6 +40,29 @@ function getSectionInitials(label: string): string {
 }
 
 const BOTTOM_HIDE_THRESHOLD_PX = 72
+
+export function DashboardBodyLayout({
+  sidebar,
+  children,
+  showSidebar = true,
+}: DashboardBodyLayoutProps) {
+  if (!showSidebar) {
+    return (
+      <main className="flex-1 min-w-0 bg-gray-50">
+        {children}
+      </main>
+    )
+  }
+
+  return (
+    <div className="flex flex-1 flex-col lg:min-h-screen lg:flex-row">
+      {sidebar}
+      <main className="flex-1 min-w-0 bg-gray-50 pb-24 lg:pb-0">
+        {children}
+      </main>
+    </div>
+  )
+}
 
 export function DashboardQuickSidebar({
   items,
@@ -88,15 +116,6 @@ export function DashboardQuickSidebar({
       window.removeEventListener('resize', updateBottomState)
     }
   }, [showNav, activeTab])
-
-  const getButtonClassName = (isActive: boolean) =>
-    [
-      'w-full justify-start',
-      'border text-left shadow-none truncate',
-      isActive
-        ? '!border-udaan-blue !bg-udaan-blue !text-white hover:!bg-udaan-blue hover:!text-white'
-        : 'border-slate-200 bg-white text-slate-900 hover:bg-slate-50 hover:text-slate-900',
-    ].join(' ')
 
   if (!showNav) {
     return <>{children}</>
@@ -163,25 +182,36 @@ export function DashboardQuickSidebar({
 
   return (
     <>
-      <div className={`hidden lg:block ${desktopClassName}`}>
-        <Card className="lg:sticky lg:top-20 border-slate-200 bg-white">
-          <CardContent className="space-y-3 pt-6">
-            {items.map((item) => (
-              <Button
+      <aside
+        className={cn(
+          'hidden w-52 shrink-0 flex-col border-r border-slate-200 bg-white lg:sticky lg:top-0 lg:flex lg:h-screen lg:self-start',
+          desktopClassName
+        )}
+        aria-label={triggerLabel}
+      >
+        <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-3">
+          {items.map((item) => {
+            const isActive = activeTab === item.value
+
+            return (
+              <button
                 key={item.value}
                 type="button"
-                className={getButtonClassName(activeTab === item.value)}
                 onClick={() => onSelect(item.value)}
+                aria-current={isActive ? 'page' : undefined}
+                className={cn(
+                  'w-full rounded-md px-3 py-2 text-left text-sm font-medium transition-colors',
+                  isActive
+                    ? 'bg-udaan-blue text-white'
+                    : 'text-slate-900 hover:bg-slate-50'
+                )}
               >
                 {item.label}
-              </Button>
-            ))}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Keep page content clear of the floating nav on small screens */}
-      <div className="h-24 lg:hidden" aria-hidden />
+              </button>
+            )
+          })}
+        </nav>
+      </aside>
 
       {mounted ? createPortal(mobileBottomNav, document.body) : null}
       {children}

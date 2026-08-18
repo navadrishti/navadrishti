@@ -579,6 +579,29 @@ export function ServiceCard({
     return (
       <Card className={listingCardClassName}>
         <CardContent className="flex h-full flex-col p-2">
+          {projectContext?.title ? (
+            <div className="mb-1 min-w-0 border-b border-slate-200 pb-1 text-xs text-slate-900">
+              <div className="flex min-w-0 items-center justify-between gap-2">
+                <p className="min-w-0 flex-1 truncate" title={projectContext.title}>
+                  <span className="font-semibold">Project:</span>{' '}
+                  <span className="font-normal">{projectContext.title}</span>
+                </p>
+                {projectContext.id ? (
+                  <>
+                    <span className="h-3 w-px shrink-0 bg-slate-300" aria-hidden="true" />
+                    <Link
+                      href={`/service-requests/projects/${projectContext.id}`}
+                      className="shrink-0 text-xs font-semibold text-slate-900 hover:text-blue-600"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      View project
+                    </Link>
+                  </>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
           <div className="flex min-w-0 items-center justify-between gap-2">
             {renderListingBadge(
               String(effectiveRequestUrgency),
@@ -627,29 +650,6 @@ export function ServiceCard({
               <p className={listingMetricValueClassName} title={requestMetricValue.beneficiaries}>{requestMetricValue.beneficiaries}</p>
             </div>
           </div>
-
-          {projectContext?.title ? (
-            <div className="mt-1 min-w-0 border-t border-slate-200 pt-1 text-xs text-slate-900">
-              <div className="flex min-w-0 items-center justify-between gap-2">
-                <p className="min-w-0 flex-1 truncate" title={projectContext.title}>
-                  <span className="font-semibold">Project:</span>{' '}
-                  <span className="font-normal">{projectContext.title}</span>
-                </p>
-                {projectContext.id ? (
-                  <>
-                    <span className="h-3 w-px shrink-0 bg-slate-300" aria-hidden="true" />
-                    <Link
-                      href={`/service-requests/projects/${projectContext.id}`}
-                      className="shrink-0 text-xs font-semibold text-slate-900 hover:text-blue-600"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      View project
-                    </Link>
-                  </>
-                ) : null}
-              </div>
-            </div>
-          ) : null}
 
           <div className="mt-1 border-t border-slate-200 pt-1">
             <div className="flex min-w-0 items-center gap-2">

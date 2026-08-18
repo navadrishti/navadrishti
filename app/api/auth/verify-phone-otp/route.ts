@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { withAuth } from '@/lib/auth'
-import { __phoneOtpStore } from '../send-phone-otp/route'
+import { phoneOtpStore } from '../send-phone-otp/route'
 
 const normalizePhone = (value: string) => value.trim().replace(/\s+/g, '')
 
@@ -20,14 +20,14 @@ export const POST = withAuth(async (req: NextRequest) => {
     }
 
     const storeKey = `${user.id}:${phone}`
-    const record = __phoneOtpStore.get(storeKey)
+    const record = phoneOtpStore.get(storeKey)
 
     if (!record) {
       return NextResponse.json({ error: 'Please request a phone OTP first' }, { status: 400 })
     }
 
     if (record.expiresAt <= Date.now()) {
-      __phoneOtpStore.delete(storeKey)
+      phoneOtpStore.delete(storeKey)
       return NextResponse.json({ error: 'Phone OTP has expired. Please request a new one.' }, { status: 400 })
     }
 
@@ -35,7 +35,7 @@ export const POST = withAuth(async (req: NextRequest) => {
       return NextResponse.json({ error: 'Invalid phone OTP' }, { status: 400 })
     }
 
-    __phoneOtpStore.delete(storeKey)
+    phoneOtpStore.delete(storeKey)
 
     return NextResponse.json({
       success: true,

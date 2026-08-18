@@ -69,7 +69,6 @@ export const POST = withAuth(async (req: NextRequest) => {
       success: true,
       message: 'Phone OTP sent successfully',
       phone,
-      ...(process.env.NODE_ENV === 'development' ? { otp } : {})
     })
   } catch (error) {
     console.error('Send phone OTP error:', error)
@@ -77,4 +76,4 @@ export const POST = withAuth(async (req: NextRequest) => {
   }
 })
 
-export { phoneOtpStore as __phoneOtpStore }
+export { phoneOtpStore }

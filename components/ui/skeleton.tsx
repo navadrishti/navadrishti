@@ -1,3 +1,4 @@
+import { type ReactNode } from "react"
 import { cn } from "@/lib/utils"
 
 function Skeleton({
@@ -359,6 +360,143 @@ function SkeletonCTA() {
   )
 }
 
+function PlatformSidebarSkeleton({ className }: { className?: string }) {
+  return (
+    <aside
+      className={cn(
+        "platform-sidebar-skeleton fixed inset-y-0 left-0 top-0 z-50 hidden h-dvh w-60 flex-col border-r border-white/10 bg-udaan-blue md:flex",
+        className
+      )}
+      aria-hidden="true"
+    >
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="shrink-0 border-b border-white/15 px-4 py-4">
+          <div className="flex items-center gap-2.5">
+            <Skeleton className="h-10 w-10 shrink-0 rounded-md bg-white/20" />
+            <div className="space-y-2">
+              <Skeleton className="h-5 w-20 rounded bg-white/20" />
+              <Skeleton className="h-2.5 w-28 rounded bg-white/15" />
+            </div>
+          </div>
+        </div>
+        <div className="shrink-0 px-3 pt-4">
+          <Skeleton className="h-10 w-full rounded-lg bg-white/20" />
+        </div>
+        <nav className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden px-3 py-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <Skeleton key={`platform-nav-skeleton-${index}`} className="h-9 w-full rounded-md bg-white/15" />
+          ))}
+        </nav>
+        <div className="shrink-0 space-y-2 border-t border-white/15 p-3">
+          <Skeleton className="h-10 w-full rounded-md bg-white/15" />
+          <Skeleton className="h-10 w-full rounded-md bg-udaan-orange/50" />
+        </div>
+      </div>
+    </aside>
+  )
+}
+
+function PlatformMobileHeaderSkeleton() {
+  return (
+    <header className="sticky top-0 z-50 w-full border-b border-white/10 bg-udaan-blue md:hidden" aria-hidden="true">
+      <div className="flex h-16 items-center justify-between px-4">
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-9 w-9 rounded-md bg-white/20" />
+          <Skeleton className="h-5 w-20 rounded bg-white/20" />
+        </div>
+        <Skeleton className="h-9 w-9 rounded-md bg-white/15" />
+      </div>
+    </header>
+  )
+}
+
+function DashboardSidebarSkeleton({ itemCount = 4 }: { itemCount?: number }) {
+  return (
+    <aside
+      className="hidden w-52 shrink-0 flex-col border-r border-slate-200 bg-white lg:flex lg:min-h-screen"
+      aria-hidden="true"
+    >
+      <nav className="flex flex-col gap-2 p-3">
+        {Array.from({ length: itemCount }).map((_, index) => (
+          <Skeleton key={`dashboard-nav-skeleton-${index}`} className="h-9 w-full rounded-md" />
+        ))}
+      </nav>
+    </aside>
+  )
+}
+
+function DashboardMainSkeleton() {
+  return (
+    <div className="animate-fadeIn space-y-8 p-4 md:p-6 lg:p-8">
+      <div className="space-y-3">
+        <Skeleton className="h-10 w-52" />
+        <Skeleton className="h-5 w-72 max-w-full" />
+      </div>
+
+      <div className="rounded-xl border bg-white p-6 shadow-sm">
+        <div className="space-y-4">
+          <Skeleton className="h-6 w-56" />
+          <Skeleton className="h-40 w-full rounded-lg" />
+          <Skeleton className="h-10 w-40" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PlatformPageSkeleton({
+  children,
+  className,
+  bodyClassName,
+}: {
+  children: ReactNode
+  className?: string
+  bodyClassName?: string
+}) {
+  return (
+    <div className={cn("flex min-h-screen flex-col", className)}>
+      <PlatformSidebarSkeleton />
+      <PlatformMobileHeaderSkeleton />
+      <div className={cn("flex min-w-0 flex-1 flex-col", bodyClassName)}>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function DashboardPageSkeleton({
+  children,
+  showDashboardSidebar = true,
+  sidebarItemCount = 4,
+}: {
+  children?: ReactNode
+  showDashboardSidebar?: boolean
+  sidebarItemCount?: number
+}) {
+  return (
+    <PlatformPageSkeleton bodyClassName="lg:min-h-screen lg:flex-row">
+      {showDashboardSidebar ? <DashboardSidebarSkeleton itemCount={sidebarItemCount} /> : null}
+      <div className="min-w-0 flex-1 bg-gray-50 pb-24 lg:pb-0">
+        {children ?? <DashboardMainSkeleton />}
+      </div>
+    </PlatformPageSkeleton>
+  )
+}
+
+function PlatformContentSkeleton({
+  children,
+  className,
+}: {
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <div className={cn("min-w-0 flex-1 bg-gray-50 p-4 md:p-6 lg:p-8", className)}>
+      {children}
+    </div>
+  )
+}
+
 export { 
   Skeleton,
   SkeletonCard,
@@ -379,5 +517,12 @@ export {
   SkeletonHeader,
   SkeletonStats,
   SkeletonGrid,
-  SkeletonCTA
+  SkeletonCTA,
+  PlatformSidebarSkeleton,
+  PlatformMobileHeaderSkeleton,
+  DashboardSidebarSkeleton,
+  DashboardMainSkeleton,
+  PlatformPageSkeleton,
+  DashboardPageSkeleton,
+  PlatformContentSkeleton,
 }

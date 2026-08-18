@@ -46,7 +46,6 @@ export function ImageCarousel({
   
   const [currentIndex, setCurrentIndex] = useState(0)
   const [isHovered, setIsHovered] = useState(false)
-  const [imageLoadStates, setImageLoadStates] = useState<{[key: number]: boolean}>({})
   const [isPlaying, setIsPlaying] = useState(autoplay)
 
   // Auto-play functionality
@@ -81,24 +80,6 @@ export function ImageCarousel({
       return () => document.removeEventListener('keydown', handleKeyDown)
     }
   }, [enableKeyboardNav, validImages.length, isHovered])
-
-  // Disable preloading to prevent infinite loops - let browser handle image loading naturally
-  // React.useEffect(() => {
-  //   validImages.forEach((src, index) => {
-  //     if (!imageLoadStates[index] && src) {
-  //       const img = new Image()
-  //       img.onload = () => {
-  //         setImageLoadStates(prev => ({ ...prev, [index]: true }))
-  //       }
-  //       img.onerror = () => {
-  //         console.warn('Failed to load image:', src)
-  //         // Mark as "loaded" even on error to prevent infinite loading
-  //         setImageLoadStates(prev => ({ ...prev, [index]: false }))
-  //       }
-  //       img.src = src
-  //     }
-  //   })
-  // }, [validImages, imageLoadStates])
 
   const goToPrevious = (e: React.MouseEvent) => {
     e.stopPropagation()

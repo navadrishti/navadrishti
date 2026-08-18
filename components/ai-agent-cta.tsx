@@ -6,12 +6,13 @@ import { useEffect, useState } from "react"
 import { Sparkles, X } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
 import { AGENT_CTA } from "@/lib/ai-suite"
+import { PRODUCT_LOGO_SRC } from "@/lib/access-control"
 
 function LogoOrIcon({ className }: { className?: string }) {
   return (
     <img
-      src="/photos/CTA.svg"
-      alt="ND"
+      src={PRODUCT_LOGO_SRC}
+      alt="GRAM"
       className={`${className ?? ""} object-contain`}
     />
   )

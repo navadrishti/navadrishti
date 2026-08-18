@@ -129,10 +129,7 @@ export async function POST(request: NextRequest) {
       : errorMessage;
 
     return NextResponse.json(
-      {
-        error: userSafeError,
-        details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
-      },
+      { error: userSafeError },
       { status: statusCode }
     );
   }
