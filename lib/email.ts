@@ -1,14 +1,3 @@
-/**
- * Comprehensive Email Service
- * 
- * Provides email functionality including:
- * - Basic email sending
- * - Email templates (verification, password reset)
- * - Service-specific emails (offer approval/rejection)
- * - Order confirmation emails
- */
-
-// Email service utility using NodeMailer
 import crypto from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 import nodemailer from 'nodemailer';
@@ -22,9 +11,7 @@ interface EmailOptions {
   replyTo?: string;
 }
 
-// Create transporter based on environment variables
 const createTransporter = () => {
-  // Check if SMTP is configured
   if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
     return null;
   }
@@ -406,7 +393,6 @@ export async function verifyEmailOtpWithSupabase(
   return { ok: false, error: message };
 }
 
-// EmailService class for OOP-style email operations
 class EmailService {
   private transporter: nodemailer.Transporter | null = null;
 

@@ -1,4 +1,3 @@
-// Authentication context for client-side
 'use client';
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
@@ -25,7 +24,6 @@ function notifyDocumentExpiryForUser(user: User) {
   }, 800);
 }
 
-// Types
 export interface User {
   id: number;
   email: string;
@@ -88,7 +86,6 @@ interface AuthProviderProps {
   initialToken?: string | null;
 }
 
-// Create context
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const getFriendlySignupErrorMessage = (data: any, status: number) => {
@@ -125,7 +122,6 @@ const getFriendlySignupErrorMessage = (data: any, status: number) => {
 
 const isInvalidAuthResponse = (status: number) => status === 401 || status === 404;
 
-// Create provider
 export function AuthProvider({ children, initialUser = null, initialToken = null }: AuthProviderProps) {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(initialUser);
@@ -563,7 +559,6 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
   );
 }
 
-// Custom hook to use auth context
 export function useAuth() {
   const context = useContext(AuthContext);
   

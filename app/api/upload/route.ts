@@ -2,12 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { v2 as cloudinary } from 'cloudinary';
 import { verifyToken } from '@/lib/auth';
 
-// Configure route settings
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const maxDuration = 30; // 30 seconds timeout
+export const maxDuration = 30;
 
-// Configure Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -25,13 +23,7 @@ export async function POST(request: NextRequest) {
       
       console.error('Missing Cloudinary environment variables:', missingVars);
       return NextResponse.json(
-        { 
-          error: 'File upload service is not configured. Please contact support.',
-          details: process.env.NODE_ENV === 'development' ? 
-            `Missing environment variables: ${missingVars.join(', ')}. Please create a .env.local file with Cloudinary credentials.` : 
-            'Upload service configuration error',
-          missing_vars: process.env.NODE_ENV === 'development' ? missingVars : undefined
-        },
+        { error: 'File upload service is not configured. Please contact support.' },
         { status: 503 }
       );
     }
@@ -151,8 +143,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { 
         success: false,
-        error: errorMessage,
-        details: process.env.NODE_ENV === 'development' ? error instanceof Error ? error.message : 'Unknown error' : undefined
+        error: errorMessage
       },
       { status: statusCode }
     );

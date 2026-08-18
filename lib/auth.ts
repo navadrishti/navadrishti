@@ -2,21 +2,10 @@ import jwt, { JsonWebTokenError, TokenExpiredError, type SignOptions } from 'jso
 import bcrypt from 'bcryptjs';
 import { NextRequest, NextResponse } from 'next/server';
 
-// Use a consistent JWT secret and ensure it's available.
-const jwtSecretFromEnv = String(process.env.JWT_SECRET || '').trim();
-if (!jwtSecretFromEnv) {
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('JWT_SECRET is required in production');
-  }
-  console.warn('WARNING: Using fallback JWT_SECRET for non-production environment.');
-}
+export const JWT_SECRET = String(process.env.JWT_SECRET || '').trim();
 
-export const JWT_SECRET = jwtSecretFromEnv || 'fallback_secret_dev_only';
-
-/** Temporarily disabled — re-enable when phone OTP verification returns. */
 export const PHONE_VERIFICATION_ENABLED = false;
 
-// Interface for user data
 export interface UserData {
   id: number;
   email: string;
@@ -27,7 +16,6 @@ export interface UserData {
   phone_verified?: boolean;
 }
 
-// Function to generate JWT token
 export function generateToken(user: UserData): string {
   return jwt.sign(
     {
@@ -44,42 +32,30 @@ export function generateToken(user: UserData): string {
   );
 }
 
-// Function to verify JWT token
 export function verifyToken(token: string): UserData | null {
   try {
     if (!token || token.trim() === '') {
-      console.error('Token verification failed: Empty or null token');
       return null;
     }
 
-    // Clean the token - remove any extra quotes, whitespace, or invalid characters
     let cleanToken = token.replace(/[\"'\n\r\t]/g, '').trim();
-    
-    // Remove any 'Bearer ' prefix if it somehow got included
+
     if (cleanToken.startsWith('Bearer ')) {
       cleanToken = cleanToken.substring(7).trim();
     }
-    
+
     if (cleanToken.length === 0) {
-      console.error('Token verification failed: Token is empty after cleaning');
       return null;
     }
 
-    // Validate JWT format (should have 3 parts separated by dots)
     const tokenParts = cleanToken.split('.');
     if (tokenParts.length !== 3) {
-      console.error('Token verification failed: Invalid JWT format - expected 3 parts, got', tokenParts.length);
-      console.error('Token parts:', tokenParts);
-      console.error('Original token:', token);
-      console.error('Clean token:', cleanToken);
       return null;
     }
 
-    // Try to decode the token
     const decoded = jwt.verify(cleanToken, JWT_SECRET) as any;
-    
+
     if (!decoded || !decoded.id || !decoded.email) {
-      console.error('Token verification failed: Invalid token structure', decoded);
       return null;
     }
 
@@ -95,9 +71,6 @@ export function verifyToken(token: string): UserData | null {
     }
 
     if (error instanceof JsonWebTokenError) {
-      if (process.env.NODE_ENV === 'development') {
-        console.warn('Token verification failed:', error.message);
-      }
       return null;
     }
 
@@ -115,18 +88,15 @@ export function isPlatformUserSession(user: UserData | null | undefined): user i
   return true;
 }
 
-// Function to hash password
 export async function hashPassword(password: string): Promise<string> {
   const salt = await bcrypt.genSalt(10);
   return bcrypt.hash(password, salt);
 }
 
-// Function to compare password with hash
 export async function comparePassword(password: string, hash: string): Promise<boolean> {
   return bcrypt.compare(password, hash);
 }
 
-// Middleware to authenticate requests
 export function withAuth(handler: Function) {
   return async (req: NextRequest, ...args: any[]) => {
     try {

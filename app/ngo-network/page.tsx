@@ -98,22 +98,21 @@ function NGONetworkRowSkeleton() {
   return (
     <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
       <div className="relative lg:hidden">
-        <Skeleton className="h-28 w-full rounded-none" />
-        <Skeleton className="absolute -bottom-8 left-4 h-16 w-16 rounded-lg border-2 border-white" />
+        <Skeleton className="h-20 w-full rounded-none" />
+        <Skeleton className="absolute -bottom-8 left-3 h-16 w-16 rounded-md border-2 border-white" />
       </div>
-      <div className="p-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-          <Skeleton className="hidden h-24 w-24 shrink-0 rounded-lg lg:block" />
-          <div className="min-w-0 flex-1 space-y-2 pt-6 lg:pt-0">
-            <Skeleton className="h-6 w-56 max-w-full rounded" />
-            <Skeleton className="h-4 w-40 max-w-full rounded" />
-            <Skeleton className="h-4 w-full rounded" />
-            <Skeleton className="h-4 w-28 rounded" />
+      <div className="p-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          <Skeleton className="hidden h-20 w-20 shrink-0 rounded-md lg:block" />
+          <div className="min-w-0 flex-1 space-y-1.5 pt-9 lg:pt-0">
+            <Skeleton className="h-4 w-48 max-w-full rounded" />
+            <Skeleton className="h-3 w-32 max-w-full rounded" />
+            <Skeleton className="h-3 w-24 rounded" />
           </div>
-          <div className="w-full space-y-2 lg:w-56">
-            <Skeleton className="h-6 w-full rounded-full" />
-            <Skeleton className="h-9 w-full rounded-md" />
-            <Skeleton className="h-9 w-full rounded-md" />
+          <div className="w-full space-y-1.5 lg:w-44">
+            <Skeleton className="h-5 w-full rounded-full" />
+            <Skeleton className="h-8 w-full rounded-md" />
+            <Skeleton className="h-8 w-full rounded-md" />
           </div>
         </div>
       </div>
@@ -164,8 +163,8 @@ function NgoNetworkCard({
   return (
     <article className="overflow-hidden rounded-lg border border-slate-200 bg-white">
       <div className="relative lg:hidden">
-        <ProfileCoverMedia src={ngo.cover_image} className="h-28 w-full" alt="" />
-        <div className="absolute -bottom-8 left-4 h-16 w-16 overflow-hidden rounded-lg border-2 border-white bg-slate-50 shadow-sm">
+        <ProfileCoverMedia src={ngo.cover_image} className="h-20 w-full" alt="" />
+        <div className="absolute -bottom-8 left-3 h-16 w-16 overflow-hidden rounded-md border-2 border-white bg-slate-50 shadow-sm">
           {ngo.profile_image ? (
             <Image
               src={ngo.profile_image}
@@ -182,31 +181,31 @@ function NgoNetworkCard({
         </div>
       </div>
 
-      <div className="p-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-          <div className="mx-auto hidden h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50 lg:mx-0 lg:flex">
+      <div className="p-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          <div className="mx-auto hidden h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-slate-50 lg:mx-0 lg:flex">
             {ngo.profile_image ? (
               <Image
                 src={ngo.profile_image}
                 alt={ngo.name}
-                width={96}
-                height={96}
+                width={80}
+                height={80}
                 className="h-full w-full object-cover"
               />
             ) : (
-              <div className="flex h-full w-full items-center justify-center bg-udaan-orange text-xl font-bold text-white">
+              <div className="flex h-full w-full items-center justify-center bg-udaan-orange text-base font-bold text-white">
                 {getInitials(ngo.name)}
               </div>
             )}
           </div>
 
-          <div className="min-w-0 flex-1 pt-6 lg:pt-0">
-            <h2 className="flex min-w-0 flex-wrap items-center gap-2 text-xl font-bold text-slate-900">
+          <div className="min-w-0 flex-1 pt-9 lg:pt-0">
+            <h2 className="flex min-w-0 flex-wrap items-center gap-1.5 text-base font-bold text-slate-900">
               <span className="min-w-0 break-words">{ngo.name}</span>
               {ngo.compliance.verified ? (
                 <VerificationBadge
                   status="verified"
-                  size="readable"
+                  size="sm"
                   showText={false}
                   badgeNumber={ngo.ca_badge_number}
                   className="max-w-full min-w-0"
@@ -214,20 +213,20 @@ function NgoNetworkCard({
               ) : null}
             </h2>
 
-            <p className="mt-1.5 flex items-start gap-1.5 text-sm text-slate-600">
-              <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
+            <p className="mt-1 flex items-start gap-1.5 text-xs text-slate-600">
+              <MapPin className="mt-0.5 h-3 w-3 shrink-0 text-slate-400" />
               <span>{ngo.location || "Location not listed"}</span>
             </p>
 
             {sectorLabels.length > 0 ? (
-              <p className="mt-1 text-xs font-medium text-slate-500">
+              <p className="mt-0.5 text-[11px] font-medium text-slate-500">
                 Sector: {sectorLabels.join("; ")}
               </p>
             ) : null}
 
             {!isNgoViewer && ngo.email ? (
-              <p className="mt-1.5 flex items-start gap-1.5 text-sm text-slate-600">
-                <Mail className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
+              <p className="mt-1 flex items-start gap-1.5 text-xs text-slate-600">
+                <Mail className="mt-0.5 h-3 w-3 shrink-0 text-slate-400" />
                 <a href={`mailto:${ngo.email}`} className="break-all hover:text-emerald-700 hover:underline">
                   {ngo.email}
                 </a>
@@ -235,16 +234,16 @@ function NgoNetworkCard({
             ) : null}
 
             {ngo.geographic_coverage_preview ? (
-              <p className="mt-1.5 text-xs text-slate-500">
+              <p className="mt-0.5 text-[11px] text-slate-500">
                 Coverage: {ngo.geographic_coverage_preview}
               </p>
             ) : null}
 
             {ngo.mission ? (
-              <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-700">{ngo.mission}</p>
+              <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-700">{ngo.mission}</p>
             ) : null}
 
-            <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-600">
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-600">
               <span>
                 <span className="font-medium text-slate-800">{ngo.projects_completed_count || 0}</span>
                 {' '}
@@ -266,12 +265,12 @@ function NgoNetworkCard({
             </div>
           </div>
 
-          <div className="flex w-full shrink-0 flex-col gap-2 lg:w-56">
-            <div className="flex min-h-7 min-w-0 max-w-full flex-wrap items-center gap-x-2.5 gap-y-1.5">
+          <div className="flex w-full shrink-0 flex-col gap-1.5 lg:w-44">
+            <div className="flex min-h-6 min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1">
               <NgoComplianceBadges
                 tags={ngoComplianceTags(ngo)}
                 registrationType={ngo.registration_type}
-                size="lg"
+                size="sm"
                 className="max-w-full"
               />
             </div>
@@ -279,11 +278,11 @@ function NgoNetworkCard({
             <Button
               asChild
               size="sm"
-              className="h-9 w-full bg-emerald-700 text-white hover:bg-emerald-800"
+              className="h-8 w-full bg-emerald-700 text-white hover:bg-emerald-800"
             >
               <Link href={`/profile/${ngo.id}`}>
                 View profile
-                <ArrowRight className="ml-2 h-3.5 w-3.5" />
+                <ArrowRight className="ml-1.5 h-3 w-3" />
               </Link>
             </Button>
 
@@ -291,29 +290,29 @@ function NgoNetworkCard({
               <Button
                 size="sm"
                 variant="outline"
-                className="h-9 w-full"
+                className="h-8 w-full"
                 onClick={() => onPay(ngo)}
               >
                 Pay
               </Button>
             ) : canPay && !payerCaVerified ? (
-              <Button size="sm" variant="outline" className="h-9 w-full" disabled>
+              <Button size="sm" variant="outline" className="h-8 w-full" disabled>
                 Verification required
               </Button>
             ) : canPay ? (
-              <Button size="sm" variant="outline" className="h-9 w-full" disabled>
+              <Button size="sm" variant="outline" className="h-8 w-full" disabled>
                 Payout setup pending
               </Button>
             ) : isNgoViewer ? (
               ngo.id !== userId && ngo.email ? (
-                <Button asChild size="sm" variant="outline" className="h-9 w-full">
+                <Button asChild size="sm" variant="outline" className="h-8 w-full">
                   <a href={`mailto:${ngo.email}`}>
                     Contact
                   </a>
                 </Button>
               ) : null
             ) : (
-              <Button asChild size="sm" variant="outline" className="h-9 w-full">
+              <Button asChild size="sm" variant="outline" className="h-8 w-full">
                 <Link href="/login">
                   Sign in to pay
                 </Link>
@@ -599,7 +598,7 @@ export default function NGONetworkPage() {
           </div>
         </section>
 
-        <section className="space-y-3">
+        <section className="space-y-2">
           {loading ? (
             Array.from({ length: 4 }).map((_, index) => <NGONetworkRowSkeleton key={index} />)
           ) : ngos.length === 0 ? (

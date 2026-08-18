@@ -1,14 +1,6 @@
 import { toast } from 'sonner';
 
-/**
- * Centralized notification system for the entire application
- * Replaces console.error, console.warn, and other console methods with user-friendly toast notifications
- */
-
 export const notify = {
-  /**
-   * Show success notification
-   */
   success: (message: string, description?: string) => {
     toast.success(message, {
       description,
@@ -16,9 +8,6 @@ export const notify = {
     });
   },
 
-  /**
-   * Show error notification
-   */
   error: (message: string, description?: string) => {
     toast.error(message, {
       description,
@@ -26,9 +15,6 @@ export const notify = {
     });
   },
 
-  /**
-   * Show warning notification
-   */
   warning: (message: string, description?: string, duration = 4500) => {
     toast.warning(message, {
       description,
@@ -36,9 +22,6 @@ export const notify = {
     });
   },
 
-  /**
-   * Show info notification
-   */
   info: (message: string, description?: string, duration = 4000) => {
     toast.info(message, {
       description,
