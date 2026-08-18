@@ -289,6 +289,7 @@ export async function PUT(
 
     const normalizedRequestType = request_type;
     const normalizedProjectCategory = project_category || category;
+    const projectPayload = project && typeof project === 'object' ? project : null;
     const projectAvailabilityRaw = body.csr_project_available_for_csr ?? project?.csr_project_available_for_csr ?? project_context?.csr_project_available_for_csr;
     const projectAvailableForCsr = typeof projectAvailabilityRaw === 'boolean'
       ? projectAvailabilityRaw
@@ -349,7 +350,6 @@ export async function PUT(
 
     let resolvedProjectId: string | null = projectId || existingRequest.project_id || null;
     let resolvedProjectLocation = String(location || existingRequest.location || '').trim();
-    const projectPayload = project && typeof project === 'object' ? project : null;
 
     if (projectPayload && !resolvedProjectId) {
       const projectTitle = String(projectPayload.title || '').trim();
@@ -395,8 +395,9 @@ export async function PUT(
       resolvedProjectLocation = projectLocation;
     }
 
+    let projectRecord: Awaited<ReturnType<typeof db.requestProjects.getById>> | null = null;
     if (resolvedProjectId) {
-      const projectRecord = await db.requestProjects.getById(String(resolvedProjectId));
+      projectRecord = await db.requestProjects.getById(String(resolvedProjectId));
       if (projectRecord && projectRecord.ngo_id !== userId) {
         return NextResponse.json({ error: 'Project ownership mismatch' }, { status: 403 });
       }

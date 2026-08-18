@@ -189,6 +189,7 @@ export default function CreateServiceRequestPage() {
   const [serviceOffers, setServiceOffers] = useState<ServiceOfferLite[]>([])
   const [offersLoading, setOffersLoading] = useState(false)
   const [serverRecommendations, setServerRecommendations] = useState<Record<number, NeedRecommendation[]>>({})
+  const [recommendationNeedIndex, setRecommendationNeedIndex] = useState(0)
   const [recPageByNeed, setRecPageByNeed] = useState<Record<number, number>>({})
   const [needUploadProgress, setNeedUploadProgress] = useState<Record<number, UploadProgressState>>({})
   const [selectedOffersByNeed, setSelectedOffersByNeed] = useState<Record<number, number[]>>({})

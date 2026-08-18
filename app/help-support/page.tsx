@@ -217,7 +217,7 @@ export default function HelpSupportPage() {
       setDescription('');
       setProof(null);
       setView('inbox');
-      setTicketFilter('open');
+      setTicketBucket('open');
       await loadTickets();
       if (ticketId) {
         setSelectedTicketId(ticketId);

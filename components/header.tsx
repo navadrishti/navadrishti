@@ -11,7 +11,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "@/components/ui/command"
 import { Badge } from "@/components/ui/badge"
 import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription, SheetClose } from "@/components/ui/sheet"
-import { Award, Bell, ChevronDown, Menu, Search, ShoppingBag, X, GraduationCap, Briefcase, Building, LogIn, MessageSquare, ArrowLeft } from "lucide-react"
+import { Award, Bell, ChevronRight, Menu, Search, ShoppingBag, X, GraduationCap, Briefcase, Building, LogIn, MessageSquare, ArrowLeft } from "lucide-react"
 import { VerificationBadge } from "@/components/verification-badge"
 import { visibleCaBadgeNumber } from "@/lib/auth"
 import { cn } from "@/lib/utils"
@@ -461,7 +461,7 @@ export function Header({ className = '' }: { className?: string } = {}) {
             >
               <button
                 type="button"
-                className="inline-flex h-10 w-full shrink-0 items-center gap-2 rounded-md bg-transparent px-2 text-white hover:bg-white/10 hover:text-udaan-orange transition-colors"
+                className="inline-flex h-10 w-full shrink-0 items-center gap-2 rounded-md bg-transparent px-2 text-white"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={(e) => e.preventDefault()}
                 title={profileTriggerLabel}
@@ -473,7 +473,7 @@ export function Header({ className = '' }: { className?: string } = {}) {
                 <span className="max-w-[148px] truncate text-sm font-medium">
                   {profileTriggerLabel}
                 </span>
-                <ChevronDown className="ml-auto h-4 w-4 shrink-0 opacity-80" />
+                <ChevronRight className={`ml-auto h-4 w-4 shrink-0 opacity-80 transition-transform ${isProfileMenuOpen ? "rotate-180" : "rotate-0"}`} />
               </button>
 
                     {isProfileMenuOpen && (
