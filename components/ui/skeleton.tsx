@@ -7,7 +7,7 @@ function Skeleton({
 }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn("animate-pulse rounded-md bg-muted", className)}
+      className={cn("animate-pulse rounded-md bg-slate-200", className)}
       {...props}
     />
   )
@@ -364,32 +364,39 @@ function PlatformSidebarSkeleton({ className }: { className?: string }) {
   return (
     <aside
       className={cn(
-        "platform-sidebar-skeleton fixed inset-y-0 left-0 top-0 z-50 hidden h-dvh w-60 flex-col border-r border-white/10 bg-udaan-blue md:flex",
+        "platform-sidebar-skeleton fixed inset-y-0 left-0 top-0 z-50 hidden h-dvh w-60 flex-col border-r border-white/10 md:flex",
         className
       )}
+      style={{ backgroundColor: '#0067b9' }}
       aria-hidden="true"
     >
       <div className="flex h-full min-h-0 flex-col">
         <div className="shrink-0 border-b border-white/15 px-4 py-4">
           <div className="flex items-center gap-2.5">
-            <Skeleton className="h-10 w-10 shrink-0 rounded-md bg-white/20" />
+            <Skeleton className="h-10 w-10 shrink-0 rounded-md bg-white/40" />
             <div className="space-y-2">
-              <Skeleton className="h-5 w-20 rounded bg-white/20" />
-              <Skeleton className="h-2.5 w-28 rounded bg-white/15" />
+              <Skeleton className="h-5 w-20 rounded bg-white/40" />
+              <Skeleton className="h-2.5 w-28 rounded bg-white/30" />
             </div>
           </div>
         </div>
         <div className="shrink-0 px-3 pt-4">
-          <Skeleton className="h-10 w-full rounded-lg bg-white/20" />
+          <Skeleton className="h-10 w-full rounded-lg bg-white/40" />
         </div>
         <nav className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden px-3 py-4">
           {Array.from({ length: 4 }).map((_, index) => (
-            <Skeleton key={`platform-nav-skeleton-${index}`} className="h-9 w-full rounded-md bg-white/15" />
+            <Skeleton key={`platform-nav-skeleton-${index}`} className="h-9 w-full rounded-md bg-white/40" />
           ))}
         </nav>
+        <div className="shrink-0 space-y-2 border-t border-white/15 px-3 py-3">
+          <Skeleton className="h-8 w-full rounded-md bg-white/40" />
+          {Array.from({ length: 4 }).map((_, index) => (
+            <Skeleton key={`platform-utility-skeleton-${index}`} className="h-9 w-full rounded-md bg-white/40" />
+          ))}
+        </div>
         <div className="shrink-0 space-y-2 border-t border-white/15 p-3">
-          <Skeleton className="h-10 w-full rounded-md bg-white/15" />
-          <Skeleton className="h-10 w-full rounded-md bg-udaan-orange/50" />
+          <Skeleton className="h-10 w-full rounded-md bg-white/40" />
+          <Skeleton className="h-10 w-full rounded-md bg-udaan-orange/60" />
         </div>
       </div>
     </aside>
@@ -398,13 +405,13 @@ function PlatformSidebarSkeleton({ className }: { className?: string }) {
 
 function PlatformMobileHeaderSkeleton() {
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-white/10 bg-udaan-blue md:hidden" aria-hidden="true">
+    <header className="sticky top-0 z-50 w-full border-b border-white/10 md:hidden" style={{ backgroundColor: '#0067b9' }} aria-hidden="true">
       <div className="flex h-16 items-center justify-between px-4">
         <div className="flex items-center gap-2">
-          <Skeleton className="h-9 w-9 rounded-md bg-white/20" />
-          <Skeleton className="h-5 w-20 rounded bg-white/20" />
+          <Skeleton className="h-9 w-9 rounded-md bg-white/40" />
+          <Skeleton className="h-5 w-20 rounded bg-white/40" />
         </div>
-        <Skeleton className="h-9 w-9 rounded-md bg-white/15" />
+        <Skeleton className="h-9 w-9 rounded-md bg-white/40" />
       </div>
     </header>
   )
@@ -417,9 +424,9 @@ function DashboardSidebarSkeleton({ itemCount = 4 }: { itemCount?: number }) {
       aria-hidden="true"
     >
       <nav className="flex flex-col gap-2 p-3">
-        {Array.from({ length: itemCount }).map((_, index) => (
-          <Skeleton key={`dashboard-nav-skeleton-${index}`} className="h-9 w-full rounded-md" />
-        ))}
+          {Array.from({ length: itemCount }).map((_, index) => (
+            <Skeleton key={`dashboard-nav-skeleton-${index}`} className="h-9 w-full rounded-md bg-slate-200" />
+          ))}
       </nav>
     </aside>
   )

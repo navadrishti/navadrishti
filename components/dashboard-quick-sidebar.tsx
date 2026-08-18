@@ -3,6 +3,7 @@
 import { ReactNode, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { cn } from '@/lib/utils'
+import { Skeleton } from '@/components/ui/skeleton'
 
 type SidebarItem = {
   value: string
@@ -190,7 +191,11 @@ export function DashboardQuickSidebar({
         aria-label={triggerLabel}
       >
         <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto p-3">
-          {items.map((item) => {
+          {!mounted
+            ? items.map((item) => (
+                <Skeleton key={`dashboard-nav-text-${item.value}`} className="h-9 w-full rounded-md bg-slate-200" />
+              ))
+            : items.map((item) => {
             const isActive = activeTab === item.value
 
             return (
