@@ -16,7 +16,14 @@ export interface UserData {
   phone_verified?: boolean;
 }
 
+function assertJwtSecret() {
+  if (!JWT_SECRET) {
+    throw new Error('JWT_SECRET is not configured');
+  }
+}
+
 export function generateToken(user: UserData): string {
+  assertJwtSecret();
   return jwt.sign(
     {
       id: user.id,
@@ -34,7 +41,7 @@ export function generateToken(user: UserData): string {
 
 export function verifyToken(token: string): UserData | null {
   try {
-    if (!token || token.trim() === '') {
+    if (!JWT_SECRET || !token || token.trim() === '') {
       return null;
     }
 

@@ -23,6 +23,7 @@ interface DashboardBodyLayoutProps {
   sidebar: ReactNode
   children: ReactNode
   showSidebar?: boolean
+  mainClassName?: string
 }
 
 function getSectionInitials(label: string): string {
@@ -46,10 +47,11 @@ export function DashboardBodyLayout({
   sidebar,
   children,
   showSidebar = true,
+  mainClassName,
 }: DashboardBodyLayoutProps) {
   if (!showSidebar) {
     return (
-      <main className="flex-1 min-w-0 bg-gray-50">
+      <main className={cn('flex-1 min-w-0 bg-gray-50', mainClassName)}>
         {children}
       </main>
     )
@@ -58,7 +60,7 @@ export function DashboardBodyLayout({
   return (
     <div className="flex flex-1 flex-col lg:min-h-screen lg:flex-row">
       {sidebar}
-      <main className="flex-1 min-w-0 bg-gray-50 pb-24 lg:pb-0">
+      <main className={cn('flex-1 min-w-0 bg-gray-50 pb-24 lg:pb-0', mainClassName)}>
         {children}
       </main>
     </div>

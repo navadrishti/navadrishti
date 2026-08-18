@@ -545,7 +545,7 @@ export function Header({ className = '' }: { className?: string } = {}) {
         </div>
           <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-4">
             {navLoading
-              ? Array.from({ length: Math.max(desktopNavItems.length, 4) }).map((_, index) => (
+              ? Array.from({ length: desktopNavItems.length }).map((_, index) => (
                   <Skeleton key={`desktop-nav-skeleton-${index}`} className="h-9 w-full rounded-md bg-white/40" />
                 ))
               : desktopNavItems.map((item) => (
@@ -789,7 +789,7 @@ export function Header({ className = '' }: { className?: string } = {}) {
                   {/* Navigation */}
                   <nav className="grid gap-2 text-base font-medium mb-8">
                     {navLoading
-                      ? Array.from({ length: Math.max(desktopNavItems.length, 4) }).map((_, index) => (
+                      ? Array.from({ length: desktopNavItems.length }).map((_, index) => (
                           <Skeleton key={`mobile-nav-skeleton-${index}`} className="h-10 w-full rounded-lg bg-white/40" />
                         ))
                       : desktopNavItems.map((item) => (

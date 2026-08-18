@@ -20,8 +20,8 @@ import Link from 'next/link';
 
 import { DashboardPageSkeleton } from '@/components/ui/skeleton';
 
-function PageSkeleton() {
-  return <DashboardPageSkeleton />;
+function PageSkeleton({ userType }: { userType?: string }) {
+  return <DashboardPageSkeleton userType={userType} />;
 }
 
 interface PermissionGateProps {
@@ -127,7 +127,7 @@ export default function ProtectedRoute({
 
   // Show loading state with skeleton
   if (!mounted || loading) {
-    return <PageSkeleton />;
+    return <PageSkeleton userType={user?.user_type || userTypes?.[0]} />;
   }
 
   // Show login prompt if not authenticated

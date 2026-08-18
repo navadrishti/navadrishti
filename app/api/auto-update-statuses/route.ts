@@ -1,20 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import jwt from 'jsonwebtoken';
-import { JWT_SECRET } from '@/lib/auth';
+import { verifyToken } from '@/lib/auth';
 
 // Auto-update service request statuses (server-side API)
 export async function POST(request: NextRequest) {
   try {
-    // Get JWT token from Authorization header
     const authHeader = request.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
     const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
-    const { id: userId } = decoded;
+    const decoded = verifyToken(token);
+    if (!decoded?.id) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
+    const userId = decoded.id;
 
     // Get all active/open service requests for this NGO
     const { data: requests } = await supabase
