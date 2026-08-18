@@ -16,7 +16,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import {
   CheckCircle2,
-  FileText,
   Loader2,
   MoreVertical,
   Send,
@@ -2313,8 +2312,7 @@ export default function NGOAIAgentPage() {
                           ))
                         ) : (
                           <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-5 text-center text-slate-500">
-                            <FileText className="mx-auto h-9 w-9 text-slate-400" />
-                            <p className="mt-3 text-sm font-medium text-slate-700">No draft fields yet.</p>
+                            <p className="text-sm font-medium text-slate-700">No draft fields yet.</p>
                             <p className="mt-1 text-sm leading-6 text-slate-500">
                               {AGENT_NAMES.atlas} will fill this card as soon as you answer the first prompt.
                             </p>
