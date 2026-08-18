@@ -47,6 +47,12 @@ export default function EditProjectPage({ params }: { params: Promise<{ id: stri
   const router = useRouter()
   const { user } = useAuth()
   const csrEligible = ngoIsCsrEligible(user?.verification_status, user?.profile_data || user?.profile)
+  const { toast } = useToast()
+
+  const [loading, setLoading] = useState(true)
+  const [savingProject, setSavingProject] = useState(false)
+  const [project, setProject] = useState<any | null>(null)
+
   const canOfferForCsr = ngoIsCsrEligibleForProject(
     user?.verification_status,
     user?.profile_data || user?.profile,
@@ -55,11 +61,6 @@ export default function EditProjectPage({ params }: { params: Promise<{ id: stri
       timeline: project?.timeline,
     }
   )
-  const { toast } = useToast()
-
-  const [loading, setLoading] = useState(true)
-  const [savingProject, setSavingProject] = useState(false)
-  const [project, setProject] = useState<any | null>(null)
   const [projectAddress, setProjectAddress] = useState<ProjectExactAddress>({ ...EMPTY_PROJECT_ADDRESS })
   const [needs, setNeeds] = useState<any[]>([])
   const [newNeeds, setNewNeeds] = useState<NeedDraft[]>([createEmptyNeed()])

@@ -10,7 +10,7 @@ import { StyledSelect } from '@/components/ui/styled-select'
 import { ServiceCard } from '@/components/service-card'
 import { Skeleton, SkeletonCTA, PlatformContentSkeleton, PlatformPageSkeleton } from '@/components/ui/skeleton'
 import { Card, CardContent } from '@/components/ui/card'
-import { Search, ArrowRight, Plus, MapPin } from 'lucide-react'
+import { Search, ArrowRight, Plus, MapPin, Sparkles } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
 import { CSR_SCHEDULE_VII_CATEGORIES, SERVICE_REQUEST_TYPES } from '@/lib/categories'
@@ -299,13 +299,21 @@ function ServiceRequestsContent() {
                   Create a structured need and connect with verified response partners
                 </p>
               </div>
-              <Link href="/service-requests/create">
-                <button className="bg-white border-2 border-black shadow-sm text-black hover:bg-gray-50 transition-all duration-300 px-8 py-4 h-auto font-medium text-base rounded-lg flex items-center">
-                  <Plus size={20} className="mr-3" />
-                  Create Need
-                  <ArrowRight size={16} className="ml-3" />
-                </button>
-              </Link>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <Link href="/service-requests/create">
+                  <button className="bg-white border-2 border-black shadow-sm text-black hover:bg-gray-50 transition-all duration-300 px-6 py-4 h-auto font-medium text-base rounded-lg flex items-center whitespace-nowrap">
+                    <Plus size={18} className="mr-2" />
+                    Create Need Manually
+                  </button>
+                </Link>
+                <Link href="/ngos/ai-agent">
+                  <button className="bg-udaan-blue border-2 border-udaan-blue text-white hover:bg-udaan-blue/90 transition-all duration-300 px-6 py-4 h-auto font-medium text-base rounded-lg flex items-center whitespace-nowrap">
+                    <Sparkles size={18} className="mr-2" />
+                    Use Atlas AI
+                    <ArrowRight size={16} className="ml-2" />
+                  </button>
+                </Link>
+              </div>
             </div>
           </div>
         )}
