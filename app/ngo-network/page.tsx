@@ -454,10 +454,10 @@ export default function NGONetworkPage() {
     <div className="flex min-h-screen flex-col bg-slate-50">
       <Header />
 
-      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:px-8">
-        <div className="mb-4">
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">NGO Network</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+      <main className="flex-1 px-6 py-8 md:px-10">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold tracking-tight">NGO Network</h1>
+          <p className="text-muted-foreground">
             Discover verified NGOs, review their profiles and contact details, then pay them directly via GRAM.
           </p>
         </div>
