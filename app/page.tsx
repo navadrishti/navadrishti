@@ -1,231 +1,306 @@
 'use client';
 
 import Link from 'next/link';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Header } from '@/components/header';
-import {
-  NAVADRISHTI_ABOUT_URL,
-  NAVADRISHTI_CONTACT_HREF,
-  shouldShowRootSubNavbar,
-} from '@/lib/access-control';
+import { VerificationBadge } from '@/components/verification-badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Button } from '@/components/ui/button';
 import { ProductBrand } from '@/components/product-brand';
 
-// Photo grid - using public images
-const photos = [
-  '/photos/pic 1.jpeg',
-  '/photos/pic 2.jpeg',
-  '/photos/pic 3.jpeg',
-  '/photos/pic 4.jpeg',
-  '/photos/pic 5.jpeg',
-  '/photos/pic 6.jpeg',
-  '/photos/pic 7.jpeg',
-  '/photos/pic 8.jpeg',
-  '/photos/pic 9.jpeg',
-  '/photos/pic 10.jpeg',
-  '/photos/pic 11.jpeg',
-  '/photos/pic 12.jpeg',
-  '/photos/pic 13.jpeg',
-  '/photos/pic 14.jpeg',
-  '/photos/pic 15.jpeg',
-];
+type NewsletterItem = {
+  id: string;
+  kind: 'joined' | 'verified' | 'need' | 'capability' | 'campaign';
+  actorName: string;
+  actorProfileHref: string | null;
+  actorType: string;
+  actorImage: string | null;
+  actorVerificationStatus: string;
+  actorBadgeNumber: string | null;
+  title: string;
+  summary: string;
+  href: string | null;
+  createdAt: string;
+};
 
-// Organize photos into 4 rows
-const rows = [
-  photos.slice(0, 5),
-  photos.slice(5, 10),
-  photos.slice(10, 15),
-  [...photos.slice(15, 15), ...photos.slice(0, 4)], // Last 5 for row 4
-];
+const PAGE_SIZE = 15;
 
-const mobileRows = [
-  photos.slice(0, 4),
-  photos.slice(4, 8),
-  photos.slice(8, 12),
-  photos.slice(12, 15),
-];
+function formatTimeAgo(value: string, nowMs: number) {
+  const timestamp = Date.parse(value);
+  if (Number.isNaN(timestamp)) return 'Recently';
 
-const repeatRow = <T,>(row: T[]) => [...row, ...row];
+  const diffMs = nowMs - timestamp;
+  const minute = 60 * 1000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  const week = 7 * day;
+  const month = 30 * day;
 
-const rootSubnavItems = [
-  { label: 'Evidence Verification Portal', href: '/evidence-verification/login' },
-  { label: 'Partner CA Portal', href: '/ca/login' },
-  { label: 'About Us', href: NAVADRISHTI_ABOUT_URL, external: true },
-  { label: 'Contact Us', href: NAVADRISHTI_CONTACT_HREF },
-] as const;
+  if (diffMs < hour) {
+    const minutes = Math.max(1, Math.floor(diffMs / minute));
+    return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+  }
+  if (diffMs < day) {
+    const hours = Math.max(1, Math.floor(diffMs / hour));
+    return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  }
+  if (diffMs < week) {
+    const days = Math.max(1, Math.floor(diffMs / day));
+    return `${days} day${days === 1 ? '' : 's'} ago`;
+  }
+  if (diffMs < month) {
+    const weeks = Math.max(1, Math.floor(diffMs / week));
+    return `${weeks} week${weeks === 1 ? '' : 's'} ago`;
+  }
+  const months = Math.max(1, Math.floor(diffMs / month));
+  return `${months} month${months === 1 ? '' : 's'} ago`;
+}
 
-// Animation keyframes
-const scrollAnimations = `
-  @keyframes marquee {
-    0% { transform: translate3d(0, 0, 0); }
-    100% { transform: translate3d(-50%, 0, 0); }
-  }
-  @keyframes marqueeReverse {
-    0% { transform: translate3d(-50%, 0, 0); }
-    100% { transform: translate3d(0, 0, 0); }
-  }
-  .marquee-track {
-    width: max-content;
-    will-change: transform;
-    backface-visibility: hidden;
-    transform: translate3d(0, 0, 0);
-  }
-  .marquee-segment {
-    display: flex;
-    gap: 4px;
-    width: calc(100vw - 16px);
-    min-width: calc(100vw - 16px);
-    flex-shrink: 0;
-  }
-  .mobile-marquee {
-    opacity: 1;
-    isolation: isolate;
-  }
-  .mobile-marquee-track {
-    transform: translate3d(0, 0, 0);
-    backface-visibility: hidden;
-    contain: layout paint;
-  }
-  .scroll-left {
-    animation: marquee 26s linear infinite;
-  }
-  .scroll-right {
-    animation: marqueeReverse 26s linear infinite;
-  }
-  .hero-photo-mask {
-    background: linear-gradient(135deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.1) 100%);
-  }
-  .hero-text-bg {
-    background: rgba(0, 0, 0, 0.3);
-    backdrop-filter: blur(4px);
-    border-radius: 16px;
-    padding: 1.5rem 1.25rem;
-  }
-  .hero-button {
-    transition: all 0.3s ease;
-  }
-  .hero-button:hover {
-    transform: translateY(-2px);
-  }
-`;
+function formatDateTime(value: string) {
+  const timestamp = Date.parse(value);
+  if (Number.isNaN(timestamp)) return '';
+  return new Date(timestamp).toLocaleString('en-IN', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
 
-function RootSubNavbar() {
-  return (
-    <div className="sticky top-0 z-[9999] text-white">
-      {/* mobile opaque overlay (matches bg-udaan-blue/90 visually, blocks carousel flicker) */}
-      <div className="absolute inset-x-0 top-0 h-full pointer-events-none md:hidden">
-        <div className="h-full bg-udaan-blue/90" />
-      </div>
-      <div className="relative bg-transparent md:bg-udaan-blue/90 md:backdrop-blur supports-[backdrop-filter]:md:bg-udaan-blue/85">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-wrap items-center justify-start gap-2 py-2 text-[11px] font-medium sm:justify-end sm:overflow-x-auto sm:whitespace-nowrap sm:gap-3 sm:text-xs">
-            <button
-              type="button"
-              disabled
-              title="Evidence capture app coming soon"
-              aria-label="Download Evidence Capture App (coming soon)"
-              className="cursor-not-allowed rounded-md border border-white/40 bg-transparent px-2.5 py-1 text-[11px] font-semibold text-white/70 sm:text-xs"
-            >
-              Download Evidence Capture App
-            </button>
-            {rootSubnavItems.map((item) =>
-              'external' in item && item.external ? (
-                <a
-                  key={item.label}
-                  href={item.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-1 py-1 text-white/90 transition-colors hover:text-udaan-orange whitespace-nowrap"
-                >
-                  {item.label}
-                </a>
-              ) : (
-                <Link
-                  key={item.label}
-                  href={item.href}
-                  className="px-1 py-1 text-white/90 transition-colors hover:text-udaan-orange whitespace-nowrap"
-                >
-                  {item.label}
-                </Link>
-              )
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  )
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return 'U';
+  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
 }
 
 export default function LandingPage() {
+  const [items, setItems] = useState<NewsletterItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState('');
+  const [hasMore, setHasMore] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const loadedCountRef = useRef(PAGE_SIZE);
+
+  const loadNewsletter = useCallback(async (options?: { append?: boolean; offset?: number; limit?: number }) => {
+    const append = options?.append === true;
+    const offset = options?.offset ?? 0;
+    const limit = options?.limit ?? PAGE_SIZE;
+
+    try {
+      if (append) {
+        setLoadingMore(true);
+      } else {
+        setLoading(true);
+      }
+
+      const response = await fetch(`/api/platform-newsletter?limit=${limit}&offset=${offset}`, { cache: 'no-store' });
+      const payload = await response.json();
+
+      if (!response.ok || !payload?.success) {
+        setError(payload?.error || 'Failed to load platform newsletter.');
+        if (!append) {
+          setItems([]);
+          setHasMore(false);
+        }
+        return;
+      }
+
+      const nextItems = Array.isArray(payload.data) ? payload.data : [];
+      setItems((current) => (append ? [...current, ...nextItems] : nextItems));
+      loadedCountRef.current = append ? offset + nextItems.length : nextItems.length || PAGE_SIZE;
+      setHasMore(Boolean(payload?.pagination?.hasMore));
+      setError('');
+    } catch {
+      setError('Failed to load platform newsletter.');
+      if (!append) {
+        setItems([]);
+        setHasMore(false);
+      }
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadNewsletter({ offset: 0, limit: PAGE_SIZE });
+    const interval = window.setInterval(() => {
+      setNowMs(Date.now());
+      const refreshLimit = Math.max(loadedCountRef.current || PAGE_SIZE, PAGE_SIZE);
+      loadNewsletter({ offset: 0, limit: refreshLimit });
+    }, 60000);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [loadNewsletter]);
+
   return (
     <div className="min-h-screen bg-white flex flex-col">
-      <style>{scrollAnimations}</style>
-      {shouldShowRootSubNavbar() ? <RootSubNavbar /> : null}
       <Header />
 
-      {/* Photo Grid Background Container */}
-      <div className="relative flex-1 overflow-hidden bg-white">
-        {/* Mobile scrolling rows */}
-        <div className="hero-photo-mask mobile-marquee absolute inset-0 grid grid-rows-4 gap-3 px-3 py-4 pointer-events-none overflow-hidden md:hidden">
-          {mobileRows.map((row, rowIdx) => (
-            <div key={`mobile-row-${rowIdx}`} className="flex min-h-0 items-stretch overflow-hidden">
-              <div
-                className={`marquee-track mobile-marquee-track ${rowIdx % 2 === 0 ? 'scroll-left' : 'scroll-right'}`}
-                style={{
-                  display: 'flex',
-                  minWidth: '400%',
-                }}
-              >
-                {Array.from({ length: 4 }).map((_, segmentIdx) => (
-                  <div
-                    key={`mobile-row-${rowIdx}-segment-${segmentIdx}`}
-                    className="marquee-segment"
-                    aria-hidden={segmentIdx > 0 ? 'true' : undefined}
-                  >
-                    {row.map((photo, idx) => (
-                      <div
-                        key={`mobile-row-${rowIdx}-${segmentIdx}-${idx}`}
-                        className="h-full flex-1 min-w-0 aspect-square overflow-hidden bg-slate-100"
-                      >
-                        <img src={photo} alt={segmentIdx === 0 ? `Impact ${idx + 1}` : ''} className="h-full w-full object-cover" />
+      <main className="flex-1 px-6 py-8 md:px-10">
+        <section>
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold tracking-tight">
+              Platform Newsletter
+            </h1>
+            <p className="text-muted-foreground">
+              A quick look at what&apos;s new across GRAM.
+            </p>
+          </div>
+
+          <div className="mt-8">
+            {loading ? (
+              <div className="divide-y divide-slate-200 border-t border-slate-200">
+                {Array.from({ length: 6 }).map((_, index) => (
+                  <div key={index} className="py-4">
+                    <div className="h-3 w-40 rounded bg-slate-200 animate-pulse" />
+                    <div className="mt-3 flex gap-3">
+                      <div className="h-10 w-10 shrink-0 rounded-full bg-slate-200 animate-pulse" />
+                      <div className="min-w-0 flex-1 space-y-3">
+                        <div className="h-4 w-3/4 rounded bg-slate-200 animate-pulse" />
+                        <div className="h-4 w-full rounded bg-slate-100 animate-pulse" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : error ? (
+              <div className="border-t border-slate-200 py-10 text-sm text-slate-600">{error}</div>
+            ) : items.length === 0 ? (
+              <div className="border-t border-slate-200 py-10 text-sm text-slate-600">
+                No major platform updates yet.
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-200 border-t border-slate-200">
+                {items.map((item) => {
+                  const titleSuffix =
+                    item.title.startsWith(item.actorName)
+                      ? item.title.slice(item.actorName.length).trimStart()
+                      : null;
+                  const opensDetail = Boolean(item.href) && (item.kind === 'need' || item.kind === 'capability' || item.kind === 'campaign');
+                  const body = (
+                    <div className="py-4">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+                        <span>{formatTimeAgo(item.createdAt, nowMs)}</span>
+                        <span>{formatDateTime(item.createdAt)}</span>
+                      </div>
+
+                      <div className={`mt-2 flex gap-3 sm:gap-4 ${item.summary ? 'items-start' : 'items-center'}`}>
+                        {item.actorProfileHref ? (
+                          <Link href={item.actorProfileHref} className="relative z-10 shrink-0">
+                            <Avatar className="h-10 w-10 shrink-0 ring-1 ring-slate-200">
+                              <AvatarImage src={item.actorImage || undefined} alt={item.actorName} className="object-cover" />
+                              <AvatarFallback className="bg-udaan-orange text-xs font-semibold text-white">
+                                {initials(item.actorName)}
+                              </AvatarFallback>
+                            </Avatar>
+                          </Link>
+                        ) : (
+                          <Avatar className="h-10 w-10 shrink-0 ring-1 ring-slate-200">
+                            <AvatarImage src={item.actorImage || undefined} alt={item.actorName} className="object-cover" />
+                            <AvatarFallback className="bg-udaan-orange text-xs font-semibold text-white">
+                              {initials(item.actorName)}
+                            </AvatarFallback>
+                          </Avatar>
+                        )}
+
+                        <div className="min-w-0 flex-1">
+                          <div className={`flex flex-wrap gap-x-2 gap-y-1 ${item.summary ? 'items-center' : 'items-center min-h-[2.5rem]'}`}>
+                            {titleSuffix ? (
+                              <>
+                                {item.actorProfileHref ? (
+                                  <Link href={item.actorProfileHref} className="relative z-10 text-sm font-medium leading-6 text-slate-950 transition-colors hover:text-udaan-blue">
+                                    {item.actorName}
+                                  </Link>
+                                ) : (
+                                  <span className="text-sm font-medium leading-6 text-slate-950">
+                                    {item.actorName}
+                                  </span>
+                                )}
+                                {item.actorVerificationStatus === 'verified' ? (
+                                  <VerificationBadge
+                                    status="verified"
+                                    size="sm"
+                                    showText={false}
+                                    badgeNumber={item.actorBadgeNumber}
+                                    className="relative z-10 shrink-0"
+                                  />
+                                ) : null}
+                                <span className="text-sm font-medium leading-6 text-slate-950">
+                                  {titleSuffix}
+                                </span>
+                              </>
+                            ) : (
+                              <p className="text-sm font-medium leading-6 text-slate-950">
+                                {item.title}
+                              </p>
+                            )}
+                          </div>
+
+                          {item.summary ? (
+                            <p className="mt-1 text-sm leading-5 text-slate-600">
+                              {item.summary}
+                            </p>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  );
+
+                  return (
+                    <div
+                      key={item.id}
+                      className={opensDetail ? 'relative transition-colors hover:bg-slate-50/60' : 'relative'}
+                    >
+                      {opensDetail && item.href ? (
+                        <Link href={item.href} className="absolute inset-0 z-0" aria-label={item.title} />
+                      ) : null}
+                      {body}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {!loading && !error && hasMore ? (
+              <div className="pt-6">
+                {loadingMore ? (
+                  <div className="space-y-4 border-t border-slate-200 pt-6">
+                    {Array.from({ length: 3 }).map((_, index) => (
+                      <div key={`load-more-skeleton-${index}`} className="py-2">
+                        <div className="h-3 w-32 rounded bg-slate-200 animate-pulse" />
+                        <div className="mt-3 flex gap-3">
+                          <div className="h-10 w-10 shrink-0 rounded-full bg-slate-200 animate-pulse" />
+                          <div className="min-w-0 flex-1 space-y-3">
+                            <div className="h-4 w-3/4 rounded bg-slate-200 animate-pulse" />
+                            <div className="h-4 w-full rounded bg-slate-100 animate-pulse" />
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
-                ))}
-              </div>
-            </div>
-          ))}
-
-        </div>
-
-        {/* Scrolling Photo Rows */}
-        <div className="hero-photo-mask absolute inset-0 hidden flex-col pointer-events-none opacity-85 md:flex" style={{ padding: '12px', gap: '12px' }}>
-          {rows.map((row, rowIdx) => (
-            <div
-              key={rowIdx}
-              className="flex-1 flex items-center overflow-hidden"
-            >
-              <div
-                className={`marquee-track ${rowIdx % 2 === 0 ? 'scroll-left' : 'scroll-right'}`}
-                style={{
-                  display: 'flex',
-                  gap: '12px',
-                  minWidth: '100%',
-                }}
-              >
-                {repeatRow(row).map((photo, idx) => (
-                  <div
-                    key={`${rowIdx}-repeat-${idx}`}
-                    className="flex-shrink-0 h-full aspect-square bg-slate-100 overflow-hidden"
-                    style={{ width: `calc(20% - 6.4px)` }}
-                  >
-                    <img src={photo} alt={`Impact ${idx + 1}`} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="flex justify-center">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-auto px-0 py-0 text-sm font-medium text-slate-700 hover:bg-transparent hover:text-slate-950"
+                      onClick={() => loadNewsletter({ append: true, offset: items.length, limit: PAGE_SIZE })}
+                    >
+                      Load more
+                    </Button>
                   </div>
-                ))}
+                )}
               </div>
-            </div>
-          ))}
-        </div>
-
-      </div>
+            ) : null}
+          </div>
+        </section>
+      </main>
 
       {/* Footer - exact navbar color */}
       <footer className="border-t" style={{ backgroundColor: '#0067b9', borderColor: '#0067b9' }}>
