@@ -322,7 +322,7 @@ export const socialFeedDb = {
               .eq('id', existing.id);
           }
         } catch (tagError: any) {
-          console.warn(`Failed to decrement stats for hashtag ${tag}:`, tagError?.message);
+          console.warn(`Failed to decrement stats for hashtag ${rawTag}:`, tagError?.message);
         }
       }
       

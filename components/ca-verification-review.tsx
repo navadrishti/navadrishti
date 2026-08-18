@@ -6,6 +6,22 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { certificateExpiryCopy } from '@/lib/auth'
 import { ComplianceBadge, type ComplianceBadgeKind } from '@/components/verification-badge'
 
+type CAReviewDocument = {
+  label: string
+  url?: string
+  file_name?: string
+}
+
+type CAFieldComparison = {
+  label?: string
+  status?: 'match' | 'mismatch' | 'incomplete'
+  match?: boolean
+  deviations?: string[]
+  sources?: { origin?: string; document?: string; value?: string }[]
+  input_value?: string
+  document_value?: string
+}
+
 function complianceTagBadgeKind(key: string): ComplianceBadgeKind | null {
   if (key === 'twelve_a' || key === 'eighty_g' || key === 'csr1' || key === 'fcra') return key
   return null
