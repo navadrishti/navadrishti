@@ -97,7 +97,7 @@ export default function EvidenceVerificationLoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100 p-4">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
-          <h1 className="mb-2 text-3xl font-bold text-gray-900">Evidence Verification Portal</h1>
+          <h1 className="mb-2 text-3xl font-bold text-gray-900">Evidence Portal</h1>
           <p className="text-gray-600">Sign in to your assigned verification workspace</p>
         </div>
 

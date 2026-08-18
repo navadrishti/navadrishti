@@ -206,7 +206,7 @@ export function CAConsoleHeader({
             <SheetContent side="right" className="w-full border-l border-white/10 bg-udaan-blue p-0 text-white sm:max-w-sm [&>button]:hidden">
               <SheetTitle className="sr-only">Evidence verification menu</SheetTitle>
               <SheetDescription className="sr-only">
-                Navigation links and account options for the evidence verification portal
+                Navigation links and account options for the Evidence Portal
               </SheetDescription>
 
               <div className="flex h-full flex-col">
