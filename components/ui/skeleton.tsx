@@ -490,14 +490,6 @@ function DashboardPageSkeleton({
   )
 }
 
-function PlatformRouteLoading() {
-  return (
-    <PlatformPageSkeleton>
-      <div className="min-h-screen" />
-    </PlatformPageSkeleton>
-  )
-}
-
 function PlatformContentSkeleton({
   children,
   className,
@@ -540,5 +532,4 @@ export {
   PlatformPageSkeleton,
   DashboardPageSkeleton,
   PlatformContentSkeleton,
-  PlatformRouteLoading,
 }
