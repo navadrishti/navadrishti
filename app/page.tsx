@@ -84,23 +84,27 @@ export default function LandingPage() {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const loadedCountRef = useRef(PAGE_SIZE);
 
-  const loadNewsletter = useCallback(async (options?: { append?: boolean; offset?: number; limit?: number }) => {
+  const loadNewsletter = useCallback(async (options?: { append?: boolean; silent?: boolean; offset?: number; limit?: number }) => {
     const append = options?.append === true;
+    const silent = options?.silent === true;
     const offset = options?.offset ?? 0;
     const limit = options?.limit ?? PAGE_SIZE;
 
     try {
-      if (append) {
-        setLoadingMore(true);
-      } else {
-        setLoading(true);
+      if (!silent) {
+        if (append) {
+          setLoadingMore(true);
+        } else {
+          setLoading(true);
+        }
       }
 
       const response = await fetch(`/api/platform-newsletter?limit=${limit}&offset=${offset}`, { cache: 'no-store' });
       const payload = await response.json();
 
       if (!response.ok || !payload?.success) {
-        setError(payload?.error || 'Failed to load platform newsletter.');
+        if (silent) return;
+        setError(payload?.error || 'Failed to load updates.');
         if (!append) {
           setItems([]);
           setHasMore(false);
@@ -109,19 +113,34 @@ export default function LandingPage() {
       }
 
       const nextItems = Array.isArray(payload.data) ? payload.data : [];
+
+      if (silent) {
+        setItems((current) => {
+          const existingIds = new Set(current.map((item) => item.id));
+          const incoming = nextItems.filter((item) => !existingIds.has(item.id));
+          if (incoming.length === 0) return current;
+          loadedCountRef.current = current.length + incoming.length;
+          return [...incoming, ...current];
+        });
+        return;
+      }
+
       setItems((current) => (append ? [...current, ...nextItems] : nextItems));
       loadedCountRef.current = append ? offset + nextItems.length : nextItems.length || PAGE_SIZE;
       setHasMore(Boolean(payload?.pagination?.hasMore));
       setError('');
     } catch {
-      setError('Failed to load platform newsletter.');
+      if (silent) return;
+      setError('Failed to load updates.');
       if (!append) {
         setItems([]);
         setHasMore(false);
       }
     } finally {
-      setLoading(false);
-      setLoadingMore(false);
+      if (!silent) {
+        setLoading(false);
+        setLoadingMore(false);
+      }
     }
   }, []);
 
@@ -129,8 +148,7 @@ export default function LandingPage() {
     loadNewsletter({ offset: 0, limit: PAGE_SIZE });
     const interval = window.setInterval(() => {
       setNowMs(Date.now());
-      const refreshLimit = Math.max(loadedCountRef.current || PAGE_SIZE, PAGE_SIZE);
-      loadNewsletter({ offset: 0, limit: refreshLimit });
+      loadNewsletter({ silent: true, offset: 0, limit: PAGE_SIZE });
     }, 60000);
 
     return () => {
@@ -146,7 +164,7 @@ export default function LandingPage() {
         <section>
           <div className="mb-8">
             <h1 className="text-3xl font-bold tracking-tight">
-              Platform Newsletter
+              What&apos;s happening
             </h1>
             <p className="text-muted-foreground">
               A quick look at what&apos;s new across GRAM.
@@ -290,7 +308,7 @@ export default function LandingPage() {
                       type="button"
                       variant="ghost"
                       className="h-auto px-0 py-0 text-sm font-medium text-slate-700 hover:bg-transparent hover:text-slate-950"
-                      onClick={() => loadNewsletter({ append: true, offset: items.length, limit: PAGE_SIZE })}
+                      onClick={() => loadNewsletter({ append: true, offset: loadedCountRef.current, limit: PAGE_SIZE })}
                     >
                       Load more
                     </Button>
