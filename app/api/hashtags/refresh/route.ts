@@ -136,7 +136,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error: any) {
-    console.error('❌ Error refreshing hashtag data:', error);
+    console.error('Error refreshing hashtag data:', error);
     
     return NextResponse.json({
       success: false,

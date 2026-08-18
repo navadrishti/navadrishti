@@ -74,7 +74,7 @@ function NavigationProgress() {
 export function PageTransition({ children }: PageTransitionProps) {
   const pathname = usePathname();
   const [displayPath, setDisplayPath] = useState(pathname);
-  const [transitionStage, setTransitionStage] = useState<'entering' | 'visible' | 'exiting'>('entering');
+  const [transitionStage, setTransitionStage] = useState<'entering' | 'visible' | 'exiting'>('visible');
   const exitingRef = useRef(false);
   
   useEffect(() => {

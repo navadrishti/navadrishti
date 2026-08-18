@@ -438,7 +438,7 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error: any) {
-    console.error('❌ Daily cleanup cron job error:', error);
+    console.error('Daily cleanup cron job error:', error);
     return NextResponse.json({ 
       error: 'Daily cleanup cron job failed',
       details: error?.message || 'Unknown error',

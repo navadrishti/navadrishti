@@ -1,6 +1,5 @@
 import { v2 as cloudinary } from 'cloudinary';
 
-// Configure Cloudinary
 if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) {
   cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -11,7 +10,6 @@ if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && proce
 
 export { cloudinary };
 
-// Helper function to upload image to Cloudinary
 export async function uploadToCloudinary(
   file: Buffer | string,
   options: {
@@ -34,7 +32,7 @@ export async function uploadToCloudinary(
     
     return result;
   } catch (error) {
-    console.error('❌ Cloudinary upload failed:', error);
+    console.error('Cloudinary upload failed:', error);
     throw new Error('Failed to upload image');
   }
 }
@@ -44,7 +42,7 @@ export async function deleteFromCloudinary(publicId: string): Promise<void> {
   try {
     await cloudinary.uploader.destroy(publicId);
   } catch (error) {
-    console.error('❌ Failed to delete from Cloudinary:', error);
+    console.error('Failed to delete from Cloudinary:', error);
     throw new Error('Failed to delete image');
   }
 }

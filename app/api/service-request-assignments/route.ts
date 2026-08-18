@@ -1121,8 +1121,7 @@ export async function GET(request: NextRequest) {
       timestamp: new Date().toISOString()
     })
     return NextResponse.json({ 
-      error: 'Failed to fetch assignments',
-      details: process.env.NODE_ENV === 'development' ? errorMessage : undefined
+      error: 'Failed to fetch assignments'
     }, { status: 500 })
   }
 }

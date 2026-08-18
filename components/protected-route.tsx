@@ -1,11 +1,4 @@
-/**
- * Protected Route Component with Access Control
- * 
- * Provides route protection with user type restrictions,
- * permissions checking, and verification requirements.
- */
-
-'use client'
+'use client';
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation';
@@ -25,33 +18,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Shield, AlertTriangle, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 
-// Shared skeleton loader component
+import { DashboardPageSkeleton } from '@/components/ui/skeleton';
+
 function PageSkeleton() {
-  return (
-    <div className="min-h-screen bg-gray-50 animate-fadeIn">
-      <div className="p-4 md:p-6 lg:p-8">
-        <div className="mx-auto max-w-7xl space-y-8">
-          <div className="space-y-3">
-            <div className="h-10 w-52 rounded-lg bg-white shadow-sm animate-pulse" />
-            <div className="h-5 w-80 max-w-[90%] rounded-md bg-white shadow-sm animate-pulse" />
-          </div>
-
-          <div className="rounded-xl border bg-white p-6 shadow-sm">
-            <div className="space-y-4">
-              <div className="h-6 w-56 rounded-md bg-slate-100 animate-pulse" />
-              <div className="h-40 rounded-lg bg-slate-100 animate-pulse" />
-              <div className="h-10 w-40 rounded-lg bg-slate-100 animate-pulse" />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="h-28 rounded-xl border bg-white shadow-sm animate-pulse" />
-            <div className="h-28 rounded-xl border bg-white shadow-sm animate-pulse" />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+  return <DashboardPageSkeleton />;
 }
 
 interface PermissionGateProps {
@@ -101,9 +71,6 @@ interface ProtectedRouteProps {
   permission?: keyof AccessPermissions;
 }
 
-/**
- * Enhanced protected route component with comprehensive access control
- */
 export default function ProtectedRoute({ 
   children, 
   userTypes,
