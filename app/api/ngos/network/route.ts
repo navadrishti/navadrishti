@@ -263,6 +263,7 @@ export async function GET(request: NextRequest) {
         profile_data,
         email_verified,
         phone_verified,
+        verification_status,
         ${verificationSelect}
       `)
       .eq('user_type', 'ngo')
@@ -382,7 +383,7 @@ export async function GET(request: NextRequest) {
         ca_compliance_tags: complianceTags,
         ca_badge_number: complianceFlags.verified ? issueCaBadgeNumber(row.id, profileData) : null,
         payout_details_on_file: routeReady,
-        csr_eligible: ngoIsCsrEligible(ngoVerification?.verification_status, profileData),
+        csr_eligible: ngoIsCsrEligible(row.verification_status ?? ngoVerification?.verification_status, profileData),
         accepts_payments: complianceFlags.verified && routeReady,
       };
 
@@ -503,7 +504,31 @@ export async function POST(request: NextRequest) {
       .select('id, verification_status')
       .eq('id', decoded.id)
       .maybeSingle();
-    if (!payerRow || !isCaVerifiedAccount(payerRow.verification_status)) {
+    if (!payerRow) {
+      return NextResponse.json({ error: CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE }, { status: 403 });
+    }
+
+    let effectivePayerVerificationStatus = payerRow.verification_status;
+    if (!isCaVerifiedAccount(effectivePayerVerificationStatus)) {
+      const verificationTable =
+        decoded.user_type === 'individual'
+          ? 'individual_verifications'
+          : decoded.user_type === 'company'
+            ? 'company_verifications'
+            : null;
+      if (verificationTable) {
+        const { data: verificationRow } = await supabase
+          .from(verificationTable)
+          .select('verification_status')
+          .eq('user_id', decoded.id)
+          .maybeSingle();
+        if (verificationRow?.verification_status) {
+          effectivePayerVerificationStatus = verificationRow.verification_status;
+        }
+      }
+    }
+
+    if (!isCaVerifiedAccount(effectivePayerVerificationStatus)) {
       return NextResponse.json({ error: CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE }, { status: 403 });
     }
 
