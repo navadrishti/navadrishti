@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ChevronLeft, FileText, Users, Building2, Building } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import {
   Dialog,
@@ -132,22 +132,6 @@ export default function VerificationDetailsPage({ type }: VerificationDetailsPag
     return names[type];
   };
 
-  const getIcon = () => {
-    switch (type) {
-      case 'individuals': return <Users className="h-5 w-5 text-udaan-blue" />;
-      case 'companies': return <Building2 className="h-5 w-5 text-purple-600" />;
-      case 'ngos': return <Building className="h-5 w-5 text-green-600" />;
-    }
-  };
-
-  const getBgClass = () => {
-    switch (type) {
-      case 'individuals': return 'bg-blue-50';
-      case 'companies': return 'bg-purple-50';
-      case 'ngos': return 'bg-green-50';
-    }
-  };
-
   const getListItemDisplay = (item: VerificationDetail) => {
     if (type === 'individuals') {
       return {
@@ -193,19 +177,18 @@ export default function VerificationDetailsPage({ type }: VerificationDetailsPag
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center gap-4 mb-6">
-          <Link href="/ca">
-            <Button variant="outline" size="sm">
-              <ChevronLeft className="w-4 h-4" />
-              Back to Dashboard
-            </Button>
+        <div className="mb-6 space-y-3">
+          <Link
+            href="/ca"
+            className="inline-flex items-center text-blue-600 hover:text-blue-800"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Dashboard
           </Link>
-          <div className="flex items-center gap-3">
-            <span className={`p-2 rounded-lg ${getBgClass()}`}>{getIcon()}</span>
+          <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-3xl font-bold">{getDisplayName()}</h1>
+            <Badge variant="secondary">{items.length} pending</Badge>
           </div>
-          <Badge variant="secondary">{items.length} pending</Badge>
         </div>
 
         {/* Items Grid */}
@@ -243,7 +226,6 @@ export default function VerificationDetailsPage({ type }: VerificationDetailsPag
         {items.length === 0 && (
           <Card>
             <CardContent className="py-12 text-center">
-              <FileText className="w-12 h-12 mx-auto text-gray-300 mb-4" />
               <p className="text-gray-500">No pending verifications</p>
             </CardContent>
           </Card>

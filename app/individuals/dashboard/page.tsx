@@ -1567,7 +1567,7 @@ function IndividualDashboardContent() {
 
 export default function IndividualDashboard() {
   return (
-    <Suspense fallback={<DashboardPageSkeleton />}>
+    <Suspense fallback={<DashboardPageSkeleton userType="individual" />}>
       <IndividualDashboardContent />
     </Suspense>
   );

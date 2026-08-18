@@ -480,6 +480,25 @@ export function shouldShowPayoutAccountPanel(
   return false;
 }
 
+const DASHBOARD_SIDEBAR_ITEM_COUNTS: Record<string, number> = {
+  ngo: 5,
+  company: 6,
+  individual: 4,
+};
+
+export function getDashboardSidebarItemCount(userType?: string | null): number {
+  if (!userType) return 4;
+  return DASHBOARD_SIDEBAR_ITEM_COUNTS[userType] ?? 4;
+}
+
+export function shouldShowDashboardSidebarSkeleton(userType?: string | null): boolean {
+  if (isPhase1Launch()) {
+    return false;
+  }
+
+  return getDashboardSidebarItemCount(userType) > 1;
+}
+
 export function filterDashboardSidebarItems<T extends { value: string }>(items: T[]): T[] {
   if (!isPhase1Launch()) {
     return items;

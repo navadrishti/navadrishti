@@ -2,9 +2,8 @@
 
 import type { ReactNode } from 'react';
 import Link from 'next/link';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import {
   Sheet,
@@ -15,7 +14,7 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import { AdminPortalMain, AdminPortalShell } from '@/components/evidence-verification/portal-ui';
-import { ChevronDown, LogOut, Menu, RefreshCw, X } from 'lucide-react';
+import { Menu, RefreshCw, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ProductBrand } from '@/components/product-brand';
 
@@ -25,176 +24,87 @@ const navItems = [
   { label: 'Dashboard', href: '/admin' },
 ];
 
+const logoutButtonClassName =
+  'w-full border-orange-500 bg-orange-500 text-white hover:border-orange-500 hover:bg-orange-500 hover:text-white';
+
 interface AdminConsoleHeaderProps {
-  accountName?: string;
-  accountImage?: string | null;
   onLogout: () => void;
   onRefresh?: () => void;
   onSupport?: () => void;
 }
 
 export function AdminConsoleHeader({
-  accountName,
-  accountImage,
   onLogout,
   onRefresh,
   onSupport,
 }: AdminConsoleHeaderProps) {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
-  const profileMenuTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const displayName = accountName || 'Admin';
-  const initials = useMemo(() => {
-    const words = displayName.split(/\s+/).filter(Boolean);
-    if (words.length === 0) return 'A';
-    if (words.length === 1) return words[0].charAt(0).toUpperCase();
-    return (words[0].charAt(0) + words[words.length - 1].charAt(0)).toUpperCase();
-  }, [displayName]);
-
-  useEffect(() => {
-    return () => {
-      if (profileMenuTimeoutRef.current) {
-        clearTimeout(profileMenuTimeoutRef.current);
-      }
-    };
-  }, []);
 
   useEffect(() => {
     setMobileMenuOpen(false);
   }, [pathname]);
 
-  const openProfileMenu = () => {
-    if (profileMenuTimeoutRef.current) {
-      clearTimeout(profileMenuTimeoutRef.current);
-      profileMenuTimeoutRef.current = null;
-    }
-    setIsProfileMenuOpen(true);
-  };
-
-  const closeProfileMenuWithDelay = (delayMs = 220) => {
-    if (profileMenuTimeoutRef.current) {
-      clearTimeout(profileMenuTimeoutRef.current);
-    }
-    profileMenuTimeoutRef.current = setTimeout(() => {
-      setIsProfileMenuOpen(false);
-    }, delayMs);
-  };
-
-  const isNavActive = (href: string) => {
-    if (href === '/admin') {
-      return pathname === '/admin';
-    }
-    return pathname === href || pathname.startsWith(`${href}/`);
-  };
-
-  const navLinkClass = (href: string) =>
-    cn(
-      'block rounded-md px-3 py-2.5 text-sm font-medium transition-colors',
-      isNavActive(href) ? 'bg-white/15 text-udaan-orange' : 'text-white hover:bg-white/10 hover:text-udaan-orange'
-    );
-
-  const desktopNavLinkClass = (href: string) =>
-    cn(
-      'whitespace-nowrap rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors',
-      isNavActive(href) ? 'text-udaan-orange' : 'text-white hover:text-udaan-orange'
-    );
-
-  const actionButtons = (
-    <>
-      {onRefresh ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="text-white hover:bg-white/10 hover:text-udaan-orange"
-          onClick={onRefresh}
-        >
-          <RefreshCw className="mr-2 h-4 w-4" />
-          Refresh
-        </Button>
-      ) : null}
-      {onSupport ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="text-white hover:bg-white/10 hover:text-udaan-orange"
-          onClick={onSupport}
-        >
-          Support
-        </Button>
-      ) : null}
-    </>
-  );
+  const desktopNavClass =
+    'inline-flex w-full items-center rounded-md px-3 py-2 text-left text-sm font-medium text-white transition-colors hover:bg-white/10 hover:text-udaan-orange';
+  const mobileNavClass =
+    'inline-flex w-full items-center rounded-md px-3 py-2.5 text-left text-sm font-medium text-white transition-colors hover:bg-white/10 hover:text-udaan-orange';
 
   return (
-    <header className="sticky top-0 z-50 w-full shrink-0 border-b bg-udaan-blue text-white">
-      <div className="udaan-container flex h-16 items-center justify-between gap-3 px-4 md:px-6">
-        <ProductBrand href="/admin" />
-
-        <div className="hidden items-center gap-3 md:flex lg:gap-4">
-          <nav className="flex items-center gap-1.5 lg:gap-2">
-            {navItems.map((item) => (
-              <Link key={item.href} href={item.href} className={desktopNavLinkClass(item.href)}>
-                {item.label}
-              </Link>
-            ))}
-          </nav>
-
-          {actionButtons}
-
-          <div
-            onMouseEnter={openProfileMenu}
-            onMouseLeave={() => closeProfileMenuWithDelay()}
-            className="relative shrink-0"
-          >
-            <button
-              type="button"
-              className="inline-flex h-10 items-center gap-2 rounded-md bg-transparent px-2.5 text-white transition-colors hover:text-udaan-orange"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={(event) => event.preventDefault()}
-              title={displayName}
-            >
-              <Avatar className="h-9 w-9 shrink-0">
-                {accountImage ? <AvatarImage src={accountImage} alt={displayName} /> : null}
-                <AvatarFallback className="bg-udaan-orange text-white">{initials}</AvatarFallback>
-              </Avatar>
-              <span className="hidden max-w-[148px] truncate text-sm font-medium lg:inline">{displayName}</span>
-              <ChevronDown className="h-4 w-4 shrink-0 opacity-80" />
-            </button>
-
-            {isProfileMenuOpen ? (
-              <div className="absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-md border bg-white p-1 text-black shadow-lg">
-                <div className="truncate px-2 py-1.5 text-sm font-semibold text-gray-900">{displayName}</div>
-                <div className="px-2 py-1.5 text-xs text-muted-foreground">Console administrator</div>
-                <div className="my-1 h-px bg-gray-200" />
-                <button
-                  type="button"
-                  className="flex w-full items-center rounded px-2 py-2 text-left text-sm text-red-600 hover:bg-red-50"
-                  onClick={onLogout}
-                >
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Log out
-                </button>
-              </div>
-            ) : null}
-          </div>
+    <>
+    <aside
+      className="platform-sidebar fixed inset-y-0 left-0 top-0 z-50 hidden h-dvh w-60 flex-col border-r border-white/10 text-white md:flex"
+      style={{ backgroundColor: '#0067b9' }}
+    >
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="shrink-0 border-b border-white/15 px-4 py-4">
+          <ProductBrand href="/admin" nameClassName="text-white" poweredClassName="text-white/75" />
         </div>
-
-        <div className="md:hidden">
-          <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-            <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="text-white hover:bg-white/10">
-                <Menu className="h-5 w-5" />
-                <span className="sr-only">Open menu</span>
-              </Button>
-            </SheetTrigger>
+        <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-4">
+          {navItems.map((item) => (
+            <Link key={item.href} href={item.href} className={desktopNavClass}>
+              {item.label}
+            </Link>
+          ))}
+          {onRefresh ? (
+            <button type="button" className={desktopNavClass} onClick={onRefresh}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Refresh
+            </button>
+          ) : null}
+          {onSupport ? (
+            <button type="button" className={desktopNavClass} onClick={onSupport}>
+              Support
+            </button>
+          ) : null}
+        </nav>
+        <div className="shrink-0 border-t border-white/15 p-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onLogout}
+            className={logoutButtonClassName}
+          >
+            Logout
+          </Button>
+        </div>
+      </div>
+    </aside>
+    <header className="sticky top-0 z-50 w-full border-b text-white md:hidden" style={{ backgroundColor: '#0067b9' }}>
+      <div className="flex h-16 items-center justify-between gap-3 px-4">
+        <ProductBrand href="/admin" nameClassName="text-white" poweredClassName="text-white/75" />
+        <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+          <SheetTrigger asChild>
+            <Button variant="ghost" size="icon" className="text-white hover:bg-white/10">
+              <Menu className="h-5 w-5" />
+              <span className="sr-only">Open menu</span>
+            </Button>
+          </SheetTrigger>
 
             <SheetContent
               side="right"
-              className="w-full border-l border-white/10 bg-udaan-blue p-0 text-white sm:max-w-sm [&>button]:hidden"
+              className="w-full border-l border-white/10 p-0 text-white sm:max-w-sm [&>button]:hidden"
+              style={{ backgroundColor: '#0067b9' }}
             >
               <SheetTitle className="sr-only">Admin console menu</SheetTitle>
               <SheetDescription className="sr-only">Navigation and account actions for the admin console</SheetDescription>
@@ -211,33 +121,18 @@ export function AdminConsoleHeader({
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-4">
-                  <div className="mb-6 flex items-center gap-3 rounded-lg border border-white/15 bg-white/10 p-3">
-                    <Avatar className="h-10 w-10">
-                      {accountImage ? <AvatarImage src={accountImage} alt={displayName} /> : null}
-                      <AvatarFallback className="bg-udaan-orange text-white">{initials}</AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold">{displayName}</p>
-                      <p className="text-xs text-white/75">Console administrator</p>
-                    </div>
-                  </div>
-
                   <nav className="space-y-1">
                     {navItems.map((item) => (
                       <SheetClose asChild key={item.href}>
-                        <Link href={item.href} className={navLinkClass(item.href)}>
+                        <Link href={item.href} className={mobileNavClass}>
                           {item.label}
                         </Link>
                       </SheetClose>
                     ))}
-                  </nav>
-
-                  <div className="mt-4 space-y-2">
                     {onRefresh ? (
-                      <Button
+                      <button
                         type="button"
-                        variant="ghost"
-                        className="h-10 w-full justify-start text-white hover:bg-white/10 hover:text-udaan-orange"
+                        className={mobileNavClass}
                         onClick={() => {
                           setMobileMenuOpen(false);
                           onRefresh();
@@ -245,44 +140,42 @@ export function AdminConsoleHeader({
                       >
                         <RefreshCw className="mr-2 h-4 w-4" />
                         Refresh
-                      </Button>
+                      </button>
                     ) : null}
                     {onSupport ? (
-                      <Button
+                      <button
                         type="button"
-                        variant="ghost"
-                        className="h-10 w-full justify-start text-white hover:bg-white/10 hover:text-udaan-orange"
+                        className={mobileNavClass}
                         onClick={() => {
                           setMobileMenuOpen(false);
                           onSupport();
                         }}
                       >
                         Support
-                      </Button>
+                      </button>
                     ) : null}
-                  </div>
+                  </nav>
                 </div>
 
                 <div className="border-t border-white/20 p-4">
                   <Button
                     type="button"
-                    variant="ghost"
-                    className="h-11 w-full justify-start text-red-200 hover:bg-red-500/20 hover:text-white"
+                    variant="outline"
+                    className={cn('h-11', logoutButtonClassName)}
                     onClick={() => {
                       setMobileMenuOpen(false);
                       onLogout();
                     }}
                   >
-                    <LogOut className="mr-2 h-4 w-4" />
-                    Log out
+                    Logout
                   </Button>
                 </div>
               </div>
             </SheetContent>
           </Sheet>
-        </div>
       </div>
     </header>
+    </>
   );
 }
 

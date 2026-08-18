@@ -6,7 +6,7 @@ import { getCompanyCAUserIdSet } from '@/lib/company-ca';
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get('limit') || '5');
+    const limit = Math.min(Math.max(Number.parseInt(searchParams.get('limit') || '5', 10) || 5, 1), 20);
 
     // Check if user is authenticated
     const authHeader = request.headers.get('authorization');

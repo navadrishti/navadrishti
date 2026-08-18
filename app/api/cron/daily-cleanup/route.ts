@@ -97,21 +97,14 @@ async function processNgoDocumentExpiryJobs(now = new Date()) {
  */
 export async function GET(request: NextRequest) {
   try {
-    // Verify this is coming from Vercel Cron
-    const authHeader = request.headers.get('authorization');
-    
-    // Security check with custom secret
-    if (process.env.CRON_SECRET) {
-      const providedSecret = authHeader?.replace('Bearer ', '');
-      if (providedSecret !== process.env.CRON_SECRET) {
+    const cronSecret = String(process.env.CRON_SECRET || '').trim();
+    const authHeader = request.headers.get('authorization') || '';
+    const providedSecret = authHeader.replace(/^Bearer\s+/i, '').trim();
+
+    if (process.env.NODE_ENV === 'production' || cronSecret) {
+      if (!cronSecret || providedSecret !== cronSecret) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       }
-    }
-    
-    // Vercel cron jobs include this header
-    const cronHeader = request.headers.get('x-vercel-cron');
-    if (!cronHeader && process.env.NODE_ENV === 'production') {
-      return NextResponse.json({ error: 'Not authorized' }, { status: 401 });
     }
 
 
