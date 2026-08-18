@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, type KeyboardEventHandler, type FocusEventHandler } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
@@ -15,7 +15,7 @@ import { Award, Bell, ChevronDown, Menu, Search, ShoppingBag, X, GraduationCap, 
 import { VerificationBadge } from "@/components/verification-badge"
 import { visibleCaBadgeNumber } from "@/lib/auth"
 import { cn } from "@/lib/utils"
-import { getLaunchHeaderNavItems, isPhase1Launch, type LaunchHeaderNavItem } from "@/lib/access-control"
+import { getLaunchHeaderNavItems, type LaunchHeaderNavItem } from "@/lib/access-control"
 import { ProductBrand } from "@/components/product-brand"
 
 interface ProfileSearchResult {
@@ -29,6 +29,95 @@ interface ProfileSearchResult {
 }
 
 interface NavigationItem extends LaunchHeaderNavItem {}
+
+const SEARCH_PLACEHOLDER = "Search people, NGOs, companies..."
+
+function fitPlaceholderWithDots(text: string, el: HTMLInputElement) {
+  const style = getComputedStyle(el)
+  const canvas = document.createElement("canvas")
+  const ctx = canvas.getContext("2d")
+  if (!ctx) return text
+
+  ctx.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`
+  const maxWidth = el.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0)
+  if (maxWidth <= 0 || ctx.measureText(text).width <= maxWidth) return text
+
+  const dots = ".."
+  const dotsWidth = ctx.measureText(dots).width
+  if (dotsWidth >= maxWidth) return dots
+
+  let low = 0
+  let high = text.length
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2)
+    if (ctx.measureText(text.slice(0, mid)).width + dotsWidth <= maxWidth) {
+      low = mid
+    } else {
+      high = mid - 1
+    }
+  }
+
+  return `${text.slice(0, low).trimEnd()}${dots}`
+}
+
+function NavbarSearchInput({
+  value,
+  onChange,
+  onClear,
+  onKeyDown,
+  onFocus,
+  onBlur,
+}: {
+  value: string
+  onChange: (value: string) => void
+  onClear: () => void
+  onKeyDown?: KeyboardEventHandler<HTMLInputElement>
+  onFocus?: FocusEventHandler<HTMLInputElement>
+  onBlur?: FocusEventHandler<HTMLInputElement>
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [placeholder, setPlaceholder] = useState(SEARCH_PLACEHOLDER)
+
+  useEffect(() => {
+    const el = inputRef.current
+    if (!el) return
+
+    const update = () => setPlaceholder(fitPlaceholderWithDots(SEARCH_PLACEHOLDER, el))
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  return (
+    <div className="relative w-full overflow-hidden rounded-lg border-2 border-gray-300">
+      <div className="relative bg-white">
+        <Input
+          ref={inputRef}
+          type="text"
+          placeholder={placeholder}
+          title={SEARCH_PLACEHOLDER}
+          className="w-full border-0 bg-white pl-8 pr-10 text-black placeholder:truncate placeholder:text-gray-500 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={onKeyDown}
+          onFocus={onFocus}
+          onBlur={onBlur}
+        />
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-gray-600" />
+        <button
+          type="button"
+          aria-label="Clear search"
+          className={`absolute right-2 top-1/2 z-10 -translate-y-1/2 rounded-full p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700 ${value.trim() ? "opacity-100" : "pointer-events-none opacity-0"}`}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={onClear}
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
+  )
+}
 
 function HeaderNavLink({
   item,
@@ -189,8 +278,6 @@ export function Header({ className = '' }: { className?: string } = {}) {
     return 'Browse & post capability offers'
   }
 
-  const phase1Header = isPhase1Launch()
-
   const desktopNavItems = getLaunchHeaderNavItems([
     {
       label: 'NGO Network',
@@ -215,80 +302,55 @@ export function Header({ className = '' }: { className?: string } = {}) {
   ])
   
   return (
-    <header className={`sticky top-0 z-50 w-full border-b bg-udaan-blue text-white ${className}`}>
-      <div className="udaan-container flex h-16 items-center gap-4 px-4 md:px-6">
-        <ProductBrand href="/" />
-        <div className="hidden md:flex md:flex-1 md:items-center md:justify-end md:gap-4 lg:gap-6">
-          <nav className="order-2 flex shrink-0 items-center justify-end gap-1.5 lg:gap-2">
-            {desktopNavItems.map((item) => (
-              <HeaderNavLink
-                key={`desktop-nav-${item.href}`}
-                item={item}
-                className="whitespace-nowrap rounded-md px-2.5 py-1.5 text-sm font-medium text-white hover:text-udaan-orange focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors"
-              />
-            ))}
-          </nav>
-          <div className="relative order-1 mr-auto hidden md:block shrink-0">
-            <div className="relative flex items-center z-50">
-              <div className="relative border-2 border-gray-300 rounded-lg overflow-hidden">
-                <div className="relative bg-white">
-                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-600 pointer-events-none z-10" />
-                  <Input
-                    type="text"
-                    placeholder="Search people, NGOs, companies..."
-                    className="w-52 md:w-64 lg:w-72 xl:w-80 bg-white border-0 pl-8 pr-10 text-black placeholder:text-gray-500 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 relative z-20"
-                    value={searchQuery}
-                    onChange={(e) => handleSearchChange(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Escape') {
-                        e.preventDefault()
-                        clearSearch()
-                        e.currentTarget.blur()
-                      }
-                    }}
-                    onFocus={() => {
-                      setShowResults(true)
-                    }}
-                    onBlur={(e) => {
-                      // Don't hide immediately - check if clicking on dropdown
-                      setTimeout(() => {
-                        // Only hide if not clicking on dropdown and no search query
-                        const relatedTarget = e.relatedTarget as HTMLElement
-                        const isClickingDropdown = relatedTarget && (
-                          relatedTarget.closest('[data-search-dropdown]') ||
-                          relatedTarget.getAttribute('data-search-dropdown') !== null
-                        )
+    <>
+    <aside className={`platform-sidebar fixed inset-y-0 left-0 top-0 z-50 hidden h-dvh w-60 flex-col border-r border-white/10 bg-udaan-blue text-white md:flex ${className}`}>
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="shrink-0 border-b border-white/15 px-4 py-4">
+          <ProductBrand href="/" nameClassName="text-white" poweredClassName="text-white/75" />
+        </div>
+        <div className="relative shrink-0 px-3 pt-4">
+            <div className="relative z-50">
+              <NavbarSearchInput
+                value={searchQuery}
+                onChange={handleSearchChange}
+                onClear={clearSearch}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    e.preventDefault()
+                    clearSearch()
+                    e.currentTarget.blur()
+                  }
+                }}
+                onFocus={() => {
+                  setShowResults(true)
+                }}
+                onBlur={(e) => {
+                  setTimeout(() => {
+                    const relatedTarget = e.relatedTarget as HTMLElement
+                    const isClickingDropdown = relatedTarget && (
+                      relatedTarget.closest('[data-search-dropdown]') ||
+                      relatedTarget.getAttribute('data-search-dropdown') !== null
+                    )
 
-                        if (!isClickingDropdown) {
-                          if (!searchQuery.trim()) {
-                            setShowResults(false)
-                            setShowAllResults(false)
-                          }
-                        }
-                      }, 150)
-                    }}
-                  />
-                  <button
-                    type="button"
-                    aria-label="Clear search"
-                    className={`absolute right-2 top-1/2 z-30 -translate-y-1/2 rounded-full p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700 ${searchQuery.trim() ? "opacity-100" : "pointer-events-none opacity-0"}`}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={clearSearch}
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
+                    if (!isClickingDropdown) {
+                      if (!searchQuery.trim()) {
+                        setShowResults(false)
+                        setShowAllResults(false)
+                      }
+                    }
+                  }, 150)
+                }}
+              />
             </div>
             
             {/* Search Results Popover */}
             {showResults && (
               <div 
-                className="absolute top-full left-0 mt-1 z-50" 
+                className="absolute left-full top-0 z-50 ml-2" 
                 data-search-dropdown="true"
-                onMouseDown={(e) => e.preventDefault()} // Prevent input blur when clicking dropdown
+                onMouseDown={(e) => e.preventDefault()}
               >
-                <div className="w-52 md:w-64 lg:w-72 xl:w-80 p-0 border-2 border-gray-300 rounded-lg shadow-lg overflow-hidden bg-white">
+                <div className="w-80 p-0 border-2 border-gray-300 rounded-lg shadow-lg overflow-hidden bg-white">
                     <div className="bg-white">
                       <Command shouldFilter={false} className="!bg-white" style={{ backgroundColor: 'white' }}>
                         <CommandList className={showAllResults ? "!bg-white max-h-80 overflow-y-auto" : "!bg-white"}>
@@ -380,19 +442,26 @@ export function Header({ className = '' }: { className?: string } = {}) {
                   </div>
                 </div>
             )}
-          </div>          
+        </div>
+          <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-4">
+            {desktopNavItems.map((item) => (
+              <HeaderNavLink
+                key={`desktop-nav-${item.href}`}
+                item={item}
+                className="rounded-md px-3 py-2 text-sm font-medium text-white hover:bg-white/10 hover:text-udaan-orange focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors"
+              />
+            ))}
+          </nav>
+        <div className="shrink-0 border-t border-white/15 p-3">
           {mounted && user ? (
             <div
               onMouseEnter={openProfileMenu}
               onMouseLeave={() => closeProfileMenuWithDelay()}
-              className={cn(
-                "relative order-3 shrink-0",
-                phase1Header && "shrink-0"
-              )}
+              className="relative shrink-0"
             >
               <button
                 type="button"
-                className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md bg-transparent px-2.5 text-white hover:text-udaan-orange transition-colors"
+                className="inline-flex h-10 w-full shrink-0 items-center gap-2 rounded-md bg-transparent px-2 text-white hover:bg-white/10 hover:text-udaan-orange transition-colors"
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={(e) => e.preventDefault()}
                 title={profileTriggerLabel}
@@ -404,11 +473,11 @@ export function Header({ className = '' }: { className?: string } = {}) {
                 <span className="max-w-[148px] truncate text-sm font-medium">
                   {profileTriggerLabel}
                 </span>
-                <ChevronDown className="h-4 w-4 shrink-0 opacity-80" />
+                <ChevronDown className="ml-auto h-4 w-4 shrink-0 opacity-80" />
               </button>
 
                     {isProfileMenuOpen && (
-                <div className="absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-md border bg-white p-1 text-black shadow-lg">
+                <div className="absolute left-full bottom-0 z-50 ml-2 w-56 overflow-hidden rounded-md border bg-white p-1 text-black shadow-lg">
                   <div className="truncate px-2 py-1.5 text-sm font-semibold leading-5 text-gray-900">{user.name}</div>
                   <div className="px-2 py-1 text-xs text-muted-foreground">
                     <span className="block truncate">{user.email} • {user.user_type.charAt(0).toUpperCase() + user.user_type.slice(1)}</span>
@@ -443,19 +512,24 @@ export function Header({ className = '' }: { className?: string } = {}) {
               )}
             </div>
           ) : (
-            <div className="order-3 flex shrink-0 items-center gap-3">
+            <div className="flex flex-col gap-2">
               <Link href="/login">
-                <Button variant="ghost" className="flex items-center gap-2 text-white hover:text-udaan-orange hover:bg-white/10">
+                <Button variant="ghost" className="flex w-full items-center justify-center gap-2 text-white hover:text-udaan-orange hover:bg-white/10">
                   Sign In
                 </Button>
               </Link>
               <Link href="/register">
-                <Button className="bg-udaan-orange hover:bg-udaan-orange/90 border-none text-white">Get Started</Button>
+                <Button className="w-full bg-udaan-orange hover:bg-udaan-orange/90 border-none text-white">Get Started</Button>
               </Link>
             </div>
           )}
         </div>
-        <div className="flex md:hidden flex-1 items-center justify-end gap-2">
+      </div>
+    </aside>
+    <header className="sticky top-0 z-50 w-full border-b bg-udaan-blue text-white md:hidden">
+      <div className="flex h-16 items-center gap-4 px-4">
+        <ProductBrand href="/" nameClassName="text-white" poweredClassName="text-white/75" />
+        <div className="flex flex-1 items-center justify-end gap-2">
           {/* Mobile Menu Sheet */}
           <Sheet open={mobileSheetOpen} onOpenChange={setMobileSheetOpen}>
             <SheetTrigger asChild>
@@ -498,26 +572,11 @@ export function Header({ className = '' }: { className?: string } = {}) {
                 <div className="flex-1 overflow-y-auto p-6 bg-udaan-blue">
                   {/* Profile Search */}
                   <div className="mb-6">
-                      <div className="relative bg-white rounded-lg border-2 border-gray-200 overflow-hidden">
-                        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-600" />
-                        <Input
-                          type="text"
-                          placeholder="Search people, NGOs, companies..."
-                          className="w-full bg-white border-0 pl-8 pr-10 text-black placeholder:text-gray-500 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
-                          value={searchQuery}
-                          onChange={(e) => handleSearchChange(e.target.value)}
-                        />
-                        {searchQuery && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="absolute right-2 top-1 h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
-                            onClick={clearSearch}
-                          >
-                            <X className="h-3 w-3" />
-                          </Button>
-                        )}
-                      </div>
+                      <NavbarSearchInput
+                        value={searchQuery}
+                        onChange={handleSearchChange}
+                        onClear={clearSearch}
+                      />
                     </div>
                     
                     {/* Mobile Search Results - Only show when there's a search query or results */}
@@ -677,8 +736,8 @@ export function Header({ className = '' }: { className?: string } = {}) {
           </Sheet>
         </div>
       </div>
-
     </header>
+    </>
   )
 }
 

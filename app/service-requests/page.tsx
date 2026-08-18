@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { StyledSelect } from '@/components/ui/styled-select'
 import { ServiceCard } from '@/components/service-card'
-import { Skeleton, SkeletonCTA } from '@/components/ui/skeleton'
+import { Skeleton, SkeletonCTA, PlatformContentSkeleton, PlatformPageSkeleton } from '@/components/ui/skeleton'
 import { Card, CardContent } from '@/components/ui/card'
 import { Search, ArrowRight, Plus, MapPin } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
@@ -439,9 +439,8 @@ function ServiceRequestsContent() {
 export default function ServiceRequestsPage() {
   return (
     <Suspense fallback={
-      <div className="flex min-h-screen flex-col">
-        <Header />
-        <main className="flex-1 px-6 py-8 md:px-10">
+      <PlatformPageSkeleton>
+        <PlatformContentSkeleton>
           <div className="mb-8 flex flex-col gap-3">
             <Skeleton className="h-9 w-64" />
             <Skeleton className="h-5 w-full max-w-xl" />
@@ -461,8 +460,8 @@ export default function ServiceRequestsPage() {
               ))}
             </div>
           </div>
-        </main>
-      </div>
+        </PlatformContentSkeleton>
+      </PlatformPageSkeleton>
     }>
       <ServiceRequestsContent />
     </Suspense>

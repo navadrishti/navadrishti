@@ -1,9 +1,5 @@
 /**
- * Access Control System for GRAM Platform
- *
- * Defines permissions based on user type and verification status
- * Controls access to posts, service requests/offers, messaging, and dashboards.
- * Company legal entity remains Navadrishti LLP.
+ * Route access based on user type and verification status.
  */
 
 export type UserType = 'individual' | 'ngo' | 'company';
@@ -41,9 +37,6 @@ export interface AccessPermissions {
   canAccessDashboard: boolean;
 }
 
-/**
- * Get comprehensive access permissions for a user
- */
 export function getUserPermissions(user: User | null): AccessPermissions {
   // Default permissions for unauthenticated users
   if (!user) {
@@ -93,7 +86,6 @@ export function getUserPermissions(user: User | null): AccessPermissions {
     canAccessDashboard: true,
   };
 
-  // Enhanced permissions based on user type and verification status
   switch (user.user_type) {
     case 'individual':
       return {

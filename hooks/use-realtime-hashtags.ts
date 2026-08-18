@@ -32,7 +32,7 @@ export function useTrendingHashtags(limit: number = 5): UseTrendingHashtagsRetur
   const [hashtags, setHashtags] = useState<HashtagData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isConnected, setIsConnected] = useState(false); // Start as disconnected
+  const [isConnected, setIsConnected] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [retryCount, setRetryCount] = useState(0);
 
@@ -41,10 +41,8 @@ export function useTrendingHashtags(limit: number = 5): UseTrendingHashtagsRetur
       setLoading(true);
       setError(null);
 
-      // Immediate fetch for faster loading
-      
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout for faster responses
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
       
       const response = await fetch(`/api/hashtags/trending?limit=${limit}`, {
         method: 'GET',
@@ -192,60 +190,5 @@ export function useTrendingHashtags(limit: number = 5): UseTrendingHashtagsRetur
       setIsConnected(true);
       await fetchTrendingHashtags();
     },
-  };
-}
-
-// Additional hook for hashtag statistics
-export function useHashtagStats() {
-  const [stats, setStats] = useState({
-    total_hashtags: 0,
-    trending_count: 0,
-    total_mentions: 0,
-    daily_mentions: 0,
-    weekly_mentions: 0,
-  });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchStats = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const response = await fetch('/api/hashtags/maintenance', {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch hashtag stats: ${response.status}`);
-      }
-
-      const result = await response.json();
-
-      if (result.success && result.data?.statistics) {
-        setStats(result.data.statistics);
-      } else {
-        setError(result.error || 'Failed to fetch hashtag statistics');
-      }
-    } catch (err: any) {
-      console.error('Error fetching hashtag stats:', err);
-      setError(err.message || 'Failed to fetch hashtag statistics');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchStats();
-  }, [fetchStats]);
-
-  return {
-    stats,
-    loading,
-    error,
-    refetch: fetchStats,
   };
 }

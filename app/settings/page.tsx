@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useAuth } from '@/lib/auth-context'
-import Link from 'next/link'
+import { PlatformContentSkeleton, Skeleton } from '@/components/ui/skeleton'
 
 // Delete Account Dialog - moved inline since only used here
 interface DeleteAccountDialogProps {
@@ -263,14 +263,14 @@ export default function SettingsPage() {
     return (
       <div className="flex min-h-screen flex-col">
         <Header />
-        <main className="flex-1 px-6 py-8 md:px-10">
-          <div className="mx-auto max-w-4xl space-y-4">
-            <div className="h-8 w-20 rounded-md bg-muted/60" />
+        <main className="flex-1 min-w-0 bg-gray-50">
+          <PlatformContentSkeleton className="mx-auto max-w-4xl">
+            <Skeleton className="h-8 w-20" />
             <div className="space-y-3 py-8 text-center">
-              <div className="mx-auto h-8 w-40 rounded-md bg-muted/60" />
-              <div className="mx-auto h-10 w-28 rounded-md bg-muted/60" />
+              <Skeleton className="mx-auto h-8 w-40" />
+              <Skeleton className="mx-auto h-10 w-28" />
             </div>
-          </div>
+          </PlatformContentSkeleton>
         </main>
       </div>
     );

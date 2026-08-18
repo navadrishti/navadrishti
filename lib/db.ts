@@ -1,4 +1,3 @@
-// Updated Database connection utility - now using Supabase PostgreSQL
 import 'server-only'
 import { createClient } from '@supabase/supabase-js';
 import { buildAllocationUpdatePayload } from '@/lib/service-request-allocation'
@@ -8,7 +7,6 @@ import {
   readPublishedEntity,
 } from '@/lib/ai-agent-sessions'
 
-// Initialize Supabase client
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseSecretKey = process.env.SUPABASE_SECRET_KEY!;
 
@@ -24,7 +22,6 @@ export function createServerClient() {
   return supabase
 }
 
-// Modern Supabase helpers (recommended approach)
 export const db = {
   // Users
   users: {

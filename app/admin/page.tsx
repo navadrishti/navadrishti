@@ -2073,27 +2073,26 @@ export default function AdminPage() {
         onRefresh={refreshDashboard}
       />
 
-      <AdminPortalMain className="max-w-7xl">
-        <div className="grid min-h-0 flex-1 grid-cols-1 items-start gap-6 overflow-hidden lg:grid-cols-12">
-          <DashboardQuickSidebar
-            items={[
-              { value: 'overview', label: 'Overview' },
-              { value: 'offers', label: 'Offers' },
-              { value: 'projects', label: 'Projects' },
-              { value: 'users', label: 'People' },
-              { value: 'requests', label: 'Requests' },
-              { value: 'campaigns', label: 'CSR Campaigns' },
-              { value: 'support', label: 'Support' },
-              { value: 'refunds', label: 'Refunds' },
-              { value: 'ca-credentials', label: 'CA Credentials' },
-            ]}
-            activeTab={activeTab}
-            onSelect={setActiveTab}
-            desktopClassName="lg:col-span-3"
-            triggerLabel="Admin Menu"
-          />
+      <AdminPortalMain className="flex min-h-0 flex-1 flex-col p-0 lg:flex-row">
+        <DashboardQuickSidebar
+          items={[
+            { value: 'overview', label: 'Overview' },
+            { value: 'offers', label: 'Offers' },
+            { value: 'projects', label: 'Projects' },
+            { value: 'users', label: 'People' },
+            { value: 'requests', label: 'Requests' },
+            { value: 'campaigns', label: 'CSR Campaigns' },
+            { value: 'support', label: 'Support' },
+            { value: 'refunds', label: 'Refunds' },
+            { value: 'ca-credentials', label: 'CA Credentials' },
+          ]}
+          activeTab={activeTab}
+          onSelect={setActiveTab}
+          triggerLabel="Admin Menu"
+        />
 
-          <Card className="h-full min-h-0 overflow-hidden border-slate-200 bg-white text-slate-900 shadow-sm lg:col-span-9">
+        <div className="min-h-0 flex-1 overflow-hidden p-4 md:p-6">
+          <Card className="h-full min-h-0 overflow-hidden border-slate-200 bg-white text-slate-900 shadow-sm">
             <CardContent className="h-full min-h-0 overflow-y-auto pt-6 pr-4 [scrollbar-gutter:stable] lg:overflow-y-auto">
             {activeTab === 'overview' && (
             <div className="mt-0 h-full min-h-0 space-y-6 overflow-y-auto pr-1">

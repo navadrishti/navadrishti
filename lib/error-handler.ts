@@ -1,5 +1,5 @@
 /**
- * Production-ready error handling utilities
+ * Error handling for API routes
  */
 
 import { NextResponse } from 'next/server';
@@ -58,14 +58,14 @@ export function createErrorResponse(error: AppError | Error | string, statusCode
       code: error.code,
       message: error.message,
       statusCode: error.statusCode,
-      details: process.env.NODE_ENV === 'development' ? error.details : undefined
+      details: undefined
     };
   } else if (error instanceof Error) {
     response = {
       code: ErrorCodes.INTERNAL_ERROR,
-      message: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
+      message: 'Internal server error',
       statusCode,
-      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      details: undefined
     };
   } else {
     response = {
@@ -144,7 +144,7 @@ export async function withErrorHandling<T>(
       'An unexpected error occurred',
       500,
       ErrorCodes.INTERNAL_ERROR,
-      process.env.NODE_ENV === 'development' ? error : undefined
+      undefined
     );
   }
 }

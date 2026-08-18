@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth';
-import { supabase } from '@/lib/db';
 
 export const POST = withAuth(async (req: NextRequest) => {
   try {
-    const user = (req as any).user;
     const { phone } = await req.json();
 
     if (!phone) {
@@ -13,35 +11,28 @@ export const POST = withAuth(async (req: NextRequest) => {
       }, { status: 400 });
     }
 
-    // Send verification email
+    const authHeader = req.headers.get('authorization')?.split(' ')[1];
+
     const emailResponse = await fetch(`${process.env.APP_URL}/api/auth/send-verification-email`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${req.headers.get('authorization')?.split(' ')[1]}`
+        'Authorization': `Bearer ${authHeader}`
       }
     });
 
-    // Send phone OTP
     const phoneResponse = await fetch(`${process.env.APP_URL}/api/auth/send-phone-otp`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${req.headers.get('authorization')?.split(' ')[1]}`
+        'Authorization': `Bearer ${authHeader}`
       },
       body: JSON.stringify({ phone })
     });
-
-    const emailData = await emailResponse.json();
-    const phoneData = await phoneResponse.json();
 
     return NextResponse.json({
       message: 'Verification requests sent',
       emailSent: emailResponse.ok,
       phoneSent: phoneResponse.ok,
-      ...(process.env.NODE_ENV === 'development' && {
-        emailToken: emailData.token,
-        phoneOTP: phoneData.otp
-      })
     });
 
   } catch (error) {

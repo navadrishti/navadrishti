@@ -27,7 +27,8 @@ import {
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { ProfileDashboardTab, PaymentHistoryPanel } from '@/components/profile-dashboard-tab';
-import { DashboardQuickSidebar } from '@/components/dashboard-quick-sidebar';
+import { DashboardBodyLayout, DashboardQuickSidebar } from '@/components/dashboard-quick-sidebar';
+import { DashboardMainSkeleton, DashboardPageSkeleton, DashboardSidebarSkeleton } from '@/components/ui/skeleton';
 import { ImpactReportsPanel } from '@/components/companies/impact-reports-panel';
 import { YourCapabilitiesPanel } from '@/components/service-card';
 import { AGENT_NAMES } from '@/lib/ai-suite'
@@ -1485,16 +1486,12 @@ function CompanyDashboardContent() {
       <ProtectedRoute userTypes={['company']}>
         <div className="flex min-h-screen flex-col">
           <Header />
-          <main className="flex-1 p-4 md:p-6 lg:p-8 bg-gray-50">
-            <div className="mx-auto max-w-7xl space-y-8">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Loading Dashboard</CardTitle>
-                  <CardDescription>Preparing your company workspace...</CardDescription>
-                </CardHeader>
-              </Card>
-            </div>
-          </main>
+          <DashboardBodyLayout
+            showSidebar={sidebarItems.length > 1}
+            sidebar={<DashboardSidebarSkeleton itemCount={sidebarItems.length} />}
+          >
+            <DashboardMainSkeleton />
+          </DashboardBodyLayout>
         </div>
       </ProtectedRoute>
     );
@@ -1504,9 +1501,18 @@ function CompanyDashboardContent() {
     <ProtectedRoute userTypes={['company']}>
       <div className="flex min-h-screen flex-col">
         <Header />
-        <main className="flex-1 p-4 md:p-6 lg:p-8 bg-gray-50">
-          <div className="mx-auto max-w-7xl space-y-8">
-            {/* Dashboard Header */}
+        <DashboardBodyLayout
+          showSidebar={sidebarItems.length > 1}
+          sidebar={
+            <DashboardQuickSidebar
+              items={sidebarItems}
+              activeTab={activeTab}
+              onSelect={navigateToTab}
+              triggerLabel="Dashboard sections"
+            />
+          }
+        >
+          <div className="space-y-8 p-4 md:p-6 lg:p-8">
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
               <div>
                 <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
@@ -1516,18 +1522,8 @@ function CompanyDashboardContent() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-              <DashboardQuickSidebar
-                items={sidebarItems}
-                activeTab={activeTab}
-                onSelect={navigateToTab}
-                desktopClassName="lg:col-span-4"
-                triggerLabel="Dashboard sections"
-              />
-
-              <div className={sidebarItems.length > 1 ? 'lg:col-span-8' : 'lg:col-span-12'}>
-                <Card>
-                  <CardContent className="pt-6">
+            <Card>
+              <CardContent className="pt-6">
                     <Tabs value={activeTab} onValueChange={(value) => {
                       window.history.replaceState(null, '', `/companies/dashboard?tab=${value}`);
                       router.replace(`/companies/dashboard?tab=${value}`, { scroll: false });
@@ -2385,10 +2381,8 @@ function CompanyDashboardContent() {
                     </Tabs>
                   </CardContent>
                 </Card>
-              </div>
-            </div>
           </div>
-        </main>
+        </DashboardBodyLayout>
       </div>
     </ProtectedRoute>
   );
@@ -2396,7 +2390,7 @@ function CompanyDashboardContent() {
 
 export default function CompanyDashboard() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-gray-50"><Header /><div className="container mx-auto px-4 py-8 text-gray-600">Loading dashboard...</div></div>}>
+    <Suspense fallback={<DashboardPageSkeleton />}>
       <CompanyDashboardContent />
     </Suspense>
   );
