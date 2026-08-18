@@ -4,7 +4,7 @@ import { db, supabase } from '@/lib/db';
 import { isNeedOpenForListing, isServiceRequestExpired } from '@/lib/service-request-allocation';
 import { resolveFundingTargetInr } from '@/lib/service-request-allocation';
 import { JWT_SECRET, CSR_ELIGIBILITY_REQUIRED_MESSAGE, CSR_OWN_PROJECT_TIMELINE_MESSAGE } from '@/lib/auth';
-import { ngoUserIsCsrEligible, ngoUserIsCsrEligibleForProject } from '@/lib/server-auth';
+import { ngoUserIsCsrEligible, ngoUserIsCsrEligibleForProject, resolveEffectiveVerificationStatus } from '@/lib/server-auth';
 import { CSR_SCHEDULE_VII_CATEGORIES, SERVICE_REQUEST_TYPES } from '@/lib/categories';
 import { isHiddenNgoNetworkPaymentChannel } from '@/lib/razorpay-route';
 import {
@@ -634,7 +634,8 @@ export async function POST(request: NextRequest) {
         }, { status: 403 });
       }
       
-      if (verification_status !== 'verified') {
+      const effectiveVerificationStatus = await resolveEffectiveVerificationStatus(userId, userType);
+      if (effectiveVerificationStatus !== 'verified') {
         return NextResponse.json({ 
           error: 'You need to complete verification before creating service requests.',
           requiresVerification: true

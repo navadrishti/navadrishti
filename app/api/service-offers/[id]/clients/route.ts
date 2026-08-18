@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, supabase } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
+import { resolveEffectiveVerificationStatus } from '@/lib/server-auth';
 import { isOfferExpired, getCapabilityNeedRequestTypes, isCapabilityRentalTransaction, dedupeSelectedNeedSummaries } from '@/lib/service-offers';
 
 // Interface for JWT payload
@@ -145,7 +146,8 @@ export async function POST(
       }, { status: 403 });
     }
 
-    if (user.verification_status !== 'verified') {
+    const effectiveVerificationStatus = await resolveEffectiveVerificationStatus(Number(client_id), user.user_type);
+    if (effectiveVerificationStatus !== 'verified') {
       return NextResponse.json({ 
         error: 'Account verification required', 
         message: 'Please complete verification before responding to capability offers.',
