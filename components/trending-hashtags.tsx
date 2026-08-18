@@ -32,9 +32,13 @@ export function TrendingHashtags({
   useEffect(() => {
     const backgroundRefresh = async () => {
       try {
-        await fetch('/api/hashtags/refresh', { method: 'GET' });
-        // Silent refresh - no user indication
-      } catch (error) {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+        await fetch('/api/hashtags/refresh', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      } catch {
         // Silent failure
       }
     };

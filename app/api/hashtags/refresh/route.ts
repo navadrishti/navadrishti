@@ -1,19 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
+import { verifyToken } from '@/lib/auth';
+
+function isAuthorizedHashtagRefresh(request: NextRequest) {
+  const authHeader = request.headers.get('authorization') || '';
+  const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+  if (!token) return false;
+
+  const cronSecret = String(process.env.CRON_SECRET || '').trim();
+  if (cronSecret && token === cronSecret) return true;
+
+  return Boolean(verifyToken(token));
+}
 
 export async function POST(request: NextRequest) {
   try {
+    if (!isAuthorizedHashtagRefresh(request)) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
+
     // Calculate time boundaries
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const weekStart = new Date(todayStart);
     weekStart.setDate(weekStart.getDate() - 7);
 
-    // Get all posts to analyze hashtags
+    // Get recent posts to analyze hashtags
     const { data: allPosts, error: postsError } = await supabase
       .from('posts')
       .select('content, created_at')
-      .order('created_at', { ascending: false });
+      .gte('created_at', weekStart.toISOString())
+      .order('created_at', { ascending: false })
+      .limit(2000);
 
     if (postsError) {
       throw new Error(`Failed to fetch posts: ${postsError.message}`);
@@ -135,19 +153,17 @@ export async function POST(request: NextRequest) {
       }
     });
 
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error refreshing hashtag data:', error);
     
     return NextResponse.json({
       success: false,
       error: 'Failed to refresh hashtag data',
-      details: error.message
     }, { status: 500 });
   }
 }
 
-// GET endpoint for manual refresh trigger
+// GET endpoint for authenticated refresh trigger
 export async function GET(request: NextRequest) {
-  // Just call the POST method
   return POST(request);
 }

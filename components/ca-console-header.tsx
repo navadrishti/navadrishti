@@ -13,7 +13,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
-import { ChevronDown, Menu, X } from 'lucide-react';
+import { ChevronRight, Menu, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ProductBrand } from '@/components/product-brand';
 
@@ -120,27 +120,30 @@ export function CAConsoleHeader({
     );
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-udaan-blue text-white">
-      <div className="udaan-container flex h-16 items-center justify-between gap-3 px-4 md:px-6">
-        <ProductBrand href="/evidence-verification" />
-
-        {/* Desktop navigation */}
-        <div className="hidden items-center gap-4 md:flex lg:gap-6">
-          <nav className="flex items-center gap-1.5 lg:gap-2">
-            {navItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  'whitespace-nowrap rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-0',
-                  isNavActive(item.href) ? 'text-udaan-orange' : 'text-white hover:text-udaan-orange'
-                )}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
-
+    <>
+    <aside
+      className="platform-sidebar fixed inset-y-0 left-0 top-0 z-50 hidden h-dvh w-60 flex-col border-r border-white/10 text-white md:flex"
+      style={{ backgroundColor: '#0067b9' }}
+    >
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="shrink-0 border-b border-white/15 px-4 py-4">
+          <ProductBrand href="/evidence-verification" nameClassName="text-white" poweredClassName="text-white/75" />
+        </div>
+        <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-4">
+          {navItems.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
+                'rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                isNavActive(item.href) ? 'bg-white/15 text-udaan-orange' : 'text-white hover:bg-white/10 hover:text-udaan-orange'
+              )}
+            >
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+        <div className="shrink-0 border-t border-white/15 p-3">
           <div
             onMouseEnter={openProfileMenu}
             onMouseLeave={() => closeProfileMenuWithDelay()}
@@ -148,19 +151,19 @@ export function CAConsoleHeader({
           >
             <button
               type="button"
-              className="inline-flex h-10 items-center gap-2 rounded-md bg-transparent px-2.5 text-white transition-colors hover:text-udaan-orange"
+              className="inline-flex h-10 w-full items-center gap-2 rounded-md bg-transparent px-2 text-white"
               onMouseDown={(event) => event.preventDefault()}
               onClick={(event) => event.preventDefault()}
             >
               <Avatar className="h-9 w-9">
                 <AvatarFallback className="bg-udaan-orange text-white">{initials}</AvatarFallback>
               </Avatar>
-              <span className="hidden max-w-[148px] truncate text-sm font-medium lg:inline">{displayName}</span>
-              <ChevronDown className="h-4 w-4 opacity-80" />
+              <span className="max-w-[148px] truncate text-sm font-medium">{displayName}</span>
+              <ChevronRight className={`ml-auto h-4 w-4 opacity-80 transition-transform ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
             </button>
 
             {isProfileMenuOpen ? (
-              <div className="absolute right-0 top-full mt-2 w-56 overflow-hidden rounded-md border bg-white p-1 text-black shadow-lg">
+              <div className="absolute left-full bottom-0 z-50 ml-2 w-56 overflow-hidden rounded-md border bg-white p-1 text-black shadow-lg">
                 <div className="truncate px-2 py-1.5 text-sm font-semibold text-gray-900">{displayName}</div>
                 {emailLabel ? (
                   <div className="px-2 py-1.5 text-xs text-muted-foreground">
@@ -192,18 +195,20 @@ export function CAConsoleHeader({
             ) : null}
           </div>
         </div>
+      </div>
+    </aside>
+    <header className="sticky top-0 z-50 w-full border-b text-white md:hidden" style={{ backgroundColor: '#0067b9' }}>
+      <div className="flex h-16 items-center justify-between gap-3 px-4">
+        <ProductBrand href="/evidence-verification" nameClassName="text-white" poweredClassName="text-white/75" />
+        <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+          <SheetTrigger asChild>
+            <Button variant="ghost" size="icon" className="text-white hover:bg-white/10">
+              <Menu className="h-5 w-5" />
+              <span className="sr-only">Open menu</span>
+            </Button>
+          </SheetTrigger>
 
-        {/* Mobile hamburger */}
-        <div className="md:hidden">
-          <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-            <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="text-white hover:bg-white/10">
-                <Menu className="h-5 w-5" />
-                <span className="sr-only">Open menu</span>
-              </Button>
-            </SheetTrigger>
-
-            <SheetContent side="right" className="w-full border-l border-white/10 bg-udaan-blue p-0 text-white sm:max-w-sm [&>button]:hidden">
+            <SheetContent side="right" className="w-full border-l border-white/10 p-0 text-white sm:max-w-sm [&>button]:hidden" style={{ backgroundColor: '#0067b9' }}>
               <SheetTitle className="sr-only">Evidence verification menu</SheetTitle>
               <SheetDescription className="sr-only">
                 Navigation links and account options for the Evidence Portal
@@ -270,8 +275,8 @@ export function CAConsoleHeader({
               </div>
             </SheetContent>
           </Sheet>
-        </div>
       </div>
     </header>
+    </>
   );
 }
