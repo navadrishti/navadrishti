@@ -3310,7 +3310,7 @@ function NGODashboardContent() {
 
 export default function NGODashboard() {
   return (
-    <Suspense fallback={<DashboardPageSkeleton />}>
+    <Suspense fallback={<DashboardPageSkeleton userType="ngo" />}>
       <NGODashboardContent />
     </Suspense>
   );

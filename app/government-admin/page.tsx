@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
-import { LogOut, RefreshCw } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 
 type GovtAdminAccount = {
   id: number;
@@ -177,16 +177,6 @@ export default function GovernmentAdminPage() {
     boot();
   }, [router]);
 
-  const handleLogout = async () => {
-    await fetch('/api/government-admin/logout', { method: 'POST', credentials: 'include' });
-    try {
-      sessionStorage.removeItem('govt_admin_tab_session');
-    } catch {
-      // Ignore storage access issues
-    }
-    router.push('/government-admin/login');
-  };
-
   const refreshDashboard = async () => {
     setError('');
     setLoading(true);
@@ -297,26 +287,13 @@ export default function GovernmentAdminPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 via-slate-50 to-white text-slate-900">
-      <header className="sticky top-0 z-50 border-b border-blue-700 bg-blue-600/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-2 whitespace-nowrap text-blue-100">
-            <span className="text-[10px] font-medium uppercase tracking-[0.22em] text-blue-100/90">Signed in as</span>
-            <span className="text-sm font-semibold text-white">{account?.display_name || 'Government Admin'}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" className="text-white hover:bg-blue-700 hover:text-white" onClick={refreshDashboard}>
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Refresh
-            </Button>
-            <Button variant="outline" className="border-white/40 bg-blue-600 text-white hover:bg-transparent hover:text-white" onClick={handleLogout}>
-              <LogOut className="mr-2 h-4 w-4" />
-              Logout
-            </Button>
-          </div>
-        </div>
-      </header>
-
       <main className="mx-auto max-w-7xl px-6 py-6">
+        <div className="mb-4 flex justify-end">
+          <Button variant="ghost" className="text-slate-700 hover:bg-slate-100" onClick={refreshDashboard}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Refresh
+          </Button>
+        </div>
         {error ? (
           <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
         ) : null}

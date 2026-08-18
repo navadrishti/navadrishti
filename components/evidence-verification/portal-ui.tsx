@@ -339,7 +339,7 @@ export function safeParseRecordJson(value: unknown): Record<string, any> {
   }
 }
 
-const ADMIN_NAV_ITEM_COUNT = 11;
+const ADMIN_NAV_ITEM_COUNT = 9;
 
 function AdminCardTitleSkeleton({ className }: { className?: string }) {
   return <Skeleton className={cn('h-7 w-44 max-w-full rounded-md bg-slate-200', className)} />;
@@ -652,14 +652,11 @@ function renderAdminTabSkeleton(activeTab: string) {
 
 export function AdminConsoleSkeleton({ activeTab = 'overview' }: { activeTab?: string }) {
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-1 items-start gap-6 overflow-hidden lg:grid-cols-12">
-      <AdminSidebarSkeleton />
-      <Card className="h-full min-h-0 overflow-hidden border-slate-200 bg-white text-slate-900 shadow-sm lg:col-span-9">
-        <CardContent className="h-full min-h-0 overflow-y-auto pt-6 pr-4 lg:overflow-y-auto">
-          {renderAdminTabSkeleton(activeTab)}
-        </CardContent>
-      </Card>
-    </div>
+    <Card className="h-full min-h-0 overflow-hidden border-slate-200 bg-white text-slate-900 shadow-sm">
+      <CardContent className="h-full min-h-0 overflow-y-auto pt-6 pr-4 lg:overflow-y-auto">
+        {renderAdminTabSkeleton(activeTab)}
+      </CardContent>
+    </Card>
   );
 }
 

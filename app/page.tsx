@@ -10,7 +10,19 @@ import { ProductBrand } from '@/components/product-brand';
 
 type NewsletterItem = {
   id: string;
-  kind: 'joined' | 'verified' | 'need' | 'capability' | 'campaign';
+  kind:
+    | 'joined'
+    | 'verified'
+    | 'unverified'
+    | 'suspended'
+    | 'banned'
+    | 'need'
+    | 'capability'
+    | 'campaign'
+    | 'campaign_finished'
+    | 'need_fulfilled'
+    | 'lead_ngo'
+    | 'csr_project';
   actorName: string;
   actorProfileHref: string | null;
   actorType: string;
@@ -27,7 +39,7 @@ const PAGE_SIZE = 15;
 
 function formatTimeAgo(value: string, nowMs: number) {
   const timestamp = Date.parse(value);
-  if (Number.isNaN(timestamp)) return 'Recently';
+  if (Number.isNaN(timestamp) || nowMs <= 0) return 'Recently';
 
   const diffMs = nowMs - timestamp;
   const minute = 60 * 1000;
@@ -65,6 +77,7 @@ function formatDateTime(value: string) {
     year: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
+    timeZone: 'Asia/Kolkata',
   });
 }
 
@@ -81,7 +94,7 @@ export default function LandingPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
   const [hasMore, setHasMore] = useState(false);
-  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [nowMs, setNowMs] = useState(0);
   const loadedCountRef = useRef(PAGE_SIZE);
 
   const loadNewsletter = useCallback(async (options?: { append?: boolean; silent?: boolean; offset?: number; limit?: number }) => {
@@ -145,6 +158,7 @@ export default function LandingPage() {
   }, []);
 
   useEffect(() => {
+    setNowMs(Date.now());
     loadNewsletter({ offset: 0, limit: PAGE_SIZE });
     const interval = window.setInterval(() => {
       setNowMs(Date.now());
@@ -200,7 +214,15 @@ export default function LandingPage() {
                     item.title.startsWith(item.actorName)
                       ? item.title.slice(item.actorName.length).trimStart()
                       : null;
-                  const opensDetail = Boolean(item.href) && (item.kind === 'need' || item.kind === 'capability' || item.kind === 'campaign');
+                  const opensDetail = Boolean(item.href) && (
+                    item.kind === 'need' ||
+                    item.kind === 'capability' ||
+                    item.kind === 'campaign' ||
+                    item.kind === 'campaign_finished' ||
+                    item.kind === 'need_fulfilled' ||
+                    item.kind === 'lead_ngo' ||
+                    item.kind === 'csr_project'
+                  );
                   const body = (
                     <div className="py-4">
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">

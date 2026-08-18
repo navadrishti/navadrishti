@@ -5,7 +5,7 @@ import { extractHashtagsFromContent, normalizeHashtagKey } from '@/lib/hashtag-u
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const limit = parseInt(searchParams.get('limit') || '5');
+  const limit = Math.min(Math.max(Number.parseInt(searchParams.get('limit') || '5', 10) || 5, 1), 20);
 
   try {
 

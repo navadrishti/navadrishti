@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
-import { DashboardQuickSidebar } from '@/components/dashboard-quick-sidebar';
+import { DashboardBodyLayout, DashboardQuickSidebar } from '@/components/dashboard-quick-sidebar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,7 +19,7 @@ import {
 import { toast as sonnerToast } from 'sonner';
 import { PlatformCAManagement } from '@/components/platform-ca-management';
 import { DocumentFileViewer } from '@/components/ca-verification-review';
-import { AdminConsoleHeader, AdminPortalMain, AdminPortalShell } from './admin-layout-client';
+import { AdminConsoleHeader, AdminPortalShell } from './admin-layout-client';
 import {
   AdminConsoleSkeleton,
   AdminDetailItems,
@@ -31,6 +31,7 @@ import {
   formatAdminDetailValue,
   safeParseRecordJson,
 } from '@/components/evidence-verification/portal-ui';
+import { DashboardSidebarSkeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import {
   getAccountLockUntil,
@@ -281,6 +282,18 @@ const ADMIN_TAB_VALUES = new Set([
   'refunds',
   'ca-credentials',
 ]);
+
+const ADMIN_SIDEBAR_ITEMS = [
+  { value: 'overview', label: 'Overview' },
+  { value: 'offers', label: 'Offers' },
+  { value: 'projects', label: 'Projects' },
+  { value: 'users', label: 'People' },
+  { value: 'requests', label: 'Requests' },
+  { value: 'campaigns', label: 'CSR Campaigns' },
+  { value: 'support', label: 'Support' },
+  { value: 'refunds', label: 'Refunds' },
+  { value: 'ca-credentials', label: 'CA Credentials' },
+];
 
 function readAdminActiveTab(): string {
   if (typeof window === 'undefined') return 'overview';
@@ -2049,14 +2062,18 @@ export default function AdminPage() {
     return (
       <AdminPortalShell>
         <AdminConsoleHeader
-          accountName="Administrator"
           onLogout={handleLogout}
           onRefresh={refreshDashboard}
         />
 
-        <AdminPortalMain className="max-w-7xl">
-          <AdminConsoleSkeleton activeTab={activeTab} />
-        </AdminPortalMain>
+        <DashboardBodyLayout
+          mainClassName="flex min-h-0 flex-col overflow-hidden pb-0"
+          sidebar={<DashboardSidebarSkeleton itemCount={ADMIN_SIDEBAR_ITEMS.length} />}
+        >
+          <div className="min-h-0 flex-1 overflow-hidden p-4 md:p-6">
+            <AdminConsoleSkeleton activeTab={activeTab} />
+          </div>
+        </DashboardBodyLayout>
       </AdminPortalShell>
     );
   }
@@ -2068,29 +2085,21 @@ export default function AdminPage() {
   return (
     <AdminPortalShell>
       <AdminConsoleHeader
-        accountName="Administrator"
         onLogout={handleLogout}
         onRefresh={refreshDashboard}
       />
 
-      <AdminPortalMain className="flex min-h-0 flex-1 flex-col p-0 lg:flex-row">
-        <DashboardQuickSidebar
-          items={[
-            { value: 'overview', label: 'Overview' },
-            { value: 'offers', label: 'Offers' },
-            { value: 'projects', label: 'Projects' },
-            { value: 'users', label: 'People' },
-            { value: 'requests', label: 'Requests' },
-            { value: 'campaigns', label: 'CSR Campaigns' },
-            { value: 'support', label: 'Support' },
-            { value: 'refunds', label: 'Refunds' },
-            { value: 'ca-credentials', label: 'CA Credentials' },
-          ]}
-          activeTab={activeTab}
-          onSelect={setActiveTab}
-          triggerLabel="Admin Menu"
-        />
-
+      <DashboardBodyLayout
+        mainClassName="flex min-h-0 flex-col overflow-hidden pb-0"
+        sidebar={
+          <DashboardQuickSidebar
+            items={ADMIN_SIDEBAR_ITEMS}
+            activeTab={activeTab}
+            onSelect={setActiveTab}
+            triggerLabel="Admin Menu"
+          />
+        }
+      >
         <div className="min-h-0 flex-1 overflow-hidden p-4 md:p-6">
           <Card className="h-full min-h-0 overflow-hidden border-slate-200 bg-white text-slate-900 shadow-sm">
             <CardContent className="h-full min-h-0 overflow-y-auto pt-6 pr-4 [scrollbar-gutter:stable] lg:overflow-y-auto">
@@ -2946,7 +2955,7 @@ export default function AdminPage() {
             </CardContent>
             </Card>
         </div>
-      </AdminPortalMain>
+      </DashboardBodyLayout>
     </AdminPortalShell>
   );
 }

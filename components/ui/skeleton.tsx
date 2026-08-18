@@ -1,5 +1,11 @@
 import { type ReactNode } from "react"
 import { cn } from "@/lib/utils"
+import {
+  getDashboardSidebarItemCount,
+  isPhase1Launch,
+  shouldShowDashboardSidebarSkeleton,
+  shouldShowRootSubNavbar,
+} from "@/lib/access-control"
 
 function Skeleton({
   className,
@@ -361,6 +367,9 @@ function SkeletonCTA() {
 }
 
 function PlatformSidebarSkeleton({ className }: { className?: string }) {
+  const navItemCount = isPhase1Launch() ? 3 : 4
+  const showUtility = shouldShowRootSubNavbar()
+
   return (
     <aside
       className={cn(
@@ -384,16 +393,18 @@ function PlatformSidebarSkeleton({ className }: { className?: string }) {
           <Skeleton className="h-10 w-full rounded-lg bg-white/40" />
         </div>
         <nav className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden px-3 py-4">
-          {Array.from({ length: 4 }).map((_, index) => (
+          {Array.from({ length: navItemCount }).map((_, index) => (
             <Skeleton key={`platform-nav-skeleton-${index}`} className="h-9 w-full rounded-md bg-white/40" />
           ))}
         </nav>
-        <div className="shrink-0 space-y-2 border-t border-white/15 px-3 py-3">
-          <Skeleton className="h-8 w-full rounded-md bg-white/40" />
-          {Array.from({ length: 4 }).map((_, index) => (
-            <Skeleton key={`platform-utility-skeleton-${index}`} className="h-9 w-full rounded-md bg-white/40" />
-          ))}
-        </div>
+        {showUtility ? (
+          <div className="shrink-0 space-y-2 border-t border-white/15 px-3 py-3">
+            <Skeleton className="h-8 w-full rounded-md bg-white/40" />
+            {Array.from({ length: 4 }).map((_, index) => (
+              <Skeleton key={`platform-utility-skeleton-${index}`} className="h-9 w-full rounded-md bg-white/40" />
+            ))}
+          </div>
+        ) : null}
         <div className="shrink-0 space-y-2 border-t border-white/15 p-3">
           <Skeleton className="h-10 w-full rounded-md bg-white/40" />
           <Skeleton className="h-10 w-full rounded-md bg-udaan-orange/60" />
@@ -420,10 +431,10 @@ function PlatformMobileHeaderSkeleton() {
 function DashboardSidebarSkeleton({ itemCount = 4 }: { itemCount?: number }) {
   return (
     <aside
-      className="hidden w-52 shrink-0 flex-col border-r border-slate-200 bg-white lg:flex lg:min-h-screen"
+      className="hidden w-52 shrink-0 flex-col border-r border-slate-200 bg-white lg:sticky lg:top-0 lg:flex lg:h-screen lg:self-start"
       aria-hidden="true"
     >
-      <nav className="flex flex-col gap-2 p-3">
+      <nav className="flex flex-1 flex-col gap-2 overflow-y-auto p-3">
           {Array.from({ length: itemCount }).map((_, index) => (
             <Skeleton key={`dashboard-nav-skeleton-${index}`} className="h-9 w-full rounded-md bg-slate-200" />
           ))}
@@ -473,16 +484,21 @@ function PlatformPageSkeleton({
 
 function DashboardPageSkeleton({
   children,
-  showDashboardSidebar = true,
-  sidebarItemCount = 4,
+  userType,
+  showDashboardSidebar,
+  sidebarItemCount,
 }: {
   children?: ReactNode
+  userType?: string | null
   showDashboardSidebar?: boolean
   sidebarItemCount?: number
 }) {
+  const resolvedShowSidebar = showDashboardSidebar ?? shouldShowDashboardSidebarSkeleton(userType)
+  const resolvedItemCount = sidebarItemCount ?? getDashboardSidebarItemCount(userType)
+
   return (
     <PlatformPageSkeleton bodyClassName="lg:min-h-screen lg:flex-row">
-      {showDashboardSidebar ? <DashboardSidebarSkeleton itemCount={sidebarItemCount} /> : null}
+      {resolvedShowSidebar ? <DashboardSidebarSkeleton itemCount={resolvedItemCount} /> : null}
       <div className="min-w-0 flex-1 bg-gray-50 pb-24 lg:pb-0">
         {children ?? <DashboardMainSkeleton />}
       </div>

@@ -2390,7 +2390,7 @@ function CompanyDashboardContent() {
 
 export default function CompanyDashboard() {
   return (
-    <Suspense fallback={<DashboardPageSkeleton />}>
+    <Suspense fallback={<DashboardPageSkeleton userType="company" />}>
       <CompanyDashboardContent />
     </Suspense>
   );
