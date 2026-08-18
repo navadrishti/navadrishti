@@ -259,6 +259,7 @@ export async function openRazorpayCheckout(options: OpenRazorpayCheckoutOptions)
         backdropclose: true,
         confirm_close: false,
         animation: true,
+        handleback: true,
       },
       retry: {
         enabled: true,
