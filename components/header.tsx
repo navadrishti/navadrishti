@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, type KeyboardEventHandler, type FocusEvent
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
-import { smoothNavigate } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -316,7 +315,6 @@ export function Header({ className = '' }: { className?: string } = {}) {
 
   const handleLogout = async () => {
     await logout()
-    await smoothNavigate(router, '/', { delay: 100 })
   }
 
   const getInitials = (name: string) => {

@@ -521,6 +521,7 @@ export default function ImpactProfilePage() {
                     <InfoRow label="Volunteer capacity" value={volunteerCapacityText === "Not set" ? undefined : volunteerCapacityText} />
                     <InfoRow label="Registration type" value={ngo?.registration_type || undefined} />
                     <InfoRow label="Registration number" value={ngo?.registration_number || undefined} />
+                    <InfoRow label="Registered office address" value={ngo?.office_address || undefined} />
                     <InfoRow label="FCRA number" value={ngo?.fcra_number || undefined} />
                     <InfoRow
                       label="FCRA expiry"
@@ -601,12 +602,6 @@ export default function ImpactProfilePage() {
                   </ProfileSection>
                 ) : null}
 
-                <ProfileSection title="Registered Office Address">
-                  <div className="rounded-lg border bg-slate-50/70 p-4">
-                    <p className="text-sm font-medium text-slate-900">{ngo?.office_address || "Not set"}</p>
-                  </div>
-                </ProfileSection>
-
                 <ProfileSection title="Past Projects">
                   {pastProjects.length > 0 ? (
                     <div className="space-y-3">
@@ -654,15 +649,17 @@ export default function ImpactProfilePage() {
 
                 <ProfileSection title="Work Areas">
                   {workAreas.length > 0 ? (
-                    <div className="space-y-3">
+                    <div className="grid gap-4 md:grid-cols-2">
                       {workAreas.map((area, index) => (
-                        <div key={`${area.state}-${area.district}-${index}`} className="rounded-lg border bg-white p-4">
-                          <p className="text-sm font-medium text-slate-900">{formatGeographicCoverageArea(area)}</p>
-                        </div>
+                        <InfoRow
+                          key={`${area.state}-${area.district}-${index}`}
+                          label={area.area_type || "Work area"}
+                          value={formatGeographicCoverageArea(area)}
+                        />
                       ))}
                     </div>
                   ) : (
-                    <p className="text-sm text-slate-600">Not set</p>
+                    <p className="font-medium text-slate-900">Not set</p>
                   )}
                 </ProfileSection>
 
