@@ -428,8 +428,7 @@ export default function NGONetworkPage() {
     debouncedLocation ||
     selectedSector !== "all" ||
     selectedCompliance !== "all" ||
-    selectedRegistration !== "all" ||
-    !verifiedOnly
+    selectedRegistration !== "all"
   )
 
   const clearFilters = () => {
@@ -440,7 +439,6 @@ export default function NGONetworkPage() {
     setSelectedSector("all")
     setSelectedCompliance("all")
     setSelectedRegistration("all")
-    setVerifiedOnly(true)
   }
 
   const openPayDialog = (ngo: NGO) => {
@@ -522,8 +520,22 @@ export default function NGONetworkPage() {
         ) : null}
 
         <section className="mb-4 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
-          <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-            Filters
+          <div className="mb-3 flex h-8 items-center justify-between gap-2">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+              Filters
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className={`h-8 px-2 text-xs ${hasActiveFilters ? "" : "invisible pointer-events-none"}`}
+              onClick={clearFilters}
+              tabIndex={hasActiveFilters ? 0 : -1}
+              aria-hidden={!hasActiveFilters}
+              disabled={!hasActiveFilters}
+            >
+              Clear filters
+            </Button>
           </div>
 
           <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
@@ -584,17 +596,10 @@ export default function NGONetworkPage() {
               </Label>
             </div>
 
-            <div className="flex items-center gap-2">
-              {hasActiveFilters ? (
-                <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-xs" onClick={clearFilters}>
-                  Clear filters
-                </Button>
-              ) : null}
-              <p className="text-xs text-slate-600">
+            <p className="text-xs text-slate-600">
                 <span className="font-semibold text-slate-900">{ngos.length}</span> NGO
                 {ngos.length === 1 ? "" : "s"} match your filters
               </p>
-            </div>
           </div>
         </section>
 
