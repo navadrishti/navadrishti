@@ -57,6 +57,45 @@ async function loadNgoComplianceRow(userId: number) {
   return data;
 }
 
+/**
+ * Resolves the effective CA verification status for a user.
+ * Checks `users.verification_status` first; if not 'verified', falls back to
+ * the type-specific verification table (individual_verifications / company_verifications /
+ * ngo_verifications). This matches the logic in /api/auth/me and prevents false 403s
+ * when the users table hasn't been synced after CA approval.
+ */
+export async function resolveEffectiveVerificationStatus(
+  userId: number,
+  userType: string
+): Promise<string> {
+  const { data: userRow } = await supabase
+    .from('users')
+    .select('verification_status')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (userRow?.verification_status === 'verified') return 'verified';
+
+  const verificationTable =
+    userType === 'individual'
+      ? 'individual_verifications'
+      : userType === 'company'
+        ? 'company_verifications'
+        : userType === 'ngo'
+          ? 'ngo_verifications'
+          : null;
+
+  if (!verificationTable) return userRow?.verification_status || 'unverified';
+
+  const { data: verRow } = await supabase
+    .from(verificationTable)
+    .select('verification_status')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  return verRow?.verification_status || userRow?.verification_status || 'unverified';
+}
+
 export async function ngoUserIsCsrEligible(userId: number): Promise<boolean> {
   const data = await loadNgoComplianceRow(userId);
   if (!data) return false;

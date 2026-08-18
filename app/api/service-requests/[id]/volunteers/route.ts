@@ -4,6 +4,7 @@ import { canIndividualApplyToNeed } from '@/lib/infrastructure-assignment-lock';
 import { getNgoNeedFulfillmentMode } from '@/lib/service-request-allocation';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
+import { resolveEffectiveVerificationStatus } from '@/lib/server-auth';
 
 // Interface for JWT payload
 interface JWTPayload {
@@ -121,7 +122,8 @@ export async function POST(
       }, { status: 403 });
     }
 
-    if (user.verification_status !== 'verified') {
+    const effectiveVerificationStatus = await resolveEffectiveVerificationStatus(Number(volunteer_id), user.user_type);
+    if (effectiveVerificationStatus !== 'verified') {
       return NextResponse.json({ 
         error: 'Account verification required', 
         message: 'Please complete your identity verification (Aadhaar & PAN) before applying for volunteer opportunities.',
