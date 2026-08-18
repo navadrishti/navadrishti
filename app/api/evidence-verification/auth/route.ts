@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (identityError || !identity) {
-      return NextResponse.json({ error: 'This account is not authorized for the evidence verification portal' }, { status: 403 });
+      return NextResponse.json({ error: 'This account is not authorized for the Evidence Portal' }, { status: 403 });
     }
 
     if (identity.status !== 'active') {

@@ -23,6 +23,7 @@ import {
   type LaunchHeaderNavItem,
 } from "@/lib/access-control"
 import { ProductBrand } from "@/components/product-brand"
+import { Skeleton } from "@/components/ui/skeleton"
 
 interface ProfileSearchResult {
   id: number;
@@ -127,9 +128,9 @@ function NavbarSearchInput({
 
 const rootSubnavItems: LaunchHeaderNavItem[] = [
   {
-    label: 'Evidence Verification Portal',
+    label: 'Evidence Portal',
     href: '/evidence-verification/login',
-    description: 'Evidence Verification Portal',
+    description: 'Evidence Portal',
   },
   {
     label: 'Partner CA Portal',
@@ -153,12 +154,27 @@ function SidebarUtilityNav({
   linkClassName,
   buttonClassName,
   className = '',
+  isLoading = false,
 }: {
   linkClassName: string
   buttonClassName: string
   className?: string
+  isLoading?: boolean
 }) {
   if (!shouldShowRootSubNavbar()) return null
+
+  if (isLoading) {
+    return (
+      <div className={className}>
+        <Skeleton className="mb-2 h-8 w-full rounded-md bg-white/40" />
+        <nav className="flex flex-col gap-0.5">
+          {rootSubnavItems.map((item) => (
+            <Skeleton key={`subnav-skeleton-${item.href}`} className="h-9 w-full rounded-md bg-white/40" />
+          ))}
+        </nav>
+      </div>
+    )
+  }
 
   return (
     <div className={className}>
@@ -343,6 +359,8 @@ export function Header({ className = '' }: { className?: string } = {}) {
     return 'Browse & post capability offers'
   }
 
+  const navLoading = !mounted || loading
+
   const desktopNavItems = getLaunchHeaderNavItems([
     {
       label: 'NGO Network',
@@ -374,10 +392,23 @@ export function Header({ className = '' }: { className?: string } = {}) {
     >
       <div className="flex h-full min-h-0 flex-col">
         <div className="shrink-0 border-b border-white/15 px-4 py-4">
-          <ProductBrand href="/" nameClassName="text-white" poweredClassName="text-white/75" />
+          {navLoading ? (
+            <div className="flex items-center gap-2.5">
+              <Skeleton className="h-10 w-10 shrink-0 rounded-md bg-white/40" />
+              <div className="space-y-2">
+                <Skeleton className="h-5 w-20 rounded bg-white/40" />
+                <Skeleton className="h-2.5 w-28 rounded bg-white/30" />
+              </div>
+            </div>
+          ) : (
+            <ProductBrand href="/" nameClassName="text-white" poweredClassName="text-white/75" />
+          )}
         </div>
         <div className="relative shrink-0 px-3 pt-4">
             <div className="relative z-50">
+              {navLoading ? (
+                <Skeleton className="h-10 w-full rounded-lg bg-white/40" />
+              ) : (
               <NavbarSearchInput
                 value={searchQuery}
                 onChange={handleSearchChange}
@@ -409,6 +440,7 @@ export function Header({ className = '' }: { className?: string } = {}) {
                   }, 150)
                 }}
               />
+              )}
             </div>
             
             {/* Search Results Popover */}
@@ -512,7 +544,11 @@ export function Header({ className = '' }: { className?: string } = {}) {
             )}
         </div>
           <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 py-4">
-            {desktopNavItems.map((item) => (
+            {navLoading
+              ? Array.from({ length: Math.max(desktopNavItems.length, 4) }).map((_, index) => (
+                  <Skeleton key={`desktop-nav-skeleton-${index}`} className="h-9 w-full rounded-md bg-white/40" />
+                ))
+              : desktopNavItems.map((item) => (
               <HeaderNavLink
                 key={`desktop-nav-${item.href}`}
                 item={item}
@@ -522,11 +558,17 @@ export function Header({ className = '' }: { className?: string } = {}) {
           </nav>
         <SidebarUtilityNav
           className="shrink-0 border-t border-white/15 px-3 py-3"
+          isLoading={navLoading}
           buttonClassName="mb-2 w-full cursor-not-allowed rounded-md border border-white bg-transparent px-2.5 py-1 text-left text-xs font-semibold text-white disabled:opacity-100"
           linkClassName="rounded-md px-3 py-2 text-sm font-medium text-white hover:bg-white/10 hover:text-udaan-orange focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors"
         />
         <div className="shrink-0 border-t border-white/15 p-3">
-          {mounted && user ? (
+          {!mounted || loading ? (
+            <div className="flex flex-col gap-2">
+              <Skeleton className="h-10 w-full rounded-md bg-white/40" />
+              <Skeleton className="h-10 w-full rounded-md bg-udaan-orange/60" />
+            </div>
+          ) : user ? (
             <div
               onMouseEnter={openProfileMenu}
               onMouseLeave={() => closeProfileMenuWithDelay()}
@@ -601,7 +643,14 @@ export function Header({ className = '' }: { className?: string } = {}) {
     </aside>
     <header className="sticky top-0 z-50 w-full border-b text-white md:hidden" style={{ backgroundColor: '#0067b9' }}>
       <div className="flex h-16 items-center gap-4 px-4">
-        <ProductBrand href="/" nameClassName="text-white" poweredClassName="text-white/75" />
+        {navLoading ? (
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-9 w-9 rounded-md bg-white/40" />
+            <Skeleton className="h-5 w-20 rounded bg-white/40" />
+          </div>
+        ) : (
+          <ProductBrand href="/" nameClassName="text-white" poweredClassName="text-white/75" />
+        )}
         <div className="flex flex-1 items-center justify-end gap-2">
           {/* Mobile Menu Sheet */}
           <Sheet open={mobileSheetOpen} onOpenChange={setMobileSheetOpen}>
@@ -739,7 +788,11 @@ export function Header({ className = '' }: { className?: string } = {}) {
                     )}
                   {/* Navigation */}
                   <nav className="grid gap-2 text-base font-medium mb-8">
-                    {desktopNavItems.map((item) => (
+                    {navLoading
+                      ? Array.from({ length: Math.max(desktopNavItems.length, 4) }).map((_, index) => (
+                          <Skeleton key={`mobile-nav-skeleton-${index}`} className="h-10 w-full rounded-lg bg-white/40" />
+                        ))
+                      : desktopNavItems.map((item) => (
                       <HeaderNavLink
                         key={`mobile-nav-${item.href}`}
                         item={item}
@@ -750,13 +803,26 @@ export function Header({ className = '' }: { className?: string } = {}) {
 
                   <SidebarUtilityNav
                     className="mb-8"
+                    isLoading={navLoading}
                     buttonClassName="mb-2 w-full cursor-not-allowed rounded-lg border border-white bg-transparent px-3 py-2.5 text-left text-base font-medium leading-snug text-white disabled:opacity-100"
                     linkClassName="flex items-center gap-3 px-3 py-2.5 text-base font-medium text-white hover:bg-white/10 hover:text-udaan-orange rounded-lg transition-colors"
                   />
 
                   {/* User Section */}
                   <div className="border-t border-white/20 pt-6">
-                    {user ? (
+                    {!mounted || loading ? (
+                      <div className="space-y-3 pb-8">
+                        <div className="mb-6 flex items-center gap-4">
+                          <Skeleton className="h-12 w-12 rounded-full bg-white/40" />
+                          <div className="grid flex-1 gap-2">
+                            <Skeleton className="h-5 w-36 bg-white/40" />
+                            <Skeleton className="h-4 w-44 bg-white/30" />
+                          </div>
+                        </div>
+                        <Skeleton className="h-12 w-full rounded-md bg-white/40" />
+                        <Skeleton className="h-12 w-full rounded-md bg-white/40" />
+                      </div>
+                    ) : user ? (
                       <div>
                         <div className="mb-6 flex min-w-0 items-center gap-4">
                           <Avatar className="h-12 w-12">
