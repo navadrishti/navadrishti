@@ -19,6 +19,7 @@ import {
 import { CSR_SCHEDULE_VII_CATEGORIES, normalizeCompanyFocusAreasScheduleVii } from '@/lib/categories';
 import { issueCaBadgeNumber } from '@/lib/platform-ca-auth';
 import { rankRecommendedNgosForViewer } from '@/lib/csr-agent/recommendation-utils';
+import { resolveEffectiveVerificationStatus } from '@/lib/server-auth';
 import {
   buildPricingResponse,
   canContributeViaPlatform,
@@ -499,35 +500,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Only companies and individuals can pay NGOs from the network' }, { status: 403 });
     }
 
-    const { data: payerRow } = await supabase
-      .from('users')
-      .select('id, verification_status')
-      .eq('id', decoded.id)
-      .maybeSingle();
-    if (!payerRow) {
-      return NextResponse.json({ error: CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE }, { status: 403 });
-    }
-
-    let effectivePayerVerificationStatus = payerRow.verification_status;
-    if (!isCaVerifiedAccount(effectivePayerVerificationStatus)) {
-      const verificationTable =
-        decoded.user_type === 'individual'
-          ? 'individual_verifications'
-          : decoded.user_type === 'company'
-            ? 'company_verifications'
-            : null;
-      if (verificationTable) {
-        const { data: verificationRow } = await supabase
-          .from(verificationTable)
-          .select('verification_status')
-          .eq('user_id', decoded.id)
-          .maybeSingle();
-        if (verificationRow?.verification_status) {
-          effectivePayerVerificationStatus = verificationRow.verification_status;
-        }
-      }
-    }
-
+    const effectivePayerVerificationStatus = await resolveEffectiveVerificationStatus(decoded.id, decoded.user_type);
     if (!isCaVerifiedAccount(effectivePayerVerificationStatus)) {
       return NextResponse.json({ error: CA_VERIFICATION_REQUIRED_TO_PAY_MESSAGE }, { status: 403 });
     }
