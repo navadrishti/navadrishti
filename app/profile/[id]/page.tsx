@@ -413,7 +413,7 @@ export default function ImpactProfilePage() {
                         status="verified"
                         size="xl"
                         showText={false}
-                        badgeNumber={caBadgeNumber}
+                        badgeNumber={null}
                         className="max-w-full"
                       />
                     ) : null}
