@@ -59,10 +59,12 @@ async function loadNgoComplianceRow(userId: number) {
 
 /**
  * Resolves the effective CA verification status for a user.
- * Checks `users.verification_status` first; if not 'verified', falls back to
- * the type-specific verification table (individual_verifications / company_verifications /
- * ngo_verifications). This matches the logic in /api/auth/me and prevents false 403s
- * when the users table hasn't been synced after CA approval.
+ *
+ * users.verification_status is the admin's authoritative override:
+ *   - 'unverified' / 'suspended' / 'pending' set by admin → return immediately,
+ *     never let the type-specific verification table override a downgrade.
+ *   - 'verified' → trust the users table (CA approved and synced).
+ *   - null/empty → fall through to the type-specific table (legacy / pre-sync rows).
  */
 export async function resolveEffectiveVerificationStatus(
   userId: number,
@@ -74,8 +76,17 @@ export async function resolveEffectiveVerificationStatus(
     .eq('id', userId)
     .maybeSingle();
 
-  if (userRow?.verification_status === 'verified') return 'verified';
+  const adminStatus = String(userRow?.verification_status || '').trim().toLowerCase();
 
+  // Admin override: explicit downgrade wins immediately.
+  if (adminStatus === 'unverified' || adminStatus === 'suspended' || adminStatus === 'pending') {
+    return adminStatus;
+  }
+
+  // Admin set verified: trust it.
+  if (adminStatus === 'verified') return 'verified';
+
+  // No admin status set — fall back to type-specific verification table.
   const verificationTable =
     userType === 'individual'
       ? 'individual_verifications'
@@ -85,7 +96,7 @@ export async function resolveEffectiveVerificationStatus(
           ? 'ngo_verifications'
           : null;
 
-  if (!verificationTable) return userRow?.verification_status || 'unverified';
+  if (!verificationTable) return 'unverified';
 
   const { data: verRow } = await supabase
     .from(verificationTable)
@@ -93,7 +104,7 @@ export async function resolveEffectiveVerificationStatus(
     .eq('user_id', userId)
     .maybeSingle();
 
-  return verRow?.verification_status || userRow?.verification_status || 'unverified';
+  return verRow?.verification_status || 'unverified';
 }
 
 export async function ngoUserIsCsrEligible(userId: number): Promise<boolean> {

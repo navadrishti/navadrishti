@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, supabase } from '@/lib/db';
-import { withAuth, UserData, backfillNgoComplianceProfileData, backfillNgoDocumentExpiries, summarizeDocumentExpiries, ngoIsCsrEligible, getCaComplianceTags } from '@/lib/auth';
+import { withAuth, UserData, backfillNgoComplianceProfileData, backfillNgoDocumentExpiries, summarizeDocumentExpiries, ngoIsCsrEligible, getCaComplianceTags, getAccountAccessBlockReason } from '@/lib/auth';
 import { applyCaBadgeToProfile } from '@/lib/platform-ca-auth';
 
 async function handler(req: NextRequest) {
@@ -15,45 +15,64 @@ async function handler(req: NextRequest) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Get verification status based on user type - check database only
-    let verificationStatus = 'unverified';
+    // Check if the account is banned or suspended — force logout if so.
+    const accessBlock = getAccountAccessBlockReason({
+      account_status: freshUserData.account_status,
+      locked_until: freshUserData.locked_until,
+      profile_data: freshUserData.profile_data,
+    });
+    if (accessBlock) {
+      return NextResponse.json({ error: accessBlock }, { status: 403 });
+    }
+
+    // Get verification status based on user type - check database only.
+    // users.verification_status is the admin's authoritative override:
+    //   - 'verified'    → trust users table (CA has approved)
+    //   - 'unverified' / 'suspended' / 'pending' → admin explicitly downgraded; do NOT
+    //     let the type-specific verification table override it.
+    //   - null / missing → fall back to the verification table (legacy rows).
+    const adminStatus = String(freshUserData.verification_status || '').trim().toLowerCase();
+    const adminOverrides = adminStatus === 'unverified' || adminStatus === 'suspended' || adminStatus === 'pending';
+    let verificationStatus: string = adminStatus || 'unverified';
     let verificationDetails = null;
 
-    if (freshUserData.user_type === 'individual') {
-      const { data: verification } = await supabase
-        .from('individual_verifications')
-        .select('verification_status, aadhaar_verified, pan_verified, verification_date, aadhaar_number, pan_number, aadhaar_verification_date, pan_verification_date')
-        .eq('user_id', user.id)
-        .single();
-      if (verification) {
-        verificationStatus = freshUserData.verification_status === 'verified'
-          ? 'verified'
-          : verification.verification_status;
-        verificationDetails = verification;
-      }
-    } else if (freshUserData.user_type === 'company') {
-      const { data: verification } = await supabase
-        .from('company_verifications')
-        .select('verification_status, company_name, verification_date, registration_number, gst_number')
-        .eq('user_id', user.id)
-        .single();
-      if (verification) {
-        verificationStatus = freshUserData.verification_status === 'verified'
-          ? 'verified'
-          : verification.verification_status;
-        verificationDetails = verification;
-      }
-    } else if (freshUserData.user_type === 'ngo') {
-      const { data: verification } = await supabase
-        .from('ngo_verifications')
-        .select('verification_status, ngo_name, verification_date, registration_number, registration_type, fcra_number')
-        .eq('user_id', user.id)
-        .single();
-      if (verification) {
-        verificationStatus = freshUserData.verification_status === 'verified'
-          ? 'verified'
-          : verification.verification_status;
-        verificationDetails = verification;
+    if (!adminOverrides) {
+      if (freshUserData.user_type === 'individual') {
+        const { data: verification } = await supabase
+          .from('individual_verifications')
+          .select('verification_status, aadhaar_verified, pan_verified, verification_date, aadhaar_number, pan_number, aadhaar_verification_date, pan_verification_date')
+          .eq('user_id', user.id)
+          .single();
+        if (verification) {
+          verificationStatus = freshUserData.verification_status === 'verified'
+            ? 'verified'
+            : verification.verification_status;
+          verificationDetails = verification;
+        }
+      } else if (freshUserData.user_type === 'company') {
+        const { data: verification } = await supabase
+          .from('company_verifications')
+          .select('verification_status, company_name, verification_date, registration_number, gst_number')
+          .eq('user_id', user.id)
+          .single();
+        if (verification) {
+          verificationStatus = freshUserData.verification_status === 'verified'
+            ? 'verified'
+            : verification.verification_status;
+          verificationDetails = verification;
+        }
+      } else if (freshUserData.user_type === 'ngo') {
+        const { data: verification } = await supabase
+          .from('ngo_verifications')
+          .select('verification_status, ngo_name, verification_date, registration_number, registration_type, fcra_number')
+          .eq('user_id', user.id)
+          .single();
+        if (verification) {
+          verificationStatus = freshUserData.verification_status === 'verified'
+            ? 'verified'
+            : verification.verification_status;
+          verificationDetails = verification;
+        }
       }
     }
 
