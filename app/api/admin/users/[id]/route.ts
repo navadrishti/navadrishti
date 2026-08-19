@@ -221,6 +221,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
 
     const updatePayload: Record<string, any> = { updated_at: new Date().toISOString() };
+    let nextVerification: string | null = null;
 
     if (body.user_type !== undefined) {
       const nextType = String(body.user_type || '').trim();
@@ -231,11 +232,22 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
 
     if (body.verification_status !== undefined) {
-      const nextVerification = String(body.verification_status || '').trim();
+      nextVerification = String(body.verification_status || '').trim();
       if (!allowedVerificationStatuses.has(nextVerification)) {
         return NextResponse.json({ error: 'Invalid verification status' }, { status: 400 });
       }
       updatePayload.verification_status = nextVerification;
+
+      // When the admin explicitly downgrades to unverified, clear CA badge and
+      // reverification flag from profile_data so the user sees the correct state.
+      if (nextVerification === 'unverified') {
+        const currentProfile = asProfile(existingUser.profile_data);
+        const cleaned = { ...currentProfile };
+        delete cleaned.ca_badge_number;
+        delete cleaned.reverification_pending;
+        delete cleaned.allotted_compliance_tags;
+        updatePayload.profile_data = cleaned;
+      }
     }
 
     if (Object.keys(updatePayload).length === 1) {
@@ -250,6 +262,27 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       .single();
 
     if (error) throw error;
+
+    // Sync the type-specific verification table so downstream CA-queue checks
+    // and resolveEffectiveVerificationStatus fall back correctly.
+    if (nextVerification !== null) {
+      const userType = String((updatePayload.user_type || existingUser.user_type) || '').toLowerCase();
+      const verificationTable =
+        userType === 'individual'
+          ? 'individual_verifications'
+          : userType === 'company'
+            ? 'company_verifications'
+            : userType === 'ngo'
+              ? 'ngo_verifications'
+              : null;
+
+      if (verificationTable) {
+        await supabase
+          .from(verificationTable)
+          .update({ verification_status: nextVerification, updated_at: new Date().toISOString() })
+          .eq('user_id', userId);
+      }
+    }
 
     return NextResponse.json({ success: true, data, previous: existingUser });
   } catch (error: any) {

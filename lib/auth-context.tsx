@@ -120,7 +120,9 @@ const getFriendlySignupErrorMessage = (data: any, status: number) => {
   return 'Unable to create account. Please try again.';
 };
 
-const isInvalidAuthResponse = (status: number) => status === 401 || status === 404;
+// 403 is included so banned/suspended accounts are automatically signed out
+// when /api/auth/me returns an access-block error.
+const isInvalidAuthResponse = (status: number) => status === 401 || status === 403 || status === 404;
 
 export function AuthProvider({ children, initialUser = null, initialToken = null }: AuthProviderProps) {
   const router = useRouter();
