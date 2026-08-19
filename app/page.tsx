@@ -267,7 +267,7 @@ export default function LandingPage() {
                                     status="verified"
                                     size="sm"
                                     showText={false}
-                                    badgeNumber={item.actorBadgeNumber}
+                                    badgeNumber={null}
                                     className="relative z-10 shrink-0"
                                   />
                                 ) : null}

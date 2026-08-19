@@ -601,10 +601,7 @@ export function Header({ className = '' }: { className?: string } = {}) {
                         status="verified"
                         size="readable"
                         showText={false}
-                        badgeNumber={
-                          visibleCaBadgeNumber(user.verification_status, user.profile_data || user.profile) ||
-                          user.ca_badge_number
-                        }
+                        badgeNumber={null}
                         className="max-w-full min-w-0"
                       />
                     </div>
