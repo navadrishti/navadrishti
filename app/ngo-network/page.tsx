@@ -207,7 +207,7 @@ function NgoNetworkCard({
                   status="verified"
                   size="sm"
                   showText={false}
-                  badgeNumber={ngo.ca_badge_number}
+                  badgeNumber={null}
                   className="max-w-full min-w-0"
                 />
               ) : null}
