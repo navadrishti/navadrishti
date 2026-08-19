@@ -432,9 +432,14 @@ export async function GET(req: NextRequest) {
     const profileData = (userRow?.profile_data && typeof userRow.profile_data === 'object')
       ? userRow.profile_data
       : {};
-    const effectiveStatus = userRow?.verification_status === 'verified'
-      ? 'verified'
-      : (record.verification_status || 'unverified');
+    // users.verification_status is the admin override — if admin explicitly downgraded,
+    // that wins regardless of what the company_verifications table says.
+    const adminStatus = String(userRow?.verification_status || '').trim().toLowerCase();
+    const effectiveStatus = (adminStatus === 'unverified' || adminStatus === 'suspended' || adminStatus === 'pending')
+      ? adminStatus
+      : adminStatus === 'verified'
+        ? 'verified'
+        : (record.verification_status || 'unverified');
 
     return NextResponse.json({
       verified: effectiveStatus === 'verified',

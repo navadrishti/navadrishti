@@ -25,7 +25,11 @@ export async function GET(request: NextRequest) {
     }
 
     if (companyId) {
+      // Company fetching their own campaigns — show all statuses (including drafts).
       query = query.eq('company_id', Number(companyId));
+    } else {
+      // Public discovery — only show active/finished campaigns, hide drafts & rejected.
+      query = query.not('status', 'in', '("draft","cancelled","rejected")');
     }
 
     if (search) {
