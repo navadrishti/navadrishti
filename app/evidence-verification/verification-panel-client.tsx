@@ -29,6 +29,10 @@ export default function VerificationPanelClient() {
   const [panelMessage, setPanelMessage] = useState<string>('');
   const [actionLoadingKey, setActionLoadingKey] = useState<string | null>(null);
   const [caPendingPayments, setCaPendingPayments] = useState<any[]>([]);
+  const [volunteerAttendance, setVolunteerAttendance] = useState<{
+    campaigns: any[];
+    totals: any;
+  } | null>(null);
 
   const fetchProjectTimeline = async (projectId: string) => {
     const response = await fetch(`/api/csr-projects/${projectId}/evidence`, {
@@ -50,6 +54,20 @@ export default function VerificationPanelClient() {
       const payload = await res.json();
       if (res.ok && payload?.success) {
         setCaPendingPayments([...payload.data.attendance, ...(payload.data.contributions || [])]);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const fetchVolunteerAttendance = async () => {
+    try {
+      const res = await fetch('/api/evidence-verification/volunteer-attendance', {
+        credentials: 'include',
+      });
+      const payload = await res.json();
+      if (res.ok && payload?.success) {
+        setVolunteerAttendance(payload.data);
       }
     } catch {
       // ignore
@@ -87,6 +105,7 @@ export default function VerificationPanelClient() {
       }
 
       await fetchCaPendingPayments();
+      await fetchVolunteerAttendance();
     } catch {
       router.push('/evidence-verification/login');
     } finally {
@@ -325,7 +344,7 @@ export default function VerificationPanelClient() {
 
         {panelMessage ? <EvidenceMessageCard>{panelMessage}</EvidenceMessageCard> : null}
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <EvidenceStatCard
             title="Active Projects"
             description="Projects currently scoped for your verifier access."
@@ -348,7 +367,77 @@ export default function VerificationPanelClient() {
               ) : null
             }
           />
+          <EvidenceStatCard
+            title="Volunteers checked in"
+            description="Volunteers with at least one sealed present day."
+            value={volunteerAttendance?.totals?.checked_in_volunteers ?? 0}
+            subtitle={`${volunteerAttendance?.totals?.never_checked_in ?? 0} never checked in`}
+          />
+          <EvidenceStatCard
+            title="Person-days checked in"
+            description="Includes NGO team capacity counted per selfie."
+            value={volunteerAttendance?.totals?.person_days_checked_in ?? 0}
+            subtitle={`${volunteerAttendance?.totals?.volunteers ?? 0} signed-up volunteers`}
+          />
         </div>
+
+        <EvidenceSectionCard
+          title="CSR volunteer attendance"
+          description="Present = sealed photo mark in GRAM App. Unmarked days count as absent. NGO volunteers count as their team capacity from one selfie."
+        >
+          {!volunteerAttendance?.campaigns?.length ? (
+            <p className="text-sm text-slate-600">No campaign volunteer attendance yet.</p>
+          ) : (
+            <div className="space-y-4">
+              {volunteerAttendance.campaigns.map((campaign: any) => (
+                <div key={campaign.campaign_id} className="rounded-md border border-slate-200 p-3">
+                  <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="font-medium text-slate-900">{campaign.campaign_title}</p>
+                      <p className="text-xs text-slate-500">
+                        {campaign.start_date || '—'} → {campaign.end_date || '—'} · {campaign.project_days} project days ·{' '}
+                        {campaign.status}
+                      </p>
+                    </div>
+                    <Badge variant="outline">
+                      {campaign.volunteers_checked_in}/{campaign.volunteer_count} checked in
+                    </Badge>
+                  </div>
+                  <EvidenceMetaGrid>
+                    <p>Person-days: {campaign.total_person_days_checked_in}</p>
+                    <p>Total capacity signed up: {campaign.total_capacity}</p>
+                    <p>Never checked in: {campaign.volunteers_never_checked_in}</p>
+                  </EvidenceMetaGrid>
+                  <div className="mt-3 space-y-2">
+                    {(campaign.roster || []).map((row: any) => (
+                      <div
+                        key={`${campaign.campaign_id}-${row.user_id}`}
+                        className="grid gap-1 rounded border border-slate-100 bg-slate-50 px-2 py-2 text-xs text-slate-700 sm:grid-cols-4"
+                      >
+                        <p className="font-medium text-slate-900">
+                          {row.name}
+                          <span className="ml-1 font-normal text-slate-500">
+                            ({row.user_type}
+                            {row.capacity > 1 ? ` · ×${row.capacity}` : ''})
+                          </span>
+                        </p>
+                        <p>
+                          Present {row.days_present} / Absent {row.days_absent}
+                        </p>
+                        <p>Person-days {row.person_days_checked_in}</p>
+                        <p>
+                          {row.days_present === 0
+                            ? 'No check-in'
+                            : `${Math.round((row.attendance_rate || 0) * 100)}% of project`}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </EvidenceSectionCard>
 
         <div className="grid gap-4 md:grid-cols-2">
         <EvidenceSectionCard
