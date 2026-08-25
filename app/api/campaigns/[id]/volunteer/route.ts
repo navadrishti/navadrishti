@@ -129,6 +129,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'Complete email, phone and document verifications to volunteer' }, { status: 403 })
     }
 
+    const { isVolunteeringBanned } = await import('@/lib/campaign-volunteer-attendance')
+    const volunteeringBan = isVolunteeringBanned(actingUser?.profile_data)
+    if (volunteeringBan.banned) {
+      return NextResponse.json(
+        {
+          error:
+            volunteeringBan.reason ||
+            'You are banned from CSR volunteering after missing attendance on a signed-up campaign.',
+        },
+        { status: 403 }
+      )
+    }
+
     const capacity = getVolunteerApplicationCapacity(decoded.user_type, actingUser)
 
     const currentVolunteerCount = sumVolunteerApplicationCount(volunteerApplications)

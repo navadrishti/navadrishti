@@ -112,6 +112,17 @@ interface UserProfile {
   ngo_public?: NgoPublicProfile
   verification_details?: Record<string, unknown> | null
   ca_badge_number?: string | null
+  volunteering_history?: Array<{
+    campaign_id: string
+    campaign_title: string
+    days_present: number
+    project_days: number
+    attendance_rate?: number
+    capacity?: number
+    completed_at?: string
+    start_date?: string | null
+    end_date?: string | null
+  }>
 }
 
 const DELIVERY_MODEL_LABELS: Record<string, string> = {
@@ -682,21 +693,78 @@ export default function ImpactProfilePage() {
                   </div>
                 </ProfileSection>
 
+                <ProfileSection
+                  title="Volunteering History"
+                  empty={!Array.isArray(profile.volunteering_history) || profile.volunteering_history.length === 0}
+                >
+                  <div className="space-y-3">
+                    {(profile.volunteering_history || []).map((entry) => (
+                      <div
+                        key={entry.campaign_id}
+                        className="rounded-lg border border-slate-200 bg-slate-50 p-4"
+                      >
+                        <p className="font-medium text-slate-900">{entry.campaign_title}</p>
+                        <p className="mt-1 text-sm text-slate-600">
+                          Attended {entry.days_present} of {entry.project_days} project days
+                          {entry.attendance_rate != null ? ` (${entry.attendance_rate}%)` : ''}
+                          {entry.capacity && entry.capacity > 1
+                            ? ` · Team capacity ×${entry.capacity}`
+                            : ''}
+                        </p>
+                        {(entry.start_date || entry.end_date) && (
+                          <p className="mt-1 text-xs text-slate-500">
+                            {formatDisplayDate(entry.start_date) || '—'} →{' '}
+                            {formatDisplayDate(entry.end_date) || '—'}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </ProfileSection>
+
               </>
             ) : (
-              <div className="grid gap-4 md:grid-cols-2">
-                <InfoRow label="User type" value={formatUserType(profile.user_type)} />
-                <InfoRow label="Contact email" value={profile.email} />
-                <InfoRow label="Contact phone" value={profile.phone || undefined} />
-                <InfoRow label="Member since" value={formatDate(profile.created_at)} />
-                <InfoRow label="Location" value={profile.city || profile.location || undefined} />
-                <VerificationStatusRow
-                  allVerified={allVerified}
-                  emailVerified={Boolean(profile.email_verified)}
-                  phoneVerified={Boolean(profile.phone_verified)}
-                  badgeNumber={caBadgeNumber}
-                />
-                {profile.website ? <InfoRow label="Website" value={profile.website} /> : null}
+              <div className="space-y-8">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <InfoRow label="User type" value={formatUserType(profile.user_type)} />
+                  <InfoRow label="Contact email" value={profile.email} />
+                  <InfoRow label="Contact phone" value={profile.phone || undefined} />
+                  <InfoRow label="Member since" value={formatDate(profile.created_at)} />
+                  <InfoRow label="Location" value={profile.city || profile.location || undefined} />
+                  <VerificationStatusRow
+                    allVerified={allVerified}
+                    emailVerified={Boolean(profile.email_verified)}
+                    phoneVerified={Boolean(profile.phone_verified)}
+                    badgeNumber={caBadgeNumber}
+                  />
+                  {profile.website ? <InfoRow label="Website" value={profile.website} /> : null}
+                </div>
+
+                <ProfileSection
+                  title="Volunteering History"
+                  empty={!Array.isArray(profile.volunteering_history) || profile.volunteering_history.length === 0}
+                >
+                  <div className="space-y-3">
+                    {(profile.volunteering_history || []).map((entry) => (
+                      <div
+                        key={entry.campaign_id}
+                        className="rounded-lg border border-slate-200 bg-slate-50 p-4"
+                      >
+                        <p className="font-medium text-slate-900">{entry.campaign_title}</p>
+                        <p className="mt-1 text-sm text-slate-600">
+                          Attended {entry.days_present} of {entry.project_days} project days
+                          {entry.attendance_rate != null ? ` (${entry.attendance_rate}%)` : ''}
+                        </p>
+                        {(entry.start_date || entry.end_date) && (
+                          <p className="mt-1 text-xs text-slate-500">
+                            {formatDisplayDate(entry.start_date) || '—'} →{' '}
+                            {formatDisplayDate(entry.end_date) || '—'}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </ProfileSection>
               </div>
             )}
           </CardContent>
