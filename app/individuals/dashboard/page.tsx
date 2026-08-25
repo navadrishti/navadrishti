@@ -23,9 +23,6 @@ import {
   getDeliveryTrackingEvents,
   isDeliveredTrackingStatus,
   isPickedUpTrackingStatus,
-} from '@/lib/service-request-allocation';
-import { filterDashboardSidebarItems, resolvePhase1DashboardTab } from '@/lib/access-control';
-import {
   formatAttendanceSummary,
   getSkillServiceDailyRate,
   getNgoNeedFulfillmentMode,
@@ -785,7 +782,7 @@ function IndividualDashboardContent() {
   const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const requestedTab = resolvePhase1DashboardTab(searchParams.get('tab') || 'profile');
+  const requestedTab = searchParams.get('tab') || 'profile';
   const activeTab =
     requestedTab === 'services-hired' || requestedTab === 'service-requests'
       ? 'ngo-requests'
@@ -804,12 +801,12 @@ function IndividualDashboardContent() {
   const [campaignVolunteerAssignments, setCampaignVolunteerAssignments] = useState<CampaignVolunteerAssignmentItem[]>([]);
   const [loadingCampaignVolunteerAssignments, setLoadingCampaignVolunteerAssignments] = useState(true);
   const [csrCampaignsTab, setCsrCampaignsTab] = useState<'ongoing' | 'completed'>('ongoing');
-  const sidebarItems = filterDashboardSidebarItems([
+  const sidebarItems = [
     { value: 'profile', label: 'Profile' },
     { value: 'capability-offers', label: 'Capability Offers' },
     { value: 'ngo-requests', label: 'NGO Requests' },
     { value: 'csr-campaigns', label: 'CSR Campaigns' },
-  ]);
+  ];
 
   const fetchServiceOffers = async () => {
     try {

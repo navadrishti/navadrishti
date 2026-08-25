@@ -32,7 +32,6 @@ import { DashboardMainSkeleton, DashboardPageSkeleton, DashboardSidebarSkeleton 
 import { ImpactReportsPanel } from '@/components/companies/impact-reports-panel';
 import { YourCapabilitiesPanel } from '@/components/service-card';
 import { AGENT_NAMES } from '@/lib/ai-suite'
-import { filterDashboardSidebarItems, resolvePhase1DashboardTab } from '@/lib/access-control';
 import { useToast } from '@/hooks/use-toast';
 import {
   formatAttendanceSummary,
@@ -624,7 +623,7 @@ function CompanyDashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [mounted, setMounted] = useState(false);
-  const requestedTab = resolvePhase1DashboardTab(searchParams.get('tab') || 'profile');
+  const requestedTab = searchParams.get('tab') || 'profile';
   const activeTab = (() => {
     if (requestedTab === 'service-requests') return 'csr-projects';
     if (requestedTab === 'services-hired') return 'capability-offers';
@@ -1375,14 +1374,14 @@ function CompanyDashboardContent() {
 
   const activeCompanyCAAccounts = companyCAAccounts.filter((account: any) => account.status === 'active');
   const inactiveCompanyCAAccounts = companyCAAccounts.filter((account: any) => account.status !== 'active');
-  const sidebarItems = filterDashboardSidebarItems([
+  const sidebarItems = [
     { value: 'profile', label: 'Profile' },
     { value: 'capability-offers', label: 'Capability Offers' },
     { value: 'csr-projects', label: 'CSR Projects' },
     { value: 'company-ca', label: 'CA' },
     { value: 'impact-reports', label: 'Impact Reports' },
     { value: 'payments', label: 'Payments' },
-  ]);
+  ];
 
   const navigateToTab = (value: string) => {
     if (value === 'capability-offers') {
