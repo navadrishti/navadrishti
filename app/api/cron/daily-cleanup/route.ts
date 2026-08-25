@@ -395,6 +395,17 @@ export async function GET(request: NextRequest) {
           .from('campaigns')
           .update({ status: 'completed', updated_at: todayIso })
           .eq('id', campaign.id);
+
+        try {
+          const { processCompletedCampaignVolunteerOutcomes } = await import(
+            '@/lib/campaign-volunteer-attendance'
+          );
+          await processCompletedCampaignVolunteerOutcomes(String(campaign.id), {
+            treatAsCompleted: true,
+          });
+        } catch (volunteerOutcomeErr) {
+          console.error('Campaign volunteer outcome processing failed:', volunteerOutcomeErr);
+        }
       }
     } catch (csrComplianceErr) {
       console.error('Error in CSR capability compliance task:', csrComplianceErr);

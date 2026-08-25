@@ -761,7 +761,6 @@ function InlineSkillServiceFulfillment({
   onUpdated?: () => void | Promise<void>;
 }) {
   const { toast } = useToast();
-  const [marking, setMarking] = useState(false);
   const [settling, setSettling] = useState(false);
   const meta = application.response_meta && typeof application.response_meta === 'object'
     ? application.response_meta
@@ -770,71 +769,10 @@ function InlineSkillServiceFulfillment({
     meta.assignment_id || meta.assignmentMeta?.id || meta.assignment_meta?.id;
   const dailyRate = getSkillServiceDailyRate(application);
   const summary = formatAttendanceSummary(meta);
-  const today = getSkillLocalDateString();
-  const alreadyMarkedToday = String(summary.lastAttendanceAt || '') === today;
   const settlementStatus = String(meta.settlement_status || '').toLowerCase();
   const isSettled = settlementStatus === 'settled';
   const outstanding = Math.max(0, summary.totalDue - summary.paidTotal);
 
-  const handleMarkAttendance = async () => {
-    if (!assignmentId) {
-      toast({
-        title: 'Attendance unavailable',
-        description: 'Assignment is not linked yet.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    if (alreadyMarkedToday) {
-      toast({
-        title: 'Already marked',
-        description: "Today's attendance is already recorded and cannot be changed.",
-      });
-      return;
-    }
-
-    setMarking(true);
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('Please sign in again');
-
-      const response = await fetch(`/api/service-assignments/${assignmentId}/attendance`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          attendanceStatus: 'present',
-          attendanceSource: 'ngo_dashboard',
-          attendanceDate: today,
-          units: 1,
-          multiplier: 1,
-          markedForUserId: meta.assignee_user_id || undefined,
-        }),
-      });
-
-      const data = await response.json();
-      if (!response.ok || !data?.success) {
-        throw new Error(data?.error || 'Failed to mark attendance');
-      }
-
-      toast({
-        title: 'Attendance marked',
-        description: `Present day recorded. Daily due: INR ${dailyRate.toLocaleString('en-IN')}.`,
-      });
-      await onUpdated?.();
-    } catch (error) {
-      toast({
-        title: 'Could not mark attendance',
-        description: error instanceof Error ? error.message : 'Something went wrong',
-        variant: 'destructive',
-      });
-    } finally {
-      setMarking(false);
-    }
-  };
 
   const handleSettle = async () => {
     if (!assignmentId) {
@@ -940,8 +878,8 @@ function InlineSkillServiceFulfillment({
         <p className="text-sm font-medium text-emerald-950">{title}</p>
         <p className="text-xs text-emerald-900/80">
           {role === 'ngo'
-            ? 'Mark attendance once per day for this individual. Past days cannot be marked or edited. Settle the cumulative total when service ends.'
-            : 'The NGO marks your daily attendance. Payment is calculated from present days times your quoted daily rate.'}
+            ? 'Settle the cumulative total when this skill/service engagement ends.'
+            : 'Payment is calculated from present days times your quoted daily rate.'}
         </p>
       </div>
 
@@ -963,12 +901,6 @@ function InlineSkillServiceFulfillment({
         </p>
       </div>
 
-      {summary.lastAttendanceAt ? (
-        <p className="text-xs text-slate-600">
-          Last attendance marked: {summary.lastAttendanceAt}
-        </p>
-      ) : null}
-
       {isSettled ? (
         <p className="text-xs font-medium text-emerald-800">
           Settled
@@ -977,18 +909,6 @@ function InlineSkillServiceFulfillment({
         </p>
       ) : role === 'ngo' ? (
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" onClick={handleMarkAttendance} disabled={marking || alreadyMarkedToday || isSettled}>
-            {marking ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Marking…
-              </>
-            ) : alreadyMarkedToday ? (
-              'Today already marked'
-            ) : (
-              'Mark today present'
-            )}
-          </Button>
           <Button
             size="sm"
             variant="outline"
@@ -1007,14 +927,11 @@ function InlineSkillServiceFulfillment({
             )}
           </Button>
         </div>
-      ) : (
+      ) : outstanding > 0 ? (
         <p className="text-xs text-slate-600">
-          {alreadyMarkedToday
-            ? 'The NGO marked you present today.'
-            : "Waiting for the NGO to mark today's attendance."}
-          {outstanding > 0 ? ` Outstanding: INR ${outstanding.toLocaleString('en-IN')}.` : ''}
+          Outstanding: INR {outstanding.toLocaleString('en-IN')}.
         </p>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -1422,9 +1339,6 @@ function NGODashboardContent() {
   const [reviewingCompanyApplicationKey, setReviewingCompanyApplicationKey] = useState<string | null>(null);
   const [csrTrackingAssignments, setCsrTrackingAssignments] = useState<CSRTrackingAssignment[]>([]);
   const [loadingCSRTrackingAssignments, setLoadingCSRTrackingAssignments] = useState(false);
-  const [csrAttendanceAssignments, setCsrAttendanceAssignments] = useState<any[]>([]);
-  const [loadingCSRAttendanceAssignments, setLoadingCSRAttendanceAssignments] = useState(false);
-  const [markingAttendanceId, setMarkingAttendanceId] = useState<string | null>(null);
   const [campaignLeadInvitations, setCampaignLeadInvitations] = useState<CampaignLeadInvitation[]>([]);
   const [campaignLeadAssignments, setCampaignLeadAssignments] = useState<CampaignLeadAssignment[]>([]);
   const [campaignVolunteerAssignments, setCampaignVolunteerAssignments] = useState<CampaignVolunteerAssignment[]>([]);
@@ -1972,206 +1886,6 @@ function NGODashboardContent() {
     }
   };
 
-  const fetchCSRAttendanceAssignments = async () => {
-    try {
-      setLoadingCSRAttendanceAssignments(true);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setCsrAttendanceAssignments([]);
-        return;
-      }
-
-      const response = await fetch('/api/service-assignments?role=assigned&targetType=csr_project', {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
-
-      const data = await response.json();
-      if (response.ok && data?.success) {
-        setCsrAttendanceAssignments(Array.isArray(data.data) ? data.data : []);
-      } else {
-        setCsrAttendanceAssignments([]);
-      }
-    } catch (error) {
-      console.error('Error fetching CSR attendance assignments:', error);
-      setCsrAttendanceAssignments([]);
-    } finally {
-      setLoadingCSRAttendanceAssignments(false);
-    }
-  };
-
-  const getLocalDateString = (reference: Date = new Date()) => {
-    const year = reference.getFullYear();
-    const month = String(reference.getMonth() + 1).padStart(2, '0');
-    const day = String(reference.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
-  const getNgoAttendanceUnits = () => {
-    const profileData = (user as any)?.profile_data || {};
-    const capacity = Number(
-      (user as any)?.ngo_volunteer_capacity ??
-      profileData.ngo_volunteer_capacity ??
-      profileData.team_strength ??
-      0
-    );
-    return Number.isFinite(capacity) && capacity > 0 ? capacity : 1;
-  };
-
-  const handleMarkCampaignVolunteerAttendance = async (assignment: CampaignVolunteerAssignmentItem) => {
-    const token = localStorage.getItem('token');
-    if (!token || !assignment.assignment_id) {
-      toast({ title: 'Authentication required', description: 'Please sign in again to mark attendance.', variant: 'destructive' });
-      return;
-    }
-
-    const today = getLocalDateString();
-    const attendanceSummary = assignment.attendance_summary || {};
-    if (String(attendanceSummary.last_attendance_at || '') === today) {
-      toast({ title: 'Already marked', description: "Today's attendance has already been submitted." });
-      return;
-    }
-
-    const location = await new Promise<{ latitude: number; longitude: number; accuracy?: number } | null>((resolve) => {
-      if (typeof navigator === 'undefined' || !navigator.geolocation) {
-        resolve(null);
-        return;
-      }
-
-      navigator.geolocation.getCurrentPosition(
-        (position) => resolve({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          accuracy: position.coords.accuracy
-        }),
-        () => resolve(null),
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-      );
-    });
-
-    if (!location) {
-      toast({
-        title: 'Location required',
-        description: 'Please share your location to mark attendance.',
-        variant: 'destructive'
-      });
-      return;
-    }
-
-    try {
-      setMarkingAttendanceId(String(assignment.assignment_id));
-      const response = await fetch(`/api/service-assignments/${assignment.assignment_id}/attendance`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          attendanceStatus: 'present',
-          attendanceSource: 'ngo_dashboard',
-          attendanceDate: today,
-          locationLatitude: location.latitude,
-          locationLongitude: location.longitude,
-          locationAccuracy: location.accuracy,
-          units: getNgoAttendanceUnits()
-        })
-      });
-
-      const payload = await response.json().catch(() => null);
-      if (!response.ok || !payload?.success) {
-        throw new Error(payload?.error || 'Failed to mark attendance');
-      }
-
-      toast({ title: 'Attendance marked', description: `Attendance saved for ${getNgoAttendanceUnits()} people.` });
-      await fetchCampaignVolunteerAssignments();
-    } catch (error) {
-      toast({
-        title: 'Attendance failed',
-        description: error instanceof Error ? error.message : 'Could not mark attendance.',
-        variant: 'destructive'
-      });
-    } finally {
-      setMarkingAttendanceId(null);
-    }
-  };
-
-  const handleMarkCSRAttendance = async (assignment: any) => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      toast({ title: 'Authentication required', description: 'Please sign in again to mark attendance.', variant: 'destructive' });
-      return;
-    }
-
-    const today = getLocalDateString();
-    const attendanceSummary = assignment?.meta?.attendance_summary || {};
-    if (String(attendanceSummary.last_attendance_at || '') === today) {
-      toast({ title: 'Already marked', description: "Today's attendance has already been submitted." });
-      return;
-    }
-
-    const location = await new Promise<{ latitude: number; longitude: number; accuracy?: number } | null>((resolve) => {
-      if (typeof navigator === 'undefined' || !navigator.geolocation) {
-        resolve(null);
-        return;
-      }
-
-      navigator.geolocation.getCurrentPosition(
-        (position) => resolve({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          accuracy: position.coords.accuracy
-        }),
-        () => resolve(null),
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-      );
-    });
-
-    if (!location) {
-      toast({
-        title: 'Location required',
-        description: 'Please share your location to mark NGO attendance.',
-        variant: 'destructive'
-      });
-      return;
-    }
-
-    try {
-      setMarkingAttendanceId(String(assignment.id));
-      const response = await fetch(`/api/service-assignments/${assignment.id}/attendance`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          attendanceStatus: 'present',
-          attendanceSource: 'ngo_dashboard',
-          attendanceDate: today,
-          locationLatitude: location.latitude,
-          locationLongitude: location.longitude,
-          locationAccuracy: location.accuracy,
-          units: getNgoAttendanceUnits()
-        })
-      });
-
-      const payload = await response.json().catch(() => null);
-      if (!response.ok || !payload?.success) {
-        throw new Error(payload?.error || 'Failed to mark attendance');
-      }
-
-      toast({ title: 'Attendance marked', description: `Attendance saved for ${getNgoAttendanceUnits()} people.` });
-      await fetchCSRAttendanceAssignments();
-    } catch (error) {
-      toast({
-        title: 'Attendance failed',
-        description: error instanceof Error ? error.message : 'Could not mark attendance.',
-        variant: 'destructive'
-      });
-    } finally {
-      setMarkingAttendanceId(null);
-    }
-  };
 
   const refreshDashboardData = async () => {
     if (!user?.id) return;
@@ -2183,8 +1897,7 @@ function NGODashboardContent() {
       fetchOfferRequests(),
       fetchCompanyProjectApplications(),
       fetchCSRTrackingAssignments(),
-      fetchCSRAttendanceAssignments(),
-      fetchCampaignLeadInvitations(),
+            fetchCampaignLeadInvitations(),
       fetchCampaignLeadAssignments(),
       fetchCampaignVolunteerAssignments(),
       fetchCSRProjects(),
@@ -2255,7 +1968,7 @@ function NGODashboardContent() {
       if (table === 'service_request_projects') fetchCSRProjects();
       else if (table === 'service_requests') fetchServiceRequests();
       else if (table === 'service_offers') { fetchServiceOffers(); fetchOfferRequests(); }
-      else if (table === 'service_engagement_assignments') { fetchCSRTrackingAssignments(); fetchCSRAttendanceAssignments(); }
+      else if (table === 'service_engagement_assignments') { fetchCSRTrackingAssignments(); }
     }
 
     ['service_request_projects', 'service_requests', 'service_offers', 'service_engagement_assignments'].forEach((table) => {
@@ -3113,52 +2826,10 @@ function NGODashboardContent() {
                                 <CampaignVolunteerAssignmentCard
                                   key={`campaign-volunteer-${assignment.id}`}
                                   assignment={assignment}
-                                  today={getLocalDateString()}
-                                  markingAttendanceId={markingAttendanceId}
-                                  onMarkAttendance={handleMarkCampaignVolunteerAttendance}
                                 />
                               ))}
                               {ongoingCSRProjects.map((project) => (
                             <div key={project.id} className="rounded-md border bg-white p-4">
-                              {(() => {
-                                const attendanceAssignment = csrAttendanceAssignments.find((assignment) => String(assignment.target_id) === String(project.id));
-                                const attendanceSummary = attendanceAssignment?.meta?.attendance_summary || {};
-                                const today = getLocalDateString();
-                                const alreadyMarkedToday = String(attendanceSummary.last_attendance_at || '') === today;
-                                const attendanceCount = getNgoAttendanceUnits();
-
-                                return (
-                                  <div className="mb-4 rounded-md border border-slate-200 bg-slate-50 p-3">
-                                    <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                                      <div>
-                                          <p className="font-medium text-slate-900">Self attendance</p>
-                                        <p className="text-sm text-slate-600">
-                                          {alreadyMarkedToday
-                                              ? `Marked today for ${attendanceCount} people`
-                                              : 'Pending today. Share your location to record this day.'}
-                                        </p>
-                                      </div>
-                                      <div className="flex flex-wrap items-center gap-2">
-                                        <Badge variant="outline" className={alreadyMarkedToday ? 'border-green-300 bg-green-50 text-green-700' : 'border-amber-300 bg-amber-50 text-amber-700'}>
-                                          {alreadyMarkedToday ? 'Marked' : 'Pending'}
-                                        </Badge>
-                                        <Button
-                                          size="sm"
-                                          onClick={() => attendanceAssignment && handleMarkCSRAttendance(attendanceAssignment)}
-                                          disabled={!attendanceAssignment || alreadyMarkedToday || markingAttendanceId === String(attendanceAssignment?.id || '')}
-                                        >
-                                          {markingAttendanceId === String(attendanceAssignment?.id || '') ? 'Marking…' : 'Mark Attendance'}
-                                        </Button>
-                                      </div>
-                                    </div>
-                                    <div className="mt-2 grid grid-cols-1 gap-2 text-xs text-slate-500 md:grid-cols-3">
-                                      <p>Counts as: {attendanceCount} people</p>
-                                      <p>Last marked: {attendanceSummary.last_attendance_at || 'Not yet'}</p>
-                                      <p>Days attended: {attendanceSummary.days_attended ?? attendanceSummary.total_entries ?? 0}</p>
-                                    </div>
-                                  </div>
-                                );
-                              })()}
 
                               <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                                 <div>
@@ -3228,9 +2899,6 @@ function NGODashboardContent() {
                                 <CampaignVolunteerAssignmentCard
                                   key={`campaign-volunteer-completed-${assignment.id}`}
                                   assignment={assignment}
-                                  today={getLocalDateString()}
-                                  markingAttendanceId={markingAttendanceId}
-                                  onMarkAttendance={handleMarkCampaignVolunteerAttendance}
                                 />
                               ))}
                               {completedCSRProjects.map((project) => (
@@ -3251,11 +2919,6 @@ function NGODashboardContent() {
                               <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-muted-foreground md:grid-cols-2">
                                 <p>Deadline: {project.deadline_at || 'N/A'}</p>
                                 <p>Confirmed Funds: Rs {project.confirmed_funds ?? 0}</p>
-                              </div>
-                              <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-                                <p className="font-medium text-slate-900">Attendance</p>
-                                <p className="mt-1 text-slate-600">Days attended: {project.days_attended ?? 0}</p>
-                                <p className="text-slate-600">Last marked: {project.last_attendance_at || 'Not yet'}</p>
                               </div>
                               <div className="mt-3">
                                 <Button
