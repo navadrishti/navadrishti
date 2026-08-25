@@ -23,7 +23,6 @@ import { ProfileDashboardTab, PaymentHistoryPanel } from '@/components/profile-d
 import { YourCapabilitiesPanel, InlineCsrCapabilityDelhivery } from '@/components/service-card';
 import { DashboardBodyLayout, DashboardQuickSidebar } from '@/components/dashboard-quick-sidebar';
 import { CampaignVolunteerAssignmentCard, type CampaignVolunteerAssignmentItem } from '@/components/campaign-volunteer-assignment-card';
-import { filterDashboardSidebarItems, resolvePhase1DashboardTab } from '@/lib/access-control';
 import {
   formatDeliveryTrackingStatus,
   getDeliveryTrackingEvents,
@@ -1328,7 +1327,7 @@ function NGODashboardContent() {
   const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const activeTab = resolvePhase1DashboardTab(searchParams.get('tab') || 'profile');
+  const activeTab = searchParams.get('tab') || 'profile';
 
   // State for real service data
   const [serviceOffers, setServiceOffers] = useState<any[]>([]);
@@ -1365,13 +1364,13 @@ function NGODashboardContent() {
   const [csrProjectsTab, setCsrProjectsTab] = useState<'invitations' | 'ongoing' | 'completed'>('invitations');
   const [csrProjectsSectionTab, setCsrProjectsSectionTab] = useState<'ngo-projects' | 'other-csr'>('ngo-projects');
   const [deletingRequest, setDeletingRequest] = useState<number | null>(null);
-  const sidebarItems = filterDashboardSidebarItems([
+  const sidebarItems = [
     { value: 'profile', label: 'Profile' },
     { value: 'service-offers', label: 'Capability Offers' },
     { value: 'service-requests', label: 'Your Needs' },
     { value: 'csr-projects', label: 'CSR Projects' },
     { value: 'payments', label: 'Payments' },
-  ]);
+  ];
 
   // Handle service request deletion
   const handleDeleteRequest = async (requestId: number, requestTitle: string) => {
