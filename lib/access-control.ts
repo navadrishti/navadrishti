@@ -231,9 +231,7 @@ export function canAccessRoute(userType: UserType | undefined, routePath: string
   return allowedUserTypes.includes(userType);
 }
 
-// --- Launch phase gating ---
-
-export type LaunchPhase = 1 | 2;
+// --- Product surfaces / route gating ---
 
 export type LaunchHeaderNavItem = {
   label: string;
@@ -358,27 +356,11 @@ export function isAllowedPwaOrigin(origin: string | null): boolean {
   return getPwaAllowedOrigins().includes(origin.replace(/\/$/, ''));
 }
 
-const PHASE1_BLOCKED_ROUTE_PREFIXES = [
-  '/service-requests',
-  '/service-offers',
-  '/csr-campaigns',
-  '/companies/csr-agent',
-  '/companies/csr-budget',
-  '/companies/csr-health',
-  '/companies/impact-reports',
-  '/ngos/ai-agent',
-  '/ngos/ngo-agent',
-  '/ngos/ngo-matching',
-  // Phase 1 special portals allowed via URL: /ca and /admin only.
-  // Evidence Verification opens again from Phase 2.
-  '/evidence-verification',
-] as const;
-
 /**
- * Far-future / paused surfaces — blocked in every launch phase (including Phase 2).
- * Covers government admin + analytics, and social posts (not shipping for now).
+ * Paused / not-shipping surfaces (government admin, social feed).
+ * Full product surfaces (CSR, services, evidence verification, AI agents) are always on.
  */
-const PERMANENTLY_BLOCKED_ROUTE_PREFIXES = [
+const BLOCKED_ROUTE_PREFIXES = [
   '/government-admin',
   '/posts',
   '/home',
@@ -388,96 +370,34 @@ function matchesRoutePrefix(pathname: string, prefix: string): boolean {
   return pathname === prefix || pathname.startsWith(`${prefix}/`);
 }
 
-export function getLaunchPhase(): LaunchPhase {
-  const raw = String(process.env.NEXT_PUBLIC_LAUNCH_PHASE || '2').trim();
-  return raw === '1' ? 1 : 2;
-}
-
-export function isPhase1Launch(): boolean {
-  return getLaunchPhase() === 1;
-}
-
-/** Browser tab / document title for the active launch phase. */
 export function getSiteDocumentTitle(): string {
-  if (isPhase1Launch()) {
-    return `${PRODUCT_NAME} | India's CA-Verified NGO Directory`;
-  }
   return `${PRODUCT_NAME} | Digital OS for Social Impact`;
 }
 
 export function isPermanentlyBlockedPath(pathname: string): boolean {
-  return PERMANENTLY_BLOCKED_ROUTE_PREFIXES.some((prefix) =>
-    matchesRoutePrefix(pathname, prefix)
-  );
+  return BLOCKED_ROUTE_PREFIXES.some((prefix) => matchesRoutePrefix(pathname, prefix));
 }
 
-export function isPhase1BlockedPath(pathname: string): boolean {
-  if (!isPhase1Launch()) {
-    return false;
-  }
-
-  return PHASE1_BLOCKED_ROUTE_PREFIXES.some((prefix) =>
-    matchesRoutePrefix(pathname, prefix)
-  );
-}
-
-/** True when the path must not be served for the current launch phase. */
 export function isLaunchBlockedPath(pathname: string): boolean {
-  return isPermanentlyBlockedPath(pathname) || isPhase1BlockedPath(pathname);
+  return isPermanentlyBlockedPath(pathname);
 }
 
-export function getLaunchBlockedRedirectPath(pathname: string): string {
-  if (isPermanentlyBlockedPath(pathname)) {
-    return '/';
-  }
-  return getLaunchPhaseRedirectPath();
+export function getLaunchBlockedRedirectPath(_pathname?: string): string {
+  return '/';
 }
 
-export function getLaunchPhaseRedirectPath(): string {
-  return '/ngo-network';
-}
-
-export function getLaunchHeaderNavItems(phase2Items: LaunchHeaderNavItem[]): LaunchHeaderNavItem[] {
-  if (!isPhase1Launch()) {
-    return phase2Items;
-  }
-
-  return [
-    {
-      label: 'NGO Network',
-      href: '/ngo-network',
-      description: 'Browse verified NGOs',
-    },
-    {
-      label: 'About Us',
-      href: NAVADRISHTI_ABOUT_URL,
-      description: 'About GRAM',
-      external: true,
-    },
-    {
-      label: 'Contact Us',
-      href: NAVADRISHTI_CONTACT_HREF,
-      description: 'Contact GRAM',
-    },
-  ];
+export function getLaunchHeaderNavItems(items: LaunchHeaderNavItem[]): LaunchHeaderNavItem[] {
+  return items;
 }
 
 export function shouldShowRootSubNavbar(): boolean {
-  return !isPhase1Launch();
+  return true;
 }
 
 export function shouldShowPayoutAccountPanel(
   userType: 'individual' | 'ngo' | 'company' | string | null | undefined
 ): boolean {
-  if (userType === 'ngo') {
-    return true;
-  }
-
-  if (userType === 'individual' || userType === 'company') {
-    return !isPhase1Launch();
-  }
-
-  return false;
+  return userType === 'ngo' || userType === 'individual' || userType === 'company';
 }
 
 const DASHBOARD_SIDEBAR_ITEM_COUNTS: Record<string, number> = {
@@ -492,25 +412,5 @@ export function getDashboardSidebarItemCount(userType?: string | null): number {
 }
 
 export function shouldShowDashboardSidebarSkeleton(userType?: string | null): boolean {
-  if (isPhase1Launch()) {
-    return false;
-  }
-
   return getDashboardSidebarItemCount(userType) > 1;
-}
-
-export function filterDashboardSidebarItems<T extends { value: string }>(items: T[]): T[] {
-  if (!isPhase1Launch()) {
-    return items;
-  }
-
-  return items.filter((item) => item.value === 'profile');
-}
-
-export function resolvePhase1DashboardTab(requestedTab: string | null | undefined): string {
-  if (!isPhase1Launch()) {
-    return requestedTab || 'profile';
-  }
-
-  return 'profile';
 }

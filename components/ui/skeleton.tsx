@@ -2,7 +2,6 @@ import { type ReactNode } from "react"
 import { cn } from "@/lib/utils"
 import {
   getDashboardSidebarItemCount,
-  isPhase1Launch,
   shouldShowDashboardSidebarSkeleton,
   shouldShowRootSubNavbar,
 } from "@/lib/access-control"
@@ -367,7 +366,7 @@ function SkeletonCTA() {
 }
 
 function PlatformSidebarSkeleton({ className }: { className?: string }) {
-  const navItemCount = isPhase1Launch() ? 3 : 4
+  const navItemCount = 4
   const showUtility = shouldShowRootSubNavbar()
 
   return (
