@@ -16,6 +16,7 @@ import { visibleCaBadgeNumber } from "@/lib/auth"
 import { cn } from "@/lib/utils"
 import {
   getLaunchHeaderNavItems,
+  getPwaAppUrl,
   NAVADRISHTI_ABOUT_URL,
   NAVADRISHTI_CONTACT_HREF,
   shouldShowRootSubNavbar,
@@ -162,6 +163,8 @@ function SidebarUtilityNav({
 }) {
   if (!shouldShowRootSubNavbar()) return null
 
+  const pwaUrl = getPwaAppUrl()
+
   if (isLoading) {
     return (
       <div className={className}>
@@ -177,15 +180,27 @@ function SidebarUtilityNav({
 
   return (
     <div className={className}>
-      <button
-        type="button"
-        disabled
-        title="GRAM app coming soon"
-        aria-label="Download the GRAM App (coming soon)"
-        className={buttonClassName}
-      >
-        Download the GRAM App
-      </button>
+      {pwaUrl ? (
+        <a
+          href={pwaUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Download the GRAM App"
+          className={buttonClassName}
+        >
+          Download the GRAM App
+        </a>
+      ) : (
+        <button
+          type="button"
+          disabled
+          title="Set NEXT_PUBLIC_PWA_URL to enable the GRAM App download link"
+          aria-label="Download the GRAM App (not configured)"
+          className={buttonClassName}
+        >
+          Download the GRAM App
+        </button>
+      )}
       <nav className="flex flex-col gap-0.5">
         {rootSubnavItems.map((item) => (
           <HeaderNavLink
@@ -557,7 +572,7 @@ export function Header({ className = '' }: { className?: string } = {}) {
         <SidebarUtilityNav
           className="shrink-0 border-t border-white/15 px-3 py-3"
           isLoading={navLoading}
-          buttonClassName="mb-2 w-full cursor-not-allowed rounded-md border border-white bg-transparent px-2.5 py-1 text-left text-xs font-semibold text-white disabled:opacity-100"
+          buttonClassName="mb-2 w-full rounded-md border border-white bg-transparent px-2.5 py-1 text-left text-xs font-semibold text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-100"
           linkClassName="rounded-md px-3 py-2 text-sm font-medium text-white hover:bg-white/10 hover:text-udaan-orange focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors"
         />
         <div className="shrink-0 border-t border-white/15 p-3">
@@ -799,7 +814,7 @@ export function Header({ className = '' }: { className?: string } = {}) {
                   <SidebarUtilityNav
                     className="mb-8"
                     isLoading={navLoading}
-                    buttonClassName="mb-2 w-full cursor-not-allowed rounded-lg border border-white bg-transparent px-3 py-2.5 text-left text-base font-medium leading-snug text-white disabled:opacity-100"
+                    buttonClassName="mb-2 w-full rounded-lg border border-white bg-transparent px-3 py-2.5 text-left text-base font-medium leading-snug text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-100"
                     linkClassName="flex items-center gap-3 px-3 py-2.5 text-base font-medium text-white hover:bg-white/10 hover:text-udaan-orange rounded-lg transition-colors"
                   />
 

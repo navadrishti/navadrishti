@@ -206,6 +206,16 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       interests: [],
       website: typeof profileData.website === 'string' ? profileData.website : null,
       portfolio: [],
+      volunteering_history: Array.isArray(profileData.volunteering_history)
+        ? profileData.volunteering_history.filter(
+            (entry: any) =>
+              entry &&
+              typeof entry === 'object' &&
+              String(entry.campaign_id || '') &&
+              Number(entry.days_present || 0) > 0 &&
+              Number(entry.project_days || 0) > 0
+          )
+        : [],
       profile_data: nextProfileData,
       verification_status: verificationStatus,
       verification_details: verificationDetails,

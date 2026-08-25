@@ -423,13 +423,6 @@ const getInitials = (name: string): string => {
   return `${parts[0].charAt(0)}${parts[parts.length - 1].charAt(0)}`.toUpperCase();
 };
 
-function getSkillLocalDateString(reference: Date = new Date()) {
-  const year = reference.getFullYear();
-  const month = String(reference.getMonth() + 1).padStart(2, '0');
-  const day = String(reference.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
 function InlineSkillServiceFulfillment({
   application,
   role,
@@ -450,7 +443,6 @@ function InlineSkillServiceFulfillment({
   onUpdated?: () => void | Promise<void>;
 }) {
   const { toast } = useToast();
-  const [marking, setMarking] = useState(false);
   const [settling, setSettling] = useState(false);
   const meta = application.response_meta && typeof application.response_meta === 'object'
     ? application.response_meta
@@ -459,71 +451,10 @@ function InlineSkillServiceFulfillment({
     meta.assignment_id || meta.assignmentMeta?.id || meta.assignment_meta?.id;
   const dailyRate = getSkillServiceDailyRate(application);
   const summary = formatAttendanceSummary(meta);
-  const today = getSkillLocalDateString();
-  const alreadyMarkedToday = String(summary.lastAttendanceAt || '') === today;
   const settlementStatus = String(meta.settlement_status || '').toLowerCase();
   const isSettled = settlementStatus === 'settled';
   const outstanding = Math.max(0, summary.totalDue - summary.paidTotal);
 
-  const handleMarkAttendance = async () => {
-    if (!assignmentId) {
-      toast({
-        title: 'Attendance unavailable',
-        description: 'Assignment is not linked yet.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    if (alreadyMarkedToday) {
-      toast({
-        title: 'Already marked',
-        description: "Today's attendance is already recorded and cannot be changed.",
-      });
-      return;
-    }
-
-    setMarking(true);
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('Please sign in again');
-
-      const response = await fetch(`/api/service-assignments/${assignmentId}/attendance`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          attendanceStatus: 'present',
-          attendanceSource: 'ngo_dashboard',
-          attendanceDate: today,
-          units: 1,
-          multiplier: 1,
-          markedForUserId: meta.assignee_user_id || undefined,
-        }),
-      });
-
-      const data = await response.json();
-      if (!response.ok || !data?.success) {
-        throw new Error(data?.error || 'Failed to mark attendance');
-      }
-
-      toast({
-        title: 'Attendance marked',
-        description: `Present day recorded. Daily due: INR ${dailyRate.toLocaleString('en-IN')}.`,
-      });
-      await onUpdated?.();
-    } catch (error) {
-      toast({
-        title: 'Could not mark attendance',
-        description: error instanceof Error ? error.message : 'Something went wrong',
-        variant: 'destructive',
-      });
-    } finally {
-      setMarking(false);
-    }
-  };
 
   const handleSettle = async () => {
     if (!assignmentId) {
@@ -629,8 +560,8 @@ function InlineSkillServiceFulfillment({
         <p className="text-sm font-medium text-emerald-950">{title}</p>
         <p className="text-xs text-emerald-900/80">
           {role === 'ngo'
-            ? 'Mark attendance once per day for this individual. Past days cannot be marked or edited. Settle the cumulative total when service ends.'
-            : 'The NGO marks your daily attendance. Payment is calculated from present days times your quoted daily rate.'}
+            ? 'Settle the cumulative total when this skill/service engagement ends.'
+            : 'Payment is calculated from present days times your quoted daily rate.'}
         </p>
       </div>
 
@@ -652,12 +583,6 @@ function InlineSkillServiceFulfillment({
         </p>
       </div>
 
-      {summary.lastAttendanceAt ? (
-        <p className="text-xs text-slate-600">
-          Last attendance marked: {summary.lastAttendanceAt}
-        </p>
-      ) : null}
-
       {isSettled ? (
         <p className="text-xs font-medium text-emerald-800">
           Settled
@@ -666,18 +591,6 @@ function InlineSkillServiceFulfillment({
         </p>
       ) : role === 'ngo' ? (
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" onClick={handleMarkAttendance} disabled={marking || alreadyMarkedToday || isSettled}>
-            {marking ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Marking…
-              </>
-            ) : alreadyMarkedToday ? (
-              'Today already marked'
-            ) : (
-              'Mark today present'
-            )}
-          </Button>
           <Button
             size="sm"
             variant="outline"
@@ -696,14 +609,11 @@ function InlineSkillServiceFulfillment({
             )}
           </Button>
         </div>
-      ) : (
+      ) : outstanding > 0 ? (
         <p className="text-xs text-slate-600">
-          {alreadyMarkedToday
-            ? 'The NGO marked you present today.'
-            : "Waiting for the NGO to mark today's attendance."}
-          {outstanding > 0 ? ` Outstanding: INR ${outstanding.toLocaleString('en-IN')}.` : ''}
+          Outstanding: INR {outstanding.toLocaleString('en-IN')}.
         </p>
-      )}
+      ) : null}
     </div>
   );
 }
