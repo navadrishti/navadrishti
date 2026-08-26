@@ -5,29 +5,28 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[9px] text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
+        default: "bg-primary text-primary-foreground hover:bg-[#e87118] hover:text-primary-foreground",
         destructive:
           "bg-destructive text-destructive-foreground hover:bg-destructive/90 hover:text-destructive-foreground",
         outline:
-          "border border-input bg-background hover:bg-slate-100 hover:text-slate-900",
+          "border border-border bg-card text-gram-body hover:bg-secondary hover:text-gram-ink",
         secondary:
           "bg-secondary text-secondary-foreground hover:bg-secondary/80 hover:text-secondary-foreground",
-        ghost: "hover:bg-slate-50 hover:text-slate-900",
-        "ghost-no-bg": "bg-transparent text-blue-600 hover:!text-black",
+        ghost: "hover:bg-secondary hover:text-gram-ink",
+        "ghost-no-bg": "bg-transparent text-primary hover:!text-gram-ink",
         link: "text-primary underline-offset-4 hover:underline",
-        // Add Udaan specific button variants
-        "udaan-primary": "bg-udaan-orange text-white hover:bg-udaan-orange/90 hover:text-white",
-        "udaan-outline": "border border-white text-white hover:bg-white hover:text-udaan-blue",
+        "udaan-primary": "bg-udaan-orange text-white hover:bg-[#e87118] hover:text-white",
+        "udaan-outline": "border border-white text-white hover:bg-white hover:text-udaan-navy",
         "udaan-navy-outline": "border border-white text-white hover:bg-white hover:text-udaan-navy",
       },
       size: {
         default: "h-10 px-4 py-2",
-        sm: "h-9 rounded-md px-3",
-        lg: "h-11 rounded-md px-8",
+        sm: "h-9 rounded-[9px] px-3",
+        lg: "h-11 rounded-[9px] px-8",
         icon: "h-10 w-10",
       },
     },

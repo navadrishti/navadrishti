@@ -16,6 +16,7 @@ import {
 import { VerificationBadge } from "./verification-badge"
 import { formatPrice, getRequestUrgencyLevel } from "@/lib/utils"
 import { formatDisplayDate } from "@/lib/format-date"
+import { getGramAvatarFallbackStyle } from "@/lib/gram-avatar"
 import {
   formatImpactAreaLabel,
   OFFER_TYPE_OPTIONS,
@@ -140,9 +141,9 @@ const listingCardClassName =
 const listingCardImageClassName = 'mt-2 overflow-hidden rounded-md border border-slate-200 bg-slate-100'
 const listingCardImageFrameClassName = 'h-32 w-full'
 const listingBadgeClassName =
-  'inline-flex min-w-0 max-w-[48%] overflow-hidden rounded-full border px-2.5 py-0.5 text-xs font-semibold'
+  'inline-flex min-w-0 max-w-[48%] overflow-hidden rounded-md border border-gram-border bg-white px-2.5 py-0.5 text-xs font-medium text-gram-body'
 const listingCategoryBadgeClassName =
-  'inline-flex min-w-0 max-w-[52%] overflow-hidden rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-semibold text-slate-700 shadow-none'
+  'inline-flex min-w-0 max-w-[52%] overflow-hidden rounded-md border border-gram-border bg-white px-2.5 py-0.5 text-xs font-medium text-gram-body'
 
 const renderListingBadge = (content: React.ReactNode, className: string, title?: string) => (
   <span className={className} title={title}>
@@ -156,27 +157,25 @@ const getUrgencyBadgeClass = (level?: string) => {
   switch (String(level || 'medium').toLowerCase()) {
     case 'critical':
     case 'high':
-      return 'border-slate-200 bg-slate-50 text-red-700 shadow-none'
+      return 'text-gram-ink'
     case 'medium':
-      return 'border-slate-200 bg-slate-50 text-orange-700 shadow-none'
     case 'low':
-      return 'border-slate-200 bg-slate-50 text-emerald-700 shadow-none'
+      return 'text-gram-muted'
     default:
-      return 'border-slate-200 bg-slate-50 text-slate-900 shadow-none'
+      return 'text-gram-body'
   }
 }
 
 const getOfferStatusBadgeClass = (value?: string) => {
   switch (String(value || 'active').toLowerCase()) {
     case 'active':
-      return 'border-slate-200 bg-slate-50 text-emerald-700 shadow-none'
+      return 'text-gram-ink'
     case 'draft':
-      return 'border-slate-200 bg-slate-50 text-amber-700 shadow-none'
     case 'closed':
     case 'inactive':
-      return 'border-slate-200 bg-slate-50 text-gray-700 shadow-none'
+      return 'text-gram-muted'
     default:
-      return 'border-slate-200 bg-slate-50 text-slate-900 shadow-none'
+      return 'text-gram-body'
   }
 }
 
@@ -352,18 +351,17 @@ export function ServiceCard({
   };
 
   const getPriorityTextColor = (level?: string) => {
-    if (!level) return 'text-blue-700';
+    if (!level) return 'text-gram-body'
     switch (level.toLowerCase()) {
       case 'urgent':
       case 'critical':
       case 'high':
-        return 'text-red-700';
+        return 'text-gram-ink'
       case 'medium':
-        return 'text-orange-700';
       case 'low':
-        return 'text-green-700';
+        return 'text-gram-muted'
       default:
-        return 'text-blue-700';
+        return 'text-gram-body'
     }
   };
 
@@ -658,7 +656,10 @@ export function ServiceCard({
                 className="flex min-w-0 flex-1 items-center gap-2 px-1 py-0.5"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-udaan-orange text-[10px] font-medium text-white">
+                <div
+                  className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-medium"
+                  style={getGramAvatarFallbackStyle(providerDisplayName)}
+                >
                   {getInitials(providerDisplayName)}
                 </div>
                 <div className="min-w-0 flex-1">
@@ -771,7 +772,10 @@ export function ServiceCard({
                 className="flex min-w-0 flex-1 items-center gap-2 px-1 py-0.5"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-udaan-orange text-[10px] font-medium text-white">
+                <div
+                  className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-medium"
+                  style={getGramAvatarFallbackStyle(providerDisplayName)}
+                >
                   {getInitials(providerDisplayName)}
                 </div>
                 <div className="min-w-0 flex-1">
@@ -1020,7 +1024,10 @@ export function ServiceCard({
             href={ownerProfileId ? `/profile/${ownerProfileId}` : '#'}
             className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 transition-colors hover:border-blue-300 hover:bg-blue-50"
           >
-            <div className="w-9 h-9 rounded-full flex items-center justify-center bg-udaan-orange text-white font-medium text-xs flex-shrink-0 shadow-sm">
+            <div
+              className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-xs font-medium shadow-sm"
+              style={getGramAvatarFallbackStyle(providerDisplayName)}
+            >
               {getInitials(providerDisplayName)}
             </div>
             <div className="min-w-0 flex-1">

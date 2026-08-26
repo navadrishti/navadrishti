@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { getGramAvatarFallbackStyle } from '@/lib/gram-avatar';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -1859,10 +1860,13 @@ function CompanyDashboardContent() {
                                     const alreadyInvited = !!inviteRecord;
 
                                     return (
-                                      <div key={`${assignment.project_id}-${ngo.id}`} className="flex items-center justify-between gap-3 rounded-md border bg-white p-3 hover:bg-[#eaf4ff] transition-colors">
+                                      <div key={`${assignment.project_id}-${ngo.id}`} className="flex items-center justify-between gap-3 rounded-md border bg-white p-3 hover:bg-gram-soft transition-colors">
                                         <Link href={`/profile/${ngo.id}`} target="_blank" className="flex min-w-0 items-center gap-3 no-underline">
                                           <Avatar className="h-9 w-9">
-                                            <AvatarFallback className="bg-udaan-orange text-white text-xs font-semibold">
+                                            <AvatarFallback
+                                              className="text-xs font-semibold"
+                                              style={getGramAvatarFallbackStyle(ngo.name || 'NGO')}
+                                            >
                                               {getInitials(ngo.name || 'NGO')}
                                             </AvatarFallback>
                                           </Avatar>

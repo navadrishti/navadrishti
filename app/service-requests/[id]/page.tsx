@@ -12,6 +12,7 @@ import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { getFundingProgress, resolveFundingTargetInr, resolveFundsRaisedInr } from '@/lib/service-request-allocation'
 import { VerificationBadge } from '@/components/verification-badge'
+import { getGramAvatarFallbackStyle } from '@/lib/gram-avatar'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -1256,8 +1257,11 @@ export default function ServiceRequestDetailPage() {
                         {requesterProfile?.profile_image ? (
                           <img src={requesterProfile.profile_image} alt={request.ngo_name} className="h-full w-full object-cover" />
                         ) : (
-                          <div className="h-full w-full flex items-center justify-center bg-gray-200">
-                            <span className="text-lg font-semibold text-gray-700">{getInitials(requesterProfile?.name || request.ngo_name)}</span>
+                          <div
+                            className="flex h-full w-full items-center justify-center"
+                            style={getGramAvatarFallbackStyle(requesterProfile?.name || request.ngo_name)}
+                          >
+                            <span className="text-lg font-semibold">{getInitials(requesterProfile?.name || request.ngo_name)}</span>
                           </div>
                         )}
                       </div>
@@ -1324,11 +1328,20 @@ export default function ServiceRequestDetailPage() {
                                 <div key={applicant.id} className="rounded-lg border p-4 space-y-3">
                                       <div className="flex items-start justify-between gap-3">
                                         <div className="flex items-start gap-3 min-w-0">
-                                          <div className="h-12 w-12 shrink-0 rounded-full bg-gray-100 overflow-hidden flex items-center justify-center">
+                                          <div
+                                            className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full"
+                                            style={
+                                              applicant.volunteer?.profile_image
+                                                ? undefined
+                                                : getGramAvatarFallbackStyle(
+                                                    applicant.volunteer?.name || applicant.volunteer?.ngo_name || 'A'
+                                                  )
+                                            }
+                                          >
                                             {applicant.volunteer?.profile_image ? (
                                               <img src={applicant.volunteer.profile_image} alt={applicant.volunteer?.name} className="h-full w-full object-cover" />
                                             ) : (
-                                              <span className="text-sm font-semibold text-gray-700">{getInitials(applicant.volunteer?.name || applicant.volunteer?.ngo_name || 'A')}</span>
+                                              <span className="text-sm font-semibold">{getInitials(applicant.volunteer?.name || applicant.volunteer?.ngo_name || 'A')}</span>
                                             )}
                                           </div>
                                           <div className="min-w-0">

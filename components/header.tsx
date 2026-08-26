@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useRef, type KeyboardEventHandler, type FocusEventHandler } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { getGramAvatarFallbackStyle } from "@/lib/gram-avatar"
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "@/components/ui/command"
 import { Badge } from "@/components/ui/badge"
 import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription, SheetClose } from "@/components/ui/sheet"
@@ -97,21 +98,21 @@ function NavbarSearchInput({
   }, [])
 
   return (
-    <div className="relative w-full overflow-hidden rounded-lg border-2 border-gray-300">
+    <div className="relative w-full overflow-hidden rounded-[10px] border border-[#DCE1E2] bg-white transition-[border-color,box-shadow] focus-within:border-udaan-orange focus-within:shadow-[0_0_0_3px_rgba(244,123,32,0.14)]">
       <div className="relative bg-white">
         <Input
           ref={inputRef}
           type="text"
           placeholder={placeholder}
           title={SEARCH_PLACEHOLDER}
-          className="w-full border-0 bg-white pl-8 pr-10 text-black placeholder:truncate placeholder:text-gray-500 focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0"
+          className="w-full border-0 bg-white pl-8 pr-10 text-[#4E5961] placeholder:truncate placeholder:text-gram-faint shadow-none focus:!border-transparent focus:!shadow-none focus-visible:!border-transparent focus-visible:!shadow-none"
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={onKeyDown}
           onFocus={onFocus}
           onBlur={onBlur}
         />
-        <Search className="pointer-events-none absolute left-2.5 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-gray-600" />
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-gram-muted" />
         <button
           type="button"
           aria-label="Clear search"
@@ -215,13 +216,23 @@ function HeaderNavLink({
   item: NavigationItem
   className: string
 }) {
+  const pathname = usePathname()
+  const isActive =
+    !item.external &&
+    (pathname === item.href || (item.href !== '/' && pathname.startsWith(`${item.href}/`)))
+
+  const resolvedClassName = cn(
+    className,
+    isActive && 'sidebar-nav-active'
+  )
+
   if (item.external) {
     return (
       <a
         href={item.href}
         target={item.href.startsWith('mailto:') ? undefined : '_blank'}
         rel={item.href.startsWith('mailto:') ? undefined : 'noopener noreferrer'}
-        className={className}
+        className={resolvedClassName}
         title={item.description}
       >
         {item.label}
@@ -230,7 +241,7 @@ function HeaderNavLink({
   }
 
   return (
-    <Link href={item.href} className={className} title={item.description}>
+    <Link href={item.href} className={resolvedClassName} title={item.description}>
       {item.label}
     </Link>
   )
@@ -394,8 +405,7 @@ export function Header({ className = '' }: { className?: string } = {}) {
   return (
     <>
     <aside
-      className={`platform-sidebar fixed inset-y-0 left-0 top-0 z-50 hidden h-dvh w-60 flex-col border-r border-white/10 text-white md:flex ${className}`}
-      style={{ backgroundColor: '#0067b9' }}
+      className={`platform-sidebar bg-platform-sidebar fixed inset-y-0 left-0 top-0 z-50 hidden h-dvh w-60 flex-col border-r border-white/10 text-white md:flex ${className}`}
     >
       <div className="flex h-full min-h-0 flex-col">
         <div className="shrink-0 border-b border-white/15 px-4 py-4">
@@ -476,14 +486,17 @@ export function Header({ className = '' }: { className?: string } = {}) {
                                     key={profile.id}
                                     value={profile.name}
                                     onSelect={() => handleProfileSelect(profile)}
-                                    className="cursor-pointer p-4 hover:bg-[#eaf4ff] data-[selected=true]:bg-[#eaf4ff] data-[selected=true]:text-gray-900 transition-colors"
+                                    className="cursor-pointer p-4 hover:bg-gram-soft data-[selected=true]:bg-gram-soft data-[selected=true]:text-gray-900 transition-colors"
                                   >
                                     <div className="flex items-center gap-3 w-full">
                                       <Avatar className="h-10 w-10 flex-shrink-0">
                                         {profile.profile_image && (
                                           <AvatarImage src={profile.profile_image} alt={profile.name} />
                                         )}
-                                        <AvatarFallback className="text-xs bg-udaan-orange text-white font-semibold">
+                                        <AvatarFallback
+                                          className="text-xs font-semibold"
+                                          style={getGramAvatarFallbackStyle(profile.name)}
+                                        >
                                           {getInitials(profile.name)}
                                         </AvatarFallback>
                                       </Avatar>
@@ -515,7 +528,7 @@ export function Header({ className = '' }: { className?: string } = {}) {
                                   {!showAllResults ? (
                                     <Button 
                                       variant="ghost" 
-                                      className="w-full text-sm text-blue-600 hover:text-blue-800 hover:bg-blue-50"
+                                      className="w-full text-sm text-primary hover:text-primary/80 hover:bg-gram-soft"
                                       onClick={() => setShowAllResults(true)}
                                     >
                                       View all {searchResults.length} profiles
@@ -559,7 +572,7 @@ export function Header({ className = '' }: { className?: string } = {}) {
               <HeaderNavLink
                 key={`desktop-nav-${item.href}`}
                 item={item}
-                className="rounded-md px-3 py-2 text-sm font-medium text-white hover:bg-white/10 hover:text-udaan-orange focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors"
+                className="rounded-md px-3 py-2 text-sm font-medium text-[#F5F7F8] hover:bg-white/5 hover:text-white focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors"
               />
             ))}
           </nav>
@@ -567,7 +580,7 @@ export function Header({ className = '' }: { className?: string } = {}) {
           className="shrink-0 border-t border-white/15 px-3 py-3"
           isLoading={navLoading}
           buttonClassName="block w-full rounded-md border border-white bg-transparent px-2.5 py-1.5 text-left text-xs font-semibold text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-100"
-          linkClassName="rounded-md px-3 py-2 text-sm font-medium text-white hover:bg-white/10 hover:text-udaan-orange focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors"
+          linkClassName="rounded-md px-3 py-2 text-sm font-medium text-[#B7C1C7] hover:bg-white/5 hover:text-white focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors"
         />
         <div className="shrink-0 border-t border-white/15 p-3">
           {!mounted || loading ? (
@@ -590,7 +603,9 @@ export function Header({ className = '' }: { className?: string } = {}) {
               >
                 <Avatar className="h-9 w-9 shrink-0">
                   {user.profile_image && <AvatarImage src={user.profile_image} alt={user.name} />}
-                  <AvatarFallback className="bg-udaan-orange text-white">{getInitials(user.name)}</AvatarFallback>
+                  <AvatarFallback style={getGramAvatarFallbackStyle(user.name)}>
+                    {getInitials(user.name)}
+                  </AvatarFallback>
                 </Avatar>
                 <span className="max-w-[148px] truncate text-sm font-medium">
                   {profileTriggerLabel}
@@ -645,7 +660,7 @@ export function Header({ className = '' }: { className?: string } = {}) {
         </div>
       </div>
     </aside>
-    <header className="sticky top-0 z-50 w-full border-b text-white md:hidden" style={{ backgroundColor: '#0067b9' }}>
+    <header className="sticky top-0 z-50 w-full border-b bg-platform-sidebar text-white md:hidden">
       <div className="flex h-16 items-center gap-4 px-4">
         {navLoading ? (
           <div className="flex items-center gap-2">
@@ -669,7 +684,7 @@ export function Header({ className = '' }: { className?: string } = {}) {
               </Button>
             </SheetTrigger>
 
-            <SheetContent side="right" className="border-l w-full p-0 [&>button]:hidden" style={{ backgroundColor: '#0067b9', borderColor: '#0067b9' }}>
+            <SheetContent side="right" className="border-l border-platform-sidebar bg-platform-sidebar w-full p-0 [&>button]:hidden">
               <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
               <SheetDescription className="sr-only">
                 Access navigation links, search, and user account options
@@ -677,7 +692,7 @@ export function Header({ className = '' }: { className?: string } = {}) {
               
               <div className="flex flex-col h-full relative z-10">
                 {/* Fixed Header */}
-                <div className="flex-shrink-0 py-2 px-3 border-b border-white/20" style={{ backgroundColor: '#0067b9' }}>
+                <div className="flex-shrink-0 border-b border-white/20 bg-platform-sidebar px-3 py-2">
                   <div className="flex items-center justify-between h-12">
                     <ProductBrand href="/" size="sm" nameClassName="text-white" poweredClassName="text-white/75" />
                     
@@ -695,7 +710,7 @@ export function Header({ className = '' }: { className?: string } = {}) {
                 </div>
 
                 {/* Scrollable Content */}
-                <div className="flex-1 overflow-y-auto p-6" style={{ backgroundColor: '#0067b9' }}>
+                <div className="flex-1 overflow-y-auto bg-platform-sidebar p-6">
                   {/* Profile Search */}
                   <div className="mb-6">
                       <NavbarSearchInput
@@ -733,7 +748,10 @@ export function Header({ className = '' }: { className?: string } = {}) {
                                               {profile.profile_image && (
                                                 <AvatarImage src={profile.profile_image} alt={profile.name} />
                                               )}
-                                              <AvatarFallback className="text-xs bg-udaan-orange text-white font-semibold">
+                                              <AvatarFallback
+                                                className="text-xs font-semibold"
+                                                style={getGramAvatarFallbackStyle(profile.name)}
+                                              >
                                                 {getInitials(profile.name)}
                                               </AvatarFallback>
                                             </Avatar>
@@ -762,7 +780,7 @@ export function Header({ className = '' }: { className?: string } = {}) {
                                         {!showAllResults ? (
                                           <Button 
                                             variant="ghost" 
-                                            className="w-full text-sm text-blue-600 hover:text-blue-800 hover:bg-blue-50"
+                                            className="w-full text-sm text-primary hover:text-primary/80 hover:bg-gram-soft"
                                             onClick={() => setShowAllResults(true)}
                                           >
                                             View all {searchResults.length} profiles
@@ -809,7 +827,7 @@ export function Header({ className = '' }: { className?: string } = {}) {
                     className="mb-8"
                     isLoading={navLoading}
                     buttonClassName="block w-full rounded-lg border border-white bg-transparent px-3 py-2.5 text-left text-base font-medium leading-snug text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-100"
-                    linkClassName="flex items-center gap-3 px-3 py-2.5 text-base font-medium text-white hover:bg-white/10 hover:text-udaan-orange rounded-lg transition-colors"
+                    linkClassName="flex items-center gap-3 px-3 py-2.5 text-base font-medium text-[#F5F7F8] hover:bg-white/5 hover:text-white rounded-lg transition-colors"
                   />
 
                   {/* User Section */}
@@ -831,7 +849,12 @@ export function Header({ className = '' }: { className?: string } = {}) {
                         <div className="mb-6 flex min-w-0 items-center gap-4">
                           <Avatar className="h-12 w-12">
                             {user.profile_image && <AvatarImage src={user.profile_image} alt={user.name} />}
-                            <AvatarFallback className="bg-udaan-orange text-white font-semibold text-lg">{getInitials(user.name)}</AvatarFallback>
+                            <AvatarFallback
+                              className="text-lg font-semibold"
+                              style={getGramAvatarFallbackStyle(user.name)}
+                            >
+                              {getInitials(user.name)}
+                            </AvatarFallback>
                           </Avatar>
                           <div className="min-w-0 grid gap-1">
                             <p className="truncate text-lg font-medium text-white">{user.name}</p>

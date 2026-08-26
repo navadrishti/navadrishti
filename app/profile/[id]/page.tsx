@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useParams } from "next/navigation"
 import { Header } from "@/components/header"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { getGramAvatarFallbackStyle } from "@/lib/gram-avatar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -412,7 +413,10 @@ export default function ImpactProfilePage() {
             <div className="flex flex-col gap-6 md:flex-row">
               <Avatar className="z-10 -mt-12 h-28 w-28 border-4 border-white shadow-sm sm:h-32 sm:w-32">
                 <AvatarImage src={profile.profile_image} />
-                <AvatarFallback className="bg-udaan-orange text-3xl text-white">
+                <AvatarFallback
+                  className="text-3xl"
+                  style={getGramAvatarFallbackStyle(profile.name)}
+                >
                   {getInitials(profile.name)}
                 </AvatarFallback>
               </Avatar>
@@ -445,7 +449,7 @@ export default function ImpactProfilePage() {
                       {canPayThisNgo ? (
                         <Button
                           size="sm"
-                          className="bg-emerald-700 text-white hover:bg-emerald-800"
+                          variant="outline"
                           onClick={() => setPayDialogOpen(true)}
                         >
                           Pay

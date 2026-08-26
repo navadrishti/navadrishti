@@ -51,7 +51,7 @@ export function DashboardBodyLayout({
 }: DashboardBodyLayoutProps) {
   if (!showSidebar) {
     return (
-      <main className={cn('flex-1 min-w-0 bg-gray-50', mainClassName)}>
+      <main className={cn('flex-1 min-w-0 bg-background', mainClassName)}>
         {children}
       </main>
     )
@@ -60,7 +60,7 @@ export function DashboardBodyLayout({
   return (
     <div className="flex flex-1 flex-col lg:min-h-screen lg:flex-row">
       {sidebar}
-      <main className={cn('flex-1 min-w-0 bg-gray-50 pb-24 lg:pb-0', mainClassName)}>
+      <main className={cn('flex-1 min-w-0 bg-background pb-24 lg:pb-0', mainClassName)}>
         {children}
       </main>
     </div>
@@ -160,17 +160,17 @@ export function DashboardQuickSidebar({
                 className={[
                   'flex w-[4.25rem] shrink-0 grow-0 flex-col items-center justify-center rounded-2xl px-2.5 py-2 transition-colors',
                   isActive
-                    ? 'bg-white/90 text-black shadow-sm'
-                    : 'text-black/70 hover:bg-white/55 hover:text-black',
+                    ? 'bg-gram-soft text-udaan-orange shadow-sm'
+                    : 'text-gram-muted hover:bg-white/70 hover:text-gram-ink',
                 ].join(' ')}
               >
-                <span className="text-xs font-semibold tracking-[0.08em] leading-none text-black">
+                <span className="text-xs font-semibold tracking-[0.08em] leading-none">
                   {initials}
                 </span>
                 <span
                   className={[
                     'mt-1.5 max-w-full truncate text-[10px] font-medium leading-none',
-                    isActive ? 'text-black/80' : 'text-black/50',
+                    isActive ? 'text-udaan-orange/80' : 'text-gram-faint',
                   ].join(' ')}
                 >
                   {item.label}
@@ -209,8 +209,8 @@ export function DashboardQuickSidebar({
                 className={cn(
                   'w-full rounded-md px-3 py-2 text-left text-sm font-medium transition-colors',
                   isActive
-                    ? 'bg-udaan-blue text-white'
-                    : 'text-slate-900 hover:bg-slate-50'
+                    ? 'bg-gram-soft text-udaan-orange'
+                    : 'text-gram-ink hover:bg-gram-page'
                 )}
               >
                 {item.label}

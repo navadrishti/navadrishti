@@ -220,7 +220,7 @@ export async function GET(request: NextRequest) {
           .from('users')
           .select(`${userFields}, account_status, locked_until, updated_at, verified_at`)
           .in('user_type', ['individual', 'ngo', 'company'])
-          .or('verification_status.eq.suspended,account_status.eq.suspended,account_status.eq.banned')
+          .or('account_status.eq.suspended,account_status.eq.banned')
           .order('updated_at', { ascending: false })
           .limit(sourceFetchLimit)
       ),
@@ -255,7 +255,7 @@ export async function GET(request: NextRequest) {
         supabase
           .from('campaigns')
           .select('id, title, description, location, company_id, status, end_date, updated_at, created_at')
-          .in('status', ['completed', 'closed', 'finished', 'ended'])
+          .eq('status', 'completed')
           .order('updated_at', { ascending: false })
           .limit(sourceFetchLimit)
       ),
@@ -462,10 +462,9 @@ export async function GET(request: NextRequest) {
       if (!createdAt) continue
       const actor = actorFromUser(user)
       const accountStatus = String(user.account_status || '').toLowerCase()
-      const verificationStatus = String(user.verification_status || '').toLowerCase()
       const moderation = getAdminModeration(user.profile_data)
       const banned = accountStatus === 'banned' || moderation.permanently_banned === true
-      const suspended = !banned && (accountStatus === 'suspended' || verificationStatus === 'suspended')
+      const suspended = !banned && accountStatus === 'suspended'
       const days = Number(moderation.suspend_days || 0)
       const until = isoOrNull(moderation.suspended_until) || isoOrNull(user.locked_until)
 

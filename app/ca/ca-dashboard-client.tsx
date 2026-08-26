@@ -87,7 +87,7 @@ function ColumnCard({
   return (
     <Card className="flex h-full flex-col">
       <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2 text-base text-udaan-blue">
+        <CardTitle className="flex items-center gap-2 text-base text-gram-ink">
           {title}
           <span className="ml-auto text-xs font-normal text-slate-500 bg-slate-100 rounded-full px-2 py-0.5">
             {count}
@@ -107,7 +107,7 @@ function ColumnCard({
       <div className="relative z-10 px-4 pb-4 pt-2 border-t border-slate-100">
         <Link
           href={href}
-          className="inline-flex items-center justify-center gap-1 w-full h-8 rounded-md border border-input bg-background text-xs font-medium text-udaan-blue"
+          className="inline-flex items-center justify-center gap-1 w-full h-8 rounded-md border border-input bg-background text-xs font-medium text-primary"
         >
           See full list <ArrowRight className="w-3 h-3" />
         </Link>
