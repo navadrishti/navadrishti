@@ -24,7 +24,6 @@ import {
   buildPricingResponse,
   canContributeViaPlatform,
   createNgoNetworkDonationOrder,
-  isNgoEligibleForNetworkListing,
   isNgoRazorpayPayoutActive,
   isRazorpayRouteEnabled,
   isVerifiedNgoUser,
@@ -293,9 +292,7 @@ export async function GET(request: NextRequest) {
       if (isFieldOfficerAccount(row, profileData, ngoVerification)) {
         return false;
       }
-      if (!isNgoEligibleForNetworkListing(profileData)) {
-        return false;
-      }
+      // All verified NGOs are listed; Razorpay connection only gates payments.
       return true;
     });
 
@@ -521,8 +518,8 @@ export async function POST(request: NextRequest) {
     const payoutReady = await ngoIsEligibleForNetworkListing(ngoUserId);
     if (!payoutReady) {
       return NextResponse.json(
-        { error: 'This NGO has not completed Razorpay payout setup yet' },
-        { status: 404 }
+        { error: 'This NGO has not connected Razorpay payout yet, so payments cannot be accepted' },
+        { status: 403 }
       );
     }
 

@@ -73,7 +73,7 @@ export function getNgoLinkedAccountIdFromProfile(
   return linkedAccountId || null;
 }
 
-/** Razorpay Route linked account must be active before NGO Network payouts can settle. */
+/** Razorpay Route linked account must be active before the NGO can receive donations/payouts. */
 export function isNgoRazorpayPayoutActive(
   profile: Record<string, unknown> | null | undefined
 ): boolean {
@@ -82,7 +82,36 @@ export function isNgoRazorpayPayoutActive(
   return Boolean(linkedAccountId && linkStatus === 'active');
 }
 
-/** Verified NGOs appear on the NGO Network only after Razorpay payout is connected. */
+/** Any merchant account (NGO / company / individual) with an active Razorpay linked account. */
+export function isMerchantRazorpayPayoutActive(
+  profile: Record<string, unknown> | null | undefined
+): boolean {
+  return isNgoRazorpayPayoutActive(profile);
+}
+
+export const CAPABILITY_LISTING_REQUIRES_PAYOUT_MESSAGE =
+  'Connect Razorpay payout before listing capabilities so you can receive merchant payments.';
+
+export async function assertUserRazorpayPayoutActiveForCapabilities(userId: number): Promise<void> {
+  if (!Number.isFinite(userId) || userId <= 0) {
+    throw new Error(CAPABILITY_LISTING_REQUIRES_PAYOUT_MESSAGE);
+  }
+
+  const { data } = await supabase
+    .from('users')
+    .select('profile_data')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (!isMerchantRazorpayPayoutActive(parseProfileData(data?.profile_data))) {
+    throw new Error(CAPABILITY_LISTING_REQUIRES_PAYOUT_MESSAGE);
+  }
+}
+
+/**
+ * @deprecated Prefer verification checks for listing and `isNgoRazorpayPayoutActive` for payments.
+ * Kept as an alias of payout-active for payment-gate call sites.
+ */
 export function isNgoEligibleForNetworkListing(
   profile: Record<string, unknown> | null | undefined
 ): boolean {
@@ -397,7 +426,8 @@ export async function ngoIsEligibleForNetworkListing(ngoUserId: number): Promise
     .eq('id', ngoUserId)
     .maybeSingle();
 
-  return isNgoEligibleForNetworkListing(parseProfileData(data?.profile_data));
+  // Payment readiness (Razorpay connected), not directory listing eligibility.
+  return isNgoRazorpayPayoutActive(parseProfileData(data?.profile_data));
 }
 
 export async function getBeneficiaryPayoutStatus(ngoUserId: number, ngoName?: string) {
@@ -875,7 +905,9 @@ export function buildNgoPayoutStatusResponse(user: {
     linkError: String(profile.razorpay_link_error || '').trim() || null,
     linkUpdatedAt: String(profile.razorpay_link_updated_at || '').trim() || null,
     hasPayoutDetails: hasNgoPayoutDetailsOnFile(profile),
-    networkListingEligible: isNgoEligibleForNetworkListing(profile),
+    /** True when Razorpay is connected and the account can receive Route payouts. */
+    acceptsPayments: isNgoRazorpayPayoutActive(profile),
+    networkListingEligible: true,
     routeReady: isNgoRazorpayPayoutActive(profile),
     payoutStatusMessage: null as string | null,
   };

@@ -98,3 +98,36 @@ export function ProductBrand({
     </div>
   );
 }
+
+/** Compact © year + G logo + GRAM for auth/page footers (undraggable / unselectable). */
+export function ProductCopyright({
+  className,
+  suffix = '',
+}: {
+  className?: string;
+  /** Extra text after the product name, e.g. " Platform" */
+  suffix?: string;
+}) {
+  return (
+    <p
+      className={cn(
+        PRODUCT_BRAND_CLASSNAME,
+        'inline-flex items-center justify-center gap-1.5 text-sm text-gray-600',
+        className
+      )}
+    >
+      <span>© {new Date().getFullYear()}</span>
+      <img
+        src={PRODUCT_LOGO_SRC}
+        alt=""
+        aria-hidden="true"
+        draggable={false}
+        className="h-4 w-4 shrink-0 object-contain"
+      />
+      <span>
+        {PRODUCT_NAME}
+        {suffix}
+      </span>
+    </p>
+  );
+}

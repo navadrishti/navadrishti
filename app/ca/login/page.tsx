@@ -11,7 +11,7 @@ import { Loader2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { AuthCardBackRow } from '@/components/header';
 import { Skeleton } from '@/components/ui/skeleton';
-import { PRODUCT_NAME } from '@/lib/access-control';
+import { ProductCopyright } from '@/components/product-brand';
 
 export default function CALoginPage() {
   const router = useRouter();
@@ -140,8 +140,8 @@ export default function CALoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100 p-4">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
-          <h1 className="mb-2 text-3xl font-bold text-gray-900">CA Console</h1>
-          <p className="text-gray-600">Chartered Accountant Verification Portal</p>
+          <h1 className="mb-2 text-3xl font-bold text-gray-900">CA Portal</h1>
+          <p className="text-gray-600">Sign in with your partner CA credentials</p>
         </div>
 
         <Card className="border-2 border-slate-200 shadow-none">
@@ -207,7 +207,7 @@ export default function CALoginPage() {
 
           <div className="mt-6 flex flex-col items-center gap-2 text-center text-sm text-gray-600">
             <p>Forgot password? Contact administrator</p>
-            <p>© {new Date().getFullYear()} {PRODUCT_NAME} Platform</p>
+            <ProductCopyright suffix=" Platform" />
           </div>
       </div>
     </div>

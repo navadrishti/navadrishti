@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AuthCardBackRow } from '@/components/header';
-import { PRODUCT_NAME } from '@/lib/access-control';
+import { ProductCopyright } from '@/components/product-brand';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -123,8 +123,8 @@ export default function LoginPage() {
         </form>
       </Card>
 
-      <div className="mt-6 text-sm text-gray-600">
-        © {new Date().getFullYear()} {PRODUCT_NAME}
+      <div className="mt-6">
+        <ProductCopyright />
       </div>
     </div>
   );

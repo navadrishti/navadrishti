@@ -216,7 +216,7 @@ export function getCAFromRequest(request: NextRequest): PlatformCATokenPayload |
       ca_id: 'legacy',
       username: 'ca',
       email: oldPayload.email,
-      display_name: oldPayload.name || 'CA Console User',
+      display_name: oldPayload.name || 'CA Portal User',
     };
   }
 

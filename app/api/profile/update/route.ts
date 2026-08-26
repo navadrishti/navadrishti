@@ -7,7 +7,6 @@ import {
   buildNgoPayoutStatusResponse,
   buildPayoutProfileUpdate,
   formatNgoBankDetailsSummary,
-  getBeneficiaryPayoutStatus,
   getNgoPayoutLinkStatus,
   onboardNgoRazorpayLinkedAccount,
   parseNgoPayoutAccountFromProfile,
@@ -60,23 +59,27 @@ function buildPayoutStatusMessage(
   user: { id: number; name?: string | null; user_type?: string | null },
   response: ReturnType<typeof buildNgoPayoutStatusResponse>
 ) {
-  if (user.user_type === 'ngo') {
-    return getBeneficiaryPayoutStatus(user.id, user.name || undefined).then((check) => check.message);
+  if (response.routeReady) {
+    return Promise.resolve(null);
   }
 
-  if (response.hasPayoutDetails) {
-    if (user.user_type === 'individual') {
-      return Promise.resolve(
-        'Payout bank details saved. Razorpay merchant connection for capability and service payouts will be enabled in a future update.'
-      );
-    }
+  if (user.user_type === 'ngo') {
+    return Promise.resolve('Connect account to receive donations and list capabilities');
+  }
 
+  if (user.user_type === 'individual') {
     return Promise.resolve(
-      'Payout bank details saved. Razorpay merchant connection for capability and CSR payouts will be enabled in a future update.'
+      response.hasPayoutDetails
+        ? 'Connect account to list capabilities and receive payouts'
+        : 'Save bank details, then connect Razorpay to list capabilities and receive payouts'
     );
   }
 
-  return Promise.resolve('Add payout bank details so you can receive payments when merchant payouts are enabled.');
+  return Promise.resolve(
+    response.hasPayoutDetails
+      ? 'Connect account to list capabilities and receive merchant payouts'
+      : 'Save bank details, then connect Razorpay to list capabilities and receive merchant payouts'
+  );
 }
 
 export async function GET(request: NextRequest) {
@@ -90,9 +93,7 @@ export async function GET(request: NextRequest) {
 
     const user = await loadPayoutUser(authUser.id);
     const response = buildNgoPayoutStatusResponse(user);
-    if (user.user_type !== 'ngo') {
-      response.canConnect = false;
-    }
+    response.canConnect = Boolean(response.hasPayoutDetails);
     response.payoutStatusMessage = await buildPayoutStatusMessage(user, response);
 
     return NextResponse.json({ success: true, ...response });
@@ -118,13 +119,6 @@ export async function PATCH(request: NextRequest) {
     const user = await loadPayoutUser(authUser.id);
     const currentProfile = parseProfileData(user.profile_data);
     const action = String(body?.action || '').trim();
-
-    if (action === 'connect' && user.user_type !== 'ngo') {
-      return NextResponse.json(
-        { error: 'Razorpay payout connection is only available for NGOs right now. You can save bank details for future merchant payouts.' },
-        { status: 400 }
-      );
-    }
 
     if (action === 'save') {
       const existingPayout = parseNgoPayoutAccountFromProfile(currentProfile);
@@ -169,9 +163,7 @@ export async function PATCH(request: NextRequest) {
         name: user.name,
         profile_data: nextProfile,
       });
-      if (user.user_type !== 'ngo') {
-        savedResponse.canConnect = false;
-      }
+      savedResponse.canConnect = Boolean(savedResponse.hasPayoutDetails);
       savedResponse.payoutStatusMessage = await buildPayoutStatusMessage(user, savedResponse);
 
       return NextResponse.json({
@@ -239,7 +231,12 @@ export async function PATCH(request: NextRequest) {
         userId: user.id,
         email: user.email,
         phone: user.phone,
-        ngoName: String(currentProfile.ngo_name || user.name || payoutAccount.account_holder_name),
+        ngoName: String(
+          currentProfile.ngo_name ||
+            currentProfile.company_name ||
+            user.name ||
+            payoutAccount.account_holder_name
+        ),
         city: user.city,
         state: user.state_province,
         pincode: user.pincode,

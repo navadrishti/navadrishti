@@ -5,13 +5,13 @@ import { JWT_SECRET } from '@/lib/auth'
 import {
   CATEGORY_BY_OFFER_TYPE,
   getDefaultTransactionType,
-  IMPACT_AREAS,
   isOfferType,
   isTransactionAllowedForOfferType,
   isTransactionType,
   OfferType,
   normalizeDateOnlyToEndOfDayIso,
   normalizeCapabilityTransactionType,
+  normalizeImpactAreas,
   resolveCapabilityRentalRate,
   sanitizeTextArray,
   parseCsvToStringArray,
@@ -19,6 +19,10 @@ import {
   toNullableNumber,
   toNullablePositiveNumber
 } from '@/lib/service-offers'
+import {
+  assertUserRazorpayPayoutActiveForCapabilities,
+  CAPABILITY_LISTING_REQUIRES_PAYOUT_MESSAGE,
+} from '@/lib/razorpay-route'
 
 interface JWTPayload {
   id: number
@@ -186,13 +190,9 @@ const validateIncomingOfferBody = (body: Record<string, any>) => {
     return `transaction_type ${body.transaction_type} is not allowed for offer_type ${body.offer_type}.`
   }
 
+  body.impact_area = normalizeImpactAreas(body.impact_area)
   if (!Array.isArray(body.impact_area) || body.impact_area.length === 0) {
     return 'Please select at least one impact area.'
-  }
-
-  const invalidImpactArea = body.impact_area.some((area: string) => !(IMPACT_AREAS as readonly string[]).includes(area))
-  if (invalidImpactArea) {
-    return 'impact_area contains invalid values.'
   }
 
   if (!body.valid_until && !body.expires_at && !(body.offer_details && body.offer_details.valid_until)) {
@@ -286,6 +286,7 @@ const coerceIncomingBody = (body: Record<string, any>) => {
   } else {
     body.impact_area = sanitizeTextArray(body.impact_area)
   }
+  body.impact_area = normalizeImpactAreas(body.impact_area)
 
   if (!Array.isArray(body.tags)) {
     if (typeof body.tags === 'string') body.tags = parseCsvToStringArray(body.tags)
@@ -393,6 +394,18 @@ export async function PUT(
       return NextResponse.json({ error: 'You can only update your own offers' }, { status: 403 })
     }
 
+    try {
+      await assertUserRazorpayPayoutActiveForCapabilities(userId)
+    } catch (payoutError) {
+      return NextResponse.json(
+        {
+          error: payoutError instanceof Error ? payoutError.message : CAPABILITY_LISTING_REQUIRES_PAYOUT_MESSAGE,
+          requiresPayoutConnection: true,
+        },
+        { status: 403 }
+      )
+    }
+
     const priceInfo = buildPriceInfo(offerType, transactionType, body)
 
     const normalizedOfferDetails = normalizeOfferDetailsForStorage(
@@ -412,7 +425,7 @@ export async function PUT(
       description: String(body.description || '').trim(),
       offer_type: offerType,
       transaction_type: transactionType,
-      impact_area: sanitizeTextArray(body.impact_area),
+      impact_area: normalizeImpactAreas(body.impact_area),
       tags: sanitizeTextArray(body.tags),
       requirements: Array.isArray(body.requirements) ? sanitizeTextArray(body.requirements) : (typeof body.requirements === 'string' && body.requirements.trim() ? [body.requirements.trim()] : null),
       city: String(body.city || '').trim() || null,

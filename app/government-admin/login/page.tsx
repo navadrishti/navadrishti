@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { AuthCardBackRow } from '@/components/header';
+import { ProductCopyright } from '@/components/product-brand';
 import { PRODUCT_NAME } from '@/lib/access-control';
 
 export default function GovernmentAdminLoginPage() {
@@ -182,7 +183,7 @@ export default function GovernmentAdminLoginPage() {
 
           <div className="mt-6 flex flex-col items-center gap-2 text-center text-sm text-gray-600">
             <p>Access is restricted and all actions are audited</p>
-            <p>© {new Date().getFullYear()} {PRODUCT_NAME} Platform</p>
+            <ProductCopyright suffix=" Platform" />
           </div>
       </div>
     </div>

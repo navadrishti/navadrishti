@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { AuthCardBackRow } from '@/components/header';
+import { ProductCopyright } from '@/components/product-brand';
 import { PRODUCT_NAME } from '@/lib/access-control';
 
 export default function AdminLoginPage() {
@@ -163,8 +164,8 @@ export default function AdminLoginPage() {
           </CardContent>
         </Card>
 
-        <div className="mt-6 text-center text-sm text-gray-600">
-          © {new Date().getFullYear()} {PRODUCT_NAME}
+        <div className="mt-6 text-center">
+          <ProductCopyright />
         </div>
       </div>
     </div>
