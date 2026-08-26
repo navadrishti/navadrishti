@@ -31,6 +31,7 @@ import { DashboardBodyLayout, DashboardQuickSidebar } from '@/components/dashboa
 import { DashboardMainSkeleton, DashboardPageSkeleton, DashboardSidebarSkeleton } from '@/components/ui/skeleton';
 import { ImpactReportsPanel } from '@/components/companies/impact-reports-panel';
 import { YourCapabilitiesPanel } from '@/components/service-card';
+import { dashboardProfilePayoutHref, usePayoutConnection } from '@/hooks/use-payout-connection';
 import { AGENT_NAMES } from '@/lib/ai-suite'
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -619,6 +620,9 @@ function InlineSkillServiceFulfillment({
 
 function CompanyDashboardContent() {
   const { user } = useAuth();
+  const { connected: payoutConnected } = usePayoutConnection(Boolean(user));
+  const canListCapabilities = payoutConnected === true;
+  const payoutHref = dashboardProfilePayoutHref('company');
   const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -1453,6 +1457,8 @@ function CompanyDashboardContent() {
                           offers={serviceOffers}
                           loading={loadingServiceOffers}
                           emptyDescription="Create capability offers to support NGO needs and partnerships."
+                          canCreate={canListCapabilities}
+                          createBlockedHref={payoutHref}
                         />
                       </TabsContent>
 
@@ -1999,7 +2005,7 @@ function CompanyDashboardContent() {
                     <div className="space-y-4 pt-1">
                       <h3 className="font-semibold text-slate-900">CA credentials</h3>
                       <p className="mt-1 text-sm text-slate-600">
-                        Create a CA login for evidence verification on your CSR projects. Verification CAs use a separate portal at /ca/login.
+                        Create a CA login for your company CSR projects. Your company CA signs in at the CA Portal (/evidence-verification/login).
                       </p>
 
                       <form className="mt-4 space-y-4" onSubmit={createCompanyCAAccount}>

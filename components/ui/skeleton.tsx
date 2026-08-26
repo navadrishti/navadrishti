@@ -397,11 +397,15 @@ function PlatformSidebarSkeleton({ className }: { className?: string }) {
           ))}
         </nav>
         {showUtility ? (
-          <div className="shrink-0 space-y-2 border-t border-white/15 px-3 py-3">
-            <Skeleton className="h-8 w-full rounded-md bg-white/40" />
-            {Array.from({ length: 4 }).map((_, index) => (
-              <Skeleton key={`platform-utility-skeleton-${index}`} className="h-9 w-full rounded-md bg-white/40" />
-            ))}
+          <div className="shrink-0 border-t border-white/15 px-3 py-3">
+            <div className="mb-3 shrink-0">
+              <Skeleton className="h-8 w-full rounded-md bg-white/40" />
+            </div>
+            <nav className="flex flex-col gap-1">
+              {Array.from({ length: 2 }).map((_, index) => (
+                <Skeleton key={`platform-utility-skeleton-${index}`} className="h-9 w-full rounded-md bg-white/40" />
+              ))}
+            </nav>
           </div>
         ) : null}
         <div className="shrink-0 space-y-2 border-t border-white/15 p-3">

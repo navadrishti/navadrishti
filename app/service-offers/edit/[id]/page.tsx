@@ -20,6 +20,7 @@ import { Textarea } from '@/components/ui/textarea'
 import {
   getDefaultTransactionType,
   IMPACT_AREA_OPTIONS,
+  normalizeImpactAreas,
   isOfferType,
   isTransactionAllowedForOfferType,
   isTransactionType,
@@ -266,7 +267,7 @@ export default function EditServiceOfferPage({ params }: { params: Promise<{ id:
           images: Array.isArray(details.images) ? details.images.join(',\n') : String(details.images || ''),
           offer_type: offerType,
           transaction_type: transactionType,
-          impact_area: Array.isArray(offer.impact_area) ? offer.impact_area : [],
+          impact_area: normalizeImpactAreas(offer.impact_area),
           tags: Array.isArray(offer.tags) ? offer.tags.join(', ') : '',
           requirements: typeof offer.requirements === 'string' ? offer.requirements : '',
           city: offer.city || '',
@@ -631,7 +632,7 @@ export default function EditServiceOfferPage({ params }: { params: Promise<{ id:
               <Card>
                 <CardHeader>
                   <CardTitle>Impact Area</CardTitle>
-                  <CardDescription>Select one or more SDG-based impact areas.</CardDescription>
+                  <CardDescription>Select one or more Schedule VII impact categories.</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <MultiSelectDropdown

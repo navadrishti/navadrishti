@@ -18,6 +18,7 @@ import { DashboardBodyLayout, DashboardQuickSidebar } from '@/components/dashboa
 import { DashboardMainSkeleton, DashboardPageSkeleton } from '@/components/ui/skeleton';
 import { CampaignVolunteerAssignmentCard, type CampaignVolunteerAssignmentItem } from '@/components/campaign-volunteer-assignment-card';
 import { YourCapabilitiesPanel } from '@/components/service-card';
+import { dashboardProfilePayoutHref, usePayoutConnection } from '@/hooks/use-payout-connection';
 import {
   formatDeliveryTrackingStatus,
   getDeliveryTrackingEvents,
@@ -781,6 +782,9 @@ function IndividualDashboardContent() {
   const { user } = useAuth();
   const { toast } = useToast();
   const router = useRouter();
+  const { connected: payoutConnected } = usePayoutConnection(Boolean(user));
+  const canListCapabilities = payoutConnected === true;
+  const payoutHref = dashboardProfilePayoutHref('individual');
   const searchParams = useSearchParams();
   const requestedTab = searchParams.get('tab') || 'profile';
   const activeTab =
@@ -1065,6 +1069,8 @@ function IndividualDashboardContent() {
                             offers={serviceOffers}
                             loading={loadingServiceOffers}
                             emptyDescription="Create an offer to contribute skills, funds, materials, or infrastructure."
+                            canCreate={canListCapabilities}
+                            createBlockedHref={payoutHref}
                           />
                         </TabsContent>
 

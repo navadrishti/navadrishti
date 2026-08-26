@@ -10,6 +10,7 @@ import { Header } from '@/components/header'
 import ProtectedRoute from '@/components/protected-route'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
+import { dashboardProfilePayoutHref, usePayoutConnection } from '@/hooks/use-payout-connection'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -136,6 +137,7 @@ export default function CreateServiceOfferPage() {
   const router = useRouter()
   const { user, token } = useAuth()
   const { toast } = useToast()
+  const { loading: payoutLoading, connected: payoutConnected } = usePayoutConnection(Boolean(user))
 
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState<FormData>(initialFormData)
@@ -400,6 +402,9 @@ export default function CreateServiceOfferPage() {
 
   if (!user) return null
 
+  const payoutHref = dashboardProfilePayoutHref(user.user_type)
+  const payoutBlocked = !payoutLoading && payoutConnected === false
+
   return (
     <ProtectedRoute requireVerification={true} permission="canCreateServiceOffers">
       <div className="min-h-screen bg-gray-50">
@@ -415,6 +420,25 @@ export default function CreateServiceOfferPage() {
             <p className="text-gray-600 mt-2">Publish what you can fund, supply, execute, or support.</p>
           </div>
 
+          {payoutLoading ? (
+            <Card>
+              <CardContent className="py-8 text-sm text-muted-foreground">Checking Razorpay payout connection...</CardContent>
+            </Card>
+          ) : payoutBlocked ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Connect Razorpay to list capabilities</CardTitle>
+                <CardDescription>
+                  You must connect Razorpay payout before listing capabilities so you can receive merchant payments.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button asChild>
+                  <Link href={payoutHref}>Connect Razorpay payout</Link>
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
           <form onSubmit={handleSubmit} className="space-y-6">
             <Card>
               <CardHeader>
@@ -545,7 +569,7 @@ export default function CreateServiceOfferPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Impact Area</CardTitle>
-                <CardDescription>Select one or more SDG-based impact areas.</CardDescription>
+                <CardDescription>Select one or more Schedule VII impact categories.</CardDescription>
               </CardHeader>
               <CardContent>
                   <MultiSelectDropdown
@@ -818,6 +842,7 @@ export default function CreateServiceOfferPage() {
               </Button>
             </div>
           </form>
+          )}
         </div>
       </div>
     </ProtectedRoute>

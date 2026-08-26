@@ -337,7 +337,7 @@ export default function VerificationPanelClient() {
         ) : (
           <>
         <EvidencePageHeader
-          title="Evidence Verification"
+          title="CA Portal"
           description="Review milestone evidence and confirm payments for your company scope."
           scopeLabels={scopeLabels || undefined}
         />

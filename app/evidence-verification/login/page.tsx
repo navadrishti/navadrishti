@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { AuthCardBackRow } from '@/components/header';
-import { PRODUCT_NAME } from '@/lib/access-control';
+import { ProductCopyright } from '@/components/product-brand';
 
 export default function EvidenceVerificationLoginPage() {
   const router = useRouter();
@@ -97,8 +97,8 @@ export default function EvidenceVerificationLoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100 p-4">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
-          <h1 className="mb-2 text-3xl font-bold text-gray-900">Evidence Portal</h1>
-          <p className="text-gray-600">Sign in to your assigned verification workspace</p>
+          <h1 className="mb-2 text-3xl font-bold text-gray-900">CA Portal</h1>
+          <p className="text-gray-600">Use your credentials to access the evidence verification portal</p>
         </div>
 
         <Card className="border-2 border-slate-200 shadow-none">
@@ -106,7 +106,7 @@ export default function EvidenceVerificationLoginPage() {
             <AuthCardBackRow />
             <CardTitle className="text-2xl font-bold text-center">Sign In</CardTitle>
             <CardDescription className="text-center">
-              Use the credentials provided by your company or project administrator
+              Use your credentials to access the evidence verification portal
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -158,8 +158,8 @@ export default function EvidenceVerificationLoginPage() {
           </CardContent>
         </Card>
 
-        <div className="mt-6 text-center text-sm text-gray-600">
-          © {new Date().getFullYear()} {PRODUCT_NAME}
+        <div className="mt-6 text-center">
+          <ProductCopyright />
         </div>
       </div>
     </div>
