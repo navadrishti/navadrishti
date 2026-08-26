@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { getGramAvatarFallbackStyle } from '@/lib/gram-avatar';
 import { Button } from '@/components/ui/button';
 import {
   Sheet,
@@ -116,14 +117,13 @@ export function CAConsoleHeader({
   const navLinkClass = (href: string) =>
     cn(
       'block rounded-md px-3 py-2.5 text-sm font-medium transition-colors',
-      isNavActive(href) ? 'bg-white/15 text-udaan-orange' : 'text-white hover:bg-white/10 hover:text-udaan-orange'
+      isNavActive(href) ? 'sidebar-nav-active' : 'text-[#F5F7F8] hover:bg-white/5 hover:text-white'
     );
 
   return (
     <>
     <aside
-      className="platform-sidebar fixed inset-y-0 left-0 top-0 z-50 hidden h-dvh w-60 flex-col border-r border-white/10 text-white md:flex"
-      style={{ backgroundColor: '#0067b9' }}
+      className="platform-sidebar bg-platform-sidebar fixed inset-y-0 left-0 top-0 z-50 hidden h-dvh w-60 flex-col border-r border-white/10 text-white md:flex"
     >
       <div className="flex h-full min-h-0 flex-col">
         <div className="shrink-0 border-b border-white/15 px-4 py-4">
@@ -136,7 +136,7 @@ export function CAConsoleHeader({
               href={item.href}
               className={cn(
                 'rounded-md px-3 py-2 text-sm font-medium transition-colors',
-                isNavActive(item.href) ? 'bg-white/15 text-udaan-orange' : 'text-white hover:bg-white/10 hover:text-udaan-orange'
+                isNavActive(item.href) ? 'sidebar-nav-active' : 'text-[#F5F7F8] hover:bg-white/5 hover:text-white'
               )}
             >
               {item.label}
@@ -156,7 +156,9 @@ export function CAConsoleHeader({
               onClick={(event) => event.preventDefault()}
             >
               <Avatar className="h-9 w-9">
-                <AvatarFallback className="bg-udaan-orange text-white">{initials}</AvatarFallback>
+                <AvatarFallback style={getGramAvatarFallbackStyle(displayName)}>
+                  {initials}
+                </AvatarFallback>
               </Avatar>
               <span className="max-w-[148px] truncate text-sm font-medium">{displayName}</span>
               <ChevronRight className={`ml-auto h-4 w-4 opacity-80 transition-transform ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
@@ -197,7 +199,7 @@ export function CAConsoleHeader({
         </div>
       </div>
     </aside>
-    <header className="sticky top-0 z-50 w-full border-b text-white md:hidden" style={{ backgroundColor: '#0067b9' }}>
+    <header className="sticky top-0 z-50 w-full border-b bg-platform-sidebar text-white md:hidden">
       <div className="flex h-16 items-center justify-between gap-3 px-4">
         <ProductBrand href="/evidence-verification" nameClassName="text-white" poweredClassName="text-white/75" />
         <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
@@ -208,7 +210,7 @@ export function CAConsoleHeader({
             </Button>
           </SheetTrigger>
 
-            <SheetContent side="right" className="w-full border-l border-white/10 p-0 text-white sm:max-w-sm [&>button]:hidden" style={{ backgroundColor: '#0067b9' }}>
+            <SheetContent side="right" className="w-full border-l border-white/10 bg-platform-sidebar p-0 text-white sm:max-w-sm [&>button]:hidden">
               <SheetTitle className="sr-only">CA Portal menu</SheetTitle>
               <SheetDescription className="sr-only">
                 Navigation links and account options for the CA Portal
@@ -234,7 +236,9 @@ export function CAConsoleHeader({
                 <div className="flex-1 overflow-y-auto p-4">
                   <div className="mb-6 flex items-center gap-3 rounded-lg border border-white/15 bg-white/10 p-3">
                     <Avatar className="h-10 w-10">
-                      <AvatarFallback className="bg-udaan-orange text-white">{initials}</AvatarFallback>
+                      <AvatarFallback style={getGramAvatarFallbackStyle(displayName)}>
+                  {initials}
+                </AvatarFallback>
                     </Avatar>
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold">{displayName}</p>

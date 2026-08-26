@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useAuth, User } from '@/lib/auth-context';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { getGramAvatarFallbackStyle } from '@/lib/gram-avatar';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast as sonnerToast } from 'sonner';
@@ -1070,7 +1071,10 @@ function PostCard({
                   />
                 ) : null;
               })()}
-              <AvatarFallback className="bg-udaan-orange text-white font-semibold">
+              <AvatarFallback
+                className="font-semibold"
+                style={getGramAvatarFallbackStyle(post.user.name || post.user.email || 'U')}
+              >
                 {getInitials(post.user.name || post.user.email || 'U')}
               </AvatarFallback>
             </Avatar>
@@ -1277,7 +1281,10 @@ function PostCard({
                         <AvatarImage src={img} onError={(e) => e.currentTarget.style.display = 'none'} />
                       ) : null;
                     })()}
-                    <AvatarFallback className="bg-udaan-orange text-white text-xs font-semibold">
+                    <AvatarFallback
+                      className="text-xs font-semibold"
+                      style={getGramAvatarFallbackStyle(comment.author?.name || 'U')}
+                    >
                       {getInitials(comment.author?.name || 'U')}
                     </AvatarFallback>
                   </Avatar>
@@ -1324,7 +1331,10 @@ function PostCard({
                       <AvatarImage src={img} onError={(e) => e.currentTarget.style.display = 'none'} />
                     ) : null;
                   })()}
-                  <AvatarFallback className="bg-udaan-orange text-white text-xs font-semibold">
+                  <AvatarFallback
+                    className="text-xs font-semibold"
+                    style={getGramAvatarFallbackStyle(currentUser?.name || currentUser?.email || 'U')}
+                  >
                     {getInitials(currentUser?.name || currentUser?.email || 'U')}
                   </AvatarFallback>
                 </Avatar>

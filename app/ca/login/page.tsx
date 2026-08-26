@@ -108,7 +108,7 @@ export default function CALoginPage() {
 
   if (checkingAuth) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100 p-4">
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-[#F6F5F1] to-[#FFF6ED] p-4">
         <div className="w-full max-w-md space-y-8">
           <div className="space-y-3 text-center">
             <Skeleton className="mx-auto h-8 w-40" />
@@ -137,7 +137,7 @@ export default function CALoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100 p-4">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-[#F6F5F1] to-[#FFF6ED] p-4">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
           <h1 className="mb-2 text-3xl font-bold text-gray-900">CA Portal</h1>

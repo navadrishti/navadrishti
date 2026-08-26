@@ -17,6 +17,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion"
 import { useAuth } from "@/lib/auth-context"
+import { getGramAvatarFallbackStyle } from "@/lib/gram-avatar"
 import { ProfileCoverMedia } from "@/components/profile-card"
 import { NgoPayDialog } from "@/components/profile-dashboard-tab"
 import { NgoComplianceBadges, VerificationBadge } from "@/components/verification-badge"
@@ -183,7 +184,10 @@ function NgoNetworkCard({
               className="h-full w-full object-cover"
             />
           ) : (
-            <div className="flex h-full w-full items-center justify-center bg-udaan-orange text-sm font-bold text-white">
+            <div
+              className="flex h-full w-full items-center justify-center text-sm font-bold"
+              style={getGramAvatarFallbackStyle(ngo.name)}
+            >
               {getInitials(ngo.name)}
             </div>
           )}
@@ -202,7 +206,10 @@ function NgoNetworkCard({
                 className="h-full w-full object-cover"
               />
             ) : (
-              <div className="flex h-full w-full items-center justify-center bg-udaan-orange text-base font-bold text-white">
+              <div
+                className="flex h-full w-full items-center justify-center text-base font-bold"
+                style={getGramAvatarFallbackStyle(ngo.name)}
+              >
                 {getInitials(ngo.name)}
               </div>
             )}
@@ -287,7 +294,7 @@ function NgoNetworkCard({
             <Button
               asChild
               size="sm"
-              className="h-8 w-full bg-emerald-700 text-white hover:bg-emerald-800"
+              className="h-8 w-full bg-udaan-orange text-white hover:bg-[#e87118]"
             >
               <Link href={`/profile/${ngo.id}`}>
                 View profile
@@ -454,7 +461,7 @@ export default function NGONetworkPage() {
   const showRecommendedSection = Boolean(user?.id)
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50">
+    <div className="flex min-h-screen flex-col">
       <Header />
 
       <main className="flex-1 px-6 py-8 md:px-10">

@@ -162,7 +162,7 @@ export function AIAgentCTA() {
             className="pointer-events-auto block rounded-[1.4rem] p-[2px] shadow-2xl shadow-blue-900/15 focus-visible:outline-none focus-visible:ring-0 bg-transparent"
           >
             <span className="ai-agent-border-flow block rounded-[1.3rem] p-[2px] bg-transparent">
-                <span className="flex h-12 w-12 items-center justify-center rounded-[1.15rem] border border-white bg-white text-udaan-blue shadow-[0_12px_30px_rgba(0,103,185,0.12)] filter-none backdrop-blur-0 transform-none">
+                <span className="flex h-12 w-12 items-center justify-center rounded-[1.15rem] border border-white bg-white text-udaan-orange shadow-[0_12px_30px_rgba(244,123,32,0.12)] filter-none backdrop-blur-0 transform-none">
                   <LogoOrIcon className="h-9 w-9 opacity-100 filter-none" />
                 </span>
             </span>

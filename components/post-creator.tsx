@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { getGramAvatarFallbackStyle } from '@/lib/gram-avatar';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/lib/auth-context';
@@ -247,7 +248,10 @@ export function PostCreator({ onPostCreated, className }: PostCreatorProps) {
                 />
               ) : null;
             })()}
-            <AvatarFallback className="bg-udaan-orange text-white font-semibold">
+            <AvatarFallback
+              className="font-semibold"
+              style={getGramAvatarFallbackStyle(user.name || user.email || 'U')}
+            >
               {getInitials(user.name || user.email || 'U')}
             </AvatarFallback>
           </Avatar>

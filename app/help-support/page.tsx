@@ -271,7 +271,7 @@ export default function HelpSupportPage() {
           <Button
             variant="ghost"
             onClick={() => router.back()}
-            className="px-0 text-udaan-blue hover:bg-transparent hover:text-udaan-blue/80"
+            className="px-0 text-primary hover:bg-transparent hover:text-primary/80"
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back

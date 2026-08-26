@@ -1,4 +1,5 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { getGramAvatarFallbackStyle } from "@/lib/gram-avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
@@ -16,7 +17,7 @@ export function ProfileCoverMedia({
   alt?: string
 }) {
   return (
-    <div className={cn("relative overflow-hidden bg-gradient-to-r from-[#0067b9] to-[#003d6e]", className)}>
+    <div className={cn("relative overflow-hidden bg-gradient-to-r from-gram-sidebar to-gram-sidebar-surface", className)}>
       {src ? (
         <img src={src} alt={alt} className="absolute inset-0 h-full w-full object-cover" />
       ) : null}
@@ -92,7 +93,12 @@ export function ProfileCard({
         <div className="flex justify-between -mt-12">
           <Avatar className="h-20 w-20 border-4 border-background shadow-lg transition-transform duration-500 ease-out group-hover:scale-105 group-hover:shadow-xl">
             <AvatarImage src={profileImage} alt={displayName} />
-            <AvatarFallback className="bg-udaan-orange text-white font-semibold">{getInitials(displayName)}</AvatarFallback>
+            <AvatarFallback
+              className="font-semibold"
+              style={getGramAvatarFallbackStyle(displayName)}
+            >
+              {getInitials(displayName)}
+            </AvatarFallback>
           </Avatar>
           {!footer && (
             <Button 

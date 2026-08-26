@@ -106,12 +106,12 @@ export default function GovernmentAdminLayout({
   const navLinkClass = (href: string) =>
     cn(
       'rounded-md px-3 py-2 text-sm font-medium transition-colors',
-      isNavActive(href) ? 'bg-white/15 text-udaan-orange' : 'text-white hover:bg-white/10 hover:text-udaan-orange'
+      isNavActive(href) ? 'sidebar-nav-active' : 'text-[#F5F7F8] hover:bg-white/5 hover:text-white'
     );
 
   if (launchBlocked) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-blue-50">
+      <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center">
           <Loader2 className="mx-auto h-8 w-8 animate-spin text-blue-600" />
           <p className="mt-4 text-blue-600">Redirecting...</p>
@@ -126,7 +126,7 @@ export default function GovernmentAdminLayout({
 
   if (!ready) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-blue-50">
+      <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center">
           <Loader2 className="mx-auto h-8 w-8 animate-spin text-blue-600" />
           <p className="mt-4 text-blue-600">Checking authentication...</p>
@@ -138,8 +138,7 @@ export default function GovernmentAdminLayout({
   return (
     <>
       <aside
-        className="platform-sidebar fixed inset-y-0 left-0 top-0 z-50 hidden h-dvh w-60 flex-col border-r border-white/10 text-white md:flex"
-        style={{ backgroundColor: '#0067b9' }}
+        className="platform-sidebar bg-platform-sidebar fixed inset-y-0 left-0 top-0 z-50 hidden h-dvh w-60 flex-col border-r border-white/10 text-white md:flex"
       >
         <div className="flex h-full min-h-0 flex-col">
           <div className="shrink-0 border-b border-white/15 px-4 py-4">
@@ -165,7 +164,7 @@ export default function GovernmentAdminLayout({
           </div>
         </div>
       </aside>
-      <header className="sticky top-0 z-50 w-full border-b text-white md:hidden" style={{ backgroundColor: '#0067b9' }}>
+      <header className="sticky top-0 z-50 w-full border-b bg-platform-sidebar text-white md:hidden">
         <div className="flex h-16 items-center justify-between px-4">
           <ProductBrand href="/government-admin" nameClassName="text-white" poweredClassName="text-white/75" />
           <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
@@ -175,7 +174,7 @@ export default function GovernmentAdminLayout({
                 <span className="sr-only">Open menu</span>
               </Button>
             </SheetTrigger>
-            <SheetContent side="right" className="w-full border-l border-white/10 p-0 text-white sm:max-w-sm [&>button]:hidden" style={{ backgroundColor: '#0067b9' }}>
+            <SheetContent side="right" className="w-full border-l border-white/10 bg-platform-sidebar p-0 text-white sm:max-w-sm [&>button]:hidden">
               <SheetTitle className="sr-only">Government admin menu</SheetTitle>
               <SheetDescription className="sr-only">Navigation and account actions</SheetDescription>
               <div className="flex h-full flex-col">

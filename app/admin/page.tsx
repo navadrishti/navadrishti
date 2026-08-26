@@ -258,7 +258,6 @@ const campaignStatusOptions = [
   { value: 'draft', label: 'Draft' },
   { value: 'active', label: 'Active' },
   { value: 'completed', label: 'Completed' },
-  { value: 'cancelled', label: 'Cancelled' },
   { value: 'closed', label: 'Closed' },
 ];
 

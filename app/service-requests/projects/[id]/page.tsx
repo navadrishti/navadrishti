@@ -16,6 +16,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/hooks/use-toast';
+import { getGramAvatarFallbackStyle } from '@/lib/gram-avatar';
 
 type NeedItem = {
   id: number;
@@ -498,8 +499,11 @@ export default function ServiceRequestProjectDetailPage() {
                         {ngoProfileImage ? (
                           <img src={ngoProfileImage} alt={ngo?.name || 'NGO'} className="h-full w-full object-cover" />
                         ) : (
-                          <div className="h-full w-full flex items-center justify-center bg-gray-200">
-                            <span className="text-lg font-semibold text-gray-700">{getInitials(ngo?.name || 'NGO')}</span>
+                          <div
+                            className="flex h-full w-full items-center justify-center"
+                            style={getGramAvatarFallbackStyle(ngo?.name || 'NGO')}
+                          >
+                            <span className="text-lg font-semibold">{getInitials(ngo?.name || 'NGO')}</span>
                           </div>
                         )}
                       </div>

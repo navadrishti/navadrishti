@@ -11,6 +11,7 @@ import { StyledSelect } from "@/components/ui/styled-select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Search, Sparkles, ArrowRight, CheckCircle2, Pencil, Trash2, MapPin } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
+import { getGramAvatarFallbackStyle } from "@/lib/gram-avatar"
 import { CSR_SCHEDULE_VII_CATEGORIES } from "@/lib/categories"
 import { formatDisplayDate, isCampaignStarted, isVolunteerRegistrationPastDeadline } from "@/lib/format-date"
 import { getVolunteerButtonState, sumVolunteerApplicationCount } from "@/lib/campaign-volunteer-utils"
@@ -355,15 +356,13 @@ export default function CSRCampaignsPage() {
       case 'published':
       case 'active':
       case 'open':
-        return 'border-slate-200 bg-slate-50 text-emerald-700 shadow-none'
       case 'ongoing':
-        return 'border-slate-200 bg-slate-50 text-blue-700 shadow-none'
+        return 'text-gram-ink'
       case 'completed':
-        return 'border-slate-200 bg-slate-50 text-gray-700 shadow-none'
       case 'draft':
-        return 'border-slate-200 bg-slate-50 text-amber-700 shadow-none'
+        return 'text-gram-muted'
       default:
-        return 'border-slate-200 bg-slate-50 text-slate-900 shadow-none'
+        return 'text-gram-body'
     }
   }
 
@@ -488,10 +487,10 @@ export default function CSRCampaignsPage() {
                 <Card key={campaign.id} className="h-full w-full max-w-[360px] overflow-hidden rounded-md border-2 border-slate-200 bg-white shadow-none">
                   <CardContent className="flex h-full flex-col p-2">
                     <div className="flex min-w-0 items-center justify-between gap-2">
-                      <span className={`inline-flex min-w-0 max-w-[48%] overflow-hidden rounded-full border px-2.5 py-0.5 text-xs font-semibold capitalize ${getStatusColor(campaign.status)} border-slate-200`} title={campaign.status}>
+                      <span className={`inline-flex min-w-0 max-w-[48%] overflow-hidden rounded-md border border-gram-border bg-white px-2.5 py-0.5 text-xs font-medium capitalize ${getStatusColor(campaign.status)}`} title={campaign.status}>
                         <span className="block truncate">{campaign.status}</span>
                       </span>
-                      <span className="inline-flex min-w-0 max-w-[52%] overflow-hidden rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-xs font-semibold text-slate-700 shadow-none" title={campaign.category}>
+                      <span className="inline-flex min-w-0 max-w-[52%] overflow-hidden rounded-md border border-gram-border bg-white px-2.5 py-0.5 text-xs font-medium text-gram-body" title={campaign.category}>
                         <span className="block truncate">{campaign.category}</span>
                       </span>
                     </div>
@@ -535,7 +534,10 @@ export default function CSRCampaignsPage() {
                     <div className="mt-1 border-t border-slate-200 pt-1">
                       <div className="flex min-w-0 items-center gap-2">
                         <Link href={campaign.companyId ? `/profile/${campaign.companyId}` : '#'} className="flex min-w-0 flex-1 items-center gap-2 px-1 py-0.5">
-                          <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-udaan-orange text-[10px] font-medium text-white">
+                          <div
+                            className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-medium"
+                            style={getGramAvatarFallbackStyle(campaign.company || 'Company')}
+                          >
                             {campaign.companyInitials || 'CO'}
                           </div>
                           <div className="min-w-0 flex-1">
