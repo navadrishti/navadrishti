@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Header } from '@/components/header';
 import { VerificationBadge } from '@/components/verification-badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { getGramAvatarFallbackStyle } from '@/lib/gram-avatar';
 import { Button } from '@/components/ui/button';
 import { ProductBrand } from '@/components/product-brand';
 
@@ -171,13 +172,13 @@ export default function LandingPage() {
   }, [loadNewsletter]);
 
   return (
-    <div className="min-h-screen bg-white flex flex-col">
+    <div className="flex min-h-screen flex-col">
       <Header />
 
       <main className="flex-1 px-6 py-8 md:px-10">
         <section>
           <div className="mb-8">
-            <h1 className="text-3xl font-bold tracking-tight">
+            <h1 className="text-3xl font-bold tracking-tight text-gram-ink">
               What&apos;s happening
             </h1>
             <p className="text-muted-foreground">
@@ -202,13 +203,13 @@ export default function LandingPage() {
                 ))}
               </div>
             ) : error ? (
-              <div className="border-t border-slate-200 py-10 text-sm text-slate-600">{error}</div>
+              <div className="border-t border-gram-border py-10 text-sm text-gram-muted">{error}</div>
             ) : items.length === 0 ? (
-              <div className="border-t border-slate-200 py-10 text-sm text-slate-600">
+              <div className="border-t border-gram-border py-10 text-sm text-gram-muted">
                 No major platform updates yet.
               </div>
             ) : (
-              <div className="divide-y divide-slate-200 border-t border-slate-200">
+              <div className="divide-y divide-gram-border/80 border-t border-gram-border">
                 {items.map((item) => {
                   const titleSuffix =
                     item.title.startsWith(item.actorName)
@@ -224,26 +225,32 @@ export default function LandingPage() {
                     item.kind === 'csr_project'
                   );
                   const body = (
-                    <div className="py-4">
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+                    <div className="py-5">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gram-faint">
                         <span>{formatTimeAgo(item.createdAt, nowMs)}</span>
                         <span>{formatDateTime(item.createdAt)}</span>
                       </div>
 
-                      <div className={`mt-2 flex gap-3 sm:gap-4 ${item.summary ? 'items-start' : 'items-center'}`}>
+                      <div className={`mt-2.5 flex gap-3 sm:gap-4 ${item.summary ? 'items-start' : 'items-center'}`}>
                         {item.actorProfileHref ? (
                           <Link href={item.actorProfileHref} className="relative z-10 shrink-0">
-                            <Avatar className="h-10 w-10 shrink-0 ring-1 ring-slate-200">
+                            <Avatar className="h-10 w-10 shrink-0 ring-1 ring-gram-border">
                               <AvatarImage src={item.actorImage || undefined} alt={item.actorName} className="object-cover" />
-                              <AvatarFallback className="bg-udaan-orange text-xs font-semibold text-white">
+                              <AvatarFallback
+                                className="text-xs font-semibold"
+                                style={getGramAvatarFallbackStyle(item.actorName)}
+                              >
                                 {initials(item.actorName)}
                               </AvatarFallback>
                             </Avatar>
                           </Link>
                         ) : (
-                          <Avatar className="h-10 w-10 shrink-0 ring-1 ring-slate-200">
+                          <Avatar className="h-10 w-10 shrink-0 ring-1 ring-gram-border">
                             <AvatarImage src={item.actorImage || undefined} alt={item.actorName} className="object-cover" />
-                            <AvatarFallback className="bg-udaan-orange text-xs font-semibold text-white">
+                            <AvatarFallback
+                              className="text-xs font-semibold"
+                              style={getGramAvatarFallbackStyle(item.actorName)}
+                            >
                               {initials(item.actorName)}
                             </AvatarFallback>
                           </Avatar>
@@ -254,11 +261,11 @@ export default function LandingPage() {
                             {titleSuffix ? (
                               <>
                                 {item.actorProfileHref ? (
-                                  <Link href={item.actorProfileHref} className="relative z-10 text-sm font-medium leading-6 text-slate-950 transition-colors hover:text-udaan-blue">
+                                  <Link href={item.actorProfileHref} className="relative z-10 text-sm font-medium leading-6 text-gram-ink transition-colors hover:text-udaan-orange">
                                     {item.actorName}
                                   </Link>
                                 ) : (
-                                  <span className="text-sm font-medium leading-6 text-slate-950">
+                                  <span className="text-sm font-medium leading-6 text-gram-ink">
                                     {item.actorName}
                                   </span>
                                 )}
@@ -271,19 +278,19 @@ export default function LandingPage() {
                                     className="relative z-10 shrink-0"
                                   />
                                 ) : null}
-                                <span className="text-sm font-medium leading-6 text-slate-950">
+                                <span className="text-sm font-medium leading-6 text-gram-body">
                                   {titleSuffix}
                                 </span>
                               </>
                             ) : (
-                              <p className="text-sm font-medium leading-6 text-slate-950">
+                              <p className="text-sm font-medium leading-6 text-gram-ink">
                                 {item.title}
                               </p>
                             )}
                           </div>
 
                           {item.summary ? (
-                            <p className="mt-1 text-sm leading-5 text-slate-600">
+                            <p className="mt-1 text-sm leading-5 text-gram-muted">
                               {item.summary}
                             </p>
                           ) : null}
@@ -343,7 +350,7 @@ export default function LandingPage() {
       </main>
 
       {/* Footer - exact navbar color */}
-      <footer className="border-t" style={{ backgroundColor: '#0067b9', borderColor: '#0067b9' }}>
+      <footer className="border-t border-platform-sidebar bg-platform-sidebar">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-center gap-3 text-sm text-white">
             <span className="text-white text-sm">© {new Date().getFullYear()}</span>

@@ -246,13 +246,16 @@ export default function ServiceOffersPage() {
             </div>
           </div>
         ) : canCreateOffers ? (
-          <div className="mb-8 rounded-md border border-amber-200 bg-amber-50 p-6">
-            <h2 className="text-lg font-semibold text-amber-900">Connect Razorpay to list capabilities</h2>
-            <p className="mt-1 text-sm text-amber-800">
+          <div className="mb-8 rounded-md border-2 border-black bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-black">Connect Razorpay to list capabilities</h2>
+            <p className="mt-1 text-sm text-gray-700">
               Connect Razorpay payout before listing capabilities so you can receive merchant payments.
             </p>
             <Link href={payoutHref} className="mt-4 inline-block">
-              <Button variant="outline" className="border-amber-300 bg-white text-amber-900 hover:bg-amber-100">
+              <Button
+                variant="outline"
+                className="border-2 border-black bg-white text-black hover:bg-gray-50"
+              >
                 Connect Razorpay payout
               </Button>
             </Link>

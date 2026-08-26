@@ -84,7 +84,7 @@ export function VerificationBadge({
       {showNumber ? (
         <span
           style={{
-            color: '#047857',
+            color: '#5A6B75',
             fontSize: currentSize.fontSize,
             fontWeight: size === 'xl' || size === 'readable' ? '700' : '600',
             letterSpacing: '0.04em',
@@ -99,7 +99,7 @@ export function VerificationBadge({
       ) : showText ? (
         <span
           style={{
-            color: '#047857',
+            color: '#5A6B75',
             fontSize: currentSize.fontSize,
             fontWeight: size === 'xl' ? '700' : '500',
             whiteSpace: 'nowrap',

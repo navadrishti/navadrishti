@@ -372,10 +372,9 @@ function PlatformSidebarSkeleton({ className }: { className?: string }) {
   return (
     <aside
       className={cn(
-        "platform-sidebar-skeleton fixed inset-y-0 left-0 top-0 z-50 hidden h-dvh w-60 flex-col border-r border-white/10 md:flex",
+        "platform-sidebar-skeleton bg-platform-sidebar fixed inset-y-0 left-0 top-0 z-50 hidden h-dvh w-60 flex-col border-r border-white/10 md:flex",
         className
       )}
-      style={{ backgroundColor: '#0067b9' }}
       aria-hidden="true"
     >
       <div className="flex h-full min-h-0 flex-col">
@@ -419,7 +418,7 @@ function PlatformSidebarSkeleton({ className }: { className?: string }) {
 
 function PlatformMobileHeaderSkeleton() {
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-white/10 md:hidden" style={{ backgroundColor: '#0067b9' }} aria-hidden="true">
+    <header className="sticky top-0 z-50 w-full border-b border-white/10 bg-platform-sidebar md:hidden" aria-hidden="true">
       <div className="flex h-16 items-center justify-between px-4">
         <div className="flex items-center gap-2">
           <Skeleton className="h-9 w-9 rounded-md bg-white/40" />

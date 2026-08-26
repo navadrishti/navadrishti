@@ -60,13 +60,38 @@ const config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
-        // Udaan theme colors
+        // GRAM / Udaan theme colors
         udaan: {
-          navy: "#0067b9",       // Match navbar blue across legacy navy usage
-          blue: "#0067b9",       // Bright blue for hero section
-          orange: "#F47B20",     // Orange for buttons and highlights
-          cream: "#FFF8ED",      // Light cream for background sections
-          white: "#FFFFFF",      // White for text and circles
+          navy: "#2B3E41",
+          blue: "#3A5054",
+          orange: "#F47B20",
+          cream: "#FFF6ED",
+          white: "#FFFFFF",
+        },
+        gram: {
+          sidebar: "#2B3E41",
+          "sidebar-surface": "#3A5054",
+          page: "#F6F5F1",
+          soft: "#FFF6ED",
+          sage: "#F1F6F3",
+          ink: "#2C3338",
+          body: "#3F474E",
+          muted: "#6E777E",
+          faint: "#959BA1",
+          border: "#E8EAE6",
+          /** Soft teal-sage for avatar placeholders */
+          avatar: "#66877D",
+        },
+        sidebar: {
+          DEFAULT: "hsl(var(--sidebar-background))",
+          foreground: "hsl(var(--sidebar-foreground))",
+          primary: "hsl(var(--sidebar-primary))",
+          "primary-foreground": "hsl(var(--sidebar-primary-foreground))",
+          accent: "hsl(var(--sidebar-accent))",
+          "accent-foreground": "hsl(var(--sidebar-accent-foreground))",
+          border: "hsl(var(--sidebar-border))",
+          ring: "hsl(var(--sidebar-ring))",
+          muted: "hsl(var(--sidebar-muted))",
         },
       },
       borderRadius: {
