@@ -284,12 +284,14 @@ export default function ImpactProfilePage() {
   const canPay = user?.user_type === "individual" || user?.user_type === "company"
   const isNgoViewer = user?.user_type === "ngo"
   const payerCaVerified = isCaVerifiedAccount(user?.verification_status)
+  const hasCsr1 = Boolean(ngo?.csr_eligible || ngo?.ca_compliance_tags?.includes("csr1"))
+  const acceptsPayments = Boolean(ngo?.accepts_payments)
   const canPayThisNgo =
     Boolean(isNgo) &&
     canPay &&
     payerCaVerified &&
-    Boolean(ngo?.accepts_payments ?? allVerified) &&
-    (user?.user_type !== "company" || Boolean(ngo?.csr_eligible || ngo?.ca_compliance_tags?.includes("csr1")))
+    acceptsPayments &&
+    (user?.user_type !== "company" || hasCsr1)
   const scheduleViiSector = ngo?.sectors_schedule_vii?.[0]?.trim() || ""
   const volunteerCapacityText = formatVolunteerCapacity(ngo?.volunteer_capacity)
   const pastProjects = ngo?.past_projects || []
@@ -452,9 +454,13 @@ export default function ImpactProfilePage() {
                         <Button size="sm" variant="outline" disabled>
                           Verification required
                         </Button>
+                      ) : canPay && user?.user_type === "company" && !hasCsr1 ? (
+                        <Button size="sm" variant="outline" disabled>
+                          CSR-1 required
+                        </Button>
                       ) : canPay ? (
                         <Button size="sm" variant="outline" disabled>
-                          Payout setup pending
+                          Payout not connected
                         </Button>
                       ) : (
                         <Button asChild size="sm" variant="outline">

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { AlertTriangle, Camera, CheckCircle2, Loader2, RefreshCw } from 'lucide-react'
+import { Camera, Loader2, RefreshCw } from 'lucide-react'
 // User icon removed from heading
 import { useAuth } from '@/lib/auth-context'
 import { useOtpSender } from '@/hooks/use-otp-sender'
@@ -75,6 +75,7 @@ type PayoutAccountResponse = {
   linkError: string | null
   linkUpdatedAt: string | null
   hasPayoutDetails: boolean
+  acceptsPayments?: boolean
   networkListingEligible?: boolean
   routeReady: boolean
   payoutStatusMessage: string | null
@@ -89,36 +90,36 @@ const EMPTY_PAYOUT: NgoPayoutAccount = {
   account_type: 'current',
 }
 
+function isPayoutConnected(status: NgoRazorpayLinkStatus): boolean {
+  return status === 'active'
+}
+
 function payoutLinkStatusLabel(status: NgoRazorpayLinkStatus): string {
-  switch (status) {
-    case 'active':
-      return 'Connected'
-    case 'pending':
-      return 'Pending activation'
-    case 'failed':
-      return 'Connection failed'
-    case 'needs_reconnect':
-      return 'Reconnect required'
-    default:
-      return 'Not connected'
-  }
+  return isPayoutConnected(status) ? 'Connected' : 'Disconnected'
 }
 
 function payoutLinkStatusVariant(status: NgoRazorpayLinkStatus): 'default' | 'secondary' | 'destructive' | 'outline' {
-  if (status === 'active') return 'default'
-  if (status === 'failed') return 'destructive'
-  if (status === 'needs_reconnect') return 'destructive'
-  return 'secondary'
+  return isPayoutConnected(status) ? 'default' : 'secondary'
 }
 
 function payoutPanelDescription(userType: 'ngo' | 'individual' | 'company'): string {
   if (userType === 'ngo') {
-    return 'Donations and CSR payments can settle directly to this bank account once Razorpay Route is connected.'
+    return 'Connect Razorpay to receive donations and to list capabilities that settle to your account. NGO Network listing only requires verification.'
   }
   if (userType === 'individual') {
-    return 'Save the bank account where capability and service payouts should be sent when merchant settlements are enabled.'
+    return 'You must connect Razorpay before listing capabilities so you can receive merchant payouts. You do not need this to donate to NGOs.'
   }
-  return 'Save the bank account where capability and CSR payouts should be sent when merchant settlements are enabled.'
+  return 'You must connect Razorpay before listing capabilities so you can receive merchant payouts. You do not need this to pay NGOs.'
+}
+
+function payoutDisconnectedHelper(userType: 'ngo' | 'individual' | 'company'): string {
+  if (userType === 'ngo') {
+    return 'Connect account to receive donations and list capabilities'
+  }
+  if (userType === 'individual') {
+    return 'Connect account to list capabilities and receive payouts'
+  }
+  return 'Connect account to list capabilities and receive merchant payouts'
 }
 
 function PayoutAccountPanel({ userType }: { userType: 'ngo' | 'individual' | 'company' }) {
@@ -263,12 +264,10 @@ function PayoutAccountPanel({ userType }: { userType: 'ngo' | 'individual' | 'co
   }
 
   const linkStatus = status?.linkStatus || 'not_started'
-  const showReconnect = linkStatus === 'needs_reconnect' || linkStatus === 'failed' || linkStatus === 'not_started'
+  const connected = isPayoutConnected(linkStatus)
+  const showReconnect = linkStatus === 'needs_reconnect' || linkStatus === 'failed' || linkStatus === 'not_started' || linkStatus === 'pending'
   const canConnect = Boolean(status?.canConnect)
   const maskedSavedAccount = status?.payoutAccount?.account_number
-  const showStatusMessage =
-    Boolean(status?.payoutStatusMessage) &&
-    (linkStatus !== 'not_started' || Boolean(status?.hasPayoutDetails))
 
   return (
     <div className="space-y-4 rounded-lg border p-4">
@@ -279,38 +278,11 @@ function PayoutAccountPanel({ userType }: { userType: 'ngo' | 'individual' | 'co
             {payoutPanelDescription(userType)}
           </p>
         </div>
-        {userType === 'ngo' ? (
-          <Badge variant={payoutLinkStatusVariant(linkStatus)}>{payoutLinkStatusLabel(linkStatus)}</Badge>
-        ) : null}
+        <Badge variant={payoutLinkStatusVariant(linkStatus)}>{payoutLinkStatusLabel(linkStatus)}</Badge>
       </div>
 
-      {userType === 'ngo' && !status?.hasPayoutDetails ? (
-        <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>
-            Step 1: Save your bank details. Step 2: Connect Razorpay — your NGO appears on the NGO Network only after payout is active.
-          </span>
-        </div>
-      ) : null}
-
-      {userType === 'ngo' && status?.hasPayoutDetails && !status?.networkListingEligible ? (
-        <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>
-            Step 2: Connect Razorpay — your NGO appears on the NGO Network only after payout is active.
-          </span>
-        </div>
-      ) : null}
-
-      {userType === 'ngo' && status?.networkListingEligible ? (
-        <div className="flex items-start gap-2 rounded-md border border-green-200 bg-green-50 p-3 text-xs text-green-800">
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>Your NGO is listed on the NGO Network and can receive Razorpay payouts.</span>
-        </div>
-      ) : null}
-
-      {showStatusMessage ? (
-        <p className="text-xs text-muted-foreground">{status?.payoutStatusMessage}</p>
+      {!connected ? (
+        <p className="text-xs text-muted-foreground">{payoutDisconnectedHelper(userType)}</p>
       ) : null}
 
       {status?.linkError ? (
@@ -319,21 +291,10 @@ function PayoutAccountPanel({ userType }: { userType: 'ngo' | 'individual' | 'co
         </div>
       ) : null}
 
-      {userType === 'ngo' && linkStatus === 'active' ? (
-        <div className="flex items-start gap-2 rounded-md border border-green-200 bg-green-50 p-3 text-xs text-green-800">
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>
-            Razorpay linked account is active
-            {status?.linkedAccountId ? ` (${status.linkedAccountId})` : ''}. Direct payouts are enabled when Route is turned on for the platform.
-          </span>
-        </div>
-      ) : null}
-
-      {userType === 'ngo' && linkStatus === 'needs_reconnect' ? (
-        <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>Bank details changed. Save the form and reconnect so Razorpay can verify the updated account.</span>
-        </div>
+      {linkStatus === 'needs_reconnect' ? (
+        <p className="text-xs text-muted-foreground">
+          Bank details changed. Save the form and reconnect so Razorpay can verify the updated account.
+        </p>
       ) : null}
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -413,7 +374,6 @@ function PayoutAccountPanel({ userType }: { userType: 'ngo' | 'individual' | 'co
             'Save payout details'
           )}
         </Button>
-        {userType === 'ngo' ? (
         <Button
           type="button"
           variant={showReconnect ? 'default' : 'outline'}
@@ -432,9 +392,8 @@ function PayoutAccountPanel({ userType }: { userType: 'ngo' | 'individual' | 'co
             </>
           )}
         </Button>
-        ) : null}
       </div>
-      {userType === 'ngo' && !canConnect ? (
+      {!canConnect ? (
         <p className="text-xs text-muted-foreground">Save payout details first, then connect to Razorpay.</p>
       ) : null}
     </div>

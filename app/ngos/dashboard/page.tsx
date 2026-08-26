@@ -21,6 +21,7 @@ import { useToast } from '@/hooks/use-toast';
 import { SkeletonOrderItem, DashboardPageSkeleton } from '@/components/ui/skeleton';
 import { ProfileDashboardTab, PaymentHistoryPanel } from '@/components/profile-dashboard-tab';
 import { YourCapabilitiesPanel, InlineCsrCapabilityDelhivery } from '@/components/service-card';
+import { dashboardProfilePayoutHref, usePayoutConnection } from '@/hooks/use-payout-connection';
 import { DashboardBodyLayout, DashboardQuickSidebar } from '@/components/dashboard-quick-sidebar';
 import { CampaignVolunteerAssignmentCard, type CampaignVolunteerAssignmentItem } from '@/components/campaign-volunteer-assignment-card';
 import {
@@ -1985,12 +1986,15 @@ function NGODashboardContent() {
     user?.phone_verified &&
     user?.verification_status === 'verified'
   );
-  const [networkListingEligible, setNetworkListingEligible] = useState<boolean | null>(null);
+  const [acceptsPayments, setAcceptsPayments] = useState<boolean | null>(null);
   const [payoutDetailsSaved, setPayoutDetailsSaved] = useState<boolean | null>(null);
+  const { connected: payoutConnected } = usePayoutConnection(Boolean(user));
+  const canListCapabilities = payoutConnected === true;
+  const payoutHref = dashboardProfilePayoutHref('ngo');
 
   useEffect(() => {
     if (!user?.id || user.user_type !== 'ngo') {
-      setNetworkListingEligible(null);
+      setAcceptsPayments(null);
       return;
     }
 
@@ -2003,12 +2007,12 @@ function NGODashboardContent() {
       .then((response) => response.json())
       .then((data) => {
         if (data?.success) {
-          setNetworkListingEligible(Boolean(data.networkListingEligible ?? data.routeReady));
+          setAcceptsPayments(Boolean(data.acceptsPayments ?? data.routeReady));
           setPayoutDetailsSaved(Boolean(data.hasPayoutDetails));
         }
       })
       .catch(() => {
-        setNetworkListingEligible(null);
+        setAcceptsPayments(null);
       });
   }, [user?.id, user?.user_type]);
 
@@ -2130,21 +2134,17 @@ function NGODashboardContent() {
               </div>
             </div>
 
-            {allVerified && networkListingEligible === false ? (
+            {allVerified && acceptsPayments === false ? (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="flex items-start gap-3">
                     <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
                     <div>
-                      <p className="font-medium text-amber-900">
-                        {payoutDetailsSaved
-                          ? 'Connect Razorpay payout to join the NGO Network'
-                          : 'Complete payout setup to join the NGO Network'}
-                      </p>
+                      <p className="font-medium text-amber-900">Connect account to receive donations</p>
                       <p className="mt-1 text-sm text-amber-800">
                         {payoutDetailsSaved
-                          ? 'Connect Razorpay payout below to finish setup and appear on the NGO Network.'
-                          : 'Save your payout bank details, then connect Razorpay to appear on the NGO Network.'}
+                          ? 'Your NGO is listed on the NGO Network. Connect Razorpay payout below so donors and companies can pay you.'
+                          : 'Your NGO is listed on the NGO Network. Save payout bank details, then connect Razorpay to receive donations.'}
                       </p>
                     </div>
                   </div>
@@ -2173,12 +2173,20 @@ function NGODashboardContent() {
                   <TabsContent value="service-offers" className="mt-4 space-y-4">
                     <div className="flex justify-between items-center">
                       <h3 className="font-medium">Capability Offers</h3>
-                      <Link href="/service-offers/create">
-                        <Button variant="outline" size="sm">
-                          <Plus className="h-3.5 w-3.5 mr-1" />
-                          Add Service
-                        </Button>
-                      </Link>
+                      {canListCapabilities ? (
+                        <Link href="/service-offers/create">
+                          <Button variant="outline" size="sm">
+                            <Plus className="h-3.5 w-3.5 mr-1" />
+                            Add Service
+                          </Button>
+                        </Link>
+                      ) : (
+                        <Link href={payoutHref}>
+                          <Button variant="outline" size="sm">
+                            Connect Razorpay payout
+                          </Button>
+                        </Link>
+                      )}
                     </div>
 
                     <Tabs value={capabilityOffersTab} onValueChange={(value) => setCapabilityOffersTab(value as 'your-capabilities' | 'your-applications' | 'requests')} className="w-full">
@@ -2194,6 +2202,8 @@ function NGODashboardContent() {
                           loading={loadingData}
                           createLabel="Create Your First Service Offer"
                           emptyDescription="Publish capability offers for NGOs to discover and apply."
+                          canCreate={canListCapabilities}
+                          createBlockedHref={payoutHref}
                         />
                         {csrCapabilityRentals.filter((row) => row.role === 'provider').map((row) => {
                           const rental = row.rental || {};

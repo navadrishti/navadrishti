@@ -128,16 +128,6 @@ function NavbarSearchInput({
 
 const rootSubnavItems: LaunchHeaderNavItem[] = [
   {
-    label: 'Evidence Portal',
-    href: '/evidence-verification/login',
-    description: 'Evidence Portal',
-  },
-  {
-    label: 'Partner CA Portal',
-    href: '/ca/login',
-    description: 'Partner CA Portal',
-  },
-  {
     label: 'About Us',
     href: NAVADRISHTI_ABOUT_URL,
     description: 'About GRAM',
@@ -168,8 +158,10 @@ function SidebarUtilityNav({
   if (isLoading) {
     return (
       <div className={className}>
-        <Skeleton className="mb-2 h-8 w-full rounded-md bg-white/40" />
-        <nav className="flex flex-col gap-0.5">
+        <div className="mb-3 shrink-0">
+          <Skeleton className="h-8 w-full rounded-md bg-white/40" />
+        </div>
+        <nav className="flex flex-col gap-1">
           {rootSubnavItems.map((item) => (
             <Skeleton key={`subnav-skeleton-${item.href}`} className="h-9 w-full rounded-md bg-white/40" />
           ))}
@@ -180,28 +172,30 @@ function SidebarUtilityNav({
 
   return (
     <div className={className}>
-      {pwaUrl ? (
-        <a
-          href={pwaUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label="Download the GRAM App"
-          className={buttonClassName}
-        >
-          Download the GRAM App
-        </a>
-      ) : (
-        <button
-          type="button"
-          disabled
-          title="Set NEXT_PUBLIC_PWA_URL to enable the GRAM App download link"
-          aria-label="Download the GRAM App (not configured)"
-          className={buttonClassName}
-        >
-          Download the GRAM App
-        </button>
-      )}
-      <nav className="flex flex-col gap-0.5">
+      <div className="relative z-10 mb-3 shrink-0">
+        {pwaUrl ? (
+          <a
+            href={pwaUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Download the GRAM App"
+            className={buttonClassName}
+          >
+            Download the GRAM App
+          </a>
+        ) : (
+          <button
+            type="button"
+            disabled
+            title="Set NEXT_PUBLIC_PWA_URL to enable the GRAM App download link"
+            aria-label="Download the GRAM App (not configured)"
+            className={buttonClassName}
+          >
+            Download the GRAM App
+          </button>
+        )}
+      </div>
+      <nav className="relative z-0 flex flex-col gap-1">
         {rootSubnavItems.map((item) => (
           <HeaderNavLink
             key={`subnav-${item.href}`}
@@ -572,7 +566,7 @@ export function Header({ className = '' }: { className?: string } = {}) {
         <SidebarUtilityNav
           className="shrink-0 border-t border-white/15 px-3 py-3"
           isLoading={navLoading}
-          buttonClassName="mb-2 w-full rounded-md border border-white bg-transparent px-2.5 py-1 text-left text-xs font-semibold text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-100"
+          buttonClassName="block w-full rounded-md border border-white bg-transparent px-2.5 py-1.5 text-left text-xs font-semibold text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-100"
           linkClassName="rounded-md px-3 py-2 text-sm font-medium text-white hover:bg-white/10 hover:text-udaan-orange focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors"
         />
         <div className="shrink-0 border-t border-white/15 p-3">
@@ -814,7 +808,7 @@ export function Header({ className = '' }: { className?: string } = {}) {
                   <SidebarUtilityNav
                     className="mb-8"
                     isLoading={navLoading}
-                    buttonClassName="mb-2 w-full rounded-lg border border-white bg-transparent px-3 py-2.5 text-left text-base font-medium leading-snug text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-100"
+                    buttonClassName="block w-full rounded-lg border border-white bg-transparent px-3 py-2.5 text-left text-base font-medium leading-snug text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-100"
                     linkClassName="flex items-center gap-3 px-3 py-2.5 text-base font-medium text-white hover:bg-white/10 hover:text-udaan-orange rounded-lg transition-colors"
                   />
 

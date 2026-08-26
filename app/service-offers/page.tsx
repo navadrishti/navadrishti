@@ -13,6 +13,7 @@ import { Search, ArrowRight, Plus, MapPin } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
 import { IMPACT_AREA_OPTIONS, OFFER_TYPE_OPTIONS } from '@/lib/service-offers'
+import { dashboardProfilePayoutHref, usePayoutConnection } from '@/hooks/use-payout-connection'
 
 const compactControlClass = 'h-9 text-sm'
 
@@ -53,6 +54,9 @@ export default function ServiceOffersPage() {
   const [deleting, setDeleting] = useState<number | null>(null);
 
   const canCreateOffers = mounted && !!user && ['ngo', 'company', 'individual'].includes(user.user_type);
+  const { connected: payoutConnected } = usePayoutConnection(canCreateOffers);
+  const canPublishOffers = canCreateOffers && payoutConnected === true;
+  const payoutHref = dashboardProfilePayoutHref(user?.user_type);
 
   const hasActiveFilters = useMemo(
     () =>
@@ -219,7 +223,7 @@ export default function ServiceOffersPage() {
 
         {loading ? (
           canCreateOffers && <SkeletonCTA />
-        ) : canCreateOffers && (
+        ) : canPublishOffers ? (
           <div className="mb-8 p-8 bg-white rounded-md border-2 border-black shadow-sm relative overflow-hidden">
             <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
               <div className="text-center md:text-left">
@@ -241,7 +245,19 @@ export default function ServiceOffersPage() {
               </div>
             </div>
           </div>
-        )}
+        ) : canCreateOffers ? (
+          <div className="mb-8 rounded-md border border-amber-200 bg-amber-50 p-6">
+            <h2 className="text-lg font-semibold text-amber-900">Connect Razorpay to list capabilities</h2>
+            <p className="mt-1 text-sm text-amber-800">
+              Connect Razorpay payout before listing capabilities so you can receive merchant payments.
+            </p>
+            <Link href={payoutHref} className="mt-4 inline-block">
+              <Button variant="outline" className="border-amber-300 bg-white text-amber-900 hover:bg-amber-100">
+                Connect Razorpay payout
+              </Button>
+            </Link>
+          </div>
+        ) : null}
 
         <section className="mb-6 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
           <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">

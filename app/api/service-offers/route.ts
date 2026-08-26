@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken'
 import { JWT_SECRET } from '@/lib/auth'
 import {
   CATEGORY_BY_OFFER_TYPE,
-  IMPACT_AREAS,
+  impactAreaMatchesFilter,
   isOfferType,
   isOfferExpired,
   isCapabilityOfferAvailableForListing,
@@ -13,12 +13,19 @@ import {
   OfferType,
   normalizeDateOnlyToEndOfDayIso,
   normalizeCapabilityTransactionType,
+  normalizeImpactAreas,
   resolveCapabilityRentalRate,
   sanitizeTextArray,
   parseCsvToStringArray,
   toNullableNumber,
   toNullablePositiveNumber
 } from '@/lib/service-offers'
+import {
+  assertUserRazorpayPayoutActiveForCapabilities,
+  CAPABILITY_LISTING_REQUIRES_PAYOUT_MESSAGE,
+  isMerchantRazorpayPayoutActive,
+  parseProfileData,
+} from '@/lib/razorpay-route'
 import { buildUsageRecordFromClient } from '@/lib/service-offers'
 
 interface JWTPayload {
@@ -235,13 +242,9 @@ const validateIncomingBody = (body: Record<string, any>) => {
     return `transaction_type ${body.transaction_type} is not allowed for offer_type ${body.offer_type}.`
   }
 
+  body.impact_area = normalizeImpactAreas(body.impact_area)
   if (!Array.isArray(body.impact_area) || body.impact_area.length === 0) {
     return 'Please select at least one impact area.'
-  }
-
-  const invalidImpactArea = body.impact_area.some((area: string) => !(IMPACT_AREAS as readonly string[]).includes(area))
-  if (invalidImpactArea) {
-    return 'impact_area contains invalid values.'
   }
 
   // Require a validity end date for all new offers
@@ -279,6 +282,7 @@ const coerceIncomingBody = (body: Record<string, any>) => {
   } else {
     body.impact_area = sanitizeTextArray(body.impact_area)
   }
+  body.impact_area = normalizeImpactAreas(body.impact_area)
 
   // tags: accept CSV or array
   if (!Array.isArray(body.tags)) {
@@ -375,7 +379,8 @@ export async function GET(request: NextRequest) {
           city,
           state_province,
           pincode,
-          profile_image
+          profile_image,
+          profile_data
         )
       `)
       .order('created_at', { ascending: false })
@@ -394,10 +399,6 @@ export async function GET(request: NextRequest) {
       query = query.eq('offer_type', offerTypeFilter)
     }
 
-    if (category && category !== 'All Categories') {
-      query = query.contains('impact_area', [category])
-    }
-
     const { data: offers, error } = await query
 
     if (error) {
@@ -405,6 +406,13 @@ export async function GET(request: NextRequest) {
     }
 
     let filteredOffers = (offers || []).map(normalizeOffer)
+
+    // Public marketplace: only list capabilities from merchants with Razorpay connected.
+    if (view === 'all' || !view) {
+      filteredOffers = filteredOffers.filter((offer: any) =>
+        isMerchantRazorpayPayoutActive(parseProfileData(offer?.ngo?.profile_data))
+      )
+    }
 
     // Server-side: remove expired offers based on expires_at if present
     const shouldIncludeExpired = includeExpired || view === 'my-offers'
@@ -417,6 +425,12 @@ export async function GET(request: NextRequest) {
       if (isNaN(ms)) return true
       return ms >= Date.now()
     })
+
+    if (category && category !== 'All Categories' && category !== 'all') {
+      filteredOffers = filteredOffers.filter((offer) =>
+        impactAreaMatchesFilter(offer.impact_area, category)
+      )
+    }
 
     if (search) {
       const searchLower = search.toLowerCase()
@@ -593,6 +607,18 @@ export async function POST(request: NextRequest) {
       }, { status: 403 })
     }
 
+    try {
+      await assertUserRazorpayPayoutActiveForCapabilities(userId)
+    } catch (payoutError) {
+      return NextResponse.json(
+        {
+          error: payoutError instanceof Error ? payoutError.message : CAPABILITY_LISTING_REQUIRES_PAYOUT_MESSAGE,
+          requiresPayoutConnection: true,
+        },
+        { status: 403 }
+      )
+    }
+
     let body: Record<string, any>
     try {
       body = coerceIncomingBody(await request.json())
@@ -633,7 +659,7 @@ export async function POST(request: NextRequest) {
       description: String(body.description || '').trim(),
       offer_type: offerType,
       transaction_type: transactionType,
-      impact_area: sanitizeTextArray(body.impact_area),
+      impact_area: normalizeImpactAreas(body.impact_area),
       tags: sanitizeTextArray(body.tags),
       requirements: Array.isArray(body.requirements) ? sanitizeTextArray(body.requirements) : (typeof body.requirements === 'string' && body.requirements.trim() ? [body.requirements.trim()] : null),
       city: String(body.city || '').trim() || null,

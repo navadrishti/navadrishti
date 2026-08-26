@@ -198,7 +198,7 @@ export default function CALayout({ children }: { children: React.ReactNode }) {
                 className="w-full border-l border-white/10 p-0 text-white sm:max-w-sm [&>button]:hidden"
                 style={{ backgroundColor: '#0067b9' }}
               >
-                <SheetTitle className="sr-only">CA console menu</SheetTitle>
+                <SheetTitle className="sr-only">CA Portal menu</SheetTitle>
                 <SheetDescription className="sr-only">
                   Navigation and account actions for the CA console
                 </SheetDescription>

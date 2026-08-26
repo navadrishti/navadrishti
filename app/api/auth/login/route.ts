@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
 
     if (await isCompanyCAUser(user.id)) {
       return NextResponse.json(
-        { error: 'This account is restricted to the Evidence Portal. Use /evidence-verification/login.' },
+        { error: 'This account is restricted to the CA Portal. Use /evidence-verification/login.' },
         { status: 403 }
       );
     }
