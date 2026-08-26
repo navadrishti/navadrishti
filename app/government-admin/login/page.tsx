@@ -103,7 +103,7 @@ export default function GovernmentAdminLoginPage() {
 
   if (checkingAuth) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100">
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-[#F6F5F1] to-[#FFF6ED]">
         <div className="text-center">
           <Loader2 className="mx-auto h-8 w-8 animate-spin text-blue-600" />
           <p className="mt-4 text-blue-600">Checking authentication...</p>
@@ -113,7 +113,7 @@ export default function GovernmentAdminLoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100 p-4">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-[#F6F5F1] to-[#FFF6ED] p-4">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
           <h1 className="mb-2 text-3xl font-bold text-gray-900">Government Admin Console</h1>

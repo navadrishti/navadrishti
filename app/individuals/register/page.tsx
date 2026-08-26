@@ -173,7 +173,7 @@ export default function IndividualRegister() {
   };
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-[#F6F5F1] to-[#FFF6ED] p-4">
       <Card className="w-full max-w-2xl shadow-none">
         <CardHeader className="space-y-1">
           <AuthCardBackRow fallbackHref="/register" />

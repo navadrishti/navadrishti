@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { ArrowLeft, MapPin, Users, Clock, Target, Calendar, User, Building, MessageSquare, CheckCircle, XCircle, Loader2, DollarSign, AlertTriangle } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
+import { getGramAvatarFallbackStyle } from '@/lib/gram-avatar'
 import { formatPrice } from '@/lib/utils'
 import { DetailField, DetailSection, displayValue, parseStringArray, parseImages } from '@/components/detail-fields'
 import { formatDetailDate } from '@/lib/format-date'
@@ -831,8 +832,11 @@ export default function ServiceOfferDetailPage() {
                             className="h-full w-full object-cover"
                           />
                         ) : (
-                          <div className="h-full w-full flex items-center justify-center bg-gray-200">
-                            <span className="text-lg font-semibold text-gray-700">{getInitials(offer.provider_name || offer.ngo_name)}</span>
+                          <div
+                            className="flex h-full w-full items-center justify-center"
+                            style={getGramAvatarFallbackStyle(offer.provider_name || offer.ngo_name)}
+                          >
+                            <span className="text-lg font-semibold">{getInitials(offer.provider_name || offer.ngo_name)}</span>
                           </div>
                         )}
                       </div>

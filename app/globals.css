@@ -38,6 +38,32 @@ body {
     white-space: nowrap;
   }
 
+  .bg-platform-sidebar {
+    background-color: #2B3E41;
+  }
+
+  .border-platform-sidebar {
+    border-color: #2B3E41;
+  }
+
+  .sidebar-nav-active {
+    position: relative;
+    background-color: #3A5054 !important;
+    color: #FFFFFF !important;
+  }
+
+  .sidebar-nav-active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    height: 1.15rem;
+    width: 3px;
+    transform: translateY(-50%);
+    border-radius: 0 2px 2px 0;
+    background-color: #F47B20;
+  }
+
   .agent-only {
     position: absolute;
     left: -9999px;
@@ -106,7 +132,7 @@ body {
   }
 
   .hover-glow:hover {
-    @apply shadow-lg shadow-blue-500/20;
+    @apply shadow-lg shadow-orange-500/15;
   }
 
   .press-effect {
@@ -390,78 +416,127 @@ body {
 
 /* Custom color classes */
 
-/* Blue colors */
+/* Softened status surfaces — low saturation, pleasant */
 .bg-blue-50 {
-  background-color: #eff6ff !important;
+  background-color: #F0F3F4 !important;
 }
 .bg-blue-100 {
-  background-color: #dbeafe !important;
+  background-color: #E7ECF0 !important;
 }
 .text-blue-600, .text-blue-800 {
-  color: #2563eb !important;
+  color: #5A6B75 !important;
 }
 .border-blue-200 {
-  border-color: #bfdbfe !important;
+  border-color: #D9E0E4 !important;
+}
+.border-blue-300 {
+  border-color: #CDD6DB !important;
+}
+.text-blue-700 {
+  color: #5F707A !important;
 }
 
-/* Purple colors */
-.bg-purple-50 {
-  background-color: #f5f3ff !important;
-}
-.bg-purple-100 {
-  background-color: #ede9fe !important;
-}
-.text-purple-600, .text-purple-700 {
-  color: #7c3aed !important;
-}
-
-/* Amber colors */
-.bg-amber-50 {
-  background-color: #fffbeb !important;
-}
-.bg-amber-100 {
-  background-color: #fef3c7 !important;
-}
-.text-amber-600, .text-amber-700 {
-  color: #d97706 !important;
-}
-
-/* Green colors */
 .bg-green-50 {
-  background-color: #ecfdf5 !important;
+  background-color: #F1F6F3 !important;
 }
 .bg-green-100 {
-  background-color: #d1fae5 !important;
+  background-color: #E7F0EA !important;
+}
+.text-green-600, .text-green-700, .text-green-800 {
+  color: #4F6B5C !important;
+}
+.border-green-200, .border-green-300 {
+  border-color: #D5E2DA !important;
+}
+
+.bg-amber-50, .bg-yellow-50 {
+  background-color: #F8F4EC !important;
+}
+.text-amber-700, .text-amber-800, .text-amber-900, .text-yellow-800 {
+  color: #8A6F45 !important;
+}
+.border-amber-200, .border-amber-300 {
+  border-color: #E9DFCC !important;
+}
+
+.bg-red-50 {
+  background-color: #F8F1F1 !important;
+}
+.text-red-600, .text-red-700, .text-red-800 {
+  color: #8C5555 !important;
+}
+.border-red-200, .border-red-300 {
+  border-color: #E8D8D8 !important;
+}
+
+.bg-emerald-50 {
+  background-color: #F1F6F3 !important;
+}
+.text-emerald-700, .text-emerald-800 {
+  color: #4F6B5C !important;
+}
+.border-emerald-200, .border-emerald-300 {
+  border-color: #D5E2DA !important;
+}
+
+/* Purple / indigo — muted so they don't clash with the calm palette */
+.bg-purple-50 {
+  background-color: #F3F2F6 !important;
+}
+.bg-purple-100 {
+  background-color: #EBE9F0 !important;
+}
+.text-purple-600, .text-purple-700 {
+  color: #6B6578 !important;
+}
+
+/* Amber — keep soft (do not re-saturate) */
+.bg-amber-50 {
+  background-color: #F8F4EC !important;
+}
+.bg-amber-100 {
+  background-color: #F3EBDC !important;
+}
+.text-amber-600, .text-amber-700 {
+  color: #8A6F45 !important;
+}
+
+/* Green — soft sage success only */
+.bg-green-50 {
+  background-color: #F1F6F3 !important;
+}
+.bg-green-100 {
+  background-color: #E7F0EA !important;
 }
 .text-green-600, .text-green-700 {
-  color: #059669 !important;
+  color: #4F6B5C !important;
 }
 
-/* Gray colors */
+/* Gray — warm neutrals */
 .bg-gray-50 {
-  background-color: #f9fafb !important;
+  background-color: #F6F5F1 !important;
 }
 .bg-gray-100 {
-  background-color: #f3f4f6 !important;
+  background-color: #EEEDE8 !important;
 }
 .text-gray-400, .text-gray-500 {
-  color: #6b7280 !important;
+  color: #6E777E !important;
 }
 
-/* Red colors */
+/* Red — soft alert */
 .bg-red-50 {
-  background-color: #fef2f2 !important;
+  background-color: #F8F1F1 !important;
 }
 .text-red-700 {
-  color: #b91c1c !important;
+  color: #8C5555 !important;
 }
 
-/* Indigo colors */
+/* Indigo — muted slate-lilac */
 .bg-indigo-50 {
-  background-color: #eef2ff !important;
+  background-color: #F0F2F5 !important;
 }
 .text-indigo-700 {
-  color: #4338ca !important;
+  color: #5A6570 !important;
 }
 
 /* Fix for text-muted-foreground */
@@ -474,7 +549,7 @@ body {
   background-clip: text;
   -webkit-background-clip: text;
   color: transparent;
-  background-image: linear-gradient(to right, #111827, #4b5563);
+  background-image: linear-gradient(to right, #2C3338, #6E777E);
 }
 
 /* ---- End merged colors.css ---- */
@@ -632,7 +707,7 @@ body {
 
 @layer utilities {
   .ai-agent-border-flow {
-    background-image: linear-gradient(90deg, #66b3ff, #0067b9, #7fc2ff, #1d4ed8, #66b3ff);
+    background-image: linear-gradient(90deg, #3d5558, #2B3E41, #4a6366, #3A5054, #3d5558);
     background-size: 300% 300%;
     animation: aiBorderFlow 6s linear infinite;
   }
@@ -654,7 +729,7 @@ body {
 /* Add base transition to all interactive elements */
 @layer base {
   button, a, input, select, textarea {
-    @apply transition-colors duration-150 ease-in-out;
+    @apply transition-colors duration-200 ease-out;
   }
 
   /* Remove focus boxes consistently across interactive UI */
@@ -666,119 +741,138 @@ body {
     box-shadow: none !important;
   }
 
-  /* Remove transient focus flash on form fields */
+  /* Soft orange focus for bordered form fields — no browser blue */
   input:focus,
   select:focus,
   textarea:focus,
   input:focus-visible,
   select:focus-visible,
   textarea:focus-visible {
-    @apply outline-none ring-0 ring-offset-0;
-    box-shadow: none !important;
+    outline: none !important;
+  }
+
+  input:not([class*="border-0"]):focus,
+  select:focus,
+  textarea:focus,
+  input:not([class*="border-0"]):focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    border-color: #F47B20 !important;
+    box-shadow: 0 0 0 3px rgba(244, 123, 32, 0.10) !important;
   }
 }
 
 @layer base {
   :root {
-    /* Udaan theme colors as HSL variables */
-    --udaan-navy: 207 100% 36%;       /* #0067b9 */
-    --udaan-blue: 207 100% 36%;       /* #0067b9 */
-    --udaan-orange: 28 90% 54%;       /* #F47B20 */
-    --udaan-cream: 37 100% 96%;       /* #FFF8ED */
-    --udaan-white: 0 0% 100%;         /* #FFFFFF */
-    
-    /* Map Udaan colors to theme variables */
-    --background: var(--udaan-white);
-    --foreground: var(--udaan-navy);
-    
+    /* Brand + shell — soothing, trustworthy social-impact palette */
+    --udaan-orange: 28 90% 54%;       /* #F47B20 — exact brand orange */
+    --udaan-navy: 187 20% 21%;        /* #2B3E41 soft teal sidebar */
+    --udaan-blue: 187 18% 28%;        /* #3A5054 sidebar active */
+    --udaan-cream: 30 100% 96%;       /* #FFF6ED soft orange highlight */
+    --udaan-white: 0 0% 100%;
+
+    --gram-page: 45 18% 96%;          /* #F6F5F1 warm paper background */
+    --gram-ink: 210 10% 20%;          /* #2C3338 headings */
+    --gram-body: 210 9% 27%;          /* #3F474E body — easier on eyes */
+    --gram-secondary: 205 7% 46%;     /* #6E777E */
+    --gram-muted: 205 5% 61%;         /* #959BA1 */
+    --gram-border: 90 8% 91%;         /* #E8EAE6 */
+    --gram-input-border: 180 8% 88%;  /* #DEE3E4 */
+    --gram-sage: 145 16% 95%;
+    --gram-sage-fg: 145 12% 38%;
+    --gram-avatar: 158 13% 46%;       /* #66877D default avatar solid (palette[0]) */
+    --gram-shadow: 0 2px 14px rgba(30, 36, 42, 0.035);
+
+    /* Theme mapping */
+    --background: var(--gram-page);
+    --foreground: var(--gram-body);
+
     --card: var(--udaan-white);
-    --card-foreground: var(--udaan-navy);
-    
+    --card-foreground: var(--gram-body);
+
     --popover: var(--udaan-white);
-    --popover-foreground: var(--udaan-navy);
-    
+    --popover-foreground: var(--gram-body);
+
     --primary: var(--udaan-orange);
     --primary-foreground: 0 0% 100%;
-    
-    --secondary: var(--udaan-blue);
-    --secondary-foreground: 0 0% 100%;
-    
-    --muted: 0 0% 96%;
-    --muted-foreground: 0 0% 45%;
-    
+
+    --secondary: 45 12% 95%;
+    --secondary-foreground: var(--gram-ink);
+
+    --muted: 45 12% 95%;
+    --muted-foreground: var(--gram-secondary);
+
     --accent: var(--udaan-cream);
-    --accent-foreground: var(--udaan-navy);
-    
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 98%;
-    
-    --border: 0 0% 90%;
-    --input: 0 0% 90%;
+    --accent-foreground: var(--gram-ink);
+
+    --destructive: 0 42% 52%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: var(--gram-border);
+    --input: var(--gram-input-border);
     --ring: var(--udaan-orange);
-    
+
     --chart-1: var(--udaan-orange);
-    --chart-2: var(--udaan-blue);
+    --chart-2: 204 12% 45%;
     --chart-3: var(--udaan-navy);
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
-    
-    --radius: 0.5rem;
-    
-    /* Sidebar theme */
+    --chart-4: 145 14% 42%;
+    --chart-5: 28 60% 55%;
+
+    --radius: 0.75rem;
+
     --sidebar-background: var(--udaan-navy);
-    --sidebar-foreground: 0 0% 100%;
+    --sidebar-foreground: 200 18% 96%;
     --sidebar-primary: var(--udaan-orange);
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: var(--udaan-blue);
     --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: var(--udaan-blue);
+    --sidebar-border: 204 14% 30%;
     --sidebar-ring: var(--udaan-orange);
+    --sidebar-muted: 200 10% 74%;
   }
-  
+
   .dark {
     --background: var(--udaan-navy);
     --foreground: var(--udaan-white);
-    
-    --card: 210 100% 12%;
+
+    --card: var(--udaan-blue);
     --card-foreground: var(--udaan-white);
-    
-    --popover: 210 100% 12%;
+
+    --popover: var(--udaan-blue);
     --popover-foreground: var(--udaan-white);
-    
+
     --primary: var(--udaan-orange);
-    --primary-foreground: var(--udaan-white);
-    
-    --secondary: var(--udaan-blue);
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 210 18% 22%;
     --secondary-foreground: var(--udaan-white);
-    
-    --muted: 210 100% 15%;
-    --muted-foreground: 0 0% 70%;
-    
-    --accent: 210 40% 35%;
+
+    --muted: 210 18% 20%;
+    --muted-foreground: var(--sidebar-muted);
+
+    --accent: 28 40% 22%;
     --accent-foreground: var(--udaan-white);
-    
-    --destructive: 0 63% 31%;
+
+    --destructive: 0 63% 40%;
     --destructive-foreground: var(--udaan-white);
-    
-    --border: 210 100% 20%;
-    --input: 210 100% 20%;
+
+    --border: 210 18% 24%;
+    --input: 210 18% 24%;
     --ring: var(--udaan-orange);
-    
-    /* Keep chart colors consistent with theme */
+
     --chart-1: var(--udaan-orange);
-    --chart-2: var(--udaan-blue);
-    --chart-3: 210 70% 40%;
-    --chart-4: 37 100% 70%;
-    --chart-5: 340 75% 55%;
-    
-    /* Dark sidebar theme */
-    --sidebar-background: var(--udaan-blue);
+    --chart-2: 210 18% 55%;
+    --chart-3: 210 20% 40%;
+    --chart-4: 145 20% 50%;
+    --chart-5: 28 70% 55%;
+
+    --sidebar-background: var(--udaan-navy);
     --sidebar-foreground: var(--udaan-white);
     --sidebar-primary: var(--udaan-orange);
     --sidebar-primary-foreground: var(--udaan-white);
     --sidebar-accent: var(--udaan-blue);
     --sidebar-accent-foreground: var(--udaan-white);
-    --sidebar-border: var(--udaan-blue);
+    --sidebar-border: 210 18% 22%;
     --sidebar-ring: var(--udaan-orange);
   }
 }
@@ -790,6 +884,10 @@ body {
   body {
     @apply bg-background text-foreground;
     overflow-y: scroll !important;
+    line-height: 1.6;
+    letter-spacing: 0.005em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   html,
@@ -820,11 +918,11 @@ body {
   }
 
   [cmdk-item]:hover {
-    background-color: #eaf4ff !important;
+    background-color: #FFF3E8 !important;
   }
 
   [cmdk-item][data-selected="true"] {
-    background-color: #eaf4ff !important;
+    background-color: #FFF3E8 !important;
     color: hsl(var(--foreground)) !important;
   }
 }

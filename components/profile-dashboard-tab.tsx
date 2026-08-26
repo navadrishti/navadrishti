@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { Camera, Loader2, RefreshCw } from 'lucide-react'
 // User icon removed from heading
 import { useAuth } from '@/lib/auth-context'
+import { getGramAvatarFallbackStyle } from '@/lib/gram-avatar'
 import { useOtpSender } from '@/hooks/use-otp-sender'
 import { PHONE_VERIFICATION_ENABLED, getCoverImageUrl, summarizeDocumentExpiries, visibleCaBadgeNumber } from '@/lib/auth'
 import { formatDisplayDate } from '@/lib/format-date'
@@ -1052,7 +1053,10 @@ export function ProfileDashboardTab() {
                     {profileImageUrl ? (
                       <img src={profileImageUrl} alt="Profile" className="h-full w-full object-cover" />
                     ) : (
-                      <div className="flex h-full w-full items-center justify-center bg-udaan-orange text-xl font-semibold text-white">
+                      <div
+                        className="flex h-full w-full items-center justify-center text-xl font-semibold"
+                        style={getGramAvatarFallbackStyle(user?.name || 'U')}
+                      >
                         {user?.name ? user.name.split(' ').map((n) => n[0]).join('').toUpperCase() : 'U'}
                       </div>
                     )}
