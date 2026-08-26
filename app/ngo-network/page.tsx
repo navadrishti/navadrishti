@@ -149,11 +149,20 @@ function NgoNetworkCard({
   userType?: string
   onPay: (ngo: NGO) => void
 }) {
+  const hasCsr1 = Boolean(ngo.csr_eligible || ngo.compliance.csr1 || ngoComplianceTags(ngo).includes('csr1'))
+  const acceptsPayments = Boolean(ngo.accepts_payments)
   const canPayNgo =
     canPay &&
     payerCaVerified &&
-    (ngo.accepts_payments ?? ngo.compliance.verified) &&
-    (userType !== "company" || Boolean(ngo.csr_eligible || ngo.compliance.csr1))
+    acceptsPayments &&
+    (userType !== "company" || hasCsr1)
+  const payDisabledReason = (() => {
+    if (!canPay) return null
+    if (!payerCaVerified) return 'Verification required'
+    if (userType === 'company' && !hasCsr1) return 'CSR-1 required'
+    if (!acceptsPayments) return 'Payout not connected'
+    return null
+  })()
   const sectorLabels = ngo.sectors_schedule_vii?.length
     ? ngo.sectors_schedule_vii
     : ngo.sector
@@ -295,13 +304,9 @@ function NgoNetworkCard({
               >
                 Pay
               </Button>
-            ) : canPay && !payerCaVerified ? (
+            ) : payDisabledReason ? (
               <Button size="sm" variant="outline" className="h-8 w-full" disabled>
-                Verification required
-              </Button>
-            ) : canPay ? (
-              <Button size="sm" variant="outline" className="h-8 w-full" disabled>
-                Payout setup pending
+                {payDisabledReason}
               </Button>
             ) : isNgoViewer ? (
               ngo.id !== userId && ngo.email ? (

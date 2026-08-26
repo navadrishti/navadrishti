@@ -17,7 +17,7 @@ import { VerificationBadge } from "./verification-badge"
 import { formatPrice, getRequestUrgencyLevel } from "@/lib/utils"
 import { formatDisplayDate } from "@/lib/format-date"
 import {
-  IMPACT_AREA_OPTIONS,
+  formatImpactAreaLabel,
   OFFER_TYPE_OPTIONS,
   classifyCapabilityOffer,
   formatPastReasonLabel,
@@ -1178,7 +1178,7 @@ function dashboardLabelForOption(
 }
 
 function dashboardLabelForImpactArea(value: string) {
-  return IMPACT_AREA_OPTIONS.find((option) => option.value === value)?.label || value.replace(/_/g, ' ')
+  return formatImpactAreaLabel(value)
 }
 
 function formatDashboardLocation(offer: CapabilityOfferSummary) {
@@ -1449,6 +1449,10 @@ type YourCapabilitiesPanelProps = {
   createLabel?: string
   emptyTitle?: string
   emptyDescription?: string
+  canCreate?: boolean
+  createBlockedHref?: string
+  createBlockedLabel?: string
+  createBlockedMessage?: string
 }
 
 export function YourCapabilitiesPanel({
@@ -1458,6 +1462,10 @@ export function YourCapabilitiesPanel({
   createLabel = 'Create Capability Offer',
   emptyTitle = 'No capability offers yet',
   emptyDescription = 'Create capability offers to support NGO needs and partnerships.',
+  canCreate = true,
+  createBlockedHref,
+  createBlockedLabel = 'Connect Razorpay payout',
+  createBlockedMessage = 'Connect Razorpay payout before listing capabilities so you can receive merchant payments.',
 }: YourCapabilitiesPanelProps) {
   const [tab, setTab] = useState<'active' | 'past'>('active')
 
@@ -1477,6 +1485,21 @@ export function YourCapabilitiesPanel({
     return { activeOffers: active, pastOffers: past }
   }, [offers])
 
+  const createAction = canCreate ? (
+    <Link href={createHref}>
+      <Button variant="outline">{createLabel}</Button>
+    </Link>
+  ) : createBlockedHref ? (
+    <div className="space-y-3">
+      <p className="text-sm text-amber-800">{createBlockedMessage}</p>
+      <Link href={createBlockedHref}>
+        <Button variant="outline">{createBlockedLabel}</Button>
+      </Link>
+    </div>
+  ) : (
+    <p className="text-sm text-amber-800">{createBlockedMessage}</p>
+  )
+
   if (loading) {
     return (
       <div className="p-6 text-center text-muted-foreground">
@@ -1490,9 +1513,7 @@ export function YourCapabilitiesPanel({
       <div className="p-8 text-center text-muted-foreground">
         <p className="text-lg font-medium mb-2">{emptyTitle}</p>
         <p className="text-sm mb-4">{emptyDescription}</p>
-        <Link href={createHref}>
-          <Button variant="outline">{createLabel}</Button>
-        </Link>
+        {createAction}
       </div>
     )
   }

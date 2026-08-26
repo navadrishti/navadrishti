@@ -12,7 +12,7 @@ import { formatDetailDate } from '@/lib/format-date'
 import { Header } from '@/components/header'
 import { ImageCarousel } from '@/components/ui/image-carousel'
 import {
-  IMPACT_AREA_OPTIONS,
+  formatImpactAreaLabel,
   OFFER_TYPE_OPTIONS,
   formatCapabilityRentalRateLabel,
   formatCapabilityTransactionLabel,
@@ -156,7 +156,7 @@ function labelForOption(
 }
 
 function labelForImpactArea(value: string) {
-  return IMPACT_AREA_OPTIONS.find((option) => option.value === value)?.label || value.replace(/_/g, ' ')
+  return formatImpactAreaLabel(value)
 }
 
 function labelForPriceType(value?: string | null) {

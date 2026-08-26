@@ -59,9 +59,9 @@ export function CAConsoleHeader({
   const emailLabel = accountEmail || '';
 
   const initials = useMemo(() => {
-    const source = accountName || accountEmail || 'EV';
+    const source = accountName || accountEmail || 'CA';
     const words = source.split(/\s+/).filter(Boolean);
-    if (words.length === 0) return 'EV';
+    if (words.length === 0) return 'CA';
     if (words.length === 1) return words[0].charAt(0).toUpperCase();
     return (words[0].charAt(0) + words[words.length - 1].charAt(0)).toUpperCase();
   }, [accountEmail, accountName]);
@@ -209,9 +209,9 @@ export function CAConsoleHeader({
           </SheetTrigger>
 
             <SheetContent side="right" className="w-full border-l border-white/10 p-0 text-white sm:max-w-sm [&>button]:hidden" style={{ backgroundColor: '#0067b9' }}>
-              <SheetTitle className="sr-only">Evidence verification menu</SheetTitle>
+              <SheetTitle className="sr-only">CA Portal menu</SheetTitle>
               <SheetDescription className="sr-only">
-                Navigation links and account options for the Evidence Portal
+                Navigation links and account options for the CA Portal
               </SheetDescription>
 
               <div className="flex h-full flex-col">

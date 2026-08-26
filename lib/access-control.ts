@@ -292,6 +292,12 @@ export const GRAM_LIVE_FEATURES = [
   'Active NGO directory',
   'Donation access to verified NGOs',
   'FCRA, 12A, 80G and Section 8 / Trust / Society certificate-checked badges',
+  'Volunteer and service engagement',
+  'NGO-company CSR collaboration',
+  'CSR campaign and project management',
+  'Field execution and evidence capture',
+  'Evidence verification and milestone-based execution',
+  'Impact tracking and operational intelligence',
 ] as const;
 
 export const AGENT_FAQ = [
