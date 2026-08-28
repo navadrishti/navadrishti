@@ -160,7 +160,7 @@ export function DashboardQuickSidebar({
                 className={[
                   'flex w-[4.25rem] shrink-0 grow-0 flex-col items-center justify-center rounded-2xl px-2.5 py-2 transition-colors',
                   isActive
-                    ? 'bg-gram-soft text-udaan-orange shadow-sm'
+                    ? 'bg-gram-sage text-udaan-blue shadow-sm'
                     : 'text-gram-muted hover:bg-white/70 hover:text-gram-ink',
                 ].join(' ')}
               >
@@ -170,7 +170,7 @@ export function DashboardQuickSidebar({
                 <span
                   className={[
                     'mt-1.5 max-w-full truncate text-[10px] font-medium leading-none',
-                    isActive ? 'text-udaan-orange/80' : 'text-gram-faint',
+                    isActive ? 'text-udaan-blue/80' : 'text-gram-faint',
                   ].join(' ')}
                 >
                   {item.label}
@@ -209,7 +209,7 @@ export function DashboardQuickSidebar({
                 className={cn(
                   'w-full rounded-md px-3 py-2 text-left text-sm font-medium transition-colors',
                   isActive
-                    ? 'bg-gram-soft text-udaan-orange'
+                    ? 'bg-gram-sage text-udaan-blue'
                     : 'text-gram-ink hover:bg-gram-page'
                 )}
               >
