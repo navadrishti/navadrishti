@@ -111,7 +111,7 @@ interface CampaignApiItem {
 
 function CSRCampaignCtaSkeleton() {
   return (
-    <div className="mb-8 p-8 bg-white rounded-md border-2 border-black shadow-sm relative overflow-hidden">
+    <div className="mb-8 p-8 bg-white rounded-md border border-gram-border shadow-sm relative overflow-hidden">
       <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
         <div className="text-center md:text-left">
           <Skeleton className="h-8 w-72 mb-3" />
@@ -388,7 +388,7 @@ export default function CSRCampaignsPage() {
         {loading ? (
           isCompany && <CSRCampaignCtaSkeleton />
         ) : isCompany && (
-          <div className="mb-8 relative overflow-hidden rounded-md border-2 border-black bg-white p-8 shadow-sm">
+          <div className="mb-8 relative overflow-hidden rounded-md border border-gram-border bg-white p-8 shadow-sm">
             <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
               <div className="text-center md:text-left">
                   <h2 className="text-2xl font-bold text-black mb-3">
@@ -399,7 +399,7 @@ export default function CSRCampaignsPage() {
                 </p>
               </div>
               <Link href={AGENT_ROUTES.catalyst}>
-                  <button className="flex h-auto items-center rounded-md border-2 border-black bg-white px-8 py-4 text-base font-medium text-black shadow-sm transition-all duration-300 hover:bg-gray-50">
+                  <button className="flex h-auto items-center rounded-md border border-gram-border bg-white px-8 py-4 text-base font-medium text-black shadow-sm transition-all duration-300 hover:bg-gram-page">
                   <Sparkles size={20} className="mr-3" />
                   Use {AGENT_NAMES.catalyst}
                   <ArrowRight size={16} className="ml-3" />
@@ -587,7 +587,7 @@ export default function CSRCampaignsPage() {
                                   variant="ghost"
                                   onClick={() => handleVolunteer(campaign.id)}
                                   disabled={!volunteerState.canApply}
-                                  className="h-6 p-0 text-sm font-medium text-black shadow-none hover:bg-transparent hover:text-blue-600"
+                                  className="h-6 p-0 text-sm font-medium text-black shadow-none hover:bg-transparent hover:text-udaan-blue"
                                 >
                                   <ArrowRight size={14} className="mr-1" />
                                   {volunteerState.label}
@@ -601,7 +601,7 @@ export default function CSRCampaignsPage() {
                       {isCompanyOwner(campaign.companyId) && (
                         <div className="pt-1">
                           <div className="flex items-center gap-2">
-                            <Button asChild variant="ghost" className="h-6 p-0 text-sm font-medium text-black shadow-none hover:bg-transparent hover:text-blue-600">
+                            <Button asChild variant="ghost" className="h-6 p-0 text-sm font-medium text-black shadow-none hover:bg-transparent hover:text-udaan-blue">
                               <Link href={`/companies/csr-agent?campaign_id=${campaign.id}`}>
                                 <Pencil size={14} className="mr-1" />
                                 Edit

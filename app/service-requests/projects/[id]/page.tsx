@@ -84,11 +84,11 @@ type ProjectDetailPayload = {
 
 const statusBadgeClass = (status: string) => {
   const normalized = String(status || '').toLowerCase();
-  if (normalized === 'completed') return 'bg-green-100 text-green-800 border-green-200';
-  if (normalized === 'in_progress' || normalized === 'active') return 'bg-blue-100 text-blue-800 border-blue-200';
-  if (normalized === 'pending' || normalized === 'accepted') return 'bg-amber-100 text-amber-800 border-amber-200';
-  if (normalized === 'cancelled' || normalized === 'rejected') return 'bg-red-100 text-red-800 border-red-200';
-  return 'bg-slate-100 text-slate-700 border-slate-200';
+  if (normalized === 'completed') return 'border-[#D5E2DA] bg-[#F1F6F3] text-[#4F6B5C]';
+  if (normalized === 'in_progress' || normalized === 'active') return 'border-[#D9E0E4] bg-[#F0F3F4] text-udaan-blue';
+  if (normalized === 'pending' || normalized === 'accepted') return 'border-[#E9DFCC] bg-[#F8F4EC] text-[#8A6F45]';
+  if (normalized === 'cancelled' || normalized === 'rejected') return 'border-[#E8D8D8] bg-[#F8F1F1] text-[#8C5555]';
+  return 'border-gram-border bg-gram-page text-gram-muted';
 };
 
 const getInitials = (name?: string) => {
@@ -273,7 +273,7 @@ export default function ServiceRequestProjectDetailPage() {
   };
 
   const renderProjectLoadingSkeleton = () => (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div className="min-h-screen bg-background">
       <Header />
       <div className="mx-auto max-w-7xl px-4 py-8">
         <div className="mb-6">
@@ -363,11 +363,11 @@ export default function ServiceRequestProjectDetailPage() {
   const csrProjectAvailable = projectData.csr_project_available_for_csr;
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div className="min-h-screen overflow-x-hidden bg-background">
       <Header />
       <div className="mx-auto max-w-7xl px-4 py-8">
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <Button variant="ghost" className="w-full justify-start px-0 text-blue-600 hover:text-blue-800 hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0 sm:w-auto" onClick={() => router.back()}>
+          <Button variant="ghost" className="w-full justify-start px-0 text-udaan-blue hover:text-gram-ink hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0 sm:w-auto" onClick={() => router.back()}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back
           </Button>

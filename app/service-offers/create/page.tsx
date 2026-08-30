@@ -407,12 +407,12 @@ export default function CreateServiceOfferPage() {
 
   return (
     <ProtectedRoute requireVerification={true} permission="canCreateServiceOffers">
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-background">
         <Header />
 
         <div className="max-w-4xl mx-auto p-6">
           <div className="mb-8">
-            <Button variant="ghost" onClick={() => router.back()} className="mb-4 px-0 text-blue-600 hover:text-blue-700 hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0">
+            <Button variant="ghost" onClick={() => router.back()} className="mb-4 px-0 text-udaan-blue hover:text-gram-ink hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0">
               <ArrowLeft size={18} className="mr-2" />
               Back
             </Button>
@@ -477,7 +477,7 @@ export default function CreateServiceOfferPage() {
                 <div>
                   <Label htmlFor="offer-images">Images</Label>
                   <div className="flex items-center gap-4">
-                    <label className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md cursor-pointer hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400">
+                    <label className="inline-flex items-center px-4 py-2 bg-udaan-blue text-white rounded-md cursor-pointer hover:bg-udaan-blue/90 focus:outline-none focus:ring-2 focus:ring-udaan-blue/30">
                       Choose files
                       <input
                         id="offer-images-upload"

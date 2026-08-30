@@ -219,7 +219,7 @@ export default function AdminLayoutClient({ children }: { children: ReactNode })
 
   return (
     <div className="flex min-h-screen flex-col">
-      <div className="flex flex-1 flex-col bg-gradient-to-br from-blue-50 to-indigo-100">{children}</div>
+      <div className="flex flex-1 flex-col bg-background">{children}</div>
     </div>
   );
 }

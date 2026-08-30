@@ -2237,7 +2237,7 @@ export default function AdminPage() {
                       <div className="flex flex-wrap gap-3">
                         <Button onClick={() => handleReview(selectedOffer.id, 'approve')} disabled={isReviewing} className="bg-emerald-600 hover:bg-emerald-500">Approve</Button>
                         <Button onClick={() => handleReview(selectedOffer.id, 'reject')} disabled={isReviewing} variant="destructive">Reject</Button>
-                        <Button variant="outline" className="border-blue-200 bg-white text-blue-700 hover:bg-blue-50" onClick={() => router.push(`/service-offers/${selectedOffer.id}`)}>Open live page</Button>
+                        <Button variant="outline" className="border-gram-border bg-white text-udaan-blue hover:bg-gram-sage" onClick={() => router.push(`/service-offers/${selectedOffer.id}`)}>Open live page</Button>
                       </div>
                     </>
                   )}
@@ -2304,7 +2304,7 @@ export default function AdminPage() {
                       </div>
                       <Textarea value={projectDraft.description} onChange={(e) => setProjectDraft((prev) => ({ ...prev, description: e.target.value }))} rows={6} placeholder="Project description" className="border-blue-200 bg-white text-slate-900 placeholder:text-slate-400" />
                       <div className="flex flex-wrap gap-3">
-                        <Button onClick={saveProject} disabled={savingProject} className="bg-blue-600 hover:bg-blue-500"><PencilLine className="mr-2 h-4 w-4" />{savingProject ? 'Saving...' : 'Save changes'}</Button>
+                        <Button onClick={saveProject} disabled={savingProject} className="bg-udaan-blue hover:bg-udaan-blue/90"><PencilLine className="mr-2 h-4 w-4" />{savingProject ? 'Saving...' : 'Save changes'}</Button>
                         <Button onClick={deleteProject} disabled={deletingProject} variant="destructive"><Trash2 className="mr-2 h-4 w-4" />{deletingProject ? 'Deleting...' : 'Delete project'}</Button>
                       </div>
                     </>
@@ -2405,7 +2405,7 @@ export default function AdminPage() {
                         </Select>
                       </div>
                       <div className="flex flex-wrap gap-3">
-                        <Button onClick={saveUser} disabled={savingUser || moderatingUser} className="bg-blue-600 hover:bg-blue-500"><PencilLine className="mr-2 h-4 w-4" />{savingUser ? 'Saving...' : 'Save changes'}</Button>
+                        <Button onClick={saveUser} disabled={savingUser || moderatingUser} className="bg-udaan-blue hover:bg-udaan-blue/90"><PencilLine className="mr-2 h-4 w-4" />{savingUser ? 'Saving...' : 'Save changes'}</Button>
                       </div>
                       <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
                         <div>
@@ -2551,7 +2551,7 @@ export default function AdminPage() {
                       <div className="flex flex-wrap gap-3">
                         <Button onClick={saveRequest} disabled={savingRequest} className="bg-cyan-600 hover:bg-cyan-500"><PencilLine className="mr-2 h-4 w-4" />{savingRequest ? 'Saving...' : 'Save changes'}</Button>
                         <Button onClick={deleteRequest} disabled={deletingRequest} variant="destructive"><Trash2 className="mr-2 h-4 w-4" />{deletingRequest ? 'Deleting...' : 'Delete request'}</Button>
-                        <Button variant="outline" className="border-blue-200 bg-white text-blue-700 hover:bg-blue-50" onClick={() => router.push(`/service-requests/${selectedRequest.id}`)}>Open live page</Button>
+                        <Button variant="outline" className="border-gram-border bg-white text-udaan-blue hover:bg-gram-sage" onClick={() => router.push(`/service-requests/${selectedRequest.id}`)}>Open live page</Button>
                       </div>
                     </>
                   )}
@@ -2629,7 +2629,7 @@ export default function AdminPage() {
                       <div className="flex flex-wrap gap-3">
                         <Button onClick={saveCampaign} disabled={savingCampaign} className="bg-cyan-600 hover:bg-cyan-500"><PencilLine className="mr-2 h-4 w-4" />{savingCampaign ? 'Saving...' : 'Save changes'}</Button>
                         <Button onClick={deleteCampaign} disabled={deletingCampaign} variant="destructive"><Trash2 className="mr-2 h-4 w-4" />{deletingCampaign ? 'Deleting...' : 'Delete campaign'}</Button>
-                        <Button variant="outline" className="border-blue-200 bg-white text-blue-700 hover:bg-blue-50" onClick={() => router.push(`/csr-campaigns/${selectedCampaign.id}`)}>Open live page</Button>
+                        <Button variant="outline" className="border-gram-border bg-white text-udaan-blue hover:bg-gram-sage" onClick={() => router.push(`/csr-campaigns/${selectedCampaign.id}`)}>Open live page</Button>
                       </div>
                     </>
                   )}

@@ -217,7 +217,7 @@ export function GovernmentAdminManagement({ embedded = false }: Props) {
   };
 
   return (
-    <div className={embedded ? 'w-full' : 'min-h-screen bg-gradient-to-b from-blue-50 via-slate-50 to-white px-4 py-6 text-slate-900 sm:px-6 lg:px-8'}>
+    <div className={embedded ? 'w-full' : 'min-h-screen bg-background px-4 py-6 text-slate-900 sm:px-6 lg:px-8'}>
       <div className={embedded ? 'w-full' : 'mx-auto max-w-7xl space-y-6'}>
         {!embedded ? (
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -265,7 +265,7 @@ export function GovernmentAdminManagement({ embedded = false }: Props) {
                 <Input value={bodyForm.state_name} onChange={(e) => setBodyForm((prev) => ({ ...prev, state_name: e.target.value }))} placeholder="State name" className="border-blue-200 bg-slate-50 text-slate-900" />
                 <Input value={form.username} onChange={(e) => setForm((prev) => ({ ...prev, username: e.target.value }))} placeholder="Username" className="border-blue-200 bg-slate-50 text-slate-900" />
                 <Input value={form.password} onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))} type="password" placeholder="Password" className="border-blue-200 bg-slate-50 text-slate-900" />
-                <Button type="submit" className="w-full bg-blue-600 text-white hover:bg-blue-500" disabled={saving}>
+                <Button type="submit" className="w-full bg-udaan-blue text-white hover:bg-udaan-blue/90" disabled={saving}>
                   {saving ? 'Saving...' : form.role === 'field_officer' ? 'Create field officer' : 'Generate / update credential'}
                 </Button>
               </form>

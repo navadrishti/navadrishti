@@ -224,7 +224,7 @@ export default function ServiceOffersPage() {
         {loading ? (
           canCreateOffers && <SkeletonCTA />
         ) : canPublishOffers ? (
-          <div className="mb-8 p-8 bg-white rounded-md border-2 border-black shadow-sm relative overflow-hidden">
+          <div className="mb-8 p-8 bg-white rounded-md border border-gram-border shadow-sm relative overflow-hidden">
             <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
               <div className="text-center md:text-left">
                 <h2 className="text-2xl font-bold text-black mb-3">
@@ -236,7 +236,7 @@ export default function ServiceOffersPage() {
               </div>
               <div className="flex flex-col sm:flex-row gap-4">
                 <Link href="/service-offers/create">
-                  <button className="bg-white border-2 border-black shadow-sm text-black hover:bg-gray-50 transition-all duration-300 px-8 py-4 h-auto font-medium text-base rounded-lg flex items-center">
+                  <button className="bg-white border border-gram-border shadow-sm text-black hover:bg-gram-page transition-all duration-300 px-8 py-4 h-auto font-medium text-base rounded-lg flex items-center">
                     <Plus size={20} className="mr-3" />
                     Create Capability Offer
                     <ArrowRight size={16} className="ml-3" />
@@ -246,7 +246,7 @@ export default function ServiceOffersPage() {
             </div>
           </div>
         ) : canCreateOffers ? (
-          <div className="mb-8 rounded-md border-2 border-black bg-white p-6 shadow-sm">
+          <div className="mb-8 rounded-md border border-gram-border bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-black">Connect Razorpay to list capabilities</h2>
             <p className="mt-1 text-sm text-gray-700">
               Connect Razorpay payout before listing capabilities so you can receive merchant payments.
@@ -254,7 +254,7 @@ export default function ServiceOffersPage() {
             <Link href={payoutHref} className="mt-4 inline-block">
               <Button
                 variant="outline"
-                className="border-2 border-black bg-white text-black hover:bg-gray-50"
+                className="border border-gram-border bg-white text-black hover:bg-gram-page"
               >
                 Connect Razorpay payout
               </Button>

@@ -297,7 +297,7 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-background">
         <Header />
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-8 w-8 animate-spin" />
@@ -308,7 +308,7 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
 
   if (!request) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-background">
         <Header />
         <div className="container mx-auto px-4 py-8">
           <div className="text-center">
@@ -340,12 +340,12 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
     : (needTarget.quantity > 0 ? `${needRemaining} units` : String(needRemaining));
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       <Header />
       
       <div className="container mx-auto px-4 py-8">
         <div className="mb-6">
-          <Button variant="ghost" onClick={() => router.back()} className="px-0 text-blue-600 hover:text-blue-800 hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0">
+          <Button variant="ghost" onClick={() => router.back()} className="px-0 text-udaan-blue hover:text-gram-ink hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0">
             <ArrowLeft size={20} className="mr-2" />
             Back
           </Button>

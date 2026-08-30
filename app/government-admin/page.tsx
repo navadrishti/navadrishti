@@ -270,7 +270,7 @@ export default function GovernmentAdminPage() {
 
   if (loading && !account) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-blue-50 via-slate-50 to-white px-4 py-6 text-slate-900 sm:px-6 lg:px-8">
+      <div className="min-h-screen bg-background px-4 py-6 text-slate-900 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-7xl space-y-6">
           <div className="flex items-center justify-between rounded-3xl border border-blue-100 bg-white p-4">
             <Skeleton className="h-5 w-72 rounded-full bg-slate-200" />
@@ -286,7 +286,7 @@ export default function GovernmentAdminPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50 via-slate-50 to-white text-slate-900">
+    <div className="min-h-screen bg-background text-slate-900">
       <main className="mx-auto max-w-7xl px-6 py-6">
         <div className="mb-4 flex justify-end">
           <Button variant="ghost" className="text-slate-700 hover:bg-slate-100" onClick={refreshDashboard}>
@@ -302,8 +302,8 @@ export default function GovernmentAdminPage() {
           <CardContent className="pt-6">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
               <TabsList className="grid h-auto grid-cols-2 gap-2 rounded-xl border border-blue-100 bg-slate-50 p-2">
-                <TabsTrigger value="projects" className="rounded-lg data-[state=active]:bg-blue-600 data-[state=active]:text-white">Projects</TabsTrigger>
-                <TabsTrigger value="credentials" className="rounded-lg data-[state=active]:bg-blue-600 data-[state=active]:text-white">Credentials</TabsTrigger>
+                <TabsTrigger value="projects" className="rounded-lg data-[state=active]:bg-udaan-blue data-[state=active]:text-white">Projects</TabsTrigger>
+                <TabsTrigger value="credentials" className="rounded-lg data-[state=active]:bg-udaan-blue data-[state=active]:text-white">Credentials</TabsTrigger>
               </TabsList>
 
               <TabsContent value="projects" className="mt-0 space-y-6">
@@ -346,7 +346,7 @@ export default function GovernmentAdminPage() {
                           />
                         ))}
                       </div>
-                      <Button type="submit" className="bg-blue-600 text-white hover:bg-blue-500" disabled={savingProject}>{savingProject ? 'Creating...' : 'Create project'}</Button>
+                      <Button type="submit" className="bg-udaan-blue text-white hover:bg-udaan-blue/90" disabled={savingProject}>{savingProject ? 'Creating...' : 'Create project'}</Button>
                     </form>
                   </CardContent>
                 </Card>
@@ -428,7 +428,7 @@ export default function GovernmentAdminPage() {
                       ) : (
                         <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">This role has all-project access.</div>
                       )}
-                      <Button type="submit" className="bg-blue-600 text-white hover:bg-blue-500" disabled={savingCredential}>
+                      <Button type="submit" className="bg-udaan-blue text-white hover:bg-udaan-blue/90" disabled={savingCredential}>
                         {savingCredential ? 'Saving...' : 'Generate credential'}
                       </Button>
                     </form>

@@ -136,7 +136,7 @@ export function ProfileCard({
               <Badge 
                 key={index} 
                 variant="secondary" 
-                className="bg-gradient-to-r from-blue-100 to-indigo-100 text-white bg-blue-500 dark:from-blue-900/30 dark:to-indigo-900/30 dark:text-white backdrop-blur-sm border-opacity-30 transition-all duration-300 ease-in-out hover:scale-105"
+                className="border border-gram-border bg-white text-gram-body transition-colors hover:bg-gram-page"
                 style={{ animationDelay: `${200 + index * 50}ms`, animation: 'fadeIn 0.5s ease-out forwards' }}
               >
                 {tag}

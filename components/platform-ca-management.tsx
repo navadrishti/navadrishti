@@ -355,7 +355,7 @@ export function PlatformCAManagement() {
                     />
                   </div>
 
-                  <Button type="submit" className="w-full bg-blue-600 text-white hover:bg-blue-500" disabled={loading}>
+                  <Button type="submit" className="w-full bg-udaan-blue text-white hover:bg-udaan-blue/90" disabled={loading}>
                     {loading ? 'Creating...' : 'Create CA account'}
                   </Button>
                 </form>
@@ -400,7 +400,7 @@ export function PlatformCAManagement() {
                           type="button"
                           size="sm"
                           variant="ghost"
-                          className="h-8 w-8 p-0 text-slate-500 hover:bg-blue-50 hover:text-blue-600"
+                          className="h-8 w-8 p-0 text-slate-500 hover:bg-gram-sage hover:text-udaan-blue"
                           onClick={() => openResetPasswordDialog(account)}
                           disabled={loading}
                           title="Reset password"

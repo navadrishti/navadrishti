@@ -3271,7 +3271,7 @@ export default function CSRAgentPage() {
                         Generating your campaign draft...
                       </div>
                     ) : acceptedLeadNgo && generatedCampaigns.length > 0 ? (
-                      <div className="flex flex-col gap-3 rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex flex-col gap-3 rounded-xl border border-gram-border bg-gram-sage px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
                         <p className="text-sm font-semibold text-slate-900">
                           Ready to publish!
                         </p>

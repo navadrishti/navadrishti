@@ -1266,7 +1266,7 @@ export default function CreateServiceRequestPage() {
                                 <div>
                                   <Label htmlFor={`need-images-${index}`}>Images</Label>
                                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-                                    <label className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-400">
+                                    <label className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md cursor-pointer hover:bg-gram-page focus:outline-none focus:ring-2 focus:ring-udaan-blue/30">
                                       Choose files
                                       <input
                                         id={`need-images-${index}`}
@@ -1283,7 +1283,7 @@ export default function CreateServiceRequestPage() {
                                         <div className="flex items-center gap-2">
                                           <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200 sm:w-40">
                                             <div
-                                              className="h-full rounded-full bg-blue-600 transition-all"
+                                              className="h-full rounded-full bg-udaan-blue transition-all"
                                               style={{ width: `${Math.max(5, (needUploadProgress[index].current / Math.max(1, needUploadProgress[index].total)) * 100)}%` }}
                                             />
                                           </div>

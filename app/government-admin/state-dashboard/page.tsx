@@ -103,7 +103,7 @@ export default function StateAnalyticsDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 sm:p-6 lg:p-8">
+    <div className="min-h-screen bg-background p-4 sm:p-6 lg:p-8">
       <div className="mx-auto max-w-7xl space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -176,7 +176,7 @@ export default function StateAnalyticsDashboard() {
                     onClick={() => setSortBy(sort)}
                     className={`px-3 py-1 text-xs font-medium rounded-full transition ${
                       sortBy === sort
-                        ? 'bg-blue-600 text-white'
+                        ? 'bg-udaan-blue text-white'
                         : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                     }`}
                   >
@@ -206,7 +206,7 @@ export default function StateAnalyticsDashboard() {
                         <div className="text-sm font-semibold text-blue-600">{district.avg_progress}%</div>
                         <div className="h-1.5 w-16 rounded-full bg-slate-200 mt-1">
                           <div
-                            className="h-full rounded-full bg-blue-600 transition-all"
+                            className="h-full rounded-full bg-udaan-blue transition-all"
                             style={{ width: `${district.avg_progress}%` }}
                           />
                         </div>

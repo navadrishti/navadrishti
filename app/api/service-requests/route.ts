@@ -7,6 +7,7 @@ import { JWT_SECRET, CSR_ELIGIBILITY_REQUIRED_MESSAGE, CSR_OWN_PROJECT_TIMELINE_
 import { ngoUserIsCsrEligible, ngoUserIsCsrEligibleForProject, resolveEffectiveVerificationStatus } from '@/lib/server-auth';
 import { CSR_SCHEDULE_VII_CATEGORIES, SERVICE_REQUEST_TYPES } from '@/lib/categories';
 import { isHiddenNgoNetworkPaymentChannel } from '@/lib/razorpay-route';
+import { getRequestUrgencyLevel } from '@/lib/utils';
 import {
   formatProjectExactAddress,
   parseProjectExactAddress,
@@ -163,6 +164,33 @@ function deriveAutoUrgency(timeline: unknown, createdAtMs: number): 'low' | 'med
   if (remainingRatio <= 0.35) return 'high';
   if (remainingRatio <= 0.65) return 'medium';
   return 'low';
+}
+
+/** Same deadline resolution the listing card uses for live urgency badges. */
+function resolveListingDeadline(item: any): string | null {
+  const requirements = safeParseJson(item?.requirements);
+  const projectContext = item?.project || requirements?.project?.project || null;
+  const candidates = [
+    projectContext?.valid_until,
+    item?.deadline,
+    item?.timeline,
+    requirements?.timeline,
+  ];
+
+  for (const value of candidates) {
+    const text = String(value || '').trim();
+    if (text) return text;
+  }
+
+  return null;
+}
+
+function getListingUrgency(item: any): 'low' | 'medium' | 'high' | 'critical' {
+  return getRequestUrgencyLevel({
+    createdAt: item?.created_at,
+    deadline: resolveListingDeadline(item),
+    fallback: item?.urgency_level || item?.priority || 'medium',
+  });
 }
 
 function buildProgressFields(body: Record<string, any>, existing?: Record<string, any> | null) {
@@ -549,7 +577,7 @@ export async function GET(request: NextRequest) {
         }
 
         if (urgencyFilter && urgencyFilter !== 'all') {
-          if (String(item.urgency_level || '').toLowerCase() !== urgencyFilter) return false;
+          if (getListingUrgency(item) !== urgencyFilter) return false;
         }
 
         if (locationTerm) {
