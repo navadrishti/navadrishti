@@ -320,7 +320,7 @@ export function PostCreator({ onPostCreated, className }: PostCreatorProps) {
               variant="ghost"
               onClick={() => fileInputRef.current?.click()}
               disabled={isUploading}
-              className="text-blue-500 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+              className="text-udaan-blue hover:text-gram-ink hover:bg-gram-sage transition-colors"
             >
               {isUploading ? (
                 <Loader2 className="w-4 h-4 animate-spin" />

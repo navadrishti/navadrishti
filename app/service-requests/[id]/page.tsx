@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, User, Building, MessageSquare, CheckCircle, XCircle, Loader2, AlertTriangle, IndianRupee, ChevronLeft, ChevronRight } from 'lucide-react'
+import { ArrowLeft, Building, MessageSquare, CheckCircle, XCircle, Loader2, AlertTriangle, IndianRupee, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
 import { Header } from '@/components/header'
@@ -232,7 +232,7 @@ function SquareImageGallery({
             type="button"
             onClick={() => openAt(index)}
             className={cn(
-              'overflow-hidden rounded-md border border-slate-200 bg-slate-100 transition hover:border-blue-300 hover:ring-2 hover:ring-blue-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500',
+              'overflow-hidden rounded-md border border-slate-200 bg-slate-100 transition hover:border-udaan-blue/40 hover:ring-2 hover:ring-udaan-blue/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-udaan-blue/40',
               thumbClassName
             )}
             aria-label={`View image ${index + 1} for ${alt}`}
@@ -446,7 +446,7 @@ export default function ServiceRequestDetailPage() {
   const { toast } = useToast()
   const [isHydrated, setIsHydrated] = useState(false)
   
-  const [paymentAmount, setPaymentAmount] = useState('1000')
+  const [paymentAmount, setPaymentAmount] = useState('')
   const [paying, setPaying] = useState(false)
   const [currentTimeMs, setCurrentTimeMs] = useState(0)
   const [request, setRequest] = useState<ServiceRequest | null>(null)
@@ -986,14 +986,14 @@ export default function ServiceRequestDetailPage() {
   }
 
   const getStatusColor = (status: string) => {
-    if (!status) return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+    if (!status) return 'border-gram-border bg-gram-page text-gram-muted'
     switch (status.toLowerCase()) {
-      case 'accepted': return 'bg-green-100 text-green-800 border-green-200'
-      case 'rejected': return 'bg-red-100 text-red-800 border-red-200'
-      case 'active': return 'bg-blue-100 text-blue-800 border-blue-200'
-      case 'completed': return 'bg-purple-100 text-purple-800 border-purple-200'
-      case 'cancelled': return 'bg-gray-100 text-gray-800 border-gray-200'
-      default: return 'bg-yellow-100 text-yellow-800 border-yellow-200'
+      case 'accepted': return 'border-[#D5E2DA] bg-[#F1F6F3] text-[#4F6B5C]'
+      case 'rejected': return 'border-[#E8D8D8] bg-[#F8F1F1] text-[#8C5555]'
+      case 'active': return 'border-[#D9E0E4] bg-[#F0F3F4] text-udaan-blue'
+      case 'completed': return 'border-gram-border bg-gram-sage text-gram-ink'
+      case 'cancelled': return 'border-gram-border bg-gram-page text-gram-muted'
+      default: return 'border-gram-border bg-gram-page text-gram-muted'
     }
   }
 
@@ -1072,7 +1072,7 @@ export default function ServiceRequestDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      <div className="min-h-screen bg-background">
         <Header />
         <div className="mx-auto max-w-7xl px-4 py-8">
           <div className="mb-6">
@@ -1128,7 +1128,7 @@ export default function ServiceRequestDetailPage() {
 
   if (!request) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      <div className="min-h-screen bg-background">
         <Header />
         <div className="mx-auto max-w-7xl px-4 py-8">
           <Alert>
@@ -1143,12 +1143,12 @@ export default function ServiceRequestDetailPage() {
   }
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div className="min-h-screen overflow-x-hidden bg-background">
       <Header />
       
       <div className="mx-auto max-w-7xl px-4 py-8">
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <Button variant="ghost" onClick={() => router.back()} className="w-full justify-start px-0 text-blue-600 hover:text-blue-800 hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0 sm:w-auto">
+          <Button variant="ghost" onClick={() => router.back()} className="w-full justify-start px-0 text-udaan-blue hover:text-gram-ink hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0 sm:w-auto">
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back
           </Button>
@@ -1177,7 +1177,7 @@ export default function ServiceRequestDetailPage() {
                       <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
                         <div className="flex items-center justify-between gap-2">
                           <p className="text-sm font-semibold text-slate-900">Funding Progress</p>
-                          <Badge className={request.status === 'completed' ? 'bg-green-100 text-green-800 border-green-200' : 'bg-blue-100 text-blue-800 border-blue-200'}>
+                          <Badge className={request.status === 'completed' ? 'border-[#D5E2DA] bg-[#F1F6F3] text-[#4F6B5C]' : 'border-[#D9E0E4] bg-[#F0F3F4] text-udaan-blue'}>
                             {request.status === 'completed' ? 'Fulfilled' : `${fundingProgress}% Funded`}
                           </Badge>
                         </div>
@@ -1189,7 +1189,7 @@ export default function ServiceRequestDetailPage() {
                           </div>
                           <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-200">
                             <div
-                              className="h-full rounded-full bg-blue-600 transition-all duration-300"
+                              className="h-full rounded-full bg-udaan-blue transition-all duration-300"
                               style={{ width: `${fundingProgress}%` }}
                             />
                           </div>
@@ -1230,8 +1230,8 @@ export default function ServiceRequestDetailPage() {
                                   max={Math.ceil(fundsRemainingInr)}
                                   value={paymentAmount}
                                   onChange={(e) => setPaymentAmount(e.target.value)}
-                                  className="h-11 w-full rounded-md border border-slate-300 bg-slate-50 px-9 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                                  placeholder="Amount"
+                                  className="h-11 w-full rounded-md border border-slate-300 bg-slate-50 px-9 text-sm focus:border-udaan-blue focus:outline-none focus:ring-2 focus:ring-udaan-blue/20"
+                                  placeholder="Enter amount"
                                 />
                               </div>
                               <PlatformPaymentSummary
@@ -1239,10 +1239,16 @@ export default function ServiceRequestDetailPage() {
                               />
                             </div>
 
-                            <Button onClick={handleContribute} disabled={paying} className="h-11 w-full">
+                            <Button
+                              onClick={handleContribute}
+                              disabled={paying || parseAmountToInr(paymentAmount) <= 0}
+                              className="h-11 w-full"
+                            >
                               {paying
                                 ? 'Opening Razorpay...'
-                                : `Pay ${getTotalChargeLabel(Math.min(parseAmountToInr(paymentAmount) || 0, fundsRemainingInr || 0))}`}
+                                : parseAmountToInr(paymentAmount) <= 0
+                                  ? 'Enter amount to pay'
+                                  : `Pay ${getTotalChargeLabel(Math.min(parseAmountToInr(paymentAmount), fundsRemainingInr || 0))}`}
                             </Button>
                           </div>
                         )}
@@ -1692,17 +1698,6 @@ export default function ServiceRequestDetailPage() {
 
                         {isAuthenticated && effectiveUserType === 'individual' && !userApplication && user && user.verification_status === 'verified' && (
                           <div className="space-y-4">
-                            <div className="flex items-center gap-2 p-2 bg-muted rounded">
-                              {effectiveUserType === 'individual' ? (
-                                <User className="h-4 w-4" />
-                              ) : (
-                                <Building className="h-4 w-4" />
-                              )}
-                              <span className="text-sm">
-                                Applying as Individual
-                              </span>
-                            </div>
-
                             <div className="space-y-2">
                               <Label htmlFor="message">Application Message</Label>
                               <Textarea
@@ -1729,7 +1724,7 @@ export default function ServiceRequestDetailPage() {
                                 </div>
                               ) : isSkillServiceNeed ? (
                                 <div>
-                                  <Label htmlFor="fulfillment_amount">Your Daily Rate (INR) *</Label>
+                                  <Label htmlFor="fulfillment_amount">Daily Wage (INR) *</Label>
                                   <Input
                                     id="fulfillment_amount"
                                     type="number"

@@ -602,7 +602,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-background">
         <Header />
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-8 w-8 animate-spin" />
@@ -612,12 +612,12 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       <Header />
 
       <div className="container mx-auto px-4 py-6 sm:py-8">
         <div className="mb-6">
-          <Button variant="ghost" onClick={() => router.back()} className="w-full justify-start px-0 text-blue-600 hover:text-blue-800 hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0 sm:w-auto">
+          <Button variant="ghost" onClick={() => router.back()} className="w-full justify-start px-0 text-udaan-blue hover:text-gram-ink hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0 sm:w-auto">
             <ArrowLeft size={20} className="mr-2" />
             Back
           </Button>
@@ -643,7 +643,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
                 <div>
                   <Label htmlFor="images">Images</Label>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-                    <label className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md cursor-pointer hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-400">
+                    <label className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md cursor-pointer hover:bg-gram-page focus:outline-none focus:ring-2 focus:ring-udaan-blue/30">
                       Choose files
                       <input id="main-need-images" type="file" accept="image/*" multiple className="sr-only" onChange={(event) => void handleMainNeedUpload(event.target.files)} />
                     </label>
@@ -653,7 +653,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
                         <div className="flex items-center gap-2">
                           <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200 sm:w-40">
                             <div
-                              className="h-full rounded-full bg-blue-600 transition-all"
+                              className="h-full rounded-full bg-udaan-blue transition-all"
                               style={{ width: `${Math.max(5, (mainUploadProgress.current / Math.max(1, mainUploadProgress.total)) * 100)}%` }}
                             />
                           </div>

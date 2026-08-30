@@ -2160,7 +2160,7 @@ function CompanyDashboardContent() {
                                   type="button"
                                   size="sm"
                                   variant="ghost"
-                                  className="h-8 w-8 p-0 text-slate-500 hover:bg-blue-50 hover:text-blue-600"
+                                  className="h-8 w-8 p-0 text-slate-500 hover:bg-gram-sage hover:text-udaan-blue"
                                   onClick={() => openCaResetPasswordDialog(account)}
                                   title="Reset password"
                                 >
@@ -2207,7 +2207,7 @@ function CompanyDashboardContent() {
                                     type="button"
                                     size="sm"
                                     variant="ghost"
-                                    className="h-8 w-8 p-0 text-slate-500 hover:bg-blue-50 hover:text-blue-600"
+                                    className="h-8 w-8 p-0 text-slate-500 hover:bg-gram-sage hover:text-udaan-blue"
                                     onClick={() => openCaResetPasswordDialog(account)}
                                     title="Reset password"
                                   >

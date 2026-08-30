@@ -1080,7 +1080,7 @@ function PostCard({
             </Avatar>
             <div className="min-w-0">
               <div className="flex min-w-0 items-center gap-2">
-                <h3 className="truncate text-sm font-semibold transition-colors hover:text-blue-600">{post.user.name}</h3>
+                <h3 className="truncate text-sm font-semibold transition-colors hover:text-udaan-blue">{post.user.name}</h3>
                 {post.user.verification_status === 'verified' && (
                   <VerificationBadge status="verified" size="sm" showText={false} />
                 )}
@@ -1343,7 +1343,7 @@ function PostCard({
                     placeholder="Write a comment..."
                     value={commentInput}
                     onChange={(e) => onCommentInputChange?.(e.target.value)}
-                    className="flex-1 min-h-[40px] max-h-[120px] resize-none border-gray-200 focus:border-blue-300 focus:ring-0 focus:ring-offset-0"
+                    className="flex-1 min-h-[40px] max-h-[120px] resize-none border-gray-200 focus:border-udaan-blue/40 focus:ring-0 focus:ring-offset-0"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
@@ -1364,7 +1364,7 @@ function PostCard({
             </div>
           ) : (
             <div className="p-4 text-center text-sm text-gray-500">
-              <Link href="/login" className="text-blue-600 hover:underline">
+              <Link href="/login" className="text-udaan-blue hover:underline">
                 Sign in to comment
               </Link>
             </div>

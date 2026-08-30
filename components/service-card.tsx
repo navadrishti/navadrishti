@@ -589,7 +589,7 @@ export function ServiceCard({
                     <span className="h-3 w-px shrink-0 bg-slate-300" aria-hidden="true" />
                     <Link
                       href={`/service-requests/projects/${projectContext.id}`}
-                      className="shrink-0 text-xs font-semibold text-slate-900 hover:text-blue-600"
+                      className="shrink-0 text-xs font-semibold text-slate-900 hover:text-udaan-blue"
                       onClick={(e) => e.stopPropagation()}
                     >
                       View project
@@ -684,7 +684,7 @@ export function ServiceCard({
             {(isOwner || showDeleteButton) ? (
               <div className="flex items-center gap-2 pt-1">
                 {isOwner ? (
-                  <Link href={`/service-requests/edit/${id}`} className="inline-flex h-6 items-center p-0 text-sm font-medium text-black hover:text-blue-600">
+                  <Link href={`/service-requests/edit/${id}`} className="inline-flex h-6 items-center p-0 text-sm font-medium text-black hover:text-udaan-blue">
                     <Edit size={14} className="mr-1" />
                     Edit
                   </Link>
@@ -1022,7 +1022,7 @@ export function ServiceCard({
           </div>
           <Link
             href={ownerProfileId ? `/profile/${ownerProfileId}` : '#'}
-            className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 transition-colors hover:border-blue-300 hover:bg-blue-50"
+            className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 transition-colors hover:border-udaan-blue/40 hover:bg-gram-sage"
           >
             <div
               className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-xs font-medium shadow-sm"
@@ -1128,7 +1128,7 @@ export function ServiceCard({
       <CardFooter className="pt-0 pb-5 flex-col gap-2">
         {/* Action Button */}
           <Link href={`/${type === 'request' ? 'service-requests' : 'service-offers'}/${id}`} className="w-full">
-          <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 transition-all shadow-sm hover:shadow-md">
+          <Button className="w-full bg-udaan-orange hover:bg-udaan-orange/90 text-white font-medium py-2.5 transition-all">
             {type === 'request' ? 'View Need Details' : 'View Full Details'}
             <ArrowRight size={16} className="ml-2" />
           </Button>

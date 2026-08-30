@@ -288,7 +288,7 @@ function ServiceRequestsContent() {
         {loading ? (
           user && isNGO && <SkeletonCTA />
         ) : user && isNGO && (
-          <div className="mb-8 p-8 bg-white rounded-md border-2 border-black shadow-sm relative overflow-hidden">
+          <div className="mb-8 p-8 bg-white rounded-md border border-gram-border shadow-sm relative overflow-hidden">
             
             <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
               <div className="text-center md:text-left">
@@ -301,7 +301,7 @@ function ServiceRequestsContent() {
               </div>
               <div className="flex flex-col sm:flex-row gap-3">
                 <Link href="/service-requests/create">
-                  <button className="bg-white border-2 border-black shadow-sm text-black hover:bg-gray-50 transition-all duration-300 px-6 py-4 h-auto font-medium text-base rounded-lg flex items-center whitespace-nowrap">
+                  <button className="bg-white border border-gram-border shadow-sm text-black hover:bg-gram-page transition-all duration-300 px-6 py-4 h-auto font-medium text-base rounded-lg flex items-center whitespace-nowrap">
                     <Plus size={18} className="mr-2" />
                     Create Need Manually
                   </button>

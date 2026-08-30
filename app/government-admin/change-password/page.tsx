@@ -75,7 +75,7 @@ export default function GovernmentAdminChangePasswordPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 px-4 py-6 text-slate-900 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-background px-4 py-6 text-slate-900 sm:px-6 lg:px-8">
       <div className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-4xl items-center justify-center">
         <Card className="w-full border-slate-200 bg-white">
           <CardHeader>

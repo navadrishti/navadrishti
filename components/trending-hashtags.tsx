@@ -129,7 +129,7 @@ export function TrendingHashtags({
             </p>
             <button 
               onClick={refreshTrending}
-              className="text-xs text-blue-600 hover:text-blue-800"
+              className="text-xs text-udaan-blue hover:text-gram-ink"
             >
               Try again
             </button>
