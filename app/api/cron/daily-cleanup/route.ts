@@ -397,9 +397,7 @@ export async function GET(request: NextRequest) {
           .eq('id', campaign.id);
 
         try {
-          const { processCompletedCampaignVolunteerOutcomes } = await import(
-            '@/lib/campaign-volunteer-attendance'
-          );
+          const { processCompletedCampaignVolunteerOutcomes } = await import('@/lib/db');
           await processCompletedCampaignVolunteerOutcomes(String(campaign.id), {
             treatAsCompleted: true,
           });

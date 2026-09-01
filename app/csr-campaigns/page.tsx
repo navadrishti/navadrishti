@@ -12,8 +12,9 @@ import { Search, Sparkles, ArrowRight, CheckCircle2, Pencil, Trash2, MapPin, Mor
 import { useAuth } from "@/lib/auth-context"
 import { getGramAvatarFallbackStyle } from "@/lib/gram-avatar"
 import { CSR_SCHEDULE_VII_CATEGORIES } from "@/lib/categories"
-import { formatDisplayDate, isCampaignStarted, isVolunteerRegistrationPastDeadline } from "@/lib/format-date"
+import { formatDisplayDate, isCampaignStarted, isVolunteerRegistrationPastDeadline, formatStatusLabel } from "@/lib/format-date"
 import { getVolunteerButtonState, sumVolunteerApplicationCount } from "@/lib/campaign-schema"
+import { isCampaignLeadNgo } from "@/lib/campaign-volunteer-attendance"
 import { AGENT_NAMES, AGENT_ROUTES } from "@/lib/ai-agent-sessions"
 import { VerifiedAccountName } from "@/components/verification-badge"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -490,8 +491,14 @@ export default function CSRCampaignsPage() {
                     : []),
                 ]
                 const isOwner = isCompanyOwner(campaign.companyId)
+                const isLeadNgoForCampaign =
+                  currentUserId > 0 &&
+                  isCampaignLeadNgo(
+                    { selected_lead_ngo_id: campaign.selectedLeadNgoId },
+                    currentUserId
+                  )
                 const volunteerState =
-                  canShowVolunteerAction && user
+                  canShowVolunteerAction && user && !isLeadNgoForCampaign
                     ? getVolunteerButtonState({
                         status: campaign.status,
                         startDate: campaign.start_date,
@@ -516,9 +523,9 @@ export default function CSRCampaignsPage() {
                       <div className="flex min-w-0 items-baseline justify-between gap-2">
                         <span
                           className={`shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] ${getStatusColor(campaign.status)}`}
-                          title={campaign.status}
+                          title={formatStatusLabel(campaign.status)}
                         >
-                          {campaign.status}
+                          {formatStatusLabel(campaign.status)}
                         </span>
                         <span className="min-w-0 truncate text-xs text-gram-muted" title={campaign.category}>
                           {campaign.category}

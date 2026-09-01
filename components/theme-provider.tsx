@@ -68,7 +68,7 @@ function useProductionClientGuards() {
         return
       }
 
-      const key = event.key.toLowerCase()
+      const key = String(event.key || '').toLowerCase()
       const modifier = event.ctrlKey || event.metaKey
 
       if (modifier && event.shiftKey && ['i', 'j', 'c', 'k'].includes(key)) {

@@ -17,6 +17,7 @@ import {
   EvidenceSectionCard,
   EvidenceStatCard,
 } from '@/components/evidence-verification/portal-ui';
+import { formatStatusLabel } from '@/lib/format-date';
 import { openRazorpayCheckout } from '@/lib/razorpay-checkout';
 import { getTotalChargeLabel } from '@/components/profile-dashboard-tab';
 
@@ -396,7 +397,7 @@ export default function VerificationPanelClient() {
                       <p className="font-medium text-slate-900">{campaign.campaign_title}</p>
                       <p className="text-xs text-slate-500">
                         {campaign.start_date || '—'} → {campaign.end_date || '—'} · {campaign.project_days} project days ·{' '}
-                        {campaign.status}
+                        {formatStatusLabel(campaign.status)}
                       </p>
                     </div>
                     <Badge variant="outline">

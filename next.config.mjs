@@ -28,6 +28,9 @@ const nextConfig = {
       },
     ],
   },
+  turbopack: {
+    root: projectRoot,
+  },
   reactStrictMode: true,
   experimental: {},
   compiler: {
@@ -37,9 +40,6 @@ const nextConfig = {
   },
   productionBrowserSourceMaps: false,
   poweredByHeader: false,
-  turbopack: {
-    root: process.cwd(),
-  },
   async headers() {
     const securityHeaders = [
       {

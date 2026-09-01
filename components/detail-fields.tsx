@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { formatStatusLabel } from '@/lib/format-date'
 
 export function parseStringArray(value?: string[] | string | null): string[] {
   if (!value) return []
@@ -21,14 +22,18 @@ export function parseImages(value?: string[] | string | null): string[] {
 export function displayValue(value: unknown) {
   if (value === null || value === undefined || value === '') return 'Not set'
   if (Array.isArray(value)) return value.length > 0 ? value.join(', ') : 'Not set'
+  if (typeof value === 'string' && /^[a-z0-9]+(_[a-z0-9]+)+$/i.test(value)) {
+    return formatStatusLabel(value)
+  }
   return String(value)
 }
 
 export function DetailField({ label, value }: { label: string; value: ReactNode }) {
+  const rendered = typeof value === 'string' || typeof value === 'number' ? displayValue(value) : value
   return (
     <div>
       <p className="text-sm text-gray-500">{label}</p>
-      <div className="text-sm font-medium text-slate-800 break-words">{value}</div>
+      <div className="text-sm font-medium text-slate-800 break-words">{rendered}</div>
     </div>
   )
 }

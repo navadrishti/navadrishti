@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import jwt from 'jsonwebtoken'
-import { supabase } from '@/lib/db'
+import { supabase, ensureCampaignVolunteerAssignment } from '@/lib/db'
 import { JWT_SECRET } from '@/lib/auth'
 import { isCampaignStarted, isVolunteerRegistrationPastDeadline } from '@/lib/format-date'
 import {
@@ -8,7 +8,7 @@ import {
   isVolunteerCapacityFullForUser,
   sumVolunteerApplicationCount,
 } from '@/lib/campaign-schema'
-import { ensureCampaignVolunteerAssignment } from '@/lib/campaign-volunteer-attendance'
+import { isCampaignLeadNgo } from '@/lib/campaign-volunteer-attendance'
 
 interface JWTPayload {
   id: number
@@ -62,6 +62,17 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { id } = await params
     const campaign = await loadCampaign(id)
     const impact = safeJson(campaign.impact_metrics)
+
+    if (isCampaignLeadNgo(impact, decoded.id)) {
+      return NextResponse.json(
+        {
+          error:
+            'Lead NGOs coordinate this CSR campaign and do not register as field volunteers on it.',
+        },
+        { status: 400 }
+      )
+    }
+
     const volunteerApplications = Array.isArray(impact.volunteer_applications) ? impact.volunteer_applications : []
 
     const existing = volunteerApplications.find((entry: any) => Number(entry?.user_id || 0) === Number(decoded.id))
