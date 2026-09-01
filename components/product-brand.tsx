@@ -131,3 +131,17 @@ export function ProductCopyright({
     </p>
   );
 }
+
+/** Compact console footer used by CA / evidence portals. */
+export function ConsoleFooter() {
+  return (
+    <footer className="mt-auto bg-platform-sidebar text-white">
+      <div className="udaan-container px-4 py-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-center gap-3 text-sm text-white">
+          <span>© {new Date().getFullYear()}</span>
+          <ProductBrand size="xs" className="text-white" />
+        </div>
+      </div>
+    </footer>
+  );
+}

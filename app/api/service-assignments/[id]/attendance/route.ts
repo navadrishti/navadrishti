@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { supabase } from '@/lib/db';
 import { JWT_SECRET } from '@/lib/auth';
 import { calculatePaymentProgress } from '@/lib/service-engagement';
-import { isCampaignVolunteerAssignment } from '@/lib/campaign-volunteer-assignment';
+import { isCampaignVolunteerAssignment } from '@/lib/campaign-volunteer-attendance';
 
 interface JWTPayload {
   id: number;

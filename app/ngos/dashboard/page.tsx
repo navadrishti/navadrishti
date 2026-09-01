@@ -6,19 +6,21 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import ProtectedRoute from '@/components/protected-route';
 import { Header } from '@/components/header';
-import { VerificationBadge } from '@/components/verification-badge';
+import { VerifiedAccountName } from '@/components/verification-badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Clock, CheckCircle, AlertTriangle, HeartHandshake, Trash2, Plus, Building, TicketCheck, MailCheck, Phone, Loader2, XCircle } from 'lucide-react';
 import { formatDisplayDate, formatCampaignLeadLifecycleLabel, type CampaignLeadLifecycle } from '@/lib/format-date';
+import { getGramAvatarFallbackStyle } from '@/lib/gram-avatar';
 import Link from 'next/link';
 import { cn, smoothScrollToElement } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
-import { SkeletonOrderItem, DashboardPageSkeleton } from '@/components/ui/skeleton';
+import { Skeleton, SkeletonOrderItem, DashboardPageSkeleton } from '@/components/ui/skeleton';
 import { ProfileDashboardTab, PaymentHistoryPanel } from '@/components/profile-dashboard-tab';
 import { YourCapabilitiesPanel, InlineCsrCapabilityDelhivery } from '@/components/service-card';
 import { dashboardProfilePayoutHref, usePayoutConnection } from '@/hooks/use-payout-connection';
@@ -30,7 +32,6 @@ import {
   getNeedRemainingQuantity,
   getServiceRequestTarget,
   isDeliveredTrackingStatus,
-  isNeedOpenForListing,
   isPickedUpTrackingStatus,
 } from '@/lib/service-request-allocation';
 import {
@@ -53,6 +54,7 @@ interface OfferRequestItem {
     name?: string;
     email?: string;
     user_type?: string;
+    verification_status?: string | null;
   };
   message?: string;
   response_meta?: Record<string, any> | null;
@@ -150,12 +152,24 @@ interface CompanyProjectApplication {
   project_id: string;
   project_title: string;
   project_location?: string;
+  project_address?: string;
   project_timeline?: string;
+  project_valid_until?: string | null;
+  project_expected_beneficiaries?: number | null;
+  project_volunteers_needed?: number | null;
+  project_category?: string | null;
+  project_budget_inr?: number | null;
   company_id: number;
   company_name: string;
   company_email?: string;
+  company_phone?: string;
+  company_industry?: string;
+  company_location?: string;
+  company_profile_image?: string | null;
+  company_verified?: boolean;
   status: 'pending' | 'accepted' | 'rejected' | string;
   note?: string;
+  applied_at?: string;
   needs: Array<{
     id: number;
     title: string;
@@ -178,12 +192,18 @@ interface CSRTrackingAssignment {
   lead_ngo_id: number;
   lead_ngo_name: string;
   lead_ngo_email?: string;
+  lead_ngo_verification_status?: string | null;
+  lead_ngo_verified?: boolean;
   assigned_company_id: number;
   assigned_company_name: string;
   assigned_company_email?: string;
+  assigned_company_verification_status?: string | null;
+  assigned_company_verified?: boolean;
   selected_lead_ngo_id?: number | null;
   selected_lead_ngo_name?: string | null;
   selected_lead_ngo_email?: string | null;
+  selected_lead_ngo_verification_status?: string | null;
+  selected_lead_ngo_verified?: boolean;
   assignment_status: string;
   assigned_at?: string | null;
   review_note?: string;
@@ -210,6 +230,8 @@ interface CampaignLeadAssignment {
   company_id: number;
   company_name: string;
   company_email?: string;
+  company_verification_status?: string | null;
+  company_verified?: boolean;
 }
 
 interface CampaignVolunteerAssignment {
@@ -226,6 +248,8 @@ interface CampaignVolunteerAssignment {
   volunteer_capacity?: number;
   company_name?: string;
   company_email?: string;
+  company_verification_status?: string | null;
+  company_verified?: boolean;
   applied_at?: string | null;
   assignment_id?: string | null;
   attendance_summary?: {
@@ -247,6 +271,8 @@ interface CampaignLeadInvitation {
   company_id: number;
   company_name: string;
   company_email?: string;
+  company_verification_status?: string | null;
+  company_verified?: boolean;
 }
 
 const isActionableProjectApplicationStatus = (status: string): boolean => {
@@ -329,8 +355,15 @@ function CampaignAssignmentDetails({
       <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
           <p className="font-semibold text-slate-900">{assignment.campaign_title}</p>
-          <p className="text-sm text-slate-600">
-            {roleLabel} • {assignment.company_name}
+          <p className="flex flex-wrap items-center gap-1 text-sm text-slate-600">
+            <span>{roleLabel} •</span>
+            <VerifiedAccountName
+              name={assignment.company_name}
+              status={assignment.company_verification_status}
+              verified={assignment.company_verified}
+              size="xs"
+              nameClassName="font-medium text-slate-800"
+            />
           </p>
           <p className="text-xs text-slate-500">
             {assignment.company_email || 'No email'}
@@ -426,17 +459,20 @@ function CsrTrackingProjectDetails({
   partnerLabel,
   partnerName,
   partnerEmail,
+  partnerStatus,
+  partnerVerified,
 }: {
   assignment: CSRTrackingAssignment;
   partnerLabel: string;
   partnerName: string;
   partnerEmail?: string;
+  partnerStatus?: string | null;
+  partnerVerified?: boolean | null;
 }) {
   const beneficiaries =
     assignment.project_expected_beneficiaries != null && assignment.project_expected_beneficiaries > 0
       ? Number(assignment.project_expected_beneficiaries).toLocaleString('en-IN')
       : null;
-  const csrAvailable = assignment.csr_project_available_for_csr;
   const needs = assignment.needs || [];
   const visibleNeeds = needs.slice(0, 4);
   const hiddenNeedCount = Math.max(0, needs.length - visibleNeeds.length);
@@ -450,16 +486,42 @@ function CsrTrackingProjectDetails({
       <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
           <p className="font-semibold text-slate-900">{assignment.project_title}</p>
-          <p className="text-sm text-slate-600">{partnerLabel}: {partnerName}</p>
+          <p className="flex flex-wrap items-center gap-1 text-sm text-slate-600">
+            <span>{partnerLabel}:</span>
+            <VerifiedAccountName
+              name={partnerName}
+              status={partnerStatus}
+              verified={partnerVerified}
+              size="xs"
+              nameClassName="font-medium text-slate-800"
+            />
+          </p>
           <p className="text-xs text-slate-500">
             {partnerEmail || 'No email'}
             {assignment.assigned_at ? ` • Handoff ${formatDisplayDate(assignment.assigned_at)}` : ''}
           </p>
-          <p className="mt-1 text-xs text-slate-500">
-            Owner NGO: {assignment.lead_ngo_name}
-            {hasDistinctLeadNgo && assignment.selected_lead_ngo_name
-              ? ` • Lead NGO: ${assignment.selected_lead_ngo_name}`
-              : ''}
+          <p className="mt-1 flex flex-wrap items-center gap-1 text-xs text-slate-500">
+            <span>Owner NGO:</span>
+            <VerifiedAccountName
+              name={assignment.lead_ngo_name}
+              status={assignment.lead_ngo_verification_status}
+              verified={assignment.lead_ngo_verified}
+              size="xs"
+              nameClassName="font-medium text-slate-700"
+            />
+            {hasDistinctLeadNgo && assignment.selected_lead_ngo_name ? (
+              <>
+                <span>•</span>
+                <span>Lead NGO:</span>
+                <VerifiedAccountName
+                  name={assignment.selected_lead_ngo_name}
+                  status={assignment.selected_lead_ngo_verification_status}
+                  verified={assignment.selected_lead_ngo_verified}
+                  size="xs"
+                  nameClassName="font-medium text-slate-700"
+                />
+              </>
+            ) : null}
           </p>
         </div>
         <div className="flex flex-wrap gap-2 shrink-0">
@@ -486,7 +548,7 @@ function CsrTrackingProjectDetails({
 
       <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm md:grid-cols-3">
         <div>
-          <p className="text-xs uppercase tracking-wide text-slate-500">Need types</p>
+          <p className="text-xs uppercase tracking-wide text-slate-500">Category</p>
           <p className="font-medium text-slate-800">{assignment.project_category || 'Not set'}</p>
         </div>
         <div>
@@ -505,17 +567,11 @@ function CsrTrackingProjectDetails({
           <p className="text-xs uppercase tracking-wide text-slate-500">Valid until</p>
           <p className="font-medium text-slate-800">{formatDisplayDate(assignment.project_valid_until) || 'Not set'}</p>
         </div>
-        <div>
-          <p className="text-xs uppercase tracking-wide text-slate-500">CSR takeover</p>
-          <p className="font-medium text-slate-800">
-            {csrAvailable === false ? 'No' : csrAvailable === true ? 'Yes' : 'Not set'}
-          </p>
-        </div>
       </div>
 
       {needs.length > 0 ? (
         <div>
-          <p className="mb-1.5 text-xs uppercase tracking-wide text-slate-500">Project needs ({needs.length})</p>
+          <p className="mb-1.5 text-xs uppercase tracking-wide text-slate-500">Legacy linked listings ({needs.length})</p>
           <div className="flex flex-wrap gap-1.5">
             {visibleNeeds.map((need) => (
               <NeedDetailLink key={need.id} need={need} />
@@ -636,104 +692,138 @@ function InlineDelhiveryFulfillment({
   };
 
   return (
-    <div className="space-y-3 rounded-md border border-indigo-200 bg-indigo-50/60 p-3">
+    <div className="space-y-3 border-t border-gram-border pt-3">
       <div>
-        <p className="text-sm font-medium text-indigo-950">Delhivery delivery</p>
-        <p className="text-xs text-indigo-800/80">
+        <p className="text-sm font-medium text-gram-ink">Delhivery delivery</p>
+        <p className="text-xs text-gram-muted">
           Material fulfillment is tracked through Delhivery pickup and delivery updates.
         </p>
       </div>
 
-      <div className="grid gap-2 text-sm sm:grid-cols-2">
-        <p>
-          Status:{' '}
-          <span className="font-medium text-slate-900">{currentStatus}</span>
-        </p>
-        <p>
-          Last location:{' '}
-          <span className="font-medium text-slate-900">
-            {meta.delivery_tracking_last_location || 'Not available yet'}
-          </span>
-        </p>
-      </div>
-
-      {canEditTrackingId ? (
-        <div className="space-y-2">
-          <Label htmlFor={`delhivery-tracking-${volunteerApplicationId}`} className="text-xs">
-            Delhivery tracking ID
-          </Label>
-          <Input
-            id={`delhivery-tracking-${volunteerApplicationId}`}
-            value={trackingId}
-            onChange={(event) => setTrackingId(event.target.value)}
-            placeholder="Enter tracking ID after Delhivery pickup"
-            className="bg-white"
-          />
-        </div>
-      ) : meta.delivery_tracking_id ? (
-        <p className="text-xs text-slate-700">
-          Tracking ID: <span className="font-medium">{meta.delivery_tracking_id}</span>
-        </p>
-      ) : null}
-
-      {canVerifyPickup ? (
-        <Button
-          size="sm"
-          className="bg-indigo-700 hover:bg-indigo-800"
-          onClick={handleVerifyPickup}
-          disabled={syncing}
-        >
-          {syncing ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Checking Delhivery…
-            </>
-          ) : delivered ? (
-            'Refresh delivery status'
-          ) : pickedUp ? (
-            'Refresh delivery status'
-          ) : (
-            'Verify Delhivery pickup'
-          )}
-        </Button>
-      ) : null}
-
-      {events.length > 0 ? (
-        <div className="rounded-md border border-indigo-100 bg-white p-3">
-          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
-            Delivery timeline
-          </p>
-          <ol className="space-y-2">
-            {events.map((event: any, index: number) => (
-              <li key={`${event.status}-${event.timestamp}-${index}`} className="border-l-2 border-indigo-200 pl-3">
-                <p className="text-sm font-medium text-slate-900">
-                  {String(event.status || 'Update')}
-                </p>
-                <p className="text-xs text-slate-600">
-                  {event.location ? `${event.location} · ` : ''}
-                  {formatDelhiveryEventTime(event.timestamp)}
-                </p>
-                {event.details ? (
-                  <p className="text-xs text-slate-500">{String(event.details)}</p>
-                ) : null}
-              </li>
-            ))}
-          </ol>
+      {syncing ? (
+        <div className="space-y-3" aria-busy="true" aria-label="Updating delivery status">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-4 w-44" />
+          </div>
+          <Skeleton className="h-9 w-full max-w-xs" />
+          <div className="space-y-2">
+            <Skeleton className="h-3 w-28" />
+            <Skeleton className="h-12 w-full" />
+          </div>
         </div>
       ) : (
-        <p className="text-xs text-slate-600">
-          {meta.delivery_tracking_id
-            ? canVerifyPickup
-              ? 'No timeline events yet. Use verify pickup to pull the latest Delhivery updates.'
-              : 'No timeline events yet. The individual will sync Delhivery updates after pickup.'
-            : canVerifyPickup
-              ? 'Add the tracking ID once Delhivery picks up the goods to start live tracking.'
-              : 'Waiting for the individual to verify Delhivery pickup and share tracking updates.'}
-        </p>
+        <>
+          <div className="grid gap-2 text-sm text-gram-muted sm:grid-cols-2">
+            <p>
+              Status:{' '}
+              <span className="font-medium text-gram-ink">{currentStatus}</span>
+            </p>
+            <p>
+              Last location:{' '}
+              <span className="font-medium text-gram-ink">
+                {meta.delivery_tracking_last_location || 'Not available yet'}
+              </span>
+            </p>
+          </div>
+
+          {canEditTrackingId ? (
+            <div className="space-y-2">
+              <Label htmlFor={`delhivery-tracking-${volunteerApplicationId}`} className="text-xs text-gram-muted">
+                Delhivery tracking ID
+              </Label>
+              <Input
+                id={`delhivery-tracking-${volunteerApplicationId}`}
+                value={trackingId}
+                onChange={(event) => setTrackingId(event.target.value)}
+                placeholder="Enter tracking ID after Delhivery pickup"
+                className="border-gram-border bg-white"
+              />
+            </div>
+          ) : meta.delivery_tracking_id ? (
+            <p className="text-xs text-gram-muted">
+              Tracking ID: <span className="font-medium text-gram-ink">{meta.delivery_tracking_id}</span>
+            </p>
+          ) : null}
+
+          {canVerifyPickup ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-gram-border text-gram-ink hover:bg-gram-sage"
+              onClick={handleVerifyPickup}
+              disabled={syncing}
+            >
+              {delivered || pickedUp ? 'Refresh delivery status' : 'Verify Delhivery pickup'}
+            </Button>
+          ) : null}
+
+          {events.length > 0 ? (
+            <div className="space-y-2">
+              <p className="text-xs font-medium uppercase tracking-wide text-gram-muted">
+                Delivery timeline
+              </p>
+              <ol className="space-y-2">
+                {events.map((event: any, index: number) => (
+                  <li key={`${event.status}-${event.timestamp}-${index}`} className="border-l-2 border-gram-border pl-3">
+                    <p className="text-sm font-medium text-gram-ink">
+                      {String(event.status || 'Update')}
+                    </p>
+                    <p className="text-xs text-gram-muted">
+                      {event.location ? `${event.location} · ` : ''}
+                      {formatDelhiveryEventTime(event.timestamp)}
+                    </p>
+                    {event.details ? (
+                      <p className="text-xs text-gram-muted">{String(event.details)}</p>
+                    ) : null}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          ) : (
+            <p className="text-xs text-gram-muted">
+              {meta.delivery_tracking_id
+                ? canVerifyPickup
+                  ? 'No timeline events yet. Use verify pickup to pull the latest Delhivery updates.'
+                  : 'No timeline events yet. The individual will sync Delhivery updates after pickup.'
+                : canVerifyPickup
+                  ? 'Add the tracking ID once Delhivery picks up the goods to start live tracking.'
+                  : 'Waiting for the individual to verify Delhivery pickup and share tracking updates.'}
+            </p>
+          )}
+        </>
       )}
     </div>
   );
 }
+function NgoNeedCardSkeleton() {
+  return (
+    <div className="overflow-hidden rounded-md border border-gram-border bg-white shadow-none" aria-busy="true">
+      <Skeleton className="h-40 w-full rounded-none bg-[#EEF0ED]" />
+      <div className="flex flex-col gap-2 px-3 pb-3 pt-2.5">
+        <div className="flex min-w-0 items-baseline justify-between gap-2">
+          <Skeleton className="h-3 w-16 rounded" />
+          <Skeleton className="h-3 w-24 rounded" />
+        </div>
+        <div className="min-w-0 space-y-1">
+          <Skeleton className="h-5 w-3/4 rounded" />
+          <Skeleton className="h-3.5 w-full rounded" />
+        </div>
+        <Skeleton className="h-3 w-2/3 rounded" />
+        <div className="mt-auto flex min-w-0 items-center gap-2 border-t border-gram-border pt-2">
+          <Skeleton className="h-7 w-7 shrink-0 rounded-full" />
+          <div className="min-w-0 flex-1 space-y-1">
+            <Skeleton className="h-3.5 w-28 rounded" />
+            <Skeleton className="h-3 w-16 rounded" />
+          </div>
+          <Skeleton className="h-7 w-24 shrink-0 rounded-md" />
+          <Skeleton className="h-8 w-8 shrink-0 rounded-md" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function getSkillLocalDateString(reference: Date = new Date()) {
   const year = reference.getFullYear();
   const month = String(reference.getMonth() + 1).padStart(2, '0');
@@ -1105,10 +1195,15 @@ function NgoNeedDashboardInline({
   const accepted = getAcceptedNgoNeedAssignments(need);
   const pending = getPendingNgoNeedAssignments(need);
   const { targetLabel, remainingLabel } = formatNgoNeedTargetSummary(need);
-  const listingOpen = isNeedOpenForListing(need);
+  const remainingQty = getNeedRemainingQuantity(need);
+  const assignmentLabel =
+    remainingQty <= 0
+      ? 'Fully assigned'
+      : accepted.length > 0
+        ? 'Partially assigned'
+        : null;
   const target = getServiceRequestTarget(need);
-  const location =
-    need.project?.exact_address || need.project?.location || need.location || 'Not set';
+  const location = need.location || 'Not set';
 
   const handleApplicantDecision = async (
     assignment: NgoNeedAssignment,
@@ -1176,14 +1271,16 @@ function NgoNeedDashboardInline({
         <div>
           <p className="font-semibold">{need.title}</p>
           <p className="text-sm text-muted-foreground">
-            {need.project?.title || need.location || 'Standalone need'}
+            {need.location || need.request_type || need.category || 'Need'}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Badge variant="outline">{need.status || 'active'}</Badge>
-          {variant === 'ongoing' && !listingOpen ? (
-            <Badge variant="outline" className="border-slate-300 bg-slate-50 text-slate-700">
-              Fully assigned · hidden from listing
+          <Badge variant="outline" className="border-gram-border bg-gram-page text-gram-ink">
+            {need.status || 'active'}
+          </Badge>
+          {variant === 'ongoing' && assignmentLabel ? (
+            <Badge variant="outline" className="border-gram-border bg-gram-sage/40 text-udaan-blue">
+              {assignmentLabel}
             </Badge>
           ) : null}
         </div>
@@ -1360,16 +1457,15 @@ function NGODashboardContent() {
   const [updatingOfferRequestId, setUpdatingOfferRequestId] = useState<number | null>(null);
   const [capabilityOffersTab, setCapabilityOffersTab] = useState<'your-capabilities' | 'your-applications' | 'requests'>('your-capabilities');
   const [offerRequestsTab, setOfferRequestsTab] = useState<'pending' | 'in-progress' | 'history'>('pending');
-  const [yourNeedsTab, setYourNeedsTab] = useState<'ongoing-needs' | 'history-needs'>('ongoing-needs');
-  const [trackingTab, setTrackingTab] = useState<'ongoing-projects' | 'history-projects' | 'ongoing-needs' | 'history-needs'>('ongoing-needs');
+  const [trackingTab, setTrackingTab] = useState<'ongoing-needs' | 'history-needs'>('ongoing-needs');
   const [csrProjectsTab, setCsrProjectsTab] = useState<'invitations' | 'ongoing' | 'completed'>('invitations');
   const [csrProjectsSectionTab, setCsrProjectsSectionTab] = useState<'ngo-projects' | 'other-csr'>('ngo-projects');
   const [deletingRequest, setDeletingRequest] = useState<number | null>(null);
   const sidebarItems = [
     { value: 'profile', label: 'Profile' },
     { value: 'service-offers', label: 'Capability Offers' },
-    { value: 'service-requests', label: 'Your Needs' },
-    { value: 'csr-projects', label: 'CSR Projects' },
+    { value: 'service-requests', label: 'My Needs' },
+    { value: 'csr-projects', label: 'My Projects' },
     { value: 'payments', label: 'Payments' },
   ];
 
@@ -2040,25 +2136,6 @@ function NGODashboardContent() {
     return 'bg-slate-100 text-slate-700 border-slate-200';
   };
 
-  const getNeedTrackingSummary = (needs: Array<{ status: string }>) => {
-    let completed = 0;
-    let inProgress = 0;
-    let accepted = 0;
-
-    for (const need of needs || []) {
-      const normalized = String(need?.status || '').toLowerCase();
-      if (normalized === 'completed') {
-        completed += 1;
-      } else if (normalized === 'in_progress' || normalized === 'active') {
-        inProgress += 1;
-      } else if (normalized === 'accepted') {
-        accepted += 1;
-      }
-    }
-
-    return { completed, inProgress, accepted };
-  };
-
   const ongoingCampaignVolunteerAssignments = campaignVolunteerAssignments.filter((assignment) => assignment.lifecycle !== 'completed');
   const completedCampaignVolunteerAssignments = campaignVolunteerAssignments.filter((assignment) => assignment.lifecycle === 'completed');
   const ongoingCampaignLeadAssignments = campaignLeadAssignments.filter((assignment) => assignment.lifecycle !== 'completed');
@@ -2071,14 +2148,11 @@ function NGODashboardContent() {
     completedCampaignLeadAssignments.length +
     ongoingCSRProjects.length +
     completedCSRProjects.length;
-  const ongoingTrackingProjects = csrTrackingAssignments.filter((assignment) => !['completed', 'closed', 'cancelled'].includes(String(assignment.assignment_status || '').toLowerCase()));
-  const historyTrackingProjects = csrTrackingAssignments.filter((assignment) => ['completed', 'closed', 'cancelled'].includes(String(assignment.assignment_status || '').toLowerCase()));
   const navigateToTab = (value: string) => {
     if (value === 'service-offers') {
       setCapabilityOffersTab('your-capabilities');
     }
     if (value === 'service-requests') {
-      setYourNeedsTab('ongoing-needs');
       setTrackingTab('ongoing-needs');
     }
     if (value === 'csr-projects') {
@@ -2241,7 +2315,13 @@ function NGODashboardContent() {
                             <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                               <div>
                                 <p className="font-semibold">{offer.title}</p>
-                                <p className="text-sm text-muted-foreground">{offer.provider_name || offer.ngo_name || 'Provider not available'}</p>
+                                <VerifiedAccountName
+                                  name={offer.provider_name || offer.ngo_name || 'Provider not available'}
+                                  status={offer.verification_status}
+                                  verified={offer.verified}
+                                  size="xs"
+                                  nameClassName="text-sm font-medium text-slate-800"
+                                />
                               </div>
                               <Badge variant="outline">{offer.status || 'active'}</Badge>
                             </div>
@@ -2278,8 +2358,15 @@ function NGODashboardContent() {
                                 <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                                   <div>
                                     <p className="font-semibold">{request.offer_title}</p>
-                                    <p className="text-sm text-muted-foreground">
-                                      Requester: {request.client?.name || 'Unknown'} ({request.client?.user_type || 'participant'})
+                                    <p className="flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
+                                      <span>Requester:</span>
+                                      <VerifiedAccountName
+                                        name={request.client?.name || 'Unknown'}
+                                        status={request.client?.verification_status}
+                                        size="xs"
+                                        nameClassName="font-medium text-slate-800"
+                                      />
+                                      <span>({request.client?.user_type || 'participant'})</span>
                                     </p>
                                     <p className="text-sm text-muted-foreground">{request.client?.email || 'No email available'}</p>
                                     {request.message ? (
@@ -2362,8 +2449,14 @@ function NGODashboardContent() {
                                   <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0 flex-1">
                                       <p className="truncate font-semibold">{request.offer_title}</p>
-                                      <p className="truncate text-sm text-muted-foreground">
-                                        {request.client?.name || 'Unknown'} · {request.client?.user_type || 'participant'}
+                                      <p className="flex min-w-0 flex-wrap items-center gap-1 truncate text-sm text-muted-foreground">
+                                        <VerifiedAccountName
+                                          name={request.client?.name || 'Unknown'}
+                                          status={request.client?.verification_status}
+                                          size="xs"
+                                          nameClassName="font-medium text-slate-800"
+                                        />
+                                        <span>· {request.client?.user_type || 'participant'}</span>
                                       </p>
                                       <p className="truncate text-sm text-muted-foreground">{request.client?.email || 'No email available'}</p>
                                     </div>
@@ -2442,8 +2535,15 @@ function NGODashboardContent() {
                                 <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                                   <div>
                                     <p className="font-semibold">{request.offer_title}</p>
-                                    <p className="text-sm text-muted-foreground">
-                                      Requester: {request.client?.name || 'Unknown'} ({request.client?.user_type || 'participant'})
+                                    <p className="flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
+                                      <span>Requester:</span>
+                                      <VerifiedAccountName
+                                        name={request.client?.name || 'Unknown'}
+                                        status={request.client?.verification_status}
+                                        size="xs"
+                                        nameClassName="font-medium text-slate-800"
+                                      />
+                                      <span>({request.client?.user_type || 'participant'})</span>
                                     </p>
                                     <p className="text-sm text-muted-foreground">{request.client?.email || 'No email available'}</p>
                                     {request.message ? (
@@ -2486,7 +2586,10 @@ function NGODashboardContent() {
                   
                   <TabsContent value="service-requests" className="mt-4 space-y-4">
                     <div className="flex items-center justify-between gap-3 flex-wrap">
-                      <h3 className="font-medium">Your Needs</h3>
+                      <div>
+                        <h3 className="font-medium">My Needs</h3>
+                        <p className="text-sm text-muted-foreground">Standalone needs for individuals. Company CSR applications live under My Projects.</p>
+                      </div>
                       <Link href="/service-requests/create">
                         <Button variant="outline" size="sm">
                           <Plus className="h-3.5 w-3.5 mr-1" />
@@ -2495,152 +2598,18 @@ function NGODashboardContent() {
                       </Link>
                     </div>
 
-                    <div className="rounded-md border bg-slate-50 p-4 space-y-3">
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <p className="font-semibold text-slate-900">Company Project Applications</p>
-                          <p className="text-sm text-slate-600">Companies can apply once to fulfill the full project scope (all needs under the project).</p>
-                        </div>
-                        <Button variant="outline" size="sm" onClick={fetchCompanyProjectApplications}>Refresh</Button>
-                      </div>
-
-                      {loadingCompanyProjectApplications ? (
-                        <div className="flex items-center justify-center py-6 text-sm text-slate-600">
-                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                          Loading company applications...
-                        </div>
-                      ) : companyProjectApplications.length === 0 ? (
-                        <p className="text-sm text-slate-600">No company project applications yet.</p>
-                      ) : (
-                        <div className="space-y-3">
-                          {companyProjectApplications.map((application) => {
-                            const appKey = `${application.project_id}:${application.company_id}`;
-                            const isPending = isActionableProjectApplicationStatus(application.status);
-                            return (
-                              <div key={appKey} className="rounded-md border bg-white p-3 space-y-2">
-                                <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                                  <div>
-                                    <p className="font-semibold">{application.project_title}</p>
-                                    <p className="text-sm text-slate-600">Company: {application.company_name}</p>
-                                    <p className="text-xs text-slate-500">{application.company_email || 'No email'} • {application.project_location || 'Location not set'}</p>
-                                  </div>
-                                  <Badge variant="outline" className={`w-fit ${getStatusBadgeClass(application.status)}`}>
-                                    {formatStatusLabel(application.status)}
-                                  </Badge>
-                                </div>
-
-                                <p className="text-xs text-slate-600">Needs in application: {application.needs.length}</p>
-                                <div className="flex flex-wrap gap-2">
-                                  {application.needs.slice(0, 4).map((need) => (
-                                    <Badge key={need.id} variant="secondary">#{need.id} {need.request_type || 'Need'}</Badge>
-                                  ))}
-                                  {application.needs.length > 4 && <Badge variant="secondary">+{application.needs.length - 4} more</Badge>}
-                                </div>
-
-                                {application.note ? (
-                                  <div className="rounded-md bg-muted p-2 text-sm text-foreground">{application.note}</div>
-                                ) : null}
-
-                                <div className="flex flex-wrap gap-2">
-                                  <Link href={`/service-requests/projects/${application.project_id}`}>
-                                    <Button size="sm" variant="outline">View Project</Button>
-                                  </Link>
-                                  <Button
-                                    size="sm"
-                                    onClick={() => reviewCompanyProjectApplication(application.project_id, application.company_id, 'accepted')}
-                                    disabled={!isPending || reviewingCompanyApplicationKey === appKey}
-                                    className="bg-green-600 hover:bg-green-700"
-                                  >
-                                    {reviewingCompanyApplicationKey === appKey ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Accept Full Project'}
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => reviewCompanyProjectApplication(application.project_id, application.company_id, 'rejected')}
-                                    disabled={!isPending || reviewingCompanyApplicationKey === appKey}
-                                    className="border-red-300 text-red-600 hover:bg-red-50"
-                                  >
-                                    {reviewingCompanyApplicationKey === appKey ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Reject'}
-                                  </Button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-
-                    <Tabs value={trackingTab} onValueChange={(value) => setTrackingTab(value as 'ongoing-projects' | 'history-projects' | 'ongoing-needs' | 'history-needs')} className="w-full">
-                      <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 h-auto">
-                        <TabsTrigger value="ongoing-projects">Ongoing Projects ({ongoingTrackingProjects.length})</TabsTrigger>
-                        <TabsTrigger value="history-projects">History Projects ({historyTrackingProjects.length})</TabsTrigger>
-                        <TabsTrigger value="ongoing-needs">Ongoing Needs ({ongoingNeeds.length})</TabsTrigger>
-                        <TabsTrigger value="history-needs">History Needs ({historyNeeds.length})</TabsTrigger>
+                    <Tabs value={trackingTab === 'ongoing-needs' || trackingTab === 'history-needs' ? trackingTab : 'ongoing-needs'} onValueChange={(value) => setTrackingTab(value as 'ongoing-needs' | 'history-needs')} className="w-full">
+                      <TabsList className="grid w-full grid-cols-2 h-auto">
+                        <TabsTrigger value="ongoing-needs">Ongoing ({ongoingNeeds.length})</TabsTrigger>
+                        <TabsTrigger value="history-needs">History ({historyNeeds.length})</TabsTrigger>
                       </TabsList>
-
-                      <TabsContent value="ongoing-projects" className="mt-4 space-y-3">
-                        {ongoingTrackingProjects.length === 0 ? (
-                          <div className="p-8 text-center text-muted-foreground">
-                            <p className="text-lg font-medium mb-2">No ongoing assigned projects</p>
-                            <p className="text-sm">Accepted full-project handoffs will appear here for tracking.</p>
-                          </div>
-                        ) : ongoingTrackingProjects.map((assignment) => {
-                          const summary = getNeedTrackingSummary(assignment.needs || []);
-                          return (
-                            <div key={`${assignment.project_id}:${assignment.assigned_company_id}`} className="rounded-md border bg-white p-3 space-y-3">
-                              <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                                <div>
-                                  <p className="font-semibold">{assignment.project_title}</p>
-                                  <p className="text-sm text-slate-600">Assigned Company: {assignment.assigned_company_name}</p>
-                                </div>
-                                <Badge variant="outline" className={`w-fit ${getStatusBadgeClass(assignment.assignment_status)}`}>
-                                  {formatStatusLabel(assignment.assignment_status)}
-                                </Badge>
-                              </div>
-                              <div className="grid grid-cols-1 gap-2 text-xs text-slate-600 sm:grid-cols-4">
-                                <p>Total Needs: {assignment.needs.length}</p>
-                                <p>Completed: {summary.completed}</p>
-                                <p>In Progress: {summary.inProgress}</p>
-                                <p>Accepted: {summary.accepted}</p>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </TabsContent>
-
-                      <TabsContent value="history-projects" className="mt-4 space-y-3">
-                        {historyTrackingProjects.length === 0 ? (
-                          <div className="p-8 text-center text-muted-foreground">
-                            <p className="text-lg font-medium mb-2">No project history yet</p>
-                            <p className="text-sm">Completed project handoffs will appear here.</p>
-                          </div>
-                        ) : historyTrackingProjects.map((assignment) => {
-                          const summary = getNeedTrackingSummary(assignment.needs || []);
-                          return (
-                            <div key={`${assignment.project_id}:${assignment.assigned_company_id}`} className="rounded-md border bg-white p-3 space-y-3">
-                              <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                                <div>
-                                  <p className="font-semibold">{assignment.project_title}</p>
-                                  <p className="text-sm text-slate-600">Assigned Company: {assignment.assigned_company_name}</p>
-                                </div>
-                                <Badge variant="outline" className={`w-fit ${getStatusBadgeClass(assignment.assignment_status)}`}>
-                                  {formatStatusLabel(assignment.assignment_status)}
-                                </Badge>
-                              </div>
-                              <div className="grid grid-cols-1 gap-2 text-xs text-slate-600 sm:grid-cols-4">
-                                <p>Total Needs: {assignment.needs.length}</p>
-                                <p>Completed: {summary.completed}</p>
-                                <p>In Progress: {summary.inProgress}</p>
-                                <p>Accepted: {summary.accepted}</p>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </TabsContent>
 
                       <TabsContent value="ongoing-needs" className="mt-4 space-y-3">
                         {loadingData ? (
-                          <div className="p-6 text-center text-muted-foreground">Loading ongoing needs...</div>
+                          <div className="space-y-3">
+                            <NgoNeedCardSkeleton />
+                            <NgoNeedCardSkeleton />
+                          </div>
                         ) : ongoingNeeds.length === 0 ? (
                           <div className="p-8 text-center text-muted-foreground">
                             <p className="text-lg font-medium mb-2">No ongoing needs</p>
@@ -2658,7 +2627,10 @@ function NGODashboardContent() {
 
                       <TabsContent value="history-needs" className="mt-4 space-y-3">
                         {loadingData ? (
-                          <div className="p-6 text-center text-muted-foreground">Loading history...</div>
+                          <div className="space-y-3">
+                            <NgoNeedCardSkeleton />
+                            <NgoNeedCardSkeleton />
+                          </div>
                         ) : historyNeeds.length === 0 ? (
                           <div className="p-8 text-center text-muted-foreground">
                             <p className="text-lg font-medium mb-2">No history yet</p>
@@ -2677,6 +2649,122 @@ function NGODashboardContent() {
                   
 
                   <TabsContent value="csr-projects" className="mt-4 space-y-4">
+                    <div className="rounded-md border border-gram-border bg-white p-4 space-y-3">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="font-semibold text-gram-ink">Company Takeover Applications</p>
+                          <p className="text-sm text-gram-muted">
+                            Companies apply to take over a CSR project package. Accept to lock the project to that company.
+                          </p>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={fetchCompanyProjectApplications}>Refresh</Button>
+                      </div>
+
+                      {loadingCompanyProjectApplications ? (
+                        <div className="space-y-3">
+                          <SkeletonOrderItem />
+                          <SkeletonOrderItem />
+                        </div>
+                      ) : companyProjectApplications.length === 0 ? (
+                        <p className="text-sm text-gram-muted">No company takeover applications yet.</p>
+                      ) : (
+                        <div className="space-y-3">
+                          {companyProjectApplications.map((application) => {
+                            const appKey = `${application.project_id}:${application.company_id}`;
+                            const isPending = isActionableProjectApplicationStatus(application.status);
+                            const companyName = application.company_name || 'Company';
+                            const companyInitials = companyName
+                              .split(/\s+/)
+                              .filter(Boolean)
+                              .slice(0, 2)
+                              .map((part) => part[0]?.toUpperCase() || '')
+                              .join('') || 'C';
+                            const companySecondary = [
+                              application.company_industry,
+                              application.company_location,
+                            ]
+                              .map((value) => String(value || '').trim())
+                              .filter(Boolean)
+                              .join(' · ');
+                            const companyContact = [
+                              application.company_email,
+                              application.company_phone,
+                            ]
+                              .map((value) => String(value || '').trim())
+                              .filter(Boolean)
+                              .join(' · ');
+                            return (
+                              <div key={appKey} className="rounded-md border bg-white p-3 space-y-3">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <p className="text-xs uppercase tracking-wide text-slate-500">Project for takeover</p>
+                                    <p className="font-semibold text-gram-ink truncate">{application.project_title}</p>
+                                  </div>
+                                  <Badge variant="outline" className={`shrink-0 ${getStatusBadgeClass(application.status)}`}>
+                                    {formatStatusLabel(application.status)}
+                                  </Badge>
+                                </div>
+
+                                <div className="rounded-md border border-gram-border bg-slate-50 p-2.5">
+                                  <div className="flex items-center gap-3">
+                                    <Avatar className="h-11 w-11 shrink-0">
+                                      {application.company_profile_image ? (
+                                        <AvatarImage src={application.company_profile_image} alt={companyName} />
+                                      ) : null}
+                                      <AvatarFallback
+                                        className="text-sm font-medium"
+                                        style={getGramAvatarFallbackStyle(companyName)}
+                                      >
+                                        {companyInitials}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                    <div className="min-w-0 flex-1 space-y-0.5">
+                                      <VerifiedAccountName
+                                        name={companyName}
+                                        verified={application.company_verified}
+                                        size="sm"
+                                        nameClassName="text-sm font-semibold text-gram-ink"
+                                        className="max-w-full"
+                                      />
+                                      {companySecondary ? (
+                                        <p className="text-xs text-gram-muted truncate">{companySecondary}</p>
+                                      ) : null}
+                                      {companyContact ? (
+                                        <p className="text-xs text-gram-muted break-words">{companyContact}</p>
+                                      ) : null}
+                                      {!companySecondary && !companyContact ? (
+                                        <p className="text-xs text-gram-muted">Company details not available</p>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="flex flex-wrap gap-2">
+                                  <Button
+                                    size="sm"
+                                    onClick={() => reviewCompanyProjectApplication(application.project_id, application.company_id, 'accepted')}
+                                    disabled={!isPending || reviewingCompanyApplicationKey === appKey}
+                                    className="bg-green-600 hover:bg-green-700"
+                                  >
+                                    {reviewingCompanyApplicationKey === appKey ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Accept Takeover'}
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => reviewCompanyProjectApplication(application.project_id, application.company_id, 'rejected')}
+                                    disabled={!isPending || reviewingCompanyApplicationKey === appKey}
+                                    className="border-red-300 text-red-600 hover:bg-red-50"
+                                  >
+                                    {reviewingCompanyApplicationKey === appKey ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Reject'}
+                                  </Button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
                     <Tabs
                       value={csrProjectsSectionTab}
                       onValueChange={(value) => setCsrProjectsSectionTab(value as 'ngo-projects' | 'other-csr')}
@@ -2700,11 +2788,11 @@ function NGODashboardContent() {
                           <Button variant="outline" size="sm" onClick={fetchCSRTrackingAssignments}>Refresh</Button>
                         </div>
 
-                        <div className="rounded-md border bg-slate-50 p-4 space-y-3">
+                        <div className="rounded-md border border-gram-border bg-white p-4 space-y-3">
                           {loadingCSRTrackingAssignments ? (
-                            <div className="flex items-center justify-center py-6 text-sm text-slate-600">
-                              <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                              Loading company handoffs...
+                            <div className="space-y-3">
+                              <SkeletonOrderItem />
+                              <SkeletonOrderItem />
                             </div>
                           ) : csrTrackingAssignments.length === 0 ? (
                             <div className="py-6 text-center text-muted-foreground">
@@ -2720,6 +2808,8 @@ function NGODashboardContent() {
                                     partnerLabel="Company"
                                     partnerName={assignment.assigned_company_name}
                                     partnerEmail={assignment.assigned_company_email}
+                                    partnerStatus={assignment.assigned_company_verification_status}
+                                    partnerVerified={assignment.assigned_company_verified}
                                   />
                                 </div>
                               ))}
@@ -2787,7 +2877,16 @@ function NGODashboardContent() {
                                       <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                                         <div>
                                           <p className="font-semibold">{invite.campaign_title}</p>
-                                          <p className="text-sm text-slate-600">Invited by: {invite.company_name}</p>
+                                          <p className="flex flex-wrap items-center gap-1 text-sm text-slate-600">
+                                            <span>Invited by:</span>
+                                            <VerifiedAccountName
+                                              name={invite.company_name}
+                                              status={invite.company_verification_status}
+                                              verified={invite.company_verified}
+                                              size="xs"
+                                              nameClassName="font-medium text-slate-800"
+                                            />
+                                          </p>
                                           <p className="text-xs text-slate-500">{invite.company_email || 'No email'} • {invite.campaign_location || 'Location not set'}</p>
                                         </div>
                                         <Badge variant="outline" className={`w-fit ${getStatusBadgeClass(invite.status)}`}>

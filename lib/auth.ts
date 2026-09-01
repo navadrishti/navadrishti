@@ -763,6 +763,9 @@ export function ngoIsCsrEligibleForProject(
 export const CSR_ELIGIBILITY_REQUIRED_MESSAGE =
   'Only NGOs with a live CA-allotted CSR-1 tag can participate in CSR funding, takeover, or lead-NGO roles.';
 
+export const CSR_PROJECT_CREATE_REQUIRED_MESSAGE =
+  'A live CA-allotted CSR-1 tag is required before you can create or edit a CSR project.';
+
 export const CSR_TIMELINE_COVERAGE_REQUIRED_MESSAGE =
   'CSR-1 must remain valid through the full project/campaign window (valid-until and timeline). NGOs whose certificate expires earlier cannot be suggested, invited, or selected for this work.';
 
@@ -770,7 +773,7 @@ export const CSR_WORK_END_DATE_REQUIRED_MESSAGE =
   'A campaign/project end date is required so CSR-1 coverage can be verified through the full work window.';
 
 export const CSR_OWN_PROJECT_TIMELINE_MESSAGE =
-  'Your CSR-1 certificate must remain valid through this project’s full window (valid-until and timeline) before you can make it available for company CSR takeover.';
+  'Your CSR-1 certificate must remain valid through this project’s full window (valid-until and timeline) before you can create or publish the project.';
 
 export const CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE =
   'Company CSR payments require the NGO to have a live CA-allotted CSR-1 tag. If it expired mid-project, update and reverify the CSR-1 certificate before funding continues.';
@@ -1203,7 +1206,7 @@ export function listDocumentExpiryPublicItems(
         status: getDocumentExpiryStatus(validUntil, now),
       };
     })
-    .filter((item): item is DocumentExpiryPublicItem => Boolean(item));
+    .filter((item): item is NonNullable<typeof item> => item != null);
 }
 
 export function summarizeDocumentExpiries(profileData: unknown, now = new Date()) {
@@ -1348,7 +1351,7 @@ export function normalizePastProjects(value: unknown): NgoPastProject[] {
           status: readNgoTextField(record.status),
         };
       })
-      .filter((item): item is NgoPastProject => Boolean(item));
+      .filter((item): item is NonNullable<typeof item> => item != null);
   }
 
   if (typeof value === 'string' && value.trim()) {
@@ -1409,7 +1412,7 @@ export function normalizePlatformProjects(
         status: readNgoTextField(row.status),
       };
     })
-    .filter((project): project is NgoPastProject => Boolean(project));
+    .filter((project): project is NonNullable<typeof project> => project != null);
 }
 
 export function mergeNgoPastProjects(

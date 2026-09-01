@@ -7,6 +7,7 @@ import { ArrowLeft, MapPin, Users, Clock, Target, Calendar, User, Building, Mess
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
 import { getGramAvatarFallbackStyle } from '@/lib/gram-avatar'
+import { VerifiedAccountName } from '@/components/verification-badge'
 import { formatPrice } from '@/lib/utils'
 import { DetailField, DetailSection, displayValue, parseStringArray, parseImages } from '@/components/detail-fields'
 import { formatDetailDate } from '@/lib/format-date'
@@ -69,6 +70,9 @@ interface ServiceOffer {
   provider_name?: string
   provider_type?: 'ngo' | 'company' | 'individual' | string
   provider_profile_image?: string | null
+  verified?: boolean
+  verification_status?: string | null
+  ngo?: { verification_status?: string | null } | null
   status: 'active' | 'paused' | 'completed' | 'cancelled'
   valid_until?: string | null
   impact_area?: string[]
@@ -842,7 +846,13 @@ export default function ServiceOfferDetailPage() {
                       </div>
 
                       <div className="min-w-0">
-                        <h3 className="text-lg font-semibold leading-tight truncate">{offer.provider_name || offer.ngo_name}</h3>
+                        <VerifiedAccountName
+                          name={offer.provider_name || offer.ngo_name}
+                          verified={Boolean(offer.verified)}
+                          status={offer.verification_status || offer.ngo?.verification_status}
+                          size="md"
+                          nameClassName="text-lg font-semibold leading-tight"
+                        />
                         <p className="mt-1 text-sm text-gray-500 capitalize">{offer.provider_type || 'ngo'}</p>
                         {isOfferExpired ? (
                           <Badge variant="destructive" className="mt-2 w-fit">Expired</Badge>

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { assertAdminUser } from '@/lib/admin-auth';
+import { assertAdminUser } from '@/lib/server-auth';
 import { createPlatformCAAccount, resetPlatformCAPasswordByAdmin, PLATFORM_CA_ACCOUNTS_TABLE } from '@/lib/platform-ca-auth';
 import crypto from 'crypto';
 

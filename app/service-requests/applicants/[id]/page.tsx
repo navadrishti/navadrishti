@@ -16,6 +16,7 @@ import {
   getNeedRemainingQuantity,
   getServiceRequestTarget,
 } from '@/lib/service-request-allocation'
+import { VerifiedAccountName } from '@/components/verification-badge'
 
 interface ServiceRequest {
   id: number;
@@ -40,6 +41,7 @@ interface Volunteer {
   volunteer_name: string;
   volunteer_email: string;
   volunteer_type: 'individual' | 'company';
+  volunteer_verification_status?: string;
   message: string;
   status: 'pending' | 'accepted' | 'rejected' | 'active' | 'completed' | 'cancelled';
   applied_at: string;
@@ -62,6 +64,7 @@ function normalizeVolunteer(raw: any): Volunteer {
     volunteer_name: String(volunteer.name || raw.volunteer_name || 'Volunteer'),
     volunteer_email: String(volunteer.email || raw.volunteer_email || ''),
     volunteer_type: (volunteer.user_type || raw.volunteer_type || 'individual') as Volunteer['volunteer_type'],
+    volunteer_verification_status: String(volunteer.verification_status || raw.volunteer_verification_status || ''),
     message: String(raw.message || ''),
     status: raw.status,
     applied_at: raw.applied_at || raw.created_at || '',
@@ -429,7 +432,12 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
                       <div className="flex justify-between items-start">
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-2">
-                            <h3 className="font-semibold">{volunteer.volunteer_name}</h3>
+                            <VerifiedAccountName
+                              name={volunteer.volunteer_name}
+                              status={volunteer.volunteer_verification_status}
+                              size="sm"
+                              nameClassName="font-semibold"
+                            />
                             <Badge variant="outline">
                               {volunteer.volunteer_type === 'individual' ? 'Individual' : 'Company'}
                             </Badge>
@@ -513,7 +521,12 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
                       <div className="flex justify-between items-start">
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-2">
-                            <h3 className="font-semibold">{volunteer.volunteer_name}</h3>
+                            <VerifiedAccountName
+                              name={volunteer.volunteer_name}
+                              status={volunteer.volunteer_verification_status}
+                              size="sm"
+                              nameClassName="font-semibold"
+                            />
                             <Badge variant="outline">
                               {volunteer.volunteer_type === 'individual' ? 'Individual' : 'Company'}
                             </Badge>
@@ -589,7 +602,12 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
                       <div className="flex justify-between items-start">
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-2">
-                            <h3 className="font-semibold">{volunteer.volunteer_name}</h3>
+                            <VerifiedAccountName
+                              name={volunteer.volunteer_name}
+                              status={volunteer.volunteer_verification_status}
+                              size="sm"
+                              nameClassName="font-semibold"
+                            />
                             <Badge variant="outline">
                               {volunteer.volunteer_type === 'individual' ? 'Individual' : 'Company'}
                             </Badge>
@@ -666,7 +684,12 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
                       <div className="flex justify-between items-start">
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-2">
-                            <h3 className="font-semibold">{volunteer.volunteer_name}</h3>
+                            <VerifiedAccountName
+                              name={volunteer.volunteer_name}
+                              status={volunteer.volunteer_verification_status}
+                              size="sm"
+                              nameClassName="font-semibold"
+                            />
                             <Badge variant="outline">
                               {volunteer.volunteer_type === 'individual' ? 'Individual' : 'Company'}
                             </Badge>

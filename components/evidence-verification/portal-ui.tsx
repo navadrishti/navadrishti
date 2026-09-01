@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { ConsoleFooter } from '@/components/console-footer';
+import { ConsoleFooter } from '@/components/product-brand';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';

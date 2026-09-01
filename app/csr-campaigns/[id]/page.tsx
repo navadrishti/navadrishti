@@ -16,7 +16,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { ArrowLeft, CheckCircle2 } from "lucide-react"
 import { formatDisplayDate, isCampaignStarted, isVolunteerRegistrationPastDeadline } from "@/lib/format-date"
-import { getVolunteerButtonState, sumVolunteerApplicationCount } from '@/lib/campaign-volunteer-utils'
+import { getVolunteerButtonState, sumVolunteerApplicationCount } from '@/lib/campaign-schema'
+import { VerifiedAccountName } from '@/components/verification-badge'
 
 interface Campaign {
   id: string
@@ -35,6 +36,11 @@ interface Campaign {
   start_date: string | null
   end_date: string | null
   company_id: number | null
+  company_name?: string | null
+  company_verification_status?: string | null
+  company_verified?: boolean
+  selected_lead_ngo_verification_status?: string | null
+  selected_lead_ngo_verified?: boolean
   status?: string | null
 }
 
@@ -53,6 +59,11 @@ type CampaignRecord = {
   start_date?: string | null
   end_date?: string | null
   company_id?: number | null
+  company_name?: string | null
+  company_verification_status?: string | null
+  company_verified?: boolean
+  selected_lead_ngo_verification_status?: string | null
+  selected_lead_ngo_verified?: boolean
   status?: string | null
 }
 
@@ -168,13 +179,37 @@ function CampaignDetailFields({ campaign }: { campaign: CampaignRecord }) {
 
       <DetailSection title="Lead NGO & Offers">
         <DetailField
+          label="Company"
+          value={
+            campaign.company_name ? (
+              <VerifiedAccountName
+                name={campaign.company_name}
+                status={campaign.company_verification_status}
+                verified={campaign.company_verified}
+                size="xs"
+                nameClassName="font-medium text-slate-800"
+              />
+            ) : (
+              'Not set'
+            )
+          }
+        />
+        <DetailField
           label="Lead NGO"
           value={
-            selectedLeadNgoName
-              ? selectedLeadNgoName
-              : selectedLeadNgoId > 0
-                ? `NGO #${selectedLeadNgoId}`
-                : 'Not selected'
+            selectedLeadNgoName ? (
+              <VerifiedAccountName
+                name={selectedLeadNgoName}
+                status={campaign.selected_lead_ngo_verification_status}
+                verified={campaign.selected_lead_ngo_verified}
+                size="xs"
+                nameClassName="font-medium text-slate-800"
+              />
+            ) : selectedLeadNgoId > 0 ? (
+              `NGO #${selectedLeadNgoId}`
+            ) : (
+              'Not selected'
+            )
           }
         />
         <DetailField

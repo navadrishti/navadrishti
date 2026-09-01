@@ -3,7 +3,7 @@ import { supabase } from '@/lib/db'
 import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth'
 import { getCampaignLeadLifecycle } from '@/lib/format-date'
 import { readCampaignCategory, readCampaignLocation } from '@/lib/campaign-schema'
-import { ensureCampaignVolunteerAssignment, filterCampaignVolunteerAssignments, getVolunteerApplicationForUser } from '@/lib/campaign-volunteer-assignment'
+import { ensureCampaignVolunteerAssignment, filterCampaignVolunteerAssignments, getVolunteerApplicationForUser } from '@/lib/campaign-volunteer-attendance'
 
 function safeJson(value: unknown): Record<string, any> {
   if (!value) return {}
@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
 
     const companyIds = [...new Set(volunteeredCampaigns.map((row) => Number(row.company_id || 0)).filter((id) => id > 0))]
     const { data: companies } = companyIds.length > 0
-      ? await supabase.from('users').select('id, name, email').in('id', companyIds)
+      ? await supabase.from('users').select('id, name, email, verification_status').in('id', companyIds)
       : { data: [] as any[] }
 
     const companiesById = new Map<number, any>((companies || []).map((row) => [Number(row.id), row]))
@@ -99,6 +99,8 @@ export async function GET(request: NextRequest) {
         company_id: Number(campaign.company_id || 0),
         company_name: company?.name || 'Company',
         company_email: company?.email || '',
+        company_verification_status: company?.verification_status || null,
+        company_verified: String(company?.verification_status || '').toLowerCase() === 'verified',
         assignment_id: assignment?.id || null,
         attendance_summary: assignmentMeta.attendance_summary || {},
       })

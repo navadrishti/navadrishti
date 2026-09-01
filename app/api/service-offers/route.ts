@@ -215,7 +215,9 @@ const normalizeOffer = (offer: any) => {
     duration: mergedDetails.duration ?? null,
     scope: facilities.length > 0 ? facilities.join(', ') : null,
     budget_range: mergedDetails.budget_amount ?? null,
-    skills_required: skillsRequired
+    skills_required: skillsRequired,
+    verified: String(offer?.ngo?.verification_status || '').toLowerCase() === 'verified',
+    verification_status: offer?.ngo?.verification_status || null,
   }
 }
 
@@ -500,7 +502,7 @@ export async function GET(request: NextRequest) {
           completed_at,
           service_request_id,
           proposed_amount,
-          client:users!client_id(name, email, user_type)
+          client:users!client_id(name, email, user_type, verification_status)
         `)
         .in('service_offer_id', offerIds)
 

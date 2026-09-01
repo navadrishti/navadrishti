@@ -17,7 +17,7 @@ import {
 } from "lucide-react"
 import { PHONE_VERIFICATION_ENABLED, formatGeographicCoverageArea, isCaVerifiedAccount, visibleCaBadgeNumber } from "@/lib/auth"
 import { formatDisplayDate } from "@/lib/format-date"
-import { formatProjectExactAddress } from "@/lib/project-address"
+import { formatProjectExactAddress } from "@/lib/service-request-allocation"
 import { useAuth } from "@/lib/auth-context"
 import {
   ComplianceBadge,

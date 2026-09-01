@@ -271,7 +271,9 @@ const normalizeOffer = (offer: any, capabilities: any[]) => {
     capacity: toNullableNumber(mergedDetails.capacity),
     duration: mergedDetails.duration ?? null,
     scope: Array.isArray(mergedDetails.facilities) ? mergedDetails.facilities.join(', ') : null,
-    budget_range: mergedDetails.budget_amount ?? null
+    budget_range: mergedDetails.budget_amount ?? null,
+    verified: String(offer?.ngo?.verification_status || '').toLowerCase() === 'verified',
+    verification_status: offer?.ngo?.verification_status || null,
   }
 }
 
@@ -347,7 +349,9 @@ export async function GET(
       ngo_name: providerName,
       provider_name: providerName,
       provider_type: providerType,
-      provider_profile_image: providerProfileImage
+      provider_profile_image: providerProfileImage,
+      verified: String(serviceOffer.ngo?.verification_status || '').toLowerCase() === 'verified',
+      verification_status: serviceOffer.ngo?.verification_status || null,
     })
   } catch (error) {
     return NextResponse.json({ error: 'Failed to fetch service offer' }, { status: 500 })

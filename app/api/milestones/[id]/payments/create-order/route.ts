@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
 import { supabase } from '@/lib/db';
-import { getEvidenceApproverContext } from '@/lib/server-evidence-approver-auth';
+import { getEvidenceApproverContext } from '@/lib/server-auth';
 import {
   assertNgoLiveCsr1,
   CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE,

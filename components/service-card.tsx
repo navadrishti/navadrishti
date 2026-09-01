@@ -13,7 +13,7 @@ import {
   Edit, Eye, MoreVertical, Trash2, ArrowRight, User, Briefcase,
   Truck, CheckCircle2, Loader2,
 } from "lucide-react"
-import { VerificationBadge } from "./verification-badge"
+import { VerifiedAccountName } from "./verification-badge"
 import { formatPrice, getRequestUrgencyLevel } from "@/lib/utils"
 import { formatDisplayDate } from "@/lib/format-date"
 import { getGramAvatarFallbackStyle } from "@/lib/gram-avatar"
@@ -156,26 +156,35 @@ const listingMetricValueClassName = 'min-w-0 truncate text-[13px] font-semibold 
 const getUrgencyBadgeClass = (level?: string) => {
   switch (String(level || 'medium').toLowerCase()) {
     case 'critical':
+      return 'text-[#8C5555]'
     case 'high':
-      return 'text-gram-ink'
+      return 'text-[#8A6F45]'
     case 'medium':
+      return 'text-udaan-blue'
     case 'low':
-      return 'text-gram-muted'
+      return 'text-[#4F6B5C]'
     default:
-      return 'text-gram-body'
+      return 'text-gram-muted'
   }
 }
 
 const getOfferStatusBadgeClass = (value?: string) => {
   switch (String(value || 'active').toLowerCase()) {
     case 'active':
-      return 'text-gram-ink'
+    case 'open':
+      return 'text-[#4F6B5C]'
     case 'draft':
+    case 'pending':
+      return 'text-[#8A6F45]'
     case 'closed':
     case 'inactive':
+    case 'completed':
       return 'text-gram-muted'
+    case 'rejected':
+    case 'cancelled':
+      return 'text-[#8C5555]'
     default:
-      return 'text-gram-body'
+      return 'text-udaan-blue'
   }
 }
 
@@ -355,11 +364,13 @@ export function ServiceCard({
     switch (level.toLowerCase()) {
       case 'urgent':
       case 'critical':
+        return 'text-[#8C5555]'
       case 'high':
-        return 'text-gram-ink'
+        return 'text-[#8A6F45]'
       case 'medium':
+        return 'text-udaan-blue'
       case 'low':
-        return 'text-gram-muted'
+        return 'text-[#4F6B5C]'
       default:
         return 'text-gram-body'
     }
@@ -556,9 +567,9 @@ export function ServiceCard({
     return 'Not set'
   })()
 
-  const renderListingCardImage = (options?: { autoplay?: boolean; showImageCount?: boolean }) => (
-    <div className={listingCardImageClassName}>
-      <div className={listingCardImageFrameClassName}>
+  const renderListingCardImage = (options?: { autoplay?: boolean; showImageCount?: boolean; bleed?: boolean }) => (
+    <div className={options?.bleed ? 'overflow-hidden bg-[#EEF0ED]' : listingCardImageClassName}>
+      <div className={options?.bleed ? 'h-40 w-full' : listingCardImageFrameClassName}>
         <ImageCarousel
           images={imageArray}
           alt={title}
@@ -574,138 +585,134 @@ export function ServiceCard({
   )
 
   if (type === 'request') {
+    const categoryLabel = projectCategory || category || 'Need'
+    const metaLine = [requestMetricValue.location, requestMetricValue.posted, requestMetricValue.beneficiaries]
+      .filter(Boolean)
+      .join(' · ')
+    const showOwnerMenu = Boolean(isOwner || (showDeleteButton && onDelete))
+
     return (
-      <Card className={listingCardClassName}>
-        <CardContent className="flex h-full flex-col p-2">
-          {projectContext?.title ? (
-            <div className="mb-1 min-w-0 border-b border-slate-200 pb-1 text-xs text-slate-900">
-              <div className="flex min-w-0 items-center justify-between gap-2">
-                <p className="min-w-0 flex-1 truncate" title={projectContext.title}>
-                  <span className="font-semibold">Project:</span>{' '}
-                  <span className="font-normal">{projectContext.title}</span>
-                </p>
-                {projectContext.id ? (
-                  <>
-                    <span className="h-3 w-px shrink-0 bg-slate-300" aria-hidden="true" />
-                    <Link
-                      href={`/service-requests/projects/${projectContext.id}`}
-                      className="shrink-0 text-xs font-semibold text-slate-900 hover:text-udaan-blue"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      View project
-                    </Link>
-                  </>
-                ) : null}
-              </div>
-            </div>
-          ) : null}
-
-          <div className="flex min-w-0 items-center justify-between gap-2">
-            {renderListingBadge(
-              String(effectiveRequestUrgency),
-              `${listingBadgeClassName} capitalize ${getUrgencyBadgeClass(String(effectiveRequestUrgency))}`,
-              String(effectiveRequestUrgency)
-            )}
-            {renderListingBadge(
-              projectCategory || category || 'Need',
-              listingCategoryBadgeClassName,
-              projectCategory || category || 'Need'
-            )}
+      <Card className="h-full w-full max-w-[360px] overflow-hidden rounded-md border border-gram-border bg-white shadow-none">
+        <CardContent className="flex h-full flex-col p-0">
+          <div
+            role="link"
+            tabIndex={0}
+            className="block w-full cursor-pointer text-left"
+            onClick={handleCardClick}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                handleCardClick()
+              }
+            }}
+            aria-label={`Open need ${title}`}
+          >
+            {renderListingCardImage({ autoplay: true, showImageCount: true, bleed: true })}
           </div>
 
-          {renderListingCardImage({ autoplay: true, showImageCount: true })}
+          <div className="flex min-h-0 flex-1 flex-col gap-2 px-3 pb-3 pt-2.5">
+            <div className="flex min-w-0 items-baseline justify-between gap-2">
+              <span
+                className={`shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] ${getUrgencyBadgeClass(String(effectiveRequestUrgency))}`}
+                title={String(effectiveRequestUrgency)}
+              >
+                {String(effectiveRequestUrgency || 'Medium')}
+              </span>
+              <span className="min-w-0 truncate text-xs text-gram-muted" title={categoryLabel}>
+                {categoryLabel}
+              </span>
+            </div>
 
-          <div className="mt-2 min-w-0 space-y-1 border-t border-slate-200 pt-2">
-            <h3
-              className="min-w-0 cursor-pointer truncate text-[17px] font-semibold leading-snug text-slate-900"
-              title={title}
-              onClick={handleCardClick}
-            >
-              {title}
-            </h3>
-            <p className={listingDescriptionClassName} title={description}>
-              {description}
+            <div className="min-w-0 space-y-1">
+              <h3
+                className="min-w-0 cursor-pointer truncate text-[17px] font-semibold leading-snug text-gram-ink"
+                title={title}
+                onClick={handleCardClick}
+              >
+                {title}
+              </h3>
+              <p className="min-w-0 truncate text-[13px] leading-5 text-gram-muted" title={description}>
+                {description}
+              </p>
+            </div>
+
+            <p className="min-w-0 truncate text-xs text-gram-muted" title={metaLine}>
+              {metaLine}
             </p>
-          </div>
 
-          <div className="mt-2 grid grid-cols-3 gap-2 border-t border-slate-200 pt-2 text-xs text-muted-foreground">
-            <div className="min-w-0 space-y-1">
-              <div className="min-w-0 text-slate-500">
-                <span className="truncate font-medium">Location</span>
-              </div>
-              <p className={listingMetricValueClassName} title={requestMetricValue.location}>{requestMetricValue.location}</p>
-            </div>
-            <div className="min-w-0 space-y-1">
-              <div className="min-w-0 text-slate-500">
-                <span className="truncate font-medium">Posted</span>
-              </div>
-              <p className={listingMetricValueClassName} title={requestMetricValue.posted}>{requestMetricValue.posted}</p>
-            </div>
-            <div className="min-w-0 space-y-1">
-              <div className="min-w-0 text-slate-500">
-                <span className="truncate font-medium">Beneficiaries</span>
-              </div>
-              <p className={listingMetricValueClassName} title={requestMetricValue.beneficiaries}>{requestMetricValue.beneficiaries}</p>
-            </div>
-          </div>
-
-          <div className="mt-1 border-t border-slate-200 pt-1">
-            <div className="flex min-w-0 items-center gap-2">
+            <div className="mt-auto flex min-w-0 items-center gap-2 border-t border-gram-border pt-2">
               <Link
                 href={ownerProfileId ? `/profile/${ownerProfileId}` : '#'}
-                className="flex min-w-0 flex-1 items-center gap-2 px-1 py-0.5"
+                className="flex min-w-0 flex-1 items-center gap-2"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div
-                  className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-medium"
+                  className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-medium"
                   style={getGramAvatarFallbackStyle(providerDisplayName)}
                 >
                   {getInitials(providerDisplayName)}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-slate-900" title={providerDisplayName}>{providerDisplayName}</p>
-                  <p className="truncate text-xs text-slate-700">
+                  <VerifiedAccountName
+                    name={providerDisplayName}
+                    verified={Boolean(verified)}
+                    size="sm"
+                    nameClassName="text-sm font-medium text-gram-ink"
+                  />
+                  <p className="truncate text-xs text-gram-muted">
                     {getProviderLabel(providerDisplayType)}
                   </p>
                 </div>
               </Link>
 
-              <span className="h-8 w-px shrink-0 bg-slate-300" aria-hidden="true" />
-
               <Link
                 href={`/service-requests/${id}`}
-                className="inline-flex shrink-0 items-center gap-1 px-1 py-0.5 text-sm font-medium text-slate-900"
+                className="inline-flex shrink-0 items-center rounded-md border border-udaan-blue bg-udaan-blue px-2.5 py-1 text-sm font-medium text-white hover:bg-udaan-blue hover:text-white"
                 onClick={(e) => e.stopPropagation()}
               >
-                <span>View need</span>
+                View need
               </Link>
+
+              {showOwnerMenu ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0 text-gram-muted hover:bg-transparent hover:text-gram-muted active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0"
+                      onClick={(e) => e.stopPropagation()}
+                      aria-label="Need actions"
+                    >
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                    {isOwner ? (
+                      <DropdownMenuItem asChild>
+                        <Link href={`/service-requests/edit/${id}`} className="cursor-pointer">
+                          <Edit className="mr-2 h-4 w-4" />
+                          Edit
+                        </Link>
+                      </DropdownMenuItem>
+                    ) : null}
+                    {showDeleteButton && onDelete ? (
+                      <DropdownMenuItem
+                        disabled={isDeleting}
+                        className="text-red-700 focus:text-red-700"
+                        onSelect={(e) => {
+                          e.preventDefault()
+                          if (!isDeleting) onDelete()
+                        }}
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        {isDeleting ? 'Deleting...' : 'Delete'}
+                      </DropdownMenuItem>
+                    ) : null}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : null}
             </div>
-
-            {(isOwner || showDeleteButton) ? (
-              <div className="flex items-center gap-2 pt-1">
-                {isOwner ? (
-                  <Link href={`/service-requests/edit/${id}`} className="inline-flex h-6 items-center p-0 text-sm font-medium text-black hover:text-udaan-blue">
-                    <Edit size={14} className="mr-1" />
-                    Edit
-                  </Link>
-                ) : null}
-
-                {showDeleteButton && onDelete ? (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      if (!isDeleting) onDelete()
-                    }}
-                    disabled={isDeleting}
-                    className="inline-flex h-6 items-center p-0 text-sm font-medium text-black hover:text-red-600 disabled:opacity-60"
-                  >
-                    <Trash2 size={14} className="mr-1" />
-                    {isDeleting ? 'Deleting...' : 'Delete'}
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
           </div>
         </CardContent>
       </Card>
@@ -713,88 +720,133 @@ export function ServiceCard({
   }
 
   if (type === 'offer') {
+    const offerCategoryLabel = String(offerType || category || 'Offer')
+    const offerMetaLine = [location || 'Not set', offerPriceLabel, capacityLimit ? String(capacityLimit) : '']
+      .filter(Boolean)
+      .join(' · ')
+    const showOwnerMenu = Boolean(isOwner || (showDeleteButton && onDelete))
+
     return (
-      <Card className={listingCardClassName}>
-        <CardContent className="flex h-full flex-col p-2">
-          <div className="flex min-w-0 items-center justify-between gap-2">
-            {renderListingBadge(
-              status || 'active',
-              `${listingBadgeClassName} capitalize ${getOfferStatusBadgeClass(status)}`,
-              status || 'active'
-            )}
-            {renderListingBadge(
-              String(offerType || category || 'Offer'),
-              listingCategoryBadgeClassName,
-              String(offerType || category || 'Offer')
-            )}
+      <Card className="h-full w-full max-w-[360px] overflow-hidden rounded-md border border-gram-border bg-white shadow-none">
+        <CardContent className="flex h-full flex-col p-0">
+          <div
+            role="link"
+            tabIndex={0}
+            className="block w-full cursor-pointer text-left"
+            onClick={handleCardClick}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                handleCardClick()
+              }
+            }}
+            aria-label={`Open capability ${title}`}
+          >
+            {renderListingCardImage({ autoplay: true, showImageCount: true, bleed: true })}
           </div>
 
-          {renderListingCardImage()}
+          <div className="flex min-h-0 flex-1 flex-col gap-2 px-3 pb-3 pt-2.5">
+            <div className="flex min-w-0 items-baseline justify-between gap-2">
+              <span
+                className={`shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] ${getOfferStatusBadgeClass(status)}`}
+                title={String(status || 'active')}
+              >
+                {String(status || 'active')}
+              </span>
+              <span className="min-w-0 truncate text-xs text-gram-muted" title={offerCategoryLabel}>
+                {offerCategoryLabel}
+              </span>
+            </div>
 
-          <div className="mt-2 min-w-0 space-y-1 border-t border-slate-200 pt-2">
-            <h3
-              className="min-w-0 cursor-pointer truncate text-[17px] font-semibold leading-snug text-slate-900"
-              title={title}
-              onClick={handleCardClick}
-            >
-              {title}
-            </h3>
-            <p className={listingDescriptionClassName} title={description}>
-              {description}
+            <div className="min-w-0 space-y-1">
+              <h3
+                className="min-w-0 cursor-pointer truncate text-[17px] font-semibold leading-snug text-gram-ink"
+                title={title}
+                onClick={handleCardClick}
+              >
+                {title}
+              </h3>
+              <p className="min-w-0 truncate text-[13px] leading-5 text-gram-muted" title={description}>
+                {description}
+              </p>
+            </div>
+
+            <p className="min-w-0 truncate text-xs text-gram-muted" title={offerMetaLine}>
+              {offerMetaLine}
             </p>
-          </div>
 
-          <div className="mt-2 grid grid-cols-3 gap-2 border-t border-slate-200 pt-2 text-xs text-muted-foreground">
-            <div className="min-w-0 space-y-1">
-              <div className="min-w-0 text-slate-500">
-                <span className="truncate font-medium">Location</span>
-              </div>
-              <p className={listingMetricValueClassName} title={location || 'Not set'}>{location || 'Not set'}</p>
-            </div>
-            <div className="min-w-0 space-y-1">
-              <div className="min-w-0 text-slate-500">
-                <span className="truncate font-medium">Price</span>
-              </div>
-              <p className={listingMetricValueClassName} title={offerPriceLabel}>{offerPriceLabel}</p>
-            </div>
-            <div className="min-w-0 space-y-1">
-              <div className="min-w-0 text-slate-500">
-                <span className="truncate font-medium">Capacity</span>
-              </div>
-              <p className={listingMetricValueClassName} title={String(capacityLimit || 'Not set')}>{capacityLimit || 'Not set'}</p>
-            </div>
-          </div>
-
-          <div className="mt-1 border-t border-slate-200 pt-1">
-            <div className="flex min-w-0 items-center gap-2">
+            <div className="mt-auto flex min-w-0 items-center gap-2 border-t border-gram-border pt-2">
               <Link
                 href={ownerProfileId ? `/profile/${ownerProfileId}` : '#'}
-                className="flex min-w-0 flex-1 items-center gap-2 px-1 py-0.5"
+                className="flex min-w-0 flex-1 items-center gap-2"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div
-                  className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-medium"
+                  className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-medium"
                   style={getGramAvatarFallbackStyle(providerDisplayName)}
                 >
                   {getInitials(providerDisplayName)}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-slate-900" title={providerDisplayName}>{providerDisplayName}</p>
-                  <p className="truncate text-xs text-slate-700">
+                  <VerifiedAccountName
+                    name={providerDisplayName}
+                    verified={Boolean(verified)}
+                    size="sm"
+                    nameClassName="text-sm font-medium text-gram-ink"
+                  />
+                  <p className="truncate text-xs text-gram-muted">
                     {getProviderLabel(providerDisplayType)}
                   </p>
                 </div>
               </Link>
 
-              <span className="h-8 w-px shrink-0 bg-slate-300" aria-hidden="true" />
-
               <Link
                 href={`/service-offers/${id}`}
-                className="inline-flex shrink-0 items-center gap-1 px-1 py-0.5 text-sm font-medium text-slate-900"
+                className="inline-flex shrink-0 items-center rounded-md border border-udaan-blue bg-udaan-blue px-2.5 py-1 text-sm font-medium text-white hover:bg-udaan-blue hover:text-white"
                 onClick={(e) => e.stopPropagation()}
               >
-                <span>View offer</span>
+                View offer
               </Link>
+
+              {showOwnerMenu ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0 text-gram-muted hover:bg-transparent hover:text-gram-muted active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0"
+                      onClick={(e) => e.stopPropagation()}
+                      aria-label="Capability actions"
+                    >
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                    {isOwner ? (
+                      <DropdownMenuItem asChild>
+                        <Link href={`/service-offers/edit/${id}`} className="cursor-pointer">
+                          <Edit className="mr-2 h-4 w-4" />
+                          Edit
+                        </Link>
+                      </DropdownMenuItem>
+                    ) : null}
+                    {showDeleteButton && onDelete ? (
+                      <DropdownMenuItem
+                        disabled={isDeleting}
+                        className="text-red-700 focus:text-red-700"
+                        onSelect={(e) => {
+                          e.preventDefault()
+                          if (!isDeleting) onDelete()
+                        }}
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        {isDeleting ? 'Deleting...' : 'Delete'}
+                      </DropdownMenuItem>
+                    ) : null}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : null}
             </div>
           </div>
         </CardContent>
@@ -1031,12 +1083,12 @@ export function ServiceCard({
               {getInitials(providerDisplayName)}
             </div>
             <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                <p className="font-medium text-gray-900 text-sm truncate">{providerDisplayName}</p>
-                {verified && (
-                  <VerificationBadge status="verified" size="sm" showText={false} />
-                )}
-              </div>
+                <VerifiedAccountName
+                  name={providerDisplayName}
+                  verified={Boolean(verified)}
+                  size="sm"
+                  nameClassName="font-medium text-gray-900 text-sm"
+                />
               <p className="text-xs text-gray-600 flex items-center gap-1">
                 {getProviderIcon(providerDisplayType)}
                 {getProviderLabel(providerDisplayType)}
@@ -1687,28 +1739,28 @@ export function InlineCsrCapabilityDelhivery({
   const title = leg === 'outbound' ? 'Outbound delivery to project' : 'Return delivery to owner'
 
   return (
-    <div className="rounded-md border border-slate-200 bg-slate-50/80 p-3 space-y-2">
+    <div className="rounded-md border border-gram-border bg-gram-page/80 p-3 space-y-2">
       <div className="flex items-start gap-2">
-        <Truck className="mt-0.5 h-4 w-4 text-indigo-700 shrink-0" />
+        <Truck className="mt-0.5 h-4 w-4 text-udaan-blue shrink-0" />
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-slate-900">{title}</p>
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <p className="text-sm font-medium text-gram-ink">{title}</p>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gram-muted">
             {delivered ? (
-              <span className="inline-flex items-center gap-1 text-green-700">
+              <span className="inline-flex items-center gap-1 text-[#4F6B5C]">
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 Delivered
               </span>
             ) : pickedUp ? (
-              <span className="text-indigo-700">In transit · {statusLabel}</span>
+              <span className="text-udaan-blue">In transit · {statusLabel}</span>
             ) : hasAwb ? (
-              <span className="text-indigo-700">AWB {delivery?.tracking_id} · {statusLabel}</span>
+              <span className="text-udaan-blue">AWB {delivery?.tracking_id} · {statusLabel}</span>
             ) : bookingPending ? (
-              <span className="inline-flex items-center gap-1 text-indigo-700">
+              <span className="inline-flex items-center gap-1 text-udaan-blue">
                 <Loader2 className="h-3 w-3 animate-spin" />
                 Scheduling Delhivery pickup…
               </span>
             ) : (
-              <span className="text-red-700">{bookingError || 'Delhivery booking pending'}</span>
+              <span className="text-[#8C5555]">{bookingError || 'Delhivery booking pending'}</span>
             )}
           </div>
         </div>

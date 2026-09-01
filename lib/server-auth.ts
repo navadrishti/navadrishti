@@ -292,3 +292,83 @@ export async function getCompanyCAFromRequest(request: NextRequest): Promise<Com
     }
   };
 }
+
+export interface EvidenceApproverContext {
+  actorType: 'platform_ca' | 'company_ca';
+  reviewerUserId: number | null;
+  companyUserId: number | null;
+  companyCAIdentityId: string | null;
+}
+
+export async function getEvidenceApproverContext(
+  request: NextRequest,
+  expectedCompanyUserId?: number
+): Promise<EvidenceApproverContext> {
+  const platformCA = getCAFromRequest(request);
+  if (platformCA) {
+    return {
+      actorType: 'platform_ca',
+      reviewerUserId: null,
+      companyUserId: null,
+      companyCAIdentityId: null
+    };
+  }
+
+  const companyCA = await getCompanyCAFromRequest(request);
+
+  if (
+    expectedCompanyUserId !== undefined &&
+    companyCA.identity.company_user_id !== expectedCompanyUserId
+  ) {
+    throw new Error('Company CA is not authorized for this company project');
+  }
+
+  return {
+    actorType: 'company_ca',
+    reviewerUserId: companyCA.user.id,
+    companyUserId: companyCA.identity.company_user_id,
+    companyCAIdentityId: companyCA.identity.id
+  };
+}
+
+export function getAdminTokenFromRequest(request: NextRequest): string | null {
+  const cookieToken = request.cookies.get('admin-token')?.value?.trim();
+  if (cookieToken) {
+    return cookieToken;
+  }
+
+  const authHeader = request.headers.get('authorization');
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.substring(7).trim();
+    return token || null;
+  }
+
+  return null;
+}
+
+export function getAdminUser(request: NextRequest): UserData | null {
+  const token = getAdminTokenFromRequest(request);
+  if (!token) {
+    return null;
+  }
+
+  try {
+    const decoded = verifyToken(token);
+    if (!decoded || decoded.id !== -1) {
+      return null;
+    }
+
+    return decoded;
+  } catch {
+    return null;
+  }
+}
+
+export function assertAdminUser(request: NextRequest): UserData {
+  const admin = getAdminUser(request);
+  if (!admin) {
+    throw new Error('Admin authentication required');
+  }
+
+  return admin;
+}
