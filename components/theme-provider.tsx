@@ -1,7 +1,14 @@
 'use client'
 
 import * as React from 'react'
-import { useEffect, useState, createContext, useContext } from 'react'
+import { useEffect, useRef, useState, createContext, useContext } from 'react'
+import { usePathname } from 'next/navigation'
+import {
+  CONSOLE_TAB_SESSION_ROUTES,
+  clearConsoleTabSession,
+  findProtectedConsoleRoute,
+  isProtectedConsolePath,
+} from '@/lib/utils'
 
 type Theme = 'light' | 'dark' | 'system'
 
@@ -107,6 +114,71 @@ function useProductionClientGuards() {
   }, [])
 }
 
+function useConsoleNavigationSessionWatcher() {
+  const pathname = usePathname() || '/';
+  const previousPathnameRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const previous = previousPathnameRef.current;
+    previousPathnameRef.current = pathname;
+    if (!previous) return;
+
+    for (const route of CONSOLE_TAB_SESSION_ROUTES) {
+      if (isProtectedConsolePath(previous, route) && !isProtectedConsolePath(pathname, route)) {
+        clearConsoleTabSession(route.tabSessionKey);
+      }
+    }
+  }, [pathname]);
+}
+
+function useConsoleBackForwardSessionGuard() {
+  const pathname = usePathname() || '/';
+
+  useEffect(() => {
+    const activeRoute = findProtectedConsoleRoute(pathname);
+    if (!activeRoute) return;
+
+    const { tabSessionKey, loginPath } = activeRoute;
+
+    const onPageHide = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        try {
+          sessionStorage.setItem(`${tabSessionKey}__bfcache`, '1');
+        } catch {
+          // ignore
+        }
+      }
+    };
+
+    const onPageShow = (event: PageTransitionEvent) => {
+      const currentRoute = findProtectedConsoleRoute(window.location.pathname || '/');
+      if (!currentRoute || currentRoute.tabSessionKey !== tabSessionKey) return;
+
+      let shouldInvalidate = event.persisted;
+      try {
+        if (sessionStorage.getItem(`${tabSessionKey}__bfcache`)) {
+          shouldInvalidate = true;
+        }
+      } catch {
+        // ignore
+      }
+
+      if (!shouldInvalidate) return;
+
+      clearConsoleTabSession(tabSessionKey);
+      window.location.replace(loginPath);
+    };
+
+    window.addEventListener('pagehide', onPageHide);
+    window.addEventListener('pageshow', onPageShow);
+
+    return () => {
+      window.removeEventListener('pagehide', onPageHide);
+      window.removeEventListener('pageshow', onPageShow);
+    };
+  }, [pathname]);
+}
+
 interface ThemeProviderState {
   theme: Theme
   setTheme: (theme: Theme) => void
@@ -131,6 +203,8 @@ export function ThemeProvider({
   const [theme, setTheme] = useState<Theme>(defaultTheme)
 
   useProductionClientGuards()
+  useConsoleNavigationSessionWatcher()
+  useConsoleBackForwardSessionGuard()
 
   useEffect(() => {
     // Initialize with Udaan theme

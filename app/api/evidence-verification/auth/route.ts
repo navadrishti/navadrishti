@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { db, supabase } from '@/lib/db';
 import { comparePassword, generateToken } from '@/lib/auth';
 import { ensureCompanyCaIdAssigned } from '@/lib/company-ca';
+import { setEvidenceVerificationTokenCookie } from '@/lib/server-auth';
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -79,12 +80,7 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    response.cookies.set('evidence-verification-token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/'
-    });
+    setEvidenceVerificationTokenCookie(response, token);
 
     return response;
   } catch (error) {

@@ -435,3 +435,88 @@ export function formatNgoBankDetailsSummary(account: NgoPayoutAccount): string {
     `Type: ${account.account_type === 'savings' ? 'Savings' : 'Current'}`,
   ].join(' | ')
 }
+
+/** Clears a console httpOnly session via API and hard-redirects so SSR cannot revive it. */
+export async function finalizeConsoleLogout(options: {
+  logoutUrl: string;
+  redirectTo: string;
+  tabSessionKey?: string;
+}) {
+  const { logoutUrl, redirectTo, tabSessionKey } = options;
+
+  try {
+    await fetch(logoutUrl, {
+      method: 'POST',
+      credentials: 'include',
+      cache: 'no-store',
+    });
+  } catch {
+    // ignore network errors — still clear tab session and redirect
+  }
+
+  if (tabSessionKey) {
+    clearConsoleTabSession(tabSessionKey);
+  }
+
+  if (typeof window !== 'undefined') {
+    window.location.replace(redirectTo);
+  }
+}
+
+export const CONSOLE_TAB_SESSION_ROUTES = [
+  {
+    prefix: '/admin',
+    publicPaths: ['/admin/login'],
+    tabSessionKey: 'admin_tab_session',
+    loginPath: '/admin/login',
+  },
+  {
+    prefix: '/ca',
+    publicPaths: ['/ca/login'],
+    tabSessionKey: 'ca_tab_session',
+    loginPath: '/ca/login',
+  },
+  {
+    prefix: '/government-admin',
+    publicPaths: ['/government-admin/login', '/government-admin/change-password'],
+    tabSessionKey: 'govt_admin_tab_session',
+    loginPath: '/government-admin/login',
+  },
+  {
+    prefix: '/evidence-verification',
+    publicPaths: ['/evidence-verification/login', '/evidence-verification/change-password'],
+    tabSessionKey: 'evidence_verification_tab_session',
+    loginPath: '/evidence-verification/login',
+  },
+] as const;
+
+export function isProtectedConsolePath(
+  pathname: string,
+  route: (typeof CONSOLE_TAB_SESSION_ROUTES)[number]
+) {
+  if (!pathname.startsWith(route.prefix)) return false;
+  return !route.publicPaths.some(
+    (publicPath) => pathname === publicPath || pathname.startsWith(`${publicPath}/`)
+  );
+}
+
+export function findProtectedConsoleRoute(pathname: string) {
+  return CONSOLE_TAB_SESSION_ROUTES.find((route) => isProtectedConsolePath(pathname, route)) ?? null;
+}
+
+export function clearConsoleTabSession(tabSessionKey: string) {
+  try {
+    sessionStorage.removeItem(tabSessionKey);
+    sessionStorage.removeItem(`${tabSessionKey}__bfcache`);
+  } catch {
+    // ignore
+  }
+}
+
+export function hasConsoleTabSession(tabSessionKey: string) {
+  try {
+    return Boolean(sessionStorage.getItem(tabSessionKey));
+  } catch {
+    return false;
+  }
+}

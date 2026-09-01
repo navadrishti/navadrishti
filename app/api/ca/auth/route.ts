@@ -4,8 +4,8 @@ import {
   generatePlatformCAToken,
   verifyPlatformCAPassword,
   PLATFORM_CA_ACCOUNTS_TABLE,
-  PLATFORM_CA_COOKIE,
 } from '@/lib/platform-ca-auth';
+import { setPlatformCaTokenCookie } from '@/lib/server-auth';
 
 export async function POST(request: NextRequest) {
   try {
@@ -53,12 +53,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    response.cookies.set(PLATFORM_CA_COOKIE, token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/',
-    });
+    setPlatformCaTokenCookie(response, token, 12 * 60 * 60);
 
     return response;
   } catch (error: any) {

@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/sheet';
 import { AdminPortalMain, AdminPortalShell } from '@/components/evidence-verification/portal-ui';
 import { Menu, RefreshCw, X } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, clearConsoleTabSession, hasConsoleTabSession } from '@/lib/utils';
 import { ProductBrand } from '@/components/product-brand';
 
 export { AdminPortalMain, AdminPortalShell };
@@ -199,10 +199,7 @@ export default function AdminLayoutClient({ children }: { children: ReactNode })
 
     const checkAccess = async () => {
       try {
-        const hasTab =
-          typeof window !== 'undefined' && Boolean(sessionStorage.getItem('admin_tab_session'));
-
-        if (!hasTab) {
+        if (!hasConsoleTabSession('admin_tab_session')) {
           if (!cancelled) router.replace('/admin/login');
           return;
         }
@@ -210,12 +207,15 @@ export default function AdminLayoutClient({ children }: { children: ReactNode })
         const response = await fetch('/api/admin/verify', {
           method: 'GET',
           credentials: 'include',
+          cache: 'no-store',
         });
 
-        if (!response.ok && !cancelled) {
-          router.replace('/admin/login');
+        if (!response.ok) {
+          clearConsoleTabSession('admin_tab_session');
+          if (!cancelled) router.replace('/admin/login');
         }
       } catch {
+        clearConsoleTabSession('admin_tab_session');
         if (!cancelled) router.replace('/admin/login');
       }
     };

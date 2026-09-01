@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateGovernmentAdminToken, getGovernmentAdminFromRequest, verifyGovernmentAdminPassword } from '@/lib/government-admin-auth';
 import { supabase } from '@/lib/db';
+import { setGovtAdminTokenCookie } from '@/lib/server-auth';
 
 export async function POST(request: NextRequest) {
   try {
@@ -62,12 +63,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    response.cookies.set('govt-admin-token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/',
-    });
+    setGovtAdminTokenCookie(response, token);
 
     return response;
   } catch (error) {

@@ -1,7 +1,6 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
-import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { getDocumentExpiryAlertCopy } from './auth';
 import { PRODUCT_NAME } from './access-control';
@@ -128,7 +127,6 @@ const getFriendlySignupErrorMessage = (data: any, status: number) => {
 const isInvalidAuthResponse = (status: number) => status === 401 || status === 403 || status === 404;
 
 export function AuthProvider({ children, initialUser = null, initialToken = null }: AuthProviderProps) {
-  const router = useRouter();
   const [user, setUser] = useState<User | null>(initialUser);
   const [token, setToken] = useState<string | null>(initialToken);
   const [loading, setLoading] = useState<boolean>(!initialUser && !initialToken);
@@ -437,14 +435,16 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
     setUser(null);
     setError(null);
     
-    // Clear all auth-related data from storage
+    // Clear all auth-related data from storage and SSR hydration refs
     persistAuthSnapshot(null, null);
     initialUserRef.current = null;
+    initialTokenRef.current = null;
     
     try {
       await fetch('/api/auth/logout', {
         method: 'POST',
         credentials: 'include',
+        cache: 'no-store',
       });
     } catch (error) {
       console.error('Platform logout request failed:', error);
@@ -456,10 +456,12 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
     document.cookie = 'user=; Path=/; Max-Age=0; SameSite=Strict';
     document.cookie = 'user=; Path=/; Max-Age=0; SameSite=Strict; Secure';
 
-    // Drop stale RSC auth props so Fast Refresh / remounts cannot revive the old JWT.
-    router.refresh();
-    
     toast.info('You have been logged out');
+
+    // Hard navigation ensures production SSR cannot revive a stale httpOnly cookie session.
+    if (typeof window !== 'undefined') {
+      window.location.replace('/');
+    }
   };
 
   // Clear error

@@ -33,7 +33,7 @@ import {
 } from '@/components/evidence-verification/portal-ui';
 import { DashboardSidebarSkeleton } from '@/components/ui/skeleton';
 import { formatStatusLabel } from '@/lib/format-date';
-import { cn } from '@/lib/utils';
+import { cn, clearConsoleTabSession, finalizeConsoleLogout, hasConsoleTabSession } from '@/lib/utils';
 import {
   getAccountLockUntil,
   getAdminModeration,
@@ -1064,20 +1064,16 @@ export default function AdminPage() {
   const [campaignQuery, setCampaignQuery] = useState('');
 
   const verifyAdmin = async () => {
-    try {
-      const hasTab = typeof window !== 'undefined' && sessionStorage.getItem('admin_tab_session');
-      if (!hasTab) {
-        setIsAdmin(false);
-        router.push('/admin/login');
-        return false;
-      }
-    } catch (e) {
-      // ignore sessionStorage errors
+    if (!hasConsoleTabSession('admin_tab_session')) {
+      setIsAdmin(false);
+      router.push('/admin/login');
+      return false;
     }
 
-    const response = await fetch('/api/admin/verify', { credentials: 'include' });
+    const response = await fetch('/api/admin/verify', { credentials: 'include', cache: 'no-store' });
     if (!response.ok) {
       setIsAdmin(false);
+      clearConsoleTabSession('admin_tab_session');
       router.push('/admin/login');
       return false;
     }
@@ -1294,8 +1290,15 @@ export default function AdminPage() {
     boot();
 
     const sessionCheck = setInterval(async () => {
-      const response = await fetch('/api/admin/verify', { credentials: 'include' });
+      if (!hasConsoleTabSession('admin_tab_session')) {
+        sonnerToast.error('Session expired. Please login again.');
+        router.push('/admin/login');
+        return;
+      }
+
+      const response = await fetch('/api/admin/verify', { credentials: 'include', cache: 'no-store' });
       if (!response.ok) {
+        clearConsoleTabSession('admin_tab_session');
         sonnerToast.error('Session expired. Please login again.');
         router.push('/admin/login');
       }
@@ -1317,24 +1320,11 @@ export default function AdminPage() {
   }, [activeTab, supportStatusFilter, supportQuery]);
 
   const handleLogout = async () => {
-    try {
-      sessionStorage.removeItem('admin_tab_session');
-    } catch {
-      // ignore
-    }
-
-    try {
-      await fetch('/api/admin/logout', { method: 'POST', credentials: 'include' });
-    } finally {
-      // Only clear the non-httpOnly leftovers; httpOnly admin-token is cleared by the API.
-      try {
-        document.cookie = 'admin-token=; Path=/; Max-Age=0; SameSite=Strict';
-        document.cookie = 'admin-token=; Path=/api/admin; Max-Age=0; SameSite=Strict';
-      } catch {
-        // ignore
-      }
-      router.push('/admin/login');
-    }
+    await finalizeConsoleLogout({
+      logoutUrl: '/api/admin/logout',
+      redirectTo: '/admin/login',
+      tabSessionKey: 'admin_tab_session',
+    });
   };
 
   const refreshDashboard = async () => {
