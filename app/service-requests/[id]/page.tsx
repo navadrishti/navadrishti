@@ -10,6 +10,7 @@ import { Header } from '@/components/header'
 import { DetailField, DetailSection, displayValue, parseImages } from '@/components/detail-fields'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
+import { formatStatusLabel } from '@/lib/format-date'
 import { getFundingProgress, resolveFundingTargetInr, resolveFundsRaisedInr } from '@/lib/service-request-allocation'
 import { VerifiedAccountName } from '@/components/verification-badge'
 import { getGramAvatarFallbackStyle } from '@/lib/gram-avatar'
@@ -1376,7 +1377,7 @@ export default function ServiceRequestDetailPage() {
                                         </div>
                                         <div className="flex flex-col items-end gap-2">
                                           <Badge className={getStatusColor(applicant.status)}>
-                                            {applicant.status ? applicant.status.charAt(0).toUpperCase() + applicant.status.slice(1) : 'Pending'}
+                                            {formatStatusLabel(applicant.status || 'pending')}
                                           </Badge>
                                           <div className="text-sm text-muted-foreground">
                                             Applied on {formatDate(applicant.applied_at)}
@@ -1610,9 +1611,7 @@ export default function ServiceRequestDetailPage() {
                               <div className="flex items-center justify-between">
                                 <span className="text-sm font-medium">Status:</span>
                                 <Badge className={getStatusColor(userApplication.status)}>
-                                  {userApplication.status
-                                    ? userApplication.status.charAt(0).toUpperCase() + userApplication.status.slice(1)
-                                    : 'Pending'}
+                                  {formatStatusLabel(userApplication.status || 'pending')}
                                 </Badge>
                               </div>
 

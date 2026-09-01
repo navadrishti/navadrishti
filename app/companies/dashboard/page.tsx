@@ -3,6 +3,7 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { formatStatusLabel } from '@/lib/format-date';
 import { cn } from '@/lib/utils';
 import { createClient as createSupabaseClient } from '@/lib/supabase';
 import { Building, CheckCircle, HandHeart, MailCheck, Phone, Loader2, XCircle, Power, Trash2, KeyRound } from 'lucide-react';
@@ -256,16 +257,6 @@ interface NgoDirectoryItem {
   csr1_valid_until?: string | null;
   verification_status?: string | null;
 }
-
-const formatStatusLabel = (status: string): string => {
-  const normalized = String(status || '').trim().toLowerCase();
-  if (!normalized) return 'Unknown';
-  return normalized
-    .replace(/_/g, ' ')
-    .split(' ')
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
-};
 
 const formatLeadNgoInviteStatusLabel = (status: string): string => {
   const normalized = String(status || '').trim().toLowerCase();
@@ -1560,7 +1551,7 @@ function CompanyDashboardContent() {
                                     ) : null}
                                   </div>
                                   <div className="flex items-center gap-2">
-                                    <Badge variant="outline" className="capitalize">{request.status}</Badge>
+                                    <Badge variant="outline">{formatStatusLabel(request.status)}</Badge>
                                     <Badge className={request.isAssigned ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}>
                                       {request.isAssigned ? 'Assigned' : 'Not Assigned'}
                                     </Badge>
@@ -1633,7 +1624,7 @@ function CompanyDashboardContent() {
                                       <p className="truncate text-sm text-muted-foreground">{request.client?.email || 'No email available'}</p>
                                     </div>
                                     <div className="flex shrink-0 items-center gap-2">
-                                      <Badge variant="outline" className="capitalize whitespace-nowrap">{request.status}</Badge>
+                                      <Badge variant="outline" className="whitespace-nowrap">{formatStatusLabel(request.status)}</Badge>
                                       <Badge className={`${request.isAssigned ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'} whitespace-nowrap`}>
                                         {request.isAssigned ? 'Assigned' : 'Not Assigned'}
                                       </Badge>
@@ -1737,7 +1728,7 @@ function CompanyDashboardContent() {
                                     ) : null}
                                   </div>
                                   <div className="flex items-center gap-2">
-                                    <Badge variant="outline" className="capitalize">{request.status}</Badge>
+                                    <Badge variant="outline">{formatStatusLabel(request.status)}</Badge>
                                     <Badge className={request.isAssigned ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}>
                                       {request.isAssigned ? 'Assigned' : 'Not Assigned'}
                                     </Badge>
@@ -2098,7 +2089,7 @@ function CompanyDashboardContent() {
                                     <p className="font-semibold text-slate-900">{campaign.title || campaign.category || 'CSR Campaign'}</p>
                                     <p className="text-sm text-slate-600 break-words">{campaign.description || 'No description provided.'}</p>
                                   </div>
-                                  <Badge variant="outline" className="w-fit">{campaign.status || 'draft'}</Badge>
+                                  <Badge variant="outline" className="w-fit">{formatStatusLabel(campaign.status || 'draft')}</Badge>
                                 </div>
                                 <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-slate-600 md:grid-cols-4">
                                   <p>Location: {campaign.location || 'Not set'}</p>
@@ -2264,7 +2255,7 @@ function CompanyDashboardContent() {
                             <div key={account.id} className="rounded-md border bg-slate-50 p-3 text-sm">
                               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                 <p className="font-medium text-slate-900">{account.users?.name || 'CA'}</p>
-                                <Badge variant="outline">{account.status}</Badge>
+                                <Badge variant="outline">{formatStatusLabel(account.status)}</Badge>
                               </div>
                               <p className="text-slate-600">{account.users?.email || 'No email'}</p>
                               {account.ca_id && <p className="mt-1 font-mono text-xs text-slate-500">CA ID: {account.ca_id}</p>}
@@ -2314,7 +2305,7 @@ function CompanyDashboardContent() {
                               <div key={account.id} className="rounded-md border bg-slate-50 p-3 text-sm">
                                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                   <p className="font-medium text-slate-900">{account.users?.name || 'CA'}</p>
-                                  <Badge variant="outline">{account.status}</Badge>
+                                  <Badge variant="outline">{formatStatusLabel(account.status)}</Badge>
                                 </div>
                                 <p className="text-slate-600">{account.users?.email || 'No email'}</p>
                                 {account.ca_id && <p className="mt-1 font-mono text-xs text-slate-500">CA ID: {account.ca_id}</p>}

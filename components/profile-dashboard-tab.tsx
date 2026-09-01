@@ -9,7 +9,7 @@ import { useAuth } from '@/lib/auth-context'
 import { getGramAvatarFallbackStyle } from '@/lib/gram-avatar'
 import { useOtpSender } from '@/hooks/use-otp-sender'
 import { PHONE_VERIFICATION_ENABLED, getCoverImageUrl, summarizeDocumentExpiries, visibleCaBadgeNumber } from '@/lib/auth'
-import { formatDisplayDate } from '@/lib/format-date'
+import { formatDisplayDate, formatStatusLabel } from '@/lib/format-date'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -1955,7 +1955,7 @@ export function PaymentHistoryPanel({
                       Material worth {formatPaymentInr(Number(fine.material_total_worth_inr || fine.base_amount_inr || 0))}
                       {Number(fine.accrued_fine_inr || 0) > 0 ? ` · incl. ${formatPaymentInr(Number(fine.accrued_fine_inr))} fine` : ''}
                     </p>
-                    <Badge variant="outline" className="mt-2 capitalize">{fine.status}</Badge>
+                    <Badge variant="outline" className="mt-2">{formatStatusLabel(fine.status)}</Badge>
                   </div>
                 </div>
               </div>
@@ -1988,7 +1988,7 @@ export function PaymentHistoryPanel({
                   <div className="flex flex-col items-start gap-2 sm:items-end">
                     <p className="text-lg font-semibold text-emerald-700">{formatPaymentInr(payment.amount_inr)}</p>
                     <div className="flex flex-wrap gap-2">
-                      <Badge variant="outline">{payment.payment_status}</Badge>
+                      <Badge variant="outline">{formatStatusLabel(payment.payment_status)}</Badge>
                       <Badge className={PAYMENT_SOURCE_BADGE_CLASS[payment.source] || PAYMENT_SOURCE_BADGE_CLASS.razorpay}>
                         {payment.source_label || 'Razorpay payment'}
                       </Badge>

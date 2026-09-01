@@ -16,7 +16,7 @@ import {
   Phone,
 } from "lucide-react"
 import { PHONE_VERIFICATION_ENABLED, formatGeographicCoverageArea, isCaVerifiedAccount, visibleCaBadgeNumber } from "@/lib/auth"
-import { formatDisplayDate } from "@/lib/format-date"
+import { formatDisplayDate, formatStatusLabel } from "@/lib/format-date"
 import { formatProjectExactAddress } from "@/lib/service-request-allocation"
 import { useAuth } from "@/lib/auth-context"
 import {
@@ -643,7 +643,7 @@ export default function ImpactProfilePage() {
                             ) : null}
                             <div className="grid gap-3 md:grid-cols-2">
                               <InfoRow label="Category" value={project.category} />
-                              <InfoRow label="Status" value={project.status} />
+                              <InfoRow label="Status" value={formatStatusLabel(project.status)} />
                               <InfoRow label="Location" value={location !== "Not set" ? location : undefined} />
                               <InfoRow label="Timeline" value={project.timeline} />
                               <InfoRow

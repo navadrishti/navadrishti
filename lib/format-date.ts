@@ -92,3 +92,15 @@ export function formatDetailDate(value?: string | null): string {
   const formatted = formatDisplayDate(value)
   return formatted || String(value)
 }
+
+/** UI labels for snake_case status tokens (logic/API values stay unchanged). */
+export function formatStatusLabel(status: unknown): string {
+  const normalized = String(status ?? '').trim().toLowerCase()
+  if (!normalized) return 'Unknown'
+  return normalized
+    .replace(/_/g, ' ')
+    .split(' ')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}

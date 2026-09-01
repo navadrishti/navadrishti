@@ -10,7 +10,7 @@ import { getGramAvatarFallbackStyle } from '@/lib/gram-avatar'
 import { VerifiedAccountName } from '@/components/verification-badge'
 import { formatPrice } from '@/lib/utils'
 import { DetailField, DetailSection, displayValue, parseStringArray, parseImages } from '@/components/detail-fields'
-import { formatDetailDate } from '@/lib/format-date'
+import { formatDetailDate, formatStatusLabel } from '@/lib/format-date'
 import { Header } from '@/components/header'
 import { ImageCarousel } from '@/components/ui/image-carousel'
 import {
@@ -936,7 +936,7 @@ export default function ServiceOfferDetailPage() {
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium">Status:</span>
                         <Badge className={getStatusColor(userApplication.status)}>
-                          {userApplication.status.charAt(0).toUpperCase() + userApplication.status.slice(1)}
+                          {formatStatusLabel(userApplication.status)}
                         </Badge>
                       </div>
                       
@@ -1072,8 +1072,8 @@ export default function ServiceOfferDetailPage() {
                                       <div className="flex items-start justify-between gap-3">
                                         <div>
                                           <p className="font-medium leading-tight">{need.title}</p>
-                                          <p className="text-xs text-muted-foreground capitalize">
-                                            {need.request_type || 'Need'} • {need.status}
+                                          <p className="text-xs text-muted-foreground">
+                                            {need.request_type || 'Need'} • {formatStatusLabel(need.status)}
                                           </p>
                                         </div>
                                         <Badge variant="secondary" className="shrink-0">

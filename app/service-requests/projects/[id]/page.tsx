@@ -6,7 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Building, ChevronDown } from 'lucide-react';
 import { Header } from '@/components/header';
 import { DetailField, displayValue } from '@/components/detail-fields';
-import { formatDetailDate } from '@/lib/format-date';
+import { formatDetailDate, formatStatusLabel } from '@/lib/format-date';
 import { formatProjectExactAddress } from '@/lib/service-request-allocation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -503,7 +503,7 @@ export default function ServiceRequestProjectDetailPage() {
                                     <div className="min-w-0 flex-1 space-y-2">
                                       <div className="flex items-start justify-between gap-2">
                                         <p className="line-clamp-1 text-sm font-semibold text-slate-950">{need.title}</p>
-                                        <Badge className={`capitalize ${statusBadgeClass(need.status)}`}>{String(need.status || '').replace('_', ' ')}</Badge>
+                                        <Badge className={statusBadgeClass(need.status)}>{formatStatusLabel(need.status)}</Badge>
                                       </div>
 
                                       <p className="line-clamp-1 text-xs text-slate-600">{need.description || 'No description provided.'}</p>
@@ -575,8 +575,8 @@ export default function ServiceRequestProjectDetailPage() {
                         />
                         <p className="mt-1 text-sm text-gray-500 break-all">{ngo?.email || 'Email not set'}</p>
                         <div className="mt-2">
-                          <Badge className={`capitalize ${statusBadgeClass(projectData.status || 'active')}`}>
-                            {String(projectData.status || 'active').replace('_', ' ')}
+                          <Badge className={statusBadgeClass(projectData.status || 'active')}>
+                            {formatStatusLabel(projectData.status || 'active')}
                           </Badge>
                         </div>
                       </div>
@@ -640,8 +640,8 @@ export default function ServiceRequestProjectDetailPage() {
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
                             <span className="text-sm font-medium">Status:</span>
-                            <Badge className={`capitalize ${statusBadgeClass(currentCompanyApplication.status)}`}>
-                              {currentCompanyApplication.status}
+                            <Badge className={statusBadgeClass(currentCompanyApplication.status)}>
+                              {formatStatusLabel(currentCompanyApplication.status)}
                             </Badge>
                           </div>
                         </div>
