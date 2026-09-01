@@ -7,7 +7,7 @@ import { ArrowLeft, Building, ChevronDown } from 'lucide-react';
 import { Header } from '@/components/header';
 import { DetailField, displayValue } from '@/components/detail-fields';
 import { formatDetailDate } from '@/lib/format-date';
-import { formatProjectExactAddress } from '@/lib/project-address';
+import { formatProjectExactAddress } from '@/lib/service-request-allocation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -17,6 +17,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import { getGramAvatarFallbackStyle } from '@/lib/gram-avatar';
+import { ngoIsCsrEligible, ngoIsCsrEligibleForProject } from '@/lib/auth';
+import { VerifiedAccountName } from '@/components/verification-badge';
 
 type NeedItem = {
   id: number;
@@ -28,6 +30,8 @@ type NeedItem = {
   request_type?: string;
   category?: string;
   location?: string;
+  timeline?: string;
+  ngo_id?: number;
 };
 
 type ProjectDetailPayload = {
@@ -43,6 +47,10 @@ type ProjectDetailPayload = {
     valid_until?: string | null;
     expected_beneficiaries?: number | null;
     category?: string | null;
+    budget_inr?: number | null;
+    impact_description?: string | null;
+    contact_info?: string | null;
+    volunteers_needed?: number | null;
     csr_project_available_for_csr?: boolean | null;
       ngo?: {
       id: number;
@@ -56,6 +64,7 @@ type ProjectDetailPayload = {
       ngo_volunteer_capacity?: number;
       industry?: string;
       pincode?: string;
+      verification_status?: string;
       profile_data?: Record<string, any>;
     };
   };
@@ -84,11 +93,11 @@ type ProjectDetailPayload = {
 
 const statusBadgeClass = (status: string) => {
   const normalized = String(status || '').toLowerCase();
-  if (normalized === 'completed') return 'bg-green-100 text-green-800 border-green-200';
-  if (normalized === 'in_progress' || normalized === 'active') return 'bg-blue-100 text-blue-800 border-blue-200';
-  if (normalized === 'pending' || normalized === 'accepted') return 'bg-amber-100 text-amber-800 border-amber-200';
-  if (normalized === 'cancelled' || normalized === 'rejected') return 'bg-red-100 text-red-800 border-red-200';
-  return 'bg-slate-100 text-slate-700 border-slate-200';
+  if (normalized === 'completed') return 'border-[#D5E2DA] bg-[#F1F6F3] text-[#4F6B5C]';
+  if (normalized === 'in_progress' || normalized === 'active') return 'border-[#D9E0E4] bg-[#F0F3F4] text-udaan-blue';
+  if (normalized === 'pending' || normalized === 'accepted') return 'border-[#E9DFCC] bg-[#F8F4EC] text-[#8A6F45]';
+  if (normalized === 'cancelled' || normalized === 'rejected') return 'border-[#E8D8D8] bg-[#F8F1F1] text-[#8C5555]';
+  return 'border-gram-border bg-gram-page text-gram-muted';
 };
 
 const getInitials = (name?: string) => {
@@ -108,12 +117,15 @@ type ProjectRecord = {
   expected_beneficiaries?: number | null
   valid_until?: string | null
   category?: string | null
+  budget_inr?: number | null
+  impact_description?: string | null
+  contact_info?: string | null
+  volunteers_needed?: number | null
   csr_project_available_for_csr?: boolean | null
 }
 
 function ProjectDetailFields({ project }: { project: ProjectRecord }) {
   const exactAddress = formatProjectExactAddress(project.exact_address || project.location)
-  const csrAvailable = project.csr_project_available_for_csr
 
   return (
     <div className="space-y-6">
@@ -137,6 +149,15 @@ function ProjectDetailFields({ project }: { project: ProjectRecord }) {
           </p>
         </section>
 
+        {project.impact_description ? (
+          <section className="space-y-3">
+            <h4 className="text-sm font-medium text-gray-500">Expected Impact</h4>
+            <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">
+              {project.impact_description}
+            </p>
+          </section>
+        ) : null}
+
         <div className="grid grid-cols-1 gap-x-12 gap-y-6 md:grid-cols-2">
           <DetailField label="Project Timeline" value={displayValue(project.timeline)} />
           <DetailField
@@ -149,9 +170,22 @@ function ProjectDetailFields({ project }: { project: ProjectRecord }) {
           />
           <DetailField label="Project Valid Until" value={formatDetailDate(project.valid_until)} />
           <DetailField
-            label="Available for CSR Takeover"
-            value={csrAvailable === false ? 'No' : csrAvailable === true ? 'Yes' : 'Not set'}
+            label="Budget (INR)"
+            value={
+              project.budget_inr != null && Number(project.budget_inr) > 0
+                ? `₹${Number(project.budget_inr).toLocaleString('en-IN')}`
+                : 'Not set'
+            }
           />
+          <DetailField
+            label="Volunteers Needed"
+            value={
+              project.volunteers_needed != null && Number(project.volunteers_needed) > 0
+                ? String(project.volunteers_needed)
+                : 'Not set'
+            }
+          />
+          <DetailField label="Contact" value={displayValue(project.contact_info)} />
         </div>
       </section>
     </div>
@@ -253,7 +287,6 @@ export default function ServiceRequestProjectDetailPage() {
         body: JSON.stringify({
           action: 'apply-project',
           projectId,
-          note: 'Applied from project detail page'
         })
       });
 
@@ -273,7 +306,7 @@ export default function ServiceRequestProjectDetailPage() {
   };
 
   const renderProjectLoadingSkeleton = () => (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div className="min-h-screen bg-background">
       <Header />
       <div className="mx-auto max-w-7xl px-4 py-8">
         <div className="mb-6">
@@ -361,21 +394,35 @@ export default function ServiceRequestProjectDetailPage() {
     || payload.needs.map((need) => String(need.category || '').trim()).find(Boolean)
     || 'Not set';
   const csrProjectAvailable = projectData.csr_project_available_for_csr;
+  const isProjectOwner =
+    user?.user_type === 'ngo' &&
+    Number(user?.id) === Number(payload?.project?.ngo_id || payload?.project?.ngo?.id);
+  const canEditOwnProject =
+    isProjectOwner &&
+    ngoIsCsrEligible(user?.verification_status, user?.profile_data || user?.profile) &&
+    ngoIsCsrEligibleForProject(
+      user?.verification_status,
+      user?.profile_data || user?.profile,
+      {
+        valid_until: projectData.valid_until,
+        timeline: projectData.timeline,
+      }
+    );
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div className="min-h-screen overflow-x-hidden bg-background">
       <Header />
       <div className="mx-auto max-w-7xl px-4 py-8">
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <Button variant="ghost" className="w-full justify-start px-0 text-blue-600 hover:text-blue-800 hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0 sm:w-auto" onClick={() => router.back()}>
+          <Button variant="ghost" className="w-full justify-start px-0 text-udaan-blue hover:text-gram-ink hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0 sm:w-auto" onClick={() => router.back()}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back
           </Button>
-          {user?.user_type === 'ngo' && Number(user?.id) === Number(payload?.project?.ngo_id || payload?.project?.ngo?.id) && (
+          {canEditOwnProject ? (
             <Link href={`/service-requests/projects/${projectId}/edit`}>
               <Button variant="outline" className="w-full sm:w-auto">Edit Project</Button>
             </Link>
-          )}
+          ) : null}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -385,7 +432,9 @@ export default function ServiceRequestProjectDetailPage() {
                 <Tabs defaultValue="details" className="w-full">
                   <TabsList className="flex w-full gap-2 overflow-x-auto pb-1">
                     <TabsTrigger value="details" className="shrink-0 whitespace-nowrap">Project Details</TabsTrigger>
-                    <TabsTrigger value="needs" className="shrink-0 whitespace-nowrap">Project Needs</TabsTrigger>
+                    {(payload.needs?.length || 0) > 0 ? (
+                      <TabsTrigger value="needs" className="shrink-0 whitespace-nowrap">Legacy Linked Needs</TabsTrigger>
+                    ) : null}
                     <TabsTrigger value="requester" className="shrink-0 whitespace-nowrap">Requesting Organization</TabsTrigger>
                     {canShowApplicationTab ? <TabsTrigger value="application" className="shrink-0 whitespace-nowrap">Application</TabsTrigger> : null}
                   </TabsList>
@@ -401,12 +450,20 @@ export default function ServiceRequestProjectDetailPage() {
                         expected_beneficiaries: projectData.expected_beneficiaries,
                         valid_until: projectData.valid_until,
                         category: projectCategory,
+                        budget_inr: (projectData as any).budget_inr ?? null,
+                        impact_description: (projectData as any).impact_description ?? null,
+                        contact_info: (projectData as any).contact_info ?? null,
+                        volunteers_needed: (projectData as any).volunteers_needed ?? null,
                         csr_project_available_for_csr: csrProjectAvailable,
                       }}
                     />
                   </TabsContent>
 
+                  {(payload.needs?.length || 0) > 0 ? (
                   <TabsContent value="needs" className="mt-4 space-y-4">
+                    <p className="text-sm text-muted-foreground">
+                      These needs were linked before projects became standalone CSR packages. New projects do not include child needs.
+                    </p>
                     {[
                       { key: 'ongoing', title: 'Ongoing Needs', items: payload.need_breakdown.ongoing },
                       { key: 'fulfilled', title: 'Fulfilled Needs', items: payload.need_breakdown.fulfilled },
@@ -492,6 +549,7 @@ export default function ServiceRequestProjectDetailPage() {
                       );
                     })}
                   </TabsContent>
+                  ) : null}
 
                   <TabsContent value="requester" className="mt-4 space-y-5">
                     <div className="flex items-start gap-4 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
@@ -509,7 +567,12 @@ export default function ServiceRequestProjectDetailPage() {
                       </div>
 
                       <div className="min-w-0">
-                        <h3 className="text-lg font-semibold leading-tight truncate">{ngo?.name || 'NGO'}</h3>
+                        <VerifiedAccountName
+                          name={ngo?.name || 'NGO'}
+                          status={ngo?.verification_status}
+                          size="md"
+                          nameClassName="text-lg font-semibold leading-tight"
+                        />
                         <p className="mt-1 text-sm text-gray-500 break-all">{ngo?.email || 'Email not set'}</p>
                         <div className="mt-2">
                           <Badge className={`capitalize ${statusBadgeClass(projectData.status || 'active')}`}>
@@ -606,7 +669,7 @@ export default function ServiceRequestProjectDetailPage() {
                           className="w-full"
                           disabled={!canCompanyApply || !allVerified || applyLoading}
                         >
-                          {applyLoading ? 'Applying...' : 'Apply For Full Project'}
+                          {applyLoading ? 'Applying...' : 'Apply for Takeover'}
                         </Button>
 
                         <Button asChild variant="outline" className="w-full" disabled={!canCompanyManageCsr}>

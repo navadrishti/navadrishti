@@ -1,4 +1,6 @@
 import { AlertCircle } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { cn } from '@/lib/utils'
 
 const VERIFIED_BADGE_SRC = '/photos/verified-badge.png'
 
@@ -8,6 +10,48 @@ interface VerificationBadgeProps {
   showText?: boolean
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'readable' | 'xl'
   badgeNumber?: string | null
+}
+
+export function isAccountVerified(
+  statusOrFlag?: string | boolean | null,
+  nestedStatus?: string | null
+): boolean {
+  if (statusOrFlag === true) return true
+  if (statusOrFlag === false) return false
+  const primary = String(statusOrFlag || '').trim().toLowerCase()
+  if (primary === 'verified') return true
+  const nested = String(nestedStatus || '').trim().toLowerCase()
+  return nested === 'verified'
+}
+
+/** Name + verification mark for any account row (listings, cards, dashboards). */
+export function VerifiedAccountName({
+  name,
+  status,
+  verified,
+  size = 'sm',
+  className,
+  nameClassName,
+  badgeNumber = null,
+}: {
+  name: ReactNode
+  status?: string | boolean | null
+  verified?: boolean | null
+  size?: VerificationBadgeProps['size']
+  className?: string
+  nameClassName?: string
+  badgeNumber?: string | null
+}) {
+  const showBadge = verified === true || isAccountVerified(status)
+
+  return (
+    <span className={cn('inline-flex min-w-0 max-w-full items-center gap-1.5', className)}>
+      <span className={cn('min-w-0 truncate', nameClassName)}>{name}</span>
+      {showBadge ? (
+        <VerificationBadge status="verified" size={size} showText={false} badgeNumber={badgeNumber} />
+      ) : null}
+    </span>
+  )
 }
 
 const sizeStyles = {
@@ -78,6 +122,7 @@ export function VerificationBadge({
           height: currentSize.iconSize,
           objectFit: 'contain',
           userSelect: 'none',
+          // @ts-expect-error vendor CSS property
           WebkitUserDrag: 'none',
         }}
       />
@@ -257,6 +302,7 @@ export function ComplianceBadge({
           height: iconSize,
           objectFit: 'contain',
           userSelect: 'none',
+          // @ts-expect-error vendor CSS property
           WebkitUserDrag: 'none',
         }}
       />

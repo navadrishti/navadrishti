@@ -23,14 +23,35 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     const campaign = await loadCampaign(id)
 
     let companyName: string | null = null
+    let companyVerificationStatus: string | null = null
     const companyId = Number(campaign.company_id || 0)
     if (companyId > 0) {
       const { data: company } = await supabase
         .from('users')
-        .select('id, name')
+        .select('id, name, verification_status')
         .eq('id', companyId)
         .maybeSingle()
       companyName = company?.name ? String(company.name).trim() : null
+      companyVerificationStatus = company?.verification_status
+        ? String(company.verification_status).trim().toLowerCase()
+        : null
+    }
+
+    let selectedLeadNgoVerificationStatus: string | null = null
+    const impact =
+      campaign.impact_metrics && typeof campaign.impact_metrics === 'object'
+        ? campaign.impact_metrics
+        : {}
+    const selectedLeadNgoId = Number((impact as any).selected_lead_ngo_id || 0)
+    if (selectedLeadNgoId > 0) {
+      const { data: leadNgo } = await supabase
+        .from('users')
+        .select('id, verification_status')
+        .eq('id', selectedLeadNgoId)
+        .maybeSingle()
+      selectedLeadNgoVerificationStatus = leadNgo?.verification_status
+        ? String(leadNgo.verification_status).trim().toLowerCase()
+        : null
     }
 
     return NextResponse.json({
@@ -38,6 +59,10 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
       data: {
         ...campaign,
         company_name: companyName,
+        company_verification_status: companyVerificationStatus,
+        company_verified: companyVerificationStatus === 'verified',
+        selected_lead_ngo_verification_status: selectedLeadNgoVerificationStatus,
+        selected_lead_ngo_verified: selectedLeadNgoVerificationStatus === 'verified',
       },
     })
   } catch (error) {

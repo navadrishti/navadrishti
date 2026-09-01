@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { assertAdminUser } from '@/lib/admin-auth';
+import { assertAdminUser } from '@/lib/server-auth';
 import { listPendingReverifications } from '@/lib/reverification';
 
 export async function GET(request: NextRequest) {

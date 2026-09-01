@@ -71,3 +71,46 @@ export function restoreMobileChatScrollPosition(y: number | null) {
   if (y === null || !isMobileAgentViewport()) return
   window.scrollTo({ top: y, left: 0, behavior: 'auto' })
 }
+
+export const AI_SUITE_NAME = 'GRAM AI Suite'
+
+export const AGENT_NAMES = {
+  atlas: 'Atlas',
+  catalyst: 'Catalyst',
+  pulse: 'Pulse',
+  sentinel: 'Sentinel',
+  insight: 'Insight',
+} as const
+
+export const AGENT_ROUTES = {
+  atlas: '/ngos/ai-agent',
+  catalyst: '/companies/csr-agent',
+} as const
+
+export const AGENT_CTA = {
+  company: {
+    href: AGENT_ROUTES.catalyst,
+    title: AGENT_NAMES.catalyst,
+    description: 'Build CSR campaigns with AI',
+    openLabel: 'Open Catalyst',
+    closeLabel: 'Close Catalyst',
+  },
+  ngo: {
+    href: AGENT_ROUTES.atlas,
+    title: AGENT_NAMES.atlas,
+    description: 'Draft service requests with AI',
+    openLabel: 'Open Atlas',
+    closeLabel: 'Close Atlas',
+  },
+} as const
+
+export function agentLoadingLabel(name: string) {
+  return `Loading ${name}...`
+}
+
+export const AGENT_GREETINGS = {
+  atlas:
+    "Hello! I'm Atlas. Do you want to post a standalone Need (for individuals) or a CSR Project (for companies)? Reply with Need or Project.",
+  catalyst:
+    "Hello! I'm Catalyst. We'll capture the campaign details step by step, then I'll generate campaign drafts. Let's start with the campaign name.",
+} as const

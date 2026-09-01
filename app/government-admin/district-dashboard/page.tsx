@@ -111,7 +111,7 @@ export default function DistrictAnalyticsDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 sm:p-6 lg:p-8">
+    <div className="min-h-screen bg-background p-4 sm:p-6 lg:p-8">
       <div className="mx-auto max-w-7xl space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -196,7 +196,7 @@ export default function DistrictAnalyticsDashboard() {
                     onClick={() => setFilterStatus(status as 'all' | 'active' | 'completed')}
                     className={`px-3 py-1 text-xs font-medium rounded-full transition ${
                       filterStatus === status
-                        ? 'bg-blue-600 text-white'
+                        ? 'bg-udaan-blue text-white'
                         : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                     }`}
                   >
@@ -228,7 +228,7 @@ export default function DistrictAnalyticsDashboard() {
                         <div className="text-sm font-semibold text-blue-600">{project.progress_percentage || 0}%</div>
                         <div className="h-1.5 w-20 rounded-full bg-slate-200">
                           <div
-                            className="h-full rounded-full bg-blue-600 transition-all"
+                            className="h-full rounded-full bg-udaan-blue transition-all"
                             style={{ width: `${project.progress_percentage || 0}%` }}
                           />
                         </div>

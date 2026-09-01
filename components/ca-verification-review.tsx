@@ -204,7 +204,7 @@ export function caReviewDescription(type: 'individuals' | 'companies' | 'ngos') 
   return `Review and verify this ${entityLabel(type)}'s details`
 }
 
-export function isCaReviewLocked(item: { verification_status?: string; reverification_pending?: boolean } | null | undefined) {
+export function isCaReviewLocked(item: Record<string, unknown> | null | undefined) {
   return (
     String(item?.verification_status || '').toLowerCase() === 'verified' &&
     !item?.reverification_pending

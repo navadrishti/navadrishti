@@ -7,9 +7,17 @@ import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
 
+type StyledSelectOption =
+  | string
+  | {
+      value: string
+      label: string
+      bulletClassName?: string
+    }
+
 type StyledSelectProps = {
   value: string
-  options: Array<string | { value: string; label: string }>
+  options: StyledSelectOption[]
   placeholder?: string
   onValueChange: (value: string) => void
   className?: string
@@ -25,11 +33,17 @@ export function StyledSelect({
   const [open, setOpen] = useState(false)
 
   const normalizedOptions = useMemo(
-    () => options.map((option) => (typeof option === "string" ? { value: option, label: option } : option)),
+    () =>
+      options.map((option) =>
+        typeof option === "string"
+          ? { value: option, label: option, bulletClassName: undefined as string | undefined }
+          : option
+      ),
     [options]
   )
 
-  const currentLabel = normalizedOptions.find((option) => option.value === value)?.label || placeholder
+  const current = normalizedOptions.find((option) => option.value === value)
+  const currentLabel = current?.label || placeholder
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -43,7 +57,12 @@ export function StyledSelect({
             className
           )}
         >
-          <span className="truncate">{currentLabel}</span>
+          <span className="flex min-w-0 items-center gap-2">
+            {current?.bulletClassName ? (
+              <span className={cn("h-2 w-2 shrink-0 rounded-full", current.bulletClassName)} aria-hidden="true" />
+            ) : null}
+            <span className="truncate">{currentLabel}</span>
+          </span>
           <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-60" />
         </Button>
       </PopoverTrigger>
@@ -56,7 +75,7 @@ export function StyledSelect({
                 key={option.value}
                 type="button"
                 className={cn(
-                  "flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-left text-sm transition-colors",
+                  "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm transition-colors",
                   isActive ? "bg-slate-100 text-slate-900" : "hover:bg-slate-50"
                 )}
                 onClick={() => {
@@ -64,8 +83,13 @@ export function StyledSelect({
                   setOpen(false)
                 }}
               >
-                <span>{option.label}</span>
-                {isActive && <Check className="h-4 w-4" />}
+                {option.bulletClassName ? (
+                  <span className={cn("h-2 w-2 shrink-0 rounded-full", option.bulletClassName)} aria-hidden="true" />
+                ) : (
+                  <span className="h-2 w-2 shrink-0" aria-hidden="true" />
+                )}
+                <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                {isActive ? <Check className="h-4 w-4 shrink-0" /> : null}
               </button>
             )
           })}

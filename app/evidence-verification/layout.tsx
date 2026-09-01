@@ -58,7 +58,7 @@ export default function EvidenceVerificationLayout({ children }: { children: Rea
 
   if (launchBlocked) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+      <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center">
           <Loader2 className="mx-auto h-8 w-8 animate-spin text-blue-600" />
           <p className="mt-4 text-blue-600">Redirecting...</p>
@@ -69,7 +69,7 @@ export default function EvidenceVerificationLayout({ children }: { children: Rea
 
   return (
     <div className="flex min-h-screen flex-col">
-      <div className="flex flex-1 flex-col bg-gradient-to-br from-blue-50 to-indigo-100">
+      <div className="flex flex-1 flex-col bg-background">
         {children}
       </div>
     </div>

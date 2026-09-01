@@ -127,7 +127,7 @@ export default function ForgotPasswordPage() {
 
   if (step === 'success') {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
+      <div className="flex min-h-screen flex-col items-center justify-center bg-background p-4">
         <Card className="w-full max-w-md">
           <CardHeader className="space-y-1">
             <AuthCardBackRow fallbackHref="/login" />
@@ -159,7 +159,7 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
           <AuthCardBackRow fallbackHref="/login" />

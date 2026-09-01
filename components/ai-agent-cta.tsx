@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
 import { Sparkles, X } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
-import { AGENT_CTA } from "@/lib/ai-suite"
+import { AGENT_CTA } from "@/lib/ai-agent-sessions"
 import { PRODUCT_LOGO_SRC } from "@/lib/access-control"
 
 function LogoOrIcon({ className }: { className?: string }) {

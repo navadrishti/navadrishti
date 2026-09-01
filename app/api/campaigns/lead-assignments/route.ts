@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
 
     const companyIds = [...new Set(acceptedCampaigns.map((row) => Number(row.company_id || 0)).filter((id) => id > 0))]
     const { data: companies } = companyIds.length > 0
-      ? await supabase.from('users').select('id, name, email').in('id', companyIds)
+      ? await supabase.from('users').select('id, name, email, verification_status').in('id', companyIds)
       : { data: [] as any[] }
 
     const companiesById = new Map<number, any>((companies || []).map((row) => [Number(row.id), row]))
@@ -74,6 +74,8 @@ export async function GET(request: NextRequest) {
         company_id: Number(campaign.company_id || 0),
         company_name: company?.name || 'Company',
         company_email: company?.email || '',
+        company_verification_status: company?.verification_status || null,
+        company_verified: String(company?.verification_status || '').toLowerCase() === 'verified',
       }
     })
 

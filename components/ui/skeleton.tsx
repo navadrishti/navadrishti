@@ -36,101 +36,82 @@ function SkeletonCard() {
   )
 }
 
-// Skeleton for service cards
+// Skeleton for service cards (editorial need/capability listing)
 function SkeletonServiceCard() {
   return (
-    <div className="w-[320px] h-[480px] bg-white rounded-md border-2 border-slate-200 p-0 flex flex-col shadow-sm overflow-hidden">
-      {/* Top project bar - simplified */}
-      <div className="flex items-center justify-between px-2 py-2 border-b border-slate-200">
-        <div className="px-2">
-          <p className="sr-only">Project</p>
-          <Skeleton className="h-4 w-36 rounded-md" />
+    <div className="h-full w-full max-w-[360px] overflow-hidden rounded-md border border-gram-border bg-white shadow-none">
+      <Skeleton className="h-40 w-full rounded-none bg-[#EEF0ED]" />
+      <div className="flex flex-col gap-2 px-3 pb-3 pt-2.5">
+        <div className="flex min-w-0 items-baseline justify-between gap-2">
+          <Skeleton className="h-3 w-16 rounded" />
+          <Skeleton className="h-3 w-24 rounded" />
         </div>
-        <Skeleton className="h-6 w-16 rounded-md" />
-      </div>
-
-      {/* Image area */}
-      <div className="w-full">
-        <Skeleton className="h-[180px] w-full" />
-      </div>
-
-      {/* Content area */}
-      <div className="p-3 flex-1 flex flex-col">
-        <div className="space-y-2">
-          <Skeleton className="h-5 w-3/4 rounded-md" />
-          <Skeleton className="h-3 w-full rounded-md" />
-          <Skeleton className="h-3 w-4/5 rounded-md" />
+        <div className="min-w-0 space-y-1">
+          <Skeleton className="h-5 w-3/4 rounded" />
+          <Skeleton className="h-3.5 w-full rounded" />
         </div>
-
-        <div className="mt-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Skeleton className="h-7 w-7 rounded-md" />
-            <div className="space-y-1">
-              <Skeleton className="h-4 w-28 rounded-md" />
-              <Skeleton className="h-3 w-20 rounded-md" />
-            </div>
+        <Skeleton className="h-3 w-2/3 rounded" />
+        <div className="mt-auto flex min-w-0 items-center gap-2 border-t border-gram-border pt-2">
+          <Skeleton className="h-7 w-7 shrink-0 rounded-full" />
+          <div className="min-w-0 flex-1 space-y-1">
+            <Skeleton className="h-3.5 w-28 rounded" />
+            <Skeleton className="h-3 w-16 rounded" />
           </div>
-
-          <div className="flex gap-2">
-            <Skeleton className="h-8 w-20 rounded-md" />
-            <Skeleton className="h-8 w-20 rounded-md" />
-          </div>
+          <Skeleton className="h-7 w-24 shrink-0 rounded-md" />
+          <Skeleton className="h-8 w-8 shrink-0 rounded-md" />
         </div>
       </div>
     </div>
   )
 }
 
-// Skeleton that matches the simplified Service Offer card layout
+// Skeleton that matches the editorial capability/offer card layout
 function SkeletonServiceOffer() {
+  return <SkeletonServiceCard />
+}
+
+// Skeleton for CSR project listing cards with labeled detail fields
+function SkeletonServiceProject() {
   return (
-    <div className="h-full w-full max-w-[360px] overflow-hidden rounded-md border-2 border-slate-200 bg-white p-0 shadow-none">
-      <div className="flex h-full flex-col p-2">
-        <div className="flex min-w-0 items-center justify-between gap-2">
-          <Skeleton className="h-5 w-20 rounded-full" />
-          <Skeleton className="h-5 w-28 rounded-full" />
+    <div className="h-full w-full max-w-[360px] overflow-hidden rounded-md border border-gram-border bg-white shadow-none">
+      <div className="flex h-full flex-col gap-2 px-3 pb-3 pt-2.5">
+        <div className="flex min-w-0 items-baseline justify-between gap-2">
+          <Skeleton className="h-3 w-16 rounded" />
+          <Skeleton className="h-3 w-28 rounded" />
         </div>
-
-        <div className="mt-2 overflow-hidden rounded-md border border-slate-200 bg-slate-100">
-          <Skeleton className="h-32 w-full rounded-md" />
-        </div>
-
-        <div className="mt-2 min-w-0 space-y-1 border-t border-slate-200 pt-2">
+        <div className="min-w-0 space-y-1">
           <Skeleton className="h-5 w-3/4 rounded" />
-          <Skeleton className="h-3 w-full rounded" />
+          <Skeleton className="h-3.5 w-full rounded" />
         </div>
-
-        <div className="mt-2 grid grid-cols-3 gap-2 border-t border-slate-200 pt-2">
-          <div className="min-w-0 space-y-1">
-            <Skeleton className="h-3 w-10 rounded" />
-            <Skeleton className="h-4 w-full rounded" />
+        <div className="grid grid-cols-2 gap-x-3 gap-y-2 border-t border-gram-border pt-2">
+          <div className="col-span-2 min-w-0 space-y-1">
+            <Skeleton className="h-2.5 w-14 rounded" />
+            <Skeleton className="h-3.5 w-full rounded" />
           </div>
-          <div className="min-w-0 space-y-1">
-            <Skeleton className="h-3 w-12 rounded" />
-            <Skeleton className="h-4 w-full rounded" />
-          </div>
-          <div className="min-w-0 space-y-1">
-            <Skeleton className="h-3 w-12 rounded" />
-            <Skeleton className="h-4 w-full rounded" />
-          </div>
-        </div>
-
-        <div className="mt-1 border-t border-slate-200 pt-1">
-          <div className="flex min-w-0 items-center gap-2">
-            <div className="flex min-w-0 flex-1 items-center gap-2 px-1 py-0.5">
-              <Skeleton className="h-6 w-6 shrink-0 rounded-full" />
-              <div className="min-w-0 flex-1 space-y-1">
-                <Skeleton className="h-3.5 w-32 rounded" />
-                <Skeleton className="h-3 w-20 rounded" />
-              </div>
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="min-w-0 space-y-1">
+              <Skeleton className="h-2.5 w-16 rounded" />
+              <Skeleton className="h-3.5 w-20 rounded" />
             </div>
-            <Skeleton className="h-8 w-px shrink-0 rounded-none" />
-            <Skeleton className="h-4 w-24 shrink-0 rounded" />
+          ))}
+        </div>
+        <div className="mt-auto flex min-w-0 items-center gap-2 border-t border-gram-border pt-2">
+          <Skeleton className="h-7 w-7 shrink-0 rounded-full" />
+          <div className="min-w-0 flex-1 space-y-1">
+            <Skeleton className="h-3.5 w-28 rounded" />
+            <Skeleton className="h-3 w-16 rounded" />
           </div>
+          <Skeleton className="h-7 w-24 shrink-0 rounded-md" />
+          <Skeleton className="h-8 w-8 shrink-0 rounded-md" />
         </div>
       </div>
     </div>
   )
+}
+
+// Skeleton for editorial campaign listing cards (labeled detail grid)
+function SkeletonCampaignCard() {
+  return <SkeletonServiceProject />
 }
 
 // Skeleton for profile cards
@@ -353,7 +334,7 @@ function SkeletonGrid({ items = 4 }: { items?: number }) {
 // CTA Skeleton
 function SkeletonCTA() {
   return (
-    <div className="mb-8 p-8 bg-white rounded-md border-2 border-black shadow-sm relative overflow-hidden">
+    <div className="mb-8 p-8 bg-white rounded-md border border-gram-border shadow-sm relative overflow-hidden">
       <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
         <div className="text-center md:text-left">
           <Skeleton className="h-8 w-72 mb-3" />
@@ -527,6 +508,8 @@ export {
   SkeletonCard,
   SkeletonServiceCard,
   SkeletonServiceOffer,
+  SkeletonServiceProject,
+  SkeletonCampaignCard,
   SkeletonProfileCard,
   SkeletonOrderItem,
   SkeletonListItem,

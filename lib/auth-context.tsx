@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
-import { notify } from './notifications';
+import { toast } from 'sonner';
 import { getDocumentExpiryAlertCopy } from './auth';
 import { PRODUCT_NAME } from './access-control';
 
@@ -20,7 +20,10 @@ function notifyDocumentExpiryForUser(user: User) {
 
   sessionStorage.setItem(key, '1');
   window.setTimeout(() => {
-    notify.info(copy.title, copy.description, DOCUMENT_EXPIRY_ALERT_DURATION_MS);
+    toast.info(copy.title, {
+      description: copy.description,
+      duration: DOCUMENT_EXPIRY_ALERT_DURATION_MS,
+    });
   }, 800);
 }
 
@@ -373,7 +376,7 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
       if (!response.ok) {
         const errorMessage = data.error || 'Login failed';
         setError(errorMessage);
-        notify.error(errorMessage);
+        toast.error(errorMessage);
         return;
       }
       
@@ -383,11 +386,11 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
 
       await hydrateUserFromServer(data.token, data.user);
       
-      notify.success(`Welcome back, ${data.user.name}!`);
+      toast.success(`Welcome back, ${data.user.name}!`);
     } catch (error: any) {
       const errorMessage = error.message || 'An error occurred during login';
       setError(errorMessage);
-      notify.error(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -412,7 +415,7 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
       if (!response.ok) {
         const errorMessage = getFriendlySignupErrorMessage(data, response.status);
         setError(errorMessage);
-        notify.error(errorMessage);
+        toast.error(errorMessage);
         const handledError = new Error(errorMessage) as Error & { handled?: boolean };
         handledError.handled = true;
         throw handledError;
@@ -424,7 +427,7 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
 
       await hydrateUserFromServer(data.token, data.user);
       
-      notify.success(`Welcome to ${PRODUCT_NAME}, ${data.user.name}!`);
+      toast.success(`Welcome to ${PRODUCT_NAME}, ${data.user.name}!`);
     } catch (error: any) {
       if (error?.handled) {
         throw error;
@@ -434,7 +437,7 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
         ? error.message
         : 'Unable to create account right now. Please try again.';
       setError(errorMessage);
-      notify.error(errorMessage);
+      toast.error(errorMessage);
       throw new Error(errorMessage);
     } finally {
       setLoading(false);
@@ -475,7 +478,7 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
     // Drop stale RSC auth props so Fast Refresh / remounts cannot revive the old JWT.
     router.refresh();
     
-    notify.info('You have been logged out');
+    toast.info('You have been logged out');
   };
 
   // Clear error
@@ -515,10 +518,10 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
         setUser(null);
         persistAuthSnapshot(null, null);
       } else {
-        notify.error('Failed to refresh user data');
+        toast.error('Failed to refresh user data');
       }
     } catch (error) {
-      notify.error('Failed to refresh user data');
+      toast.error('Failed to refresh user data');
     }
   };
 

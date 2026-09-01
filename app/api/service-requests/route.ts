@@ -1,19 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
 import { db, supabase } from '@/lib/db';
-import { isNeedOpenForListing, isServiceRequestExpired } from '@/lib/service-request-allocation';
-import { resolveFundingTargetInr } from '@/lib/service-request-allocation';
-import { JWT_SECRET, CSR_ELIGIBILITY_REQUIRED_MESSAGE, CSR_OWN_PROJECT_TIMELINE_MESSAGE } from '@/lib/auth';
-import { ngoUserIsCsrEligible, ngoUserIsCsrEligibleForProject, resolveEffectiveVerificationStatus } from '@/lib/server-auth';
-import { CSR_SCHEDULE_VII_CATEGORIES, SERVICE_REQUEST_TYPES } from '@/lib/categories';
-import { isHiddenNgoNetworkPaymentChannel } from '@/lib/razorpay-route';
 import {
+  isNeedOpenForListing,
+  isServiceRequestExpired,
+  resolveFundingTargetInr,
   formatProjectExactAddress,
   parseProjectExactAddress,
   projectAddressToLocationSummary,
   serializeProjectExactAddress,
   validateProjectExactAddress,
-} from '@/lib/project-address';
+} from '@/lib/service-request-allocation';
+import { JWT_SECRET, CSR_ELIGIBILITY_REQUIRED_MESSAGE, CSR_OWN_PROJECT_TIMELINE_MESSAGE } from '@/lib/auth';
+import { ngoUserIsCsrEligible, ngoUserIsCsrEligibleForProject, resolveEffectiveVerificationStatus } from '@/lib/server-auth';
+import { CSR_SCHEDULE_VII_CATEGORIES, SERVICE_REQUEST_TYPES } from '@/lib/categories';
+import { isHiddenNgoNetworkPaymentChannel } from '@/lib/razorpay-route';
+import { getRequestUrgencyLevel } from '@/lib/utils';
 
 // Interface for JWT payload
 interface JWTPayload {
@@ -163,6 +165,33 @@ function deriveAutoUrgency(timeline: unknown, createdAtMs: number): 'low' | 'med
   if (remainingRatio <= 0.35) return 'high';
   if (remainingRatio <= 0.65) return 'medium';
   return 'low';
+}
+
+/** Same deadline resolution the listing card uses for live urgency badges. */
+function resolveListingDeadline(item: any): string | null {
+  const requirements = safeParseJson(item?.requirements);
+  const projectContext = item?.project || requirements?.project?.project || null;
+  const candidates = [
+    projectContext?.valid_until,
+    item?.deadline,
+    item?.timeline,
+    requirements?.timeline,
+  ];
+
+  for (const value of candidates) {
+    const text = String(value || '').trim();
+    if (text) return text;
+  }
+
+  return null;
+}
+
+function getListingUrgency(item: any): 'low' | 'medium' | 'high' | 'critical' {
+  return getRequestUrgencyLevel({
+    createdAt: item?.created_at,
+    deadline: resolveListingDeadline(item),
+    fallback: item?.urgency_level || item?.priority || 'medium',
+  });
 }
 
 function buildProgressFields(body: Record<string, any>, existing?: Record<string, any> | null) {
@@ -386,6 +415,7 @@ export async function GET(request: NextRequest) {
       request.beneficiary_count = request.beneficiary_count != null ? Number(request.beneficiary_count) : Number(requirementsObj.beneficiary_count || 0);
       request.impact_description = request.impact_description || requirementsObj.impact_description || '';
       request.trust_badge_weight = request.requester?.verification_status === 'verified' ? 1.0 : 0.6;
+      request.verified = String(request.requester?.verification_status || '').toLowerCase() === 'verified';
       request.impact_score = computeImpactScore(request);
       request.proof_strength = computeProofStrength(request);
       request.completion_rate = request.status === 'completed' ? 100 : 0;
@@ -549,7 +579,7 @@ export async function GET(request: NextRequest) {
         }
 
         if (urgencyFilter && urgencyFilter !== 'all') {
-          if (String(item.urgency_level || '').toLowerCase() !== urgencyFilter) return false;
+          if (getListingUrgency(item) !== urgencyFilter) return false;
         }
 
         if (locationTerm) {
@@ -698,6 +728,16 @@ export async function POST(request: NextRequest) {
       let resolvedProjectId: string | null = projectId || null;
       let resolvedProjectLocation = String(location || '').trim();
       const projectPayload = project && typeof project === 'object' ? project : null;
+
+      // Needs are standalone for NGO self-serve creates. Do not attach to projects
+      // or create nested projects from this endpoint (use /api/service-request-projects).
+      // Admins may still pass projectId to relink historical records.
+      if (userType === 'ngo' && (resolvedProjectId || projectPayload)) {
+        return NextResponse.json({
+          error: 'Needs are standalone. Create CSR projects via Post a Project; do not attach projectId when posting a need.'
+        }, { status: 400 });
+      }
+
       if (projectPayload && !resolvedProjectId) {
         const projectTitle = String(projectPayload.title || '').trim();
         const projectDescription = String(projectPayload.description || '').trim();

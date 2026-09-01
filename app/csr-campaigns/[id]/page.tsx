@@ -16,7 +16,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { ArrowLeft, CheckCircle2 } from "lucide-react"
 import { formatDisplayDate, isCampaignStarted, isVolunteerRegistrationPastDeadline } from "@/lib/format-date"
-import { getVolunteerButtonState, sumVolunteerApplicationCount } from '@/lib/campaign-volunteer-utils'
+import { getVolunteerButtonState, sumVolunteerApplicationCount } from '@/lib/campaign-schema'
+import { VerifiedAccountName } from '@/components/verification-badge'
 
 interface Campaign {
   id: string
@@ -35,6 +36,11 @@ interface Campaign {
   start_date: string | null
   end_date: string | null
   company_id: number | null
+  company_name?: string | null
+  company_verification_status?: string | null
+  company_verified?: boolean
+  selected_lead_ngo_verification_status?: string | null
+  selected_lead_ngo_verified?: boolean
   status?: string | null
 }
 
@@ -53,6 +59,11 @@ type CampaignRecord = {
   start_date?: string | null
   end_date?: string | null
   company_id?: number | null
+  company_name?: string | null
+  company_verification_status?: string | null
+  company_verified?: boolean
+  selected_lead_ngo_verification_status?: string | null
+  selected_lead_ngo_verified?: boolean
   status?: string | null
 }
 
@@ -168,13 +179,37 @@ function CampaignDetailFields({ campaign }: { campaign: CampaignRecord }) {
 
       <DetailSection title="Lead NGO & Offers">
         <DetailField
+          label="Company"
+          value={
+            campaign.company_name ? (
+              <VerifiedAccountName
+                name={campaign.company_name}
+                status={campaign.company_verification_status}
+                verified={campaign.company_verified}
+                size="xs"
+                nameClassName="font-medium text-slate-800"
+              />
+            ) : (
+              'Not set'
+            )
+          }
+        />
+        <DetailField
           label="Lead NGO"
           value={
-            selectedLeadNgoName
-              ? selectedLeadNgoName
-              : selectedLeadNgoId > 0
-                ? `NGO #${selectedLeadNgoId}`
-                : 'Not selected'
+            selectedLeadNgoName ? (
+              <VerifiedAccountName
+                name={selectedLeadNgoName}
+                status={campaign.selected_lead_ngo_verification_status}
+                verified={campaign.selected_lead_ngo_verified}
+                size="xs"
+                nameClassName="font-medium text-slate-800"
+              />
+            ) : selectedLeadNgoId > 0 ? (
+              `NGO #${selectedLeadNgoId}`
+            ) : (
+              'Not selected'
+            )
           }
         />
         <DetailField
@@ -393,14 +428,14 @@ export default function CSRCampaignDetailPage() {
   const ownerName = campaign?.company_id ? `Company #${campaign.company_id}` : 'Company not set'
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div className="min-h-screen overflow-x-hidden bg-background">
       <Header />
       <div className="mx-auto max-w-7xl px-4 py-8">
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <Button
             variant="ghost"
             onClick={() => router.back()}
-            className="w-full justify-start px-0 text-blue-600 hover:text-blue-800 hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0 sm:w-auto"
+            className="w-full justify-start px-0 text-udaan-blue hover:text-gram-ink hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0 sm:w-auto"
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back
