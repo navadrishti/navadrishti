@@ -88,9 +88,8 @@ export default function ProtectedRoute({
   useEffect(() => {
     if (!mounted || loading) return;
 
-    // If no user is logged in, redirect to login
     if (!user) {
-      smoothNavigate(router, '/login', { delay: 150 });
+      smoothNavigate(router, '/', { delay: 0 });
       return;
     }
 
@@ -130,28 +129,9 @@ export default function ProtectedRoute({
     return <PageSkeleton userType={user?.user_type || userTypes?.[0]} />;
   }
 
-  // Show login prompt if not authenticated
+  // Redirecting unauthenticated visitors to home
   if (!user) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <CardTitle>Login Required</CardTitle>
-            <CardDescription>
-              Please log in to access this page
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Link href="/login">
-              <Button className="w-full">
-                Log In
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
-    );
+    return <PageSkeleton userType={userTypes?.[0]} />;
   }
 
   // Check user type restrictions
