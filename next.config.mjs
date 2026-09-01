@@ -1,4 +1,10 @@
 /** @type {import('next').NextConfig} */
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const projectRoot = path.dirname(fileURLToPath(import.meta.url))
+
 const nextConfig = {
   devIndicators: false,
   typescript: {
@@ -127,6 +133,107 @@ const nextConfig = {
       },
     ]
   },
+}
+
+/** CLI: `pnpm run test:security` */
+export function runSecuritySmokeChecks() {
+  const results = []
+
+  const check = (name, ok, detail) => {
+    results.push({ name, ok, detail })
+  }
+
+  const read = (filePath) => fs.readFileSync(path.join(projectRoot, filePath), 'utf8')
+
+  const walk = (dir, files = []) => {
+    if (!fs.existsSync(dir)) return files
+
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name)
+      if (entry.isDirectory()) {
+        if (entry.name === 'node_modules' || entry.name === '.next' || entry.name === '.git') continue
+        walk(fullPath, files)
+        continue
+      }
+      if (/\.(tsx?|jsx?|mjs)$/.test(entry.name)) files.push(fullPath)
+    }
+
+    return files
+  }
+
+  const nextConfigSource = read('next.config.mjs')
+  const themeProvider = read('components/theme-provider.tsx')
+  const serverAuth = read('lib/server-auth.ts')
+  const razorpayCheckout = read('lib/razorpay-checkout.ts')
+
+  check('production source maps disabled', /productionBrowserSourceMaps:\s*false/.test(nextConfigSource))
+  check('production console stripping enabled', /removeConsole/.test(nextConfigSource))
+
+  for (const header of [
+    'X-Frame-Options',
+    'X-Content-Type-Options',
+    'Referrer-Policy',
+    'Permissions-Policy',
+    'Content-Security-Policy',
+  ]) {
+    check(`security header configured: ${header}`, nextConfigSource.includes(header))
+  }
+
+  check(
+    'production client guards mounted in theme provider',
+    themeProvider.includes('useProductionClientGuards')
+  )
+
+  check(
+    'evidence approver requires platform CA token',
+    /const platformCA = getCAFromRequest\(request\)/.test(serverAuth) &&
+      /if \(platformCA\) \{[\s\S]*actorType: 'platform_ca'/.test(serverAuth)
+  )
+
+  check(
+    'razorpay checkout loads from official CDN only',
+    razorpayCheckout.includes('https://checkout.razorpay.com/v1/checkout.js')
+  )
+
+  const publicSecretLeaks = []
+  const appFiles = walk(path.join(projectRoot, 'app'))
+    .concat(walk(path.join(projectRoot, 'components')))
+    .concat(walk(path.join(projectRoot, 'lib')))
+
+  for (const file of appFiles) {
+    const rel = path.relative(projectRoot, file).replace(/\\/g, '/')
+    const source = fs.readFileSync(file, 'utf8')
+    if (/process\.env\.NEXT_PUBLIC_[A-Z0-9_]*(SECRET|PASSWORD|PRIVATE_KEY)/i.test(source)) {
+      publicSecretLeaks.push(rel)
+    }
+    const isClientBundle =
+      (rel.startsWith('components/') || /\/page\.tsx$/.test(rel) || /\/layout\.tsx$/.test(rel)) &&
+      !rel.startsWith('app/api/')
+    if (isClientBundle && /^['"]use client['"]/m.test(source) && /from ['"]@\/lib\/db['"]/.test(source)) {
+      publicSecretLeaks.push(`${rel}: client bundle imports server db`)
+    }
+  }
+
+  check(
+    'no NEXT_PUBLIC secrets in client-facing code',
+    publicSecretLeaks.length === 0,
+    publicSecretLeaks.slice(0, 8).join('; ') || undefined
+  )
+
+  const failed = results.filter((item) => !item.ok)
+
+  console.log('Security smoke checks\n')
+  for (const item of results) {
+    const status = item.ok ? 'PASS' : 'FAIL'
+    console.log(`[${status}] ${item.name}${item.detail ? ` — ${item.detail}` : ''}`)
+  }
+
+  if (failed.length > 0) {
+    console.error(`\n${failed.length} security check(s) failed.`)
+    process.exit(1)
+  }
+
+  console.log(`\nAll ${results.length} security checks passed.`)
 }
 
 export default nextConfig
