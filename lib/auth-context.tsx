@@ -7,6 +7,31 @@ import { PRODUCT_NAME } from './access-control';
 
 const DOCUMENT_EXPIRY_ALERT_DURATION_MS = 18000;
 const documentExpiryAlertKey = (userId: number) => `navadrishti:document-expiry-alert:${userId}`;
+const AUTH_REVOKED_KEY = 'navadrishti:auth-revoked';
+
+function markAuthRevoked() {
+  try {
+    sessionStorage.setItem(AUTH_REVOKED_KEY, '1');
+  } catch {
+    // ignore
+  }
+}
+
+function clearAuthRevoked() {
+  try {
+    sessionStorage.removeItem(AUTH_REVOKED_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+function isAuthRevoked() {
+  try {
+    return sessionStorage.getItem(AUTH_REVOKED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
 
 function notifyDocumentExpiryForUser(user: User) {
   if (typeof window === 'undefined' || user.user_type !== 'ngo') return;
@@ -84,8 +109,6 @@ interface SignupData {
 
 interface AuthProviderProps {
   children: ReactNode;
-  initialUser?: User | null;
-  initialToken?: string | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -126,13 +149,11 @@ const getFriendlySignupErrorMessage = (data: any, status: number) => {
 // when /api/auth/me returns an access-block error.
 const isInvalidAuthResponse = (status: number) => status === 401 || status === 403 || status === 404;
 
-export function AuthProvider({ children, initialUser = null, initialToken = null }: AuthProviderProps) {
-  const [user, setUser] = useState<User | null>(initialUser);
-  const [token, setToken] = useState<string | null>(initialToken);
-  const [loading, setLoading] = useState<boolean>(!initialUser && !initialToken);
+export function AuthProvider({ children }: AuthProviderProps) {
+  const [user, setUser] = useState<User | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const initialUserRef = useRef<User | null>(initialUser);
-  const initialTokenRef = useRef<string | null>(initialToken);
   // Bumped on logout so in-flight /me hydrations and Strict Mode remounts cannot revive the session.
   const authEpochRef = useRef(0);
 
@@ -205,8 +226,14 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
     try {
       setLoading(true);
 
-      // Never fall back to React state/props here — after logout, Strict Mode / Fast Refresh
-      // can remount with a stale SSR initialToken even though storage + cookie were cleared.
+      if (isAuthRevoked()) {
+        persistAuthSnapshot(null, null);
+        setToken(null);
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+
       const storedToken = sessionStorage.getItem('token') || localStorage.getItem('token');
       const storedUser = sessionStorage.getItem('user') || localStorage.getItem('user');
 
@@ -242,33 +269,8 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
         return;
       }
 
-      const ssrToken = initialTokenRef.current;
-      if (ssrToken && ssrToken !== 'undefined' && ssrToken !== 'null') {
-        const cleanSsrToken = ssrToken.replace(/["']/g, '').trim();
-        if (cleanSsrToken) {
-          setToken(cleanSsrToken);
-          if (initialUserRef.current) {
-            setUser(initialUserRef.current);
-          }
-
-          const hydratedUser = await hydrateUserFromServer(cleanSsrToken, initialUserRef.current);
-          if (epoch !== authEpochRef.current) return;
-          if (!hydratedUser) {
-            setToken(null);
-            setUser(null);
-          }
-          initialTokenRef.current = null;
-          initialUserRef.current = null;
-          setLoading(false);
-          return;
-        }
-      }
-
-      // No storage and no SSR cookie session — logged out (layout already checked the httpOnly cookie).
       setToken(null);
       setUser(null);
-      initialUserRef.current = null;
-      initialTokenRef.current = null;
       setLoading(false);
     } catch (error) {
       console.error('Error syncing auth state:', error);
@@ -360,6 +362,7 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
       }
       
       // Save token and user to state and localStorage
+      clearAuthRevoked();
       setToken(data.token);
       persistAuthSnapshot(data.token, null);
 
@@ -401,6 +404,7 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
       }
       
       // Save token and user to state and localStorage
+      clearAuthRevoked();
       setToken(data.token);
       persistAuthSnapshot(data.token, null);
 
@@ -431,14 +435,11 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
       sessionStorage.removeItem(documentExpiryAlertKey(user.id));
     }
 
+    markAuthRevoked();
     setToken(null);
     setUser(null);
     setError(null);
-    
-    // Clear all auth-related data from storage and SSR hydration refs
     persistAuthSnapshot(null, null);
-    initialUserRef.current = null;
-    initialTokenRef.current = null;
     
     try {
       await fetch('/api/auth/logout', {
@@ -450,17 +451,8 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
       console.error('Platform logout request failed:', error);
     }
 
-    // Best-effort clear of any non-httpOnly leftovers (match Secure both ways for local leftovers)
-    document.cookie = 'token=; Path=/; Max-Age=0; SameSite=Strict';
-    document.cookie = 'token=; Path=/; Max-Age=0; SameSite=Strict; Secure';
-    document.cookie = 'user=; Path=/; Max-Age=0; SameSite=Strict';
-    document.cookie = 'user=; Path=/; Max-Age=0; SameSite=Strict; Secure';
-
-    toast.info('You have been logged out');
-
-    // Hard navigation ensures production SSR cannot revive a stale httpOnly cookie session.
     if (typeof window !== 'undefined') {
-      window.location.replace('/');
+      window.location.replace('/login?logout=1');
     }
   };
 

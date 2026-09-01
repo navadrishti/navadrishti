@@ -27,6 +27,17 @@ export default function LoginPage() {
   };
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('logout') !== '1') return;
+
+    void fetch('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'include',
+      cache: 'no-store',
+    });
+  }, []);
+
+  useEffect(() => {
     if (user) {
       smoothNavigate(router, getDashboardRoute(user.user_type), {
         delay: 200,

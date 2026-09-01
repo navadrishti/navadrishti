@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect, useMemo } from 'react'
+import { useState, useCallback, useEffect, useMemo, Suspense } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Header } from '@/components/header'
@@ -35,6 +35,30 @@ const TRANSACTION_OPTIONS = [
 ]
 
 export default function ServiceOffersPage() {
+  return (
+    <Suspense fallback={<ServiceOffersPageFallback />}>
+      <ServiceOffersPageContent />
+    </Suspense>
+  )
+}
+
+function ServiceOffersPageFallback() {
+  return (
+    <div className="min-h-screen bg-background">
+      <Header />
+      <main className="container mx-auto px-4 py-8">
+        <SkeletonCTA />
+        <div className="mt-8 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <SkeletonServiceOffer key={index} />
+          ))}
+        </div>
+      </main>
+    </div>
+  )
+}
+
+function ServiceOffersPageContent() {
   const { user } = useAuth();
   const searchParams = useSearchParams();
   const { toast } = useToast();
