@@ -1,36 +1,5 @@
 import { NextResponse } from 'next/server';
-
-function clearAuthCookies(response: NextResponse) {
-  // Clear with the same attribute variants login may have used.
-  // Local leftovers can be Secure=false while a prior tunnel/prod test used Secure=true.
-  const variants = [
-    { secure: false },
-    { secure: true },
-  ] as const;
-
-  for (const { secure } of variants) {
-    response.cookies.set('token', '', {
-      path: '/',
-      expires: new Date(0),
-      maxAge: 0,
-      httpOnly: true,
-      secure,
-      sameSite: 'strict',
-    });
-
-    response.cookies.set('user', '', {
-      path: '/',
-      expires: new Date(0),
-      maxAge: 0,
-      httpOnly: false,
-      secure,
-      sameSite: 'strict',
-    });
-  }
-
-  response.cookies.delete('token');
-  response.cookies.delete('user');
-}
+import { clearAuthTokenCookie } from '@/lib/server-auth';
 
 export async function POST() {
   try {
@@ -39,7 +8,7 @@ export async function POST() {
       success: true,
     });
 
-    clearAuthCookies(response);
+    clearAuthTokenCookie(response);
 
     return response;
   } catch (error) {

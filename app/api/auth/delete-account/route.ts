@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db, supabase } from '@/lib/db';
 import { comparePassword, verifyToken } from '@/lib/auth';
+import { clearAuthTokenCookie } from '@/lib/server-auth';
 
 // Validation schema
 const deleteAccountSchema = z.object({
@@ -161,10 +162,14 @@ export async function DELETE(req: NextRequest) {
       }, { status: 500 });
     }
     
-    return NextResponse.json({
+    const response = NextResponse.json({
       message: 'Account has been successfully deleted',
       success: true
     });
+
+    clearAuthTokenCookie(response);
+
+    return response;
     
   } catch (error: any) {
     console.error('Delete account error:', error);

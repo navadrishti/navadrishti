@@ -1,30 +1,14 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { clearAdminTokenCookie } from '@/lib/server-auth';
 
-export async function POST(request: NextRequest) {
+export async function POST() {
   try {
-    // Clear admin token cookie
-    const response = NextResponse.json({ 
-      success: true, 
-      message: 'Admin logged out successfully' 
+    const response = NextResponse.json({
+      success: true,
+      message: 'Admin logged out successfully',
     });
 
-    response.cookies.set('admin-token', '', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      expires: new Date(0),
-      maxAge: 0,
-      path: '/api/admin',
-    });
-
-    response.cookies.set('admin-token', '', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      expires: new Date(0),
-      maxAge: 0,
-      path: '/',
-    });
+    clearAdminTokenCookie(response);
 
     return response;
   } catch (error) {

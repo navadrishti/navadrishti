@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { AuthCardBackRow } from '@/components/header';
 import { ProductCopyright } from '@/components/product-brand';
 import { PRODUCT_NAME } from '@/lib/access-control';
+import { hasConsoleTabSession } from '@/lib/utils';
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -27,8 +28,7 @@ export default function AdminLoginPage() {
 
     const checkExistingSession = async () => {
       try {
-        const hasTab =
-          typeof window !== 'undefined' && Boolean(sessionStorage.getItem('admin_tab_session'));
+        const hasTab = typeof window !== 'undefined' && hasConsoleTabSession('admin_tab_session');
 
         if (!hasTab) return;
 

@@ -1,13 +1,8 @@
 import { NextResponse } from 'next/server';
+import { clearGovtAdminTokenCookie } from '@/lib/server-auth';
 
 export async function POST() {
   const response = NextResponse.json({ success: true });
-  response.cookies.set('govt-admin-token', '', {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-    expires: new Date(0),
-    path: '/',
-  });
+  clearGovtAdminTokenCookie(response);
   return response;
 }

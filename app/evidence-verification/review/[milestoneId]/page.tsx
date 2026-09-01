@@ -18,6 +18,7 @@ import {
   EvidenceSectionCard,
 } from '@/components/evidence-verification/portal-ui';
 import { formatStatusLabel } from '@/lib/format-date';
+import { finalizeConsoleLogout } from '@/lib/utils';
 
 export default function ReviewDetailPage() {
   const router = useRouter();
@@ -112,11 +113,11 @@ export default function ReviewDetailPage() {
   };
 
   const logout = async () => {
-    await fetch('/api/evidence-verification/logout', {
-      method: 'POST',
-      credentials: 'include',
+    await finalizeConsoleLogout({
+      logoutUrl: '/api/evidence-verification/logout',
+      redirectTo: '/evidence-verification/login',
+      tabSessionKey: 'evidence_verification_tab_session',
     });
-    router.push('/evidence-verification/login');
   };
 
   useEffect(() => {

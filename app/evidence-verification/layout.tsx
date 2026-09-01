@@ -7,6 +7,7 @@ import {
   getLaunchBlockedRedirectPath,
   isLaunchBlockedPath,
 } from '@/lib/access-control';
+import { clearConsoleTabSession, hasConsoleTabSession } from '@/lib/utils';
 
 export default function EvidenceVerificationLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -27,11 +28,7 @@ export default function EvidenceVerificationLayout({ children }: { children: Rea
 
     const checkAccess = async () => {
       try {
-        const hasTab =
-          typeof window !== 'undefined' &&
-          Boolean(sessionStorage.getItem('evidence_verification_tab_session'));
-
-        if (!hasTab) {
+        if (!hasConsoleTabSession('evidence_verification_tab_session')) {
           if (!cancelled) router.replace('/evidence-verification/login');
           return;
         }
@@ -39,10 +36,12 @@ export default function EvidenceVerificationLayout({ children }: { children: Rea
         const response = await fetch('/api/evidence-verification/verify', {
           method: 'GET',
           credentials: 'include',
+          cache: 'no-store',
         });
 
-        if (!response.ok && !cancelled) {
-          router.replace('/evidence-verification/login');
+        if (!response.ok) {
+          clearConsoleTabSession('evidence_verification_tab_session');
+          if (!cancelled) router.replace('/evidence-verification/login');
         }
       } catch {
         if (!cancelled) router.replace('/evidence-verification/login');

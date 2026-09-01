@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import type { NextResponse } from 'next/server';
 import {
   CSR_ELIGIBILITY_REQUIRED_MESSAGE,
   CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE,
@@ -15,6 +16,132 @@ import {
 import { verifyPlatformCAToken, PLATFORM_CA_COOKIE, type PlatformCATokenPayload } from '@/lib/platform-ca-auth';
 import { supabase } from '@/lib/db';
 import { ensureCompanyCaIdAssigned } from '@/lib/company-ca';
+
+export const AUTH_TOKEN_COOKIE = 'token';
+export const ADMIN_TOKEN_COOKIE = 'admin-token';
+export const GOVT_ADMIN_TOKEN_COOKIE = 'govt-admin-token';
+export const EVIDENCE_VERIFICATION_TOKEN_COOKIE = 'evidence-verification-token';
+
+type CookieCarrier = Pick<NextResponse, 'cookies'>;
+
+type SessionCookieWriteOptions = {
+  httpOnly?: boolean;
+  maxAge?: number;
+  path?: string;
+};
+
+function sessionCookieBase(httpOnly = true) {
+  return {
+    httpOnly,
+    path: '/',
+    sameSite: 'strict' as const,
+    secure: process.env.NODE_ENV === 'production',
+  };
+}
+
+function writeSessionCookie(
+  response: CookieCarrier,
+  name: string,
+  value: string,
+  options?: SessionCookieWriteOptions
+) {
+  const base = sessionCookieBase(options?.httpOnly ?? true);
+  response.cookies.set({
+    name,
+    value,
+    ...base,
+    path: options?.path ?? base.path,
+    ...(options?.maxAge !== undefined ? { maxAge: options.maxAge } : {}),
+  });
+}
+
+function expireSessionCookie(
+  response: CookieCarrier,
+  name: string,
+  options?: { path?: string; httpOnly?: boolean }
+) {
+  const base = sessionCookieBase(options?.httpOnly ?? true);
+  const path = options?.path ?? base.path;
+
+  response.cookies.set({
+    name,
+    value: '',
+    ...base,
+    path,
+    expires: new Date(0),
+    maxAge: 0,
+  });
+
+  if (base.secure) {
+    response.cookies.set({
+      name,
+      value: '',
+      ...base,
+      secure: false,
+      path,
+      expires: new Date(0),
+      maxAge: 0,
+    });
+  }
+}
+
+function clearSessionCookieNames(
+  response: CookieCarrier,
+  names: string[],
+  options?: { extraPaths?: string[]; httpOnly?: boolean }
+) {
+  const paths = ['/', ...(options?.extraPaths ?? [])];
+  for (const name of names) {
+    for (const path of paths) {
+      expireSessionCookie(response, name, { path, httpOnly: options?.httpOnly });
+    }
+  }
+}
+
+export function setAuthTokenCookie(response: CookieCarrier, token: string) {
+  writeSessionCookie(response, AUTH_TOKEN_COOKIE, token);
+}
+
+export function clearAuthTokenCookie(response: CookieCarrier) {
+  clearSessionCookieNames(response, [AUTH_TOKEN_COOKIE]);
+}
+
+export function setAdminTokenCookie(response: CookieCarrier, token: string) {
+  expireSessionCookie(response, ADMIN_TOKEN_COOKIE, { path: '/api/admin' });
+  writeSessionCookie(response, ADMIN_TOKEN_COOKIE, token);
+}
+
+export function clearAdminTokenCookie(response: CookieCarrier) {
+  clearSessionCookieNames(response, [ADMIN_TOKEN_COOKIE], { extraPaths: ['/api/admin'] });
+}
+
+export function setPlatformCaTokenCookie(
+  response: CookieCarrier,
+  token: string,
+  maxAge?: number
+) {
+  writeSessionCookie(response, PLATFORM_CA_COOKIE, token, { maxAge });
+}
+
+export function clearPlatformCaTokenCookie(response: CookieCarrier) {
+  clearSessionCookieNames(response, [PLATFORM_CA_COOKIE, 'ca-token']);
+}
+
+export function setGovtAdminTokenCookie(response: CookieCarrier, token: string) {
+  writeSessionCookie(response, GOVT_ADMIN_TOKEN_COOKIE, token);
+}
+
+export function clearGovtAdminTokenCookie(response: CookieCarrier) {
+  clearSessionCookieNames(response, [GOVT_ADMIN_TOKEN_COOKIE]);
+}
+
+export function setEvidenceVerificationTokenCookie(response: CookieCarrier, token: string) {
+  writeSessionCookie(response, EVIDENCE_VERIFICATION_TOKEN_COOKIE, token);
+}
+
+export function clearEvidenceVerificationTokenCookie(response: CookieCarrier) {
+  clearSessionCookieNames(response, [EVIDENCE_VERIFICATION_TOKEN_COOKIE, 'company-ca-token']);
+}
 
 function extractBearerToken(authHeader: string | null): string | null {
   if (!authHeader || !authHeader.startsWith('Bearer ')) {

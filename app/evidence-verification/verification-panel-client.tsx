@@ -19,6 +19,7 @@ import {
 } from '@/components/evidence-verification/portal-ui';
 import { formatStatusLabel } from '@/lib/format-date';
 import { openRazorpayCheckout } from '@/lib/razorpay-checkout';
+import { finalizeConsoleLogout } from '@/lib/utils';
 import { getTotalChargeLabel } from '@/components/profile-dashboard-tab';
 
 export default function VerificationPanelClient() {
@@ -115,32 +116,11 @@ export default function VerificationPanelClient() {
   };
 
   const logout = async () => {
-    try {
-      await fetch('/api/evidence-verification/logout', {
-        method: 'POST',
-        credentials: 'include',
-      });
-    } catch {
-      // ignore
-    } finally {
-      try {
-        const authCookieNames = [
-          'token',
-          'user',
-          'ca-token',
-          'evidence-verification-token',
-          'navadrishti-ca-token', // PLATFORM_CA_COOKIE — stable browser cookie name
-          'admin-token',
-          'govt-admin-token',
-        ];
-        authCookieNames.forEach((name) => {
-          document.cookie = `${name}=; Path=/; Max-Age=0; SameSite=Lax;`;
-        });
-      } catch {
-        // ignore
-      }
-      router.push('/evidence-verification/login');
-    }
+    await finalizeConsoleLogout({
+      logoutUrl: '/api/evidence-verification/logout',
+      redirectTo: '/evidence-verification/login',
+      tabSessionKey: 'evidence_verification_tab_session',
+    });
   };
 
   useEffect(() => {
