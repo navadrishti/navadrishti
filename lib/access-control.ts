@@ -210,6 +210,30 @@ export function getRedirectPathForUserType(userType: UserType): string {
   }
 }
 
+const PLATFORM_LOGIN_REQUIRED_PREFIXES = [
+  '/individuals/dashboard',
+  '/companies/dashboard',
+  '/ngos/dashboard',
+  '/companies/csr-agent',
+  '/ngos/ai-agent',
+  '/settings',
+  '/verification',
+  '/profile',
+  '/service-requests/create',
+  '/service-requests/edit',
+  '/service-requests/projects/create',
+  '/service-offers/create',
+  '/service-offers/edit',
+  '/help-support',
+] as const;
+
+export function isPlatformLoginRequiredPath(pathname: string): boolean {
+  const path = pathname || '/';
+  return PLATFORM_LOGIN_REQUIRED_PREFIXES.some(
+    (prefix) => path === prefix || path.startsWith(`${prefix}/`)
+  );
+}
+
 /**
  * Check if user type has access to a specific route
  */

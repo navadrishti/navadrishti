@@ -3,7 +3,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { toast } from 'sonner';
 import { getDocumentExpiryAlertCopy } from './auth';
-import { PRODUCT_NAME } from './access-control';
+import { isPlatformLoginRequiredPath, PRODUCT_NAME } from './access-control';
 
 const DOCUMENT_EXPIRY_ALERT_DURATION_MS = 18000;
 const documentExpiryAlertKey = (userId: number) => `navadrishti:document-expiry-alert:${userId}`;
@@ -177,6 +177,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, []);
 
   const hydrateUserFromServer = useCallback(async (authToken: string, fallbackUser?: User | null) => {
+    if (isAuthRevoked()) return null;
+
     const epoch = authEpochRef.current;
     try {
       const response = await fetch('/api/auth/me', {
@@ -291,7 +293,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   // Verify token and fetch current user
   useEffect(() => {
     const verifyTokenAsync = async () => {
-      if (!token) return;
+      if (!token || isAuthRevoked()) return;
       const epoch = authEpochRef.current;
       
       try {
@@ -440,20 +442,24 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setUser(null);
     setError(null);
     persistAuthSnapshot(null, null);
-    
-    try {
-      await fetch('/api/auth/logout', {
-        method: 'POST',
-        credentials: 'include',
-        cache: 'no-store',
-      });
-    } catch (error) {
-      console.error('Platform logout request failed:', error);
-    }
 
-    if (typeof window !== 'undefined') {
-      window.location.replace('/login?logout=1');
-    }
+    if (typeof window === 'undefined') return;
+
+    const pathname = window.location.pathname;
+    const search = window.location.search;
+    const redirectTo = isPlatformLoginRequiredPath(pathname)
+      ? '/'
+      : `${pathname}${search}` || '/';
+
+    void fetch('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'include',
+      cache: 'no-store',
+    }).catch((error) => {
+      console.error('Platform logout request failed:', error);
+    });
+
+    window.location.replace(redirectTo);
   };
 
   // Clear error
