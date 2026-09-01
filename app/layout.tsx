@@ -1,5 +1,4 @@
 import type { Metadata } from 'next'
-import { cookies } from 'next/headers'
 import './globals.css'
 import { AuthProvider } from '@/lib/auth-context'
 import { ThemeProvider } from '@/components/theme-provider'
@@ -8,7 +7,6 @@ import { AIAgentCTA } from '@/components/ai-agent-cta'
 import { Toaster } from 'sonner'
 import { Analytics } from '@vercel/analytics/next'
 import { SpeedInsights } from '@vercel/speed-insights/next'
-import { verifyToken, isPlatformUserSession } from '@/lib/auth'
 import {
   AGENT_CANONICAL_RESPONSE,
   AGENT_FAQ,
@@ -108,11 +106,6 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
-  const cookieStore = await cookies()
-  const token = cookieStore.get('token')?.value || null
-  const decoded = token ? verifyToken(token) : null
-  const initialUser = isPlatformUserSession(decoded) ? decoded : null
-
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -197,7 +190,7 @@ export default async function RootLayout({
           ))}
         </div>
         <ThemeProvider>
-          <AuthProvider initialToken={token} initialUser={initialUser}>
+          <AuthProvider>
             <PageTransition>
               {children}
             </PageTransition>

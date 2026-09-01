@@ -1,8 +1,12 @@
+import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
-import { clearAuthTokenCookie } from '@/lib/server-auth';
+import { AUTH_TOKEN_COOKIE, clearAuthTokenCookie } from '@/lib/server-auth';
 
 export async function POST() {
   try {
+    const cookieStore = await cookies();
+    cookieStore.delete(AUTH_TOKEN_COOKIE);
+
     const response = NextResponse.json({
       message: 'Logged out successfully',
       success: true,
