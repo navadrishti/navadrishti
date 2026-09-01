@@ -420,3 +420,108 @@ export function getDashboardSidebarItemCount(userType?: string | null): number {
 export function shouldShowDashboardSidebarSkeleton(userType?: string | null): boolean {
   return getDashboardSidebarItemCount(userType) > 1;
 }
+
+/** CLI: `pnpm run test:security` */
+export function runSecuritySmokeChecks() {
+  const fs = require('node:fs') as typeof import('node:fs')
+  const path = require('node:path') as typeof import('node:path')
+
+  const ROOT = path.resolve(__dirname, '..')
+  const results: Array<{ name: string; ok: boolean; detail?: string }> = []
+
+  const check = (name: string, ok: boolean, detail?: string) => {
+    results.push({ name, ok, detail })
+  }
+
+  const read = (filePath: string) => fs.readFileSync(path.join(ROOT, filePath), 'utf8')
+
+  const walk = (dir: string, files: string[] = []): string[] => {
+    if (!fs.existsSync(dir)) return files
+
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name)
+      if (entry.isDirectory()) {
+        if (entry.name === 'node_modules' || entry.name === '.next' || entry.name === '.git') continue
+        walk(fullPath, files)
+        continue
+      }
+      if (/\.(tsx?|jsx?)$/.test(entry.name)) files.push(fullPath)
+    }
+
+    return files
+  }
+
+  const nextConfig = read('next.config.mjs')
+  const themeProvider = read('components/theme-provider.tsx')
+  const serverAuth = read('lib/server-auth.ts')
+  const razorpayCheckout = read('lib/razorpay-checkout.ts')
+
+  check('production source maps disabled', /productionBrowserSourceMaps:\s*false/.test(nextConfig))
+  check('production console stripping enabled', /removeConsole/.test(nextConfig))
+
+  for (const header of [
+    'X-Frame-Options',
+    'X-Content-Type-Options',
+    'Referrer-Policy',
+    'Permissions-Policy',
+    'Content-Security-Policy',
+  ]) {
+    check(`security header configured: ${header}`, nextConfig.includes(header))
+  }
+
+  check(
+    'production client guards mounted in theme provider',
+    themeProvider.includes('useProductionClientGuards')
+  )
+
+  check(
+    'evidence approver requires platform CA token',
+    /const platformCA = getCAFromRequest\(request\)/.test(serverAuth) &&
+      /if \(platformCA\) \{[\s\S]*actorType: 'platform_ca'/.test(serverAuth)
+  )
+
+  check(
+    'razorpay checkout loads from official CDN only',
+    razorpayCheckout.includes("https://checkout.razorpay.com/v1/checkout.js")
+  )
+
+  const publicSecretLeaks: string[] = []
+  const appFiles = walk(path.join(ROOT, 'app'))
+    .concat(walk(path.join(ROOT, 'components')))
+    .concat(walk(path.join(ROOT, 'lib')))
+
+  for (const file of appFiles) {
+    const rel = path.relative(ROOT, file).replace(/\\/g, '/')
+    const source = fs.readFileSync(file, 'utf8')
+    if (/process\.env\.NEXT_PUBLIC_[A-Z0-9_]*(SECRET|PASSWORD|PRIVATE_KEY)/i.test(source)) {
+      publicSecretLeaks.push(rel)
+    }
+    const isClientBundle =
+      (rel.startsWith('components/') || /\/page\.tsx$/.test(rel) || /\/layout\.tsx$/.test(rel)) &&
+      !rel.startsWith('app/api/')
+    if (isClientBundle && /^['"]use client['"]/m.test(source) && /from ['"]@\/lib\/db['"]/.test(source)) {
+      publicSecretLeaks.push(`${rel}: client bundle imports server db`)
+    }
+  }
+
+  check(
+    'no NEXT_PUBLIC secrets in client-facing code',
+    publicSecretLeaks.length === 0,
+    publicSecretLeaks.slice(0, 8).join('; ') || undefined
+  )
+
+  const failed = results.filter((item) => !item.ok)
+
+  console.log('Security smoke checks\n')
+  for (const item of results) {
+    const status = item.ok ? 'PASS' : 'FAIL'
+    console.log(`[${status}] ${item.name}${item.detail ? ` — ${item.detail}` : ''}`)
+  }
+
+  if (failed.length > 0) {
+    console.error(`\n${failed.length} security check(s) failed.`)
+    process.exit(1)
+  }
+
+  console.log(`\nAll ${results.length} security checks passed.`)
+}
