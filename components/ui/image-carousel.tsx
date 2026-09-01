@@ -99,14 +99,14 @@ export function ImageCarousel({
   // Handle empty or invalid image arrays
   if (!validImages || validImages.length === 0) {
     return (
-      <div className="relative bg-gray-50 flex items-center justify-center h-full w-full">
-        <div className="text-center p-6">
-          <div className="w-16 h-16 mx-auto mb-3 text-gray-300">
-            <svg fill="currentColor" viewBox="0 0 24 24" className="w-full h-full">
+      <div className="relative flex h-full w-full items-center justify-center bg-[#EEF0ED]">
+        <div className="p-6 text-center">
+          <div className="mx-auto mb-3 h-16 w-16 text-gram-muted">
+            <svg fill="currentColor" viewBox="0 0 24 24" className="h-full w-full">
               <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
             </svg>
           </div>
-          <p className="text-sm text-gray-400">No image available</p>
+          <p className="text-sm text-gram-secondary">No image available</p>
         </div>
       </div>
     )

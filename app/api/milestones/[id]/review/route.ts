@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { getEvidenceApproverContext } from '@/lib/server-evidence-approver-auth';
+import { getEvidenceApproverContext } from '@/lib/server-auth';
 
 export async function POST(
   request: NextRequest,

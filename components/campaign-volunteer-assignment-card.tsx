@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { formatDisplayDate, formatCampaignLeadLifecycleLabel, type CampaignLeadLifecycle } from '@/lib/format-date'
 import { cn } from '@/lib/utils'
+import { VerifiedAccountName } from '@/components/verification-badge'
 
 export interface CampaignVolunteerAssignmentItem {
   id: string
@@ -19,6 +20,8 @@ export interface CampaignVolunteerAssignmentItem {
   volunteer_capacity?: number
   company_name?: string
   company_email?: string
+  company_verification_status?: string | null
+  company_verified?: boolean
   applied_at?: string | null
   assignment_id?: string | null
   attendance_summary?: {
@@ -71,7 +74,16 @@ export function CampaignVolunteerAssignmentCard({
         <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
           <div className="min-w-0">
             <p className="font-semibold text-slate-900">{assignment.campaign_title}</p>
-            <p className="text-sm text-slate-600">Volunteer • {assignment.company_name || 'Company'}</p>
+            <p className="flex flex-wrap items-center gap-1 text-sm text-slate-600">
+              <span>Volunteer •</span>
+              <VerifiedAccountName
+                name={assignment.company_name || 'Company'}
+                status={assignment.company_verification_status}
+                verified={assignment.company_verified}
+                size="xs"
+                nameClassName="font-medium text-slate-800"
+              />
+            </p>
             <p className="text-xs text-slate-500">
               {assignment.company_email || 'No email'}
               {assignment.applied_at ? ` • Joined ${formatDisplayDate(assignment.applied_at)}` : ''}

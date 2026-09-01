@@ -1,7 +1,46 @@
 import { z } from "zod";
 import { supabase } from "@/lib/db";
-import { embedText } from "@/lib/embeddings/embedding";
-import { makeCampaignQuery } from "@/lib/embeddings/queryMaker";
+
+/* ───────────────── EMBEDDINGS ───────────────── */
+
+export async function embedText(text: string): Promise<number[]> {
+  const { data, error } = await supabase.functions.invoke('embed', {
+    body: { input: text },
+  })
+
+  if (error) {
+    throw new Error(`Supabase embed error: ${error.message}`)
+  }
+
+  const embedding: number[] = data?.embedding
+
+  if (!Array.isArray(embedding) || embedding.length === 0) {
+    throw new Error('Empty embedding returned from Supabase')
+  }
+
+  return embedding
+}
+
+export interface NGOQueryPayload {
+  category: string
+  location: string
+  budget: number
+  milestones: number
+  start_date: Date
+  end_date: Date
+}
+
+export function makeCampaignQuery(payload: NGOQueryPayload): string {
+  return [
+    payload.category,
+    payload.location,
+    `Budget: ${payload.budget}`,
+    `Milestones: ${payload.milestones}`,
+    `${payload.start_date} to ${payload.end_date}`,
+  ]
+    .filter(Boolean)
+    .join(' | ')
+}
 
 /* ───────────────── SCHEMAS ───────────────── */
 

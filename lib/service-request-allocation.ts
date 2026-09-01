@@ -1,3 +1,9 @@
+import {
+  INDIAN_STATES_AND_UTS,
+  buildNgoLocationDisplay,
+  normalizePincode,
+} from '@/lib/auth'
+
 export type ServiceRequestTarget = {
   type: string
   amount: number
@@ -404,4 +410,272 @@ export function formatAttendanceSummary(meta: Record<string, any> | null | undef
     paidTotal: Number(summary.paid_total || 0),
     lastAttendanceAt: summary.last_attendance_at || null,
   }
+}
+
+/** Structured extras for service_request_projects without new DB columns. */
+export type ServiceRequestProjectMeta = {
+  category?: string | null
+  budget_inr?: number | null
+  impact_description?: string | null
+  contact_info?: string | null
+  pending_company_applications?: Array<{
+    company_id: number
+    company_name?: string | null
+    note?: string | null
+    applied_at: string
+    status?: string
+    source?: string
+    applicant_user_id?: number
+  }>
+}
+
+const PROJECT_META_START = '<!--nd-project-meta:'
+const PROJECT_META_END = ':nd-project-meta-->'
+
+export function stripProjectMetaFromDescription(description?: string | null): string {
+  const text = String(description || '')
+  const start = text.indexOf(PROJECT_META_START)
+  if (start < 0) return text.trim()
+  const end = text.indexOf(PROJECT_META_END, start)
+  if (end < 0) return text.trim()
+  return `${text.slice(0, start)}${text.slice(end + PROJECT_META_END.length)}`.trim()
+}
+
+export function parseProjectMeta(description?: string | null): ServiceRequestProjectMeta {
+  const text = String(description || '')
+  const start = text.indexOf(PROJECT_META_START)
+  if (start < 0) return {}
+  const end = text.indexOf(PROJECT_META_END, start)
+  if (end < 0) return {}
+  try {
+    const raw = text.slice(start + PROJECT_META_START.length, end).trim()
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' ? (parsed as ServiceRequestProjectMeta) : {}
+  } catch {
+    return {}
+  }
+}
+
+export function withProjectMeta(
+  description: string | null | undefined,
+  meta: ServiceRequestProjectMeta
+): string {
+  const visible = stripProjectMetaFromDescription(description)
+  const existing = parseProjectMeta(description)
+  const next: ServiceRequestProjectMeta = {
+    ...existing,
+    ...meta,
+  }
+  if (Array.isArray(next.pending_company_applications) && next.pending_company_applications.length === 0) {
+    delete next.pending_company_applications
+  }
+  const hasExtras = Boolean(
+    next.category ||
+    next.budget_inr != null ||
+    next.impact_description ||
+    next.contact_info ||
+    (next.pending_company_applications && next.pending_company_applications.length > 0)
+  )
+  if (!hasExtras) return visible
+  return `${visible}\n\n${PROJECT_META_START}${JSON.stringify(next)}${PROJECT_META_END}`.trim()
+}
+
+export function enrichProjectRecord<T extends Record<string, any>>(project: T | null | undefined) {
+  if (!project) return project
+  const meta = parseProjectMeta(project.description)
+  return {
+    ...project,
+    description: stripProjectMetaFromDescription(project.description),
+    category: meta.category || project.category || null,
+    budget_inr: meta.budget_inr ?? project.budget_inr ?? null,
+    impact_description: meta.impact_description || project.impact_description || null,
+    contact_info: meta.contact_info || project.contact_info || null,
+    pending_company_applications: meta.pending_company_applications || [],
+    _raw_description: project.description,
+  }
+}
+
+/** Public/anonymous responses must not expose applicant or contact meta. */
+export function redactProjectSensitiveFields<T extends Record<string, any>>(project: T | null | undefined) {
+  if (!project) return project
+  const {
+    contact_info: _contact,
+    pending_company_applications: _apps,
+    _raw_description: _raw,
+    ...safe
+  } = project
+  return {
+    ...safe,
+    contact_info: null,
+    pending_company_applications: [],
+  }
+}
+
+/**
+ * Rebuild description from client-visible text while preserving server-owned meta.
+ * Prevents smuggling pending_company_applications via raw description PUT.
+ */
+export function mergeClientProjectDescription(
+  existingDescription: string | null | undefined,
+  clientDescription: string | null | undefined,
+  overrides: Omit<ServiceRequestProjectMeta, 'pending_company_applications'> = {}
+): string {
+  const existingMeta = parseProjectMeta(existingDescription)
+  const visible = stripProjectMetaFromDescription(clientDescription)
+  return withProjectMeta(visible, {
+    category: overrides.category !== undefined ? overrides.category : existingMeta.category,
+    budget_inr: overrides.budget_inr !== undefined ? overrides.budget_inr : existingMeta.budget_inr,
+    impact_description:
+      overrides.impact_description !== undefined
+        ? overrides.impact_description
+        : existingMeta.impact_description,
+    contact_info: overrides.contact_info !== undefined ? overrides.contact_info : existingMeta.contact_info,
+    pending_company_applications: existingMeta.pending_company_applications,
+  })
+}
+
+export function isAuthenticCompanyProjectApplication(app: {
+  company_id?: number
+  applicant_user_id?: number
+  source?: string
+} | null | undefined): boolean {
+  if (!app) return false
+  const companyId = Number(app.company_id || 0)
+  if (!Number.isFinite(companyId) || companyId <= 0) return false
+  if (String(app.source || '') !== 'company_apply') return false
+  const applicantId = Number(app.applicant_user_id ?? app.company_id)
+  return applicantId === companyId
+}
+
+function readAddressTextField(value: unknown): string {
+  return String(value ?? '').trim()
+}
+
+export type ProjectExactAddress = {
+  address_line: string
+  region: string
+  district: string
+  city: string
+  state: string
+  pincode: string
+  country: string
+}
+
+export const EMPTY_PROJECT_ADDRESS: ProjectExactAddress = {
+  address_line: '',
+  region: '',
+  district: '',
+  city: '',
+  state: '',
+  pincode: '',
+  country: 'India',
+}
+
+function normalizeProjectAddress(input: Partial<ProjectExactAddress>): ProjectExactAddress {
+  const country = readAddressTextField(input.country) || 'India'
+  return {
+    address_line: readAddressTextField(input.address_line),
+    region: readAddressTextField(input.region),
+    district: readAddressTextField(input.district),
+    city: readAddressTextField(input.city),
+    state: readAddressTextField(input.state),
+    pincode: normalizePincode(String(input.pincode || ''), country),
+    country,
+  }
+}
+
+export function parseProjectExactAddress(raw: unknown): ProjectExactAddress {
+  if (!raw) return { ...EMPTY_PROJECT_ADDRESS }
+
+  if (typeof raw === 'object' && !Array.isArray(raw)) {
+    return normalizeProjectAddress(raw as Partial<ProjectExactAddress>)
+  }
+
+  const text = String(raw).trim()
+  if (!text) return { ...EMPTY_PROJECT_ADDRESS }
+
+  if (text.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(text)
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return normalizeProjectAddress(parsed as Partial<ProjectExactAddress>)
+      }
+    } catch {
+      // Fall through to legacy plain-text handling.
+    }
+  }
+
+  return normalizeProjectAddress({
+    address_line: text,
+    city: text.includes(',') ? text.split(',')[0]?.trim() || text : text,
+  })
+}
+
+export function serializeProjectExactAddress(input: Partial<ProjectExactAddress>): string {
+  return JSON.stringify(normalizeProjectAddress(input))
+}
+
+export function formatProjectExactAddress(raw: unknown): string {
+  const address = parseProjectExactAddress(raw)
+  const formatted = [
+    address.address_line,
+    address.region,
+    address.district,
+    address.city,
+    address.state,
+    address.pincode,
+    address.country,
+  ]
+    .map((part) => readAddressTextField(part))
+    .filter(Boolean)
+    .join(', ')
+
+  return formatted || 'Not set'
+}
+
+export function validateProjectExactAddress(input: Partial<ProjectExactAddress>): string | null {
+  const address = normalizeProjectAddress(input)
+
+  if (!address.address_line) {
+    return 'Street / building address is required.'
+  }
+  if (!address.city) {
+    return 'City / town is required.'
+  }
+  if (!address.state) {
+    return 'State / UT is required.'
+  }
+  if (!address.pincode) {
+    return 'Pincode is required.'
+  }
+
+  if (address.country === 'India') {
+    if (!/^\d{6}$/.test(address.pincode)) {
+      return 'Enter a valid 6-digit Indian pincode.'
+    }
+    if (!INDIAN_STATES_AND_UTS.some((item) => item.toLowerCase() === address.state.toLowerCase())) {
+      return 'Select a valid Indian state or UT.'
+    }
+  }
+
+  return null
+}
+
+export function projectAddressToLocationSummary(address: Partial<ProjectExactAddress>): string {
+  const normalized = normalizeProjectAddress(address)
+  return buildNgoLocationDisplay({
+    address_line: normalized.city,
+    city: normalized.city,
+    state: normalized.state,
+    pincode: normalized.pincode,
+    country: normalized.country,
+  })
+}
+
+export function toProjectAddressDateInput(value: unknown): string {
+  const text = String(value || '').trim()
+  if (!text) return ''
+  const date = new Date(text)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toISOString().slice(0, 10)
 }

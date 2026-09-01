@@ -11,7 +11,7 @@ import { DetailField, DetailSection, displayValue, parseImages } from '@/compone
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { getFundingProgress, resolveFundingTargetInr, resolveFundsRaisedInr } from '@/lib/service-request-allocation'
-import { VerificationBadge } from '@/components/verification-badge'
+import { VerifiedAccountName } from '@/components/verification-badge'
 import { getGramAvatarFallbackStyle } from '@/lib/gram-avatar'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -143,6 +143,13 @@ interface ApplicantEntry {
     name?: string
     email?: string
     user_type?: 'individual' | 'company' | 'ngo'
+    verification_status?: string | null
+    profile_image?: string | null
+    city?: string | null
+    state_province?: string | null
+    location?: string | null
+    phone?: string | null
+    ngo_name?: string | null
   }
 }
 
@@ -1273,10 +1280,13 @@ export default function ServiceRequestDetailPage() {
                       </div>
 
                       <div className="min-w-0">
-                        <h3 className="flex items-center gap-2 text-lg font-semibold leading-tight">
-                          <span className="truncate">{request.ngo_name}</span>
-                          <VerificationBadge status={request.requester?.verification_status || 'unverified'} size="sm" showText={false} />
-                        </h3>
+                        <VerifiedAccountName
+                          name={request.ngo_name}
+                          status={request.requester?.verification_status}
+                          size="sm"
+                          nameClassName="text-lg font-semibold leading-tight"
+                          className="min-w-0"
+                        />
                         <p className="mt-1 text-sm text-gray-500 break-all">{requesterProfile?.email || 'Email not set'}</p>
                       </div>
                     </div>
@@ -1351,12 +1361,17 @@ export default function ServiceRequestDetailPage() {
                                             )}
                                           </div>
                                           <div className="min-w-0">
-                                            <p className="font-semibold truncate">{applicant.volunteer?.name || 'Applicant'}</p>
+                                            <VerifiedAccountName
+                                              name={applicant.volunteer?.name || 'Applicant'}
+                                              status={applicant.volunteer?.verification_status}
+                                              size="xs"
+                                              nameClassName="font-semibold"
+                                              className="min-w-0"
+                                            />
                                             <p className="text-sm text-muted-foreground truncate">{applicant.volunteer?.email || 'Email not available'}</p>
-                                            <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-                                              <VerificationBadge status={applicant.volunteer?.verification_status || 'unverified'} size="xs" showText={false} />
-                                              <span>{applicant.volunteer?.city ? `${applicant.volunteer.city}${applicant.volunteer.state_province ? ', ' + applicant.volunteer.state_province : ''}` : applicant.volunteer?.location || ''}</span>
-                                            </div>
+                                            <p className="mt-1 text-xs text-muted-foreground truncate">
+                                              {applicant.volunteer?.city ? `${applicant.volunteer.city}${applicant.volunteer.state_province ? ', ' + applicant.volunteer.state_province : ''}` : applicant.volunteer?.location || ''}
+                                            </p>
                                           </div>
                                         </div>
                                         <div className="flex flex-col items-end gap-2">

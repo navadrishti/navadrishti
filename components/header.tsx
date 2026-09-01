@@ -12,7 +12,7 @@ import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "@
 import { Badge } from "@/components/ui/badge"
 import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription, SheetClose } from "@/components/ui/sheet"
 import { Award, Bell, ChevronRight, Menu, Search, ShoppingBag, X, GraduationCap, Briefcase, Building, LogIn, MessageSquare, ArrowLeft } from "lucide-react"
-import { VerificationBadge } from "@/components/verification-badge"
+import { VerificationBadge, VerifiedAccountName } from "@/components/verification-badge"
 import { visibleCaBadgeNumber } from "@/lib/auth"
 import { cn } from "@/lib/utils"
 import {
@@ -364,10 +364,10 @@ export function Header({ className = '' }: { className?: string } = {}) {
   const profileTriggerLabel = user?.name || 'Profile'
 
   const serviceRequestDescription = () => {
-    if (!mounted || !user) return 'Browse NGO needs'
+    if (!mounted || !user) return 'Browse NGO needs and CSR projects'
     if (user.user_type === 'individual') return 'Volunteer for NGO needs'
-    if (user.user_type === 'company') return 'Browse NGO needs to fulfil'
-    return 'Manage your posted needs'
+    if (user.user_type === 'company') return 'Browse CSR projects and needs'
+    return 'Manage your needs and CSR projects'
   }
 
   const serviceOfferDescription = () => {
@@ -857,7 +857,12 @@ export function Header({ className = '' }: { className?: string } = {}) {
                             </AvatarFallback>
                           </Avatar>
                           <div className="min-w-0 grid gap-1">
-                            <p className="truncate text-lg font-medium text-white">{user.name}</p>
+                            <VerifiedAccountName
+                              name={user.name}
+                              status={user.verification_status}
+                              size="sm"
+                              nameClassName="truncate text-lg font-medium text-white"
+                            />
                             <p className="truncate text-sm text-white/80">{user.email}</p>
                           </div>
                         </div>

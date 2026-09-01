@@ -52,8 +52,9 @@ Notes:
 - service_clients
 
 Notes:
-- `service_request_projects` is the parent project layer.
-- `service_requests` stores need-level records under an optional project.
+- `service_request_projects` are standalone CSR packages for company takeover (not need parents).
+- `service_requests` are standalone needs fulfilled by individuals. New creates leave `project_id` null.
+- Historical `project_id` links may exist on legacy rows until migration detaches them; contributions may still store `meta.project_id`.
 - `service_volunteers` is currently reused for assignment and fulfillment tracking.
 
 ### D.1) Service offers canonical column policy (current)
@@ -175,7 +176,7 @@ Notes:
 erDiagram
     users ||--o{ service_request_projects : owns
     users ||--o{ service_requests : creates
-    service_request_projects ||--o{ service_requests : contains
+    service_request_projects }o--o{ service_requests : legacy_optional_link
     service_requests ||--o{ service_volunteers : receives
     service_requests ||--o{ service_request_contributions : receives
     service_requests ||--o{ service_request_shipments : tracks
@@ -197,3 +198,4 @@ erDiagram
 - `reference/completeschema.txt`
 - `docs/API_REFERENCE.md`
 - `docs/ARCHITECTURE.md`
+- `scripts/detach-need-project-ids.sql` — one-time detach of legacy `service_requests.project_id` links after the Projects vs Needs split

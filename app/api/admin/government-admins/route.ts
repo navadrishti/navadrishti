@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomBytes } from 'crypto';
-import { assertAdminUser } from '@/lib/admin-auth';
+import { assertAdminUser } from '@/lib/server-auth';
 import {
   createGovernmentAdminAccount,
   createGovernmentBody,

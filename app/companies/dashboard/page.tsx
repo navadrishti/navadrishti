@@ -9,7 +9,7 @@ import { Building, CheckCircle, HandHeart, MailCheck, Phone, Loader2, XCircle, P
 import { useAuth } from '@/lib/auth-context';
 import ProtectedRoute from '@/components/protected-route';
 import { Header } from '@/components/header';
-import { VerificationBadge } from '@/components/verification-badge';
+import { VerifiedAccountName } from '@/components/verification-badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -33,7 +33,7 @@ import { DashboardMainSkeleton, DashboardPageSkeleton, DashboardSidebarSkeleton 
 import { ImpactReportsPanel } from '@/components/companies/impact-reports-panel';
 import { YourCapabilitiesPanel } from '@/components/service-card';
 import { dashboardProfilePayoutHref, usePayoutConnection } from '@/hooks/use-payout-connection';
-import { AGENT_NAMES } from '@/lib/ai-suite'
+import { AGENT_NAMES } from '@/lib/ai-agent-sessions'
 import { useToast } from '@/hooks/use-toast';
 import {
   formatAttendanceSummary,
@@ -52,6 +52,7 @@ interface OfferRequestItem {
     name?: string;
     email?: string;
     user_type?: string;
+    verification_status?: string | null;
   };
   message?: string;
   response_meta?: Record<string, any> | null;
@@ -83,6 +84,8 @@ interface CompanyProjectOpportunity {
   ngo_id: number;
   ngo_name: string;
   ngo_email?: string;
+  ngo_verification_status?: string | null;
+  ngo_verified?: boolean;
   needs: Array<{
     id: number;
     title: string;
@@ -196,12 +199,18 @@ interface CSRTrackingAssignment {
   lead_ngo_id: number;
   lead_ngo_name: string;
   lead_ngo_email?: string;
+  lead_ngo_verification_status?: string | null;
+  lead_ngo_verified?: boolean;
   assigned_company_id: number;
   assigned_company_name: string;
   assigned_company_email?: string;
+  assigned_company_verification_status?: string | null;
+  assigned_company_verified?: boolean;
   selected_lead_ngo_id?: number | null;
   selected_lead_ngo_name?: string | null;
   selected_lead_ngo_email?: string | null;
+  selected_lead_ngo_verification_status?: string | null;
+  selected_lead_ngo_verified?: boolean;
   assignment_status: string;
   assigned_at?: string | null;
   review_note?: string;
@@ -210,6 +219,8 @@ interface CSRTrackingAssignment {
     ngo_id: number;
     ngo_name: string;
     ngo_email?: string;
+    ngo_verification_status?: string | null;
+    ngo_verified?: boolean;
     status: string;
     note?: string;
     selected_as_lead?: boolean;
@@ -243,6 +254,7 @@ interface NgoDirectoryItem {
   name: string;
   email?: string;
   csr1_valid_until?: string | null;
+  verification_status?: string | null;
 }
 
 const formatStatusLabel = (status: string): string => {
@@ -307,17 +319,20 @@ function CsrTrackingProjectDetails({
   partnerLabel,
   partnerName,
   partnerEmail,
+  partnerStatus,
+  partnerVerified,
 }: {
   assignment: CSRTrackingAssignment;
   partnerLabel: string;
   partnerName: string;
   partnerEmail?: string;
+  partnerStatus?: string | null;
+  partnerVerified?: boolean | null;
 }) {
   const beneficiaries =
     assignment.project_expected_beneficiaries != null && assignment.project_expected_beneficiaries > 0
       ? Number(assignment.project_expected_beneficiaries).toLocaleString('en-IN')
       : null;
-  const csrAvailable = assignment.csr_project_available_for_csr;
   const needs = assignment.needs || [];
   const visibleNeeds = needs.slice(0, 4);
   const hiddenNeedCount = Math.max(0, needs.length - visibleNeeds.length);
@@ -331,16 +346,42 @@ function CsrTrackingProjectDetails({
       <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
         <div className="min-w-0">
           <p className="font-semibold text-slate-900">{assignment.project_title}</p>
-          <p className="text-sm text-slate-600">{partnerLabel}: {partnerName}</p>
+          <p className="flex flex-wrap items-center gap-1 text-sm text-slate-600">
+            <span>{partnerLabel}:</span>
+            <VerifiedAccountName
+              name={partnerName}
+              status={partnerStatus}
+              verified={partnerVerified}
+              size="xs"
+              nameClassName="font-medium text-slate-800"
+            />
+          </p>
           <p className="text-xs text-slate-500">
             {partnerEmail || 'No email'}
             {assignment.assigned_at ? ` • Handoff ${formatDisplayDate(assignment.assigned_at)}` : ''}
           </p>
-          <p className="mt-1 text-xs text-slate-500">
-            Owner NGO: {assignment.lead_ngo_name}
-            {hasDistinctLeadNgo && assignment.selected_lead_ngo_name
-              ? ` • Lead NGO: ${assignment.selected_lead_ngo_name}`
-              : ''}
+          <p className="mt-1 flex flex-wrap items-center gap-1 text-xs text-slate-500">
+            <span>Owner NGO:</span>
+            <VerifiedAccountName
+              name={assignment.lead_ngo_name}
+              status={assignment.lead_ngo_verification_status}
+              verified={assignment.lead_ngo_verified}
+              size="xs"
+              nameClassName="font-medium text-slate-700"
+            />
+            {hasDistinctLeadNgo && assignment.selected_lead_ngo_name ? (
+              <>
+                <span>•</span>
+                <span>Lead NGO:</span>
+                <VerifiedAccountName
+                  name={assignment.selected_lead_ngo_name}
+                  status={assignment.selected_lead_ngo_verification_status}
+                  verified={assignment.selected_lead_ngo_verified}
+                  size="xs"
+                  nameClassName="font-medium text-slate-700"
+                />
+              </>
+            ) : null}
           </p>
         </div>
         <div className="flex flex-wrap gap-2 shrink-0">
@@ -367,7 +408,7 @@ function CsrTrackingProjectDetails({
 
       <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm md:grid-cols-3">
         <div>
-          <p className="text-xs uppercase tracking-wide text-slate-500">Need types</p>
+          <p className="text-xs uppercase tracking-wide text-slate-500">Category</p>
           <p className="font-medium text-slate-800">{assignment.project_category || 'Not set'}</p>
         </div>
         <div>
@@ -386,17 +427,11 @@ function CsrTrackingProjectDetails({
           <p className="text-xs uppercase tracking-wide text-slate-500">Valid until</p>
           <p className="font-medium text-slate-800">{formatDisplayDate(assignment.project_valid_until) || 'Not set'}</p>
         </div>
-        <div>
-          <p className="text-xs uppercase tracking-wide text-slate-500">CSR takeover</p>
-          <p className="font-medium text-slate-800">
-            {csrAvailable === false ? 'No' : csrAvailable === true ? 'Yes' : 'Not set'}
-          </p>
-        </div>
       </div>
 
       {needs.length > 0 ? (
         <div>
-          <p className="mb-1.5 text-xs uppercase tracking-wide text-slate-500">Project needs ({needs.length})</p>
+          <p className="mb-1.5 text-xs uppercase tracking-wide text-slate-500">Legacy linked listings ({needs.length})</p>
           <div className="flex flex-wrap gap-1.5">
             {visibleNeeds.map((need) => (
               <NeedDetailLink key={need.id} need={need} />
@@ -866,6 +901,15 @@ function CompanyDashboardContent() {
   };
 
   const applyToProjectOpportunity = async (projectId: string) => {
+    if (!allVerified) {
+      toast({
+        title: 'Verification required',
+        description: 'Complete email, phone, and document verification before applying for takeover.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     try {
       setApplyingProjectId(projectId);
       const token = localStorage.getItem('token');
@@ -1486,8 +1530,15 @@ function CompanyDashboardContent() {
                                 <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                                   <div>
                                     <p className="font-semibold">{request.offer_title}</p>
-                                    <p className="text-sm text-muted-foreground">
-                                      Requester: {request.client?.name || 'Unknown'} ({request.client?.user_type || 'participant'})
+                                    <p className="flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
+                                      <span>Requester:</span>
+                                      <VerifiedAccountName
+                                        name={request.client?.name || 'Unknown'}
+                                        status={request.client?.verification_status}
+                                        size="xs"
+                                        nameClassName="font-medium text-slate-800"
+                                      />
+                                      <span>({request.client?.user_type || 'participant'})</span>
                                     </p>
                                     <p className="text-sm text-muted-foreground">{request.client?.email || 'No email available'}</p>
                                     {request.message ? (
@@ -1570,8 +1621,14 @@ function CompanyDashboardContent() {
                                   <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0 flex-1">
                                       <p className="truncate font-semibold">{request.offer_title}</p>
-                                      <p className="truncate text-sm text-muted-foreground">
-                                        {request.client?.name || 'Unknown'} · {request.client?.user_type || 'participant'}
+                                      <p className="flex min-w-0 flex-wrap items-center gap-1 truncate text-sm text-muted-foreground">
+                                        <VerifiedAccountName
+                                          name={request.client?.name || 'Unknown'}
+                                          status={request.client?.verification_status}
+                                          size="xs"
+                                          nameClassName="font-medium text-slate-800"
+                                        />
+                                        <span>· {request.client?.user_type || 'participant'}</span>
                                       </p>
                                       <p className="truncate text-sm text-muted-foreground">{request.client?.email || 'No email available'}</p>
                                     </div>
@@ -1650,8 +1707,15 @@ function CompanyDashboardContent() {
                                 <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                                   <div>
                                     <p className="font-semibold">{request.offer_title}</p>
-                                    <p className="text-sm text-muted-foreground">
-                                      Requester: {request.client?.name || 'Unknown'} ({request.client?.user_type || 'participant'})
+                                    <p className="flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
+                                      <span>Requester:</span>
+                                      <VerifiedAccountName
+                                        name={request.client?.name || 'Unknown'}
+                                        status={request.client?.verification_status}
+                                        size="xs"
+                                        nameClassName="font-medium text-slate-800"
+                                      />
+                                      <span>({request.client?.user_type || 'participant'})</span>
                                     </p>
                                     <p className="text-sm text-muted-foreground">{request.client?.email || 'No email available'}</p>
                                     {request.message ? (
@@ -1699,8 +1763,19 @@ function CompanyDashboardContent() {
                     <div className="rounded-md border bg-slate-50 p-4 space-y-3">
                       <div>
                         <p className="font-semibold text-slate-900">NGO Project Opportunities</p>
-                        <p className="text-sm text-slate-600">Apply once to cover all active needs in a project. NGO approval starts tracking for the full project scope.</p>
+                        <p className="text-sm text-slate-600">Apply to take over a full CSR project package. NGO approval locks the project to your company.</p>
                       </div>
+
+                      {!allVerified ? (
+                        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-2">
+                          <p className="text-sm text-amber-900">
+                            Complete email, phone, and document verification before applying for takeover.
+                          </p>
+                          <Link href="/verification">
+                            <Button size="sm" variant="outline">Complete Verification</Button>
+                          </Link>
+                        </div>
+                      ) : null}
 
                       <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto] md:items-end">
                         <div>
@@ -1710,6 +1785,7 @@ function CompanyDashboardContent() {
                             value={projectApplicationNote}
                             onChange={(event) => setProjectApplicationNote(event.target.value)}
                             placeholder="Scope, timeline, logistics plan (Delhivery), payment controls (Razorpay)"
+                            disabled={!allVerified}
                           />
                         </div>
                         <Button variant="outline" size="sm" onClick={fetchProjectOpportunities}>Refresh Opportunities</Button>
@@ -1729,7 +1805,16 @@ function CompanyDashboardContent() {
                               <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                                 <div>
                                   <p className="font-semibold">{opportunity.project_title}</p>
-                                  <p className="text-sm text-slate-600">NGO: {opportunity.ngo_name}</p>
+                                  <div className="flex min-w-0 items-center gap-1.5 text-sm text-slate-600">
+                                    <span className="shrink-0">NGO:</span>
+                                    <VerifiedAccountName
+                                      name={opportunity.ngo_name}
+                                      verified={Boolean(opportunity.ngo_verified)}
+                                      status={opportunity.ngo_verification_status}
+                                      size="xs"
+                                      nameClassName="text-sm text-slate-600"
+                                    />
+                                  </div>
                                   <p className="text-xs text-slate-500">{opportunity.project_location || 'Location not set'} • {opportunity.project_timeline || 'Timeline not set'}</p>
                                 </div>
                                 <Badge variant="outline" className={`w-fit ${getStatusBadgeClass(opportunity.company_application_status)}`}>
@@ -1737,7 +1822,7 @@ function CompanyDashboardContent() {
                                 </Badge>
                               </div>
 
-                              <p className="text-xs text-slate-600">Project needs are visible only on the project detail page.</p>
+                              <p className="text-xs text-slate-600">Projects are standalone CSR packages — open the project page for budget, impact, and package details.</p>
 
                               <div className="flex flex-wrap gap-2 pt-1">
                                 <Link href={`/service-requests/projects/${opportunity.project_id}`}>
@@ -1747,6 +1832,7 @@ function CompanyDashboardContent() {
                                   size="sm"
                                   onClick={() => applyToProjectOpportunity(opportunity.project_id)}
                                   disabled={
+                                    !allVerified ||
                                     applyingProjectId === opportunity.project_id ||
                                     opportunity.company_application_eligible === false ||
                                     opportunity.company_application_status === 'pending' ||
@@ -1759,17 +1845,21 @@ function CompanyDashboardContent() {
                                     'Accepted by NGO'
                                   ) : opportunity.company_application_status === 'pending' ? (
                                     'Pending NGO Review'
-                                  ) : opportunity.company_application_eligible === false ? (
-                                    'Not Eligible'
+                                  ) : !allVerified || opportunity.company_application_eligible === false ? (
+                                    !allVerified ? 'Verify to Apply' : 'Not Eligible'
                                   ) : (
-                                    'Apply For Full Project'
+                                    'Apply for Takeover'
                                   )}
                                 </Button>
                               </div>
 
-                              {opportunity.company_application_eligible === false && opportunity.company_application_reason ? (
-                                <p className="text-xs text-red-600">{opportunity.company_application_reason}</p>
-                              ) : null}
+                              {(!allVerified || opportunity.company_application_eligible === false) && (
+                                <p className="text-xs text-red-600">
+                                  {!allVerified
+                                    ? 'Complete email, phone, and document verification before applying for takeover.'
+                                    : opportunity.company_application_reason || 'Not eligible for takeover.'}
+                                </p>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -1802,11 +1892,23 @@ function CompanyDashboardContent() {
                                 partnerLabel="Lead NGO"
                                 partnerName={assignment.lead_ngo_name}
                                 partnerEmail={assignment.lead_ngo_email}
+                                partnerStatus={assignment.lead_ngo_verification_status}
+                                partnerVerified={assignment.lead_ngo_verified}
                               />
 
                               {assignment.selected_lead_ngo_id ? (
-                                <div className="rounded-md border bg-emerald-50 p-2 text-xs text-emerald-800">
-                                  Selected Lead NGO: {assignment.selected_lead_ngo_name || 'NGO'} {assignment.selected_lead_ngo_email ? `(${assignment.selected_lead_ngo_email})` : ''}
+                                <div className="flex flex-wrap items-center gap-1 rounded-md border bg-emerald-50 p-2 text-xs text-emerald-800">
+                                  <span>Selected Lead NGO:</span>
+                                  <VerifiedAccountName
+                                    name={assignment.selected_lead_ngo_name || 'NGO'}
+                                    status={assignment.selected_lead_ngo_verification_status}
+                                    verified={assignment.selected_lead_ngo_verified}
+                                    size="xs"
+                                    nameClassName="font-medium text-emerald-900"
+                                  />
+                                  {assignment.selected_lead_ngo_email ? (
+                                    <span>({assignment.selected_lead_ngo_email})</span>
+                                  ) : null}
                                 </div>
                               ) : (
                               <div className="rounded-md border bg-slate-50 p-3 space-y-3">
@@ -1842,6 +1944,10 @@ function CompanyDashboardContent() {
                                         id: ngoId,
                                         name: String(invite.ngo_name || fromDirectory?.name || 'NGO'),
                                         email: invite.ngo_email || fromDirectory?.email,
+                                        verification_status:
+                                          invite.ngo_verification_status ||
+                                          fromDirectory?.verification_status ||
+                                          null,
                                       } satisfies NgoDirectoryItem;
                                     });
                                   const displaySuggestedNgos = [...invitedNgosNotInSuggested, ...suggestedNgos].filter(
@@ -1871,7 +1977,17 @@ function CompanyDashboardContent() {
                                             </AvatarFallback>
                                           </Avatar>
                                           <div className="min-w-0">
-                                            <p className="truncate text-sm font-medium text-slate-900">{ngo.name}</p>
+                                            <VerifiedAccountName
+                                              name={ngo.name}
+                                              status={
+                                                inviteRecord?.ngo_verification_status ||
+                                                ngo.verification_status
+                                              }
+                                              verified={inviteRecord?.ngo_verified}
+                                              size="xs"
+                                              nameClassName="truncate text-sm font-medium text-slate-900"
+                                              className="max-w-full"
+                                            />
                                             <p className="truncate text-xs text-slate-500">{ngo.email || 'No email'}</p>
                                           </div>
                                         </Link>

@@ -9,13 +9,6 @@ import { Header } from '@/components/header'
 import ProtectedRoute from '@/components/protected-route'
 import { useAuth } from '@/lib/auth-context'
 import { CSR_SCHEDULE_VII_CATEGORIES, SERVICE_REQUEST_CATEGORIES } from '@/lib/categories'
-import { INDIAN_STATES_AND_UTS, ngoIsCsrEligible, ngoIsCsrEligibleForProject } from '@/lib/auth'
-import {
-  EMPTY_PROJECT_ADDRESS,
-  formatProjectExactAddress,
-  validateProjectExactAddress,
-  type ProjectExactAddress,
-} from '@/lib/project-address'
 
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
@@ -25,15 +18,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { StyledSelect } from '@/components/ui/styled-select'
 import { Textarea } from '@/components/ui/textarea'
-
-type RequestProject = {
-  id: string
-  title: string
-  description?: string | null
-  location: string
-  exact_address?: string | null
-  timeline?: string | null
-}
+import { VerifiedAccountName } from '@/components/verification-badge'
 
 type ServiceOfferLite = {
   id: number
@@ -51,6 +36,8 @@ type ServiceOfferLite = {
   status?: string | null
   ngo_name?: string | null
   provider_name?: string | null
+  verified?: boolean | null
+  verification_status?: string | null
 }
 
 type NeedRecommendation = {
@@ -140,10 +127,8 @@ const budgetRanges = [
   'Negotiable'
 ]
 
-const moneyPattern = /^(?:₹|INR)?\s*\d[\d,]*(?:\.\d{1,2})?$/i
 const timelinePattern = /^.{2,}$/
 
-const isValidMoneyValue = (value: string) => moneyPattern.test(value.trim())
 const isValidTimelineValue = (value: string) => timelinePattern.test(value.trim())
 const isValidPositiveInteger = (value: string) => /^\d+$/.test(value.trim()) && Number(value) > 0
 const isBlank = (value: unknown) => !String(value ?? '').trim()
@@ -174,70 +159,23 @@ const parseBudgetUpperBound = (budget: string): number | null => {
   return null
 }
 
+const resolveScheduleViiCategory = (value: unknown): string => {
+  const text = String(value ?? '').trim()
+  return CSR_SCHEDULE_VII_CATEGORIES.includes(text) ? text : ''
+}
+
 export default function CreateServiceRequestPage() {
   const router = useRouter()
   const { user } = useAuth()
-  const csrEligible = ngoIsCsrEligible(user?.verification_status, user?.profile_data || user?.profile)
   const [loading, setLoading] = useState(false)
-  const [loadingProjects, setLoadingProjects] = useState(false)
   const [error, setError] = useState('')
-  const [projectMode, setProjectMode] = useState<'new' | 'existing'>('new')
-  const [projectAvailableForCsr, setProjectAvailableForCsr] = useState(false)
-  const [projectAddress, setProjectAddress] = useState<ProjectExactAddress>({ ...EMPTY_PROJECT_ADDRESS })
-  const [projects, setProjects] = useState<RequestProject[]>([])
   const [needs, setNeeds] = useState<NeedDraft[]>([createEmptyNeed()])
   const [serviceOffers, setServiceOffers] = useState<ServiceOfferLite[]>([])
   const [offersLoading, setOffersLoading] = useState(false)
   const [serverRecommendations, setServerRecommendations] = useState<Record<number, NeedRecommendation[]>>({})
-  const [recommendationNeedIndex, setRecommendationNeedIndex] = useState(0)
   const [recPageByNeed, setRecPageByNeed] = useState<Record<number, number>>({})
   const [needUploadProgress, setNeedUploadProgress] = useState<Record<number, UploadProgressState>>({})
   const [selectedOffersByNeed, setSelectedOffersByNeed] = useState<Record<number, number[]>>({})
-  const [formData, setFormData] = useState({
-    projectId: '',
-    project_title: '',
-    project_description: '',
-    project_location: '',
-    project_timeline: '',
-    project_category: '',
-    project_expected_beneficiaries: '',
-    project_valid_until: '',
-    title: '',
-    description: '',
-    request_type: '',
-    category: '',
-    location: '',
-    urgency: 'Medium',
-    timeline: '',
-    budget: 'Under INR 25,000',
-    estimated_budget: '',
-    beneficiary_count: '',
-    impact_description: '',
-    contactInfo: '',
-    target_amount: '',
-    target_quantity: '',
-    current_amount: '',
-    current_quantity: '',
-    material_items: '',
-    skill_role: '',
-    skill_duration: '',
-    infrastructure_scope: ''
-  })
-
-  const csrCoversProjectEnd = ngoIsCsrEligibleForProject(
-    user?.verification_status,
-    user?.profile_data || user?.profile,
-    {
-      valid_until: formData.project_valid_until,
-      timeline: formData.project_timeline,
-    }
-  )
-  const canOfferForCsr = csrEligible && csrCoversProjectEnd
-
-  useEffect(() => {
-    if (canOfferForCsr) setProjectAvailableForCsr(true)
-    else setProjectAvailableForCsr(false)
-  }, [canOfferForCsr])
 
   useEffect(() => {
     const rawDraft = localStorage.getItem('nd_ngo_ai_request_draft')
@@ -252,83 +190,32 @@ export default function CreateServiceRequestPage() {
       }
 
       const generatedNeeds = Array.isArray(draft.needs)
-        ? draft.needs.map((need) => ({
-            ...createEmptyNeed(),
-            ...need,
-            images: Array.isArray((need as any)?.images) ? (need as any).images.join('\n') : String((need as any)?.images || ''),
-            category: need?.request_type || need?.category || ''
-          }))
+        ? draft.needs.map((need) => {
+            const needCategory = resolveScheduleViiCategory(need?.category)
+            const projectCategory = resolveScheduleViiCategory(draft.project?.category)
+            return {
+              ...createEmptyNeed(),
+              ...need,
+              images: Array.isArray((need as any)?.images) ? (need as any).images.join('\n') : String((need as any)?.images || ''),
+              request_type: need?.request_type || '',
+              category: needCategory || projectCategory || '',
+              location: String(need?.location || '').trim() || String(draft.project?.location || '').trim(),
+              timeline: String(need?.timeline || '').trim(),
+              beneficiary_count: String(need?.beneficiary_count || '').trim()
+            }
+          })
         : []
 
+      // Need-only page: hydrate from draft.needs; ignore project-only drafts (no project creation).
       if (generatedNeeds.length > 0) {
         setNeeds(generatedNeeds)
       }
-
-      setProjectMode('new')
-      setFormData((prev) => ({
-        ...prev,
-        projectId: '',
-        project_title: draft.project?.title || prev.project_title,
-        project_description: draft.project?.description || prev.project_description,
-        project_location: draft.project?.location || prev.project_location,
-        project_timeline: draft.project?.timeline || prev.project_timeline,
-        project_category: draft.project?.category || prev.project_category,
-        location: draft.project?.location || prev.location,
-        timeline: generatedNeeds[0]?.timeline || prev.timeline,
-        title: generatedNeeds[0]?.title || prev.title,
-        description: generatedNeeds[0]?.description || prev.description,
-        request_type: generatedNeeds[0]?.request_type || prev.request_type,
-        category: generatedNeeds[0]?.request_type || generatedNeeds[0]?.category || prev.category,
-        urgency: generatedNeeds[0]?.urgency || prev.urgency,
-        budget: generatedNeeds[0]?.budget || prev.budget,
-        estimated_budget: generatedNeeds[0]?.estimated_budget || prev.estimated_budget,
-        beneficiary_count: generatedNeeds[0]?.beneficiary_count || prev.beneficiary_count,
-        impact_description: generatedNeeds[0]?.impact_description || prev.impact_description,
-        contactInfo: generatedNeeds[0]?.contactInfo || prev.contactInfo,
-        material_items: generatedNeeds[0]?.material_items || prev.material_items,
-        skill_role: generatedNeeds[0]?.skill_role || prev.skill_role,
-        skill_duration: generatedNeeds[0]?.skill_duration || prev.skill_duration,
-        infrastructure_scope: generatedNeeds[0]?.infrastructure_scope || prev.infrastructure_scope
-      }))
     } catch {
       // Ignore malformed local draft payload.
     } finally {
       localStorage.removeItem('nd_ngo_ai_request_draft')
     }
   }, [])
-
-  useEffect(() => {
-    const loadProjects = async () => {
-      if (!user?.id) return
-
-      setLoadingProjects(true)
-      try {
-        const token = localStorage.getItem('token')
-        const response = await fetch(`/api/service-request-projects?ngoId=${user.id}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        })
-        const data = await response.json()
-        if (response.ok && data.success) {
-          setProjects(Array.isArray(data.data) ? data.data : [])
-        }
-      } catch {
-        setProjects([])
-      } finally {
-        setLoadingProjects(false)
-      }
-    }
-
-    loadProjects()
-
-    const refreshInterval = setInterval(loadProjects, 30000)
-    const onFocus = () => loadProjects()
-    window.addEventListener('focus', onFocus)
-
-    return () => {
-      clearInterval(refreshInterval)
-      window.removeEventListener('focus', onFocus)
-    }
-  }, [user?.id])
 
   useEffect(() => {
     const loadOffers = async () => {
@@ -354,22 +241,6 @@ export default function CreateServiceRequestPage() {
 
     loadOffers()
   }, [])
-
-  useEffect(() => {
-    setRecommendationNeedIndex((prev) => {
-      if (needs.length === 0) return 0
-      if (prev < needs.length) return prev
-      return needs.length - 1
-    })
-  }, [needs.length])
-
-  const handleInput = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }))
-  }
-
-  const handleSelect = (name: string, value: string) => {
-    setFormData((prev) => ({ ...prev, [name]: value }))
-  }
 
   const updateNeed = (index: number, field: keyof NeedDraft, value: string) => {
     setNeeds((prev) => prev.map((need, needIndex) => (needIndex === index ? { ...need, [field]: value } : need)))
@@ -500,42 +371,6 @@ export default function CreateServiceRequestPage() {
     })
   }
 
-  const handleProjectSelect = (projectId: string) => {
-    const selectedProject = projects.find((project) => project.id === projectId)
-    setFormData((prev) => ({
-      ...prev,
-      projectId,
-      project_title: selectedProject?.title || prev.project_title,
-      project_description: selectedProject?.description || prev.project_description,
-      project_location: selectedProject?.exact_address || selectedProject?.location || prev.project_location,
-      project_timeline: selectedProject?.timeline || prev.project_timeline,
-      project_category: selectedProject?.category || CSR_SCHEDULE_VII_CATEGORIES[0] || prev.project_category,
-      location: selectedProject?.exact_address || selectedProject?.location || prev.location,
-      timeline: selectedProject?.timeline || prev.timeline
-    }))
-  }
-
-  useEffect(() => {
-    // Reset project-related form data when switching modes
-    setFormData((prev) => ({
-      ...prev,
-      projectId: '',
-      project_title: '',
-      project_description: '',
-      project_location: '',
-      project_timeline: '',
-      project_category: ''
-    }))
-  }, [projectMode])
-
-  const activeProjectLocation = projectMode === 'existing'
-    ? formatProjectExactAddress(
-        projects.find((project) => project.id === formData.projectId)?.exact_address
-          || projects.find((project) => project.id === formData.projectId)?.location
-          || ''
-      )
-    : formatProjectExactAddress(projectAddress)
-
   const getTargetCoverageValue = (need: NeedDraft): number | null => {
     if (need.request_type === 'Financial Need') {
       return toNumber(need.target_amount) || toNumber(need.estimated_budget) || parseBudgetUpperBound(need.budget)
@@ -634,7 +469,9 @@ export default function CreateServiceRequestPage() {
     const offer: ServiceOfferLite = {
       id: Number(rec.id),
       title: rec.title,
-      provider_name: rec.provider_name || null
+      provider_name: rec.provider_name || null,
+      verification_status: rec.verification_status || null,
+      verified: Boolean(rec.verified) || String(rec.verification_status || '').toLowerCase() === 'verified',
     }
     return {
       offer,
@@ -732,7 +569,6 @@ export default function CreateServiceRequestPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    const isBlank = (value: unknown) => !String(value ?? '').trim()
     const validateNeed = (need: NeedDraft, index: number): string | null => {
       if (isBlank(need.title)) return `Need ${index + 1}: need title is required.`
       if (String(need.title).trim().length < 3) return `Need ${index + 1}: need title must be at least 3 characters.`
@@ -743,20 +579,22 @@ export default function CreateServiceRequestPage() {
       if (isBlank(need.request_type)) return `Need ${index + 1}: need type is required.`
       if (!SERVICE_REQUEST_CATEGORIES.includes(need.request_type)) return `Need ${index + 1}: select a valid need type.`
 
-      // timeline is inherited from project when attaching to existing project
-      if (!(projectMode === 'existing' && formData.projectId) && isBlank(need.timeline)) return `Need ${index + 1}: timeline / deadline is required.`
-      if (!(projectMode === 'existing' && formData.projectId)) {
-        const tl = String(need.timeline || '').trim()
-        if (tl.toLowerCase() === 'anytime') return `Need ${index + 1}: timeline cannot be 'Anytime'; provide a duration or a date.`
-        if (!isValidTimelineValue(need.timeline)) return `Need ${index + 1}: timeline must be at least 2 characters.`
+      if (isBlank(need.location)) return `Need ${index + 1}: location is required.`
+
+      if (isBlank(need.category) || !CSR_SCHEDULE_VII_CATEGORIES.includes(need.category)) {
+        return `Need ${index + 1}: select a valid Schedule VII category.`
       }
+
+      if (isBlank(need.timeline)) return `Need ${index + 1}: timeline / deadline is required.`
+      const tl = String(need.timeline || '').trim()
+      if (tl.toLowerCase() === 'anytime') return `Need ${index + 1}: timeline cannot be 'Anytime'; provide a duration or a date.`
+      if (!isValidTimelineValue(need.timeline)) return `Need ${index + 1}: timeline must be at least 2 characters.`
 
       if (isBlank(need.budget)) return `Need ${index + 1}: budget range is required.`
       if (!budgetRanges.includes(need.budget)) return `Need ${index + 1}: select a valid budget range.`
 
-      // beneficiary count is inherited from project when attaching to existing project
-      if (!(projectMode === 'existing' && formData.projectId) && isBlank(need.beneficiary_count)) return `Need ${index + 1}: beneficiary count is required.`
-      if (!(projectMode === 'existing' && formData.projectId) && !isValidPositiveInteger(need.beneficiary_count)) return `Need ${index + 1}: beneficiary count must be a positive whole number.`
+      if (isBlank(need.beneficiary_count)) return `Need ${index + 1}: beneficiary count is required.`
+      if (!isValidPositiveInteger(need.beneficiary_count)) return `Need ${index + 1}: beneficiary count must be a positive whole number.`
 
       if (isBlank(need.impact_description)) return `Need ${index + 1}: impact description is required.`
       if (String(need.impact_description).trim().length < 20) return `Need ${index + 1}: impact description must be at least 20 characters.`
@@ -794,111 +632,19 @@ export default function CreateServiceRequestPage() {
       return
     }
 
-    if (projectMode === 'new' && [formData.project_title, formData.project_description, formData.project_timeline, formData.project_expected_beneficiaries, formData.project_valid_until].some(isBlank)) {
-      setError('Project title, description, timeline, expected beneficiaries and validity date are required.')
-      return
-    }
-
-    if (projectMode === 'new') {
-      const addressError = validateProjectExactAddress(projectAddress)
-      if (addressError) {
-        setError(addressError)
-        return
-      }
-    }
-
-    if (projectMode === 'new' && (isBlank(formData.project_category) || !CSR_SCHEDULE_VII_CATEGORIES.includes(formData.project_category))) {
-      setError('Select a valid project category.')
-      return
-    }
-
-    if (projectMode === 'new') {
-      if (String(formData.project_title).trim().length < 3) {
-        setError('Project title must be at least 3 characters.')
-        return
-      }
-
-      if (String(formData.project_description).trim().length < 20) {
-        setError('Project description must be at least 20 characters.')
-        return
-      }
-
-      if (String(formData.project_timeline).trim().length < 2) {
-        setError('Project timeline is required.')
-        return
-      }
-      if (String(formData.project_timeline || '').trim().toLowerCase() === 'anytime') {
-        setError('Project timeline cannot be "Anytime"; please provide an actual duration or date.')
-        return
-      }
-      if (!/^[0-9]+$/.test(String(formData.project_expected_beneficiaries || ''))) {
-        setError('Expected beneficiaries must be a positive whole number.')
-        return
-      }
-
-      if (!formData.project_valid_until || Number.isNaN(new Date(String(formData.project_valid_until)).getTime())) {
-        setError('Valid until must be a valid date.')
-        return
-      }
-    }
-
-    if (projectMode === 'existing' && !formData.projectId) {
-      setError('Select an existing project or switch to creating a new one.')
-      return
-    }
-
     for (const [index, need] of needs.entries()) {
       const validationError = validateNeed(need, index)
       if (validationError) {
         setError(validationError)
         return
       }
-
-      // Note: do not block submission if selected offers partially cover the need.
-      // Users may proceed without inviting offers or with partial coverage; fulfillment is finalized when offers accept applications.
     }
 
     setLoading(true)
     setError('')
 
-    const projectPayload = projectMode === 'new'
-      ? {
-          title: formData.project_title,
-          description: formData.project_description,
-          address: projectAddress,
-          timeline: formData.project_timeline,
-          category: formData.project_category,
-          csr_project_available_for_csr: canOfferForCsr && projectAvailableForCsr,
-          expected_beneficiaries: Number(formData.project_expected_beneficiaries),
-          valid_until: formData.project_valid_until
-        }
-      : null
-
-    const formattedProjectAddress = formatProjectExactAddress(projectAddress)
-
     try {
       const token = localStorage.getItem('token')
-      let activeProjectId = projectMode === 'existing' ? formData.projectId : ''
-
-      if (projectMode === 'new') {
-        const projectResponse = await fetch('/api/service-request-projects', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`
-          },
-          body: JSON.stringify(projectPayload)
-        })
-
-        const projectData = await projectResponse.json()
-        if (!projectResponse.ok || !projectData.success || !projectData.data?.id) {
-          setError(projectData.error || 'Failed to create project context')
-          return
-        }
-
-        activeProjectId = projectData.data.id
-      }
-
       const creationResults: Array<{ ok: boolean; data?: any; error?: string }> = []
 
       for (let index = 0; index < needs.length; index += 1) {
@@ -914,19 +660,17 @@ export default function CreateServiceRequestPage() {
             Authorization: `Bearer ${token}`
           },
           body: JSON.stringify({
-            projectId: activeProjectId || undefined,
             title: need.title,
             description: need.description,
             images: parseImageUrls(need.images),
             request_type: need.request_type,
-            category: formData.project_category,
-            project_category: formData.project_category,
-              location: activeProjectLocation,
+            category: need.category,
+            project_category: need.category,
+            location: need.location,
             urgency: need.urgency || 'medium',
             timeline: need.timeline,
             budget: need.budget,
-              estimated_budget: need.budget,
-                        // category and project_category come from formData (set when selecting an existing project)
+            estimated_budget: need.budget,
             beneficiary_count: need.beneficiary_count,
             impact_description: need.impact_description,
             contactInfo: need.contactInfo,
@@ -934,15 +678,6 @@ export default function CreateServiceRequestPage() {
             target_quantity: need.target_quantity,
             current_amount: need.current_amount,
             current_quantity: need.current_quantity,
-            project_context: {
-              project_title: formData.project_title,
-              project_location: formattedProjectAddress,
-              project_description: formData.project_description,
-                project_timeline: formData.project_timeline,
-                project_category: formData.project_category,
-                project_valid_until: formData.project_valid_until,
-                csr_project_available_for_csr: canOfferForCsr && projectAvailableForCsr
-            },
             details: {
               material_items: need.material_items,
               skill_role: need.skill_role,
@@ -976,8 +711,6 @@ export default function CreateServiceRequestPage() {
         if (Number.isFinite(createdId) && createdId > 0 && Array.isArray(selectedOfferIds) && selectedOfferIds.length > 0) {
           for (const offerId of selectedOfferIds) {
             try {
-              // call helper to mark selection and apply
-              // ensure we await to surface errors but do not block overall creation
               // eslint-disable-next-line no-await-in-loop
               await applyOfferToNeed(offerId, index, createdId)
             } catch (err) {
@@ -1017,8 +750,14 @@ export default function CreateServiceRequestPage() {
               Back
             </Button>
 
-            <h1 className="text-3xl font-bold tracking-tight">Create NGO Need</h1>
-            <p className="text-muted-foreground">Define a measurable need with clear beneficiary and impact outcomes.</p>
+            <h1 className="text-3xl font-bold tracking-tight">Post Needs for Individuals</h1>
+            <p className="text-muted-foreground">
+              Publish standalone needs with location, Schedule VII category, timeline, and beneficiaries.{' '}
+              <Link href="/service-requests/projects/create" className="text-primary underline-offset-4 hover:underline">
+                Create a CSR project instead
+              </Link>
+              .
+            </p>
           </div>
 
           <div className="mx-auto w-full max-w-7xl">
@@ -1038,185 +777,12 @@ export default function CreateServiceRequestPage() {
                 <form onSubmit={handleSubmit} className="space-y-6">
                   <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
                     <div className="space-y-6">
-                      <div className="space-y-4 rounded-lg border p-4 bg-muted/30">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div>
-                        <h3 className="font-semibold">Project Context</h3>
-                        <p className="text-sm text-muted-foreground">Group this need under a broader initiative.</p>
-                      </div>
-                      <div className="flex w-full flex-wrap rounded-md border bg-background p-1 text-sm sm:w-auto">
-                        <button type="button" onClick={() => setProjectMode('new')} className={`flex-1 rounded px-3 py-1.5 sm:flex-none ${projectMode === 'new' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'}`}>
-                          New Project
-                        </button>
-                        <button type="button" onClick={() => setProjectMode('existing')} className={`flex-1 rounded px-3 py-1.5 sm:flex-none ${projectMode === 'existing' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'}`}>
-                          Existing Project
-                        </button>
-                      </div>
-                    </div>
-
-                    {projectMode === 'existing' ? (
-                      <div className="space-y-3">
-                        <Label htmlFor="projectId">Select Project *</Label>
-                        <Select value={formData.projectId} onValueChange={handleProjectSelect}>
-                          <SelectTrigger>
-                            <SelectValue placeholder={loadingProjects ? 'Loading projects...' : 'Choose a project'} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {projects.length === 0 ? (
-                              <SelectItem value="__no_projects__" disabled>
-                                No projects available
-                              </SelectItem>
-                            ) : (
-                              projects.map((project) => (
-                                <SelectItem key={project.id} value={project.id}>
-                                  {project.title} - {project.exact_address || project.location}
-                                </SelectItem>
-                              ))
-                            )}
-                          </SelectContent>
-                        </Select>
-                        {projects.length === 0 && !loadingProjects && (
-                          <p className="text-xs text-muted-foreground">No projects found yet. Switch to New Project to create one.</p>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <div>
-                          <Label htmlFor="project_title">Project Title *</Label>
-                          <Input id="project_title" name="project_title" value={formData.project_title} onChange={handleInput} placeholder="e.g., Rural Classroom Setup" required />
-                        </div>
-                        <div>
-                          <Label htmlFor="project_category">Project Category *</Label>
-                          <StyledSelect
-                            value={formData.project_category}
-                            options={CSR_SCHEDULE_VII_CATEGORIES}
-                            placeholder="Select project category"
-                            onValueChange={(value) => handleSelect('project_category', value)}
-                          />
-                        </div>
-                        <div className="md:col-span-2 space-y-4 rounded-md border border-slate-200 p-4">
-                          <div>
-                            <Label>Project Exact Address *</Label>
-                            <p className="text-xs text-muted-foreground">Street, region, district, city, state, and pincode.</p>
-                          </div>
-                          <div className="grid gap-4 md:grid-cols-2">
-                            <div className="md:col-span-2">
-                              <Label htmlFor="project_address_line">Street / Building / Landmark</Label>
-                              <Input
-                                id="project_address_line"
-                                value={projectAddress.address_line}
-                                onChange={(e) => setProjectAddress((prev) => ({ ...prev, address_line: e.target.value }))}
-                                placeholder="House no., street, landmark"
-                                required
-                              />
-                            </div>
-                            <div>
-                              <Label htmlFor="project_region">Region</Label>
-                              <Input
-                                id="project_region"
-                                value={projectAddress.region}
-                                onChange={(e) => setProjectAddress((prev) => ({ ...prev, region: e.target.value }))}
-                                placeholder="e.g. NCR"
-                              />
-                            </div>
-                            <div>
-                              <Label htmlFor="project_district">District</Label>
-                              <Input
-                                id="project_district"
-                                value={projectAddress.district}
-                                onChange={(e) => setProjectAddress((prev) => ({ ...prev, district: e.target.value }))}
-                                placeholder="e.g. Gautam Buddha Nagar"
-                              />
-                            </div>
-                            <div>
-                              <Label htmlFor="project_city">City / Town *</Label>
-                              <Input
-                                id="project_city"
-                                value={projectAddress.city}
-                                onChange={(e) => setProjectAddress((prev) => ({ ...prev, city: e.target.value }))}
-                                placeholder="e.g. Greater Noida"
-                                required
-                              />
-                            </div>
-                            <div>
-                              <Label htmlFor="project_state">State / UT *</Label>
-                              <StyledSelect
-                                value={projectAddress.state}
-                                options={[...INDIAN_STATES_AND_UTS]}
-                                placeholder="Select state / UT"
-                                onValueChange={(value) => setProjectAddress((prev) => ({ ...prev, state: value }))}
-                              />
-                            </div>
-                            <div>
-                              <Label htmlFor="project_pincode">Pincode *</Label>
-                              <Input
-                                id="project_pincode"
-                                value={projectAddress.pincode}
-                                onChange={(e) => setProjectAddress((prev) => ({ ...prev, pincode: e.target.value.replace(/\D/g, '').slice(0, 6) }))}
-                                placeholder="6-digit pincode"
-                                required
-                              />
-                            </div>
-                          </div>
-                        </div>
-                        <div className="md:col-span-2">
-                          <Label htmlFor="project_description">Project Description *</Label>
-                          <Textarea id="project_description" name="project_description" value={formData.project_description} onChange={handleInput} placeholder="Describe the broader initiative and objective." rows={3} required />
-                        </div>
-                        <div className="md:col-span-2">
-                          <Label htmlFor="project_timeline">Project Timeline *</Label>
-                          <Input id="project_timeline" name="project_timeline" value={formData.project_timeline} onChange={handleInput} placeholder="e.g., Q2 2026 or 3 months" required />
-                        </div>
-                        <div>
-                          <Label htmlFor="project_expected_beneficiaries">Expected Beneficiaries *</Label>
-                          <Input id="project_expected_beneficiaries" name="project_expected_beneficiaries" type="number" min="1" value={formData.project_expected_beneficiaries || ''} onChange={handleInput} placeholder="e.g., 300" required />
-                        </div>
-
-                        <div>
-                          <Label htmlFor="project_valid_until">Project Valid Until *</Label>
-                          <Input id="project_valid_until" name="project_valid_until" type="date" value={formData.project_valid_until || ''} onChange={handleInput} required />
-                        </div>
-                        {canOfferForCsr ? (
-                        <div className="md:col-span-2 flex items-start gap-3 rounded-md border bg-white p-3">
-                          <input
-                            id="project_available_for_csr"
-                            type="checkbox"
-                            checked={projectAvailableForCsr}
-                            onChange={(e) => setProjectAvailableForCsr(e.target.checked)}
-                            className="mt-1 h-4 w-4 rounded border-slate-300"
-                          />
-                          <div>
-                            <Label htmlFor="project_available_for_csr" className="text-sm font-medium">Available for CSR takeover</Label>
-                            <p className="text-xs text-muted-foreground">Disable this if the project should stay NGO-managed and never enter the CSR marketplace.</p>
-                          </div>
-                        </div>
-                        ) : (
-                        <div className="md:col-span-2 rounded-md border border-slate-200 bg-slate-50 p-3">
-                          <p className="text-sm font-medium text-slate-900">CSR takeover unavailable</p>
-                          <p className="text-xs text-muted-foreground">
-                            {csrEligible
-                              ? 'Your CSR-1 must remain valid through the full project window (Valid Until and Timeline) before companies can take over this project.'
-                              : 'A live CA-allotted CSR-1 tag is required before companies can take over this project.'}
-                          </p>
-                        </div>
-                        )}
-                      </div>
-                    )}
-                      </div>
-
-                      {projectMode === 'new' && !isBlank(formData.project_category) && (
-                        <p className="text-sm text-muted-foreground">This need will be grouped under "<strong>{formData.project_title}</strong>" project.</p>
-                      )}
-                      {projectMode === 'existing' && formData.projectId && (
-                        <p className="text-sm text-muted-foreground">This need will be added to the selected project.</p>
-                      )}
-
                       <div className="space-y-6">
                         <div className="rounded-lg border p-4 bg-muted/30">
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                             <div>
                               <h3 className="font-semibold">Need List</h3>
-                              <p className="text-sm text-muted-foreground">Add as many separate needs as this project requires.</p>
+                              <p className="text-sm text-muted-foreground">Add as many separate needs as you want to post.</p>
                             </div>
                             <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
                               <Label htmlFor="need_count" className="text-sm text-muted-foreground">Number of needs</Label>
@@ -1243,7 +809,7 @@ export default function CreateServiceRequestPage() {
                               <div className="flex items-center justify-between gap-3">
                                 <div>
                                   <h3 className="font-semibold">Need {index + 1}</h3>
-                                  <p className="text-sm text-muted-foreground">Each need is saved as one need entry under the same project.</p>
+                                  <p className="text-sm text-muted-foreground">Each need is saved as its own standalone request.</p>
                                 </div>
                                 {index > 0 && (
                                   <Button type="button" variant="ghost" onClick={() => removeNeed(index)} className="text-red-600 hover:text-red-700 hover:bg-red-50">
@@ -1317,30 +883,42 @@ export default function CreateServiceRequestPage() {
                                 </div>
 
                                 <div className="grid gap-4 md:grid-cols-2">
-                                                      <div>
-                                                        <Label htmlFor={`request_type-${index}`}>Need Type *</Label>
-                                                        <StyledSelect
-                                                          value={need.request_type}
-                                                          options={SERVICE_REQUEST_CATEGORIES}
-                                                          placeholder="Select need type"
-                                                          onValueChange={(value) => {
-                                                            updateNeed(index, 'request_type', value)
-                                                            updateNeed(index, 'category', value)
-                                                          }}
-                                                        />
-                                                      </div>
+                                  <div>
+                                    <Label htmlFor={`request_type-${index}`}>Need Type *</Label>
+                                    <StyledSelect
+                                      value={need.request_type}
+                                      options={SERVICE_REQUEST_CATEGORIES}
+                                      placeholder="Select need type"
+                                      onValueChange={(value) => updateNeed(index, 'request_type', value)}
+                                    />
+                                  </div>
+                                  <div>
+                                    <Label htmlFor={`category-${index}`}>Schedule VII Category *</Label>
+                                    <StyledSelect
+                                      value={need.category}
+                                      options={CSR_SCHEDULE_VII_CATEGORIES}
+                                      placeholder="Select Schedule VII category"
+                                      onValueChange={(value) => updateNeed(index, 'category', value)}
+                                    />
+                                  </div>
                                 </div>
 
-                                {(projectMode === 'new' || !formData.projectId) && (
-                                  <div className="grid gap-4 md:grid-cols-2">
-                                    <div>
-                                      <Label htmlFor={`beneficiary_count-${index}`}>Beneficiary Count *</Label>
-                                      <Input id={`beneficiary_count-${index}`} type="number" min="1" step="1" value={need.beneficiary_count} onChange={(e) => updateNeed(index, 'beneficiary_count', e.target.value)} placeholder="e.g., 300" required />
-                                    </div>
-                                  </div>
-                                )}
+                                <div>
+                                  <Label htmlFor={`location-${index}`}>Location *</Label>
+                                  <Input
+                                    id={`location-${index}`}
+                                    value={need.location}
+                                    onChange={(e) => updateNeed(index, 'location', e.target.value)}
+                                    placeholder="e.g., Greater Noida, Uttar Pradesh"
+                                    required
+                                  />
+                                </div>
 
                                 <div className="grid gap-4 md:grid-cols-2">
+                                  <div>
+                                    <Label htmlFor={`beneficiary_count-${index}`}>Beneficiary Count *</Label>
+                                    <Input id={`beneficiary_count-${index}`} type="number" min="1" step="1" value={need.beneficiary_count} onChange={(e) => updateNeed(index, 'beneficiary_count', e.target.value)} placeholder="e.g., 300" required />
+                                  </div>
                                   <div>
                                     <Label htmlFor={`budget-${index}`}>Budget Range *</Label>
                                     <Select value={need.budget} onValueChange={(value) => updateNeed(index, 'budget', value)}>
@@ -1356,7 +934,6 @@ export default function CreateServiceRequestPage() {
                                       </SelectContent>
                                     </Select>
                                   </div>
-
                                 </div>
 
                                 <div>
@@ -1364,20 +941,13 @@ export default function CreateServiceRequestPage() {
                                   <Textarea id={`impact_description-${index}`} value={need.impact_description} onChange={(e) => updateNeed(index, 'impact_description', e.target.value)} placeholder="Who benefits? How many? What measurable change occurs after execution?" rows={3} required />
                                 </div>
 
-                                {(projectMode === 'new' || !formData.projectId) ? (
-                                  <div>
-                                    <Label htmlFor={`timeline-${index}`}>Timeline / Deadline *</Label>
-                                    <div className="mt-2">
-                                      <Input id={`timeline-${index}`} value={need.timeline} onChange={(e) => updateNeed(index, 'timeline', e.target.value)} placeholder="e.g., 4 weeks, 2026-05-15" required />
-                                    </div>
-                                    <p className="mt-1 text-xs text-muted-foreground">Provide a duration like "4 weeks" or an exact date like "2026-05-15".</p>
+                                <div>
+                                  <Label htmlFor={`timeline-${index}`}>Timeline / Deadline *</Label>
+                                  <div className="mt-2">
+                                    <Input id={`timeline-${index}`} value={need.timeline} onChange={(e) => updateNeed(index, 'timeline', e.target.value)} placeholder="e.g., 4 weeks, 2026-05-15" required />
                                   </div>
-                                ) : (
-                                  <div>
-                                    <Label>Validity</Label>
-                                    <div className="mt-1 text-sm text-muted-foreground">Inherited from project</div>
-                                  </div>
-                                )}
+                                  <p className="mt-1 text-xs text-muted-foreground">Provide a duration like &quot;4 weeks&quot; or an exact date like &quot;2026-05-15&quot;.</p>
+                                </div>
 
                                 <div>
                                   <Label htmlFor={`contactInfo-${index}`}>Contact Information *</Label>
@@ -1449,7 +1019,6 @@ export default function CreateServiceRequestPage() {
                         </p>
 
                         <div className="mt-3 text-xs text-muted-foreground">
-                          {/* Total selected across all needs */}
                           Selected offers: {Object.values(selectedOffersByNeed).reduce((sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0), 0)}
                         </div>
 
@@ -1460,7 +1029,6 @@ export default function CreateServiceRequestPage() {
                               Loading offers...
                             </div>
                           ) : (
-                            // Show top-2 recommendations per need
                             needs.map((need, idx) => {
                               const recs = (serverRecommendations[idx] && serverRecommendations[idx].length > 0)
                                 ? serverRecommendations[idx]
@@ -1490,7 +1058,14 @@ export default function CreateServiceRequestPage() {
                                           <div className="flex items-start justify-between gap-2">
                                             <div>
                                               <p className="text-sm font-medium leading-tight">{recommendation.offer.title}</p>
-                                              <p className="text-xs text-muted-foreground mt-1">{recommendation.offer.provider_name || 'Offer provider'}</p>
+                                              <VerifiedAccountName
+                                                name={recommendation.offer.provider_name || 'Offer provider'}
+                                                status={recommendation.offer.verification_status}
+                                                verified={recommendation.offer.verified}
+                                                size="xs"
+                                                nameClassName="text-xs font-medium text-muted-foreground"
+                                                className="mt-1"
+                                              />
                                             </div>
                                             {isSelected && <CheckCircle2 size={16} className="text-primary" />}
                                           </div>

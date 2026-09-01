@@ -18,6 +18,8 @@ export type ScoredNgo = {
   city?: string | null
   state_province?: string | null
   ngo_volunteer_capacity?: number
+  verification_status?: string | null
+  verified?: boolean
   score: number
 }
 
@@ -139,6 +141,8 @@ export function scoreNgosForCampaign(ngos: any[], input: CampaignMatchInput, lim
       city: ngo.city ?? null,
       state_province: ngo.state_province ?? null,
       ngo_volunteer_capacity: Number.isFinite(capacity) ? capacity : undefined,
+      verification_status: ngo.verification_status ?? null,
+      verified: String(ngo.verification_status || '').toLowerCase() === 'verified',
       score: Math.round(score * 10) / 10,
     }
   })

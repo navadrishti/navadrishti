@@ -17,6 +17,7 @@ import { ProfileDashboardTab } from '@/components/profile-dashboard-tab';
 import { DashboardBodyLayout, DashboardQuickSidebar } from '@/components/dashboard-quick-sidebar';
 import { DashboardMainSkeleton, DashboardPageSkeleton } from '@/components/ui/skeleton';
 import { CampaignVolunteerAssignmentCard, type CampaignVolunteerAssignmentItem } from '@/components/campaign-volunteer-assignment-card';
+import { VerifiedAccountName } from '@/components/verification-badge';
 import { YourCapabilitiesPanel } from '@/components/service-card';
 import { dashboardProfilePayoutHref, usePayoutConnection } from '@/hooks/use-payout-connection';
 import {
@@ -39,11 +40,14 @@ import { useToast } from '@/hooks/use-toast';
 interface OfferRequestItem {
   id: number;
   service_offer_id: number;
+  service_request_id?: number;
+  assignment_id?: string;
   offer_title: string;
   client?: {
     name?: string;
     email?: string;
     user_type?: string;
+    verification_status?: string | null;
   };
   message?: string;
   response_meta?: Record<string, any> | null;
@@ -684,6 +688,8 @@ function IndividualNgoRequestInline({
   const stage = getNgoRequestFulfillmentStage(application);
   const request = normalizeNgoRequestApplication(application);
   const ngoName = request?.ngo?.name || request?.requester?.name || 'NGO';
+  const ngoVerificationStatus =
+    request?.ngo?.verification_status || request?.requester?.verification_status || null;
   const requestId = request?.id;
   const mode = getNgoNeedFulfillmentMode(request);
   const status = String(application.status || '').toLowerCase();
@@ -698,9 +704,15 @@ function IndividualNgoRequestInline({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="font-semibold">{request?.title || 'NGO need'}</p>
-            <p className="text-sm text-muted-foreground">
-              Posted by {ngoName}
-              {request?.project?.title ? ` · ${request.project.title}` : ''}
+            <p className="flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
+              <span>Posted by</span>
+              <VerifiedAccountName
+                name={ngoName}
+                status={ngoVerificationStatus}
+                size="xs"
+                nameClassName="font-medium text-slate-800"
+              />
+              {request?.project?.title ? <span>· {request.project.title}</span> : null}
             </p>
             {request?.location ? (
               <p className="text-xs text-muted-foreground">{request.location}</p>
@@ -1098,9 +1110,16 @@ function IndividualDashboardContent() {
                                     <div className="flex items-start justify-between gap-3">
                                       <div>
                                         <p className="font-semibold">{request.offer_title}</p>
-                                        <p className="text-sm text-muted-foreground">
-                                          Requester: {request.client?.name || 'Unknown'} ({request.client?.user_type || 'participant'})
-                                        </p>
+                                        <p className="flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
+                                      <span>Requester:</span>
+                                      <VerifiedAccountName
+                                        name={request.client?.name || 'Unknown'}
+                                        status={request.client?.verification_status}
+                                        size="xs"
+                                        nameClassName="font-medium text-slate-800"
+                                      />
+                                      <span>({request.client?.user_type || 'participant'})</span>
+                                    </p>
                                         <p className="text-sm text-muted-foreground">{request.client?.email || 'No email available'}</p>
                                       </div>
                                       <Badge variant="outline" className="capitalize">{request.status}</Badge>
@@ -1162,8 +1181,14 @@ function IndividualDashboardContent() {
                                       <div className="flex items-start justify-between gap-3">
                                         <div className="min-w-0 flex-1">
                                           <p className="truncate font-semibold">{request.offer_title}</p>
-                                          <p className="truncate text-sm text-muted-foreground">
-                                            {request.client?.name || 'Unknown'} · {request.client?.user_type || 'participant'}
+                                          <p className="flex min-w-0 flex-wrap items-center gap-1 truncate text-sm text-muted-foreground">
+                                            <VerifiedAccountName
+                                              name={request.client?.name || 'Unknown'}
+                                              status={request.client?.verification_status}
+                                              size="xs"
+                                              nameClassName="font-medium text-slate-800"
+                                            />
+                                            <span>· {request.client?.user_type || 'participant'}</span>
                                           </p>
                                           <p className="truncate text-sm text-muted-foreground">{request.client?.email || 'No email available'}</p>
                                         </div>
@@ -1232,9 +1257,16 @@ function IndividualDashboardContent() {
                                     <div className="flex items-start justify-between gap-3">
                                       <div>
                                         <p className="font-semibold">{request.offer_title}</p>
-                                        <p className="text-sm text-muted-foreground">
-                                          Requester: {request.client?.name || 'Unknown'} ({request.client?.user_type || 'participant'})
-                                        </p>
+                                        <p className="flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
+                                      <span>Requester:</span>
+                                      <VerifiedAccountName
+                                        name={request.client?.name || 'Unknown'}
+                                        status={request.client?.verification_status}
+                                        size="xs"
+                                        nameClassName="font-medium text-slate-800"
+                                      />
+                                      <span>({request.client?.user_type || 'participant'})</span>
+                                    </p>
                                         <p className="text-sm text-muted-foreground">{request.client?.email || 'No email available'}</p>
                                       </div>
                                       <Badge variant="outline" className="capitalize">{request.status}</Badge>
