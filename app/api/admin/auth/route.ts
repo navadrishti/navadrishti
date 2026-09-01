@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateToken } from '@/lib/auth';
+import { setAdminTokenCookie } from '@/lib/server-auth';
 
 export async function POST(request: NextRequest) {
   try {
@@ -38,22 +39,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Clear any stale path-scoped admin cookie, then set the live session cookie.
-    response.cookies.set('admin-token', '', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      expires: new Date(0),
-      maxAge: 0,
-      path: '/api/admin',
-    });
-
-    response.cookies.set('admin-token', adminToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/',
-    });
+    setAdminTokenCookie(response, adminToken);
 
     return response;
 
