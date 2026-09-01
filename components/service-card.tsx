@@ -15,7 +15,7 @@ import {
 } from "lucide-react"
 import { VerifiedAccountName } from "./verification-badge"
 import { formatPrice, getRequestUrgencyLevel } from "@/lib/utils"
-import { formatDisplayDate } from "@/lib/format-date"
+import { formatDisplayDate, formatStatusLabel } from "@/lib/format-date"
 import { getGramAvatarFallbackStyle } from "@/lib/gram-avatar"
 import {
   formatImpactAreaLabel,
@@ -976,7 +976,7 @@ export function ServiceCard({
                 <Clock size={14} />
                 <span className="text-xs font-medium">Status</span>
               </div>
-              <p className="text-sm font-medium text-slate-800 capitalize line-clamp-1">{String(status)}</p>
+              <p className="text-sm font-medium text-slate-800 line-clamp-1">{formatStatusLabel(status)}</p>
             </div>
           )}
 
@@ -1165,7 +1165,7 @@ export function ServiceCard({
                 'bg-yellow-100 text-yellow-800 border-yellow-200'
               }`}
             >
-              Application {volunteer_application.status}
+              Application {formatStatusLabel(volunteer_application.status)}
             </Badge>
             {volunteer_application.status === 'rejected' && volunteer_application.response_meta?.ngo_decision_comment && (
                 <div className="mt-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800 whitespace-pre-wrap">

@@ -19,6 +19,7 @@ import { DashboardMainSkeleton, DashboardPageSkeleton } from '@/components/ui/sk
 import { CampaignVolunteerAssignmentCard, type CampaignVolunteerAssignmentItem } from '@/components/campaign-volunteer-assignment-card';
 import { VerifiedAccountName } from '@/components/verification-badge';
 import { YourCapabilitiesPanel } from '@/components/service-card';
+import { formatStatusLabel } from '@/lib/format-date';
 import { dashboardProfilePayoutHref, usePayoutConnection } from '@/hooks/use-payout-connection';
 import {
   formatDeliveryTrackingStatus,
@@ -1122,7 +1123,7 @@ function IndividualDashboardContent() {
                                     </p>
                                         <p className="text-sm text-muted-foreground">{request.client?.email || 'No email available'}</p>
                                       </div>
-                                      <Badge variant="outline" className="capitalize">{request.status}</Badge>
+                                      <Badge variant="outline">{formatStatusLabel(request.status)}</Badge>
                                     </div>
                                     <div className="flex flex-wrap gap-2">
                                       <Button
@@ -1192,7 +1193,7 @@ function IndividualDashboardContent() {
                                           </p>
                                           <p className="truncate text-sm text-muted-foreground">{request.client?.email || 'No email available'}</p>
                                         </div>
-                                        <Badge variant="outline" className="capitalize whitespace-nowrap">{request.status}</Badge>
+                                        <Badge variant="outline" className="whitespace-nowrap">{formatStatusLabel(request.status)}</Badge>
                                       </div>
 
                                       <div className="grid grid-cols-1 gap-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 sm:grid-cols-2 lg:grid-cols-3">
@@ -1269,7 +1270,7 @@ function IndividualDashboardContent() {
                                     </p>
                                         <p className="text-sm text-muted-foreground">{request.client?.email || 'No email available'}</p>
                                       </div>
-                                      <Badge variant="outline" className="capitalize">{request.status}</Badge>
+                                      <Badge variant="outline">{formatStatusLabel(request.status)}</Badge>
                                     </div>
                                     <div className="flex flex-wrap gap-2">
                                       <Link href={`/service-offers/${request.service_offer_id}`}>

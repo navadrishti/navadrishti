@@ -32,6 +32,7 @@ import {
   safeParseRecordJson,
 } from '@/components/evidence-verification/portal-ui';
 import { DashboardSidebarSkeleton } from '@/components/ui/skeleton';
+import { formatStatusLabel } from '@/lib/format-date';
 import { cn } from '@/lib/utils';
 import {
   getAccountLockUntil,
@@ -184,8 +185,8 @@ function adminUserVerificationLabel(user: Pick<AdminUserItem, 'verification_stat
   return 'unverified';
 }
 
-function adminUserVerificationBadgeClass(label: string) {
-  const normalized = label.toLowerCase();
+function adminUserVerificationBadgeClass(label?: string | null) {
+  const normalized = String(label || '').toLowerCase();
   if (normalized === 'verified') {
     return 'pointer-events-none border-emerald-200 bg-emerald-100 text-emerald-800 hover:bg-emerald-100';
   }
@@ -660,11 +661,11 @@ function SupportStatusTag({ status }: { status?: string | null }) {
   return (
     <span
       className={cn(
-        'inline-flex shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-semibold capitalize',
+        'inline-flex shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-semibold',
         supportStatusTone(status)
       )}
     >
-      {String(status || 'unknown').replace('_', ' ')}
+      {formatStatusLabel(status || 'unknown')}
     </span>
   );
 }
@@ -889,8 +890,8 @@ export function AdminRefundsPanel() {
                           Request #{payment.service_request_id || '—'} • {payment.service_request?.title || 'Unknown request'}
                         </p>
                       </div>
-                      <Badge className={cn('shrink-0 capitalize', statusTone(payment.latest_refund_status || payment.payment_status))}>
-                        {payment.latest_refund_status || payment.payment_status || 'unknown'}
+                      <Badge className={cn('shrink-0', statusTone(payment.latest_refund_status || payment.payment_status))}>
+                        {formatStatusLabel(payment.latest_refund_status || payment.payment_status || 'unknown')}
                       </Badge>
                     </div>
                     <p className="mt-2 text-sm text-slate-600">
@@ -1907,7 +1908,17 @@ export default function AdminPage() {
 
   const badgeClassName = 'pointer-events-none select-none cursor-default';
 
-  const textMatch = (value: unknown, query: string) => String(value || '').toLowerCase().includes(query.toLowerCase());
+  const adminListButtonClass = (selected: boolean) =>
+    cn(
+      'w-full min-w-0 overflow-hidden rounded-xl border p-4 text-left transition duration-200',
+      selected ? 'border-blue-400 bg-blue-50' : 'border-blue-100 bg-white hover:bg-slate-50',
+    );
+
+  const textMatch = (value: unknown, query: string) => {
+    const normalizedQuery = String(query || '').toLowerCase();
+    if (!normalizedQuery) return true;
+    return String(value || '').toLowerCase().includes(normalizedQuery);
+  };
 
   const recentActivities = useMemo(() => {
     const recent = overview?.recent;
@@ -2142,7 +2153,7 @@ export default function AdminPage() {
                     </div>
                     <div className="flex items-center justify-between rounded-lg border border-blue-100 bg-slate-50 p-3">
                       <span>Health status</span>
-                      <Badge className={`${badgeClassName} ${statusTone(health?.status)}`}>{health?.status || 'unknown'}</Badge>
+                      <Badge className={`${badgeClassName} ${statusTone(health?.status)}`}>{formatStatusLabel(health?.status || 'unknown')}</Badge>
                     </div>
                   </CardContent>
                 </Card>
@@ -2155,9 +2166,9 @@ export default function AdminPage() {
                     <div>
                       <p className="mb-2 font-semibold text-slate-900">Health Status</p>
                       <div className="space-y-2">
-                        <div className="flex items-center justify-between rounded-lg border border-blue-100 bg-slate-50 p-3"><span>Overall</span><Badge className={statusTone(health?.status)}>{health?.status || 'unknown'}</Badge></div>
-                        <div className="flex items-center justify-between rounded-lg border border-blue-100 bg-slate-50 p-3"><span>Database</span><Badge className={statusTone(health?.checks?.database)}>{health?.checks?.database || 'unknown'}</Badge></div>
-                        <div className="flex items-center justify-between rounded-lg border border-blue-100 bg-slate-50 p-3"><span>External services</span><Badge className={statusTone(health?.checks?.external_services)}>{health?.checks?.external_services || 'unknown'}</Badge></div>
+                        <div className="flex items-center justify-between rounded-lg border border-blue-100 bg-slate-50 p-3"><span>Overall</span><Badge className={statusTone(health?.status)}>{formatStatusLabel(health?.status || 'unknown')}</Badge></div>
+                        <div className="flex items-center justify-between rounded-lg border border-blue-100 bg-slate-50 p-3"><span>Database</span><Badge className={statusTone(health?.checks?.database)}>{formatStatusLabel(health?.checks?.database || 'unknown')}</Badge></div>
+                        <div className="flex items-center justify-between rounded-lg border border-blue-100 bg-slate-50 p-3"><span>External services</span><Badge className={statusTone(health?.checks?.external_services)}>{formatStatusLabel(health?.checks?.external_services || 'unknown')}</Badge></div>
                       </div>
                     </div>
                     <div className="border-t border-blue-100 pt-4">
@@ -2209,15 +2220,15 @@ export default function AdminPage() {
                   {filteredOffers.length === 0 ? (
                     <p className="text-sm text-slate-500">No offers found.</p>
                   ) : filteredOffers.map((offer) => (
-                    <button key={offer.id} onClick={() => setSelectedOffer(offer)} className={`w-full rounded-xl border p-4 text-left transition duration-200 ${selectedOffer?.id === offer.id ? 'border-blue-400 bg-blue-50' : 'border-blue-100 bg-white hover:bg-slate-50'}`}>
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="font-semibold text-slate-900">{offer.title}</p>
-                          <p className="text-xs text-slate-500">{offer.organization?.name || 'Unknown organization'}</p>
+                    <button key={offer.id} onClick={() => setSelectedOffer(offer)} className={adminListButtonClass(selectedOffer?.id === offer.id)}>
+                      <div className="flex items-start justify-between gap-3 min-w-0">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold text-slate-900 break-words line-clamp-2">{offer.title}</p>
+                          <p className="text-xs text-slate-500 truncate">{offer.organization?.name || 'Unknown organization'}</p>
                         </div>
-                        <Badge className={statusTone(offer.admin_status)}>{offer.admin_status}</Badge>
+                        <Badge className={cn('shrink-0', statusTone(offer.admin_status))}>{formatStatusLabel(offer.admin_status)}</Badge>
                       </div>
-                      <p className="mt-2 line-clamp-2 text-sm text-slate-600">{offer.description}</p>
+                      <p className="mt-2 line-clamp-2 break-all text-sm text-slate-600">{offer.description}</p>
                     </button>
                   ))}
                 </CardContent>
@@ -2261,15 +2272,15 @@ export default function AdminPage() {
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {filteredProjects.map((project) => (
-                    <button key={project.id} onClick={() => selectProject(project)} className={`w-full rounded-2xl border p-4 text-left transition duration-200 ${selectedProject?.id === project.id ? 'border-blue-400 bg-blue-50' : 'border-blue-100 bg-white hover:bg-slate-50'}`}>
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="font-semibold text-slate-900">{project.title}</p>
-                          <p className="text-xs text-slate-500">{project.ngo?.name || 'Unknown NGO'}</p>
+                    <button key={project.id} onClick={() => selectProject(project)} className={adminListButtonClass(selectedProject?.id === project.id)}>
+                      <div className="flex items-start justify-between gap-3 min-w-0">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold text-slate-900 break-words line-clamp-2">{project.title}</p>
+                          <p className="text-xs text-slate-500 truncate">{project.ngo?.name || 'Unknown NGO'}</p>
                         </div>
-                        <Badge className={statusTone(project.status)}>{project.status || 'unknown'}</Badge>
+                        <Badge className={cn('shrink-0', statusTone(project.status))}>{formatStatusLabel(project.status || 'unknown')}</Badge>
                       </div>
-                      <p className="mt-2 line-clamp-2 text-sm text-slate-600">{project.description}</p>
+                      <p className="mt-2 line-clamp-2 break-all text-sm text-slate-600">{project.description}</p>
                     </button>
                   ))}
                   {filteredProjects.length === 0 ? <p className="text-sm text-slate-500">No projects match your search.</p> : null}
@@ -2496,31 +2507,31 @@ export default function AdminPage() {
                     value={requestQuery}
                     onChange={(e) => setRequestQuery(e.target.value)}
                     placeholder="Search request by id, title, NGO, status, category"
-                    className="mt-3 border-blue-200 bg-white text-slate-900 placeholder:text-slate-400"
+                    className="mt-3 w-full min-w-0 border-blue-200 bg-white text-slate-900 placeholder:text-slate-400"
                   />
                 </CardHeader>
-                <CardContent className="space-y-3">
+                <CardContent className="min-w-0 space-y-3 overflow-hidden">
                   {filteredRequests.map((requestItem) => (
-                    <button key={requestItem.id} onClick={() => selectRequest(requestItem)} className={`w-full rounded-xl border p-4 text-left transition duration-200 ${selectedRequest?.id === requestItem.id ? 'border-blue-400 bg-blue-50' : 'border-blue-100 bg-white hover:bg-slate-50'}`}>
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="font-semibold text-slate-900">{requestItem.title}</p>
-                          <p className="text-xs text-slate-500">{requestItem.requester?.name || 'Unknown NGO'}</p>
+                    <button key={requestItem.id} onClick={() => selectRequest(requestItem)} className={adminListButtonClass(selectedRequest?.id === requestItem.id)}>
+                      <div className="flex items-start justify-between gap-3 min-w-0">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold text-slate-900 break-words line-clamp-2">{requestItem.title}</p>
+                          <p className="text-xs text-slate-500 truncate">{requestItem.requester?.name || 'Unknown NGO'}</p>
                         </div>
-                        <Badge className={statusTone(requestItem.status)}>{requestItem.status || 'unknown'}</Badge>
+                        <Badge className={cn('shrink-0', statusTone(requestItem.status))}>{formatStatusLabel(requestItem.status || 'unknown')}</Badge>
                       </div>
-                      <p className="mt-2 line-clamp-2 text-sm text-slate-600">{requestItem.description}</p>
+                      <p className="mt-2 line-clamp-2 break-all text-sm text-slate-600">{requestItem.description}</p>
                     </button>
                   ))}
                   {filteredRequests.length === 0 ? <p className="text-sm text-slate-500">No requests match your search.</p> : null}
                 </CardContent>
               </Card>
 
-              <Card className="border-blue-100 bg-white text-slate-900">
+              <Card className="min-w-0 border-blue-100 bg-white text-slate-900">
                 <CardHeader>
                   <CardTitle className="text-slate-900">Request editor</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="min-w-0 space-y-4 overflow-hidden">
                   {!selectedRequest ? (
                     <p className="text-sm text-slate-500">Select a request to edit it.</p>
                   ) : (
@@ -2572,21 +2583,21 @@ export default function AdminPage() {
                     className="mt-3 border-blue-200 bg-white text-slate-900 placeholder:text-slate-400"
                   />
                 </CardHeader>
-                <CardContent className="space-y-3">
+                <CardContent className="min-w-0 space-y-3 overflow-hidden">
                   {filteredCampaigns.map((campaignItem) => (
                     <button
                       key={campaignItem.id}
                       onClick={() => selectCampaign(campaignItem)}
-                      className={`w-full rounded-xl border p-4 text-left transition duration-200 ${selectedCampaign?.id === campaignItem.id ? 'border-blue-400 bg-blue-50' : 'border-blue-100 bg-white hover:bg-slate-50'}`}
+                      className={adminListButtonClass(selectedCampaign?.id === campaignItem.id)}
                     >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="font-semibold text-slate-900">{campaignItem.title || 'Untitled campaign'}</p>
-                          <p className="text-xs text-slate-500">{campaignItem.company?.name || `Company #${campaignItem.company_id || '?'}`}</p>
+                      <div className="flex items-start justify-between gap-3 min-w-0">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold text-slate-900 break-words line-clamp-2">{campaignItem.title || 'Untitled campaign'}</p>
+                          <p className="text-xs text-slate-500 truncate">{campaignItem.company?.name || `Company #${campaignItem.company_id || '?'}`}</p>
                         </div>
-                        <Badge className={statusTone(campaignItem.status)}>{campaignItem.status || 'draft'}</Badge>
+                        <Badge className={cn('shrink-0', statusTone(campaignItem.status))}>{formatStatusLabel(campaignItem.status || 'draft')}</Badge>
                       </div>
-                      <p className="mt-2 line-clamp-2 text-sm text-slate-600">{campaignItem.description || campaignItem.category || 'No description'}</p>
+                      <p className="mt-2 line-clamp-2 break-all text-sm text-slate-600">{campaignItem.description || campaignItem.category || 'No description'}</p>
                     </button>
                   ))}
                   {filteredCampaigns.length === 0 ? <p className="text-sm text-slate-500">No CSR campaigns match your search.</p> : null}
@@ -2766,7 +2777,7 @@ export default function AdminPage() {
                             type="button"
                             onClick={() => selectTicket(ticket)}
                             className={cn(
-                              'w-full rounded-lg border border-slate-200 bg-white p-4 text-left outline-none focus-visible:outline-none',
+                              'w-full min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white p-4 text-left outline-none focus-visible:outline-none',
                               selectedTicketDetail?.ticket_id === ticket.ticket_id
                                 ? 'border-udaan-blue bg-udaan-blue/[0.04]'
                                 : 'border-slate-200'
@@ -2781,7 +2792,7 @@ export default function AdminPage() {
                               </div>
                               <SupportStatusTag status={ticket.status} />
                             </div>
-                            <p className="mt-2 line-clamp-2 text-sm text-gray-600">{ticket.description}</p>
+                            <p className="mt-2 line-clamp-2 break-all text-sm text-gray-600">{ticket.description}</p>
                           </button>
                         ))}
                       </div>
@@ -2901,7 +2912,7 @@ export default function AdminPage() {
                                   <div className="max-h-48 space-y-2 overflow-auto pr-1">
                                     {trackingSnapshot.events.slice(0, 6).map((event: any, index: number) => (
                                       <div key={`${event.timestamp || 'event'}-${index}`} className="rounded border border-slate-200 bg-white p-2 text-xs">
-                                        <p className="font-medium text-slate-800">{event.status || 'Update'}</p>
+                                        <p className="font-medium text-slate-800">{formatStatusLabel(event.status || 'update')}</p>
                                         <p className="text-slate-600">{event.location || 'Unknown location'}</p>
                                         <p className="text-slate-500">{event.timestamp ? new Date(event.timestamp).toLocaleString('en-IN', { timeZone: 'UTC' }) : 'Unknown time'}</p>
                                       </div>

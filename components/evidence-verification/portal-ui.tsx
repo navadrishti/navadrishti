@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { ConsoleFooter } from '@/components/product-brand';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { formatStatusLabel } from '@/lib/format-date';
 import { cn } from '@/lib/utils';
 
 export function EvidencePortalShell({ children }: { children: ReactNode }) {
@@ -279,6 +280,9 @@ export function formatAdminDetailValue(value: unknown): string {
     if (/^\d{4}-\d{2}-\d{2}/.test(value)) {
       const parsed = new Date(value);
       if (!Number.isNaN(parsed.getTime())) return parsed.toLocaleString('en-IN');
+    }
+    if (/^[a-z0-9]+(_[a-z0-9]+)+$/i.test(value)) {
+      return formatStatusLabel(value);
     }
     return value;
   }

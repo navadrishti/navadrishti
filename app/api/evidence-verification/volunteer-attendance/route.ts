@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getCompanyCAFromRequest } from '@/lib/server-auth'
-import { listCompanyCampaignVolunteerAttendance } from '@/lib/campaign-volunteer-attendance'
+import { listCompanyCampaignVolunteerAttendance } from '@/lib/db'
 
 export const runtime = 'nodejs'
 

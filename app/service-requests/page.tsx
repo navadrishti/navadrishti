@@ -495,11 +495,11 @@ function ServiceRequestsContent() {
             <TabsList className="grid h-auto w-full grid-cols-2 gap-2 bg-transparent p-0">
               <TabsTrigger
                 value="needs"
-                className="h-auto flex-col items-start gap-1 rounded-md border border-transparent px-4 py-3 text-left data-[state=active]:border-udaan-blue data-[state=active]:bg-udaan-blue data-[state=active]:text-white data-[state=active]:shadow-none data-[state=inactive]:bg-[#F4F5F3] data-[state=inactive]:text-gram-body"
+                className="flex h-full min-h-[5.25rem] w-full min-w-0 flex-col items-center justify-center gap-1 rounded-md border border-transparent px-3 py-3 text-center data-[state=active]:border-udaan-blue data-[state=active]:bg-udaan-blue data-[state=active]:text-white data-[state=active]:shadow-none data-[state=inactive]:bg-[#F4F5F3] data-[state=inactive]:text-gram-body sm:items-start sm:px-4 sm:text-left"
               >
                 <span className="text-base font-semibold">Needs</span>
                 <span
-                  className={`text-xs font-normal leading-snug ${
+                  className={`w-full text-xs font-normal leading-snug ${
                     listingKind === 'needs' ? 'text-white/85' : 'text-gram-muted'
                   }`}
                 >
@@ -508,11 +508,11 @@ function ServiceRequestsContent() {
               </TabsTrigger>
               <TabsTrigger
                 value="projects"
-                className="h-auto flex-col items-start gap-1 rounded-md border border-transparent px-4 py-3 text-left data-[state=active]:border-udaan-blue data-[state=active]:bg-udaan-blue data-[state=active]:text-white data-[state=active]:shadow-none data-[state=inactive]:bg-[#F4F5F3] data-[state=inactive]:text-gram-body"
+                className="flex h-full min-h-[5.25rem] w-full min-w-0 flex-col items-center justify-center gap-1 rounded-md border border-transparent px-3 py-3 text-center data-[state=active]:border-udaan-blue data-[state=active]:bg-udaan-blue data-[state=active]:text-white data-[state=active]:shadow-none data-[state=inactive]:bg-[#F4F5F3] data-[state=inactive]:text-gram-body sm:items-start sm:px-4 sm:text-left"
               >
                 <span className="text-base font-semibold">Projects</span>
                 <span
-                  className={`text-xs font-normal leading-snug ${
+                  className={`w-full text-xs font-normal leading-snug ${
                     listingKind === 'projects' ? 'text-white/85' : 'text-gram-muted'
                   }`}
                 >
