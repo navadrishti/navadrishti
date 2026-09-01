@@ -23,9 +23,10 @@ import {
   restoreMobileChatScrollPosition,
   scrollAgentMessagesContainer,
 } from "@/lib/ai-agent-sessions"
-import { AGENT_GREETINGS, AGENT_NAMES, agentLoadingLabel } from "@/lib/ai-suite"
+import { AGENT_GREETINGS, AGENT_NAMES, agentLoadingLabel } from "@/lib/ai-agent-sessions"
 import { openRazorpayCheckout } from "@/lib/razorpay-checkout"
 import { InlineCsrCapabilityDelhivery } from "@/components/service-card"
+import { VerifiedAccountName } from "@/components/verification-badge"
 
 type ConversationStage = "project" | "milestone-count" | "milestones" | "generating" | "complete"
 
@@ -61,6 +62,8 @@ interface NgoDirectoryItem {
   name: string
   email: string
   score: number
+  verification_status?: string | null
+  verified?: boolean
 }
 
 type LeadNgoInvite = {
@@ -1395,6 +1398,8 @@ export default function CSRAgentPage() {
               name: String(item.name || ''),
               email: String(item.email || ''),
               score: Number(item.score || 0),
+              verification_status: item.verification_status || null,
+              verified: Boolean(item.verified) || String(item.verification_status || '').toLowerCase() === 'verified',
             }))
             .filter((item: NgoDirectoryItem) => Number.isFinite(item.id) && item.id > 0)
 
@@ -3006,8 +3011,19 @@ export default function CSRAgentPage() {
                   {hasLockedLeadNgo ? (
                     <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
                       <p className="text-sm font-semibold text-emerald-950">Lead NGO confirmed</p>
-                      <p className="mt-1 text-sm text-emerald-800">
-                        {acceptedLeadNgo?.name} has accepted and is assigned as lead NGO for this campaign.
+                      <p className="mt-1 flex flex-wrap items-center gap-1 text-sm text-emerald-800">
+                        <VerifiedAccountName
+                          name={acceptedLeadNgo?.name || 'Lead NGO'}
+                          status={
+                            ngoDirectory.find((ngo) => ngo.id === acceptedLeadNgo?.ngoId)?.verification_status
+                          }
+                          verified={
+                            ngoDirectory.find((ngo) => ngo.id === acceptedLeadNgo?.ngoId)?.verified
+                          }
+                          size="xs"
+                          nameClassName="font-semibold text-emerald-950"
+                        />
+                        <span>has accepted and is assigned as lead NGO for this campaign.</span>
                       </p>
                       {selectedProjectSuggestionId ? (
                         <p className="mt-2 text-xs text-emerald-700">
@@ -3149,7 +3165,14 @@ export default function CSRAgentPage() {
                           <div key={ngo.id} className="rounded-xl border border-slate-200 bg-white p-3">
                             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                               <div className="min-w-0">
-                                <p className="text-sm font-semibold text-slate-950">{ngo.name}</p>
+                                <VerifiedAccountName
+                                  name={ngo.name}
+                                  status={ngo.verification_status}
+                                  verified={ngo.verified}
+                                  size="xs"
+                                  nameClassName="text-sm font-semibold text-slate-950"
+                                  className="max-w-full"
+                                />
                                 <p className="mt-1 text-xs text-slate-500 break-words">{ngo.email || 'No email provided'}</p>
                                 <p className="mt-1 text-[11px] font-medium text-blue-700">Match score {ngo.score}</p>
                               </div>
@@ -3271,7 +3294,7 @@ export default function CSRAgentPage() {
                         Generating your campaign draft...
                       </div>
                     ) : acceptedLeadNgo && generatedCampaigns.length > 0 ? (
-                      <div className="flex flex-col gap-3 rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50 to-white px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex flex-col gap-3 rounded-xl border border-gram-border bg-gram-sage px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
                         <p className="text-sm font-semibold text-slate-900">
                           Ready to publish!
                         </p>

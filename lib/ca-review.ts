@@ -273,7 +273,7 @@ function documentsFromMap(map: Record<string, unknown>, prefix: string): CARevie
         ocr_status: 'pending' as const,
       }
     })
-    .filter((doc): doc is CAReviewDocument => Boolean(doc))
+    .filter((doc): doc is NonNullable<typeof doc> => doc != null)
 }
 
 function overlayDocuments(base: CAReviewDocument[], extra: CAReviewDocument[]): CAReviewDocument[] {

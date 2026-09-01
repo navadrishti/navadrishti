@@ -8,6 +8,16 @@ import {
   CSR_ELIGIBILITY_REQUIRED_MESSAGE,
 } from '@/lib/auth'
 import { assertNgoCsr1CoversProject } from '@/lib/server-auth'
+import {
+  enrichProjectRecord,
+  parseProjectMeta,
+  withProjectMeta,
+  redactProjectSensitiveFields,
+  isAuthenticCompanyProjectApplication,
+  formatProjectExactAddress,
+  projectAddressToLocationSummary,
+  parseProjectExactAddress,
+} from '@/lib/service-request-allocation'
 
 interface JWTPayload {
   id: number;
@@ -112,194 +122,105 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'Only companies can view project opportunities' }, { status: 403 })
       }
 
-      const { data: requests, error: requestsError } = await supabase
-        .from('service_requests')
+      const { data: projects, error: projectsError } = await supabase
+        .from('service_request_projects')
         .select(`
           id,
           ngo_id,
           title,
-          status,
-          request_type,
-          category,
-          estimated_budget,
-          target_amount,
-          target_quantity,
-          beneficiary_count,
+          description,
           location,
+          exact_address,
           timeline,
-          project_id,
-          project:service_request_projects!project_id(id, title, description, location, exact_address, timeline, valid_until, csr_project_available_for_csr),
-          requester:users!ngo_id(id, name, email, verification_status, profile_data)
+          status,
+          valid_until,
+          expected_beneficiaries,
+          volunteers_needed,
+          csr_project_available_for_csr,
+          assigned_company_user_id,
+          assignment_status,
+          created_at,
+          updated_at,
+          ngo:users!ngo_id(id, name, email, verification_status, profile_data)
         `)
-        .not('project_id', 'is', null)
         .neq('ngo_id', userId)
-        .not('status', 'in', '(completed,cancelled)')
+        .neq('status', 'cancelled')
         .order('created_at', { ascending: false })
 
-      if (requestsError) throw requestsError
+      if (projectsError) throw projectsError
 
-      const filteredRequests = Array.isArray(requests)
-        ? requests.filter((item: any) => !Number.isFinite(requestIdFilter) || item.id === requestIdFilter)
-        : []
+      const companyFullyVerified = await isFullyVerifiedCompany(userId)
+      const opportunities = []
 
-      // If any need in a project is already accepted by a company, hide that project from opportunity listing.
-      const { data: acceptedProjectAssignments, error: acceptedProjectAssignmentsError } = filteredRequests.length > 0
-        ? await supabase
-            .from('service_request_contributions')
-            .select('service_request_id')
-            .in('service_request_id', filteredRequests.map((item: any) => item.id))
-            .eq('contribution_type', COMPANY_PROJECT_CONTRIBUTION_TYPE)
-            .eq('status', 'accepted')
-        : { data: [], error: null as any }
-
-      if (acceptedProjectAssignmentsError) throw acceptedProjectAssignmentsError
-
-      const acceptedNeedIdSet = new Set(
-        (acceptedProjectAssignments || [])
-          .map((item: any) => Number(item.service_request_id))
-          .filter((id: number) => Number.isFinite(id) && id > 0)
-      )
-
-      const listingRequests = filteredRequests.filter((item: any) => !acceptedNeedIdSet.has(Number(item.id)))
-
-      const projectIds = [...new Set(listingRequests.map((item: any) => item.project_id).filter(Boolean))]
-
-      if (projectIds.length === 0) {
-        return NextResponse.json({ success: true, data: [] })
-      }
-
-      const { data: companyApplications, error: companyApplicationsError } = await supabase
-        .from('service_request_contributions')
-        .select('id, service_request_id, status, created_at, updated_at, meta')
-        .eq('contributor_id', userId)
-        .eq('contribution_type', COMPANY_PROJECT_CONTRIBUTION_TYPE)
-        .in('service_request_id', listingRequests.map((item: any) => item.id))
-        .order('created_at', { ascending: false })
-
-      if (companyApplicationsError) throw companyApplicationsError
-
-      const { data: fulfillmentRows, error: fulfillmentRowsError } = listingRequests.length > 0
-        ? await supabase
-            .from('service_volunteers')
-            .select('service_request_id, status, individual_done_at, ngo_confirmed_at, fulfilled_amount, fulfilled_quantity, volunteer:users!volunteer_id(id, user_type)')
-        .in('service_request_id', listingRequests.map((item: any) => item.id))
-        : { data: [], error: null as any }
-
-      if (fulfillmentRowsError) throw fulfillmentRowsError
-
-      const grouped = new Map<string, any>()
-
-      for (const need of listingRequests) {
-        const normalizedNeed = need as any
-        const normalizedProject = Array.isArray(normalizedNeed.project) ? normalizedNeed.project[0] : normalizedNeed.project
-        const normalizedRequester = Array.isArray(normalizedNeed.requester) ? normalizedNeed.requester[0] : normalizedNeed.requester
-        if (normalizedProject?.csr_project_available_for_csr === false) continue
-        if (
-          !ngoIsCsrEligibleForProject(normalizedRequester?.verification_status, normalizedRequester?.profile_data, {
-            valid_until: normalizedProject?.valid_until || need.valid_until,
-            timeline: normalizedProject?.timeline || need.timeline,
-          })
-        )
+      for (const raw of projects || []) {
+        const project = enrichProjectRecord(raw) as any
+        if (project?.csr_project_available_for_csr === false) continue
+        if (Number(project.assigned_company_user_id || 0) > 0 && String(project.assignment_status || '').toLowerCase() === 'accepted') {
           continue
-        const projectId = String(need.project_id)
-        const existing = grouped.get(projectId) || {
-          project_id: projectId,
-          project_title: normalizedProject?.title || 'Project',
-          project_description: normalizedProject?.description || '',
-          project_location: normalizedProject?.exact_address || normalizedProject?.location || need.location || '',
-          project_timeline: normalizedProject?.timeline || need.timeline || '',
-          ngo_id: need.ngo_id,
-          ngo_name: normalizedRequester?.name || 'NGO',
-          ngo_email: normalizedRequester?.email || '',
-          needs: [],
-          company_application_status: 'none',
-          company_application_eligible: true,
-          company_application_reason: '',
-          latest_application_at: null,
-          note: ''
         }
 
-        existing.needs.push({
-          id: need.id,
-          title: need.title,
-          status: need.status,
-          request_type: need.request_type || need.category,
-          estimated_budget: need.estimated_budget,
-          target_amount: need.target_amount,
-          target_quantity: need.target_quantity,
-          beneficiary_count: need.beneficiary_count
-        })
+        const ngo = Array.isArray(project.ngo) ? project.ngo[0] : project.ngo
+        if (
+          !ngoIsCsrEligibleForProject(ngo?.verification_status, ngo?.profile_data, {
+            valid_until: project.valid_until,
+            timeline: project.timeline,
+          })
+        ) {
+          continue
+        }
 
-        grouped.set(projectId, existing)
-      }
-
-      const applicationsByProject = (companyApplications || []).reduce((acc: Record<string, any[]>, item: any) => {
-        const projectId = safeProjectIdFromMeta(item.meta)
-        if (!projectId) return acc
-        if (!acc[projectId]) acc[projectId] = []
-        acc[projectId].push(item)
-        return acc
-      }, {})
-
-      const hasIndividualFulfillmentByProject = (fulfillmentRows || []).reduce((acc: Record<string, boolean>, row: any) => {
-        const requestItem = listingRequests.find((item: any) => Number(item.id) === Number(row.service_request_id))
-        if (!requestItem?.project_id) return acc
-
-        const isIndividual = String(row?.volunteer?.user_type || '').toLowerCase() === 'individual'
-        const status = String(row?.status || '').toLowerCase()
-        const hasFulfillmentSignal = (
-          status === 'completed' ||
-          !!row?.individual_done_at ||
-          !!row?.ngo_confirmed_at ||
-          Number(row?.fulfilled_amount || 0) > 0 ||
-          Number(row?.fulfilled_quantity || 0) > 0
+        const pending = Array.isArray(project.pending_company_applications)
+          ? project.pending_company_applications
+          : []
+        const myApp = pending.find((item: any) => Number(item.company_id) === Number(userId))
+        const acceptedElsewhere = pending.some(
+          (item: any) => String(item.status || '').toLowerCase() === 'accepted' && Number(item.company_id) !== Number(userId)
         )
+        if (acceptedElsewhere) continue
 
-        if (isIndividual && hasFulfillmentSignal) {
-          acc[String(requestItem.project_id)] = true
+        let companyApplicationStatus = 'none'
+        if (Number(project.assigned_company_user_id || 0) === Number(userId) && String(project.assignment_status || '').toLowerCase() === 'accepted') {
+          companyApplicationStatus = 'accepted'
+        } else if (myApp) {
+          companyApplicationStatus = String(myApp.status || 'pending').toLowerCase()
         }
 
-        return acc
-      }, {})
+        const canApplyByStatus = companyApplicationStatus === 'none'
+        const company_application_eligible = canApplyByStatus && companyFullyVerified
+        const company_application_reason = !companyFullyVerified
+          ? 'Complete email, phone, and document verification before applying for takeover.'
+          : ''
 
-      for (const [projectId, payload] of grouped.entries()) {
-        if (hasIndividualFulfillmentByProject[projectId]) {
-          // If individual volunteers have partially or fully fulfilled one or more needs
-          // in this project, we still allow companies to apply to take the entire project
-          // for CSR. The partial fulfillment remains credited to the individual/NGO
-          // and the company will be expected to cover the remaining needs/amounts.
-          payload.company_application_reason = 'One or more needs in this project show individual fulfillment; project remains eligible for CSR — company will cover remaining needs.'
-        }
-
-        const entries = applicationsByProject[projectId] || []
-        if (entries.length === 0) continue
-
-        const latest = entries[0]
-        const statuses = new Set(entries.map((entry) => String(entry.status || '').toLowerCase()))
-
-        if (statuses.has('accepted')) {
-          payload.company_application_status = 'accepted'
-          } else if (
-            statuses.has('pending') ||
-            statuses.has('pledged') ||
-            statuses.has('invited') ||
-            statuses.has('pending_acceptance') ||
-            statuses.has('awaiting_acceptance') ||
-            statuses.has('offered') ||
-            statuses.has('assigned')
-          ) {
-          payload.company_application_status = 'pending'
-        } else if (statuses.has('rejected')) {
-          payload.company_application_status = 'rejected'
-        } else {
-          payload.company_application_status = String(latest.status || 'none').toLowerCase()
-        }
-
-        payload.latest_application_at = latest.created_at || null
-        payload.note = safeNoteFromMeta(latest.meta)
+        opportunities.push({
+          project_id: String(project.id),
+          project_title: project.title || 'Project',
+          project_description: project.description || '',
+          project_location: project.exact_address || project.location || '',
+          project_timeline: project.timeline || '',
+          project_category: project.category || null,
+          project_budget_inr: project.budget_inr ?? null,
+          project_expected_beneficiaries: project.expected_beneficiaries ?? null,
+          project_impact_description: project.impact_description || null,
+          volunteers_needed: project.volunteers_needed ?? null,
+          ngo_id: project.ngo_id,
+          ngo_name: ngo?.name || 'NGO',
+          ngo_email: ngo?.email || '',
+          ngo_verification_status: ngo?.verification_status || null,
+          ngo_verified: String(ngo?.verification_status || '').toLowerCase() === 'verified',
+          needs: [],
+          company_application_status: companyApplicationStatus,
+          company_application_eligible,
+          company_application_reason,
+          latest_application_at: myApp?.applied_at || null,
+          note: myApp?.note || '',
+        })
       }
 
-      return NextResponse.json({ success: true, data: Array.from(grouped.values()) })
+      return NextResponse.json({
+        success: true,
+        data: opportunities,
+        meta: { company_fully_verified: companyFullyVerified },
+      })
     }
 
     if (mode === 'ngo-company-applications') {
@@ -307,6 +228,79 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'Only NGOs can view company applications' }, { status: 403 })
       }
 
+      const { data: ownProjects, error: ownProjectsError } = await supabase
+        .from('service_request_projects')
+        .select(`
+          id,
+          title,
+          description,
+          location,
+          exact_address,
+          timeline,
+          status,
+          valid_until,
+          expected_beneficiaries,
+          volunteers_needed,
+          assigned_company_user_id,
+          assignment_status,
+          created_at,
+          updated_at
+        `)
+        .eq('ngo_id', userId)
+        .neq('status', 'cancelled')
+        .order('created_at', { ascending: false })
+
+      if (ownProjectsError) throw ownProjectsError
+
+      const grouped = new Map<string, any>()
+
+      const companyIds = new Set<number>()
+      for (const raw of ownProjects || []) {
+        const project = enrichProjectRecord(raw) as any
+        const pending = Array.isArray(project.pending_company_applications)
+          ? project.pending_company_applications
+          : []
+        const formattedAddress = formatProjectExactAddress(project.exact_address || project.location)
+        const locationSummary =
+          projectAddressToLocationSummary(parseProjectExactAddress(project.exact_address || project.location)) ||
+          project.location ||
+          ''
+        for (const app of pending) {
+          const companyId = Number(app.company_id)
+          if (!Number.isFinite(companyId) || companyId <= 0) continue
+          const status = String(app.status || 'pending').toLowerCase()
+          if (!reviewQueueProjectApplicationStatuses.includes(status) && status !== 'accepted') continue
+          companyIds.add(companyId)
+          const key = `${project.id}::${companyId}`
+          const rawNote = String(app.note || '').trim()
+          const note =
+            !rawNote || /^applied from /i.test(rawNote) ? '' : rawNote
+          grouped.set(key, {
+            project_id: String(project.id),
+            project_title: project.title || 'Project',
+            project_location: locationSummary,
+            project_address: formattedAddress !== 'Not set' ? formattedAddress : locationSummary,
+            project_timeline: project.timeline || '',
+            project_valid_until: project.valid_until || null,
+            project_expected_beneficiaries: project.expected_beneficiaries ?? null,
+            project_volunteers_needed: project.volunteers_needed ?? null,
+            project_category: project.category || null,
+            project_budget_inr: project.budget_inr ?? null,
+            company_id: companyId,
+            company_name: app.company_name || 'Company',
+            company_email: '',
+            company_location: '',
+            status,
+            note,
+            applied_at: app.applied_at || project.created_at,
+            created_at: app.applied_at || project.created_at,
+            updated_at: project.updated_at,
+            needs: [] as any[],
+          })
+        }
+      }
+
+      // Legacy contribution-based applications (pre-split projects with child needs).
       const { data: ownNeeds, error: ownNeedsError } = await supabase
         .from('service_requests')
         .select(`
@@ -329,78 +323,122 @@ export async function GET(request: NextRequest) {
       if (ownNeedsError) throw ownNeedsError
 
       const ownNeedIds = (ownNeeds || []).map((item: any) => item.id)
-      if (ownNeedIds.length === 0) {
-        return NextResponse.json({ success: true, data: [] })
+      if (ownNeedIds.length > 0) {
+        const { data: contributions, error: contributionsError } = await supabase
+          .from('service_request_contributions')
+          .select(`
+            id,
+            service_request_id,
+            contributor_id,
+            status,
+            reference_text,
+            meta,
+            created_at,
+            updated_at,
+            contributor:users!contributor_id(id, name, email, user_type)
+          `)
+          .in('service_request_id', ownNeedIds)
+          .eq('contribution_type', COMPANY_PROJECT_CONTRIBUTION_TYPE)
+          .in('status', reviewQueueProjectApplicationStatuses)
+          .order('created_at', { ascending: false })
+
+        if (contributionsError) throw contributionsError
+
+        const needsById = new Map<number, any>((ownNeeds || []).map((item: any) => [item.id, item]))
+
+        for (const item of contributions || []) {
+          const need = needsById.get(item.service_request_id)
+          if (!need) continue
+
+          const normalizedNeed = need as any
+          const normalizedProject = Array.isArray(normalizedNeed.project) ? normalizedNeed.project[0] : normalizedNeed.project
+          const normalizedContributor = Array.isArray(item.contributor) ? item.contributor[0] : item.contributor
+
+          const projectId = String(need.project_id)
+          const companyId = Number(item.contributor_id)
+          companyIds.add(companyId)
+          const key = `${projectId}::${companyId}`
+
+          const existing = grouped.get(key) || {
+            project_id: projectId,
+            project_title: normalizedProject?.title || 'Project',
+            project_location:
+              projectAddressToLocationSummary(
+                parseProjectExactAddress(normalizedProject?.exact_address || normalizedProject?.location)
+              ) ||
+              normalizedProject?.location ||
+              '',
+            project_address: formatProjectExactAddress(
+              normalizedProject?.exact_address || normalizedProject?.location
+            ),
+            project_timeline: normalizedProject?.timeline || '',
+            project_valid_until: null,
+            project_expected_beneficiaries: null,
+            project_volunteers_needed: null,
+            project_category: null,
+            project_budget_inr: null,
+            company_id: companyId,
+            company_name: normalizedContributor?.name || 'Company',
+            company_email: normalizedContributor?.email || '',
+            company_location: '',
+            status: String(item.status || 'pending').toLowerCase(),
+            note: (() => {
+              const raw = String(safeNoteFromMeta(item.meta) || item.reference_text || '').trim()
+              return !raw || /^applied from /i.test(raw) ? '' : raw
+            })(),
+            applied_at: item.created_at,
+            created_at: item.created_at,
+            updated_at: item.updated_at,
+            needs: [] as any[]
+          }
+
+          existing.needs.push({
+            id: need.id,
+            title: need.title,
+            status: need.status,
+            request_type: need.request_type || need.category,
+            estimated_budget: need.estimated_budget,
+            target_amount: need.target_amount,
+            target_quantity: need.target_quantity,
+            beneficiary_count: need.beneficiary_count
+          })
+
+          if (String(item.status || '').toLowerCase() === 'accepted') {
+            existing.status = 'accepted'
+          } else if (existing.status !== 'accepted' && String(item.status || '').toLowerCase() === 'pending') {
+            existing.status = 'pending'
+          }
+
+          if (normalizedContributor?.name) existing.company_name = normalizedContributor.name
+          if (normalizedContributor?.email) existing.company_email = normalizedContributor.email
+
+          grouped.set(key, existing)
+        }
       }
 
-      const { data: contributions, error: contributionsError } = await supabase
-        .from('service_request_contributions')
-        .select(`
-          id,
-          service_request_id,
-          contributor_id,
-          status,
-          reference_text,
-          meta,
-          created_at,
-          updated_at,
-          contributor:users!contributor_id(id, name, email, user_type)
-        `)
-        .in('service_request_id', ownNeedIds)
-        .eq('contribution_type', COMPANY_PROJECT_CONTRIBUTION_TYPE)
-        .in('status', reviewQueueProjectApplicationStatuses)
-        .order('created_at', { ascending: false })
+      // Enrich company emails/names/location for meta-only applications.
+      if (companyIds.size > 0) {
+        const { data: companies } = await supabase
+          .from('users')
+          .select('id, name, email, location, city, state_province, country, phone, industry, profile_image, verification_status')
+          .in('id', Array.from(companyIds))
 
-      if (contributionsError) throw contributionsError
-
-      const needsById = new Map<number, any>((ownNeeds || []).map((item: any) => [item.id, item]))
-      const grouped = new Map<string, any>()
-
-      for (const item of contributions || []) {
-        const need = needsById.get(item.service_request_id)
-        if (!need) continue
-
-        const normalizedNeed = need as any
-        const normalizedProject = Array.isArray(normalizedNeed.project) ? normalizedNeed.project[0] : normalizedNeed.project
-        const normalizedContributor = Array.isArray(item.contributor) ? item.contributor[0] : item.contributor
-
-        const projectId = String(need.project_id)
-        const companyId = Number(item.contributor_id)
-        const key = `${projectId}::${companyId}`
-
-        const existing = grouped.get(key) || {
-          project_id: projectId,
-          project_title: normalizedProject?.title || 'Project',
-          project_location: normalizedProject?.exact_address || normalizedProject?.location || '',
-          project_timeline: normalizedProject?.timeline || '',
-          company_id: companyId,
-          company_name: normalizedContributor?.name || 'Company',
-          company_email: normalizedContributor?.email || '',
-          status: String(item.status || 'pending').toLowerCase(),
-          note: safeNoteFromMeta(item.meta) || String(item.reference_text || ''),
-          created_at: item.created_at,
-          updated_at: item.updated_at,
-          needs: [] as any[]
+        const companyById = new Map((companies || []).map((c: any) => [Number(c.id), c]))
+        for (const entry of grouped.values()) {
+          const company = companyById.get(Number(entry.company_id))
+          if (!company) continue
+          if (!entry.company_email) entry.company_email = company.email || ''
+          if (!entry.company_name || entry.company_name === 'Company') entry.company_name = company.name || entry.company_name
+          entry.company_phone = company.phone || entry.company_phone || ''
+          entry.company_industry = company.industry || entry.company_industry || ''
+          entry.company_profile_image = company.profile_image || entry.company_profile_image || null
+          entry.company_verified =
+            String(company.verification_status || '').toLowerCase() === 'verified'
+          entry.company_location =
+            company.city && company.state_province
+              ? `${company.city}, ${company.state_province}`
+              : company.location || entry.company_location || ''
         }
-
-        existing.needs.push({
-          id: need.id,
-          title: need.title,
-          status: need.status,
-          request_type: need.request_type || need.category,
-          estimated_budget: need.estimated_budget,
-          target_amount: need.target_amount,
-          target_quantity: need.target_quantity,
-          beneficiary_count: need.beneficiary_count
-        })
-
-        if (String(item.status || '').toLowerCase() === 'accepted') {
-          existing.status = 'accepted'
-        } else if (existing.status !== 'accepted' && String(item.status || '').toLowerCase() === 'pending') {
-          existing.status = 'pending'
-        }
-
-        grouped.set(key, existing)
       }
 
       return NextResponse.json({ success: true, data: Array.from(grouped.values()) })
@@ -420,7 +458,7 @@ export async function GET(request: NextRequest) {
       {
         const response = await supabase
           .from('service_request_projects')
-          .select('id, ngo_id, title, description, location, exact_address, timeline, status, valid_until, expected_beneficiaries, csr_project_available_for_csr, updated_at, created_at, ngo:users!ngo_id(id, name, email, location, city, state_province, country, phone, ngo_volunteer_capacity, industry, pincode, profile_data)')
+          .select('id, ngo_id, title, description, location, exact_address, timeline, status, valid_until, expected_beneficiaries, volunteers_needed, csr_project_available_for_csr, assigned_company_user_id, assignment_status, updated_at, created_at, ngo:users!ngo_id(id, name, email, location, city, state_province, country, phone, ngo_volunteer_capacity, industry, pincode, profile_data, verification_status)')
           .eq('id', projectId)
           .maybeSingle()
 
@@ -486,21 +524,28 @@ export async function GET(request: NextRequest) {
       const firstNeedContext = needsList.length > 0
         ? safeJsonObject((needsList[0] as any)?.project_context)
         : {}
-      const enrichedProject = project
+      const metaEnriched = project ? enrichProjectRecord(project) as any : null
+      const enrichedProject = metaEnriched
         ? {
-            ...project,
-            category: String(firstNeedContext.project_category || (needsList[0] as any)?.category || '').trim() || null,
+            ...metaEnriched,
+            category: metaEnriched.category
+              || String(firstNeedContext.project_category || (needsList[0] as any)?.category || '').trim()
+              || null,
             csr_project_available_for_csr:
-              project.csr_project_available_for_csr ??
+              metaEnriched.csr_project_available_for_csr ??
               (firstNeedContext.csr_project_available_for_csr !== undefined
                 ? firstNeedContext.csr_project_available_for_csr !== false
                 : true),
-            expected_beneficiaries: project.expected_beneficiaries ?? (firstNeedContext.project_expected_beneficiaries != null
+            expected_beneficiaries: metaEnriched.expected_beneficiaries ?? (firstNeedContext.project_expected_beneficiaries != null
               ? Number(firstNeedContext.project_expected_beneficiaries)
               : null),
-            valid_until: project.valid_until ?? (firstNeedContext.project_valid_until
+            valid_until: metaEnriched.valid_until ?? (firstNeedContext.project_valid_until
               ? String(firstNeedContext.project_valid_until)
               : null),
+            budget_inr: metaEnriched.budget_inr ?? null,
+            impact_description: metaEnriched.impact_description || null,
+            contact_info: metaEnriched.contact_info || null,
+            volunteers_needed: metaEnriched.volunteers_needed ?? null,
           }
         : project
       // project-detail: needs loaded
@@ -580,7 +625,7 @@ export async function GET(request: NextRequest) {
         throw fulfillmentRowsError
       }
 
-      const hasIndividualFulfillment = (fulfillmentRows || []).some((row: any) => {
+      const hasIndividualFulfillment = needsList.length > 0 && (fulfillmentRows || []).some((row: any) => {
         const isIndividual = String(row?.volunteer?.user_type || '').toLowerCase() === 'individual'
         const status = String(row?.status || '').toLowerCase()
         return isIndividual && (
@@ -621,6 +666,30 @@ export async function GET(request: NextRequest) {
         return acc
       }, {})
 
+      // Merge meta-stored company applications (standalone projects without child needs).
+      const metaApps = Array.isArray((enrichedProject as any)?.pending_company_applications)
+        ? (enrichedProject as any).pending_company_applications
+        : []
+      for (const app of metaApps) {
+        const companyId = Number(app.company_id)
+        if (!Number.isFinite(companyId) || companyId <= 0) continue
+        const key = String(companyId)
+        if (groupedApplicationsByCompany[key]) continue
+        groupedApplicationsByCompany[key] = {
+          company_id: companyId,
+          company_name: app.company_name || null,
+          status: String(app.status || 'pending').toLowerCase(),
+          created_at: app.applied_at || null,
+          updated_at: app.applied_at || null,
+          note: app.note || '',
+          needs: [],
+        }
+      }
+
+      const assignmentLocked =
+        Number((enrichedProject as any)?.assigned_company_user_id || 0) > 0 &&
+        String((enrichedProject as any)?.assignment_status || '').toLowerCase() === 'accepted'
+
       const responsePayload = {
         project: enrichedProject,
         anchor_need_id: anchorNeedId,
@@ -632,13 +701,38 @@ export async function GET(request: NextRequest) {
         },
         company_applications: Object.values(groupedApplicationsByCompany),
         lead_ngo_invites: leadInvites || [],
-        csr_project_eligible_for_company_apply: !hasIndividualFulfillment,
-        csr_project_ineligible_reason: hasIndividualFulfillment ? 'One or more needs in this project were already fulfilled by individuals.' : ''
+        // Standalone projects (no child needs) are gated only by assignment status.
+        csr_project_eligible_for_company_apply: !assignmentLocked && (needsList.length === 0 || !hasIndividualFulfillment),
+        csr_project_ineligible_reason: assignmentLocked
+          ? 'This project has already been accepted by a company.'
+          : (hasIndividualFulfillment ? 'One or more legacy needs in this project were already fulfilled by individuals.' : '')
       }
 
       if (!userId) {
+        responsePayload.project = redactProjectSensitiveFields(enrichedProject as any)
         responsePayload.company_applications = []
         responsePayload.lead_ngo_invites = []
+      } else {
+        const ownerNgoId = Number((enrichedProject as any)?.ngo_id || 0)
+        const assignedCompanyId = Number((enrichedProject as any)?.assigned_company_user_id || 0)
+        const isOwnerNgo = userType === 'ngo' && ownerNgoId === Number(userId)
+        const isAssignedCompany = userType === 'company' && assignedCompanyId === Number(userId)
+        if (!isOwnerNgo && !isAssignedCompany) {
+          // Other authenticated viewers only see their own pending application, if any.
+          const myApps = Array.isArray((enrichedProject as any)?.pending_company_applications)
+            ? (enrichedProject as any).pending_company_applications.filter(
+                (item: any) => Number(item?.company_id) === Number(userId)
+              )
+            : []
+          responsePayload.project = {
+            ...redactProjectSensitiveFields(enrichedProject as any),
+            pending_company_applications: myApps,
+          }
+          responsePayload.company_applications = (responsePayload.company_applications || []).filter(
+            (app: any) => Number(app?.company_id) === Number(userId)
+          )
+          responsePayload.lead_ngo_invites = []
+        }
       }
 
       // project-detail: returning payload for project
@@ -887,7 +981,7 @@ export async function GET(request: NextRequest) {
       const { data: users, error: usersError } = userIds.size > 0
         ? await supabase
             .from('users')
-            .select('id, name, email')
+            .select('id, name, email, verification_status')
             .in('id', [...userIds])
         : { data: [], error: null as any }
 
@@ -974,6 +1068,8 @@ export async function GET(request: NextRequest) {
               ngo_id: inviteNgoId,
               ngo_name: inviteNgo?.name || 'NGO',
               ngo_email: inviteNgo?.email || '',
+              ngo_verification_status: inviteNgo?.verification_status || null,
+              ngo_verified: String(inviteNgo?.verification_status || '').toLowerCase() === 'verified',
               status: invite.status,
               note: String(invite.reference_text || meta.note || ''),
               selected_as_lead: safeBoolean(meta.selected_as_lead),
@@ -998,12 +1094,18 @@ export async function GET(request: NextRequest) {
             lead_ngo_id: ownerNgoId,
             lead_ngo_name: ownerNgo?.name || 'NGO',
             lead_ngo_email: ownerNgo?.email || '',
+            lead_ngo_verification_status: ownerNgo?.verification_status || null,
+            lead_ngo_verified: String(ownerNgo?.verification_status || '').toLowerCase() === 'verified',
             assigned_company_id: companyId,
             assigned_company_name: company?.name || 'Company',
             assigned_company_email: company?.email || '',
+            assigned_company_verification_status: company?.verification_status || null,
+            assigned_company_verified: String(company?.verification_status || '').toLowerCase() === 'verified',
             selected_lead_ngo_id: selectedLeadNgoId > 0 ? selectedLeadNgoId : null,
             selected_lead_ngo_name: selectedLeadNgo?.name || null,
             selected_lead_ngo_email: selectedLeadNgo?.email || null,
+            selected_lead_ngo_verification_status: selectedLeadNgo?.verification_status || null,
+            selected_lead_ngo_verified: String(selectedLeadNgo?.verification_status || '').toLowerCase() === 'verified',
             ngo_dashboard_role: ownerNgoId === Number(userId)
               ? 'request_owner'
               : (selectedLeadNgoId === Number(userId) ? 'selected_lead' : 'viewer'),
@@ -1045,7 +1147,7 @@ export async function GET(request: NextRequest) {
             estimated_budget,
             beneficiary_count,
             ngo_id,
-            ngo:users!ngo_id(id, name, email),
+            ngo:users!ngo_id(id, name, email, verification_status),
             project:service_request_projects!project_id(id, title, exact_address, location, timeline)
           )
         `)
@@ -1149,7 +1251,9 @@ export async function POST(request: NextRequest) {
     }
 
     if (!(await isFullyVerifiedCompany(userId))) {
-      return NextResponse.json({ error: 'Company must be fully verified before applying or sending lead NGO invites' }, { status: 403 })
+      return NextResponse.json({
+        error: 'Complete email, phone, and document verification before applying for project takeover or sending lead NGO invites.',
+      }, { status: 403 })
     }
 
     const projectId = String(body.projectId || '').trim()
@@ -1159,6 +1263,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Project ID is required' }, { status: 400 })
     }
 
+    const { data: projectRowRaw, error: projectRowError } = await supabase
+      .from('service_request_projects')
+      .select('*')
+      .eq('id', projectId)
+      .maybeSingle()
+
+    if (projectRowError) throw projectRowError
+    if (!projectRowRaw) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+    }
+
+    const projectRow = enrichProjectRecord(projectRowRaw) as any
+    const ownerNgoId = Number(projectRow.ngo_id || 0)
+
+    if (ownerNgoId === userId) {
+      return NextResponse.json({ error: 'You cannot apply to your own NGO project' }, { status: 403 })
+    }
+
+    // Legacy child needs (pre-split) — still supported for invite-lead flows.
     const { data: needs, error: needsError } = await supabase
       .from('service_requests')
       .select('id, ngo_id, title, status, project_id')
@@ -1168,24 +1291,9 @@ export async function POST(request: NextRequest) {
     if (needsError) throw needsError
 
     const activeNeeds = Array.isArray(needs) ? needs : []
-    if (activeNeeds.length === 0) {
-      return NextResponse.json({ error: 'No active needs found in this project' }, { status: 404 })
-    }
-
-    if (activeNeeds.some((item: any) => Number(item.ngo_id) === userId)) {
-      return NextResponse.json({ error: 'You cannot apply to your own NGO project' }, { status: 403 })
-    }
-
     const needIds = activeNeeds.map((item: any) => item.id)
 
     if (action === 'apply-project') {
-      const ownerNgoId = Number(activeNeeds[0]?.ngo_id || 0)
-      const { data: projectRow } = await supabase
-        .from('service_request_projects')
-        .select('csr_project_available_for_csr, valid_until, timeline')
-        .eq('id', projectId)
-        .maybeSingle()
-
       const ownerCoverage = await assertNgoCsr1CoversProject(ownerNgoId, projectRow)
       if (!ownerCoverage.ok) {
         return NextResponse.json({ error: ownerCoverage.error }, { status: 403 })
@@ -1197,51 +1305,117 @@ export async function POST(request: NextRequest) {
         }, { status: 409 })
       }
 
-      const unavailableNeeds = activeNeeds.filter((item: any) => !isProjectAvailableForCsr(item))
-      if (unavailableNeeds.length > 0) {
-        return NextResponse.json({
-          error: 'This project is locked for CSR and cannot accept new company applications.'
-        }, { status: 409 })
-      }
-
-      const { data: existingAcceptedRows, error: existingAcceptedRowsError } = await supabase
-        .from('service_request_contributions')
-        .select('id, contributor_id, service_request_id')
-        .in('service_request_id', needIds)
-        .eq('contribution_type', COMPANY_PROJECT_CONTRIBUTION_TYPE)
-        .eq('status', 'accepted')
-
-      if (existingAcceptedRowsError) throw existingAcceptedRowsError
-      if ((existingAcceptedRows || []).length > 0) {
+      if (Number(projectRow.assigned_company_user_id || 0) > 0 && String(projectRow.assignment_status || '').toLowerCase() === 'accepted') {
         return NextResponse.json({
           error: 'This project has already been accepted by a company. New applications are not allowed.'
         }, { status: 409 })
       }
 
-      const { data: fulfillmentRows, error: fulfillmentRowsError } = await supabase
-        .from('service_volunteers')
-        .select('service_request_id, status, individual_done_at, ngo_confirmed_at, fulfilled_amount, fulfilled_quantity, volunteer:users!volunteer_id(id, user_type)')
-        .in('service_request_id', needIds)
+      const pending = Array.isArray(projectRow.pending_company_applications)
+        ? [...projectRow.pending_company_applications]
+        : []
 
-      if (fulfillmentRowsError) throw fulfillmentRowsError
-
-      const hasIndividualFulfillment = (fulfillmentRows || []).some((row: any) => {
-        const isIndividual = String(row?.volunteer?.user_type || '').toLowerCase() === 'individual'
-        const status = String(row?.status || '').toLowerCase()
-        return isIndividual && (
-          status === 'completed' ||
-          !!row?.individual_done_at ||
-          !!row?.ngo_confirmed_at ||
-          Number(row?.fulfilled_amount || 0) > 0 ||
-          Number(row?.fulfilled_quantity || 0) > 0
-        )
-      })
-
-      if (hasIndividualFulfillment) {
+      if (pending.some((item: any) => Number(item.company_id) === Number(userId))) {
         return NextResponse.json({
-          error: 'Project is not eligible for company CSR application because one or more needs were already fulfilled by individuals.'
+          error: 'You have already applied to this project.'
         }, { status: 409 })
       }
+
+      if (pending.some((item: any) => String(item.status || '').toLowerCase() === 'accepted')) {
+        return NextResponse.json({
+          error: 'This project has already been accepted by a company. New applications are not allowed.'
+        }, { status: 409 })
+      }
+
+      pending.push({
+        company_id: userId,
+        company_name: userName || null,
+        note: note || null,
+        applied_at: new Date().toISOString(),
+        status: 'pending',
+        source: 'company_apply',
+        applicant_user_id: userId,
+      })
+
+      const nextDescription = withProjectMeta(projectRowRaw.description, {
+        ...parseProjectMeta(projectRowRaw.description),
+        pending_company_applications: pending,
+      })
+
+      const { error: updateError } = await supabase
+        .from('service_request_projects')
+        .update({
+          description: nextDescription,
+          assignment_status: 'pending',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', projectId)
+
+      if (updateError) throw updateError
+
+      // Best-effort legacy contribution rows when child needs still exist.
+      if (needIds.length > 0) {
+        const { data: existingRows } = await supabase
+          .from('service_request_contributions')
+          .select('id, service_request_id, status')
+          .in('service_request_id', needIds)
+          .eq('contributor_id', userId)
+          .eq('contribution_type', COMPANY_PROJECT_CONTRIBUTION_TYPE)
+
+        const existingNeedIds = new Set((existingRows || [])
+          .filter((item: any) => ['pending', 'pledged', 'accepted', 'in_progress', 'completed'].includes(String(item.status || '').toLowerCase()))
+          .map((item: any) => Number(item.service_request_id)))
+
+        const rowsToInsert = activeNeeds
+          .filter((need: any) => !existingNeedIds.has(Number(need.id)))
+          .map((need: any) => ({
+            service_request_id: need.id,
+            contributor_id: userId,
+            contribution_type: COMPANY_PROJECT_CONTRIBUTION_TYPE,
+            status: 'pending',
+            reference_text: note || null,
+            meta: {
+              application_scope: 'project',
+              project_id: projectId,
+              company_id: userId,
+              company_name: userName || null,
+              note,
+              payment_provider: 'razorpay',
+              logistics_provider: 'delhivery',
+              flow: 'company_project_csr'
+            }
+          }))
+
+        if (rowsToInsert.length > 0) {
+          await supabase.from('service_request_contributions').insert(rowsToInsert)
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          projectId,
+          message: 'Project-level CSR application submitted to NGO.'
+        }
+      })
+    }
+
+    if (action === 'invite-lead-ngo') {
+      if (Number(projectRow.assigned_company_user_id || 0) !== Number(userId) && needIds.length === 0) {
+        // Fall through to legacy path checks below when needs exist.
+      }
+    }
+
+    if (activeNeeds.length === 0 && action === 'invite-lead-ngo') {
+      // Lead NGO invites for package projects: store as pending meta + contribution if possible.
+      // Reuse existing invite flow requires an anchor need — return clear error for now if none.
+      return NextResponse.json({
+        error: 'Lead NGO invites for projects without legacy needs are managed from the project assignment after NGO acceptance. Ensure the project is accepted first.'
+      }, { status: 409 })
+    }
+
+    if (activeNeeds.length === 0) {
+      return NextResponse.json({ error: 'No active project found' }, { status: 404 })
     }
 
     if (action === 'invite-lead-ngo') {
@@ -1286,7 +1460,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: CSR_ELIGIBILITY_REQUIRED_MESSAGE }, { status: 400 })
       }
 
-      const requestOwnerNgoId = Number(activeNeeds[0]?.ngo_id || 0)
+      const requestOwnerNgoId = Number(activeNeeds[0]?.ngo_id || ownerNgoId || 0)
       if (requestOwnerNgoId > 0 && ngoIds.includes(requestOwnerNgoId)) {
         return NextResponse.json({
           error: 'You cannot invite the NGO that owns the original project request as lead NGO.'
@@ -1379,58 +1553,7 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    const { data: existingRows, error: existingRowsError } = await supabase
-      .from('service_request_contributions')
-      .select('id, service_request_id, status')
-      .in('service_request_id', needIds)
-      .eq('contributor_id', userId)
-      .eq('contribution_type', COMPANY_PROJECT_CONTRIBUTION_TYPE)
-
-    if (existingRowsError) throw existingRowsError
-
-    const existingNeedIds = new Set((existingRows || [])
-      .filter((item: any) => ['pending', 'pledged', 'accepted', 'in_progress', 'completed'].includes(String(item.status || '').toLowerCase()))
-      .map((item: any) => Number(item.service_request_id)))
-
-    const rowsToInsert = activeNeeds
-      .filter((need: any) => !existingNeedIds.has(Number(need.id)))
-      .map((need: any) => ({
-        service_request_id: need.id,
-        contributor_id: userId,
-        contribution_type: COMPANY_PROJECT_CONTRIBUTION_TYPE,
-        status: 'pending',
-        reference_text: note || null,
-        meta: {
-          application_scope: 'project',
-          project_id: projectId,
-          company_id: userId,
-          company_name: userName || null,
-          note,
-          payment_provider: 'razorpay',
-          logistics_provider: 'delhivery',
-          flow: 'company_project_csr'
-        }
-      }))
-
-    if (rowsToInsert.length > 0) {
-      const { error: insertError } = await supabase
-        .from('service_request_contributions')
-        .insert(rowsToInsert)
-
-      if (insertError) throw insertError
-    }
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        projectId,
-        totalNeeds: needIds.length,
-        newlyAppliedNeeds: rowsToInsert.length,
-        message: rowsToInsert.length > 0
-          ? 'Project-level CSR application submitted to NGO for all active needs.'
-          : 'You have already applied for this project.'
-      }
-    })
+    return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
   } catch (error) {
     console.error('Error creating project-level company application:', error)
     return NextResponse.json({ error: 'Failed to submit project-level application' }, { status: 500 })
@@ -1718,39 +1841,49 @@ export async function PUT(request: NextRequest) {
     if (decision === 'accepted') {
       const { data: acceptProjectRow } = await supabase
         .from('service_request_projects')
-        .select('valid_until, timeline')
+        .select('id, ngo_id, description, valid_until, timeline, assigned_company_user_id, assignment_status, volunteers_needed')
         .eq('id', projectId)
+        .eq('ngo_id', userId)
         .maybeSingle()
+
+      if (!acceptProjectRow) {
+        return NextResponse.json({ error: 'Project not found under your NGO' }, { status: 404 })
+      }
+
       const acceptCoverage = await assertNgoCsr1CoversProject(userId, acceptProjectRow)
       if (!acceptCoverage.ok) {
         return NextResponse.json({ error: acceptCoverage.error }, { status: 403 })
       }
-    }
 
-    if (decision === 'accepted') {
-      const { data: alreadyAcceptedRows, error: alreadyAcceptedRowsError } = await supabase
-        .from('service_request_contributions')
-        .select('id, contributor_id, service_request_id')
-        .eq('contribution_type', COMPANY_PROJECT_CONTRIBUTION_TYPE)
-        .in('service_request_id', (
-          await supabase
-            .from('service_requests')
-            .select('id')
-            .eq('project_id', projectId)
-            .eq('ngo_id', userId)
-            .not('status', 'in', '(completed,cancelled)')
-        ).data?.map((item: any) => item.id) || [])
-        .eq('status', 'accepted')
-        .neq('contributor_id', companyId)
-
-      if (alreadyAcceptedRowsError) throw alreadyAcceptedRowsError
-
-      if ((alreadyAcceptedRows || []).length > 0) {
+      if (
+        Number(acceptProjectRow.assigned_company_user_id || 0) > 0 &&
+        Number(acceptProjectRow.assigned_company_user_id) !== companyId &&
+        String(acceptProjectRow.assignment_status || '').toLowerCase() === 'accepted'
+      ) {
         return NextResponse.json({
           error: 'A company application is already accepted for this project. You cannot accept another application.'
         }, { status: 409 })
       }
     }
+
+    const { data: projectForReviewRaw, error: projectForReviewError } = await supabase
+      .from('service_request_projects')
+      .select('*')
+      .eq('id', projectId)
+      .eq('ngo_id', userId)
+      .maybeSingle()
+
+    if (projectForReviewError) throw projectForReviewError
+    if (!projectForReviewRaw) {
+      return NextResponse.json({ error: 'Project not found under your NGO' }, { status: 404 })
+    }
+
+    const projectForReview = enrichProjectRecord(projectForReviewRaw) as any
+    const pendingApps = Array.isArray(projectForReview.pending_company_applications)
+      ? [...projectForReview.pending_company_applications]
+      : []
+    const metaAppIndex = pendingApps.findIndex((item: any) => Number(item.company_id) === companyId)
+    const hasMetaApp = metaAppIndex >= 0
 
     const { data: ownNeeds, error: ownNeedsError } = await supabase
       .from('service_requests')
@@ -1762,22 +1895,108 @@ export async function PUT(request: NextRequest) {
     if (ownNeedsError) throw ownNeedsError
 
     const needIds = (ownNeeds || []).map((item: any) => item.id)
-    if (needIds.length === 0) {
-      return NextResponse.json({ error: 'No active needs found for this project under your NGO' }, { status: 404 })
+
+    let targetRows: any[] = []
+    if (needIds.length > 0) {
+      const { data: rows, error: targetRowsError } = await supabase
+        .from('service_request_contributions')
+        .select('id, service_request_id, meta')
+        .in('service_request_id', needIds)
+        .eq('contributor_id', companyId)
+        .eq('contribution_type', COMPANY_PROJECT_CONTRIBUTION_TYPE)
+        .in('status', actionableProjectApplicationStatuses)
+
+      if (targetRowsError) throw targetRowsError
+      targetRows = rows || []
     }
 
-    const { data: targetRows, error: targetRowsError } = await supabase
-      .from('service_request_contributions')
-      .select('id, service_request_id, meta')
-      .in('service_request_id', needIds)
-      .eq('contributor_id', companyId)
-      .eq('contribution_type', COMPANY_PROJECT_CONTRIBUTION_TYPE)
-      .in('status', actionableProjectApplicationStatuses)
-
-    if (targetRowsError) throw targetRowsError
-
-    if (!targetRows || targetRows.length === 0) {
+    if (!hasMetaApp && targetRows.length === 0) {
       return NextResponse.json({ error: 'No matching company application found for this project' }, { status: 404 })
+    }
+
+    const metaApp = hasMetaApp ? pendingApps[metaAppIndex] : null
+    const authenticMetaApp = isAuthenticCompanyProjectApplication(metaApp)
+    if (!authenticMetaApp && targetRows.length === 0) {
+      return NextResponse.json(
+        { error: 'Company application is not valid. The company must apply through the CSR marketplace.' },
+        { status: 403 }
+      )
+    }
+
+    if (decision === 'accepted') {
+      const alreadyAcceptedMeta = pendingApps.some(
+        (item: any) =>
+          Number(item.company_id) !== companyId &&
+          String(item.status || '').toLowerCase() === 'accepted'
+      )
+      if (alreadyAcceptedMeta) {
+        return NextResponse.json({
+          error: 'A company application is already accepted for this project. You cannot accept another application.'
+        }, { status: 409 })
+      }
+
+      if (needIds.length > 0) {
+        const { data: alreadyAcceptedRows, error: alreadyAcceptedRowsError } = await supabase
+          .from('service_request_contributions')
+          .select('id, contributor_id, service_request_id')
+          .in('service_request_id', needIds)
+          .eq('contribution_type', COMPANY_PROJECT_CONTRIBUTION_TYPE)
+          .eq('status', 'accepted')
+          .neq('contributor_id', companyId)
+
+        if (alreadyAcceptedRowsError) throw alreadyAcceptedRowsError
+        if ((alreadyAcceptedRows || []).length > 0) {
+          return NextResponse.json({
+            error: 'A company application is already accepted for this project. You cannot accept another application.'
+          }, { status: 409 })
+        }
+      }
+    }
+
+    // Update meta-stored application statuses.
+    if (hasMetaApp || pendingApps.length > 0) {
+      const nextPending = pendingApps.map((item: any) => {
+        const id = Number(item.company_id)
+        if (id === companyId) {
+          return {
+            ...item,
+            status: decision,
+            review_note: note || null,
+            reviewed_at: new Date().toISOString(),
+            reviewed_by: userId,
+          }
+        }
+        if (decision === 'accepted' && String(item.status || '').toLowerCase() === 'pending') {
+          return { ...item, status: EXPIRED_STATUS }
+        }
+        return item
+      })
+
+      const nextDescription = withProjectMeta(projectForReviewRaw.description, {
+        ...parseProjectMeta(projectForReviewRaw.description),
+        pending_company_applications: nextPending,
+      })
+
+      const projectUpdate: Record<string, any> = {
+        description: nextDescription,
+        updated_at: new Date().toISOString(),
+      }
+
+      if (decision === 'accepted') {
+        projectUpdate.status = 'in_progress'
+        projectUpdate.selected_lead_ngo_id = userId
+        projectUpdate.assigned_company_user_id = companyId
+        projectUpdate.assignment_status = 'accepted'
+      } else if (decision === 'rejected') {
+        projectUpdate.assignment_status = 'pending'
+      }
+
+      const { error: metaUpdateError } = await supabase
+        .from('service_request_projects')
+        .update(projectUpdate)
+        .eq('id', projectId)
+
+      if (metaUpdateError) throw metaUpdateError
     }
 
     for (const row of targetRows) {
@@ -1802,17 +2021,22 @@ export async function PUT(request: NextRequest) {
     }
 
     if (decision === 'accepted') {
-      // Capacity check: ensure NGO has sufficient volunteer capacity if configured
+      // Capacity check against project volunteers_needed (standalone) or legacy child needs.
       try {
-        const { data: volunteerRows, error: volunteerRowsError } = await supabase
-          .from('service_requests')
-          .select('volunteers_needed')
-          .eq('project_id', projectId)
-          .not('status', 'in', '(completed,cancelled)')
+        const volunteersNeeded = Number(projectForReview.volunteers_needed || 0)
+        let totalVolunteersNeeded = volunteersNeeded
 
-        if (volunteerRowsError) throw volunteerRowsError
+        if (needIds.length > 0) {
+          const { data: volunteerRows, error: volunteerRowsError } = await supabase
+            .from('service_requests')
+            .select('volunteers_needed')
+            .eq('project_id', projectId)
+            .not('status', 'in', '(completed,cancelled)')
 
-        const totalVolunteersNeeded = (volunteerRows || []).reduce((acc: number, r: any) => acc + (Number(r.volunteers_needed || 0)), 0)
+          if (volunteerRowsError) throw volunteerRowsError
+          const fromNeeds = (volunteerRows || []).reduce((acc: number, r: any) => acc + (Number(r.volunteers_needed || 0)), 0)
+          if (fromNeeds > 0) totalVolunteersNeeded = fromNeeds
+        }
 
         const { data: ngoUser, error: ngoUserError } = await supabase
           .from('users')
@@ -1827,101 +2051,103 @@ export async function PUT(request: NextRequest) {
           }
         }
       } catch (e) {
-        // on error, do not block acceptance; continue
         console.warn('Capacity check failed:', e)
       }
-      const { error: expireOtherApplicationsError } = await supabase
-        .from('service_request_contributions')
-        .update({
-          status: EXPIRED_STATUS,
-          updated_at: new Date().toISOString()
-        })
-        .in('service_request_id', needIds)
-        .eq('contribution_type', COMPANY_PROJECT_CONTRIBUTION_TYPE)
-        .neq('contributor_id', companyId)
-        .in('status', reviewQueueProjectApplicationStatuses)
 
-      if (expireOtherApplicationsError) throw expireOtherApplicationsError
-
-      for (const need of ownNeeds || []) {
-        const existingContext = safeJsonObject(need.project_context)
-        const nextContext = {
-          ...existingContext,
-          csr_assignment: {
-            ...(existingContext.csr_assignment && typeof existingContext.csr_assignment === 'object' ? existingContext.csr_assignment : {}),
-            mode: 'company_project_handoff',
-            project_id: projectId,
-            lead_ngo_id: userId,
-            assigned_company_id: companyId,
-            assignment_status: 'accepted',
-            assigned_at: new Date().toISOString(),
-            review_note: note || null,
-            payment_provider: 'razorpay',
-            logistics_provider: 'delhivery'
-          }
-        }
-
-        const { error: requestUpdateError } = await supabase
-          .from('service_requests')
+      if (needIds.length > 0) {
+        const { error: expireOtherApplicationsError } = await supabase
+          .from('service_request_contributions')
           .update({
-            status: 'in_progress',
-            project_context: nextContext,
+            status: EXPIRED_STATUS,
             updated_at: new Date().toISOString()
           })
-          .eq('id', need.id)
+          .in('service_request_id', needIds)
+          .eq('contribution_type', COMPANY_PROJECT_CONTRIBUTION_TYPE)
+          .neq('contributor_id', companyId)
+          .in('status', reviewQueueProjectApplicationStatuses)
 
-        if (requestUpdateError) throw requestUpdateError
+        if (expireOtherApplicationsError) throw expireOtherApplicationsError
+
+        for (const need of ownNeeds || []) {
+          const existingContext = safeJsonObject(need.project_context)
+          const nextContext = {
+            ...existingContext,
+            csr_assignment: {
+              ...(existingContext.csr_assignment && typeof existingContext.csr_assignment === 'object' ? existingContext.csr_assignment : {}),
+              mode: 'company_project_handoff',
+              project_id: projectId,
+              lead_ngo_id: userId,
+              assigned_company_id: companyId,
+              assignment_status: 'accepted',
+              assigned_at: new Date().toISOString(),
+              review_note: note || null,
+              payment_provider: 'razorpay',
+              logistics_provider: 'delhivery'
+            }
+          }
+
+          const { error: requestUpdateError } = await supabase
+            .from('service_requests')
+            .update({
+              status: 'in_progress',
+              project_context: nextContext,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', need.id)
+
+          if (requestUpdateError) throw requestUpdateError
+        }
       }
 
-      // Atomically set project-level assignment columns only if not already assigned to another company
-      try {
-        // Try to set assigned_company_user_id only when it's currently NULL
-        const { data: updated, error: projUpdateError } = await supabase
-          .from('service_request_projects')
-          .update({
-            status: 'in_progress',
-            selected_lead_ngo_id: userId,
-            assigned_company_user_id: companyId,
-            assignment_status: 'accepted',
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', projectId)
-          .is('assigned_company_user_id', null)
-          .select()
-          .single()
-
-        if (projUpdateError) throw projUpdateError
-
-        if (!updated) {
-          // No row updated — check current assignment to decide outcome
-          const { data: currentProject, error: currErr } = await supabase
-            .from('service_request_projects')
-            .select('id, assigned_company_user_id')
-            .eq('id', projectId)
-            .maybeSingle()
-
-          if (currErr) throw currErr
-
-          if (currentProject && Number(currentProject.assigned_company_user_id || 0) > 0 && Number(currentProject.assigned_company_user_id) !== Number(companyId)) {
-            return NextResponse.json({ error: 'Project already assigned to another company' }, { status: 409 })
-          }
-
-          // If assigned_company_user_id equals companyId (idempotent), attempt to ensure status and lead NGO are set
-          const { error: idempotentSetError } = await supabase
+      // Ensure project assignment columns when meta path did not already set them
+      // (legacy contribution-only apps with no meta entry).
+      if (!hasMetaApp) {
+        try {
+          const { data: updated, error: projUpdateError } = await supabase
             .from('service_request_projects')
             .update({
               status: 'in_progress',
               selected_lead_ngo_id: userId,
+              assigned_company_user_id: companyId,
               assignment_status: 'accepted',
               updated_at: new Date().toISOString()
             })
             .eq('id', projectId)
+            .is('assigned_company_user_id', null)
+            .select()
+            .single()
 
-          if (idempotentSetError) throw idempotentSetError
+          if (projUpdateError) throw projUpdateError
+
+          if (!updated) {
+            const { data: currentProject, error: currErr } = await supabase
+              .from('service_request_projects')
+              .select('id, assigned_company_user_id')
+              .eq('id', projectId)
+              .maybeSingle()
+
+            if (currErr) throw currErr
+
+            if (currentProject && Number(currentProject.assigned_company_user_id || 0) > 0 && Number(currentProject.assigned_company_user_id) !== Number(companyId)) {
+              return NextResponse.json({ error: 'Project already assigned to another company' }, { status: 409 })
+            }
+
+            const { error: idempotentSetError } = await supabase
+              .from('service_request_projects')
+              .update({
+                status: 'in_progress',
+                selected_lead_ngo_id: userId,
+                assignment_status: 'accepted',
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', projectId)
+
+            if (idempotentSetError) throw idempotentSetError
+          }
+        } catch (e) {
+          console.warn('Failed to atomically update project-level assignment columns:', e)
+          return NextResponse.json({ error: 'Failed to finalize project assignment' }, { status: 500 })
         }
-      } catch (e) {
-        console.warn('Failed to atomically update project-level assignment columns:', e)
-        return NextResponse.json({ error: 'Failed to finalize project assignment' }, { status: 500 })
       }
     }
 

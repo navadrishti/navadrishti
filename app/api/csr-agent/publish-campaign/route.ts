@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
 import { getAuthUserFromRequest, assertUserType, assertNgoCsr1CoversWork } from '@/lib/server-auth'
 import { resolveCampaignCategoryInput, resolveCampaignLocationInput } from '@/lib/campaign-schema'
-import { resolveAppOrigin } from '@/lib/campaign-social-post'
+import { resolveAppOrigin } from '@/lib/campaign-schema'
 import { verifyPaidCsrOffersForPublish } from '@/lib/csr-agent/campaign'
 import { CSR_WORK_END_DATE_REQUIRED_MESSAGE } from '@/lib/auth'
 

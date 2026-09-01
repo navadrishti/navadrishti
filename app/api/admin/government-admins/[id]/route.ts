@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { assertAdminUser } from '@/lib/admin-auth';
+import { assertAdminUser } from '@/lib/server-auth';
 import { supabase } from '@/lib/db';
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {

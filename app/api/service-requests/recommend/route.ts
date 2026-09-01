@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
-import { embedText } from '@/lib/embeddings/embedding'
+import { embedText } from '@/lib/csr-agent/check-ngo'
 
 function toNumber(value: unknown): number | null {
   if (value === null || value === undefined) return null
@@ -218,7 +218,37 @@ export async function POST(req: NextRequest) {
     // support pagination via offset/limit
     const offset = Number.isFinite(Number(body.offset)) ? Math.max(0, Number(body.offset)) : 0
     const limit = Number.isFinite(Number(body.limit)) ? Math.max(1, Math.min(200, Number(body.limit))) : 60
-    const recommendations = fullSorted.slice(offset, offset + limit)
+    let recommendations = fullSorted.slice(offset, offset + limit)
+
+    const creatorIds = [
+      ...new Set(
+        recommendations
+          .map((item: any) => {
+            const raw = candidateMap.get(Number(item.id))?.raw || {}
+            return Number(raw.creator_id || raw.ngo_id || 0)
+          })
+          .filter((id: number) => id > 0)
+      ),
+    ]
+    if (creatorIds.length > 0) {
+      const { data: creators } = await supabase
+        .from('users')
+        .select('id, name, verification_status')
+        .in('id', creatorIds)
+      const creatorById = new Map<number, any>((creators || []).map((row: any) => [Number(row.id), row]))
+      recommendations = recommendations.map((item: any) => {
+        const raw = candidateMap.get(Number(item.id))?.raw || {}
+        const creator = creatorById.get(Number(raw.creator_id || raw.ngo_id || 0))
+        const providerName = item.provider_name || creator?.name || null
+        const verificationStatus = creator?.verification_status || null
+        return {
+          ...item,
+          provider_name: providerName,
+          verification_status: verificationStatus,
+          verified: String(verificationStatus || '').toLowerCase() === 'verified',
+        }
+      })
+    }
 
     // Improved cover selection: search small subsets among top candidates for minimal slack
     const suggested_set: number[] = []

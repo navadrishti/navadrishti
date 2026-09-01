@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { assertAdminUser } from '@/lib/admin-auth';
+import { assertAdminUser } from '@/lib/server-auth';
 import { deleteCampaignWithDependencies, formatCampaignDeleteError } from '@/lib/campaign-delete';
 
 function safeJson(value: unknown): Record<string, any> {

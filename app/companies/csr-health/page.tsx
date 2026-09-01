@@ -130,7 +130,7 @@ export default function CompanyCSRHealthPage() {
   return (
     <>
       <Header />
-      <main className="min-h-screen bg-slate-50 px-4 py-8">
+      <main className="min-h-screen bg-background px-4 py-8">
         <div className="mx-auto max-w-5xl space-y-6">
           <div className="flex items-start justify-between gap-4">
             <div>

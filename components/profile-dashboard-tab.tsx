@@ -1836,7 +1836,7 @@ export function ProfileDashboardTab() {
 const PAYMENT_SOURCE_BADGE_CLASS: Record<string, string> = {
   ngo_network: 'bg-violet-50 text-violet-700 hover:bg-violet-50',
   service_request: 'bg-emerald-50 text-emerald-700 hover:bg-emerald-50',
-  service_offer: 'bg-blue-50 text-blue-700 hover:bg-blue-50',
+  service_offer: 'bg-gram-sage text-udaan-blue hover:bg-gram-sage',
   engagement_settlement: 'bg-amber-50 text-amber-700 hover:bg-amber-50',
   company_ca: 'bg-slate-100 text-slate-700 hover:bg-slate-100',
   razorpay: 'bg-slate-100 text-slate-700 hover:bg-slate-100',
@@ -2042,6 +2042,7 @@ export function PlatformPaymentSummary({ baseAmountInr, className = '', paymentK
 }
 
 export function getTotalChargeLabel(baseAmountInr: number, paymentKind?: string | null): string {
+  if (!(Number(baseAmountInr) > 0)) return formatInr(0)
   const pricing = calculatePlatformCheckoutPricing(baseAmountInr, { paymentKind })
   return formatInr(pricing.totalChargeInr)
 }
@@ -2230,6 +2231,8 @@ export function NgoPayDialog({
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Processing...
               </>
+            ) : parseNgoPayAmountToInr(paymentAmount) <= 0 ? (
+              'Enter amount to pay'
             ) : (
               `Pay ${getTotalChargeLabel(parseNgoPayAmountToInr(paymentAmount))}`
             )}

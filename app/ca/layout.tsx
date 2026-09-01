@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { Menu, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { ConsoleFooter } from '@/components/console-footer';
+import { ConsoleFooter } from '@/components/product-brand';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Sheet,

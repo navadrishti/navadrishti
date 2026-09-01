@@ -393,11 +393,13 @@ Start → /companies/csr-agent wizard
 ## NGO Project / Need Creation Flow
 
 ```
-Start → /ngos/ai-agent OR /service-requests/create
+Need path  → /service-requests/create OR Atlas (Need)
+  ↓ POST /api/service-requests (project_id omitted)
+  ↓ Outcome: Standalone need for individuals
+
+Project path → /service-requests/projects/create OR Atlas (Project)
   ↓ POST /api/service-request-projects
-  ↓ POST /api/service-requests (linked via project_id)
-  ↓ [Optional] POST /api/service-requests/recommend
-  ↓ Outcome: Active needs listed publicly
+  ↓ Outcome: Standalone CSR package for companies
 ```
 
 ## Need Fulfillment Flow
@@ -640,10 +642,10 @@ erDiagram
 **Purpose:** Root identity. **PK:** integer. **Key fields:** email, password, user_type (individual|ngo|company), verification_status, profile_data (jsonb), email_verified, phone_verified. **Referenced by:** virtually all tables.
 
 ### service_request_projects
-**Purpose:** Parent NGO initiative. **PK:** uuid. **Key fields:** ngo_id, title, valid_until, selected_lead_ngo_id, assigned_company_user_id, assignment_status.
+**Purpose:** Standalone CSR package for company takeover. **PK:** uuid. **Key fields:** ngo_id, title, valid_until, selected_lead_ngo_id, assigned_company_user_id, assignment_status, volunteers_needed. Package extras (category/budget/impact/contact) may live in description meta.
 
 ### service_requests
-**Purpose:** Individual NGO needs. **PK:** integer. **Key fields:** ngo_id, project_id, request_type, target_amount, current_amount, fulfillment_mode, is_fulfilled, requirements (jsonb).
+**Purpose:** Standalone NGO needs for individuals. **PK:** integer. **Key fields:** ngo_id, project_id (legacy/nullable; new creates leave null), request_type, target_amount, current_amount, fulfillment_mode, is_fulfilled, requirements (jsonb).
 
 ### service_volunteers
 **Purpose:** Applications + fulfillment (overloaded). **Key fields:** service_request_id, volunteer_id, status, fulfillment_amount/quantity, response_meta (jsonb), attendance_mode.
@@ -724,7 +726,7 @@ Product codenames (UI only). Source of truth: `lib/ai-suite.ts`, `reference/agen
 | **Sentinel** | — | — | Reserved (monitoring) |
 | **Insight** | — | — | Reserved (analytics) |
 
-**Atlas workflow:** conversational project + need capture → draft → **Pulse** recommends capability offers per need → publish service request project/needs.
+**Atlas workflow:** entry choice Need | Project → collect package or need fields → draft → (Need path) **Pulse** may recommend offers → publish standalone need or project (no child needs).
 
 **Catalyst workflow:** campaign intake → **Pulse** suggests capability offers + scored lead NGOs → Gemini generates campaign drafts → publish to `campaigns` after lead NGO acceptance.
 

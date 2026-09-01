@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { socialFeedDb } from '@/lib/social-feed-db';
-import { assertAdminUser } from '@/lib/admin-auth';
+import { assertAdminUser } from '@/lib/server-auth';
 
 const extractHashtags = (content: unknown) => {
   const text = String(content || '');

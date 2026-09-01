@@ -47,27 +47,56 @@ export async function GET(request: NextRequest) {
 
     const rows = data ?? [];
     const companyIds = [...new Set(rows.map((row) => Number(row.company_id || 0)).filter((id) => id > 0))];
-    let companyNameById: Record<number, string> = {};
+    const leadNgoIds = [
+      ...new Set(
+        rows
+          .map((row) => {
+            const impact =
+              row.impact_metrics && typeof row.impact_metrics === 'object' ? row.impact_metrics : {};
+            return Number((impact as any).selected_lead_ngo_id || 0);
+          })
+          .filter((id) => id > 0)
+      ),
+    ];
+    const userIds = [...new Set([...companyIds, ...leadNgoIds])];
+    let userMetaById: Record<number, { name: string; verification_status: string }> = {};
 
-    if (companyIds.length > 0) {
-      const { data: companies, error: companyError } = await supabase
+    if (userIds.length > 0) {
+      const { data: users, error: usersError } = await supabase
         .from('users')
-        .select('id, name')
-        .in('id', companyIds);
+        .select('id, name, verification_status')
+        .in('id', userIds);
 
-      if (companyError) {
-        console.error('Failed to fetch campaign company names:', companyError);
+      if (usersError) {
+        console.error('Failed to fetch campaign account names:', usersError);
       } else {
-        companyNameById = Object.fromEntries(
-          (companies ?? []).map((company) => [Number(company.id), String(company.name || '').trim()])
+        userMetaById = Object.fromEntries(
+          (users ?? []).map((user) => [
+            Number(user.id),
+            {
+              name: String(user.name || '').trim(),
+              verification_status: String(user.verification_status || '').trim().toLowerCase(),
+            },
+          ])
         );
       }
     }
 
-    const enriched = rows.map((row) => ({
-      ...row,
-      company_name: row.company_id ? companyNameById[Number(row.company_id)] || null : null,
-    }));
+    const enriched = rows.map((row) => {
+      const company = row.company_id ? userMetaById[Number(row.company_id)] : null;
+      const impact =
+        row.impact_metrics && typeof row.impact_metrics === 'object' ? row.impact_metrics : {};
+      const selectedLeadNgoId = Number((impact as any).selected_lead_ngo_id || 0);
+      const leadNgo = selectedLeadNgoId > 0 ? userMetaById[selectedLeadNgoId] : null;
+      return {
+        ...row,
+        company_name: company?.name || null,
+        company_verification_status: company?.verification_status || null,
+        company_verified: company?.verification_status === 'verified',
+        selected_lead_ngo_verification_status: leadNgo?.verification_status || null,
+        selected_lead_ngo_verified: leadNgo?.verification_status === 'verified',
+      };
+    });
 
     return NextResponse.json({ success: true, data: enriched });
   } catch (error) {

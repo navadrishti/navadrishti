@@ -159,7 +159,7 @@ export default function VerificationDetailsPage({ type }: VerificationDetailsPag
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 p-6">
+      <div className="min-h-screen bg-background p-6">
         <div className="max-w-7xl mx-auto">
           <div className="animate-pulse">
             <div className="h-8 bg-gray-200 rounded w-1/4 mb-6"></div>
@@ -175,12 +175,12 @@ export default function VerificationDetailsPage({ type }: VerificationDetailsPag
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="min-h-screen bg-background p-6">
       <div className="max-w-7xl mx-auto">
         <div className="mb-6 space-y-3">
           <Link
             href="/ca"
-            className="inline-flex items-center text-blue-600 hover:text-blue-800"
+            className="inline-flex items-center text-udaan-blue hover:text-gram-ink"
           >
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to Dashboard

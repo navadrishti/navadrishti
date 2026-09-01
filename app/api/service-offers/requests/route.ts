@@ -88,7 +88,7 @@ export async function GET(request: NextRequest) {
         message,
         status,
         response_meta,
-        client:users!client_id(name, email, user_type)
+        client:users!client_id(name, email, user_type, verification_status)
       `)
       .in('service_offer_id', offerIds)
       .order('applied_at', { ascending: false });

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { assertAdminUser } from '@/lib/admin-auth';
+import { assertAdminUser } from '@/lib/server-auth';
 import { autoRejectExpiredServiceOffers } from '@/lib/admin-offer-automation';
 
 async function safeQuery<T>(label: string, queryPromise: Promise<{ data: T | null; error: any }>, fallback: T) {

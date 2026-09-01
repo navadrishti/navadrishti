@@ -8,7 +8,7 @@ export type VerificationStatus = 'verified' | 'unverified' | 'pending' | 'suspen
 export interface User {
   id: number;
   user_type: UserType;
-  verification_status: VerificationStatus;
+  verification_status?: VerificationStatus;
   email_verified?: boolean;
   phone_verified?: boolean;
 }

@@ -262,8 +262,10 @@ export function calculatePlatformCheckoutPricing(
   const applyPlatformGst =
     options?.applyPlatformGst ?? paymentKindRequiresPlatformGst(options?.paymentKind)
 
+  // No contribution → no fee. Min fee only applies once there is a positive base amount.
   const percentFee = roundCheckoutInr((baseAmount * platformFeePercent) / 100)
-  const platformFeeInr = roundCheckoutInr(Math.max(percentFee, platformFeeMinInr))
+  const platformFeeInr =
+    baseAmount > 0 ? roundCheckoutInr(Math.max(percentFee, platformFeeMinInr)) : 0
   const gstOnPlatformFeeInr = applyPlatformGst
     ? roundCheckoutInr((platformFeeInr * gstRatePercent) / 100)
     : 0

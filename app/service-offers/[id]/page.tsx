@@ -7,6 +7,7 @@ import { ArrowLeft, MapPin, Users, Clock, Target, Calendar, User, Building, Mess
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
 import { getGramAvatarFallbackStyle } from '@/lib/gram-avatar'
+import { VerifiedAccountName } from '@/components/verification-badge'
 import { formatPrice } from '@/lib/utils'
 import { DetailField, DetailSection, displayValue, parseStringArray, parseImages } from '@/components/detail-fields'
 import { formatDetailDate } from '@/lib/format-date'
@@ -69,6 +70,9 @@ interface ServiceOffer {
   provider_name?: string
   provider_type?: 'ngo' | 'company' | 'individual' | string
   provider_profile_image?: string | null
+  verified?: boolean
+  verification_status?: string | null
+  ngo?: { verification_status?: string | null } | null
   status: 'active' | 'paused' | 'completed' | 'cancelled'
   valid_until?: string | null
   impact_area?: string[]
@@ -728,18 +732,18 @@ export default function ServiceOfferDetailPage() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'accepted': return 'bg-green-100 text-green-800 border-green-200'
-      case 'rejected': return 'bg-red-100 text-red-800 border-red-200'
-      case 'active': return 'bg-blue-100 text-blue-800 border-blue-200'
-      case 'completed': return 'bg-purple-100 text-purple-800 border-purple-200'
-      case 'cancelled': return 'bg-gray-100 text-gray-800 border-gray-200'
-      default: return 'bg-yellow-100 text-yellow-800 border-yellow-200'
+      case 'accepted': return 'border-[#D5E2DA] bg-[#F1F6F3] text-[#4F6B5C]'
+      case 'rejected': return 'border-[#E8D8D8] bg-[#F8F1F1] text-[#8C5555]'
+      case 'active': return 'border-[#D9E0E4] bg-[#F0F3F4] text-udaan-blue'
+      case 'completed': return 'border-gram-border bg-gram-sage text-gram-ink'
+      case 'cancelled': return 'border-gram-border bg-gram-page text-gram-muted'
+      default: return 'border-gram-border bg-gram-page text-gram-muted'
     }
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      <div className="min-h-screen bg-background">
         <Header />
         <div className="mx-auto max-w-7xl px-4 py-8">
           <div className="mb-6">
@@ -781,7 +785,7 @@ export default function ServiceOfferDetailPage() {
 
   if (!offer) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      <div className="min-h-screen bg-background">
         <Header />
         <div className="mx-auto max-w-7xl px-4 py-8">
           <Alert>
@@ -796,12 +800,12 @@ export default function ServiceOfferDetailPage() {
   }
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div className="min-h-screen overflow-x-hidden bg-background">
       <Header />
       
       <div className="mx-auto max-w-7xl px-4 py-8">
         <div className="mb-6">
-          <Button variant="ghost" onClick={() => router.back()} className="w-full justify-start px-0 text-blue-600 hover:text-blue-800 hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0 sm:w-auto">
+          <Button variant="ghost" onClick={() => router.back()} className="w-full justify-start px-0 text-udaan-blue hover:text-gram-ink hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0 sm:w-auto">
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back
           </Button>
@@ -842,7 +846,13 @@ export default function ServiceOfferDetailPage() {
                       </div>
 
                       <div className="min-w-0">
-                        <h3 className="text-lg font-semibold leading-tight truncate">{offer.provider_name || offer.ngo_name}</h3>
+                        <VerifiedAccountName
+                          name={offer.provider_name || offer.ngo_name}
+                          verified={Boolean(offer.verified)}
+                          status={offer.verification_status || offer.ngo?.verification_status}
+                          size="md"
+                          nameClassName="text-lg font-semibold leading-tight"
+                        />
                         <p className="mt-1 text-sm text-gray-500 capitalize">{offer.provider_type || 'ngo'}</p>
                         {isOfferExpired ? (
                           <Badge variant="destructive" className="mt-2 w-fit">Expired</Badge>
@@ -942,15 +952,15 @@ export default function ServiceOfferDetailPage() {
                       </p>
 
                       {['accepted', 'active'].includes(userApplication.status) && userApplication.service_request_id ? (
-                        <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 space-y-3">
+                        <div className="rounded-lg border border-gram-border bg-gram-sage p-4 space-y-3">
                           <div className="flex items-center justify-between gap-3">
                             <div>
-                              <p className="text-sm font-medium text-blue-900">Payment linked to service request</p>
-                              <p className="text-xs text-blue-700">
+                              <p className="text-sm font-medium text-gram-ink">Payment linked to service request</p>
+                              <p className="text-xs text-udaan-blue">
                                 Request #{userApplication.service_request_id}{userApplication.response_meta?.payment_amount_inr ? ` • ${formatPrice(Number(userApplication.response_meta.payment_amount_inr))}` : ''}
                               </p>
                             </div>
-                            <Badge className="bg-blue-100 text-blue-800 border-blue-200">
+                            <Badge className="border-[#D9E0E4] bg-[#F0F3F4] text-udaan-blue">
                               {userApplication.response_meta?.payment_status === 'paid' ? 'Paid' : 'Pending'}
                             </Badge>
                           </div>
@@ -1049,7 +1059,7 @@ export default function ServiceOfferDetailPage() {
                                 return (
                                   <label
                                     key={need.id}
-                                    className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors ${isSelected ? 'border-blue-500 bg-blue-50' : 'hover:bg-muted/50'}`}
+                                    className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors ${isSelected ? 'border-udaan-blue bg-gram-sage' : 'hover:bg-muted/50'}`}
                                   >
                                     <Checkbox
                                       checked={isSelected}

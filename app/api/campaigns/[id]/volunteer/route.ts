@@ -7,8 +7,8 @@ import {
   getVolunteerApplicationCapacity,
   isVolunteerCapacityFullForUser,
   sumVolunteerApplicationCount,
-} from '@/lib/campaign-volunteer-utils'
-import { ensureCampaignVolunteerAssignment } from '@/lib/campaign-volunteer-assignment'
+} from '@/lib/campaign-schema'
+import { ensureCampaignVolunteerAssignment } from '@/lib/campaign-volunteer-attendance'
 
 interface JWTPayload {
   id: number

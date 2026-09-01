@@ -21,21 +21,23 @@ import {
   Send,
   Trash2,
 } from "lucide-react"
+import { VerifiedAccountName } from "@/components/verification-badge"
 import { CSR_SCHEDULE_VII_CATEGORIES, SERVICE_REQUEST_CATEGORIES } from "@/lib/categories"
+import { CSR_PROJECT_CREATE_REQUIRED_MESSAGE, ngoIsCsrEligible } from "@/lib/auth"
 import {
   captureMobileChatScrollPosition,
   restoreMobileChatScrollPosition,
   scrollAgentMessagesContainer,
 } from "@/lib/ai-agent-sessions"
 import { PRODUCT_LOGO_SRC } from "@/lib/access-control"
-import { AGENT_GREETINGS, AGENT_NAMES, agentLoadingLabel } from "@/lib/ai-suite"
+import { AGENT_GREETINGS, AGENT_NAMES, agentLoadingLabel } from "@/lib/ai-agent-sessions"
 
 interface Message {
   role: 'user' | 'assistant'
   content: string
 }
 
-type ConversationStage = 'project' | 'need-count' | 'needs' | 'complete'
+type ConversationStage = 'entry' | 'need' | 'project' | 'complete'
 
 type NGOAIAgentSession = {
   id: string
@@ -50,6 +52,7 @@ type NGOAIAgentSession = {
   activeNeedIndex: number
   activeNeedQuestionIndex: number
   conversationStage: ConversationStage
+  intakePath: 'need' | 'project' | null
   generatedDraft: ServiceRequestDraftPayload | null
   selectedOfferIdsByNeed: Record<number, number[]>
   publishedProjectId?: string | null
@@ -64,14 +67,25 @@ interface ProjectIntakeData {
   projectTitle?: string
   projectCategory?: string
   location?: string
+  city?: string
+  state?: string
+  pincode?: string
   timeline?: string
   projectDescription?: string
+  expectedBeneficiaries?: string
+  validUntil?: string
+  budget?: string
+  impact?: string
+  contactInfo?: string
+  volunteersNeeded?: string
 }
 
 interface NeedIntakeData {
   title?: string
   requestType?: string
+  category?: string
   description?: string
+  location?: string
   beneficiaryCount?: string
   urgency?: string
   timeline?: string
@@ -99,6 +113,7 @@ type ServiceRequestDraftPayload = {
     description: string
     request_type: string
     category: string
+    location?: string
     urgency: string
     timeline: string
     budget: string
@@ -125,9 +140,11 @@ type ServiceOfferLite = {
   status?: string | null
   provider_name?: string | null
   ngo_name?: string | null
+  verified?: boolean | null
+  verification_status?: string | null
 }
 
-const INITIAL_ASSISTANT_MESSAGE = AGENT_GREETINGS.atlas
+const INITIAL_ASSISTANT_MESSAGE = "Hello! I'm Atlas. Do you want to post a standalone Need (for individuals/one-time support) or a CSR Project (for companies/larger initiatives)? Reply with **Need** or **Project**."
 
 const deriveSessionTitle = (messages: Message[]): string => {
   const firstUser = messages.find((m) => m.role === 'user' && String(m.content || '').trim())
@@ -152,7 +169,8 @@ const buildEmptySession = (): NGOAIAgentSession => {
     projectStep: 0,
     activeNeedIndex: 0,
     activeNeedQuestionIndex: 0,
-    conversationStage: 'project',
+    conversationStage: 'entry',
+    intakePath: null,
     generatedDraft: null,
     selectedOfferIdsByNeed: {},
     publishedProjectId: null,
@@ -309,7 +327,9 @@ const deriveAutoUrgency = (timeline: string): 'Low' | 'Medium' | 'High' | 'Criti
 const createEmptyNeed = (): NeedIntakeData => ({
   title: '',
   requestType: '',
+  category: '',
   description: '',
+  location: '',
   beneficiaryCount: '',
   urgency: 'Medium',
   timeline: '',
@@ -325,17 +345,28 @@ const createEmptyNeed = (): NeedIntakeData => ({
 const projectQuestions = [
   { key: 'projectTitle', question: 'What is the project title?' },
   { key: 'projectCategory', question: `Which Schedule VII project category does this belong to? (${CSR_SCHEDULE_VII_CATEGORIES.join(', ')})` },
-  { key: 'location', question: 'What is the exact project location/address?' },
+  { key: 'location', question: 'What is the street / building address for this project?' },
+  { key: 'city', question: 'Which city / town is the project in?' },
+  { key: 'state', question: 'Which Indian state / UT is the project in?' },
+  { key: 'pincode', question: 'What is the 6-digit pincode?' },
   { key: 'timeline', question: 'What is the overall project timeline? (e.g., 3 months, Q3 2026)' },
-  { key: 'projectDescription', question: 'Briefly describe the project objective and expected outcomes.' }
+  { key: 'projectDescription', question: 'Briefly describe the project objective and expected outcomes.' },
+  { key: 'expectedBeneficiaries', question: 'How many beneficiaries will this project impact?' },
+  { key: 'validUntil', question: 'When is this project valid until? (YYYY-MM-DD)' },
+  { key: 'budget', question: 'What is the total project budget in INR? (e.g., 500000)' },
+  { key: 'impact', question: 'What measurable impact will this project create?' },
+  { key: 'contactInfo', question: 'Provide contact details for this project.' },
+  { key: 'volunteersNeeded', question: 'How many volunteers are needed for this project? (positive number)' }
 ] as const
 
 const baseNeedQuestions = [
   { key: 'title', question: 'What is the need title?' },
   { key: 'requestType', question: 'What is the need type? (Material Need, Skill / Service Need, Infrastructure Project)' },
+  { key: 'category', question: `Which Schedule VII category does this need fall under? (${CSR_SCHEDULE_VII_CATEGORIES.join(', ')})` },
   { key: 'description', question: 'Describe this need with enough context for execution.' },
+  { key: 'location', question: 'Where is this need located? (city / area)' },
   { key: 'beneficiaryCount', question: 'How many beneficiaries will this need impact?' },
-  { key: 'timeline', question: 'What is the need timeline/deadline? (or type Anytime)' },
+  { key: 'timeline', question: 'What is the need timeline/deadline? (e.g., 2 weeks, 2026-05-15)' },
   { key: 'estimatedBudget', question: 'What is the estimated budget for this need? (e.g., INR 1,50,000)' },
   { key: 'impactDescription', question: 'What measurable impact will this need create?' },
   { key: 'contactInfo', question: 'Provide contact and escalation details for this need.' }
@@ -485,7 +516,8 @@ export default function NGOAIAgentPage() {
   const [projectStep, setProjectStep] = useState(0)
   const [activeNeedIndex, setActiveNeedIndex] = useState(0)
   const [activeNeedQuestionIndex, setActiveNeedQuestionIndex] = useState(0)
-  const [conversationStage, setConversationStage] = useState<ConversationStage>('project')
+  const [conversationStage, setConversationStage] = useState<ConversationStage>('entry')
+  const [intakePath, setIntakePath] = useState<'need' | 'project' | null>(null)
   const [generatedDraft, setGeneratedDraft] = useState<ServiceRequestDraftPayload | null>(null)
   const [publishedProjectId, setPublishedProjectId] = useState<string | null>(null)
   const [publishingDraft, setPublishingDraft] = useState(false)
@@ -541,21 +573,31 @@ export default function NGOAIAgentPage() {
     }, 0)
   }, [projectData])
 
-  const answeredQuestions = answeredProjectQuestions + (needCount ? 1 : 0) + answeredNeedQuestions
-  const totalQuestions = projectQuestions.length + 1 + totalNeedQuestions
+  const answeredQuestions = intakePath === 'need'
+    ? answeredNeedQuestions
+    : intakePath === 'project'
+      ? answeredProjectQuestions
+      : 0
+  const totalQuestions = intakePath === 'need'
+    ? getNeedQuestions(needsData[0]?.requestType).length
+    : intakePath === 'project'
+      ? projectQuestions.length
+      : 1
 
   const progressPercent = useMemo(() => {
     if (generatedDraft) return 100
+    if (conversationStage === 'entry') return 8
     if (!totalQuestions) return 8
     return Math.min(Math.round((answeredQuestions / totalQuestions) * 100), 95)
-  }, [generatedDraft, totalQuestions, answeredQuestions])
+  }, [generatedDraft, conversationStage, totalQuestions, answeredQuestions])
 
   const activeQuestion = useMemo(() => {
     if (generatedDraft) return null
+    if (conversationStage === 'entry') return null
     if (conversationStage === 'project') {
       return projectQuestions[Math.min(projectStep, projectQuestions.length - 1)]
     }
-    if (conversationStage === 'needs') {
+    if (conversationStage === 'need') {
       const currentNeed = needsData[activeNeedIndex] || createEmptyNeed()
       const questionSet = getNeedQuestions(currentNeed.requestType)
       return questionSet[Math.min(activeNeedQuestionIndex, questionSet.length - 1)] || null
@@ -569,9 +611,8 @@ export default function NGOAIAgentPage() {
     if (key === 'requestType') return SERVICE_REQUEST_CATEGORIES
     if (key === 'timeline') return fixedTimelineOptions
     if (key === 'estimatedBudget') return fixedBudgetOptions
-    if (key === 'beneficiaryCount' && conversationStage === 'need-count') return fixedNeedCountOptions
     return [] as string[]
-  }, [activeQuestion?.key, conversationStage])
+  }, [activeQuestion?.key])
 
   const editingMessageContext = useMemo(() => {
     if (editingMessageIndex === null || editingMessageIndex < 0 || editingMessageIndex >= messages.length) return null
@@ -654,19 +695,23 @@ export default function NGOAIAgentPage() {
 
   const activeQuestionLabel = generatedDraft
     ? 'Draft ready'
-    : conversationStage === 'project'
-      ? projectQuestions[Math.min(projectStep, projectQuestions.length - 1)].question.replace(/\s*\([^)]*\)\s*$/, '').trim()
-      : conversationStage === 'need-count'
-        ? 'Number of needs'
-        : getCurrentNeedPrompt().replace(/\s*\([^)]*\)\s*$/, '').trim()
+    : conversationStage === 'entry'
+      ? 'Need or Project?'
+      : conversationStage === 'project'
+        ? projectQuestions[Math.min(projectStep, projectQuestions.length - 1)].question.replace(/\s*\([^)]*\)\s*$/, '').trim()
+        : conversationStage === 'need'
+          ? getCurrentNeedPrompt().replace(/\s*\([^)]*\)\s*$/, '').trim()
+          : 'Complete'
 
   const promptTitle = generatedDraft
-    ? "Draft ready"
-    : conversationStage === 'project'
-      ? 'Step 1: Project details'
-      : conversationStage === 'need-count'
-        ? 'Step 2: Number of needs'
-        : 'Step 3: Need details'
+    ? 'Draft ready'
+    : conversationStage === 'entry'
+      ? 'Choose Need or Project'
+      : conversationStage === 'project'
+        ? 'Project details'
+        : conversationStage === 'need'
+          ? 'Need details'
+          : 'Complete'
 
     const cloudSaveText = useMemo(() => {
       if (cloudSaveStatus === 'saving') return 'Saving to cloud...'
@@ -681,28 +726,20 @@ export default function NGOAIAgentPage() {
       return ''
     }, [cloudSaveStatus, lastCloudSavedAt])
 
-  const liveFields = [
-    {
-      label: "Project title",
-      value: projectData.projectTitle,
-    },
-    {
-      label: "Project category",
-      value: projectData.projectCategory,
-    },
-    {
-      label: "Project location",
-      value: projectData.location,
-    },
-    {
-      label: "Project timeline",
-      value: projectData.timeline,
-    },
-    {
-      label: "Number of needs",
-      value: needCount ? String(needCount) : undefined,
-    },
-  ].filter((item) => Boolean(item.value))
+  const liveFields = intakePath === 'need'
+    ? [
+        { label: 'Need title', value: needsData[0]?.title },
+        { label: 'Need type', value: needsData[0]?.requestType },
+        { label: 'Timeline', value: needsData[0]?.timeline },
+        { label: 'Beneficiaries', value: needsData[0]?.beneficiaryCount },
+      ].filter((item) => Boolean(item.value))
+    : [
+        { label: 'Project title', value: projectData.projectTitle },
+        { label: 'Project category', value: projectData.projectCategory },
+        { label: 'Project location', value: projectData.location },
+        { label: 'Project timeline', value: projectData.timeline },
+        { label: 'Beneficiaries', value: projectData.expectedBeneficiaries },
+      ].filter((item) => Boolean(item.value))
 
   const completedNeeds = needsData.filter((need) => {
     const requiredFields = getNeedQuestions(need.requestType)
@@ -710,14 +747,19 @@ export default function NGOAIAgentPage() {
   })
 
   const generatedFields = generatedDraft
-    ? [
-        { label: "Project", value: generatedDraft.project.title },
-        { label: "Category", value: generatedDraft.project.category },
-        { label: "Total needs", value: String(generatedDraft.needs.length) },
-        { label: "First need", value: generatedDraft.needs[0]?.title || 'N/A' },
-        { label: "First type", value: generatedDraft.needs[0]?.request_type || 'N/A' },
-        { label: "First urgency", value: generatedDraft.needs[0]?.urgency || 'N/A' },
-      ]
+    ? intakePath === 'need'
+      ? [
+          { label: 'Need', value: generatedDraft.needs[0]?.title || 'N/A' },
+          { label: 'Type', value: generatedDraft.needs[0]?.request_type || 'N/A' },
+          { label: 'Category', value: generatedDraft.needs[0]?.category || 'N/A' },
+          { label: 'Urgency', value: generatedDraft.needs[0]?.urgency || 'N/A' },
+        ]
+      : [
+          { label: 'Project', value: generatedDraft.project.title },
+          { label: 'Category', value: generatedDraft.project.category },
+          { label: 'Location', value: generatedDraft.project.location },
+          { label: 'Timeline', value: generatedDraft.project.timeline },
+        ]
     : []
 
   const scrollToBottom = () => {
@@ -866,6 +908,7 @@ export default function NGOAIAgentPage() {
       activeNeedIndex,
       activeNeedQuestionIndex,
       conversationStage,
+      intakePath,
       generatedDraft,
       selectedOfferIdsByNeed,
       publishedProjectId,
@@ -1057,7 +1100,8 @@ export default function NGOAIAgentPage() {
     setProjectStep(typeof active.projectStep === 'number' ? active.projectStep : 0)
     setActiveNeedIndex(typeof active.activeNeedIndex === 'number' ? active.activeNeedIndex : 0)
     setActiveNeedQuestionIndex(typeof active.activeNeedQuestionIndex === 'number' ? active.activeNeedQuestionIndex : 0)
-    setConversationStage(active.conversationStage || 'project')
+    setConversationStage(active.conversationStage || 'entry')
+    setIntakePath(active.intakePath || null)
     setGeneratedDraft(active.generatedDraft || null)
     setSelectedOfferIdsByNeed(active.selectedOfferIdsByNeed || {})
     setPublishedProjectId(active.publishedProjectId || null)
@@ -1078,7 +1122,8 @@ export default function NGOAIAgentPage() {
     setProjectStep(typeof session.projectStep === 'number' ? session.projectStep : 0)
     setActiveNeedIndex(typeof session.activeNeedIndex === 'number' ? session.activeNeedIndex : 0)
     setActiveNeedQuestionIndex(typeof session.activeNeedQuestionIndex === 'number' ? session.activeNeedQuestionIndex : 0)
-    setConversationStage(session.conversationStage || 'project')
+    setConversationStage(session.conversationStage || 'entry')
+    setIntakePath(session.intakePath || null)
     setGeneratedDraft(session.generatedDraft || null)
     setSelectedOfferIdsByNeed(session.selectedOfferIdsByNeed || {})
     setPublishedProjectId(session.publishedProjectId || null)
@@ -1198,6 +1243,8 @@ export default function NGOAIAgentPage() {
               id: Number(rec.id),
               title: rec.title,
               provider_name: rec.provider_name || null,
+              verification_status: rec.verification_status || null,
+              verified: Boolean(rec.verified) || String(rec.verification_status || '').toLowerCase() === 'verified',
               status: 'active',
               offer_type: getExpectedOfferType(need.request_type) || undefined
             },
@@ -1287,6 +1334,49 @@ export default function NGOAIAgentPage() {
     setIsTyping(true)
 
     setTimeout(() => {
+      // Handle entry stage - choosing between need or project
+      if (conversationStage === 'entry') {
+        const normalized = userText.toLowerCase().trim()
+        if (normalized.includes('need') && !normalized.includes('project')) {
+          setIntakePath('need')
+          setNeedCount(1)
+          setNeedsData([createEmptyNeed()])
+          setActiveNeedIndex(0)
+          setActiveNeedQuestionIndex(0)
+          setConversationStage('need')
+          setMessages(prev => [...prev, { role: 'assistant', content: `Perfect! Let's capture your standalone Need. ${getNeedQuestions(undefined)[0].question}` }])
+          setIsTyping(false)
+          return
+        }
+        if (normalized.includes('project') && !normalized.includes('need')) {
+          const canCreateCsrProject = ngoIsCsrEligible(
+            user?.verification_status,
+            user?.profile_data || user?.profile
+          )
+          if (!canCreateCsrProject) {
+            setMessages((prev) => [
+              ...prev,
+              {
+                role: 'assistant',
+                content: `${CSR_PROJECT_CREATE_REQUIRED_MESSAGE} You can still post a standalone **Need**, or update CSR-1 compliance from your NGO dashboard. Reply with **Need** to continue.`,
+              },
+            ])
+            setIsTyping(false)
+            return
+          }
+          setIntakePath('project')
+          setProjectStep(0)
+          setConversationStage('project')
+          setMessages(prev => [...prev, { role: 'assistant', content: projectQuestions[0].question }])
+          setIsTyping(false)
+          return
+        }
+        setMessages(prev => [...prev, { role: 'assistant', content: 'Please reply with either "Need" or "Project" to continue.' }])
+        setIsTyping(false)
+        return
+      }
+
+      // Handle project stage
       if (conversationStage === 'project') {
         const question = projectQuestions[Math.min(projectStep, projectQuestions.length - 1)]
         if (question.key === 'projectCategory' && !isValidProjectCategoryChoice(userText)) {
@@ -1325,34 +1415,16 @@ export default function NGOAIAgentPage() {
           setProjectStep(nextStep)
           setMessages(prev => [...prev, { role: 'assistant', content: projectQuestions[nextStep].question }])
         } else {
-          setConversationStage('need-count')
-          setMessages(prev => [...prev, { role: 'assistant', content: 'Great. How many separate needs should be created under this project? (Enter a number from 1 to 20)' }])
+          // Project path complete - generate draft
+          generateDraftForProject(nextProjectData)
         }
         setIsTyping(false)
         return
       }
 
-      if (conversationStage === 'need-count') {
-        const parsedNeedCount = parseNeedCount(userText)
-        if (!parsedNeedCount) {
-          setMessages(prev => [...prev, { role: 'assistant', content: 'Please provide a valid number between 1 and 20 for how many needs you want to create.' }])
-          setIsTyping(false)
-          return
-        }
-
-        const initializedNeeds = Array.from({ length: parsedNeedCount }, () => createEmptyNeed())
-        setNeedCount(parsedNeedCount)
-        setNeedsData(initializedNeeds)
-        setActiveNeedIndex(0)
-        setActiveNeedQuestionIndex(0)
-        setConversationStage('needs')
-        setMessages(prev => [...prev, { role: 'assistant', content: `Perfect. Let's capture Need 1 of ${parsedNeedCount}. ${getNeedQuestions(undefined)[0].question}` }])
-        setIsTyping(false)
-        return
-      }
-
-      if (conversationStage === 'needs' && needCount) {
-        const currentNeed = needsData[activeNeedIndex] || createEmptyNeed()
+      // Handle need stage (single need)
+      if (conversationStage === 'need') {
+        const currentNeed = needsData[0] || createEmptyNeed()
         const questionSet = getNeedQuestions(currentNeed.requestType)
         const question = questionSet[Math.min(activeNeedQuestionIndex, questionSet.length - 1)]
 
@@ -1362,6 +1434,12 @@ export default function NGOAIAgentPage() {
             setIsTyping(false)
             return
           }
+        }
+
+        if (question.key === 'category' && !isValidProjectCategoryChoice(userText)) {
+          setMessages(prev => [...prev, { role: 'assistant', content: `Please choose one valid Schedule VII category. ${baseNeedQuestions.find((q) => q.key === 'category')?.question || ''}` }])
+          setIsTyping(false)
+          return
         }
 
         if (question.key === 'beneficiaryCount' && !isValidPositiveInteger(userText)) {
@@ -1408,29 +1486,30 @@ export default function NGOAIAgentPage() {
 
         const normalizedValue = question.key === 'requestType'
           ? parseRequestType(userText) || userText
-          : userText
+          : question.key === 'category'
+            ? parseProjectCategory(userText) || userText
+            : userText
 
         const updatedNeed: NeedIntakeData = {
           ...currentNeed,
           [question.key]: normalizedValue
         }
 
-        const nextNeeds = [...needsData]
-        nextNeeds[activeNeedIndex] = updatedNeed
+        const nextNeeds = [updatedNeed]
         setNeedsData(nextNeeds)
 
         const updatedQuestionSet = getNeedQuestions(updatedNeed.requestType)
         if (activeNeedQuestionIndex < updatedQuestionSet.length - 1) {
           const nextQuestionIndex = activeNeedQuestionIndex + 1
           setActiveNeedQuestionIndex(nextQuestionIndex)
-          setMessages(prev => [...prev, { role: 'assistant', content: `Need ${activeNeedIndex + 1} of ${needCount}: ${updatedQuestionSet[nextQuestionIndex].question}` }])
+          setMessages(prev => [...prev, { role: 'assistant', content: updatedQuestionSet[nextQuestionIndex].question }])
           setIsTyping(false)
           return
         }
-        // We've completed all questions for this need. Fetch recommendations for this need now.
+
+        // Need complete - fetch recommendations and generate draft
         void (async () => {
           try {
-            const needIdx = activeNeedIndex
             const needPayload = {
               request_type: updatedNeed.requestType,
               title: updatedNeed.title,
@@ -1455,18 +1534,24 @@ export default function NGOAIAgentPage() {
             const recs = res.ok && json?.success && Array.isArray(json?.data?.recommendations) ? json.data.recommendations : []
 
             const mapped = recs.map((rec: any) => ({
-              offer: { id: Number(rec.id), title: rec.title, provider_name: rec.provider_name || null, status: 'active' },
+              offer: {
+                id: Number(rec.id),
+                title: rec.title,
+                provider_name: rec.provider_name || null,
+                verification_status: rec.verification_status || null,
+                verified: Boolean(rec.verified) || String(rec.verification_status || '').toLowerCase() === 'verified',
+                status: 'active',
+              },
               score: Number(rec.score) || 0,
               capacity: Number(rec.capacity) || 0,
               coverageRatio: typeof rec.coverageRatio === 'number' ? rec.coverageRatio : null
             }))
 
-            setRelatedOffersByNeed((prev) => ({ ...prev, [needIdx]: mapped }))
-            // Do not auto-invite / auto-select any offer — wait for user action
-            setSelectedOfferIdsByNeed((prev) => ({ ...prev, [needIdx]: [] }))
-            setLastCompletedNeedIndex(activeNeedIndex)
+            setRelatedOffersByNeed((prev) => ({ ...prev, [0]: mapped }))
+            setSelectedOfferIdsByNeed((prev) => ({ ...prev, [0]: [] }))
+            setLastCompletedNeedIndex(0)
 
-            setMessages(prev => [...prev, { role: 'assistant', content: `I found ${mapped.length} related offers for Need ${activeNeedIndex + 1}. Review them in the preview panel or invite directly below.` }])
+            setMessages(prev => [...prev, { role: 'assistant', content: `I found ${mapped.length} related offers for your need. Review them in the preview panel or invite directly below.` }])
           } catch (e) {
             // ignore
           } finally {
@@ -1474,16 +1559,7 @@ export default function NGOAIAgentPage() {
           }
         })()
 
-        if (activeNeedIndex < needCount - 1) {
-          const nextNeedIndex = activeNeedIndex + 1
-          setActiveNeedIndex(nextNeedIndex)
-          setActiveNeedQuestionIndex(0)
-          setMessages(prev => [...prev, { role: 'assistant', content: `Need ${activeNeedIndex + 1} captured. Now Need ${nextNeedIndex + 1} of ${needCount}: ${getNeedQuestions(undefined)[0].question}` }])
-          setIsTyping(false)
-          return
-        }
-
-        generateDraft(projectData, nextNeeds)
+        generateDraftForNeed(updatedNeed)
       }
 
       setIsTyping(false)
@@ -1500,6 +1576,71 @@ export default function NGOAIAgentPage() {
   const handleQuickPick = (value: string) => {
     setInput('')
     submitUserText(value)
+  }
+
+  const generateDraftForNeed = (need: NeedIntakeData) => {
+    const requestType = parseRequestType(need.requestType || '') || normalizeRequestType(need.requestType)
+    const urgency = deriveAutoUrgency(need.timeline || '')
+    const scheduleCategory = parseProjectCategory(need.category || '') || normalizeProjectCategory(need.category)
+
+    const normalizedNeed = {
+      title: need.title || 'Service Support Requirement',
+      description: need.description || `Support needed to deliver outcomes for ${need.beneficiaryCount || '100'} beneficiaries.`,
+      request_type: requestType,
+      category: scheduleCategory,
+      location: need.location || 'Location to be confirmed',
+      urgency,
+      timeline: need.timeline || '2 weeks',
+      budget: 'Negotiable',
+      estimated_budget: need.estimatedBudget || 'INR 50,000',
+      beneficiary_count: need.beneficiaryCount || '100',
+      impact_description: need.impactDescription || 'Measurable improvements for beneficiaries through targeted intervention.',
+      contactInfo: need.contactInfo || user?.email || 'ngo@example.org',
+      material_items: requestType === 'Material Need' ? (need.material_items || 'Specify item list and quantities') : '',
+      skill_role: requestType === 'Skill / Service Need' ? (need.skill_role || 'Specify required role') : '',
+      skill_duration: requestType === 'Skill / Service Need' ? (need.skill_duration || 'Specify required duration') : '',
+      infrastructure_scope: requestType === 'Infrastructure Project' ? (need.infrastructure_scope || 'Specify infrastructure work scope') : ''
+    }
+
+    const draft: ServiceRequestDraftPayload = {
+      source: 'ngo-ai-agent',
+      projectMode: 'new',
+      project: {
+        title: normalizedNeed.title,
+        description: normalizedNeed.description,
+        location: normalizedNeed.location,
+        timeline: normalizedNeed.timeline,
+        category: scheduleCategory
+      },
+      needs: [normalizedNeed]
+    }
+
+    setGeneratedDraft(draft)
+    setConversationStage('complete')
+
+    const response = `Excellent! I've created your standalone Need:\n\n**Title:** ${draft.needs[0].title}\n**Type:** ${draft.needs[0].request_type}\n**Category:** ${draft.needs[0].category}\n\nNow review related service offers, invite the ones you want, and publish when ready.`
+    setMessages(prev => [...prev, { role: 'assistant', content: response }])
+  }
+
+  const generateDraftForProject = (project: ProjectIntakeData) => {
+    const draft: ServiceRequestDraftPayload = {
+      source: 'ngo-ai-agent',
+      projectMode: 'new',
+      project: {
+        title: project.projectTitle || 'CSR Project Initiative',
+        description: project.projectDescription || 'Project focused on improving community outcomes through structured support.',
+        location: project.location || 'Location to be confirmed',
+        timeline: project.timeline || '3 months',
+        category: parseProjectCategory(project.projectCategory || '') || normalizeProjectCategory(project.projectCategory)
+      },
+      needs: []
+    }
+
+    setGeneratedDraft(draft)
+    setConversationStage('complete')
+
+    const response = `Excellent! I've created your CSR Project package:\n\n**Project:** ${draft.project.title}\n**Category:** ${draft.project.category}\n\nYou can now publish this project. Individual needs can be added later.`
+    setMessages(prev => [...prev, { role: 'assistant', content: response }])
   }
 
   const generateDraft = (project: ProjectIntakeData, needs: NeedIntakeData[]) => {
@@ -1558,106 +1699,16 @@ export default function NGOAIAgentPage() {
 
     setPublishingDraft(true)
     try {
-      const getRecommendedOffersForNeed = async (need: ServiceRequestDraftPayload['needs'][number]) => {
-        const response = await fetch('/api/service-requests/recommend', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            request_type: need.request_type,
-            title: need.title,
-            description: need.description,
-            material_items: need.material_items,
-            skill_role: need.skill_role,
-            infrastructure_scope: need.infrastructure_scope,
-            target_amount: need.estimated_budget,
-            target_quantity: need.beneficiary_count,
-            beneficiary_count: need.beneficiary_count,
-            estimated_budget: need.estimated_budget,
-            budget: need.budget,
-            limit: 8
-          })
-        })
-
-        const result = await response.json().catch(() => ({}))
-        const recs = response.ok && result?.success && Array.isArray(result?.data?.recommendations)
-          ? result.data.recommendations
-          : []
-
-        return recs.map((rec: any) => ({
-          offer: {
-            id: Number(rec.id),
-            title: rec.title,
-            provider_name: rec.provider_name || null,
-            status: 'active',
-            offer_type: getExpectedOfferType(need.request_type) || undefined
-          },
-          score: Number(rec.score) || 0,
-          capacity: Number(rec.capacity) || 0,
-          coverageRatio: typeof rec.coverageRatio === 'number' ? rec.coverageRatio : null
-        }))
-      }
-
-      for (let index = 0; index < draft.needs.length; index += 1) {
-        if (fulfilledNeedIndices.includes(index)) continue
-        const relatedOffers = relatedOffersByNeed[index] || await getRecommendedOffersForNeed(draft.needs[index])
-        // Publishing should not be blocked if the user has not selected offers.
-        // Offers can be invited/applied later; the system will mark needs fulfilled when offer owners accept applications.
-      }
-
-      // calculate fallback canonical fields for project
-      const sumBeneficiaries = draft.needs.reduce((sum, n) => {
-        const v = Number(n.beneficiary_count) || 0
-        return sum + (Number.isFinite(v) ? v : 0)
-      }, 0)
-      const expectedBeneficiariesForProject = sumBeneficiaries > 0 ? sumBeneficiaries : (Number(draft.needs[0]?.beneficiary_count) || 1)
-      // try to derive a valid_until date from project timeline; fallback to 90 days from now
-      let derivedValidUntil: string | null = null
-      try {
-        const direct = new Date(String(draft.project.timeline || ''))
-        if (!Number.isNaN(direct.getTime())) {
-          derivedValidUntil = direct.toISOString().slice(0, 10)
+      // Determine path based on intakePath
+      if (intakePath === 'need') {
+        // Need-only path: POST to /api/service-requests WITHOUT projectId
+        if (draft.needs.length === 0) {
+          throw new Error('No need data to publish')
         }
-      } catch {}
-      if (!derivedValidUntil) {
-        const future = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000)
-        derivedValidUntil = future.toISOString().slice(0, 10)
-      }
 
-      const projectResponse = await fetch('/api/service-request-projects', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          title: draft.project.title,
-          description: draft.project.description,
-          location: draft.project.location,
-          exact_address: draft.project.location,
-          timeline: draft.project.timeline,
-          expected_beneficiaries: expectedBeneficiariesForProject,
-          valid_until: derivedValidUntil
-        })
-      })
-
-      const projectData = await projectResponse.json()
-      if (!projectResponse.ok || !projectData?.success || !projectData?.data?.id) {
-        throw new Error(projectData?.error || 'Failed to create project from AI draft.')
-      }
-
-      const createdNeedIds: number[] = []
-
-      for (let index = 0; index < draft.needs.length; index += 1) {
-        if (fulfilledNeedIndices.includes(index)) continue
-        const need = draft.needs[index]
-        const relatedOffers = relatedOffersByNeed[index] || await getRecommendedOffersForNeed(need)
-        const relatedOfferIds = new Set(relatedOffers.map((item) => item.offer.id))
-        const invitedOfferIds = (selectedOfferIdsByNeed[index] || []).filter((id) => relatedOfferIds.has(id))
-        const selectedOfferIds = invitedOfferIds.length > 0 ? invitedOfferIds : (relatedOffers[0] ? [relatedOffers[0].offer.id] : [])
-        
-        // Normalize urgency and timeline for consistent data storage
+        const need = draft.needs[0]
         const normalizedTimeline = String(need.timeline || '').trim().toLowerCase() === 'anytime' ? 'Anytime (No expiry)' : need.timeline
-        
+
         const response = await fetch('/api/service-requests', {
           method: 'POST',
           headers: {
@@ -1666,84 +1717,141 @@ export default function NGOAIAgentPage() {
           },
           body: JSON.stringify({
             action: 'create',
-            projectId: projectData.data.id,
             title: need.title,
             description: need.description,
             request_type: need.request_type,
-            category: draft.project.category,
-            project_category: draft.project.category,
-            location: draft.project.location,
+            category: need.category,
+            location: need.location || draft.project.location || 'India',
             timeline: normalizedTimeline,
             budget: need.budget,
             estimated_budget: need.estimated_budget,
             beneficiary_count: need.beneficiary_count,
             impact_description: need.impact_description,
             contactInfo: need.contactInfo,
-            project_context: {
-              project_title: draft.project.title,
-              project_location: draft.project.location,
-              project_description: draft.project.description,
-              project_timeline: draft.project.timeline,
-              project_category: draft.project.category
-            },
             details: {
               material_items: need.material_items,
               skill_role: need.skill_role,
               skill_duration: need.skill_duration,
-              infrastructure_scope: need.infrastructure_scope,
-              recommended_offer_ids: selectedOfferIds,
-              recommendation_summary: {
-                selected_count: selectedOfferIds.length,
-                invited_offer_ids: invitedOfferIds,
-                related_offer_ids: Array.from(relatedOfferIds)
-              }
+              infrastructure_scope: need.infrastructure_scope
             }
           })
         })
 
         const needData = await response.json()
         if (!response.ok || !needData?.success || !needData?.data?.id) {
-          throw new Error(needData?.error || 'Failed to create one or more needs from AI draft.')
+          throw new Error(needData?.error || 'Failed to create standalone need.')
         }
 
-        createdNeedIds.push(Number(needData.data.id))
-        // After creating the need, apply to any invited offers (mirror create page behavior)
-        const invited = (selectedOfferIdsByNeed[index] || []).slice()
+        const needId = Number(needData.data.id)
+
+        // Apply to any invited offers
+        const invited = selectedOfferIdsByNeed[0] || []
         if (invited.length > 0) {
           for (const offerId of invited) {
             try {
               await fetch(`/api/service-offers/${offerId}/clients`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ client_id: user?.id, client_type: user?.user_type, selected_need_ids: [Number(needData.data.id)], message: `Applying for need ${needData.data.id}` })
+                body: JSON.stringify({ 
+                  client_id: user?.id, 
+                  client_type: user?.user_type, 
+                  selected_need_ids: [needId], 
+                  message: `Applying for need ${needId}` 
+                })
               })
             } catch (e) {
-              // ignore failures here; user can retry in the project page
+              // ignore failures
             }
           }
         }
+
+        setMessages(prev => [...prev, { role: 'assistant', content: `Published successfully! Your standalone need is now live.` }])
+
+        setTimeout(() => {
+          router.push(`/service-requests/${needId}`)
+        }, 1500)
+
+        setPublishingDraft(false)
+        return
       }
 
-      setMessages(prev => [...prev, { role: 'assistant', content: `Published successfully. ${createdNeedIds.length} need${createdNeedIds.length > 1 ? 's were' : ' was'} created and is now live.` }])
+      if (intakePath === 'project') {
+        // Project-only path: POST to /api/service-request-projects ONLY
+        let derivedValidUntil = String(projectData.validUntil || '').trim()
+        if (!derivedValidUntil || Number.isNaN(new Date(derivedValidUntil).getTime())) {
+          try {
+            const direct = new Date(String(draft.project.timeline || ''))
+            if (!Number.isNaN(direct.getTime())) {
+              derivedValidUntil = direct.toISOString().slice(0, 10)
+            }
+          } catch {}
+        }
+        if (!derivedValidUntil || Number.isNaN(new Date(derivedValidUntil).getTime())) {
+          const future = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000)
+          derivedValidUntil = future.toISOString().slice(0, 10)
+        }
 
-      const projectId = String(projectData.data.id)
-      setPublishedProjectId(projectId)
-      const currentSession = normalizeSessionFromState()
-      if (currentSession) {
-        const withPublished = { ...currentSession, publishedProjectId: projectId, updatedAt: new Date().toISOString() }
-        const nextSessions = sessions.map((session) => (session.id === withPublished.id ? withPublished : session))
-        persistSessions(nextSessions, withPublished.id)
+        const volunteersNeeded = Math.max(1, Number(String(projectData.volunteersNeeded || '').replace(/[^\d]/g, '')) || 1)
+        const budgetInr = Number(String(projectData.budget || '').replace(/[^\d.]/g, '')) || null
+
+        const projectResponse = await fetch('/api/service-request-projects', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            title: draft.project.title,
+            description: draft.project.description,
+            category: draft.project.category,
+            address: {
+              address_line: projectData.location || draft.project.location,
+              city: projectData.city || projectData.location || 'Unknown',
+              state: projectData.state || 'Maharashtra',
+              pincode: projectData.pincode || '400001',
+              country: 'India',
+            },
+            timeline: draft.project.timeline,
+            expected_beneficiaries: Number(projectData.expectedBeneficiaries) || 100,
+            valid_until: derivedValidUntil,
+            budget_inr: budgetInr,
+            impact_description: projectData.impact || draft.project.description,
+            contact_info: projectData.contactInfo || user?.email || null,
+            volunteers_needed: volunteersNeeded,
+            csr_project_available_for_csr: true,
+          })
+        })
+
+        const projectResponseData = await projectResponse.json()
+        if (!projectResponse.ok || !projectResponseData?.success || !projectResponseData?.data?.id) {
+          throw new Error(projectResponseData?.error || 'Failed to create project.')
+        }
+
+        const projectId = String(projectResponseData.data.id)
+        setPublishedProjectId(projectId)
+
+        const currentSession = normalizeSessionFromState()
+        if (currentSession) {
+          const withPublished = { ...currentSession, publishedProjectId: projectId, updatedAt: new Date().toISOString() }
+          const nextSessions = sessions.map((session) => (session.id === withPublished.id ? withPublished : session))
+          persistSessions(nextSessions, withPublished.id)
+        }
+
+        setMessages(prev => [...prev, { role: 'assistant', content: `Published successfully! Your CSR Project is now live.` }])
+
+        setTimeout(() => {
+          router.push(`/service-requests/projects/${projectId}`)
+        }, 1500)
+
+        setPublishingDraft(false)
+        return
       }
 
-      if (projectData?.data?.id) {
-        router.push(`/service-requests/projects/${projectData.data.id}`)
-      } else {
-        router.push('/service-requests')
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to publish the AI draft.'
-      setMessages(prev => [...prev, { role: 'assistant', content: `I could not publish automatically: ${message}` }])
-    } finally {
+      // Legacy path (should not be reached with new flow, but kept for safety)
+      throw new Error('Unknown intake path')
+
+    } catch (error: any) {
+      setMessages(prev => [...prev, { role: 'assistant', content: `Publishing failed: ${error?.message || 'Unknown error'}` }])
       setPublishingDraft(false)
     }
   }
@@ -1960,15 +2068,25 @@ export default function NGOAIAgentPage() {
 
                                         const userMsgIndices = messages.map((m, i) => ({ m, i })).filter((x) => x.m.role === 'user').map((x) => x.i)
                                         const pos = userMsgIndices.indexOf(idx)
+                                        // Skip entry answer (pos 0) when mapping project/need answers.
+                                        const answerPos = Math.max(0, pos - 1)
                                         let assistantPrompt = 'Edited. Please continue from here.'
-                                        if (pos !== -1) {
-                                          if (pos < projectQuestions.length) {
-                                            assistantPrompt = pos + 1 < projectQuestions.length
-                                              ? projectQuestions[pos + 1].question
-                                              : 'How many needs should I capture?'
-                                          } else if (needCount && pos === projectQuestions.length) {
-                                            assistantPrompt = 'Please provide the first need details.'
+
+                                        if (intakePath === 'project' && pos > 0) {
+                                          if (answerPos < projectQuestions.length) {
+                                            assistantPrompt = answerPos + 1 < projectQuestions.length
+                                              ? projectQuestions[answerPos + 1].question
+                                              : 'Project details updated. You can publish when ready.'
                                           }
+                                        } else if (intakePath === 'need' && pos > 0) {
+                                          const questionSet = getNeedQuestions(needsData[0]?.requestType)
+                                          if (answerPos < questionSet.length) {
+                                            assistantPrompt = answerPos + 1 < questionSet.length
+                                              ? questionSet[answerPos + 1].question
+                                              : 'Need details updated. You can publish when ready.'
+                                          }
+                                        } else if (pos === 0) {
+                                          assistantPrompt = 'Please reply with either "Need" or "Project" to continue.'
                                         }
 
                                         setMessages((cur) => {
@@ -1977,24 +2095,43 @@ export default function NGOAIAgentPage() {
                                           return next
                                         })
 
-                                        if (pos !== -1 && pos < projectQuestions.length) {
-                                          const key = projectQuestions[pos].key as keyof ProjectIntakeData
+                                        if (pos === 0) {
+                                          const normalized = newContent.toLowerCase()
+                                          if (normalized.includes('need') && !normalized.includes('project')) {
+                                            setIntakePath('need')
+                                            setConversationStage('need')
+                                            setNeedCount(1)
+                                            setNeedsData([createEmptyNeed()])
+                                            setActiveNeedQuestionIndex(0)
+                                          } else if (normalized.includes('project')) {
+                                            setIntakePath('project')
+                                            setConversationStage('project')
+                                            setProjectStep(0)
+                                          } else {
+                                            setConversationStage('entry')
+                                            setIntakePath(null)
+                                          }
+                                        } else if (intakePath === 'project' && answerPos < projectQuestions.length) {
+                                          const key = projectQuestions[answerPos].key as keyof ProjectIntakeData
                                           setProjectData((prev) => {
                                             const next = { ...prev, [key]: newContent }
-                                            for (let k = pos + 1; k < projectQuestions.length; k++) {
+                                            for (let k = answerPos + 1; k < projectQuestions.length; k++) {
                                               // @ts-ignore - dynamic key assignment
                                               next[projectQuestions[k].key] = ''
                                             }
                                             return next
                                           })
-
-                                          if (pos + 1 < projectQuestions.length) {
+                                          if (answerPos + 1 < projectQuestions.length) {
                                             setConversationStage('project')
-                                            setProjectStep(pos + 1)
+                                            setProjectStep(answerPos + 1)
+                                            setGeneratedDraft(null)
                                           } else {
-                                            setConversationStage('need-count')
-                                            setProjectStep(projectQuestions.length)
+                                            setConversationStage('complete')
                                           }
+                                        } else if (intakePath === 'need') {
+                                          setGeneratedDraft(null)
+                                          setConversationStage('need')
+                                          setActiveNeedQuestionIndex(Math.min(answerPos + 1, getNeedQuestions(needsData[0]?.requestType).length - 1))
                                         }
 
                                         setEditingMessageIndex(null)
@@ -2095,7 +2232,16 @@ export default function NGOAIAgentPage() {
                                   <div key={`chat-suggest-${entry.offer.id}`} className="flex items-center justify-between gap-3 rounded-md border border-slate-100 bg-slate-50 px-3 py-2">
                                     <div>
                                       <div className="text-sm font-semibold text-slate-900">{entry.offer.title || `Offer #${entry.offer.id}`}</div>
-                                      <div className="text-[11px] text-slate-600">{entry.offer.provider_name || 'Provider'} • Score {entry.score}</div>
+                                      <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[11px] text-slate-600">
+                                        <VerifiedAccountName
+                                          name={entry.offer.provider_name || 'Provider'}
+                                          status={entry.offer.verification_status}
+                                          verified={entry.offer.verified}
+                                          size="xs"
+                                          nameClassName="font-medium text-slate-700"
+                                        />
+                                        <span>• Score {entry.score}</span>
+                                      </div>
                                     </div>
                                     <div className="flex items-center gap-2">
                                       <Button type="button" size="sm" variant={(selectedOfferIdsByNeed[lastCompletedNeedIndex] || []).includes(entry.offer.id) ? 'default' : 'outline'} onClick={() => void applyOfferFromChat(entry.offer.id, lastCompletedNeedIndex)}>
@@ -2231,7 +2377,16 @@ export default function NGOAIAgentPage() {
                                         return (
                                           <div key={`need-${index}-offer-${entry.offer.id}`} className="rounded-md border border-slate-200 bg-white px-3 py-2">
                                             <p className="text-xs font-semibold text-slate-900">{entry.offer.title || `Offer #${entry.offer.id}`}</p>
-                                            <p className="mt-1 text-[11px] text-slate-600">{entry.offer.provider_name || entry.offer.ngo_name || 'Offer provider'} • Score {entry.score}</p>
+                                            <p className="mt-1 flex flex-wrap items-center gap-1 text-[11px] text-slate-600">
+                                              <VerifiedAccountName
+                                                name={entry.offer.provider_name || entry.offer.ngo_name || 'Offer provider'}
+                                                status={entry.offer.verification_status}
+                                                verified={entry.offer.verified}
+                                                size="xs"
+                                                nameClassName="font-medium text-slate-700"
+                                              />
+                                              <span>• Score {entry.score}</span>
+                                            </p>
                                             <div className="mt-2 flex items-center gap-2">
                                               <Button type="button" size="sm" variant={invited ? 'default' : 'outline'} onClick={() => toggleInviteOfferForNeed(index, entry.offer.id)}>
                                                 {invited ? 'Invited' : 'Invite'}
@@ -2266,7 +2421,7 @@ export default function NGOAIAgentPage() {
                           }}
                           disabled={publishingDraft}
                         >
-                          {publishingDraft ? 'Publishing...' : 'Publish and Generate Live Need Pages'}
+                          {publishingDraft ? 'Publishing...' : intakePath === 'need' ? 'Publish Need' : 'Publish Project'}
                         </Button>
                       </div>
                     </>
@@ -2283,17 +2438,23 @@ export default function NGOAIAgentPage() {
 
                       <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
                         <div className="flex items-start justify-between gap-4">
-                          <span className="text-sm font-medium text-slate-500">Needs captured</span>
+                          <span className="text-sm font-medium text-slate-500">
+                            {intakePath === 'need' ? 'Need progress' : intakePath === 'project' ? 'Project progress' : 'Progress'}
+                          </span>
                           <span className="text-right text-sm font-semibold text-slate-900">
-                            {completedNeeds.length} / {needCount || 0}
+                            {intakePath === 'need'
+                              ? `${completedNeeds.length} / 1`
+                              : intakePath === 'project'
+                                ? `${answeredProjectQuestions} / ${projectQuestions.length}`
+                                : 'Choose Need or Project'}
                           </span>
                         </div>
-                        {completedNeeds.length > 0 && (
+                        {intakePath === 'need' && completedNeeds.length > 0 && (
                           <div className="mt-3 space-y-2">
                             {completedNeeds.map((need, index) => (
                               <div key={`completed-need-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                                <p className="text-sm font-semibold text-slate-900">Need {index + 1}: {need.title}</p>
-                                <p className="text-xs text-slate-600">{normalizeRequestType(need.requestType)} • {normalizeUrgency(need.urgency)}</p>
+                                <p className="text-sm font-semibold text-slate-900">{need.title}</p>
+                                <p className="text-xs text-slate-600">{normalizeRequestType(need.requestType)}</p>
                               </div>
                             ))}
                           </div>

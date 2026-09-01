@@ -1,8 +1,6 @@
 import { supabase } from '@/lib/db'
 import { getNgoNeedFulfillmentMode, normalizeServiceRequestRecord } from '@/lib/service-request-allocation'
 
-const ACTIVE_VOLUNTEER_STATUSES = ['pending', 'accepted', 'active']
-
 export async function getActiveInfrastructureVolunteerApplication(userId: number) {
   const { data, error } = await supabase
     .from('service_volunteers')

@@ -6,7 +6,6 @@ import { ThemeProvider } from '@/components/theme-provider'
 import { PageTransition } from '@/components/page-transition'
 import { AIAgentCTA } from '@/components/ai-agent-cta'
 import { Toaster } from 'sonner'
-import Script from 'next/script'
 import { Analytics } from '@vercel/analytics/next'
 import { SpeedInsights } from '@vercel/speed-insights/next'
 import { verifyToken, isPlatformUserSession } from '@/lib/auth'
@@ -109,14 +108,13 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
-  const shouldInjectProtectionScript = process.env.NODE_ENV === 'production'
   const cookieStore = await cookies()
   const token = cookieStore.get('token')?.value || null
   const decoded = token ? verifyToken(token) : null
   const initialUser = isPlatformUserSession(decoded) ? decoded : null
 
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <link rel="alternate" type="text/plain" href="/llm.txt" title="LLM context" />
         <link rel="alternate" type="text/plain" href="/ai.txt" title="AI discovery" />
@@ -168,83 +166,8 @@ export default async function RootLayout({
             ]),
           }}
         />
-        {shouldInjectProtectionScript && (
-          <Script id="disable-devtools" strategy="afterInteractive">
-            {`
-              (function() {
-                function disableDevTools() {
-                  if (typeof window !== 'undefined') {
-                    console.log = () => {};
-                    console.info = () => {};
-                    console.warn = () => {};
-                    console.debug = () => {};
-                    console.table = () => {};
-                    console.dir = () => {};
-                    console.trace = () => {};
-                    console.group = () => {};
-                    console.groupEnd = () => {};
-                    console.time = () => {};
-                    console.timeEnd = () => {};
-                    console.count = () => {};
-                    console.countReset = () => {};
-                    console.profile = () => {};
-                    console.profileEnd = () => {};
-                    console.timeStamp = () => {};
-                    console.clear = () => {};
-
-                    document.addEventListener('keydown', function(e) {
-                      if (e.key === 'F12' || e.keyCode === 123) {
-                        e.preventDefault();
-                        return false;
-                      }
-
-                      if (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'i' || e.key === 'J' || e.key === 'j' || e.key === 'C' || e.key === 'c')) {
-                        e.preventDefault();
-                        return false;
-                      }
-
-                      if (e.ctrlKey && e.shiftKey && (e.key === 'R' || e.key === 'r')) {
-                        e.preventDefault();
-                        return false;
-                      }
-                    }, { capture: true });
-
-                    document.addEventListener('contextmenu', function(e) {
-                      e.preventDefault();
-                      return false;
-                    }, { capture: true });
-
-                    if (typeof window.__REACT_DEVTOOLS_GLOBAL_HOOK__ === 'object') {
-                      for (let prop in window.__REACT_DEVTOOLS_GLOBAL_HOOK__) {
-                        if (prop === 'renderers') {
-                          window.__REACT_DEVTOOLS_GLOBAL_HOOK__[prop] = new Map();
-                        } else {
-                          window.__REACT_DEVTOOLS_GLOBAL_HOOK__[prop] =
-                            typeof window.__REACT_DEVTOOLS_GLOBAL_HOOK__[prop] === 'function'
-                              ? Function.prototype
-                              : null;
-                        }
-                      }
-                    }
-
-                    setInterval(function() {
-                      const widthThreshold = window.outerWidth - window.innerWidth > 160;
-                      const heightThreshold = window.outerHeight - window.innerHeight > 160;
-
-                      if (widthThreshold || heightThreshold) {
-                        document.body.innerHTML = 'Developer tools detected. Please close them and refresh the page.';
-                      }
-                    }, 1000);
-                  }
-                }
-
-                disableDevTools();
-              })();
-            `}
-          </Script>
-        )}
       </head>
-      <body className="min-h-screen bg-background text-foreground">
+      <body className="min-h-screen bg-background text-foreground" suppressHydrationWarning>
         <div aria-hidden="true" className="agent-only" data-nosnippet="">
           <h1>{COMPANY_LEGAL_NAME}</h1>
           <p>GRAM powered by Navadrishti LLP</p>

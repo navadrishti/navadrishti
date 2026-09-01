@@ -264,7 +264,7 @@ export default function SettingsPage() {
     return (
       <div className="flex min-h-screen flex-col">
         <Header />
-        <main className="flex-1 min-w-0 bg-gray-50">
+        <main className="flex-1 min-w-0 bg-background">
           <PlatformContentSkeleton className="mx-auto max-w-4xl">
             <Skeleton className="h-8 w-20" />
             <div className="space-y-3 py-8 text-center">
