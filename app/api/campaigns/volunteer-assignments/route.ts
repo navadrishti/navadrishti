@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/db'
+import { supabase, ensureCampaignVolunteerAssignment } from '@/lib/db'
 import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth'
 import { getCampaignLeadLifecycle } from '@/lib/format-date'
 import { readCampaignCategory, readCampaignLocation } from '@/lib/campaign-schema'
-import { ensureCampaignVolunteerAssignment, filterCampaignVolunteerAssignments, getVolunteerApplicationForUser } from '@/lib/campaign-volunteer-attendance'
+import {
+  filterCampaignVolunteerAssignments,
+  getVolunteerApplicationForUser,
+  isCampaignLeadNgo,
+  isCampaignVolunteerApplicant,
+} from '@/lib/campaign-volunteer-attendance'
 
 function safeJson(value: unknown): Record<string, any> {
   if (!value) return {}
@@ -32,7 +37,7 @@ export async function GET(request: NextRequest) {
     if (error) throw error
 
     const volunteeredCampaigns = (campaigns || []).filter((campaign) =>
-      Boolean(getVolunteerApplicationForUser(campaign.impact_metrics, user.id))
+      isCampaignVolunteerApplicant(campaign.impact_metrics, user.id)
     )
 
     const companyIds = [...new Set(volunteeredCampaigns.map((row) => Number(row.company_id || 0)).filter((id) => id > 0))]
@@ -57,7 +62,7 @@ export async function GET(request: NextRequest) {
 
     for (const campaign of volunteeredCampaigns) {
       const application = getVolunteerApplicationForUser(campaign.impact_metrics, user.id)
-      if (!application) continue
+      if (!application || isCampaignLeadNgo(campaign.impact_metrics, user.id)) continue
 
       let assignment = assignmentsByCampaignId.get(String(campaign.id))
       if (!assignment) {

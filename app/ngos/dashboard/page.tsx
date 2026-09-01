@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Clock, CheckCircle, AlertTriangle, HeartHandshake, Trash2, Plus, Building, TicketCheck, MailCheck, Phone, Loader2, XCircle } from 'lucide-react';
-import { formatDisplayDate, formatCampaignLeadLifecycleLabel, type CampaignLeadLifecycle } from '@/lib/format-date';
+import { formatDisplayDate, formatCampaignLeadLifecycleLabel, formatStatusLabel, type CampaignLeadLifecycle } from '@/lib/format-date';
 import { getGramAvatarFallbackStyle } from '@/lib/gram-avatar';
 import Link from 'next/link';
 import { cn, smoothScrollToElement } from '@/lib/utils';
@@ -278,16 +278,6 @@ interface CampaignLeadInvitation {
 const isActionableProjectApplicationStatus = (status: string): boolean => {
   const normalized = String(status || '').toLowerCase();
   return ['pending', 'pledged', 'invited', 'pending_acceptance', 'awaiting_acceptance', 'offered', 'assigned'].includes(normalized);
-};
-
-const formatStatusLabel = (status: string): string => {
-  const normalized = String(status || '').trim().toLowerCase();
-  if (!normalized) return 'Unknown';
-  return normalized
-    .replace(/_/g, ' ')
-    .split(' ')
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
 };
 
 const getCampaignLifecycleBadgeClass = (lifecycle: CampaignLeadLifecycle): string => {
@@ -1276,7 +1266,7 @@ function NgoNeedDashboardInline({
         </div>
         <div className="flex flex-wrap gap-2">
           <Badge variant="outline" className="border-gram-border bg-gram-page text-gram-ink">
-            {need.status || 'active'}
+            {formatStatusLabel(need.status || 'active')}
           </Badge>
           {variant === 'ongoing' && assignmentLabel ? (
             <Badge variant="outline" className="border-gram-border bg-gram-sage/40 text-udaan-blue">
@@ -1356,7 +1346,7 @@ function NgoNeedDashboardInline({
                     </p>
                   </div>
                   <p className="text-xs capitalize text-slate-600 sm:text-right">
-                    {String(assignment.status || 'accepted').replace('_', ' ')}
+                    {formatStatusLabel(assignment.status || 'accepted')}
                   </p>
                 </div>
 
@@ -2323,7 +2313,7 @@ function NGODashboardContent() {
                                   nameClassName="text-sm font-medium text-slate-800"
                                 />
                               </div>
-                              <Badge variant="outline">{offer.status || 'active'}</Badge>
+                              <Badge variant="outline">{formatStatusLabel(offer.status || 'active')}</Badge>
                             </div>
                             <div className="flex flex-wrap gap-2">
                               <Link href={`/service-offers/${offer.id}`}>
@@ -2388,7 +2378,7 @@ function NGODashboardContent() {
                                     ) : null}
                                   </div>
                                   <div className="flex items-center gap-2">
-                                    <Badge variant="outline" className="capitalize">{request.status}</Badge>
+                                    <Badge variant="outline">{formatStatusLabel(request.status)}</Badge>
                                     <Badge className={request.isAssigned ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}>
                                       {request.isAssigned ? 'Assigned' : 'Not Assigned'}
                                     </Badge>
@@ -2461,7 +2451,7 @@ function NGODashboardContent() {
                                       <p className="truncate text-sm text-muted-foreground">{request.client?.email || 'No email available'}</p>
                                     </div>
                                     <div className="flex shrink-0 items-center gap-2">
-                                      <Badge variant="outline" className="capitalize whitespace-nowrap">{request.status}</Badge>
+                                      <Badge variant="outline" className="whitespace-nowrap">{formatStatusLabel(request.status)}</Badge>
                                       <Badge className={`${request.isAssigned ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'} whitespace-nowrap`}>
                                         {request.isAssigned ? 'Assigned' : 'Not Assigned'}
                                       </Badge>
@@ -2565,7 +2555,7 @@ function NGODashboardContent() {
                                     ) : null}
                                   </div>
                                   <div className="flex items-center gap-2">
-                                    <Badge variant="outline" className="capitalize">{request.status}</Badge>
+                                    <Badge variant="outline">{formatStatusLabel(request.status)}</Badge>
                                     <Badge className={request.isAssigned ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}>
                                       {request.isAssigned ? 'Assigned' : 'Not Assigned'}
                                     </Badge>
@@ -2944,7 +2934,7 @@ function NGODashboardContent() {
                                   <p className="font-semibold">{project.title}</p>
                                   <p className="text-sm text-muted-foreground">{project.region || 'Region not set'}</p>
                                 </div>
-                                <Badge variant="outline" className="w-fit">{project.project_status}</Badge>
+                                <Badge variant="outline" className="w-fit">{formatStatusLabel(project.project_status)}</Badge>
                               </div>
                               <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-muted-foreground md:grid-cols-4">
                                 <p>Progress: {project.progress_percentage ?? 0}%</p>
@@ -3016,7 +3006,7 @@ function NGODashboardContent() {
                                   <p className="font-semibold">{project.title}</p>
                                   <p className="text-sm text-muted-foreground">{project.region || 'Region not set'}</p>
                                 </div>
-                                <Badge variant="outline" className="w-fit">{project.project_status}</Badge>
+                                <Badge variant="outline" className="w-fit">{formatStatusLabel(project.project_status)}</Badge>
                               </div>
                               <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-muted-foreground md:grid-cols-4">
                                 <p>Progress: {project.progress_percentage ?? 0}%</p>

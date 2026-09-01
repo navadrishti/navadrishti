@@ -45,6 +45,16 @@ export function AdminConsoleHeader({
     setMobileMenuOpen(false);
   }, [pathname]);
 
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('nd-mobile-menu-state', { detail: { open: mobileMenuOpen } }));
+  }, [mobileMenuOpen]);
+
+  useEffect(() => {
+    return () => {
+      window.dispatchEvent(new CustomEvent('nd-mobile-menu-state', { detail: { open: false } }));
+    };
+  }, []);
+
   const desktopNavClass =
     'inline-flex w-full items-center rounded-md px-3 py-2 text-left text-sm font-medium text-[#F5F7F8] transition-colors hover:bg-white/5 hover:text-white';
   const mobileNavClass =

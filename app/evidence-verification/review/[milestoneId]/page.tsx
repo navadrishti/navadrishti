@@ -17,6 +17,7 @@ import {
   EvidenceQueueItem,
   EvidenceSectionCard,
 } from '@/components/evidence-verification/portal-ui';
+import { formatStatusLabel } from '@/lib/format-date';
 
 export default function ReviewDetailPage() {
   const router = useRouter();
@@ -189,7 +190,7 @@ export default function ReviewDetailPage() {
           <div className="grid gap-3 sm:grid-cols-2">
             <EvidenceDetailField label="Milestone ID">{reviewData.id}</EvidenceDetailField>
             <EvidenceDetailField label="Status">
-              <Badge variant="outline">{reviewData.status}</Badge>
+              <Badge variant="outline">{formatStatusLabel(reviewData.status)}</Badge>
             </EvidenceDetailField>
             <EvidenceDetailField label="Due Date">{formatDateTime(reviewData.due_date) || 'N/A'}</EvidenceDetailField>
             <EvidenceDetailField label="Amount">Rs {reviewData.amount || 0}</EvidenceDetailField>

@@ -11,6 +11,7 @@ import { ArrowLeft, Loader2, Users, Mail, Phone, Calendar, CheckCircle, XCircle,
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
 import Link from 'next/link'
+import { formatStatusLabel } from '@/lib/format-date'
 import {
   formatDeliveryTrackingStatus,
   getNeedRemainingQuantity,
@@ -274,7 +275,7 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
 
     return (
       <Badge className={statusColors[status as keyof typeof statusColors] || 'bg-gray-100 text-gray-800'}>
-        {status.charAt(0).toUpperCase() + status.slice(1)}
+        {formatStatusLabel(status)}
       </Badge>
     );
   };

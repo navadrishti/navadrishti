@@ -26,8 +26,8 @@ interface DashboardBodyLayoutProps {
   mainClassName?: string
 }
 
-function getSectionInitials(label: string): string {
-  const words = label
+function getSectionInitials(label?: string | null): string {
+  const words = String(label || '')
     .trim()
     .split(/\s+/)
     .filter(Boolean)
@@ -126,13 +126,15 @@ export function DashboardQuickSidebar({
 
   const hideFloatingNav = headerMenuOpen || atPageBottom
 
+  const compactMobileNav = items.length >= 7
+
   const mobileBottomNav = (
     <div className="lg:hidden">
       <nav
         aria-label={triggerLabel}
         aria-hidden={hideFloatingNav}
         className={[
-          'pointer-events-none fixed inset-x-0 bottom-0 z-[1000] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] transition-all duration-300 ease-out',
+          'pointer-events-none fixed inset-x-0 bottom-0 z-[1000] px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] transition-all duration-300 ease-out sm:px-4',
           hideFloatingNav
             ? 'translate-y-[calc(100%+1.5rem)] opacity-0'
             : 'translate-y-0 opacity-100',
@@ -140,7 +142,7 @@ export function DashboardQuickSidebar({
       >
         <div
           className={[
-            'no-scrollbar mx-auto flex min-w-0 w-max max-w-full touch-pan-x items-stretch gap-1 overflow-x-auto overscroll-x-contain rounded-3xl border border-white/60 bg-white/50 px-2.5 py-2.5 shadow-[0_12px_40px_rgba(15,23,42,0.14)] backdrop-blur-2xl supports-[backdrop-filter]:bg-white/40 [-webkit-overflow-scrolling:touch]',
+            'mx-auto flex min-w-0 w-full max-w-lg items-stretch gap-0.5 rounded-3xl border border-white/60 bg-white/50 px-1.5 py-2 shadow-[0_12px_40px_rgba(15,23,42,0.14)] backdrop-blur-2xl supports-[backdrop-filter]:bg-white/40 sm:gap-1 sm:px-2 sm:py-2.5',
             hideFloatingNav ? 'pointer-events-none' : 'pointer-events-auto',
           ].join(' ')}
         >
@@ -158,23 +160,26 @@ export function DashboardQuickSidebar({
                 tabIndex={hideFloatingNav ? -1 : undefined}
                 onClick={() => onSelect(item.value)}
                 className={[
-                  'flex w-[4.25rem] shrink-0 grow-0 flex-col items-center justify-center rounded-2xl px-2.5 py-2 transition-colors',
+                  'flex min-w-0 flex-col items-center justify-center rounded-2xl px-1 py-2 transition-colors sm:px-2',
+                  compactMobileNav ? 'flex-1 basis-0' : 'w-[4.25rem] shrink-0 grow-0',
                   isActive
                     ? 'bg-gram-sage text-udaan-blue shadow-sm'
                     : 'text-gram-muted hover:bg-white/70 hover:text-gram-ink',
                 ].join(' ')}
               >
-                <span className="text-xs font-semibold tracking-[0.08em] leading-none">
+                <span className="text-[11px] font-semibold tracking-[0.06em] leading-none sm:text-xs sm:tracking-[0.08em]">
                   {initials}
                 </span>
-                <span
-                  className={[
-                    'mt-1.5 max-w-full truncate text-[10px] font-medium leading-none',
-                    isActive ? 'text-udaan-blue/80' : 'text-gram-faint',
-                  ].join(' ')}
-                >
-                  {item.label}
-                </span>
+                {!compactMobileNav ? (
+                  <span
+                    className={[
+                      'mt-1.5 max-w-full truncate text-[10px] font-medium leading-none',
+                      isActive ? 'text-udaan-blue/80' : 'text-gram-faint',
+                    ].join(' ')}
+                  >
+                    {item.label}
+                  </span>
+                ) : null}
               </button>
             )
           })}

@@ -13,6 +13,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Header } from '@/components/header';
 import { DocumentFileViewer } from '@/components/ca-verification-review';
 import { useToast } from '@/hooks/use-toast';
+import { formatStatusLabel } from '@/lib/format-date';
 import { cn } from '@/lib/utils';
 
 type TicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
@@ -510,8 +511,8 @@ export default function HelpSupportPage() {
                             <p className="truncate font-semibold text-slate-900">{ticket.title}</p>
                             <p className="text-xs text-slate-500">{ticket.ticket_id}</p>
                           </div>
-                          <span className={cn('shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-semibold capitalize', statusTone(ticket.status))}>
-                            {ticket.status.replace('_', ' ')}
+                          <span className={cn('shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-semibold', statusTone(ticket.status))}>
+                            {formatStatusLabel(ticket.status)}
                           </span>
                         </div>
                         <p className="line-clamp-2 text-sm text-slate-600">{ticket.description}</p>
@@ -550,8 +551,8 @@ export default function HelpSupportPage() {
                           <p className="text-xs text-slate-500">Ticket ID</p>
                           <p className="text-lg font-semibold text-slate-900">{selectedTicket.ticket_id}</p>
                         </div>
-                        <span className={cn('rounded-full border px-2.5 py-0.5 text-xs font-semibold capitalize', statusTone(selectedTicket.status))}>
-                          {selectedTicket.status.replace('_', ' ')}
+                        <span className={cn('rounded-full border px-2.5 py-0.5 text-xs font-semibold', statusTone(selectedTicket.status))}>
+                          {formatStatusLabel(selectedTicket.status)}
                         </span>
                       </div>
 

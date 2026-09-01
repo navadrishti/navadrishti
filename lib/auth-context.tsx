@@ -134,6 +134,7 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
   const [loading, setLoading] = useState<boolean>(!initialUser && !initialToken);
   const [error, setError] = useState<string | null>(null);
   const initialUserRef = useRef<User | null>(initialUser);
+  const initialTokenRef = useRef<string | null>(initialToken);
   // Bumped on logout so in-flight /me hydrations and Strict Mode remounts cannot revive the session.
   const authEpochRef = useRef(0);
 
@@ -146,17 +147,6 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
       sessionStorage.removeItem('token');
     }
 
-    if (nextUser) {
-      const serializedUser = JSON.stringify(nextUser);
-      localStorage.setItem('user', serializedUser);
-      sessionStorage.setItem('user', serializedUser);
-    } else {
-      localStorage.removeItem('user');
-      sessionStorage.removeItem('user');
-    }
-  }, []);
-
-  const persistUserSnapshot = useCallback((nextUser: User | null) => {
     if (nextUser) {
       const serializedUser = JSON.stringify(nextUser);
       localStorage.setItem('user', serializedUser);
@@ -212,31 +202,6 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
     return null;
   }, [persistAuthSnapshot]);
 
-  const hydrateUserFromCookie = useCallback(async () => {
-    const epoch = authEpochRef.current;
-    try {
-      const response = await fetch('/api/auth/me', {
-        credentials: 'include'
-      });
-
-      if (epoch !== authEpochRef.current) return null;
-
-      if (response.ok) {
-        const data = await response.json();
-        if (!data?.user?.id || Number(data.user.id) <= 0) {
-          return null;
-        }
-        setUser(data.user);
-        persistUserSnapshot(data.user);
-        return data.user as User;
-      }
-    } catch (err) {
-      console.error('Cookie hydration error:', err);
-    }
-
-    return null;
-  }, [persistUserSnapshot]);
-
   const syncAuthFromStorage = useCallback(async () => {
     const epoch = authEpochRef.current;
     try {
@@ -279,23 +244,39 @@ export function AuthProvider({ children, initialUser = null, initialToken = null
         return;
       }
 
-      const cookieUser = await hydrateUserFromCookie();
-      if (epoch !== authEpochRef.current) return;
-      if (cookieUser) {
-        setLoading(false);
-        return;
+      const ssrToken = initialTokenRef.current;
+      if (ssrToken && ssrToken !== 'undefined' && ssrToken !== 'null') {
+        const cleanSsrToken = ssrToken.replace(/["']/g, '').trim();
+        if (cleanSsrToken) {
+          setToken(cleanSsrToken);
+          if (initialUserRef.current) {
+            setUser(initialUserRef.current);
+          }
+
+          const hydratedUser = await hydrateUserFromServer(cleanSsrToken, initialUserRef.current);
+          if (epoch !== authEpochRef.current) return;
+          if (!hydratedUser) {
+            setToken(null);
+            setUser(null);
+          }
+          initialTokenRef.current = null;
+          initialUserRef.current = null;
+          setLoading(false);
+          return;
+        }
       }
 
-      // No storage and no live cookie — force logged-out, ignore stale SSR initial* props.
+      // No storage and no SSR cookie session — logged out (layout already checked the httpOnly cookie).
       setToken(null);
       setUser(null);
       initialUserRef.current = null;
+      initialTokenRef.current = null;
       setLoading(false);
     } catch (error) {
       console.error('Error syncing auth state:', error);
       setLoading(false);
     }
-  }, [hydrateUserFromCookie, hydrateUserFromServer, persistAuthSnapshot]);
+  }, [hydrateUserFromServer, persistAuthSnapshot]);
 
   // Load user from localStorage on initial render
   useEffect(() => {

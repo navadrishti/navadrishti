@@ -17,6 +17,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { ArrowLeft, CheckCircle2 } from "lucide-react"
 import { formatDisplayDate, isCampaignStarted, isVolunteerRegistrationPastDeadline } from "@/lib/format-date"
 import { getVolunteerButtonState, sumVolunteerApplicationCount } from '@/lib/campaign-schema'
+import { isCampaignLeadNgo } from '@/lib/campaign-volunteer-attendance'
 import { VerifiedAccountName } from '@/components/verification-badge'
 
 interface Campaign {
@@ -311,7 +312,7 @@ export default function CSRCampaignDetailPage() {
   const [currentUserId, setCurrentUserId] = useState<number | null>(null)
   const [currentUserType, setCurrentUserType] = useState<string | null>(null)
   const { user } = useAuth()
-  const canShowVolunteerAction = user?.user_type === 'ngo' || user?.user_type === 'individual'
+  const baseCanVolunteer = user?.user_type === 'ngo' || user?.user_type === 'individual'
   const allVerified = Boolean(user?.email_verified && user?.phone_verified && user?.verification_status === 'verified')
   const [accepting, setAccepting] = useState(false)
   const [applying, setApplying] = useState(false)
@@ -424,7 +425,11 @@ export default function CSRCampaignDetailPage() {
     }
   }
 
-  const selectedLeadNgoId = campaign?.impact_metrics?.selected_lead_ngo_id
+  const selectedLeadNgoId = Number(campaign?.impact_metrics?.selected_lead_ngo_id || 0)
+  const isLeadNgoForCampaign = Boolean(
+    campaign && effectiveUserId > 0 && isCampaignLeadNgo(campaign.impact_metrics, effectiveUserId)
+  )
+  const canShowVolunteerAction = baseCanVolunteer && !isLeadNgoForCampaign
   const ownerName = campaign?.company_id ? `Company #${campaign.company_id}` : 'Company not set'
 
   return (
