@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, Suspense } from "react"
 import { useAuth } from "@/lib/auth-context"
 import { Header } from "@/components/header"
 import { Button } from "@/components/ui/button"
@@ -513,7 +513,21 @@ function CampaignDraftCard({ campaign }: { campaign: GeneratedCampaign }) {
   )
 }
 
-export default function CSRAgentPage() {
+export default function CSRAgentPageRoute() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-background">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        </div>
+      }
+    >
+      <CSRAgentPage />
+    </Suspense>
+  )
+}
+
+function CSRAgentPage() {
   const { user, token, loading } = useAuth()
   const searchParams = useSearchParams()
   const [mounted, setMounted] = useState(false)
