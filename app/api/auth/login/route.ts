@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { db } from '@/lib/db';
 import { comparePassword, generateToken, getAccountAccessBlockReason } from '@/lib/auth';
 import { isCompanyCAUser } from '@/lib/company-ca';
+import { setAuthTokenCookie } from '@/lib/server-auth';
 
 // Validation schema for login
 const loginSchema = z.object({
@@ -69,15 +70,7 @@ export async function POST(req: NextRequest) {
       token
     });
     
-    // Set cookie with token (for web clients)
-    response.cookies.set({
-      name: 'token',
-      value: token,
-      httpOnly: true,
-      path: '/',
-      sameSite: 'strict',
-      secure: process.env.NODE_ENV === 'production'
-    });
+    setAuthTokenCookie(response, token);
     
     return response;
     

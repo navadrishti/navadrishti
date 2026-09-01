@@ -14,6 +14,7 @@ import {
   EvidencePortalShell,
   EvidenceSectionCard,
 } from '@/components/evidence-verification/portal-ui';
+import { finalizeConsoleLogout } from '@/lib/utils';
 
 export default function EvidenceVerificationSettingsPage() {
   const router = useRouter();
@@ -51,11 +52,11 @@ export default function EvidenceVerificationSettingsPage() {
   }, [router]);
 
   const handleLogout = async () => {
-    await fetch('/api/evidence-verification/logout', {
-      method: 'POST',
-      credentials: 'include',
+    await finalizeConsoleLogout({
+      logoutUrl: '/api/evidence-verification/logout',
+      redirectTo: '/evidence-verification/login',
+      tabSessionKey: 'evidence_verification_tab_session',
     });
-    router.push('/evidence-verification/login');
   };
 
   const handlePasswordChange = async (event: React.FormEvent) => {

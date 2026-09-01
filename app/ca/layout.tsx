@@ -16,7 +16,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
-import { cn } from '@/lib/utils';
+import { cn, finalizeConsoleLogout, hasConsoleTabSession, clearConsoleTabSession } from '@/lib/utils';
 import { ProductBrand } from '@/components/product-brand';
 
 const navItems = [
@@ -74,10 +74,7 @@ export default function CALayout({ children }: { children: React.ReactNode }) {
 
     const checkAccess = async () => {
       try {
-        const hasTab =
-          typeof window !== 'undefined' && Boolean(sessionStorage.getItem('ca_tab_session'));
-
-        if (!hasTab) {
+        if (!hasConsoleTabSession('ca_tab_session')) {
           if (!cancelled) router.replace('/ca/login');
           return;
         }
@@ -85,9 +82,11 @@ export default function CALayout({ children }: { children: React.ReactNode }) {
         const response = await fetch('/api/ca/auth/verify', {
           method: 'GET',
           credentials: 'include',
+          cache: 'no-store',
         });
 
         if (!response.ok) {
+          clearConsoleTabSession('ca_tab_session');
           if (!cancelled) router.replace('/ca/login');
           return;
         }
@@ -110,21 +109,11 @@ export default function CALayout({ children }: { children: React.ReactNode }) {
   }, [pathname]);
 
   const handleLogout = async () => {
-    try {
-      await fetch('/api/ca/auth/logout', {
-        method: 'POST',
-        credentials: 'include'
-      });
-    } catch {
-      // Ignore logout API failures
-    } finally {
-      try {
-        sessionStorage.removeItem('ca_tab_session');
-      } catch {
-        // Ignore storage access issues
-      }
-      router.push('/ca/login');
-    }
+    await finalizeConsoleLogout({
+      logoutUrl: '/api/ca/auth/logout',
+      redirectTo: '/ca/login',
+      tabSessionKey: 'ca_tab_session',
+    });
   };
 
   const isNavActive = (href: string) => {

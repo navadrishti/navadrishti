@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { db } from '@/lib/db';
 import { hashPassword, generateToken, validateNgoHeadquartersLocation, validateCompanyHeadquartersLocation, normalizePincode, buildNgoLocationDisplay, normalizePhoneDigits, isPermanentlyBannedAccount } from '@/lib/auth';
 import { supabase } from '@/lib/db';
+import { setAuthTokenCookie } from '@/lib/server-auth';
 
 const parseNumeric = (value: unknown): number | null => {
   if (value === null || value === undefined) return null;
@@ -265,7 +266,7 @@ export async function POST(req: NextRequest) {
     const token = generateToken(user);
     
     // Return success response with token
-    return NextResponse.json({
+    const response = NextResponse.json({
       message: 'User registered successfully',
       user: {
         id: newUser.id,
@@ -286,6 +287,10 @@ export async function POST(req: NextRequest) {
       },
       token
     }, { status: 201 });
+
+    setAuthTokenCookie(response, token);
+
+    return response;
     
   } catch (error: any) {
     console.error('Signup error:', error);

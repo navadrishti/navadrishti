@@ -14,7 +14,7 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import { ProductBrand } from '@/components/product-brand';
-import { cn } from '@/lib/utils';
+import { cn, finalizeConsoleLogout, hasConsoleTabSession, clearConsoleTabSession } from '@/lib/utils';
 import {
   getLaunchBlockedRedirectPath,
   isLaunchBlockedPath,
@@ -52,11 +52,7 @@ export default function GovernmentAdminLayout({
 
     const checkAccess = async () => {
       try {
-        const hasTab =
-          typeof window !== 'undefined' &&
-          Boolean(sessionStorage.getItem('govt_admin_tab_session'));
-
-        if (!hasTab) {
+        if (!hasConsoleTabSession('govt_admin_tab_session')) {
           if (!cancelled) router.replace('/government-admin/login');
           return;
         }
@@ -64,9 +60,11 @@ export default function GovernmentAdminLayout({
         const response = await fetch('/api/government-admin/verify', {
           method: 'GET',
           credentials: 'include',
+          cache: 'no-store',
         });
 
         if (!response.ok) {
+          clearConsoleTabSession('govt_admin_tab_session');
           if (!cancelled) router.replace('/government-admin/login');
           return;
         }
@@ -89,13 +87,11 @@ export default function GovernmentAdminLayout({
   }, [pathname]);
 
   const handleLogout = async () => {
-    await fetch('/api/government-admin/logout', { method: 'POST', credentials: 'include' });
-    try {
-      sessionStorage.removeItem('govt_admin_tab_session');
-    } catch {
-      // Ignore storage access issues
-    }
-    router.push('/government-admin/login');
+    await finalizeConsoleLogout({
+      logoutUrl: '/api/government-admin/logout',
+      redirectTo: '/government-admin/login',
+      tabSessionKey: 'govt_admin_tab_session',
+    });
   };
 
   const isNavActive = (href: string) => {
