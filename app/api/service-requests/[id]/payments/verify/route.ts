@@ -295,16 +295,11 @@ export async function POST(
 
     if (matchingAssignment) {
       const existingFulfilled = parseAmountToInr(matchingAssignment.fulfilled_amount || 0);
-      await db.serviceRequestApplications.updateStatus(matchingAssignment.id, matchingAssignment.status || 'active');
-      await supabase
-        .from('service_request_applications')
-        .update({
-          fulfilled_amount: Number((existingFulfilled + creditedInr).toFixed(2)),
-          individual_done_at: matchingAssignment.individual_done_at || new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', matchingAssignment.id)
-        .eq('service_request_id', requestId);
+      await db.serviceRequestApplications.update(matchingAssignment.id, {
+        status: matchingAssignment.status || 'active',
+        fulfilled_amount: Number((existingFulfilled + creditedInr).toFixed(2)),
+        individual_done_at: matchingAssignment.individual_done_at || new Date().toISOString(),
+      });
     }
 
     try {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
-import { normalizeApplicationApplicantFields, supabase } from '@/lib/db';
+import { normalizeApplicationApplicantFields, shapeApplicationForApi, supabase } from '@/lib/db';
 import { JWT_SECRET } from '@/lib/auth';
 import {
   buildAssignmentMeta,
@@ -70,7 +70,19 @@ async function createApplicationFromInvitation(invitation: any, userId: number) 
 
     const { data, error } = await supabase.from('service_request_applications').insert(payload).select('*').single();
     if (error) throw error;
-    return { table: 'service_request_applications', row: data };
+    try {
+      await supabase.from('service_request_fulfillments').upsert(
+        {
+          application_id: data.id,
+          service_request_id: requestId,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'application_id' }
+      );
+    } catch {
+      // ignore if fulfillments unavailable
+    }
+    return { table: 'service_request_applications', row: shapeApplicationForApi(data) };
   }
 
   if (invitation.target_type === 'service_offer') {

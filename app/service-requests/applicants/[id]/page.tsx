@@ -66,7 +66,7 @@ function normalizeVolunteer(raw: any): Volunteer {
     volunteer_email: String(volunteer.email || raw.volunteer_email || ''),
     volunteer_type: (volunteer.user_type || raw.volunteer_type || 'individual') as Volunteer['volunteer_type'],
     volunteer_verification_status: String(volunteer.verification_status || raw.volunteer_verification_status || ''),
-    message: String(raw.message || ''),
+    message: String(raw.application_message || raw.message || ''),
     status: raw.status,
     applied_at: raw.applied_at || raw.created_at || '',
     start_date: raw.start_date,

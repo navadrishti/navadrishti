@@ -314,7 +314,7 @@ export async function GET(request: NextRequest) {
       const companyId = Number(campaign.company_id || 0)
       if (companyId > 0) relatedUserIds.add(companyId)
       const impact = getProfileRecord(campaign.impact_metrics)
-      const leadId = Number(impact?.selected_lead_ngo_id || 0)
+      const leadId = Number(campaign.lead_ngo_user_id || impact?.selected_lead_ngo_id || 0)
       if (leadId > 0) relatedUserIds.add(leadId)
     }
     for (const project of csrProjects) {
@@ -427,8 +427,7 @@ export async function GET(request: NextRequest) {
     for (const user of verifiedUsers) {
       const createdAt =
         isoOrNull(user.verified_at) ||
-        verificationDateByUserId[Number(user.id || 0)] ||
-        isoOrNull(user.updated_at)
+        verificationDateByUserId[Number(user.id || 0)]
       if (!createdAt) continue
       const actor = actorFromUser(user)
       pushItem({
@@ -579,7 +578,7 @@ export async function GET(request: NextRequest) {
       const company = usersById[Number(campaign.company_id || 0)]
       const actor = actorFromUser(company || { name: 'A company', user_type: 'company', id: campaign.company_id })
       const impact = getProfileRecord(campaign.impact_metrics)
-      const leadId = Number(impact?.selected_lead_ngo_id || 0)
+      const leadId = Number(campaign.lead_ngo_user_id || impact?.selected_lead_ngo_id || 0)
       const lead = usersById[leadId]
       const leadName = lead
         ? resolveActorName(lead.name, lead.user_type, lead.profile_data)

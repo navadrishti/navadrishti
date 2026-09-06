@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import jwt from 'jsonwebtoken'
-import { supabase, getProjectLeadNgoId, buildProjectLeadNgoPatch } from '@/lib/db'
+import { supabase, getProjectLeadNgoId, buildProjectLeadNgoPatch, shapeApplicationForApi } from '@/lib/db'
 import {
   JWT_SECRET,
   assertCsr1CoversProject,
@@ -616,7 +616,17 @@ export async function GET(request: NextRequest) {
       const { data: fulfillmentRows, error: fulfillmentRowsError } = needIds.length > 0
         ? await supabase
             .from('service_request_applications')
-            .select('service_request_id, status, individual_done_at, ngo_confirmed_at, fulfilled_amount, fulfilled_quantity, volunteer:users!applicant_user_id(id, user_type)')
+            .select(`
+              service_request_id,
+              status,
+              volunteer:users!applicant_user_id(id, user_type),
+              fulfillment:service_request_fulfillments!application_id(
+                individual_done_at,
+                ngo_confirmed_at,
+                fulfilled_amount,
+                fulfilled_quantity
+              )
+            `)
             .in('service_request_id', needIds)
         : { data: [], error: null as any }
 
@@ -628,12 +638,13 @@ export async function GET(request: NextRequest) {
       const hasIndividualFulfillment = needsList.length > 0 && (fulfillmentRows || []).some((row: any) => {
         const isIndividual = String(row?.volunteer?.user_type || '').toLowerCase() === 'individual'
         const status = String(row?.status || '').toLowerCase()
+        const ful = Array.isArray(row?.fulfillment) ? row.fulfillment[0] : row?.fulfillment
         return isIndividual && (
           status === 'completed' ||
-          !!row?.individual_done_at ||
-          !!row?.ngo_confirmed_at ||
-          Number(row?.fulfilled_amount || 0) > 0 ||
-          Number(row?.fulfilled_quantity || 0) > 0
+          !!ful?.individual_done_at ||
+          !!ful?.ngo_confirmed_at ||
+          Number(ful?.fulfilled_amount || 0) > 0 ||
+          Number(ful?.fulfilled_quantity || 0) > 0
         )
       })
 
@@ -1187,6 +1198,7 @@ export async function GET(request: NextRequest) {
             .select(`
               *,
               volunteer:users!applicant_user_id(id, name, email, user_type),
+              fulfillment:service_request_fulfillments!application_id(*),
               request:service_requests!service_request_id(id, title, status, category, location, timeline, urgency_level, estimated_budget, beneficiary_count, project:service_request_projects!project_id(id, title, exact_address, location, timeline))
             `)
             .in('service_request_id', requestIds)
@@ -1195,8 +1207,10 @@ export async function GET(request: NextRequest) {
 
       if (assignmentsError) throw assignmentsError
 
+      const shapedAssignments = (assignments || []).map((row: any) => shapeApplicationForApi(row))
+
       const grouped = (requests || []).map((requestItem: any) => {
-        const relatedAssignments = (assignments || []).filter((assignment: any) => String(assignment.service_request_id) === String(requestItem.id))
+        const relatedAssignments = shapedAssignments.filter((assignment: any) => String(assignment.service_request_id) === String(requestItem.id))
         return {
           ...requestItem,
           assignments: relatedAssignments,

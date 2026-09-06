@@ -2,7 +2,7 @@
 
 ## Overview
 
-GRAM (Navadrishti) uses Supabase PostgreSQL. The canonical DDL is [`reference/completeschema.txt`](../reference/completeschema.txt). Apply packs: [`2026_schema_streamline.sql`](../reference/migrations/2026_schema_streamline.sql) then [`2026_schema_streamline_pass2.sql`](../reference/migrations/2026_schema_streamline_pass2.sql) (copy leftover rows, rename columns, no unreplicated drops).
+GRAM (Navadrishti) uses Supabase PostgreSQL. The canonical DDL is [`reference/completeschema.txt`](../reference/completeschema.txt). Apply packs in order: [`pass1`](../reference/migrations/2026_schema_streamline.sql) → [`pass2`](../reference/migrations/2026_schema_streamline_pass2.sql) → [`pass3`](../reference/migrations/2026_schema_streamline_pass3.sql) (drop service_requests mirrors + backfill `users.verified_at`).
 
 ## Conventions
 
@@ -33,7 +33,7 @@ Removed from product: `users.verified`, `users.identity_verified`
 
 ### D) Marketplace
 - `service_request_projects` — NGO CSR packages for company takeover
-- `service_requests` — needs (owner column = `ngo_id`; never `requester_id` as a DB column)
+- `service_requests` — needs (`ngo_id`, `volunteers_needed`, `urgency_level`, `deadline` date; funding via `target_amount` / `estimated_budget`)
 - `service_request_applications` — apply / invite / accept / assign (`applicant_user_id`)
 - `service_request_fulfillments` — amounts, receipts, completion (1:1 with application)
 - `service_request_contributions`, `service_request_shipments` (`application_id`), `shipment_tracking_events`
@@ -56,12 +56,15 @@ Removed from product: `users.verified`, `users.identity_verified`
 - Engagement attendance: `service_engagement_invitations`, `service_engagement_assignments`, `service_attendance_entries`
 - Field offline ledger: `field_events` (hash-chained evidence ingestion; distinct from `csr_audit_log`)
 
-## Deprecated mirrors (kept for no-data-loss; do not write new code against these)
-- `service_requests.volunteer_limit` → use `volunteers_needed`
-- `service_requests.priority` → use `urgency_level`
-- `service_requests.deadline` → prefer `deadline_at` when present
+## Deprecated mirrors (still kept)
 - `service_requests.estimated_budget` ↔ `target_amount` (dual-read via allocation helpers)
 - `users.email_verified` / `phone_verified` ↔ `*_verified_at`
+- Campaign JSON may still mirror `impact_metrics.selected_lead_ngo_id` beside `campaigns.lead_ngo_user_id`
+
+## Pass 3 removed (do not reintroduce on service_requests)
+- `volunteer_limit` → use `volunteers_needed`
+- `priority` → use `urgency_level`
+- `deadline_at` → use `deadline` (date). CSR project deadlines remain separate.
 
 ## Removed / do not reintroduce
 - Social feed tables and APIs
