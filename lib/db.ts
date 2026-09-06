@@ -65,16 +65,16 @@ export function documentExpiriesFromRows(
   return out
 }
 
-/** Applicant on service_request_applications (renamed from volunteer_id). Dual-read for cutover. */
+/** Applicant on service_request_applications. */
 export function getApplicationApplicantUserId(row: Record<string, unknown> | null | undefined): number {
   if (!row) return 0
-  return Number(row.applicant_user_id ?? row.volunteer_id ?? 0) || 0
+  return Number(row.applicant_user_id ?? 0) || 0
 }
 
-/** Package lead on service_request_projects (renamed from selected_lead_ngo_id). Dual-read for cutover. */
+/** Package lead on service_request_projects. */
 export function getProjectLeadNgoId(project: Record<string, unknown> | null | undefined): number {
   if (!project) return 0
-  return Number(project.lead_ngo_user_id ?? project.selected_lead_ngo_id ?? 0) || 0
+  return Number(project.lead_ngo_user_id ?? 0) || 0
 }
 
 export function buildProjectLeadNgoPatch(leadNgoUserId: number | null | undefined): {

@@ -427,8 +427,7 @@ export async function GET(request: NextRequest) {
     for (const user of verifiedUsers) {
       const createdAt =
         isoOrNull(user.verified_at) ||
-        verificationDateByUserId[Number(user.id || 0)] ||
-        isoOrNull(user.updated_at)
+        verificationDateByUserId[Number(user.id || 0)]
       if (!createdAt) continue
       const actor = actorFromUser(user)
       pushItem({
