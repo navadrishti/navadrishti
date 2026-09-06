@@ -2393,7 +2393,7 @@ function CompanyDashboardContent() {
                   </Dialog>
 
                   <TabsContent value="impact-reports" className="mt-4">
-                    <ImpactReportsPanel />
+                    <ImpactReportsPanel audience="company" />
                   </TabsContent>
 
                   <TabsContent value="payments" className="mt-4">

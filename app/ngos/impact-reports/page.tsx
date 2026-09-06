@@ -6,7 +6,7 @@ import { Header } from "@/components/header"
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ImpactReportsPanel } from "@/components/companies/impact-reports-panel"
 
-export default function ImpactReportsPage() {
+export default function NgoImpactReportsPage() {
   const { user } = useAuth()
   const [isHydrated, setIsHydrated] = useState(false)
 
@@ -32,7 +32,7 @@ export default function ImpactReportsPage() {
     )
   }
 
-  if (effectiveUserType !== 'company') {
+  if (effectiveUserType !== "ngo") {
     return (
       <>
         <Header />
@@ -40,7 +40,7 @@ export default function ImpactReportsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Access Denied</CardTitle>
-              <CardDescription>This feature is only available for company accounts.</CardDescription>
+              <CardDescription>This feature is only available for NGO accounts.</CardDescription>
             </CardHeader>
           </Card>
         </div>
@@ -52,7 +52,7 @@ export default function ImpactReportsPage() {
     <>
       <Header />
       <div className="container mx-auto px-4 py-8">
-        <ImpactReportsPanel audience="company" />
+        <ImpactReportsPanel audience="ngo" />
       </div>
     </>
   )
