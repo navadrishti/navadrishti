@@ -434,10 +434,10 @@ export function ServiceCard({
         createdAt: created_at,
         deadline: requestDeadline,
         referenceTimeMs: currentTime,
-        fallback: urgency_level || priority || 'medium'
+        fallback: urgency_level || 'medium'
       })
     : null;
-  const effectiveRequestUrgency = liveUrgency || (urgency_level || priority || 'medium');
+  const effectiveRequestUrgency = liveUrgency || (urgency_level || 'medium');
   const impactScore = Number(impact_score || requirementsData?.impact_score || 0);
   const offerType = offer_type || wage_info?.offer_type || category;
   const capacityLimit = capacity || wage_info?.capacity_limit;
