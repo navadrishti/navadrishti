@@ -33,8 +33,8 @@ export default function GovernmentAdminLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [ready, setReady] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [ready, setReady] = useState(false);
   const launchBlocked = isLaunchBlockedPath(pathname || '/government-admin');
   const isPublicRoute =
     pathname === '/government-admin/login' ||
@@ -46,7 +46,10 @@ export default function GovernmentAdminLayout({
   }, [launchBlocked, pathname, router]);
 
   useEffect(() => {
-    if (launchBlocked || isPublicRoute) return;
+    if (launchBlocked || isPublicRoute) {
+      setReady(true);
+      return;
+    }
 
     let cancelled = false;
 
@@ -75,7 +78,7 @@ export default function GovernmentAdminLayout({
       }
     };
 
-    checkAccess();
+    void checkAccess();
 
     return () => {
       cancelled = true;
@@ -121,14 +124,7 @@ export default function GovernmentAdminLayout({
   }
 
   if (!ready) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="text-center">
-          <Loader2 className="mx-auto h-8 w-8 animate-spin text-blue-600" />
-          <p className="mt-4 text-blue-600">Checking authentication...</p>
-        </div>
-      </div>
-    );
+    return <div className="min-h-screen bg-background" aria-hidden="true" />;
   }
 
   return (

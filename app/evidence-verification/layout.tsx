@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import {
@@ -16,13 +16,18 @@ export default function EvidenceVerificationLayout({ children }: { children: Rea
   const isPublicRoute =
     pathname === '/evidence-verification/login' || pathname === '/evidence-verification/change-password';
 
+  const [ready, setReady] = useState(isPublicRoute || launchBlocked);
+
   useEffect(() => {
     if (!launchBlocked) return;
     router.replace(getLaunchBlockedRedirectPath(pathname || '/evidence-verification'));
   }, [launchBlocked, pathname, router]);
 
   useEffect(() => {
-    if (launchBlocked || isPublicRoute) return;
+    if (launchBlocked || isPublicRoute) {
+      setReady(true);
+      return;
+    }
 
     let cancelled = false;
 
@@ -42,7 +47,10 @@ export default function EvidenceVerificationLayout({ children }: { children: Rea
         if (!response.ok) {
           clearConsoleTabSession('evidence_verification_tab_session');
           if (!cancelled) router.replace('/evidence-verification/login');
+          return;
         }
+
+        if (!cancelled) setReady(true);
       } catch {
         if (!cancelled) router.replace('/evidence-verification/login');
       }
@@ -66,11 +74,21 @@ export default function EvidenceVerificationLayout({ children }: { children: Rea
     );
   }
 
+  if (isPublicRoute) {
+    return (
+      <div className="flex min-h-screen flex-col">
+        <div className="flex flex-1 flex-col bg-background">{children}</div>
+      </div>
+    );
+  }
+
+  if (!ready) {
+    return <div className="min-h-screen bg-background" aria-hidden="true" />;
+  }
+
   return (
     <div className="flex min-h-screen flex-col">
-      <div className="flex flex-1 flex-col bg-background">
-        {children}
-      </div>
+      <div className="flex flex-1 flex-col bg-background">{children}</div>
     </div>
   );
 }

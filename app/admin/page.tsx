@@ -21,7 +21,6 @@ import { PlatformCAManagement } from '@/components/platform-ca-management';
 import { DocumentFileViewer } from '@/components/ca-verification-review';
 import { AdminConsoleHeader, AdminPortalShell } from './admin-layout-client';
 import {
-  AdminConsoleSkeleton,
   AdminDetailItems,
   AdminDetailSection,
   AdminListItemSkeleton,
@@ -31,7 +30,6 @@ import {
   formatAdminDetailValue,
   safeParseRecordJson,
 } from '@/components/evidence-verification/portal-ui';
-import { DashboardSidebarSkeleton } from '@/components/ui/skeleton';
 import { formatStatusLabel } from '@/lib/format-date';
 import { cn, clearConsoleTabSession, finalizeConsoleLogout, hasConsoleTabSession } from '@/lib/utils';
 import {
@@ -1924,23 +1922,7 @@ export default function AdminPage() {
   }, [tickets, supportQuery, supportStatusFilter, supportBucketFilter]);
 
   if (loading && !overview) {
-    return (
-      <AdminPortalShell>
-        <AdminConsoleHeader
-          onLogout={handleLogout}
-          onRefresh={refreshDashboard}
-        />
-
-        <DashboardBodyLayout
-          mainClassName="flex min-h-0 flex-col overflow-hidden pb-0"
-          sidebar={<DashboardSidebarSkeleton itemCount={ADMIN_SIDEBAR_ITEMS.length} />}
-        >
-          <div className="min-h-0 flex-1 overflow-hidden p-4 md:p-6">
-            <AdminConsoleSkeleton activeTab={activeTab} />
-          </div>
-        </DashboardBodyLayout>
-      </AdminPortalShell>
-    );
+    return <div className="min-h-screen bg-background" aria-hidden="true" />;
   }
 
   if (!isAdmin) {

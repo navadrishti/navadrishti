@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/sheet';
 import { AdminPortalMain, AdminPortalShell } from '@/components/evidence-verification/portal-ui';
 import { Menu, RefreshCw, X } from 'lucide-react';
-import { cn, clearConsoleTabSession, hasConsoleTabSession } from '@/lib/utils';
+import { cn, finalizeConsoleLogout, hasConsoleTabSession, clearConsoleTabSession } from '@/lib/utils';
 import { ProductBrand } from '@/components/product-brand';
 
 export { AdminPortalMain, AdminPortalShell };
@@ -191,9 +191,13 @@ export default function AdminLayoutClient({ children }: { children: ReactNode })
   const pathname = usePathname();
   const router = useRouter();
   const isPublicRoute = pathname === '/admin/login';
+  const [ready, setReady] = useState(isPublicRoute);
 
   useEffect(() => {
-    if (isPublicRoute) return;
+    if (isPublicRoute) {
+      setReady(true);
+      return;
+    }
 
     let cancelled = false;
 
@@ -213,7 +217,10 @@ export default function AdminLayoutClient({ children }: { children: ReactNode })
         if (!response.ok) {
           clearConsoleTabSession('admin_tab_session');
           if (!cancelled) router.replace('/admin/login');
+          return;
         }
+
+        if (!cancelled) setReady(true);
       } catch {
         clearConsoleTabSession('admin_tab_session');
         if (!cancelled) router.replace('/admin/login');
@@ -226,6 +233,18 @@ export default function AdminLayoutClient({ children }: { children: ReactNode })
       cancelled = true;
     };
   }, [isPublicRoute, pathname, router]);
+
+  if (isPublicRoute) {
+    return (
+      <div className="flex min-h-screen flex-col">
+        <div className="flex flex-1 flex-col bg-background">{children}</div>
+      </div>
+    );
+  }
+
+  if (!ready) {
+    return <div className="min-h-screen bg-background" aria-hidden="true" />;
+  }
 
   return (
     <div className="flex min-h-screen flex-col">
