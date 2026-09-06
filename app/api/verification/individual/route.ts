@@ -132,6 +132,17 @@ async function initiateVerification(
         profile_data: nextProfileData,
         verification_status: 'pending'
       });
+
+      await db.verificationDocuments.syncActorDocuments({
+        userId,
+        actorType: 'individual',
+        documents: documents || {},
+        numbers: {
+          aadhaar: entered?.aadhaar_number || null,
+          pan: entered?.pan_number || null,
+        },
+        status: 'under_review',
+      });
     }
 
     return NextResponse.json({

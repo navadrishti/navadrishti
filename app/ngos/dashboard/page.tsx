@@ -22,6 +22,7 @@ import { cn, smoothScrollToElement } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton, SkeletonOrderItem, DashboardPageSkeleton } from '@/components/ui/skeleton';
 import { ProfileDashboardTab, PaymentHistoryPanel } from '@/components/profile-dashboard-tab';
+import { ImpactReportsPanel } from '@/components/companies/impact-reports-panel';
 import { YourCapabilitiesPanel, InlineCsrCapabilityDelhivery } from '@/components/service-card';
 import { dashboardProfilePayoutHref, usePayoutConnection } from '@/hooks/use-payout-connection';
 import { DashboardBodyLayout, DashboardQuickSidebar } from '@/components/dashboard-quick-sidebar';
@@ -1456,6 +1457,7 @@ function NGODashboardContent() {
     { value: 'service-offers', label: 'Capability Offers' },
     { value: 'service-requests', label: 'My Needs' },
     { value: 'csr-projects', label: 'My Projects' },
+    { value: 'impact-reports', label: 'Impact Reports' },
     { value: 'payments', label: 'Payments' },
   ];
 
@@ -3049,6 +3051,10 @@ function NGODashboardContent() {
                     )}
                       </TabsContent>
                     </Tabs>
+                  </TabsContent>
+
+                  <TabsContent value="impact-reports" className="mt-4">
+                    <ImpactReportsPanel audience="ngo" />
                   </TabsContent>
 
                   <TabsContent value="payments" className="mt-4">

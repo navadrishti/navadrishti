@@ -360,7 +360,7 @@ export async function GET(request: NextRequest) {
       fulfilledNeedIds.length > 0
         ? safeSelect(
             supabase
-              .from('service_volunteers')
+              .from('service_request_applications')
               .select(`
                 service_request_id,
                 status,

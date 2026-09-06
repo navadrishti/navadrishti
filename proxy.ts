@@ -22,9 +22,5 @@ export const config = {
     // Paused / not-shipping surfaces
     '/government-admin',
     '/government-admin/:path*',
-    '/posts',
-    '/posts/:path*',
-    '/home',
-    '/home/:path*',
   ],
 };

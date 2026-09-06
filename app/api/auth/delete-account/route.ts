@@ -34,7 +34,7 @@ async function deleteUserData(userId: number, userEmail: string) {
       
       // Delete volunteers for these requests
       await supabase
-        .from('service_volunteers')
+        .from('service_request_applications')
         .delete()
         .in('service_request_id', requestIds);
       
@@ -69,7 +69,7 @@ async function deleteUserData(userId: number, userEmail: string) {
     
     // Delete volunteer applications by user
     await supabase
-      .from('service_volunteers')
+      .from('service_request_applications')
       .delete()
       .eq('volunteer_id', userId);
     

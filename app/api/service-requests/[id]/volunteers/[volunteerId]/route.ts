@@ -70,7 +70,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Service request not found' }, { status: 404 });
     }
 
-    if (userType === 'ngo' && request_data.requester_id !== userId) {
+    if (userType === 'ngo' && Number(request_data.ngo_id || request_data.requester_id) !== userId) {
       return NextResponse.json({ error: 'You can only update volunteers for your own requests' }, { status: 403 });
     }
 
@@ -80,7 +80,7 @@ export async function PUT(
 
     // Find the volunteer application by its ID
     const { data: volunteerApplication, error } = await supabase
-      .from('service_volunteers')
+      .from('service_request_applications')
       .select('*')
       .eq('id', volId)
       .eq('service_request_id', requestId)
@@ -188,7 +188,7 @@ export async function PUT(
     }
 
     const { data: updatedVolunteer, error: updateError } = await supabase
-      .from('service_volunteers')
+      .from('service_request_applications')
       .update(updatePayload)
       .eq('id', volId)
       .eq('service_request_id', requestId)
@@ -213,7 +213,7 @@ export async function PUT(
           target_type: 'service_request',
           target_id: String(requestId),
           invitation_id: acceptedMeta.invitation_id || null,
-          application_table: 'service_volunteers',
+          application_table: 'service_request_applications',
           application_id: String(volId),
           owner_user_id: request_data.requester_id,
           assignee_user_id: updatedVolunteer.volunteer_id,
@@ -238,7 +238,7 @@ export async function PUT(
           .maybeSingle();
 
         await supabase
-          .from('service_volunteers')
+          .from('service_request_applications')
           .update({
             response_meta: {
               ...acceptedMeta,
@@ -254,7 +254,7 @@ export async function PUT(
           .eq('service_request_id', requestId);
       } else {
         await supabase
-          .from('service_volunteers')
+          .from('service_request_applications')
           .update({
             response_meta: {
               ...acceptedMeta,
@@ -276,7 +276,7 @@ export async function PUT(
       const remaining = getNeedRemainingQuantity(refreshedRequest);
       if (remaining <= 0) {
         const { data: pendingApplicants } = await supabase
-          .from('service_volunteers')
+          .from('service_request_applications')
           .select('id, response_meta')
           .eq('service_request_id', requestId)
           .eq('status', 'pending');
@@ -284,7 +284,7 @@ export async function PUT(
         for (const pa of pendingApplicants || []) {
           const otherMeta = pa?.response_meta && typeof pa.response_meta === 'object' ? pa.response_meta : {};
           await supabase
-            .from('service_volunteers')
+            .from('service_request_applications')
             .update({
               status: 'rejected',
               response_meta: { ...otherMeta, rejected_at: new Date().toISOString(), auto_rejected_reason: 'need_fully_allocated' },

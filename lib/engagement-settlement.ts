@@ -82,16 +82,16 @@ export async function finalizeEngagementSettlement(assignment: Record<string, an
     })
     .eq('id', assignment.id)
 
-  if (assignment.application_table === 'service_volunteers' && assignment.application_id) {
+  if (assignment.application_table === 'service_request_applications' && assignment.application_id) {
     const { data: volunteerRow } = await supabase
-      .from('service_volunteers')
+      .from('service_request_applications')
       .select('response_meta')
       .eq('id', assignment.application_id)
       .maybeSingle()
 
     const volunteerMeta = safeJson(volunteerRow?.response_meta)
     await supabase
-      .from('service_volunteers')
+      .from('service_request_applications')
       .update({
         status: 'completed',
         ngo_confirmed_at: nowIso,
@@ -176,7 +176,7 @@ export async function createEngagementSettlementOrder(assignment: Record<string,
 
   await supabase.from('razorpay_payment_orders').upsert({
     service_request_id: serviceRequestId,
-    volunteer_assignment_id: assignment.application_table === 'service_volunteers'
+    application_id: assignment.application_table === 'service_request_applications'
       ? Number(assignment.application_id || 0) || null
       : null,
     contribution_id: null,
