@@ -842,9 +842,24 @@ export const db = {
     },
 
     async update(userId: number, updateData: any) {
+      const payload = { ...updateData };
+      // Canonical columns are aadhaar_verified_at / pan_verified_at
+      if ('aadhaar_verification_date' in payload) {
+        if (payload.aadhaar_verified_at == null) {
+          payload.aadhaar_verified_at = payload.aadhaar_verification_date;
+        }
+        delete payload.aadhaar_verification_date;
+      }
+      if ('pan_verification_date' in payload) {
+        if (payload.pan_verified_at == null) {
+          payload.pan_verified_at = payload.pan_verification_date;
+        }
+        delete payload.pan_verification_date;
+      }
+
       const { data, error } = await supabase
         .from('individual_verifications')
-        .update(updateData)
+        .update(payload)
         .eq('user_id', userId)
         .select()
         .single();

@@ -82,13 +82,17 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     if (userResult.user_type === 'individual') {
       const { data: verification } = await supabase
         .from('individual_verifications')
-        .select('verification_status, aadhaar_verified, pan_verified, verification_date, aadhaar_number, pan_number, aadhaar_verification_date, pan_verification_date')
+        .select('verification_status, aadhaar_verified, pan_verified, verification_date, aadhaar_number, pan_number, aadhaar_verified_at, pan_verified_at')
         .eq('user_id', parsedUserId)
         .single();
       
       if (verification) {
         verificationStatus = verification.verification_status;
-        verificationDetails = verification;
+        verificationDetails = {
+          ...verification,
+          aadhaar_verification_date: verification.aadhaar_verified_at,
+          pan_verification_date: verification.pan_verified_at,
+        };
       }
     } else if (userResult.user_type === 'company') {
       const { data: verification } = await supabase

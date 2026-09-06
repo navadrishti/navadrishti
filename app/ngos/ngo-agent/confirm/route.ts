@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/db";
+import { randomUUID } from "crypto";
 
 function buildEmbedText(s: Record<string, unknown>): string {
   return [
@@ -49,7 +50,7 @@ export async function POST(req: NextRequest) {
         timeline:           structured.timeline ?? null,
         requirements:       structured.requirements ?? {},
         tags:               structured.tags ?? [],
-        status:             "open",
+        status:             "active",
       })
       .select("id")
       .single();
@@ -58,38 +59,39 @@ export async function POST(req: NextRequest) {
 
     const requestId = requestData.id;
 
-    // Embed and store in embeddings table
-    // entity_id = ngo_id, source = ngo_request
-    // location + estimated_budget in metadata for pre-filtering before vector search
-    const embedInput = buildEmbedText(structured);
-    const embedding  = await embedText(embedInput, supabase);
-
-    const { error: embedError } = await supabase
-      .from("embeddings")
-      .insert({
-        entity_id: ngo_id,
+    // Embed best-effort: entity_id is uuid, version is integer (schema).
+    // Do not fail the need create if embeddings insert is rejected (e.g. source enum).
+    try {
+      const embedInput = buildEmbedText(structured);
+      const embedding = await embedText(embedInput, supabase);
+      const { error: embedError } = await supabase.from("embeddings").insert({
+        entity_id: randomUUID(),
         embedding,
-        source:    "ngo_request",
-        version:   "ngo_request",
+        source: "service_request",
+        version: 1,
         metadata: {
-          request_id:       requestId,
-          title:            structured.title,
-          category:         structured.category,
-          location:         structured.location,
-          request_type:     structured.request_type,
+          request_id: requestId,
+          ngo_id,
+          title: structured.title,
+          category: structured.category,
+          location: structured.location,
+          request_type: structured.request_type,
           estimated_budget: structured.estimated_budget,
-          budget_currency:  structured.budget_currency ?? "INR",
+          budget_currency: structured.budget_currency ?? "INR",
         },
       });
-
-    if (embedError) throw embedError;
+      if (embedError) {
+        console.error("[ngos/ngo-agent/confirm] embedding insert failed:", embedError);
+      }
+    } catch (embedErr) {
+      console.error("[ngos/ngo-agent/confirm] embedding skipped:", embedErr);
+    }
 
     return NextResponse.json({
-      status:     "saved",
+      status: "saved",
       request_id: requestId,
-      message:    "Request saved and embedded into RAG successfully.",
+      message: "Request saved successfully.",
     });
-
   } catch (err) {
     console.error("[ngos/ngo-agent/confirm]", err);
     return NextResponse.json({ error: "Internal server error." }, { status: 500 });
