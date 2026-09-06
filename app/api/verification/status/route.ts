@@ -28,8 +28,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid token: missing user ID' }, { status: 401 });
     }
 
-    // Get verification status from all three tables
-    const [individualResult, ngoResult, companyResult] = await Promise.allSettled([
+    // Get verification status from all three tables + profile tax flags for NGO
+    const [individualResult, ngoResult, companyResult, userResult] = await Promise.allSettled([
       supabase
         .from('individual_verifications')
         .select('*')
@@ -44,9 +44,22 @@ export async function GET(request: NextRequest) {
         .from('company_verifications')
         .select('*')
         .eq('user_id', userId)
-        .single()
+        .single(),
+      supabase
+        .from('users')
+        .select('profile_data, verification_status')
+        .eq('id', userId)
+        .single(),
     ]);
 
+    const profileData =
+      userResult.status === 'fulfilled' && userResult.value.data?.profile_data && typeof userResult.value.data.profile_data === 'object'
+        ? (userResult.value.data.profile_data as Record<string, any>)
+        : {};
+    const ngoTax =
+      profileData.ngo_tax_verification && typeof profileData.ngo_tax_verification === 'object'
+        ? profileData.ngo_tax_verification
+        : {};
     // Combine all verification data
     let verificationData: any = {
       overall: {
@@ -86,8 +99,8 @@ export async function GET(request: NextRequest) {
         organizationName: data.ngo_name,
         registrationNumber: data.registration_number,
         registrationType: data.registration_type,
-        gstVerified: data.gst_verified,
-        panVerified: data.pan_verified,
+        gstVerified: Boolean(ngoTax.gst_verified || data.gst_verified),
+        panVerified: Boolean(ngoTax.pan_verified || data.pan_verified),
         verified: data.verification_status === 'verified',
         status: data.verification_status,
         verifiedAt: data.verification_date

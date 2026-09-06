@@ -626,28 +626,49 @@ async function reverifyNGOVerification(
   }
 }
 
+async function mergeNgoTaxVerification(userId: number, patch: Record<string, any>): Promise<Record<string, any>> {
+  const { data: userRow } = await supabase
+    .from('users')
+    .select('profile_data')
+    .eq('id', userId)
+    .single();
+  const profileData = asRecord(userRow?.profile_data);
+  const nextTax = {
+    ...asRecord(profileData.ngo_tax_verification),
+    ...patch,
+  };
+  await supabase
+    .from('users')
+    .update({
+      profile_data: {
+        ...profileData,
+        ngo_tax_verification: nextTax,
+      },
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', userId);
+  return nextTax;
+}
+
 async function verifyGST(userId: number, gstNumber: string) {
   // Validate GST number format
   if (!isValidGSTNumber(gstNumber)) {
     return NextResponse.json({ error: 'Invalid GST number format' }, { status: 400 });
   }
-  
-  // First get current verification status to check if PAN is verified
-  const { data: currentVerification } = await supabase
-    .from('ngo_verifications')
-    .select('pan_verified')
-    .eq('user_id', userId)
-    .single();
 
-  const newStatus = currentVerification?.pan_verified ? 'verified' : 'pending';
+  // ngo_verifications has no gst_* columns — store tax flags in profile_data
+  const tax = await mergeNgoTaxVerification(userId, {
+    gst_number: gstNumber,
+    gst_verified: true,
+    gst_verified_at: new Date().toISOString(),
+  });
 
+  const newStatus = tax.pan_verified ? 'verified' : 'pending';
   await supabase
     .from('ngo_verifications')
     .update({
-      gst_number: gstNumber,
-      gst_verified: true,
-      gst_verification_date: new Date().toISOString(),
-      verification_status: newStatus
+      verification_status: newStatus,
+      updated_at: new Date().toISOString(),
     })
     .eq('user_id', userId);
 
@@ -663,33 +684,23 @@ async function verifyNGOPAN(userId: number, panNumber: string) {
     return NextResponse.json({ error: 'Invalid PAN number format' }, { status: 400 });
   }
 
-  // First get current verification status to check if GST is verified
-  const { data: currentVerification } = await supabase
-    .from('ngo_verifications')
-    .select('gst_verified')
-    .eq('user_id', userId)
-    .single();
+  // ngo_verifications has no pan_* columns — store tax flags in profile_data
+  const tax = await mergeNgoTaxVerification(userId, {
+    pan_number: panNumber,
+    pan_verified: true,
+    pan_verified_at: new Date().toISOString(),
+  });
 
-  const newStatus = currentVerification?.gst_verified ? 'verified' : 'pending';
-
+  const newStatus = tax.gst_verified ? 'verified' : 'pending';
   await supabase
     .from('ngo_verifications')
     .update({
-      pan_number: panNumber,
-      pan_verified: true,
-      pan_verification_date: new Date().toISOString(),
-      verification_status: newStatus
+      verification_status: newStatus,
+      updated_at: new Date().toISOString(),
     })
     .eq('user_id', userId);
 
-  // Check if both documents are verified
-  const { data: verification } = await supabase
-    .from('ngo_verifications')
-    .select('gst_verified, pan_verified')
-    .eq('user_id', userId)
-    .single();
-
-  if (verification && verification.gst_verified && verification.pan_verified) {
+  if (tax.gst_verified && tax.pan_verified) {
     await supabase
       .from('users')
       .update({
@@ -747,6 +758,7 @@ export async function GET(req: NextRequest) {
     const profileData = (userRow?.profile_data && typeof userRow.profile_data === 'object')
       ? userRow.profile_data
       : {};
+    const tax = asRecord((profileData as Record<string, unknown>).ngo_tax_verification);
     // users.verification_status is the admin override — if admin explicitly downgraded,
     // that wins regardless of what the ngo_verifications table says.
     const adminStatus = String(userRow?.verification_status || '').trim().toLowerCase();
@@ -758,8 +770,8 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       verified: effectiveStatus === 'verified',
-      gstVerified: verification.gst_verified || false,
-      panVerified: verification.pan_verified || false,
+      gstVerified: Boolean(tax.gst_verified || verification.gst_verified),
+      panVerified: Boolean(tax.pan_verified || verification.pan_verified),
       organizationName: verification.ngo_name,
       registrationNumber: verification.registration_number,
       registrationType: verification.registration_type,
