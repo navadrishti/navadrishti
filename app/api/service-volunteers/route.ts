@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
           )
         )
       `)
-      .eq('volunteer_id', volunteerId)
+      .eq('applicant_user_id', volunteerId)
       .order('applied_at', { ascending: false })
 
     if (error) throw error

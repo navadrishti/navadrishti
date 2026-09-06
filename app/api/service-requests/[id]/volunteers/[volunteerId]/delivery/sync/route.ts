@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
 
 import { JWT_SECRET } from '@/lib/auth';
-import { db, supabase } from '@/lib/db';
+import { db, getApplicationApplicantUserId, supabase } from '@/lib/db';
 import { getDelhiveryTrackingSnapshot } from '@/lib/delhivery';
 import { isDeliveredTrackingStatus } from '@/lib/service-request-allocation';
 
@@ -61,7 +61,7 @@ export async function POST(
       return NextResponse.json({ error: 'You can only track deliveries for your own requests' }, { status: 403 });
     }
 
-    if (userType === 'individual' && Number(volunteerApplication.volunteer_id) !== Number(userId)) {
+    if (userType === 'individual' && getApplicationApplicantUserId(volunteerApplication) !== Number(userId)) {
       return NextResponse.json({ error: 'You can only track your own assignments' }, { status: 403 });
     }
 
