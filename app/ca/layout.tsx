@@ -1,13 +1,11 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { Menu, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { ConsoleFooter } from '@/components/product-brand';
-import { Skeleton } from '@/components/ui/skeleton';
 import {
   Sheet,
   SheetClose,
@@ -16,93 +14,28 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
-import { cn, finalizeConsoleLogout, hasConsoleTabSession, clearConsoleTabSession } from '@/lib/utils';
+import { cn, finalizeConsoleLogout } from '@/lib/utils';
 import { ProductBrand } from '@/components/product-brand';
+import { ConsoleAuthPendingScreen, useConsoleAuthGate } from '@/lib/console-auth-gate';
 
 const navItems = [
   { label: 'Dashboard', href: '/ca' },
   { label: 'Change Password', href: '/ca/change-password' },
 ];
 
-function CADashboardSkeleton() {
-  return (
-    <div className="space-y-6">
-      <div className="space-y-2">
-        <Skeleton className="h-9 w-80 max-w-full" />
-        <Skeleton className="h-4 w-96 max-w-full" />
-      </div>
-      <div className="flex flex-col gap-3 sm:flex-row">
-        <Skeleton className="h-10 flex-1" />
-        <Skeleton className="h-10 w-56" />
-      </div>
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-        {[1, 2, 3].map((column) => (
-          <Card key={column} className="flex h-full flex-col">
-            <CardHeader className="space-y-2 pb-2">
-              <Skeleton className="h-5 w-28" />
-              <Skeleton className="h-3 w-36" />
-            </CardHeader>
-            <CardContent className="flex-1 space-y-2 px-4 pb-2">
-              <div className="h-[20.5rem] space-y-2">
-                {[1, 2, 3].map((row) => (
-                  <Skeleton key={row} className="h-[6.5rem] rounded-lg" />
-                ))}
-              </div>
-            </CardContent>
-            <div className="px-4 pb-4 pt-2">
-              <Skeleton className="h-8 w-full" />
-            </div>
-          </Card>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export default function CALayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const router = useRouter();
-  const [ready, setReady] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const isLoginRoute = pathname === '/ca/login';
   const isChangePasswordRoute = pathname === '/ca/change-password';
+  const isPublicRoute = isLoginRoute || isChangePasswordRoute;
 
-  useEffect(() => {
-    if (isLoginRoute || isChangePasswordRoute) return;
-
-    let cancelled = false;
-
-    const checkAccess = async () => {
-      try {
-        if (!hasConsoleTabSession('ca_tab_session')) {
-          if (!cancelled) router.replace('/ca/login');
-          return;
-        }
-
-        const response = await fetch('/api/ca/auth/verify', {
-          method: 'GET',
-          credentials: 'include',
-          cache: 'no-store',
-        });
-
-        if (!response.ok) {
-          clearConsoleTabSession('ca_tab_session');
-          if (!cancelled) router.replace('/ca/login');
-          return;
-        }
-
-        if (!cancelled) setReady(true);
-      } catch {
-        if (!cancelled) router.replace('/ca/login');
-      }
-    };
-
-    checkAccess();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isChangePasswordRoute, isLoginRoute, router]);
+  const authState = useConsoleAuthGate({
+    isPublicRoute,
+    tabSessionKey: 'ca_tab_session',
+    verifyUrl: '/api/ca/auth/verify',
+    loginPath: '/ca/login',
+  });
 
   useEffect(() => {
     setMobileMenuOpen(false);
@@ -138,8 +71,12 @@ export default function CALayout({ children }: { children: React.ReactNode }) {
       isNavActive(href) ? 'sidebar-nav-active' : 'text-[#F5F7F8] hover:bg-white/5 hover:text-white'
     );
 
-  if (isLoginRoute || isChangePasswordRoute) {
+  if (isPublicRoute) {
     return <>{children}</>;
+  }
+
+  if (authState !== 'authed') {
+    return <ConsoleAuthPendingScreen />;
   }
 
   return (
@@ -233,7 +170,7 @@ export default function CALayout({ children }: { children: React.ReactNode }) {
       </header>
 
       <main className="udaan-container w-full flex-1 px-4 py-8 sm:px-6 lg:px-8">
-        {ready ? children : <CADashboardSkeleton />}
+        {children}
       </main>
 
       <ConsoleFooter />

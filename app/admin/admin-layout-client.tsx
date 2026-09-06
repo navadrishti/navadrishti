@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import {
   Sheet,
@@ -15,8 +15,9 @@ import {
 } from '@/components/ui/sheet';
 import { AdminPortalMain, AdminPortalShell } from '@/components/evidence-verification/portal-ui';
 import { Menu, RefreshCw, X } from 'lucide-react';
-import { cn, clearConsoleTabSession, hasConsoleTabSession } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 import { ProductBrand } from '@/components/product-brand';
+import { ConsoleAuthPendingScreen, useConsoleAuthGate } from '@/lib/console-auth-gate';
 
 export { AdminPortalMain, AdminPortalShell };
 
@@ -189,43 +190,26 @@ export function AdminConsoleHeader({
 
 export default function AdminLayoutClient({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const router = useRouter();
   const isPublicRoute = pathname === '/admin/login';
 
-  useEffect(() => {
-    if (isPublicRoute) return;
+  const authState = useConsoleAuthGate({
+    isPublicRoute,
+    tabSessionKey: 'admin_tab_session',
+    verifyUrl: '/api/admin/verify',
+    loginPath: '/admin/login',
+  });
 
-    let cancelled = false;
+  if (isPublicRoute) {
+    return (
+      <div className="flex min-h-screen flex-col">
+        <div className="flex flex-1 flex-col bg-background">{children}</div>
+      </div>
+    );
+  }
 
-    const checkAccess = async () => {
-      try {
-        if (!hasConsoleTabSession('admin_tab_session')) {
-          if (!cancelled) router.replace('/admin/login');
-          return;
-        }
-
-        const response = await fetch('/api/admin/verify', {
-          method: 'GET',
-          credentials: 'include',
-          cache: 'no-store',
-        });
-
-        if (!response.ok) {
-          clearConsoleTabSession('admin_tab_session');
-          if (!cancelled) router.replace('/admin/login');
-        }
-      } catch {
-        clearConsoleTabSession('admin_tab_session');
-        if (!cancelled) router.replace('/admin/login');
-      }
-    };
-
-    void checkAccess();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isPublicRoute, pathname, router]);
+  if (authState !== 'authed') {
+    return <ConsoleAuthPendingScreen />;
+  }
 
   return (
     <div className="flex min-h-screen flex-col">
