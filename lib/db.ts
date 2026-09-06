@@ -93,6 +93,61 @@ export function normalizeApplicationApplicantFields<T extends Record<string, unk
   return next as T
 }
 
+const APPLICATION_FULFILLMENT_KEYS = [
+  'impact_statement',
+  'estimated_impact_value',
+  'fulfillment_amount',
+  'fulfillment_quantity',
+  'assigned_amount',
+  'assigned_quantity',
+  'fulfilled_amount',
+  'fulfilled_quantity',
+  'individual_receipt_url',
+  'ngo_receipt_url',
+  'individual_done_at',
+  'ngo_confirmed_at',
+  'completion_note',
+  'completed_at',
+] as const
+
+/** Split application vs fulfillment columns after the pass-2 table split. */
+export function splitApplicationUpdatePayload(payload: Record<string, unknown>): {
+  application: Record<string, unknown>
+  fulfillment: Record<string, unknown>
+} {
+  const application: Record<string, unknown> = { ...payload }
+  const fulfillment: Record<string, unknown> = {}
+  for (const key of APPLICATION_FULFILLMENT_KEYS) {
+    if (key in application) {
+      fulfillment[key] = application[key]
+      delete application[key]
+    }
+  }
+  delete application.volunteer_id
+  return { application, fulfillment }
+}
+
+/** Flatten fulfillment + alias volunteer_id for API/UI compatibility. */
+export function shapeApplicationForApi(row: Record<string, unknown> | null | undefined): any {
+  if (!row) return row
+  const nested = row.fulfillment ?? row.service_request_fulfillments
+  const fulfillment = Array.isArray(nested) ? nested[0] : nested
+  const rest = { ...row } as Record<string, unknown>
+  delete rest.fulfillment
+  delete rest.service_request_fulfillments
+  const applicantId = Number(rest.applicant_user_id ?? 0) || 0
+  const flatFulfillment =
+    fulfillment && typeof fulfillment === 'object' && !Array.isArray(fulfillment)
+      ? (fulfillment as Record<string, unknown>)
+      : {}
+  return {
+    ...rest,
+    ...flatFulfillment,
+    applicant_user_id: applicantId || rest.applicant_user_id,
+    volunteer_id: applicantId || Number(rest.volunteer_id || 0) || null,
+  }
+}
+
 export const db = {
   // Users
   users: {
@@ -944,30 +999,36 @@ export const db = {
         // Table may not exist until migration applied
       }
 
-      return data;
+      return shapeApplicationForApi(data);
     },
 
     async findExisting(serviceRequestId: number, applicantUserId: number) {
       const { data, error } = await supabase
         .from('service_request_applications')
-        .select('*')
+        .select(`
+          *,
+          fulfillment:service_request_fulfillments!application_id(*)
+        `)
         .eq('service_request_id', serviceRequestId)
         .eq('applicant_user_id', applicantUserId)
         .maybeSingle();
 
       if (error && error.code !== 'PGRST116') throw error;
-      return data;
+      return shapeApplicationForApi(data);
     },
 
     async getByVolunteerId(applicantUserId: number) {
       const { data, error } = await supabase
         .from('service_request_applications')
-        .select('*')
+        .select(`
+          *,
+          fulfillment:service_request_fulfillments!application_id(*)
+        `)
         .eq('applicant_user_id', applicantUserId)
         .order('applied_at', { ascending: false });
 
       if (error) throw error;
-      return data || [];
+      return (data || []).map((row: any) => shapeApplicationForApi(row));
     },
 
     async getByRequestId(serviceRequestId: number) {
@@ -975,40 +1036,75 @@ export const db = {
         .from('service_request_applications')
         .select(`
           *,
-          volunteer:users!applicant_user_id(id, name, email, user_type, location, verification_status, profile_image)
+          volunteer:users!applicant_user_id(id, name, email, user_type, location, verification_status, profile_image),
+          fulfillment:service_request_fulfillments!application_id(*)
         `)
         .eq('service_request_id', serviceRequestId)
         .order('applied_at', { ascending: false });
 
       if (error) throw error;
-      return data || [];
+      return (data || []).map((row: any) => shapeApplicationForApi(row));
     },
 
     async getUserApplication(serviceRequestId: number, applicantUserId: number) {
       const { data, error } = await supabase
         .from('service_request_applications')
-        .select('*')
+        .select(`
+          *,
+          fulfillment:service_request_fulfillments!application_id(*)
+        `)
         .eq('service_request_id', serviceRequestId)
         .eq('applicant_user_id', applicantUserId)
         .maybeSingle();
 
       if (error && error.code !== 'PGRST116') throw error;
-      return data;
+      return shapeApplicationForApi(data);
     },
 
-    async updateStatus(id: number, status: string) {
+    async update(id: number, updateData: Record<string, unknown>) {
+      const { application, fulfillment } = splitApplicationUpdatePayload({ ...updateData })
+      application.updated_at = application.updated_at || new Date().toISOString()
+
       const { data, error } = await supabase
         .from('service_request_applications')
-        .update({
-          status,
-          updated_at: new Date().toISOString()
-        })
+        .update(application)
         .eq('id', id)
-        .select()
+        .select(`
+          *,
+          fulfillment:service_request_fulfillments!application_id(*)
+        `)
         .single();
 
       if (error) throw error;
-      return data;
+
+      if (Object.keys(fulfillment).length > 0) {
+        const { error: fulErr } = await supabase.from('service_request_fulfillments').upsert(
+          {
+            application_id: id,
+            service_request_id: data.service_request_id,
+            ...fulfillment,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'application_id' }
+        )
+        if (fulErr) throw fulErr
+
+        const { data: refreshed } = await supabase
+          .from('service_request_applications')
+          .select(`
+            *,
+            fulfillment:service_request_fulfillments!application_id(*)
+          `)
+          .eq('id', id)
+          .maybeSingle()
+        return shapeApplicationForApi(refreshed || data)
+      }
+
+      return shapeApplicationForApi(data);
+    },
+
+    async updateStatus(id: number, status: string) {
+      return this.update(id, { status });
     }
   },
 
