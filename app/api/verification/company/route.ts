@@ -1,6 +1,6 @@
 // API endpoint for Company verification (manual document-first flow)
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/db';
+import { db, supabase } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET, requireBankStatementDocument } from '@/lib/auth';
 
@@ -161,6 +161,18 @@ async function initiateCompanyVerification(
       verification_status: 'pending'
       })
       .eq('id', userId);
+
+    await db.verificationDocuments.syncActorDocuments({
+      userId,
+      actorType: 'company',
+      documents: documents || {},
+      numbers: {
+        gst: entered?.gst_number || null,
+        cin: entered?.registration_number || entered?.cin || null,
+        pan: entered?.pan_number || null,
+      },
+      status: 'under_review',
+    });
 
     return NextResponse.json({
       success: true,

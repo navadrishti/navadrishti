@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth';
 import { buildCampaignWritePayload, resolveCampaignCategoryInput, resolveCampaignLocationInput } from '@/lib/campaign-schema';
+import { getCampaignLeadNgoId } from '@/lib/campaign-volunteer-attendance';
 
 export async function GET(request: NextRequest) {
   try {
@@ -50,11 +51,7 @@ export async function GET(request: NextRequest) {
     const leadNgoIds = [
       ...new Set(
         rows
-          .map((row) => {
-            const impact =
-              row.impact_metrics && typeof row.impact_metrics === 'object' ? row.impact_metrics : {};
-            return Number((impact as any).selected_lead_ngo_id || 0);
-          })
+          .map((row) => getCampaignLeadNgoId(row))
           .filter((id) => id > 0)
       ),
     ];
@@ -84,12 +81,11 @@ export async function GET(request: NextRequest) {
 
     const enriched = rows.map((row) => {
       const company = row.company_id ? userMetaById[Number(row.company_id)] : null;
-      const impact =
-        row.impact_metrics && typeof row.impact_metrics === 'object' ? row.impact_metrics : {};
-      const selectedLeadNgoId = Number((impact as any).selected_lead_ngo_id || 0);
+      const selectedLeadNgoId = getCampaignLeadNgoId(row);
       const leadNgo = selectedLeadNgoId > 0 ? userMetaById[selectedLeadNgoId] : null;
       return {
         ...row,
+        lead_ngo_user_id: selectedLeadNgoId > 0 ? selectedLeadNgoId : row.lead_ngo_user_id || null,
         company_name: company?.name || null,
         company_verification_status: company?.verification_status || null,
         company_verified: company?.verification_status === 'verified',

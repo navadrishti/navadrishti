@@ -141,7 +141,7 @@ export async function POST(
       {
         service_request_id: null,
         contribution_id: null,
-        volunteer_assignment_id: null,
+        application_id: null,
         payer_user_id: Number(project.company_user_id),
         ngo_user_id: leadNgoUserId,
         razorpay_order_id: String(order.id),

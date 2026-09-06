@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
 import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth'
 import { deleteCampaignWithDependencies, formatCampaignDeleteError } from '@/lib/campaign-delete'
+import { getCampaignLeadNgoId } from '@/lib/campaign-volunteer-attendance'
 
 async function loadCampaign(campaignId: string) {
   const { data, error } = await supabase
@@ -38,11 +39,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     }
 
     let selectedLeadNgoVerificationStatus: string | null = null
-    const impact =
-      campaign.impact_metrics && typeof campaign.impact_metrics === 'object'
-        ? campaign.impact_metrics
-        : {}
-    const selectedLeadNgoId = Number((impact as any).selected_lead_ngo_id || 0)
+    const selectedLeadNgoId = getCampaignLeadNgoId(campaign)
     if (selectedLeadNgoId > 0) {
       const { data: leadNgo } = await supabase
         .from('users')

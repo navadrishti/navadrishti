@@ -189,7 +189,7 @@ export async function POST(
       const ngoUserIdForOrder = Number(serviceRequest.ngo_id || serviceRequest.requester_id || serviceRequest.requester?.id || 0);
 
       const { data: assignment } = await supabase
-        .from('service_volunteers')
+        .from('service_request_applications')
         .select('id, status')
         .eq('service_request_id', requestId)
         .eq('volunteer_id', decoded.id)
@@ -201,7 +201,7 @@ export async function POST(
       const nowIso = new Date().toISOString();
       const orderPayload: Record<string, any> = {
         service_request_id: requestId,
-        volunteer_assignment_id: assignment?.id || null,
+        application_id: assignment?.id || null,
         contribution_id: null,
         payer_user_id: decoded.id,
         ngo_user_id: ngoUserIdForOrder > 0 ? ngoUserIdForOrder : decoded.id,

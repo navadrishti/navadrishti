@@ -95,7 +95,6 @@ type OverviewData = {
   recent: {
     service_requests: Array<any>;
     service_request_projects: Array<any>;
-    posts: Array<any>;
     support_tickets: Array<any>;
   };
 };
@@ -204,14 +203,6 @@ function adminUserModerationLabel(user: AdminUserItem) {
   return null;
 }
 
-const emptyPostDraft = {
-  content: '',
-  category: '',
-  visibility: '',
-  location: '',
-  tags: '',
-};
-
 const emptyCampaignDraft = {
   title: '',
   description: '',
@@ -260,13 +251,6 @@ const campaignStatusOptions = [
   { value: 'active', label: 'Active' },
   { value: 'completed', label: 'Completed' },
   { value: 'closed', label: 'Closed' },
-];
-
-const postVisibilityOptions = [
-  { value: 'public', label: 'Public' },
-  { value: 'private', label: 'Private' },
-  { value: 'connections', label: 'Connections' },
-  { value: 'draft', label: 'Draft' },
 ];
 
 const ADMIN_ACTIVE_TAB_KEY = 'admin_active_tab';
@@ -476,33 +460,6 @@ function CampaignFullDetails({ campaign }: { campaign: any }) {
         </AdminDetailSection>
       ) : null}
     </div>
-  );
-}
-
-function PostFullDetails({ post }: { post: any }) {
-  if (!post) return null;
-  return (
-    <AdminDetailSection title="Full post record">
-      <AdminDetailItems
-        items={[
-          { label: 'Post ID', value: formatAdminDetailValue(post.id) },
-          { label: 'Author', value: formatAdminDetailValue(post.author?.name) },
-          { label: 'Author email', value: formatAdminDetailValue(post.author?.email) },
-          { label: 'Category', value: formatAdminDetailValue(post.category) },
-          { label: 'Visibility', value: formatAdminDetailValue(post.visibility) },
-          { label: 'Location', value: formatAdminDetailValue(post.location) },
-          { label: 'Tags', value: formatAdminDetailValue(post.tags) },
-          { label: 'Reactions', value: formatAdminDetailValue(post.reaction_count) },
-          { label: 'Comments', value: formatAdminDetailValue(post.comment_count) },
-          { label: 'Shares', value: formatAdminDetailValue(post.share_count) },
-          { label: 'Views', value: formatAdminDetailValue(post.view_count) },
-          { label: 'Published', value: formatAdminDetailValue(post.published_at) },
-          { label: 'Created', value: formatAdminDetailValue(post.created_at) },
-          { label: 'Updated', value: formatAdminDetailValue(post.updated_at) },
-          { label: 'Content', value: formatAdminDetailValue(post.content) },
-        ]}
-      />
-    </AdminDetailSection>
   );
 }
 
@@ -1029,7 +986,6 @@ export default function AdminPage() {
   const [moderatingUser, setModeratingUser] = useState(false);
   const [adminProjects, setAdminProjects] = useState<any[]>([]);
   const [adminRequests, setAdminRequests] = useState<any[]>([]);
-  const [adminPosts, setAdminPosts] = useState<any[]>([]);
   const [adminTickets, setAdminTickets] = useState<any[]>([]);
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [supportLoading, setSupportLoading] = useState(false);
@@ -1037,7 +993,6 @@ export default function AdminPage() {
   const [projectQuery, setProjectQuery] = useState('');
   const [userQuery, setUserQuery] = useState('');
   const [requestQuery, setRequestQuery] = useState('');
-  const [postQuery, setPostQuery] = useState('');
   const [supportQuery, setSupportQuery] = useState('');
   const [supportStatusFilter, setSupportStatusFilter] = useState<SupportTicketStatus | 'all'>('all');
   const [supportBucketFilter, setSupportBucketFilter] = useState<'open' | 'closed' | 'all'>('open');
@@ -1052,10 +1007,6 @@ export default function AdminPage() {
   const [trackingLookupId, setTrackingLookupId] = useState('');
   const [trackingLookupLoading, setTrackingLookupLoading] = useState(false);
   const [trackingSnapshot, setTrackingSnapshot] = useState<any | null>(null);
-  const [selectedPost, setSelectedPost] = useState<any | null>(null);
-  const [postDraft, setPostDraft] = useState(emptyPostDraft);
-  const [savingPost, setSavingPost] = useState(false);
-  const [deletingPost, setDeletingPost] = useState(false);
   const [adminCampaigns, setAdminCampaigns] = useState<any[]>([]);
   const [selectedCampaign, setSelectedCampaign] = useState<any | null>(null);
   const [campaignDraft, setCampaignDraft] = useState(emptyCampaignDraft);
@@ -1128,25 +1079,22 @@ export default function AdminPage() {
         setAdminUsers([]);
       }
 
-      const [projectsResponse, requestsResponse, postsResponse, ticketsResponse, campaignsResponse] = await Promise.all([
+      const [projectsResponse, requestsResponse, ticketsResponse, campaignsResponse] = await Promise.all([
         fetch('/api/admin/service-request-projects?limit=200', { credentials: 'include' }),
         fetch('/api/admin/service-requests?limit=200', { credentials: 'include' }),
-        fetch('/api/admin/posts?limit=200', { credentials: 'include' }),
         fetch('/api/admin/support-tickets?limit=200', { credentials: 'include' }),
         fetch('/api/admin/campaigns?limit=200', { credentials: 'include' }),
       ]);
 
-      const [projectsData, requestsData, postsData, ticketsData, campaignsData] = await Promise.all([
+      const [projectsData, requestsData, ticketsData, campaignsData] = await Promise.all([
         projectsResponse.json(),
         requestsResponse.json(),
-        postsResponse.json(),
         ticketsResponse.json(),
         campaignsResponse.json(),
       ]);
 
       setAdminProjects(projectsResponse.ok && projectsData?.success ? (Array.isArray(projectsData.projects) ? projectsData.projects : []) : []);
       setAdminRequests(requestsResponse.ok && requestsData?.success ? (Array.isArray(requestsData.requests) ? requestsData.requests : []) : []);
-      setAdminPosts(postsResponse.ok && postsData?.success ? (Array.isArray(postsData.posts) ? postsData.posts : []) : []);
       setAdminTickets(ticketsResponse.ok && ticketsData?.success ? (Array.isArray(ticketsData.tickets) ? ticketsData.tickets : []) : []);
       setAdminCampaigns(campaignsResponse.ok && campaignsData?.success ? (Array.isArray(campaignsData.campaigns) ? campaignsData.campaigns : []) : []);
       // initialize small tickets list for support UI
@@ -1744,78 +1692,6 @@ export default function AdminPage() {
     }
   };
 
-  const selectPost = (post: any) => {
-    setSelectedPost(post);
-    setPostDraft({
-      content: post?.content || '',
-      category: post?.category || '',
-      visibility: post?.visibility || '',
-      location: post?.location || '',
-      tags: Array.isArray(post?.tags) ? post.tags.join(', ') : '',
-    });
-  };
-
-  const savePost = async () => {
-    if (!selectedPost) return;
-    try {
-      setSavingPost(true);
-      const response = await fetch(`/api/admin/posts/${encodeURIComponent(selectedPost.id)}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          ...postDraft,
-          tags: postDraft.tags,
-        }),
-      });
-
-      const data = await response.json();
-      if (!response.ok || !data?.success) {
-        throw new Error(data?.error || 'Failed to update post');
-      }
-
-      sonnerToast.success('Post updated');
-      setSelectedPost(data.post);
-      setOverview((current) => current ? {
-        ...current,
-        recent: {
-          ...current.recent,
-          posts: current.recent.posts.map((item) => (item.id === data.post.id ? data.post : item)),
-        },
-      } : current);
-    } catch (error: any) {
-      sonnerToast.error(error?.message || 'Failed to update post');
-    } finally {
-      setSavingPost(false);
-    }
-  };
-
-  const deletePost = async () => {
-    if (!selectedPost) return;
-    if (!window.confirm(`Delete post ${selectedPost.id}? This cannot be undone.`)) return;
-
-    try {
-      setDeletingPost(true);
-      const response = await fetch(`/api/admin/posts/${encodeURIComponent(selectedPost.id)}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
-
-      const data = await response.json();
-      if (!response.ok || !data?.success) {
-        throw new Error(data?.error || 'Failed to delete post');
-      }
-
-      sonnerToast.success('Post deleted');
-      setSelectedPost(null);
-      await loadDashboard();
-    } catch (error: any) {
-      sonnerToast.error(error?.message || 'Failed to delete post');
-    } finally {
-      setDeletingPost(false);
-    }
-  };
-
   const saveCampaign = async () => {
     if (!selectedCampaign) return;
 
@@ -1885,7 +1761,6 @@ export default function AdminPage() {
   const stats = overview?.summary || {};
   const userCount = adminUsers.length;
   const requestCount = adminRequests.length;
-  const postCount = adminPosts.length;
   const supportCount = adminTickets.length;
 
   const statusTone = (value?: string) => {
@@ -1945,7 +1820,6 @@ export default function AdminPage() {
 
     pushActivities(recent.service_requests, 'service-request', (item) => 'Service request posted', (item) => item?.title || item?.requester?.name || 'New request created');
     pushActivities(recent.service_request_projects, 'project', (item) => 'CSR project added', (item) => item?.title || item?.ngo?.name || 'New project created');
-    pushActivities(recent.posts, 'post', (item) => 'Post published', (item) => item?.content || item?.author?.name || 'New post created');
     pushActivities(recent.support_tickets, 'ticket', (item) => 'Support ticket opened', (item) => item?.title || item?.user_name || 'New ticket created');
 
     return activities
@@ -2005,19 +1879,6 @@ export default function AdminPage() {
       || textMatch(item.id, query)
     ));
   }, [adminRequests, requestQuery]);
-
-  const filteredPosts = useMemo(() => {
-    const query = postQuery.trim();
-    if (!query) return adminPosts;
-    return adminPosts.filter((item) => (
-      textMatch(item.author?.name, query)
-      || textMatch(item.content, query)
-      || textMatch(item.category, query)
-      || textMatch(item.visibility, query)
-      || textMatch(item.location, query)
-      || textMatch(item.id, query)
-    ));
-  }, [adminPosts, postQuery]);
 
   const filteredCampaigns = useMemo(() => {
     const query = campaignQuery.trim();

@@ -38,13 +38,13 @@ export async function POST(request: NextRequest) {
 
     // Verify that this request belongs to the authenticated NGO
     const requestData = await db.serviceRequests.getById(serviceRequestId);
-    if (!requestData || requestData.requester_id !== userId) {
+    if (!requestData || requestData.ngo_id !== userId) {
       return NextResponse.json({ error: 'Service request not found or unauthorized' }, { status: 404 });
     }
 
     // Get all volunteers for this service request
     const { data: allVolunteers } = await supabase
-      .from('service_volunteers')
+      .from('service_request_applications')
       .select('id, status')
       .eq('service_request_id', serviceRequestId);
 

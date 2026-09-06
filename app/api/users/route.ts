@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
     // Build query
     let query = supabase
       .from('users')
-      .select('id, name, email, user_type, location, city, state_province, pincode, verified, profile_image')
+      .select('id, name, email, user_type, location, city, state_province, pincode, verification_status, profile_image')
       .order('name', { ascending: true })
       .limit(limit)
 
@@ -82,7 +82,7 @@ export async function GET(request: NextRequest) {
 
     // Filter by verified status if specified
     if (verified_only) {
-      query = query.eq('verified', true)
+      query = query.eq('verification_status', 'verified')
     }
 
     // Don't include the requesting user in results

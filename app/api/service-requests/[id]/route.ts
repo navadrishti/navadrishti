@@ -340,7 +340,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Service request not found' }, { status: 404 });
     }
 
-    if (existingRequest.requester_id !== userId) {
+    if (Number(existingRequest.ngo_id || existingRequest.requester_id) !== userId) {
       return NextResponse.json({ error: 'You can only update your own requests' }, { status: 403 });
     }
 
@@ -531,7 +531,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Service request not found' }, { status: 404 });
     }
 
-    if (existingRequest.requester_id !== userId) {
+    if (Number(existingRequest.ngo_id || existingRequest.requester_id) !== userId) {
       return NextResponse.json({ error: 'You can only delete your own service requests' }, { status: 403 });
     }
 
@@ -543,7 +543,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'This need is locked because the parent project is already assigned to a company.' }, { status: 409 });
     }
 
-    const applicants = await db.serviceVolunteers.getByRequestId(requestId);
+    const applicants = await db.serviceRequestApplications.getByRequestId(requestId);
     const hasAcceptedApplicant = (applicants || []).some((applicant: any) =>
       ['accepted', 'active', 'completed'].includes(String(applicant.status || '').toLowerCase())
     );

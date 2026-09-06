@@ -62,17 +62,6 @@ export function checkApiPermission(
   const hasBasicVerification = isEmailVerified || user.phone_verified || false;
 
   switch (requiredPermission) {
-    case 'canCreatePosts':
-    case 'canCommentOnPosts':
-      if (!hasBasicVerification) {
-        return {
-          hasPermission: false,
-          errorMessage: 'Email or phone verification required',
-          statusCode: 403
-        };
-      }
-      break;
-
     case 'canCreateServiceRequests':
       if (user.user_type !== 'ngo') {
         return {

@@ -3,7 +3,7 @@ import { getNgoNeedFulfillmentMode, normalizeServiceRequestRecord } from '@/lib/
 
 export async function getActiveInfrastructureVolunteerApplication(userId: number) {
   const { data, error } = await supabase
-    .from('service_volunteers')
+    .from('service_request_applications')
     .select(`
       id,
       status,
