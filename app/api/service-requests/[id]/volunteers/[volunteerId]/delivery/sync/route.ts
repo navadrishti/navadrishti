@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
 
 import { JWT_SECRET } from '@/lib/auth';
-import { db, getApplicationApplicantUserId, supabase } from '@/lib/db';
+import { db, getApplicationApplicantUserId, shapeApplicationForApi, supabase } from '@/lib/db';
 import { getDelhiveryTrackingSnapshot } from '@/lib/delhivery';
 import { isDeliveredTrackingStatus } from '@/lib/service-request-allocation';
 
@@ -46,18 +46,23 @@ export async function POST(
       return NextResponse.json({ error: 'Service request not found' }, { status: 404 });
     }
 
-    const { data: volunteerApplication, error: volunteerError } = await supabase
+    const { data: rawApplication, error: volunteerError } = await supabase
       .from('service_request_applications')
-      .select('*')
+      .select(`
+        *,
+        fulfillment:service_request_fulfillments!application_id(*)
+      `)
       .eq('id', volunteerApplicationId)
       .eq('service_request_id', requestId)
       .single();
+
+    const volunteerApplication = shapeApplicationForApi(rawApplication);
 
     if (volunteerError || !volunteerApplication) {
       return NextResponse.json({ error: 'Volunteer assignment not found' }, { status: 404 });
     }
 
-    if (userType === 'ngo' && Number(serviceRequest.requester_id) !== Number(userId)) {
+    if (userType === 'ngo' && Number(serviceRequest.ngo_id || serviceRequest.requester_id) !== Number(userId)) {
       return NextResponse.json({ error: 'You can only track deliveries for your own requests' }, { status: 403 });
     }
 
@@ -213,15 +218,9 @@ export async function POST(
         : Number(volunteerApplication.fulfilled_amount || 0)
     }
 
-    const { data: updatedVolunteer, error: updateError } = await supabase
-      .from('service_request_applications')
-      .update(volunteerUpdatePayload)
-      .eq('id', volunteerApplicationId)
-      .eq('service_request_id', requestId)
-      .select('*')
-      .single();
+    const updatedVolunteer = await db.serviceRequestApplications.update(volunteerApplicationId, volunteerUpdatePayload);
 
-    if (updateError || !updatedVolunteer) {
+    if (!updatedVolunteer) {
       return NextResponse.json({ error: 'Failed to persist tracking details' }, { status: 500 });
     }
 

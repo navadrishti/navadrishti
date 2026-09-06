@@ -1,6 +1,6 @@
 import crypto from 'crypto'
 import Razorpay from 'razorpay'
-import { supabase } from '@/lib/db'
+import { db, supabase } from '@/lib/db'
 import { formatAttendanceSummary } from '@/lib/service-request-allocation'
 import {
   buildPricingResponse,
@@ -90,22 +90,18 @@ export async function finalizeEngagementSettlement(assignment: Record<string, an
       .maybeSingle()
 
     const volunteerMeta = safeJson(volunteerRow?.response_meta)
-    await supabase
-      .from('service_request_applications')
-      .update({
-        status: 'completed',
-        ngo_confirmed_at: nowIso,
-        response_meta: {
-          ...volunteerMeta,
-          settlement_status: 'settled',
-          settlement_mode: input.settlementMode,
-          settled_amount: input.settledAmount,
-          settled_at: nowIso,
-          attendance_summary: nextMeta.attendance_summary,
-        },
-        updated_at: nowIso,
-      })
-      .eq('id', assignment.application_id)
+    await db.serviceRequestApplications.update(Number(assignment.application_id), {
+      status: 'completed',
+      ngo_confirmed_at: nowIso,
+      response_meta: {
+        ...volunteerMeta,
+        settlement_status: 'settled',
+        settlement_mode: input.settlementMode,
+        settled_amount: input.settledAmount,
+        settled_at: nowIso,
+        attendance_summary: nextMeta.attendance_summary,
+      },
+    })
   }
 
   if (assignment.application_table === 'service_clients' && assignment.application_id) {
