@@ -47,7 +47,7 @@ export async function POST(
     }
 
     const { data: volunteerApplication, error: volunteerError } = await supabase
-      .from('service_volunteers')
+      .from('service_request_applications')
       .select('*')
       .eq('id', volunteerApplicationId)
       .eq('service_request_id', requestId)
@@ -90,7 +90,7 @@ export async function POST(
 
     const { data: existingShipmentByTracking } = await supabase
       .from('service_request_shipments')
-      .select('id, service_request_id, volunteer_assignment_id')
+      .select('id, service_request_id, application_id')
       .eq('provider', 'delhivery')
       .eq('tracking_id', snapshot.trackingId)
       .maybeSingle();
@@ -98,7 +98,7 @@ export async function POST(
     if (
       existingShipmentByTracking?.id &&
       (Number(existingShipmentByTracking.service_request_id) !== requestId ||
-        Number(existingShipmentByTracking.volunteer_assignment_id || 0) !== volunteerApplicationId)
+        Number(existingShipmentByTracking.application_id || 0) !== volunteerApplicationId)
     ) {
       return NextResponse.json(
         { error: 'Tracking ID is already linked to a different assignment' },
@@ -125,7 +125,7 @@ export async function POST(
         .from('service_request_shipments')
         .upsert({
           service_request_id: requestId,
-          volunteer_assignment_id: volunteerApplicationId,
+          application_id: volunteerApplicationId,
           contribution_id: null,
           provider: 'delhivery',
           tracking_id: snapshot.trackingId,
@@ -214,7 +214,7 @@ export async function POST(
     }
 
     const { data: updatedVolunteer, error: updateError } = await supabase
-      .from('service_volunteers')
+      .from('service_request_applications')
       .update(volunteerUpdatePayload)
       .eq('id', volunteerApplicationId)
       .eq('service_request_id', requestId)

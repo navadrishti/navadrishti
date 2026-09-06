@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET, requireBankStatementDocument } from '@/lib/auth';
+import { syncActorDocumentsToTable } from '@/lib/verification-documents-db';
 
 function isValidGSTNumber(gstNumber: string): boolean {
   const gstRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
@@ -161,6 +162,18 @@ async function initiateCompanyVerification(
       verification_status: 'pending'
       })
       .eq('id', userId);
+
+    await syncActorDocumentsToTable({
+      userId,
+      actorType: 'company',
+      documents: documents || {},
+      numbers: {
+        gst: entered?.gst_number || null,
+        cin: entered?.registration_number || entered?.cin || null,
+        pan: entered?.pan_number || null,
+      },
+      status: 'under_review',
+    });
 
     return NextResponse.json({
       success: true,

@@ -73,11 +73,11 @@ export async function POST(request: NextRequest) {
     if (serviceRequestId) {
       const { data: serviceRequest } = await supabase
         .from('service_requests')
-        .select('ngo_id, requester_id, ngo_name')
+        .select('ngo_id')
         .eq('id', serviceRequestId)
         .maybeSingle()
-      beneficiaryUserId = Number(serviceRequest?.ngo_id || serviceRequest?.requester_id || 0)
-      beneficiaryName = String(serviceRequest?.ngo_name || 'NGO')
+      beneficiaryUserId = Number(serviceRequest?.ngo_id || 0)
+      beneficiaryName = 'NGO'
     }
 
     const keyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID
@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
     await supabase.from('razorpay_payment_orders').upsert({
       service_request_id: serviceRequestId,
       contribution_id: contributionId || null,
-      volunteer_assignment_id: null,
+      application_id: null,
       payer_user_id: null,
       ngo_user_id: beneficiaryUserId > 0 ? beneficiaryUserId : verify.company_ca.company_user_id,
       razorpay_order_id: String(order.id),

@@ -615,7 +615,7 @@ export async function GET(request: NextRequest) {
 
       const { data: fulfillmentRows, error: fulfillmentRowsError } = needIds.length > 0
         ? await supabase
-            .from('service_volunteers')
+            .from('service_request_applications')
             .select('service_request_id, status, individual_done_at, ngo_confirmed_at, fulfilled_amount, fulfilled_quantity, volunteer:users!volunteer_id(id, user_type)')
             .in('service_request_id', needIds)
         : { data: [], error: null as any }
@@ -1130,7 +1130,7 @@ export async function GET(request: NextRequest) {
 
     if (userType === 'individual') {
       let query = supabase
-        .from('service_volunteers')
+        .from('service_request_applications')
         .select(`
           *,
           request:service_requests!service_request_id(
@@ -1181,7 +1181,7 @@ export async function GET(request: NextRequest) {
       const requestIds = (requests || []).map((item: any) => item.id)
       const { data: assignments, error: assignmentsError } = requestIds.length > 0
         ? await supabase
-            .from('service_volunteers')
+            .from('service_request_applications')
             .select(`
               *,
               volunteer:users!volunteer_id(id, name, email, user_type),

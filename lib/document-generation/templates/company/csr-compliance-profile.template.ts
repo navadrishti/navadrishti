@@ -26,7 +26,7 @@ export function csrComplianceProfileTemplate(data: CsrComplianceProfileData): st
   const formatCrore = (val: number) =>
     Number.isFinite(val) ? `₹${val.toLocaleString('en-IN')} Cr` : '—'
 
-  const reasons: string[] = []
+    const reasons: string[] = []
   if (data.netProfit >= 5) reasons.push('Net Profit ≥ ₹5 crore')
   if (data.netWorth >= 500) reasons.push('Net Worth ≥ ₹500 crore')
   if (data.turnover >= 1000) reasons.push('Turnover ≥ ₹1,000 crore')
@@ -34,20 +34,20 @@ export function csrComplianceProfileTemplate(data: CsrComplianceProfileData): st
   const ref = buildDocumentReference('CSR-CP', data.cin || data.companyName)
   const body = `
     ${renderGapsSection(data.gaps || [])}
-    <div class="section">
+        <div class="section">
       <div class="section-title">1. Company Identification</div>
       <p class="section-intro">Prepared with reference to Section 135 of the Companies Act, 2013 and the Companies (CSR Policy) Rules, 2014 (as amended).</p>
-      <div class="field-grid">
-        <div class="field">
-          <span class="field-label">Company Name</span>
+          <div class="field-grid">
+            <div class="field">
+              <span class="field-label">Company Name</span>
           <span class="field-value">${escapeHtml(data.companyName || '—')}</span>
-        </div>
-        <div class="field">
-          <span class="field-label">CIN</span>
+            </div>
+            <div class="field">
+              <span class="field-label">CIN</span>
           <span class="field-value">${escapeHtml(data.cin || '—')}</span>
-        </div>
-        <div class="field">
-          <span class="field-label">PAN</span>
+            </div>
+            <div class="field">
+              <span class="field-label">PAN</span>
           <span class="field-value">${escapeHtml(data.pan || '—')}</span>
         </div>
         <div class="field">
@@ -57,29 +57,29 @@ export function csrComplianceProfileTemplate(data: CsrComplianceProfileData): st
         <div class="field">
           <span class="field-label">Financial Year Reference</span>
           <span class="field-value">${escapeHtml(data.financialYearLabel || 'Preceding financial year (as recorded)')}</span>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
 
-    <div class="section">
+        <div class="section">
       <div class="section-title">2. Threshold Financials (Section 135)</div>
       <div class="field-grid-3">
         <div class="metric-card">
-          <div class="field-label">Net Worth</div>
-          <div class="field-value">${formatCrore(data.netWorth)}</div>
-        </div>
+              <div class="field-label">Net Worth</div>
+              <div class="field-value">${formatCrore(data.netWorth)}</div>
+            </div>
         <div class="metric-card">
-          <div class="field-label">Turnover</div>
-          <div class="field-value">${formatCrore(data.turnover)}</div>
-        </div>
+              <div class="field-label">Turnover</div>
+              <div class="field-value">${formatCrore(data.turnover)}</div>
+            </div>
         <div class="metric-card">
-          <div class="field-label">Net Profit</div>
-          <div class="field-value">${formatCrore(data.netProfit)}</div>
+              <div class="field-label">Net Profit</div>
+              <div class="field-value">${formatCrore(data.netProfit)}</div>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
 
-    <div class="section">
+        <div class="section">
       <div class="section-title">3. CSR Applicability Determination</div>
       <p class="field-value">
         <span class="badge ${data.csrApplicable ? 'badge-ok' : 'badge-warn'}">
@@ -789,13 +789,13 @@ export function implementingAgencyReportTemplate(data: ImplementingAgencyReportD
             Number.isFinite(Number(data.progressPercentage)) ? `${Number(data.progressPercentage)}%` : '—'
           )}</span>
         </div>
-      </div>
+              </div>
       ${
         data.activitiesSummary
           ? `<p class="muted" style="margin-top:12px">${escapeHtml(data.activitiesSummary)}</p>`
           : ''
-      }
-    </div>
+              }
+            </div>
 
     <div class="section">
       <div class="section-title">4. Funds Position</div>
@@ -807,7 +807,7 @@ export function implementingAgencyReportTemplate(data: ImplementingAgencyReportD
         <div class="metric-card">
           <div class="field-label">Received</div>
           <div class="field-value">${formatInr(data.fundsReceived)}</div>
-        </div>
+          </div>
         <div class="metric-card">
           <div class="field-label">Utilized</div>
           <div class="field-value">${formatInr(data.fundsUtilized)}</div>
@@ -929,7 +929,7 @@ export function ngoCompliancePackTemplate(data: NgoCompliancePackData): string {
           ? `<p class="muted" style="margin-top:10px">${escapeHtml(data.documentExpirySummary)}</p>`
           : ''
       }
-    </div>
+        </div>
 
     <div class="section">
       <div class="section-title">3. Recommended Attachments</div>

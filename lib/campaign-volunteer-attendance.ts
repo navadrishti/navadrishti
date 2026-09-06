@@ -51,9 +51,44 @@ export function getVolunteerApplicationForUser(
   )
 }
 
-export function getCampaignLeadNgoId(impactMetrics: unknown): number {
-  const impact = safeJson(impactMetrics)
+export function getCampaignLeadNgoId(
+  impactMetricsOrCampaign: unknown,
+  campaignLeadColumn?: number | null
+): number {
+  const fromArg = Number(campaignLeadColumn || 0)
+  if (fromArg > 0) return fromArg
+
+  if (
+    impactMetricsOrCampaign &&
+    typeof impactMetricsOrCampaign === 'object' &&
+    !Array.isArray(impactMetricsOrCampaign)
+  ) {
+    const obj = impactMetricsOrCampaign as Record<string, any>
+    const fromColumn = Number(obj.lead_ngo_user_id || 0)
+    if (fromColumn > 0) return fromColumn
+    if (Object.prototype.hasOwnProperty.call(obj, 'impact_metrics')) {
+      return Number(safeJson(obj.impact_metrics).selected_lead_ngo_id || 0)
+    }
+  }
+
+  const impact = safeJson(impactMetricsOrCampaign)
   return Number(impact.selected_lead_ngo_id || 0)
+}
+
+/** Dual-write helper: real column + draft JSON mirror during cutover. */
+export function buildCampaignLeadNgoPatch(
+  leadNgoUserId: number,
+  impactMetrics: unknown
+): { lead_ngo_user_id: number | null; impact_metrics: Record<string, any> } {
+  const impact = safeJson(impactMetrics)
+  const id = Number(leadNgoUserId || 0)
+  return {
+    lead_ngo_user_id: id > 0 ? id : null,
+    impact_metrics: {
+      ...impact,
+      selected_lead_ngo_id: id > 0 ? id : null,
+    },
+  }
 }
 
 /** Lead NGOs coordinate CSR campaigns; they do not self-mark volunteer attendance. */

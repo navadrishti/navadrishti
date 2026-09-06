@@ -28,8 +28,8 @@ export async function GET(request: NextRequest) {
 
     const { data: campaigns, error } = await supabase
       .from('campaigns')
-      .select('id, title, description, category, location, schedule_vii, status, start_date, end_date, impact_metrics, created_at, company_id')
-      .eq('impact_metrics->>selected_lead_ngo_id', String(user.id))
+      .select('id, title, description, category, location, schedule_vii, status, start_date, end_date, impact_metrics, lead_ngo_user_id, created_at, company_id')
+      .or(`lead_ngo_user_id.eq.${user.id},impact_metrics->>selected_lead_ngo_id.eq.${user.id}`)
       .order('created_at', { ascending: false })
 
     if (error) throw error
@@ -38,7 +38,8 @@ export async function GET(request: NextRequest) {
       const impact = campaign.impact_metrics && typeof campaign.impact_metrics === 'object'
         ? campaign.impact_metrics
         : {}
-      return Boolean(impact.lead_ngo_accepted) && Number(impact.selected_lead_ngo_id || 0) === user.id
+      const leadId = Number(campaign.lead_ngo_user_id || impact.selected_lead_ngo_id || 0)
+      return Boolean(impact.lead_ngo_accepted) && leadId === user.id
     })
 
     const companyIds = [...new Set(acceptedCampaigns.map((row) => Number(row.company_id || 0)).filter((id) => id > 0))]

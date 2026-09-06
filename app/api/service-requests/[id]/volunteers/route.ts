@@ -29,7 +29,7 @@ export async function GET(
     
     if (userId) {
       // Public request to check if user has applied - get full application details
-      const userApplication = await db.serviceVolunteers.getUserApplication(requestId, parseInt(userId));
+      const userApplication = await db.serviceRequestApplications.getUserApplication(requestId, parseInt(userId));
       return NextResponse.json(userApplication ? [userApplication] : []);
     }
     
@@ -55,12 +55,12 @@ export async function GET(
       return NextResponse.json({ error: 'Service request not found' }, { status: 404 });
     }
 
-    if (request_data.requester_id !== ngoUserId) {
+    if (request_data.ngo_id !== ngoUserId) {
       return NextResponse.json({ error: 'You can only view applicants for your own requests' }, { status: 403 });
     }
 
     // Fetch volunteers for this request using Supabase helper
-    const volunteers = await db.serviceVolunteers.getByRequestId(requestId);
+    const volunteers = await db.serviceRequestApplications.getByRequestId(requestId);
 
     return NextResponse.json({
       success: true,
@@ -132,7 +132,7 @@ export async function POST(
     }
 
     // Check if the volunteer has already applied using Supabase helper
-    const existingApplication = await db.serviceVolunteers.findExisting(requestId, volunteer_id);
+    const existingApplication = await db.serviceRequestApplications.findExisting(requestId, volunteer_id);
 
     if (existingApplication) {
       return NextResponse.json(
@@ -191,7 +191,7 @@ export async function POST(
       }
     };
 
-    const newApplication = await db.serviceVolunteers.create(volunteerData);
+    const newApplication = await db.serviceRequestApplications.create(volunteerData);
 
     return NextResponse.json({
       success: true,

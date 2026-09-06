@@ -210,7 +210,7 @@ export async function POST(
         const ngoUserId = Number(serviceRequest.ngo_id || serviceRequest.requester_id || serviceRequest.requester?.id || 0);
         const nowIso = new Date().toISOString();
         const { data: assignment } = await supabase
-          .from('service_volunteers')
+          .from('service_request_applications')
           .select('id, status')
           .eq('service_request_id', requestId)
           .eq('volunteer_id', decoded.id)
@@ -223,7 +223,7 @@ export async function POST(
           .from('razorpay_payment_orders')
           .upsert({
             service_request_id: requestId,
-            volunteer_assignment_id: assignment?.id || null,
+            application_id: assignment?.id || null,
             contribution_id: null,
             payer_user_id: decoded.id,
             ngo_user_id: ngoUserId > 0 ? ngoUserId : decoded.id,
@@ -288,16 +288,16 @@ export async function POST(
     const nextRaisedInr = currentRaisedInr + creditedInr;
     const reachedTarget = !isGeneralNeed && targetInr > 0 && nextRaisedInr >= targetInr;
 
-    const acceptedAssignments = await db.serviceVolunteers.getByRequestId(requestId);
+    const acceptedAssignments = await db.serviceRequestApplications.getByRequestId(requestId);
     const matchingAssignment = (acceptedAssignments || []).find((item: any) =>
       item.volunteer_id === decoded.id && ['accepted', 'active', 'completed'].includes(String(item.status || '').toLowerCase())
     );
 
     if (matchingAssignment) {
       const existingFulfilled = parseAmountToInr(matchingAssignment.fulfilled_amount || 0);
-      await db.serviceVolunteers.updateStatus(matchingAssignment.id, matchingAssignment.status || 'active');
+      await db.serviceRequestApplications.updateStatus(matchingAssignment.id, matchingAssignment.status || 'active');
       await supabase
-        .from('service_volunteers')
+        .from('service_request_applications')
         .update({
           fulfilled_amount: Number((existingFulfilled + creditedInr).toFixed(2)),
           individual_done_at: matchingAssignment.individual_done_at || new Date().toISOString(),
@@ -315,7 +315,7 @@ export async function POST(
         .from('razorpay_payment_orders')
         .upsert({
           service_request_id: requestId,
-          volunteer_assignment_id: matchingAssignment?.id || null,
+          application_id: matchingAssignment?.id || null,
           contribution_id: null,
           payer_user_id: decoded.id,
           ngo_user_id: ngoUserId > 0 ? ngoUserId : decoded.id,

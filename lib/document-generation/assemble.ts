@@ -110,7 +110,7 @@ async function loadCampaignForLeadNgo(campaignId: string, ngoId: number) {
     throw new Error('Campaign not found')
   }
 
-  if (getCampaignLeadNgoId(data.impact_metrics) !== ngoId) {
+  if (getCampaignLeadNgoId(data) !== ngoId) {
     throw new Error('Campaign is not assigned to this NGO as lead')
   }
 
@@ -505,7 +505,7 @@ async function buildBoardAnnexureDraft(userRow: any, companyId: number) {
     }
   } else {
     for (const campaign of campaigns) {
-      const agencyId = getCampaignLeadNgoId(campaign.impact_metrics)
+      const agencyId = getCampaignLeadNgoId(campaign)
       const agencyName = await resolvePartnerName(agencyId)
       const impact = asRecord(campaign.impact_metrics)
       rows.push({
@@ -747,7 +747,7 @@ export async function assembleGeneratedDocument(
       if (!request.campaignId) throw new Error('Select a campaign for the impact report')
       const campaign = await loadCampaignForCompany(request.campaignId, user.id)
       const projects = await loadProjectsForCampaign(campaign.id)
-      const leadNgoId = getCampaignLeadNgoId(campaign.impact_metrics)
+      const leadNgoId = getCampaignLeadNgoId(campaign)
       const partnerName = await resolvePartnerName(leadNgoId || projects[0]?.ngo_user_id)
       const fundsUtilized = projects.reduce(
         (sum, project) => sum + asNumber(pickLatestImpact(project)?.funds_utilized),
@@ -839,7 +839,7 @@ export async function assembleGeneratedDocument(
       const campaign = await loadCampaignForCompany(request.campaignId, user.id)
       const projects = await loadProjectsForCampaign(campaign.id)
       const implementerName = await resolvePartnerName(
-        getCampaignLeadNgoId(campaign.impact_metrics) || projects[0]?.ngo_user_id
+        getCampaignLeadNgoId(campaign) || projects[0]?.ngo_user_id
       )
       const fundsUtilized = projects.reduce(
         (sum, project) => sum + asNumber(pickLatestImpact(project)?.funds_utilized),

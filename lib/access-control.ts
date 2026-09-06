@@ -14,11 +14,6 @@ export interface User {
 }
 
 export interface AccessPermissions {
-  // Social features
-  canCreatePosts: boolean;
-  canCommentOnPosts: boolean;
-  canLikePosts: boolean;
-  
   // Service system
   canCreateServiceRequests: boolean;
   canApplyToServiceRequests: boolean;
@@ -41,9 +36,6 @@ export function getUserPermissions(user: User | null): AccessPermissions {
   // Default permissions for unauthenticated users
   if (!user) {
     return {
-      canCreatePosts: false,
-      canCommentOnPosts: false,
-      canLikePosts: false,
       canCreateServiceRequests: false,
       canApplyToServiceRequests: false,
       canCreateServiceOffers: false,
@@ -63,11 +55,6 @@ export function getUserPermissions(user: User | null): AccessPermissions {
 
   // Base permissions for authenticated users
   const basePermissions: AccessPermissions = {
-    // Basic social features available to all authenticated users (no verification required)
-    canCreatePosts: true, // Only authentication required for posts
-    canCommentOnPosts: true, // Only authentication required for comments  
-    canLikePosts: true, // Always allow liking for authenticated users
-    
     // Service system permissions
     canCreateServiceRequests: false,
     canApplyToServiceRequests: false,
@@ -135,10 +122,6 @@ export function getPermissionErrorMessage(permission: keyof AccessPermissions, u
   const isEmailVerified = user.email_verified || false;
 
   switch (permission) {
-    case 'canCreatePosts':
-    case 'canCommentOnPosts':
-      return "Please sign in to create posts and comments."; // Only authentication required
-        
     case 'canCreateServiceRequests':
       if (user.user_type !== 'ngo') {
         return "Only NGOs can create service requests.";
@@ -389,13 +372,12 @@ export function isAllowedPwaOrigin(origin: string | null): boolean {
 }
 
 /**
- * Paused / not-shipping surfaces (government admin, social feed).
+ * Paused / not-shipping surfaces (government admin).
+ * Social feed routes were removed in the 2026 schema streamline.
  * Full product surfaces (CSR, services, evidence verification, AI agents) are always on.
  */
 const BLOCKED_ROUTE_PREFIXES = [
   '/government-admin',
-  '/posts',
-  '/home',
 ] as const;
 
 function matchesRoutePrefix(pathname: string, prefix: string): boolean {
