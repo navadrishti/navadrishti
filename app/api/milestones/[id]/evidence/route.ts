@@ -4,13 +4,13 @@ import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = getAuthUserFromRequest(request);
     assertUserType(user, ['ngo']);
 
-    const milestoneId = params.id;
+    const { id: milestoneId } = await params;
 
     const { data: milestone, error: milestoneError } = await supabase
       .from('csr_project_milestones')

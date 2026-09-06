@@ -4,10 +4,10 @@ import { getEvidenceApproverContext } from '@/lib/server-auth';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const milestoneId = params.id;
+    const { id: milestoneId } = await params;
     const body = await request.json();
     const decision = body.decision as string;
     const comments = body.comments as string | undefined;

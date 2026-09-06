@@ -234,7 +234,18 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           ? (profileData.ngo_headquarters as Record<string, unknown>)
           : {};
 
-      const complianceDocuments = (['twelve_a', 'eighty_g', 'csr1'] as ComplianceDocumentKey[])
+      const ngoVerification = verificationDetails as {
+        registration_type?: string | null;
+        registration_number?: string | null;
+        fcra_number?: string | null;
+      } | null;
+
+      const complianceDocuments: Array<{
+        key: ComplianceDocumentKey | 'fcra';
+        label: string;
+        url: string;
+        registration_number: string | null;
+      }> = (['twelve_a', 'eighty_g', 'csr1'] as ComplianceDocumentKey[])
         .map((key) => {
           const documents =
             profileData.compliance_documents && typeof profileData.compliance_documents === 'object'
@@ -257,7 +268,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
             registration_number: String(profileData[numberKey] || '').trim() || null,
           };
         })
-        .filter(Boolean);
+        .filter((item): item is NonNullable<typeof item> => item != null);
 
       const fcraUrl = getNgoFcraDocumentUrl(profileData);
       if (fcraUrl) {
@@ -266,15 +277,15 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           label: 'FCRA Registration',
           url: fcraUrl,
           registration_number:
-            String(verificationDetails?.fcra_number || profileData.fcra_number || '').trim() || null,
+            String(ngoVerification?.fcra_number || profileData.fcra_number || '').trim() || null,
         });
       }
 
       formattedProfile.ngo_public = {
         sectors_schedule_vii: scheduleViiSectors,
-        registration_type: verificationDetails?.registration_type || null,
-        registration_number: verificationDetails?.registration_number || null,
-        fcra_number: verificationDetails?.fcra_number || null,
+        registration_type: ngoVerification?.registration_type || null,
+        registration_number: ngoVerification?.registration_number || null,
+        fcra_number: ngoVerification?.fcra_number || null,
         fcra_expiry_date:
           listDocumentExpiryPublicItems(profileData).find((item) => item.key === 'fcra')?.valid_until ||
           (typeof profileData.fcra_expiry_date === 'string' ? profileData.fcra_expiry_date : null),

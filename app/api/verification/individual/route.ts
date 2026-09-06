@@ -138,8 +138,8 @@ async function initiateVerification(
         actorType: 'individual',
         documents: documents || {},
         numbers: {
-          aadhaar: entered?.aadhaar_number || null,
-          pan: entered?.pan_number || null,
+          aadhaar: entered?.aadhaar || null,
+          pan: entered?.pan || null,
         },
         status: 'under_review',
       });

@@ -74,7 +74,10 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Error in auto-update service request statuses:', error);
     return NextResponse.json(
-      { error: 'Failed to auto-update service request statuses', details: error.message },
+      {
+        error: 'Failed to auto-update service request statuses',
+        details: error instanceof Error ? error.message : String(error),
+      },
       { status: 500 }
     );
   }
