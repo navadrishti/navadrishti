@@ -63,7 +63,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const campaign = await loadCampaign(id)
     const impact = safeJson(campaign.impact_metrics)
 
-    if (isCampaignLeadNgo(impact, decoded.id)) {
+    if (isCampaignLeadNgo(campaign, decoded.id)) {
       return NextResponse.json(
         {
           error:

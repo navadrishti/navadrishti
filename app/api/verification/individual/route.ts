@@ -232,7 +232,7 @@ async function verifyAadhaar(userId: number, aadhaarNumber: string) {
   await db.individualVerifications.update(userId, {
     aadhaar_number: aadhaarNumber,
     aadhaar_verified: true,
-    aadhaar_verification_date: new Date().toISOString(),
+    aadhaar_verified_at: new Date().toISOString(),
     verification_status: verification?.pan_verified ? 'verified' : 'pending'
   });
 
@@ -258,7 +258,7 @@ async function verifyPAN(userId: number, panNumber: string) {
   await db.individualVerifications.update(userId, {
     pan_number: panNumber,
     pan_verified: true,
-    pan_verification_date: new Date().toISOString(),
+    pan_verified_at: new Date().toISOString(),
     verification_status: verification?.aadhaar_verified ? 'verified' : 'pending'
   });
 

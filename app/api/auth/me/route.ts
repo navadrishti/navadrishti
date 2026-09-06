@@ -40,14 +40,19 @@ async function handler(req: NextRequest) {
       if (freshUserData.user_type === 'individual') {
         const { data: verification } = await supabase
           .from('individual_verifications')
-          .select('verification_status, aadhaar_verified, pan_verified, verification_date, aadhaar_number, pan_number, aadhaar_verification_date, pan_verification_date')
+          .select('verification_status, aadhaar_verified, pan_verified, verification_date, aadhaar_number, pan_number, aadhaar_verified_at, pan_verified_at')
           .eq('user_id', user.id)
           .single();
         if (verification) {
           verificationStatus = freshUserData.verification_status === 'verified'
             ? 'verified'
             : verification.verification_status;
-          verificationDetails = verification;
+          verificationDetails = {
+            ...verification,
+            // UI aliases for older clients
+            aadhaar_verification_date: verification.aadhaar_verified_at,
+            pan_verification_date: verification.pan_verified_at,
+          };
         }
       } else if (freshUserData.user_type === 'company') {
         const { data: verification } = await supabase

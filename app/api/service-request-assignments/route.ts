@@ -1838,6 +1838,17 @@ export async function PUT(request: NextRequest) {
         if (updateNeedError) throw updateNeedError
       }
 
+      const { error: projectLeadError } = await supabase
+        .from('service_request_projects')
+        .update({
+          ...buildProjectLeadNgoPatch(ngoId),
+          assignment_status: 'lead_selected',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', projectId)
+
+      if (projectLeadError) throw projectLeadError
+
       return NextResponse.json({ success: true, data: { projectId, ngoId } })
     }
 

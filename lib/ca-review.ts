@@ -782,8 +782,8 @@ export async function applyCAVerificationAction(options: {
     if (type === 'individuals') {
       verificationUpdate.aadhaar_verified = true
       verificationUpdate.pan_verified = true
-      verificationUpdate.aadhaar_verification_date = reviewedAt
-      verificationUpdate.pan_verification_date = reviewedAt
+      verificationUpdate.aadhaar_verified_at = reviewedAt
+      verificationUpdate.pan_verified_at = reviewedAt
     }
     verificationUpdate.verification_date = reviewedAt
   }
