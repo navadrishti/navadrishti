@@ -65,6 +65,34 @@ export function documentExpiriesFromRows(
   return out
 }
 
+/** Applicant on service_request_applications (renamed from volunteer_id). Dual-read for cutover. */
+export function getApplicationApplicantUserId(row: Record<string, unknown> | null | undefined): number {
+  if (!row) return 0
+  return Number(row.applicant_user_id ?? row.volunteer_id ?? 0) || 0
+}
+
+/** Package lead on service_request_projects (renamed from selected_lead_ngo_id). Dual-read for cutover. */
+export function getProjectLeadNgoId(project: Record<string, unknown> | null | undefined): number {
+  if (!project) return 0
+  return Number(project.lead_ngo_user_id ?? project.selected_lead_ngo_id ?? 0) || 0
+}
+
+export function buildProjectLeadNgoPatch(leadNgoUserId: number | null | undefined): {
+  lead_ngo_user_id: number | null
+} {
+  const id = Number(leadNgoUserId || 0)
+  return { lead_ngo_user_id: id > 0 ? id : null }
+}
+
+/** Normalize application insert/update payloads to applicant_user_id. */
+export function normalizeApplicationApplicantFields<T extends Record<string, unknown>>(payload: T): T {
+  const next = { ...payload } as Record<string, unknown>
+  const applicantId = Number(next.applicant_user_id ?? next.volunteer_id ?? 0)
+  if (applicantId > 0) next.applicant_user_id = applicantId
+  delete next.volunteer_id
+  return next as T
+}
+
 export const db = {
   // Users
   users: {
@@ -857,12 +885,12 @@ export const db = {
   // Service request applications (formerly service_volunteers)
   serviceRequestApplications: {
     async create(applicationData: any) {
-      const payload = {
+      const payload = normalizeApplicationApplicantFields({
         ...applicationData,
         application_message: applicationData.application_message ?? applicationData.message ?? '',
         responder_type: applicationData.responder_type ?? applicationData.volunteer_type ?? null,
         updated_at: applicationData.updated_at ?? new Date().toISOString()
-      };
+      });
 
       if ('message' in payload) {
         delete payload.message;
@@ -870,6 +898,27 @@ export const db = {
 
       if ('volunteer_type' in payload) {
         delete payload.volunteer_type;
+      }
+
+      // Fulfillment columns live on service_request_fulfillments (not applications)
+      const fulfillmentFields = {
+        fulfillment_amount: payload.fulfillment_amount ?? null,
+        fulfillment_quantity: payload.fulfillment_quantity ?? null,
+        impact_statement: payload.impact_statement ?? null,
+        estimated_impact_value: payload.estimated_impact_value ?? null,
+        assigned_amount: payload.assigned_amount ?? null,
+        assigned_quantity: payload.assigned_quantity ?? null,
+        fulfilled_amount: payload.fulfilled_amount ?? 0,
+        fulfilled_quantity: payload.fulfilled_quantity ?? 0,
+        individual_receipt_url: payload.individual_receipt_url ?? null,
+        ngo_receipt_url: payload.ngo_receipt_url ?? null,
+        individual_done_at: payload.individual_done_at ?? null,
+        ngo_confirmed_at: payload.ngo_confirmed_at ?? null,
+        completion_note: payload.completion_note ?? null,
+        completed_at: payload.completed_at ?? null,
+      }
+      for (const key of Object.keys(fulfillmentFields)) {
+        delete payload[key]
       }
 
       const { data, error } = await supabase
@@ -886,6 +935,7 @@ export const db = {
           {
             application_id: data.id,
             service_request_id: data.service_request_id,
+            ...fulfillmentFields,
             updated_at: new Date().toISOString(),
           },
           { onConflict: 'application_id' }
@@ -897,23 +947,23 @@ export const db = {
       return data;
     },
 
-    async findExisting(serviceRequestId: number, volunteerId: number) {
+    async findExisting(serviceRequestId: number, applicantUserId: number) {
       const { data, error } = await supabase
         .from('service_request_applications')
         .select('*')
         .eq('service_request_id', serviceRequestId)
-        .eq('volunteer_id', volunteerId)
+        .eq('applicant_user_id', applicantUserId)
         .maybeSingle();
 
       if (error && error.code !== 'PGRST116') throw error;
       return data;
     },
 
-    async getByVolunteerId(volunteerId: number) {
+    async getByVolunteerId(applicantUserId: number) {
       const { data, error } = await supabase
         .from('service_request_applications')
         .select('*')
-        .eq('volunteer_id', volunteerId)
+        .eq('applicant_user_id', applicantUserId)
         .order('applied_at', { ascending: false });
 
       if (error) throw error;
@@ -925,7 +975,7 @@ export const db = {
         .from('service_request_applications')
         .select(`
           *,
-          volunteer:users!volunteer_id(id, name, email, user_type, location, verification_status, profile_image)
+          volunteer:users!applicant_user_id(id, name, email, user_type, location, verification_status, profile_image)
         `)
         .eq('service_request_id', serviceRequestId)
         .order('applied_at', { ascending: false });
@@ -934,12 +984,12 @@ export const db = {
       return data || [];
     },
 
-    async getUserApplication(serviceRequestId: number, volunteerId: number) {
+    async getUserApplication(serviceRequestId: number, applicantUserId: number) {
       const { data, error } = await supabase
         .from('service_request_applications')
         .select('*')
         .eq('service_request_id', serviceRequestId)
-        .eq('volunteer_id', volunteerId)
+        .eq('applicant_user_id', applicantUserId)
         .maybeSingle();
 
       if (error && error.code !== 'PGRST116') throw error;

@@ -16,7 +16,7 @@ export async function getActiveInfrastructureVolunteerApplication(userId: number
         status
       )
     `)
-    .eq('volunteer_id', userId)
+    .eq('applicant_user_id', userId)
     .in('status', ['accepted', 'active'])
 
   if (error) throw error

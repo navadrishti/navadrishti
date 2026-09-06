@@ -98,7 +98,7 @@ export async function GET(request: NextRequest) {
           supabase
             .from('service_request_applications')
             .select('id, status')
-            .eq('volunteer_id', userId)
+            .eq('applicant_user_id', userId)
         ]);
 
         const serviceHiresData = serviceHires.data || [];
@@ -122,7 +122,7 @@ export async function GET(request: NextRequest) {
           supabase
             .from('service_request_applications')
             .select('id, status')
-            .eq('volunteer_id', userId),
+            .eq('applicant_user_id', userId),
           
           supabase
             .from('service_clients')

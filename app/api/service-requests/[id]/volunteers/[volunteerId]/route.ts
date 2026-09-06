@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, supabase, applyVolunteerAcceptanceAllocation } from '@/lib/db';
+import { db, getApplicationApplicantUserId, supabase, applyVolunteerAcceptanceAllocation } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 import {
@@ -216,7 +216,7 @@ export async function PUT(
           application_table: 'service_request_applications',
           application_id: String(volId),
           owner_user_id: request_data.requester_id,
-          assignee_user_id: updatedVolunteer.volunteer_id,
+          assignee_user_id: getApplicationApplicantUserId(updatedVolunteer),
           assigned_by_user_id: userId,
           assigned_at: new Date().toISOString(),
           billing_cycle: isInfrastructure ? 'one_time' : 'daily',

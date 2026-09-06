@@ -171,7 +171,7 @@ export async function POST(
 
     const volunteerData = {
       service_request_id: requestId,
-      volunteer_id: volunteer_id,
+      applicant_user_id: volunteer_id,
       application_message: message || '',
       status: 'pending',
       fulfillment_amount: fulfillment_amount != null ? Number(fulfillment_amount) : null,

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import jwt from 'jsonwebtoken'
-import { supabase } from '@/lib/db'
+import { supabase, getProjectLeadNgoId, buildProjectLeadNgoPatch } from '@/lib/db'
 import {
   JWT_SECRET,
   assertCsr1CoversProject,
@@ -616,7 +616,7 @@ export async function GET(request: NextRequest) {
       const { data: fulfillmentRows, error: fulfillmentRowsError } = needIds.length > 0
         ? await supabase
             .from('service_request_applications')
-            .select('service_request_id, status, individual_done_at, ngo_confirmed_at, fulfilled_amount, fulfilled_quantity, volunteer:users!volunteer_id(id, user_type)')
+            .select('service_request_id, status, individual_done_at, ngo_confirmed_at, fulfilled_amount, fulfilled_quantity, volunteer:users!applicant_user_id(id, user_type)')
             .in('service_request_id', needIds)
         : { data: [], error: null as any }
 
@@ -818,7 +818,7 @@ export async function GET(request: NextRequest) {
           status,
           expected_beneficiaries,
           valid_until,
-          selected_lead_ngo_id,
+          lead_ngo_user_id,
           assigned_company_user_id,
           assignment_status,
           csr_project_available_for_csr,
@@ -873,7 +873,7 @@ export async function GET(request: NextRequest) {
         if (userType === 'ngo' && ownerNgoId !== Number(userId)) {
           const projectContext = safeJsonObject(need.project_context)
           const assignment = safeJsonObject(projectContext.csr_assignment)
-          const selectedLeadNgoId = Number(assignment.selected_lead_ngo_id || 0)
+          const selectedLeadNgoId = getProjectLeadNgoId(assignment)
           if (selectedLeadNgoId !== Number(userId)) continue
         }
 
@@ -889,7 +889,7 @@ export async function GET(request: NextRequest) {
         .not('assigned_company_user_id', 'is', null)
 
       if (userType === 'ngo') {
-        assignedProjectQuery = assignedProjectQuery.or(`ngo_id.eq.${userId},selected_lead_ngo_id.eq.${userId}`)
+        assignedProjectQuery = assignedProjectQuery.or(`ngo_id.eq.${userId},lead_ngo_user_id.eq.${userId}`)
       } else {
         assignedProjectQuery = assignedProjectQuery.eq('assigned_company_user_id', userId)
       }
@@ -935,7 +935,7 @@ export async function GET(request: NextRequest) {
           .update({
             assigned_company_user_id: pair.companyId,
             assignment_status: 'accepted',
-            selected_lead_ngo_id: project.selected_lead_ngo_id || project.ngo_id,
+            ...buildProjectLeadNgoPatch(getProjectLeadNgoId(project) || project.ngo_id),
             status: project.status === 'active' ? 'in_progress' : project.status,
             updated_at: new Date().toISOString(),
           })
@@ -969,7 +969,8 @@ export async function GET(request: NextRequest) {
       for (const project of projectById.values()) {
         if (project.ngo_id) userIds.add(Number(project.ngo_id))
         if (project.assigned_company_user_id) userIds.add(Number(project.assigned_company_user_id))
-        if (project.selected_lead_ngo_id) userIds.add(Number(project.selected_lead_ngo_id))
+        const leadNgoId = getProjectLeadNgoId(project)
+        if (leadNgoId) userIds.add(leadNgoId)
       }
       for (const pair of handoffPairs.values()) {
         userIds.add(pair.companyId)
@@ -1005,7 +1006,7 @@ export async function GET(request: NextRequest) {
           const projectId = String(project.id)
           const companyId = Number(project.assigned_company_user_id || pair.companyId || 0)
           const ownerNgoId = Number(project.ngo_id || 0)
-          const selectedLeadNgoId = Number(project.selected_lead_ngo_id || 0)
+          const selectedLeadNgoId = getProjectLeadNgoId(project)
           const projectNeeds = needsByProject.get(projectId) || []
           const ownerNgo = userById.get(ownerNgoId)
           const company = userById.get(companyId)
@@ -1102,6 +1103,7 @@ export async function GET(request: NextRequest) {
             assigned_company_verification_status: company?.verification_status || null,
             assigned_company_verified: String(company?.verification_status || '').toLowerCase() === 'verified',
             selected_lead_ngo_id: selectedLeadNgoId > 0 ? selectedLeadNgoId : null,
+            lead_ngo_user_id: selectedLeadNgoId > 0 ? selectedLeadNgoId : null,
             selected_lead_ngo_name: selectedLeadNgo?.name || null,
             selected_lead_ngo_email: selectedLeadNgo?.email || null,
             selected_lead_ngo_verification_status: selectedLeadNgo?.verification_status || null,
@@ -1151,7 +1153,7 @@ export async function GET(request: NextRequest) {
             project:service_request_projects!project_id(id, title, exact_address, location, timeline)
           )
         `)
-        .eq('volunteer_id', userId)
+        .eq('applicant_user_id', userId)
         .order('updated_at', { ascending: false })
 
       if (view === 'ongoing') {
@@ -1184,7 +1186,7 @@ export async function GET(request: NextRequest) {
             .from('service_request_applications')
             .select(`
               *,
-              volunteer:users!volunteer_id(id, name, email, user_type),
+              volunteer:users!applicant_user_id(id, name, email, user_type),
               request:service_requests!service_request_id(id, title, status, category, location, timeline, urgency_level, estimated_budget, beneficiary_count, project:service_request_projects!project_id(id, title, exact_address, location, timeline))
             `)
             .in('service_request_id', requestIds)
@@ -1436,11 +1438,11 @@ export async function POST(request: NextRequest) {
 
       const { data: inviteProjectRow } = await supabase
         .from('service_request_projects')
-        .select('valid_until, timeline, selected_lead_ngo_id')
+        .select('valid_until, timeline, lead_ngo_user_id')
         .eq('id', projectId)
         .maybeSingle()
 
-      if (Number(inviteProjectRow?.selected_lead_ngo_id || 0) > 0) {
+      if (getProjectLeadNgoId(inviteProjectRow) > 0) {
         return NextResponse.json({
           error: 'A lead NGO is already assigned to this project. Additional invites are not allowed.'
         }, { status: 409 })
@@ -1714,7 +1716,7 @@ export async function PUT(request: NextRequest) {
         try {
           const { error: updateProjectError } = await supabase
             .from('service_request_projects')
-            .update({ selected_lead_ngo_id: userId, assignment_status: 'lead_selected', updated_at: new Date().toISOString() })
+            .update({ ...buildProjectLeadNgoPatch(userId), assignment_status: 'lead_selected', updated_at: new Date().toISOString() })
             .eq('id', projectId)
 
           if (updateProjectError) {
@@ -1984,7 +1986,7 @@ export async function PUT(request: NextRequest) {
 
       if (decision === 'accepted') {
         projectUpdate.status = 'in_progress'
-        projectUpdate.selected_lead_ngo_id = userId
+        Object.assign(projectUpdate, buildProjectLeadNgoPatch(userId))
         projectUpdate.assigned_company_user_id = companyId
         projectUpdate.assignment_status = 'accepted'
       } else if (decision === 'rejected') {
@@ -2107,7 +2109,7 @@ export async function PUT(request: NextRequest) {
             .from('service_request_projects')
             .update({
               status: 'in_progress',
-              selected_lead_ngo_id: userId,
+              ...buildProjectLeadNgoPatch(userId),
               assigned_company_user_id: companyId,
               assignment_status: 'accepted',
               updated_at: new Date().toISOString()
@@ -2136,7 +2138,7 @@ export async function PUT(request: NextRequest) {
               .from('service_request_projects')
               .update({
                 status: 'in_progress',
-                selected_lead_ngo_id: userId,
+                ...buildProjectLeadNgoPatch(userId),
                 assignment_status: 'accepted',
                 updated_at: new Date().toISOString()
               })
