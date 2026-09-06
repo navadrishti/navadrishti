@@ -1,4 +1,4 @@
-export type EngagementApplicationTable = 'service_clients' | 'service_volunteers'
+export type EngagementApplicationTable = 'service_clients' | 'service_request_applications'
 
 export type AttendancePaymentStatus = 'pending' | 'billed' | 'paid' | 'waived'
 export interface InvitationMeta {

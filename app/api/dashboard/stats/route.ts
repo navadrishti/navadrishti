@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
         const [serviceVolunteers, serviceHires] = await Promise.all([
           serviceRequestIds.length > 0 ? 
             supabase
-              .from('service_volunteers')
+              .from('service_request_applications')
               .select('id, status, service_request_id')
               .in('service_request_id', serviceRequestIds) :
             Promise.resolve({ data: [] }),
@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
             .eq('client_id', userId),
           
           supabase
-            .from('service_volunteers')
+            .from('service_request_applications')
             .select('id, status')
             .eq('volunteer_id', userId)
         ]);
@@ -120,7 +120,7 @@ export async function GET(request: NextRequest) {
       try {
         const [volunteerApplications, serviceHires] = await Promise.all([
           supabase
-            .from('service_volunteers')
+            .from('service_request_applications')
             .select('id, status')
             .eq('volunteer_id', userId),
           

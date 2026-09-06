@@ -90,6 +90,7 @@ export async function POST(request: NextRequest) {
         budget_breakdown: campaign.budget_breakdown ?? {},
         schedule_vii: campaign.schedule_vii ?? (category || null),
         sdg_alignment: campaign.sdg_alignment ?? [],
+        lead_ngo_user_id: leadNgoId,
         impact_metrics: nextImpact,
         milestones: campaign.milestones ?? [],
         start_date: campaign.start_date ?? null,

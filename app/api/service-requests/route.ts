@@ -332,7 +332,7 @@ export async function GET(request: NextRequest) {
     let serviceRequests;
     if (view === 'my-responses' && authenticatedUserId) {
       // For volunteering view, get service requests where user has applied
-      const volunteerApplications = await db.serviceVolunteers.getByVolunteerId(authenticatedUserId);
+      const volunteerApplications = await db.serviceRequestApplications.getByVolunteerId(authenticatedUserId);
       const requestIds = volunteerApplications.map(app => app.service_request_id);
       
       if (requestIds.length === 0) {
@@ -533,7 +533,7 @@ export async function GET(request: NextRequest) {
 
           try {
             const { data: acceptedVolunteers, error: countError } = await supabase
-              .from('service_volunteers')
+              .from('service_request_applications')
               .select('id')
               .eq('service_request_id', request.id)
               .in('status', ['accepted', 'active', 'completed']);
@@ -956,7 +956,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Check if already volunteering using Supabase helper
-      const existing = await db.serviceVolunteers.findExisting(serviceRequestId, userId);
+      const existing = await db.serviceRequestApplications.findExisting(serviceRequestId, userId);
 
       if (existing) {
         return NextResponse.json({ error: 'Already volunteering for this request' }, { status: 400 });
@@ -973,7 +973,7 @@ export async function POST(request: NextRequest) {
         updated_at: new Date().toISOString()
       };
 
-      await db.serviceVolunteers.create(volunteerData);
+      await db.serviceRequestApplications.create(volunteerData);
 
       return NextResponse.json({
         success: true,

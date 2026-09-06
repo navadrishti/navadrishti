@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     for (const request of requests) {
       // Get all volunteers for this request
       const { data: volunteers } = await supabase
-        .from('service_volunteers')
+        .from('service_request_applications')
         .select('status')
         .eq('service_request_id', request.id);
 

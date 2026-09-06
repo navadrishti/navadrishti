@@ -90,10 +90,9 @@ async function processNgoDocumentExpiryJobs(now = new Date()) {
  * 
  * Performs:
  * 1. Auto-rejection of expired service offers (pending > 5 days)
- * 2. Hashtag cleanup (removes inactive hashtags, updates trending)
- * 3. Expire projects and their needs
- * 4. CSR capability daily compliance / Delhivery sync
- * 5. Drop expired optional CA compliance tags (12A / 80G / CSR-1 / FCRA). Never unverify.
+ * 2. Expire projects and their needs
+ * 3. CSR capability daily compliance / Delhivery sync
+ * 4. Drop expired optional CA compliance tags (12A / 80G / CSR-1 / FCRA). Never unverify.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -233,97 +232,7 @@ export async function GET(request: NextRequest) {
     } else {
     }
 
-    // ========== TASK 2: HASHTAG CLEANUP ==========
-    
-    const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const yesterday = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000);
-
-    const { data: allHashtags, error: hashtagFetchError } = await supabase
-      .from('hashtags')
-      .select('*');
-
-    const hashtagStats = {
-      total: allHashtags?.length || 0,
-      removed: 0,
-      updated: 0,
-      trendingUpdated: 0
-    };
-
-    if (hashtagFetchError) {
-      console.error('Error fetching hashtags:', hashtagFetchError);
-    } else if (allHashtags && allHashtags.length > 0) {
-      for (const hashtag of allHashtags) {
-        const { data: recentPosts, error: postsError } = await supabase
-          .from('posts')
-          .select('content, created_at')
-          .gte('created_at', yesterday.toISOString());
-
-        if (postsError) {
-          console.warn(`Error fetching posts for ${hashtag.tag}:`, postsError);
-          continue;
-        }
-
-        const hashtagRegex = new RegExp(`#${hashtag.tag}\\b`, 'gi');
-        let dailyMentions = 0;
-
-        for (const post of recentPosts || []) {
-          const matches = post.content.match(hashtagRegex);
-          dailyMentions += matches ? matches.length : 0;
-        }
-
-        if (dailyMentions === 0) {
-          const { error: deleteError } = await supabase
-            .from('hashtags')
-            .delete()
-            .eq('id', hashtag.id);
-
-          if (!deleteError) {
-            hashtagStats.removed++;
-          }
-        } else {
-          const { error: updateError } = await supabase
-            .from('hashtags')
-            .update({
-              daily_mentions: dailyMentions,
-              updated_at: now.toISOString()
-            })
-            .eq('id', hashtag.id);
-
-          if (!updateError) {
-            hashtagStats.updated++;
-          }
-        }
-      }
-
-      // Update trending rankings
-      const { data: topHashtags, error: topError } = await supabase
-        .from('hashtags')
-        .select('id, tag, daily_mentions, trending_score')
-        .gt('daily_mentions', 0)
-        .order('trending_score', { ascending: false })
-        .order('daily_mentions', { ascending: false })
-        .limit(5);
-
-      if (!topError) {
-        await supabase.from('hashtags').update({ is_trending: false });
-
-        if (topHashtags && topHashtags.length > 0) {
-          const topIds = topHashtags.map(h => h.id);
-          const { error: trendingError } = await supabase
-            .from('hashtags')
-            .update({ is_trending: true })
-            .in('id', topIds);
-
-          if (!trendingError) {
-            hashtagStats.trendingUpdated = topHashtags.length;
-          }
-        }
-      }
-    }
-
-
-    // ========== TASK 3: EXPIRE PROJECTS AND THEIR NEEDS ==========
+    // ========== TASK 2: EXPIRE PROJECTS AND THEIR NEEDS ==========
     try {
       const nowIso = new Date().toISOString();
       const { data: expiredProjects, error: expiredProjectsError } = await supabase
@@ -433,7 +342,6 @@ export async function GET(request: NextRequest) {
           }))
         },
         documentExpiry: documentExpiryStats,
-        hashtagCleanup: hashtagStats,
         csrDelhiverySync: csrDelhiverySyncStats,
         csrCapabilityCompliance: csrComplianceStats,
       }

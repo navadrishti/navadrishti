@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
 import { CSR_ELIGIBILITY_REQUIRED_MESSAGE, CSR_TIMELINE_COVERAGE_REQUIRED_MESSAGE, CSR_WORK_END_DATE_REQUIRED_MESSAGE } from '@/lib/auth'
 import { getAuthUserFromRequest, assertUserType, ngoUserIsCsrEligible, assertNgoCsr1CoversWork } from '@/lib/server-auth'
+import { buildCampaignLeadNgoPatch, getCampaignLeadNgoId } from '@/lib/campaign-volunteer-attendance'
 
 function normalizeInvites(raw: unknown) {
   if (!Array.isArray(raw)) return []
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest) {
 
     const impact = campaign.impact_metrics && typeof campaign.impact_metrics === 'object' ? campaign.impact_metrics : {}
     const status = String(campaign.status || '').toLowerCase()
-    const selectedLead = Number(impact.selected_lead_ngo_id || 0)
+    const selectedLead = getCampaignLeadNgoId(campaign)
     const invites = normalizeInvites(impact.lead_ngo_invites)
     const inviteForUser = invites.find((invite) => invite.ngo_id === user.id)
     const actionableInvite = inviteForUser && ['invited', 'pending', 'pending_acceptance', 'awaiting_acceptance', 'offered', 'assigned'].includes(inviteForUser.status)
@@ -85,9 +86,15 @@ export async function POST(request: NextRequest) {
         lead_ngo_accepted_at: new Date().toISOString(),
       }
 
+      const leadPatch = buildCampaignLeadNgoPatch(user.id, newImpact)
+
       const { data: updated, error: updateErr } = await supabase
         .from('campaigns')
-        .update({ impact_metrics: newImpact, updated_at: new Date().toISOString() })
+        .update({
+          lead_ngo_user_id: leadPatch.lead_ngo_user_id,
+          impact_metrics: leadPatch.impact_metrics,
+          updated_at: new Date().toISOString(),
+        })
         .eq('id', campaignId)
         .select('*')
         .single()

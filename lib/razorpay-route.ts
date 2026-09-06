@@ -982,7 +982,7 @@ export async function removeLegacyGeneralSupportRequests(): Promise<{
         .update({ service_request_id: null, updated_at: new Date().toISOString() })
         .eq('service_request_id', id);
 
-      await supabase.from('service_volunteers').delete().eq('service_request_id', id);
+      await supabase.from('service_request_applications').delete().eq('service_request_id', id);
       await supabase.from('service_request_contributions').delete().eq('service_request_id', id);
 
       const { error: deleteError } = await supabase.from('service_requests').delete().eq('id', id);
@@ -1070,7 +1070,7 @@ export async function createNgoNetworkDonationOrder(params: {
   await supabase.from('razorpay_payment_orders').upsert(
     {
       service_request_id: null,
-      volunteer_assignment_id: null,
+      application_id: null,
       contribution_id: null,
       payer_user_id: params.contributorId,
       ngo_user_id: params.ngoUserId,
@@ -1176,7 +1176,7 @@ export async function verifyNgoNetworkDonation(params: {
   await supabase.from('razorpay_payment_orders').upsert(
     {
       service_request_id: null,
-      volunteer_assignment_id: null,
+      application_id: null,
       contribution_id: null,
       payer_user_id: params.contributorId,
       ngo_user_id: params.ngoUserId,

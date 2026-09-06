@@ -4,12 +4,14 @@ import { NextRequest } from 'next/server';
 import { comparePassword, getCaBadgeNumber, hashPassword, JWT_SECRET } from '@/lib/auth';
 import { supabase } from '@/lib/db';
 
-/**
- * Wire/DB identifiers kept stable so existing CA sessions and rows keep working.
- * Do not rename these without an explicit migration.
- */
 export const PLATFORM_CA_COOKIE = 'navadrishti-ca-token';
-export const PLATFORM_CA_ACCOUNTS_TABLE = 'navadrishti_ca_accounts';
+/**
+ * Platform KYC CA accounts table (renamed from navadrishti_ca_accounts).
+ * Apply reference/migrations/2026_schema_streamline.sql before relying on this name in staging.
+ */
+export const PLATFORM_CA_ACCOUNTS_TABLE = 'platform_ca_accounts';
+/** @deprecated Legacy name — only for cutover diagnostics */
+export const PLATFORM_CA_ACCOUNTS_TABLE_LEGACY = 'navadrishti_ca_accounts';
 const CA_BADGE_SALT_PREFIX = 'navadrishti-ca-badge';
 
 export function issueCaBadgeNumber(userId: number, profileData?: unknown): string {

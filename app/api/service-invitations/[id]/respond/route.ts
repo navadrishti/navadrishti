@@ -68,9 +68,9 @@ async function createApplicationFromInvitation(invitation: any, userId: number) 
       }
     };
 
-    const { data, error } = await supabase.from('service_volunteers').insert(payload).select('*').single();
+    const { data, error } = await supabase.from('service_request_applications').insert(payload).select('*').single();
     if (error) throw error;
-    return { table: 'service_volunteers', row: data };
+    return { table: 'service_request_applications', row: data };
   }
 
   if (invitation.target_type === 'service_offer') {

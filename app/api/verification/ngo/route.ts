@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET, getComplianceDocumentUrl, mergeNgoComplianceNumbers, parseSubmittedComplianceNumbers, requireBankStatementDocument, type NgoComplianceNumbers, buildNgoDocumentExpiries, normalizeExpiryDate } from '@/lib/auth';
-
+import { syncActorDocumentsToTable } from '@/lib/verification-documents-db';
 function isValidGSTNumber(gstNumber: string): boolean {
   const gstRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
   return gstRegex.test(gstNumber);
@@ -433,6 +433,25 @@ async function initiateNGOVerification(
         verification_status: 'pending'
       })
       .eq('id', userId);
+
+    await syncActorDocumentsToTable({
+      userId,
+      actorType: 'ngo',
+      documents: documents || {},
+      numbers: {
+        twelve_a: mergedComplianceNumbers.twelve_a_number,
+        eighty_g: mergedComplianceNumbers.eighty_g_number,
+        csr1: mergedComplianceNumbers.csr1_registration_number,
+        fcra: entered.fcra_number || existingProfileData.fcra_number || null,
+      },
+      expiries: {
+        twelve_a: entered.twelve_a_expiry || null,
+        eighty_g: entered.eighty_g_expiry || null,
+        csr1: entered.csr1_expiry || null,
+        fcra: entered.fcra_expiry || existingProfileData.fcra_expiry_date || null,
+      },
+      status: 'under_review',
+    });
 
     return NextResponse.json({
       success: true,

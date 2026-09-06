@@ -219,7 +219,7 @@ export async function processAdminRefund(input: ProcessAdminRefundInput) {
     if (existingOrderId) {
       await supabase.from('razorpay_payment_orders').upsert({
         service_request_id: serviceRequestId,
-        volunteer_assignment_id: null,
+        application_id: null,
         contribution_id: null,
         payer_user_id: Number(paymentEntry?.contributor_id || 0) > 0 ? Number(paymentEntry.contributor_id) : (ngoUserId > 0 ? ngoUserId : null),
         ngo_user_id: ngoUserId > 0 ? ngoUserId : Number(paymentEntry?.contributor_id || 0),
