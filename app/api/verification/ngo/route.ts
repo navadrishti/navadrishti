@@ -626,47 +626,26 @@ async function reverifyNGOVerification(
   }
 }
 
-async function mergeNgoTaxVerification(userId: number, patch: Record<string, any>): Promise<Record<string, any>> {
-  const { data: userRow } = await supabase
-    .from('users')
-    .select('profile_data')
-    .eq('id', userId)
-    .single();
-  const profileData = asRecord(userRow?.profile_data);
-  const nextTax = {
-    ...asRecord(profileData.ngo_tax_verification),
-    ...patch,
-  };
-  await supabase
-    .from('users')
-    .update({
-      profile_data: {
-        ...profileData,
-        ngo_tax_verification: nextTax,
-      },
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', userId);
-  return nextTax;
-}
-
 async function verifyGST(userId: number, gstNumber: string) {
   // Validate GST number format
   if (!isValidGSTNumber(gstNumber)) {
     return NextResponse.json({ error: 'Invalid GST number format' }, { status: 400 });
   }
 
-  // ngo_verifications has no gst_* columns — store tax flags in profile_data
-  const tax = await mergeNgoTaxVerification(userId, {
-    gst_number: gstNumber,
-    gst_verified: true,
-    gst_verified_at: new Date().toISOString(),
-  });
+  const { data: currentVerification } = await supabase
+    .from('ngo_verifications')
+    .select('pan_verified')
+    .eq('user_id', userId)
+    .single();
 
-  const newStatus = tax.pan_verified ? 'verified' : 'pending';
+  const newStatus = currentVerification?.pan_verified ? 'verified' : 'pending';
+
   await supabase
     .from('ngo_verifications')
     .update({
+      gst_number: gstNumber,
+      gst_verified: true,
+      gst_verified_at: new Date().toISOString(),
       verification_status: newStatus,
       updated_at: new Date().toISOString(),
     })
@@ -684,23 +663,32 @@ async function verifyNGOPAN(userId: number, panNumber: string) {
     return NextResponse.json({ error: 'Invalid PAN number format' }, { status: 400 });
   }
 
-  // ngo_verifications has no pan_* columns — store tax flags in profile_data
-  const tax = await mergeNgoTaxVerification(userId, {
-    pan_number: panNumber,
-    pan_verified: true,
-    pan_verified_at: new Date().toISOString(),
-  });
+  const { data: currentVerification } = await supabase
+    .from('ngo_verifications')
+    .select('gst_verified')
+    .eq('user_id', userId)
+    .single();
 
-  const newStatus = tax.gst_verified ? 'verified' : 'pending';
+  const newStatus = currentVerification?.gst_verified ? 'verified' : 'pending';
+
   await supabase
     .from('ngo_verifications')
     .update({
+      pan_number: panNumber,
+      pan_verified: true,
+      pan_verified_at: new Date().toISOString(),
       verification_status: newStatus,
       updated_at: new Date().toISOString(),
     })
     .eq('user_id', userId);
 
-  if (tax.gst_verified && tax.pan_verified) {
+  const { data: verification } = await supabase
+    .from('ngo_verifications')
+    .select('gst_verified, pan_verified')
+    .eq('user_id', userId)
+    .single();
+
+  if (verification?.gst_verified && verification?.pan_verified) {
     await supabase
       .from('users')
       .update({
@@ -758,6 +746,7 @@ export async function GET(req: NextRequest) {
     const profileData = (userRow?.profile_data && typeof userRow.profile_data === 'object')
       ? userRow.profile_data
       : {};
+    // Prefer table columns; fall back to interim profile mirror until pass-4 SQL is applied
     const tax = asRecord((profileData as Record<string, unknown>).ngo_tax_verification);
     // users.verification_status is the admin override — if admin explicitly downgraded,
     // that wins regardless of what the ngo_verifications table says.
@@ -770,14 +759,14 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       verified: effectiveStatus === 'verified',
-      gstVerified: Boolean(tax.gst_verified || verification.gst_verified),
-      panVerified: Boolean(tax.pan_verified || verification.pan_verified),
+      gstVerified: Boolean(verification.gst_verified ?? tax.gst_verified),
+      panVerified: Boolean(verification.pan_verified ?? tax.pan_verified),
       organizationName: verification.ngo_name,
       registrationNumber: verification.registration_number,
       registrationType: verification.registration_type,
       status: effectiveStatus,
       verification_status: effectiveStatus,
-      reverification_pending: Boolean(profileData.reverification_pending),
+      reverification_pending: Boolean((profileData as Record<string, unknown>).reverification_pending),
       verifiedAt: verification.verification_date,
       fcraNumber: verification.fcra_number
     });
