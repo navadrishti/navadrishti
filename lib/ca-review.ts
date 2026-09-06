@@ -348,7 +348,7 @@ function applyNgoExpiryOverlay(
   item: Record<string, any>,
   documents: CAReviewDocument[],
   persistedOcrExpiries?: Record<string, unknown>
-) {
+): Record<string, any> {
   const merged = {
     ...asRecord(persistedOcrExpiries),
     ...ngoOcrExpiries(documents),
@@ -397,7 +397,7 @@ function extractDocuments(profileData: Record<string, any>, profileKey: string, 
   return docs
 }
 
-function mapQueueItem(type: CAQueueType, row: any) {
+function mapQueueItem(type: CAQueueType, row: any): Record<string, any> {
   const user = unwrapUser(row.users)
   const profileData = asRecord(user.profile_data)
   const profileKey = TYPE_CONFIG[type].profileKey
@@ -700,15 +700,24 @@ export async function applyCAVerificationAction(options: {
         ? 'id, user_id, ngo_name'
         : 'id, user_id'
 
-  const { data: row, error: fetchError } = await supabase
+  type VerificationActionRow = {
+    id: number
+    user_id: number
+    company_name?: string
+    ngo_name?: string
+  }
+
+  const { data: rowData, error: fetchError } = await supabase
     .from(table)
     .select(rowSelect)
     .eq('id', id)
     .single()
 
-  if (fetchError || !row) {
+  if (fetchError || !rowData) {
     throw new Error('Verification record not found')
   }
+
+  const row = rowData as unknown as VerificationActionRow
 
   const { data: user, error: userError } = await supabase
     .from('users')

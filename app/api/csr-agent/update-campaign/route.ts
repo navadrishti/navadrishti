@@ -187,7 +187,7 @@ export async function PUT(req: Request) {
           return NextResponse.json({ error: coverageGate.error }, { status: 403 });
         }
       } else if (pendingInviteIds.length > 0) {
-        for (const ngoId of [...new Set(pendingInviteIds)]) {
+        for (const ngoId of [...new Set(pendingInviteIds as number[])]) {
           const coverageGate = await assertNgoCsr1CoversWork(ngoId, campaign.end_date);
           if (!coverageGate.ok) {
             return NextResponse.json(
