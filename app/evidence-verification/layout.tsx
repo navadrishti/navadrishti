@@ -7,7 +7,7 @@ import {
   getLaunchBlockedRedirectPath,
   isLaunchBlockedPath,
 } from '@/lib/access-control';
-import { clearConsoleTabSession, hasConsoleTabSession } from '@/lib/utils';
+import { ConsoleAuthPendingScreen, useConsoleAuthGate } from '@/lib/console-auth-gate';
 
 export default function EvidenceVerificationLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -16,44 +16,17 @@ export default function EvidenceVerificationLayout({ children }: { children: Rea
   const isPublicRoute =
     pathname === '/evidence-verification/login' || pathname === '/evidence-verification/change-password';
 
+  const authState = useConsoleAuthGate({
+    isPublicRoute: launchBlocked || isPublicRoute,
+    tabSessionKey: 'evidence_verification_tab_session',
+    verifyUrl: '/api/evidence-verification/verify',
+    loginPath: '/evidence-verification/login',
+  });
+
   useEffect(() => {
     if (!launchBlocked) return;
     router.replace(getLaunchBlockedRedirectPath(pathname || '/evidence-verification'));
   }, [launchBlocked, pathname, router]);
-
-  useEffect(() => {
-    if (launchBlocked || isPublicRoute) return;
-
-    let cancelled = false;
-
-    const checkAccess = async () => {
-      try {
-        if (!hasConsoleTabSession('evidence_verification_tab_session')) {
-          if (!cancelled) router.replace('/evidence-verification/login');
-          return;
-        }
-
-        const response = await fetch('/api/evidence-verification/verify', {
-          method: 'GET',
-          credentials: 'include',
-          cache: 'no-store',
-        });
-
-        if (!response.ok) {
-          clearConsoleTabSession('evidence_verification_tab_session');
-          if (!cancelled) router.replace('/evidence-verification/login');
-        }
-      } catch {
-        if (!cancelled) router.replace('/evidence-verification/login');
-      }
-    };
-
-    void checkAccess();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isPublicRoute, launchBlocked, pathname, router]);
 
   if (launchBlocked) {
     return (
@@ -66,11 +39,21 @@ export default function EvidenceVerificationLayout({ children }: { children: Rea
     );
   }
 
+  if (isPublicRoute) {
+    return (
+      <div className="flex min-h-screen flex-col">
+        <div className="flex flex-1 flex-col bg-background">{children}</div>
+      </div>
+    );
+  }
+
+  if (authState !== 'authed') {
+    return <ConsoleAuthPendingScreen />;
+  }
+
   return (
     <div className="flex min-h-screen flex-col">
-      <div className="flex flex-1 flex-col bg-background">
-        {children}
-      </div>
+      <div className="flex flex-1 flex-col bg-background">{children}</div>
     </div>
   );
 }
