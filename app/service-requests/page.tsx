@@ -697,7 +697,6 @@ function ServiceRequestsContent() {
                   tags={request.tags}
                   created_at={request.created_at}
                   urgency_level={request.urgency_level}
-                  priority={request.priority}
                   volunteers_needed={request.volunteers_needed}
                   timeline={request.timeline}
                   deadline={request.deadline}

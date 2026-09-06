@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, getApplicationApplicantUserId, supabase, applyVolunteerAcceptanceAllocation } from '@/lib/db';
+import { db, getApplicationApplicantUserId, shapeApplicationForApi, supabase, applyVolunteerAcceptanceAllocation } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '@/lib/auth';
 import {
@@ -74,20 +74,25 @@ export async function PUT(
       return NextResponse.json({ error: 'You can only update volunteers for your own requests' }, { status: 403 });
     }
 
-    if (userType === 'individual' && volId !== userId) {
-      return NextResponse.json({ error: 'You can only update your own application' }, { status: 403 });
-    }
-
-    // Find the volunteer application by its ID
-    const { data: volunteerApplication, error } = await supabase
+    // Find the volunteer application by its ID (include fulfillment row)
+    const { data: rawApplication, error } = await supabase
       .from('service_request_applications')
-      .select('*')
+      .select(`
+        *,
+        fulfillment:service_request_fulfillments!application_id(*)
+      `)
       .eq('id', volId)
       .eq('service_request_id', requestId)
       .single();
 
+    const volunteerApplication = shapeApplicationForApi(rawApplication);
+
     if (error || !volunteerApplication) {
       return NextResponse.json({ error: 'Volunteer not found for this request' }, { status: 404 });
+    }
+
+    if (userType === 'individual' && getApplicationApplicantUserId(volunteerApplication) !== userId) {
+      return NextResponse.json({ error: 'You can only update your own application' }, { status: 403 });
     }
 
     const commentText = typeof decisionComment === 'string' ? decisionComment.trim() : '';
@@ -187,15 +192,9 @@ export async function PUT(
       updatePayload.completion_note = completionNote || volunteerApplication.completion_note || null
     }
 
-    const { data: updatedVolunteer, error: updateError } = await supabase
-      .from('service_request_applications')
-      .update(updatePayload)
-      .eq('id', volId)
-      .eq('service_request_id', requestId)
-      .select('*')
-      .single();
+    const updatedVolunteer = await db.serviceRequestApplications.update(volId, updatePayload);
 
-    if (updateError || !updatedVolunteer) {
+    if (!updatedVolunteer) {
       return NextResponse.json({ error: 'Failed to update volunteer status' }, { status: 500 });
     }
 

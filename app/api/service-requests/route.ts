@@ -190,7 +190,7 @@ function getListingUrgency(item: any): 'low' | 'medium' | 'high' | 'critical' {
   return getRequestUrgencyLevel({
     createdAt: item?.created_at,
     deadline: resolveListingDeadline(item),
-    fallback: item?.urgency_level || item?.priority || 'medium',
+    fallback: item?.urgency_level || 'medium',
   });
 }
 
@@ -543,7 +543,7 @@ export async function GET(request: NextRequest) {
             }
 
             const acceptedCount = Array.isArray(acceptedVolunteers) ? acceptedVolunteers.length : 0;
-            const volunteerLimit = request.volunteer_limit || request.volunteers_needed || 1;
+            const volunteerLimit = request.volunteers_needed || 1;
             const isFull = acceptedCount >= volunteerLimit;
 
             return {
@@ -969,7 +969,7 @@ export async function POST(request: NextRequest) {
         volunteer_type: userType,
         message: message || '',
         status: 'pending',
-        created_at: new Date().toISOString(),
+        applied_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
 
