@@ -1116,6 +1116,7 @@ type NgoNeedDashboardItem = {
   title: string;
   status?: string;
   category?: string;
+  request_type?: string | null;
   location?: string;
   beneficiary_count?: number | null;
   target_quantity?: number | null;

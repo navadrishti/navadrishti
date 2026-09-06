@@ -1439,14 +1439,18 @@ export default function AdminPage() {
     const reverificationIds = new Set(reverificationItems.map((item) => item.user_id));
 
     if (usersResponse.ok && usersData?.success) {
-      const nextUsers = (Array.isArray(usersData.users) ? usersData.users : []).map((item: AdminUserItem) => ({
-        ...item,
-        reverification_pending: reverificationIds.has(item.id),
-      }));
+      const nextUsers: AdminUserItem[] = (Array.isArray(usersData.users) ? usersData.users : []).map(
+        (item: AdminUserItem) => ({
+          ...item,
+          reverification_pending: reverificationIds.has(item.id),
+        })
+      );
       setAdminUsers(nextUsers);
-      setSelectedUser((current) => current?.id === userId
-        ? nextUsers.find((item) => item.id === userId) || current
-        : current);
+      setSelectedUser((current) =>
+        current?.id === userId
+          ? nextUsers.find((user) => user.id === userId) || current
+          : current
+      );
     }
 
     setSelectedReverification(null);

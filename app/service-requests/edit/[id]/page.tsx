@@ -96,7 +96,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [loadingProjects, setLoadingProjects] = useState(false)
-  const [projectMode] = useState<'existing'>('existing')
+  const [projectMode] = useState<'existing' | 'new'>('existing')
   const [projectAvailableForCsr, setProjectAvailableForCsr] = useState(true)
   const [projects, setProjects] = useState<RequestProject[]>([])
   const [additionalNeeds, setAdditionalNeeds] = useState<NeedDraft[]>([])
@@ -113,6 +113,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
     project_category: '',
     title: '',
     description: '',
+    images: '',
     request_type: '',
     category: '',
     location: '',

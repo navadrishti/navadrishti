@@ -167,9 +167,9 @@ async function initiateCompanyVerification(
       actorType: 'company',
       documents: documents || {},
       numbers: {
-        gst: entered?.gst_number || null,
+        gst: entered?.gst || null,
         cin: entered?.registration_number || entered?.cin || null,
-        pan: entered?.pan_number || null,
+        pan: entered?.pan || null,
       },
       status: 'under_review',
     });

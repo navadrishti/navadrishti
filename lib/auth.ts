@@ -1340,7 +1340,9 @@ export function normalizePastProjects(value: unknown): NgoPastProject[] {
         return {
           title,
           description,
-          source: record.source === 'platform' ? 'platform' : 'registration',
+          source: (record.source === 'platform' ? 'platform' : 'registration') as
+            | 'registration'
+            | 'platform',
           category: readNgoTextField(record.category),
           location: readNgoTextField(record.location || record.exact_address),
           timeline: readNgoTextField(record.timeline),

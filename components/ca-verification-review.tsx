@@ -3,24 +3,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
-import { certificateExpiryCopy } from '@/lib/auth'
+import { certificateExpiryCopy, type CaComplianceTagOption } from '@/lib/auth'
 import { ComplianceBadge, type ComplianceBadgeKind } from '@/components/verification-badge'
-
-type CAReviewDocument = {
-  label: string
-  url?: string
-  file_name?: string
-}
-
-type CAFieldComparison = {
-  label?: string
-  status?: 'match' | 'mismatch' | 'incomplete'
-  match?: boolean
-  deviations?: string[]
-  sources?: { origin?: string; document?: string; value?: string }[]
-  input_value?: string
-  document_value?: string
-}
+import type { CAFieldComparison, CAReviewDocument } from '@/lib/ca-review-types'
 
 function complianceTagBadgeKind(key: string): ComplianceBadgeKind | null {
   if (key === 'twelve_a' || key === 'eighty_g' || key === 'csr1' || key === 'fcra') return key
@@ -348,12 +333,7 @@ export function CAVerificationReview({
                   ? 'Tick tags for updated certificates that are present and not expired. CSR funding requires CSR-1.'
                   : 'Tick tags for certificates that are present and not expired. CSR funding requires CSR-1.'}
             </p>
-            {(Array.isArray(item.compliance_tag_options) ? item.compliance_tag_options : []).map((option: {
-              key: string
-              label: string
-              eligible: boolean
-              reason: string
-            }) => {
+            {(Array.isArray(item.compliance_tag_options) ? item.compliance_tag_options : []).map((option: CaComplianceTagOption) => {
               const selected = Array.isArray(complianceTags) && complianceTags.includes(option.key)
               const expiryCopy = certificateExpiryCopy(option.expiry)
               const badgeKind = complianceTagBadgeKind(option.key)

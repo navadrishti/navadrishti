@@ -126,12 +126,12 @@ export default function LandingPage() {
         return;
       }
 
-      const nextItems = Array.isArray(payload.data) ? payload.data : [];
+      const nextItems: NewsletterItem[] = Array.isArray(payload.data) ? payload.data : [];
 
       if (silent) {
         setItems((current) => {
           const existingIds = new Set(current.map((item) => item.id));
-          const incoming = nextItems.filter((item) => !existingIds.has(item.id));
+          const incoming = nextItems.filter((item: NewsletterItem) => !existingIds.has(item.id));
           if (incoming.length === 0) return current;
           loadedCountRef.current = current.length + incoming.length;
           return [...incoming, ...current];

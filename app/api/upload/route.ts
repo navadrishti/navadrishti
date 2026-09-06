@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
       const token = authHeader.substring(7);
       const user = verifyToken(token);
       if (user) {
-        userId = user.id;
+        userId = String(user.id);
       }
     }
 

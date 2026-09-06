@@ -32,10 +32,11 @@ interface ServiceRequest {
   description: string
   urgency_level: 'low' | 'medium' | 'high' | 'critical'
   category: string
+  request_type?: string | null
   location: string
   images?: string[]
   tags?: string[]
-  requirements: string | object
+  requirements: string | Record<string, unknown> | null
   volunteers_needed: number
   timeline: string
   contact_info: string
@@ -68,8 +69,11 @@ interface ServiceRequest {
     status?: string
   }
   status: 'active' | 'in_progress' | 'completed' | 'cancelled'
+  estimated_budget?: string | number | null
   target_amount?: number | null
   current_amount?: number | null
+  target_quantity?: number | null
+  current_quantity?: number | null
   funding_target_inr?: number | null
   funds_raised_inr?: number | null
   funds_remaining_inr?: number | null
@@ -121,6 +125,10 @@ interface ApplicantEntry {
   application_message: string
   status: 'pending' | 'accepted' | 'rejected' | 'active' | 'completed' | 'cancelled'
   applied_at: string
+  fulfillment_amount?: number | null
+  assigned_amount?: number | null
+  fulfillment_quantity?: number | null
+  assigned_quantity?: number | null
   response_meta?: {
     ngo_decision_comment?: string | null
     ngo_decision_at?: string
@@ -189,7 +197,7 @@ type RequestRecord = {
   title: string
   description: string
   images?: string[] | string
-  request_type?: string
+  request_type?: string | null
   category?: string
   timeline?: string
   deadline?: string
@@ -604,7 +612,7 @@ export default function ServiceRequestDetailPage() {
         // Auto-adjust if allocation exceeds remaining
         if (Number(allocationAmount) > remainingAmount) {
           allocationAmount = String(remainingAmount)
-          toast({ title: 'Allocation adjusted', description: `Allocation reduced to remaining amount INR ${remainingAmount}`, variant: 'warning' })
+          toast({ title: 'Allocation adjusted', description: `Allocation reduced to remaining amount INR ${remainingAmount}`, variant: 'default' })
         }
       } else {
         if (!allocationQuantity || Number(allocationQuantity) <= 0) {
@@ -613,7 +621,7 @@ export default function ServiceRequestDetailPage() {
         }
         if (Number(allocationQuantity) > remainingQty) {
           allocationQuantity = String(remainingQty)
-          toast({ title: 'Allocation adjusted', description: `Allocation reduced to remaining quantity ${remainingQty}`, variant: 'warning' })
+          toast({ title: 'Allocation adjusted', description: `Allocation reduced to remaining quantity ${remainingQty}`, variant: 'default' })
         }
       }
     }

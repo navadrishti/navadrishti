@@ -211,7 +211,7 @@ export async function GET(request: NextRequest) {
       safeSelect(
         supabase
           .from('campaigns')
-          .select('id, title, description, location, created_at, company_id, status, end_date, impact_metrics, updated_at')
+          .select('id, title, description, location, created_at, company_id, status, end_date, impact_metrics, lead_ngo_user_id, updated_at')
           .order('created_at', { ascending: false })
           .limit(sourceFetchLimit)
       ),
@@ -254,7 +254,7 @@ export async function GET(request: NextRequest) {
       safeSelect(
         supabase
           .from('campaigns')
-          .select('id, title, description, location, company_id, status, end_date, updated_at, created_at')
+          .select('id, title, description, location, company_id, status, end_date, impact_metrics, lead_ngo_user_id, updated_at, created_at')
           .eq('status', 'completed')
           .order('updated_at', { ascending: false })
           .limit(sourceFetchLimit)
@@ -262,7 +262,7 @@ export async function GET(request: NextRequest) {
       safeSelect(
         supabase
           .from('campaigns')
-          .select('id, title, description, location, company_id, status, impact_metrics, updated_at, created_at')
+          .select('id, title, description, location, company_id, status, impact_metrics, lead_ngo_user_id, updated_at, created_at')
           .eq('impact_metrics->>lead_ngo_accepted', 'true')
           .order('updated_at', { ascending: false })
           .limit(sourceFetchLimit)
