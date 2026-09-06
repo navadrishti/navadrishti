@@ -215,7 +215,9 @@ const PLATFORM_LOGIN_REQUIRED_PREFIXES = [
   '/companies/dashboard',
   '/ngos/dashboard',
   '/companies/csr-agent',
+  '/companies/impact-reports',
   '/ngos/ai-agent',
+  '/ngos/impact-reports',
   '/settings',
   '/verification',
   '/profile',
@@ -431,7 +433,7 @@ export function shouldShowPayoutAccountPanel(
 }
 
 const DASHBOARD_SIDEBAR_ITEM_COUNTS: Record<string, number> = {
-  ngo: 5,
+  ngo: 6,
   company: 6,
   individual: 4,
 };
