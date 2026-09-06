@@ -1,9 +1,8 @@
 // API endpoint for NGO verification (manual document-first flow)
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/db';
+import { db, supabase } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET, getComplianceDocumentUrl, mergeNgoComplianceNumbers, parseSubmittedComplianceNumbers, requireBankStatementDocument, type NgoComplianceNumbers, buildNgoDocumentExpiries, normalizeExpiryDate } from '@/lib/auth';
-import { syncActorDocumentsToTable } from '@/lib/verification-documents-db';
 function isValidGSTNumber(gstNumber: string): boolean {
   const gstRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
   return gstRegex.test(gstNumber);
@@ -434,7 +433,7 @@ async function initiateNGOVerification(
       })
       .eq('id', userId);
 
-    await syncActorDocumentsToTable({
+    await db.verificationDocuments.syncActorDocuments({
       userId,
       actorType: 'ngo',
       documents: documents || {},

@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET, requireBankStatementDocument } from '@/lib/auth';
-import { syncActorDocumentsToTable } from '@/lib/verification-documents-db';
 
 function isValidAadhaarNumber(aadhaarNumber: string): boolean {
   return /^\d{12}$/.test(aadhaarNumber);
@@ -134,7 +133,7 @@ async function initiateVerification(
         verification_status: 'pending'
       });
 
-      await syncActorDocumentsToTable({
+      await db.verificationDocuments.syncActorDocuments({
         userId,
         actorType: 'individual',
         documents: documents || {},
