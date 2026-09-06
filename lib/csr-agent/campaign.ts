@@ -179,7 +179,8 @@ export async function ensureCsrCapabilityRentalDraft(input: {
   const existing = rentals.find((row) => row.id === id);
   if (existing?.payment_status === "paid") return existing;
 
-  const leadNgoId = Number(parseImpactMetrics(campaign.impact_metrics).selected_lead_ngo_id || 0) || null;
+  const leadNgoId =
+    Number(campaign.lead_ngo_user_id || parseImpactMetrics(campaign.impact_metrics).selected_lead_ngo_id || 0) || null;
   const draft: CsrCapabilityRentalRecord = {
     id,
     campaign_id: input.campaignId,
@@ -274,7 +275,8 @@ export async function attachCsrCapabilityAfterPayment(input: {
   if (rental.payment_status === "paid") return rental;
 
   const paidAt = new Date().toISOString();
-  const leadNgoId = Number(parseImpactMetrics(campaign.impact_metrics).selected_lead_ngo_id || 0) || null;
+  const leadNgoId =
+    Number(campaign.lead_ngo_user_id || parseImpactMetrics(campaign.impact_metrics).selected_lead_ngo_id || 0) || null;
 
   const { data: clientRow, error: clientError } = await supabase
     .from("service_clients")

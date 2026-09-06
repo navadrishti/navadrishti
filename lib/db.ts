@@ -145,6 +145,9 @@ export function shapeApplicationForApi(row: Record<string, unknown> | null | und
     ...flatFulfillment,
     applicant_user_id: applicantId || rest.applicant_user_id,
     volunteer_id: applicantId || Number(rest.volunteer_id || 0) || null,
+    // UI alias — DB column is application_message
+    message: rest.application_message ?? rest.message ?? '',
+    application_message: rest.application_message ?? rest.message ?? '',
   }
 }
 
@@ -944,6 +947,7 @@ export const db = {
         ...applicationData,
         application_message: applicationData.application_message ?? applicationData.message ?? '',
         responder_type: applicationData.responder_type ?? applicationData.volunteer_type ?? null,
+        applied_at: applicationData.applied_at ?? applicationData.created_at ?? new Date().toISOString(),
         updated_at: applicationData.updated_at ?? new Date().toISOString()
       });
 
@@ -953,6 +957,11 @@ export const db = {
 
       if ('volunteer_type' in payload) {
         delete payload.volunteer_type;
+      }
+
+      // applications use applied_at (no created_at column)
+      if ('created_at' in payload) {
+        delete payload.created_at;
       }
 
       // Fulfillment columns live on service_request_fulfillments (not applications)

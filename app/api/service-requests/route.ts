@@ -969,7 +969,7 @@ export async function POST(request: NextRequest) {
         volunteer_type: userType,
         message: message || '',
         status: 'pending',
-        created_at: new Date().toISOString(),
+        applied_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
 
