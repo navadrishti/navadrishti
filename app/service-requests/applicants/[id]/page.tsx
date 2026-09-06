@@ -61,7 +61,7 @@ function normalizeVolunteer(raw: any): Volunteer {
 
   return {
     id: Number(raw.id),
-    volunteer_id: Number(raw.volunteer_id),
+  volunteer_id: Number(raw.applicant_user_id ?? raw.volunteer_id),
     volunteer_name: String(volunteer.name || raw.volunteer_name || 'Volunteer'),
     volunteer_email: String(volunteer.email || raw.volunteer_email || ''),
     volunteer_type: (volunteer.user_type || raw.volunteer_type || 'individual') as Volunteer['volunteer_type'],

@@ -965,7 +965,7 @@ export async function POST(request: NextRequest) {
       // Add volunteer using Supabase helper
       const volunteerData = {
         service_request_id: serviceRequestId,
-        volunteer_id: userId,
+        applicant_user_id: userId,
         volunteer_type: userType,
         message: message || '',
         status: 'pending',

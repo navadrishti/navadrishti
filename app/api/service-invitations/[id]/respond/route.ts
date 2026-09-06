@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
-import { supabase } from '@/lib/db';
+import { normalizeApplicationApplicantFields, supabase } from '@/lib/db';
 import { JWT_SECRET } from '@/lib/auth';
 import {
   buildAssignmentMeta,
@@ -43,9 +43,9 @@ async function createApplicationFromInvitation(invitation: any, userId: number) 
 
   if (invitation.target_type === 'service_request') {
     const requestId = Number(meta.service_request_id || invitation.target_id);
-    const payload = {
+    const payload = normalizeApplicationApplicantFields({
       service_request_id: requestId,
-      volunteer_id: userId,
+      applicant_user_id: userId,
       application_message: invitation.message || '',
       status: 'pending',
       application_source: source,
@@ -66,7 +66,7 @@ async function createApplicationFromInvitation(invitation: any, userId: number) 
         accepted_via_invite: true,
         ...meta
       }
-    };
+    });
 
     const { data, error } = await supabase.from('service_request_applications').insert(payload).select('*').single();
     if (error) throw error;
