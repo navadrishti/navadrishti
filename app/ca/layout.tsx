@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Menu, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -14,9 +14,8 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
-import { cn, finalizeConsoleLogout } from '@/lib/utils';
+import { cn, finalizeConsoleLogout, hasConsoleTabSession, clearConsoleTabSession } from '@/lib/utils';
 import { ProductBrand } from '@/components/product-brand';
-import { ConsoleAuthPendingScreen, useConsoleAuthGate } from '@/lib/console-auth-gate';
 
 const navItems = [
   { label: 'Dashboard', href: '/ca' },
@@ -25,17 +24,57 @@ const navItems = [
 
 export default function CALayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const isLoginRoute = pathname === '/ca/login';
   const isChangePasswordRoute = pathname === '/ca/change-password';
   const isPublicRoute = isLoginRoute || isChangePasswordRoute;
 
-  const authState = useConsoleAuthGate({
-    isPublicRoute,
-    tabSessionKey: 'ca_tab_session',
-    verifyUrl: '/api/ca/auth/verify',
-    loginPath: '/ca/login',
+  const [ready, setReady] = useState(() => {
+    if (isPublicRoute) return true;
+    if (typeof window === 'undefined') return false;
+    return false;
   });
+
+  useEffect(() => {
+    if (isPublicRoute) {
+      setReady(true);
+      return;
+    }
+
+    let cancelled = false;
+
+    const checkAccess = async () => {
+      try {
+        if (!hasConsoleTabSession('ca_tab_session')) {
+          if (!cancelled) router.replace('/ca/login');
+          return;
+        }
+
+        const response = await fetch('/api/ca/auth/verify', {
+          method: 'GET',
+          credentials: 'include',
+          cache: 'no-store',
+        });
+
+        if (!response.ok) {
+          clearConsoleTabSession('ca_tab_session');
+          if (!cancelled) router.replace('/ca/login');
+          return;
+        }
+
+        if (!cancelled) setReady(true);
+      } catch {
+        if (!cancelled) router.replace('/ca/login');
+      }
+    };
+
+    void checkAccess();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isPublicRoute, router]);
 
   useEffect(() => {
     setMobileMenuOpen(false);
@@ -75,8 +114,9 @@ export default function CALayout({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
   }
 
-  if (authState !== 'authed') {
-    return <ConsoleAuthPendingScreen />;
+  // Blank until auth — avoids sidebar/skeleton flash before login
+  if (!ready) {
+    return <div className="min-h-screen bg-background" aria-hidden="true" />;
   }
 
   return (

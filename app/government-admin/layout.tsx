@@ -14,12 +14,11 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import { ProductBrand } from '@/components/product-brand';
-import { cn, finalizeConsoleLogout } from '@/lib/utils';
+import { cn, finalizeConsoleLogout, hasConsoleTabSession, clearConsoleTabSession } from '@/lib/utils';
 import {
   getLaunchBlockedRedirectPath,
   isLaunchBlockedPath,
 } from '@/lib/access-control';
-import { ConsoleAuthPendingScreen, useConsoleAuthGate } from '@/lib/console-auth-gate';
 
 const navItems = [
   { label: 'Dashboard', href: '/government-admin' },
@@ -35,22 +34,56 @@ export default function GovernmentAdminLayout({
   const pathname = usePathname();
   const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [ready, setReady] = useState(false);
   const launchBlocked = isLaunchBlockedPath(pathname || '/government-admin');
   const isPublicRoute =
     pathname === '/government-admin/login' ||
     pathname === '/government-admin/change-password';
 
-  const authState = useConsoleAuthGate({
-    isPublicRoute: launchBlocked || isPublicRoute,
-    tabSessionKey: 'govt_admin_tab_session',
-    verifyUrl: '/api/government-admin/verify',
-    loginPath: '/government-admin/login',
-  });
-
   useEffect(() => {
     if (!launchBlocked) return;
     router.replace(getLaunchBlockedRedirectPath(pathname || '/government-admin'));
   }, [launchBlocked, pathname, router]);
+
+  useEffect(() => {
+    if (launchBlocked || isPublicRoute) {
+      setReady(true);
+      return;
+    }
+
+    let cancelled = false;
+
+    const checkAccess = async () => {
+      try {
+        if (!hasConsoleTabSession('govt_admin_tab_session')) {
+          if (!cancelled) router.replace('/government-admin/login');
+          return;
+        }
+
+        const response = await fetch('/api/government-admin/verify', {
+          method: 'GET',
+          credentials: 'include',
+          cache: 'no-store',
+        });
+
+        if (!response.ok) {
+          clearConsoleTabSession('govt_admin_tab_session');
+          if (!cancelled) router.replace('/government-admin/login');
+          return;
+        }
+
+        if (!cancelled) setReady(true);
+      } catch {
+        if (!cancelled) router.replace('/government-admin/login');
+      }
+    };
+
+    void checkAccess();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isPublicRoute, launchBlocked, router]);
 
   useEffect(() => {
     setMobileMenuOpen(false);
@@ -90,8 +123,8 @@ export default function GovernmentAdminLayout({
     return <>{children}</>;
   }
 
-  if (authState !== 'authed') {
-    return <ConsoleAuthPendingScreen />;
+  if (!ready) {
+    return <div className="min-h-screen bg-background" aria-hidden="true" />;
   }
 
   return (

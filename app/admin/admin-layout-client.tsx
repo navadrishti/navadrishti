@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import {
   Sheet,
@@ -15,9 +15,8 @@ import {
 } from '@/components/ui/sheet';
 import { AdminPortalMain, AdminPortalShell } from '@/components/evidence-verification/portal-ui';
 import { Menu, RefreshCw, X } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, finalizeConsoleLogout, hasConsoleTabSession, clearConsoleTabSession } from '@/lib/utils';
 import { ProductBrand } from '@/components/product-brand';
-import { ConsoleAuthPendingScreen, useConsoleAuthGate } from '@/lib/console-auth-gate';
 
 export { AdminPortalMain, AdminPortalShell };
 
@@ -190,14 +189,50 @@ export function AdminConsoleHeader({
 
 export default function AdminLayoutClient({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const isPublicRoute = pathname === '/admin/login';
+  const [ready, setReady] = useState(isPublicRoute);
 
-  const authState = useConsoleAuthGate({
-    isPublicRoute,
-    tabSessionKey: 'admin_tab_session',
-    verifyUrl: '/api/admin/verify',
-    loginPath: '/admin/login',
-  });
+  useEffect(() => {
+    if (isPublicRoute) {
+      setReady(true);
+      return;
+    }
+
+    let cancelled = false;
+
+    const checkAccess = async () => {
+      try {
+        if (!hasConsoleTabSession('admin_tab_session')) {
+          if (!cancelled) router.replace('/admin/login');
+          return;
+        }
+
+        const response = await fetch('/api/admin/verify', {
+          method: 'GET',
+          credentials: 'include',
+          cache: 'no-store',
+        });
+
+        if (!response.ok) {
+          clearConsoleTabSession('admin_tab_session');
+          if (!cancelled) router.replace('/admin/login');
+          return;
+        }
+
+        if (!cancelled) setReady(true);
+      } catch {
+        clearConsoleTabSession('admin_tab_session');
+        if (!cancelled) router.replace('/admin/login');
+      }
+    };
+
+    void checkAccess();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isPublicRoute, pathname, router]);
 
   if (isPublicRoute) {
     return (
@@ -207,8 +242,8 @@ export default function AdminLayoutClient({ children }: { children: ReactNode })
     );
   }
 
-  if (authState !== 'authed') {
-    return <ConsoleAuthPendingScreen />;
+  if (!ready) {
+    return <div className="min-h-screen bg-background" aria-hidden="true" />;
   }
 
   return (
