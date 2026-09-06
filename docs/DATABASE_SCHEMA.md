@@ -2,7 +2,7 @@
 
 ## Overview
 
-GRAM (Navadrishti) uses Supabase PostgreSQL. The canonical DDL is [`reference/completeschema.txt`](../reference/completeschema.txt). Staging apply pack: [`reference/migrations/2026_schema_streamline.sql`](../reference/migrations/2026_schema_streamline.sql).
+GRAM (Navadrishti) uses Supabase PostgreSQL. The canonical DDL is [`reference/completeschema.txt`](../reference/completeschema.txt). Apply packs: [`2026_schema_streamline.sql`](../reference/migrations/2026_schema_streamline.sql) then [`2026_schema_streamline_pass2.sql`](../reference/migrations/2026_schema_streamline_pass2.sql) (copy leftover rows, rename columns, no unreplicated drops).
 
 ## Conventions
 
@@ -34,15 +34,16 @@ Removed from product: `users.verified`, `users.identity_verified`
 ### D) Marketplace
 - `service_request_projects` — NGO CSR packages for company takeover
 - `service_requests` — needs (owner column = `ngo_id`; never `requester_id` as a DB column)
-- `service_request_applications` — apply / invite / accept / assign
+- `service_request_applications` — apply / invite / accept / assign (`applicant_user_id`)
 - `service_request_fulfillments` — amounts, receipts, completion (1:1 with application)
-- `service_request_contributions`, `service_request_shipments`, `shipment_tracking_events`
-- `service_offers`, `service_clients`, `service_offer_reviews`, `offer_capabilities`
+- `service_request_contributions`, `service_request_shipments` (`application_id`), `shipment_tracking_events`
+- `service_offers` (`creator_id` = offer owner), `service_clients` (`client_id` = requester), `service_offer_reviews`, `offer_capabilities`
 
 ### E) CSR planning vs execution
 - **Planning:** `campaigns` — drafts; `lead_ngo_user_id` is a real column; `milestones` / `impact_metrics` jsonb are **draft-only**
 - **Execution (source of truth after project exists):** `csr_projects` → `csr_project_milestones` → evidence / reviews / `csr_payment_confirmations` / `csr_impact_metrics`
-- Field stack: `field_devices`, `field_sync_receipts`, `evidence_validation_results`, `project_user_assignments`, `csr_audit_log`
+- Field stack: `field_devices`, `field_sync_receipts`, `evidence_validation_results`, `project_user_assignments`, `csr_audit_log`, `csr_reference_points`
+- Marketplace package lead: `service_request_projects.lead_ngo_user_id` (same naming as `campaigns.lead_ngo_user_id`; campaign JSON may still mirror `selected_lead_ngo_id`)
 
 ### F) Payments / support / webhooks
 - Marketplace: `razorpay_payment_orders`, `razorpay_payments`, `razorpay_refunds`, `provider_webhook_events`
@@ -54,7 +55,13 @@ Removed from product: `users.verified`, `users.identity_verified`
 - AI agents: `ngo_ai_agent_*`, `csr_ai_agent_*`
 - Engagement attendance: `service_engagement_invitations`, `service_engagement_assignments`, `service_attendance_entries`
 - Field offline ledger: `field_events` (hash-chained evidence ingestion; distinct from `csr_audit_log`)
-- Marketplace package lead: `service_request_projects.selected_lead_ngo_id` (package-level; not `campaigns.lead_ngo_user_id`)
+
+## Deprecated mirrors (kept for no-data-loss; do not write new code against these)
+- `service_requests.volunteer_limit` → use `volunteers_needed`
+- `service_requests.priority` → use `urgency_level`
+- `service_requests.deadline` → prefer `deadline_at` when present
+- `service_requests.estimated_budget` ↔ `target_amount` (dual-read via allocation helpers)
+- `users.email_verified` / `phone_verified` ↔ `*_verified_at`
 
 ## Removed / do not reintroduce
 - Social feed tables and APIs

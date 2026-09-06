@@ -192,7 +192,7 @@ export async function POST(
         .from('service_request_applications')
         .select('id, status')
         .eq('service_request_id', requestId)
-        .eq('volunteer_id', decoded.id)
+        .eq('applicant_user_id', decoded.id)
         .in('status', ['accepted', 'active', 'completed'])
         .order('updated_at', { ascending: false })
         .limit(1)

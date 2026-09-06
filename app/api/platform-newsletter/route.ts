@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/db'
+import { getProjectLeadNgoId, supabase } from '@/lib/db'
 import { getAdminModeration } from '@/lib/auth'
 import { issueCaBadgeNumber } from '@/lib/platform-ca-auth'
 
@@ -294,7 +294,7 @@ export async function GET(request: NextRequest) {
             description,
             location,
             ngo_id,
-            selected_lead_ngo_id,
+            lead_ngo_user_id,
             assigned_company_user_id,
             assignment_status,
             updated_at,
@@ -326,7 +326,7 @@ export async function GET(request: NextRequest) {
     for (const project of assignedProjects) {
       const companyId = Number(project.assigned_company_user_id || 0)
       const ngoId = Number(project.ngo_id || 0)
-      const leadId = Number(project.selected_lead_ngo_id || 0)
+      const leadId = getProjectLeadNgoId(project)
       if (companyId > 0) relatedUserIds.add(companyId)
       if (ngoId > 0) relatedUserIds.add(ngoId)
       if (leadId > 0) relatedUserIds.add(leadId)
@@ -365,7 +365,7 @@ export async function GET(request: NextRequest) {
                 service_request_id,
                 status,
                 completed_at,
-                volunteer:users!volunteer_id (${userFields})
+                volunteer:users!applicant_user_id (${userFields})
               `)
               .in('service_request_id', fulfilledNeedIds)
               .in('status', ['accepted', 'completed', 'fulfilled', 'confirmed'])
@@ -597,7 +597,7 @@ export async function GET(request: NextRequest) {
 
     for (const project of assignedProjects) {
       const company = usersById[Number(project.assigned_company_user_id || 0)]
-      const ngo = usersById[Number(project.selected_lead_ngo_id || project.ngo_id || 0)]
+      const ngo = usersById[getProjectLeadNgoId(project) || Number(project.ngo_id || 0)]
       const actor = actorFromUser(company || { name: 'A company', user_type: 'company', id: project.assigned_company_user_id })
       const ngoName = ngo ? resolveActorName(ngo.name, ngo.user_type, ngo.profile_data) : 'an NGO'
       pushItem({

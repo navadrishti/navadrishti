@@ -71,7 +71,7 @@ async function deleteUserData(userId: number, userEmail: string) {
     await supabase
       .from('service_request_applications')
       .delete()
-      .eq('volunteer_id', userId);
+      .eq('applicant_user_id', userId);
     
     // Delete service client applications by user
     await supabase

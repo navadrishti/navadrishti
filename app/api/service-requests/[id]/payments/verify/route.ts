@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
 import Razorpay from 'razorpay';
-import { db, supabase } from '@/lib/db';
+import { db, getApplicationApplicantUserId, supabase } from '@/lib/db';
 import { JWT_SECRET } from '@/lib/auth';
 import {
   assertNgoLiveCsr1,
@@ -213,7 +213,7 @@ export async function POST(
           .from('service_request_applications')
           .select('id, status')
           .eq('service_request_id', requestId)
-          .eq('volunteer_id', decoded.id)
+          .eq('applicant_user_id', decoded.id)
           .in('status', ['accepted', 'active', 'completed'])
           .order('updated_at', { ascending: false })
           .limit(1)
@@ -290,7 +290,7 @@ export async function POST(
 
     const acceptedAssignments = await db.serviceRequestApplications.getByRequestId(requestId);
     const matchingAssignment = (acceptedAssignments || []).find((item: any) =>
-      item.volunteer_id === decoded.id && ['accepted', 'active', 'completed'].includes(String(item.status || '').toLowerCase())
+      getApplicationApplicantUserId(item) === decoded.id && ['accepted', 'active', 'completed'].includes(String(item.status || '').toLowerCase())
     );
 
     if (matchingAssignment) {
