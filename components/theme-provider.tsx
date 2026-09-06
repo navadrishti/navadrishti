@@ -64,8 +64,8 @@ function useProductionClientGuards() {
     const noop = () => {}
 
     for (const method of mutedMethods) {
-      originalConsole[method] = console[method].bind(console)
-      console[method] = noop
+      originalConsole[method] = (console[method] as (...args: unknown[]) => void).bind(console)
+      console[method] = noop as (...args: unknown[]) => void
     }
 
     const onKeyDown = (event: KeyboardEvent) => {

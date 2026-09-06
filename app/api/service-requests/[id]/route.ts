@@ -368,7 +368,8 @@ export async function PUT(
       // Validate canonical project fields for nested project creation
       const rawExpected = projectPayload.expected_beneficiaries ?? null;
       const parsedExpected = rawExpected != null ? Number(rawExpected) : (Number(beneficiary_count) || null);
-      const expectedBeneficiaries = Number.isFinite(parsedExpected) && parsedExpected > 0 ? parsedExpected : null;
+      const expectedBeneficiaries =
+        parsedExpected != null && Number.isFinite(parsedExpected) && parsedExpected > 0 ? parsedExpected : null;
       const validUntil = projectPayload.valid_until ? String(projectPayload.valid_until).trim() : null;
 
       if (!expectedBeneficiaries) {

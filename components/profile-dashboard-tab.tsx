@@ -603,7 +603,7 @@ export function ProfileDashboardTab() {
         setRegistrationDate(String(userProfile.registration_date || ''))
         setSectorsScheduleVii(
           Array.isArray(userProfile.sectors_schedule_vii)
-            ? userProfile.sectors_schedule_vii.filter((item): item is string => typeof item === 'string')
+            ? userProfile.sectors_schedule_vii.filter((item: unknown): item is string => typeof item === 'string')
             : []
         )
 

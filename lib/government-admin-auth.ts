@@ -17,6 +17,8 @@ export type GovernmentAdminAccount = {
   last_login_at?: string | null;
   created_at?: string;
   updated_at?: string;
+  state_name?: string | null;
+  district_name?: string | null;
 };
 
 export type GovernmentBody = {

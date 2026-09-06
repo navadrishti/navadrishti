@@ -8,10 +8,10 @@ import {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const milestoneId = params.id;
+    const { id: milestoneId } = await params;
     const body = await request.json();
     const paymentReference = body.payment_reference as string;
     const amount = body.amount;

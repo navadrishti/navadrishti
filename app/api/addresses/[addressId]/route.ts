@@ -2,10 +2,12 @@ import { NextRequest } from 'next/server';
 import db from '@/lib/db';
 import { verifyToken } from '@/lib/auth';
 
+type RouteParams = { params: Promise<{ addressId: string }> };
+
 // GET - Get specific address
 export async function GET(
   request: NextRequest,
-  { params }: { params: { addressId: string } }
+  { params }: RouteParams
 ) {
   try {
     // Get authenticated user
@@ -21,7 +23,8 @@ export async function GET(
     }
 
     const userId = payload.id;
-    const addressId = parseInt(params.addressId);
+    const { addressId: addressIdParam } = await params;
+    const addressId = parseInt(addressIdParam);
 
     // Get address
     const address = await db.userAddresses.getById(addressId);
@@ -47,7 +50,7 @@ export async function GET(
 // PUT - Update address
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { addressId: string } }
+  { params }: RouteParams
 ) {
   try {
     // Get authenticated user
@@ -63,7 +66,8 @@ export async function PUT(
     }
 
     const userId = payload.id;
-    const addressId = parseInt(params.addressId);
+    const { addressId: addressIdParam } = await params;
+    const addressId = parseInt(addressIdParam);
     const body = await request.json();
 
     // Get existing address to verify ownership
@@ -116,7 +120,7 @@ export async function PUT(
 // DELETE - Delete address
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { addressId: string } }
+  { params }: RouteParams
 ) {
   try {
     // Get authenticated user
@@ -132,7 +136,8 @@ export async function DELETE(
     }
 
     const userId = payload.id;
-    const addressId = parseInt(params.addressId);
+    const { addressId: addressIdParam } = await params;
+    const addressId = parseInt(addressIdParam);
 
     // Get existing address to verify ownership
     const existingAddress = await db.userAddresses.getById(addressId);

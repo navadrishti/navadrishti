@@ -69,7 +69,7 @@ type NgoPublicProfile = {
     valid_until?: string | null
     status?: string
   }>
-  work_areas?: Array<{ region: string; state: string; district: string; area_type: string }>
+  work_areas?: Array<{ region: string; state: string; district: string; area_type: '' | 'urban' | 'rural' | 'both' }>
   execution_capacity?: {
     concurrent_projects: string
     annual_beneficiaries: string
