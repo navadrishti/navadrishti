@@ -34,6 +34,26 @@ export async function saveCampaignRentals(campaignId: string, companyId: number,
   if (error) throw new Error(error.message || "Failed to save CSR capability rentals");
 }
 
+export async function saveCampaignImpactIfUnchanged(input: {
+  campaignId: string;
+  companyId: number;
+  previousUpdatedAt: string | null;
+  impactMetrics: ReturnType<typeof parseJsonObject>;
+}): Promise<string | null> {
+  const updatedAt = new Date().toISOString();
+  const query = supabase
+    .from("campaigns")
+    .update({ impact_metrics: input.impactMetrics, updated_at: updatedAt })
+    .eq("id", input.campaignId)
+    .eq("company_id", input.companyId);
+  const guarded = input.previousUpdatedAt
+    ? query.eq("updated_at", input.previousUpdatedAt)
+    : query.is("updated_at", null);
+  const { data, error } = await guarded.select("id");
+  if (error) throw new Error(error.message || "Failed to save CSR capability rentals");
+  return Array.isArray(data) && data.length > 0 ? updatedAt : null;
+}
+
 export async function getCsrCapabilityRentals(campaignId: string, companyId: number) {
   const campaign = await loadCompanyCampaign(campaignId, companyId);
   return parseCsrCapabilityRentals(campaign.impact_metrics);

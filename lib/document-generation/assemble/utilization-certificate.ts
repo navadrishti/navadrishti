@@ -8,7 +8,7 @@ import {
   loadProjectsForCampaign,
   resolvePartnerName,
 } from './loaders'
-import { confirmedFunds, paymentLineItems, pickLatestImpact } from './project-data'
+import { confirmedFunds, paymentLineItems, pickLatestImpact, sumLatestImpact } from './project-data'
 import { buildUtilization } from './report-builders'
 import type { PeriodDocumentContext } from './types'
 import { asNumber, asString } from './values'
@@ -41,10 +41,7 @@ async function assembleCompanyUtilization({ user, request, organizationName }: P
   const implementerName = await resolvePartnerName(
     getCampaignLeadNgoId(campaign) || projects[0]?.ngo_user_id
   )
-  const fundsUtilized = projects.reduce(
-    (sum, project) => sum + asNumber(pickLatestImpact(project)?.funds_utilized),
-    asNumber(parseJsonObject(campaign.impact_metrics).funds_utilized)
-  )
+  const fundsUtilized = sumLatestImpact(projects, 'funds_utilized', parseJsonObject(campaign.impact_metrics).funds_utilized)
   const fundsConfirmed = projects.reduce((sum, project) => sum + confirmedFunds(project), 0)
   const lineItems = projects.flatMap((project) => paymentLineItems(project))
   return buildUtilization({
@@ -87,10 +84,7 @@ async function assembleNgoUtilization({ user, request, organizationName }: Perio
     const funderName = await resolvePartnerName(campaign.company_id)
     const projects = await loadProjectsForCampaign(campaign.id)
     const ngoProjects = projects.filter((project) => Number(project.ngo_user_id) === user.id)
-    const fundsUtilized = ngoProjects.reduce(
-      (sum, project) => sum + asNumber(pickLatestImpact(project)?.funds_utilized),
-      asNumber(parseJsonObject(campaign.impact_metrics).funds_utilized)
-    )
+    const fundsUtilized = sumLatestImpact(ngoProjects, 'funds_utilized', parseJsonObject(campaign.impact_metrics).funds_utilized)
     const fundsConfirmed = ngoProjects.reduce((sum, project) => sum + confirmedFunds(project), 0)
     return buildUtilization({
       organizationName,

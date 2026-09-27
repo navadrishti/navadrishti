@@ -1,7 +1,7 @@
 import Razorpay from 'razorpay';
 import { PHONE_VERIFICATION_ENABLED } from '@/lib/auth';
 import { supabase } from '@/lib/db';
-import { getErrorMessage, parseJsonObject } from '@/lib/utils';
+import { getErrorMessage, parseJsonObject, validateCapturedPaymentAmounts } from '@/lib/utils';
 import { createPlatformPricedOrder } from './orders';
 
 export const NGO_NETWORK_SOURCE = 'ngo_network';
@@ -222,9 +222,13 @@ export async function verifyNgoNetworkDonation(params: {
   }
 
   const providerNotes: ProviderNotes = providerOrder.notes || providerPayment.notes || {};
-  const expectedTotalInr = parseDonationAmountInr(providerNotes?.total_charge_inr);
-  if (expectedTotalInr > 0 && Math.abs(paidInr - expectedTotalInr) > 0.01) {
-    throw new Error('Paid amount does not match checkout total');
+  const amountCheck = validateCapturedPaymentAmounts({
+    orderNotes: providerNotes,
+    orderAmountPaise: providerOrder.amount,
+    paidInr,
+  });
+  if (!amountCheck.ok) {
+    throw new Error(amountCheck.error);
   }
 
   const paymentKind = String(providerNotes?.payment_kind || '').toLowerCase();

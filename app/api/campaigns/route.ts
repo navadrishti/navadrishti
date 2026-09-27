@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth';
+import { getAuthUserFromRequest, assertUserType, authErrorResponse } from '@/lib/server-auth';
 import { buildCampaignWritePayload, resolveCampaignCategoryInput, resolveCampaignLocationInput } from '@/lib/campaign-schema';
 import { getCampaignLeadNgoId } from '@/lib/campaign-volunteer-attendance';
 
@@ -141,13 +141,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, data }, { status: 201 });
   } catch (error) {
-    if (error instanceof Error && error.message === 'Authentication required') {
-      return NextResponse.json({ error: error.message }, { status: 401 });
-    }
-
-    if (error instanceof Error && error.message === 'Insufficient permissions') {
-      return NextResponse.json({ error: error.message }, { status: 403 });
-    }
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
 
     console.error('Campaign create error:', error);
     return NextResponse.json({ error: 'Failed to create campaign' }, { status: 500 });

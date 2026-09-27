@@ -1,42 +1,54 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { getAuthUserFromRequest, isCARequest, getCompanyCAFromRequest } from '@/lib/server-auth';
+import { findAuthUser, isCARequest, getCompanyCAFromRequest } from '@/lib/server-auth';
+import type { UserData } from '@/lib/auth';
 import type { Tables } from '@/lib/database.types';
 
 type IdRow = { id: string };
 
-async function canAccessProject(
-  request: NextRequest,
-  project: Pick<Tables<'csr_projects'>, 'company_user_id' | 'ngo_user_id'>
-): Promise<boolean> {
+type ProjectViewer = {
+  isPlatformCA: boolean;
+  companyCAUserId: number | null;
+  user: UserData | null;
+};
+
+async function resolveProjectViewer(request: NextRequest): Promise<ProjectViewer | null> {
   if (isCARequest(request)) {
-    return true;
+    return { isPlatformCA: true, companyCAUserId: null, user: null };
   }
 
+  let companyCAUserId: number | null = null;
   try {
-    const companyCA = await getCompanyCAFromRequest(request);
-    if (companyCA.identity.company_user_id === project.company_user_id) {
-      return true;
-    }
+    companyCAUserId = (await getCompanyCAFromRequest(request)).identity.company_user_id;
   } catch {
     // Fall through to user token auth.
   }
 
-  try {
-    const user = getAuthUserFromRequest(request);
+  const user = findAuthUser(request);
+  if (companyCAUserId === null && !user) {
+    return null;
+  }
 
-    if (user.user_type === 'company' && project.company_user_id === user.id) {
-      return true;
-    }
+  return { isPlatformCA: false, companyCAUserId, user };
+}
 
-    if (user.user_type === 'ngo' && project.ngo_user_id === user.id) {
-      return true;
-    }
+function canAccessProject(
+  viewer: ProjectViewer,
+  project: Pick<Tables<'csr_projects'>, 'company_user_id' | 'ngo_user_id'>
+): boolean {
+  if (viewer.isPlatformCA || viewer.companyCAUserId === project.company_user_id) {
+    return true;
+  }
 
-    return false;
-  } catch {
+  const { user } = viewer;
+  if (!user) {
     return false;
   }
+
+  return (
+    (user.user_type === 'company' && project.company_user_id === user.id) ||
+    (user.user_type === 'ngo' && project.ngo_user_id === user.id)
+  );
 }
 
 export async function GET(
@@ -45,6 +57,11 @@ export async function GET(
 ) {
   try {
     const { id: projectId } = await params;
+
+    const viewer = await resolveProjectViewer(request);
+    if (!viewer) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
 
     const { data: project, error: projectError } = await supabase
       .from('csr_projects')
@@ -56,8 +73,7 @@ export async function GET(
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
-    const hasAccess = await canAccessProject(request, project);
-    if (!hasAccess) {
+    if (!canAccessProject(viewer, project)) {
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
     }
 

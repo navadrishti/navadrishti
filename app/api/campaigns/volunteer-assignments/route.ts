@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase, ensureCampaignVolunteerAssignment } from '@/lib/db'
-import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth'
+import { getAuthUserFromRequest, assertUserType, authErrorResponse } from '@/lib/server-auth'
 import { getCampaignLeadLifecycle } from '@/lib/format-date'
 import { readCampaignCategory, readCampaignLocation } from '@/lib/campaign-schema'
 
@@ -105,6 +105,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: payload })
   } catch (error) {
+    const authResponse = authErrorResponse(error)
+    if (authResponse) return authResponse
     console.error('Campaign volunteer assignments error:', error)
     return NextResponse.json({ error: 'Failed to fetch campaign volunteer assignments' }, { status: 500 })
   }

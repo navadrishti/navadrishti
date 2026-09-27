@@ -121,7 +121,7 @@ export function backfillNgoComplianceProfileData(profileData: Record<string, unk
   const existingComplianceDocuments = parseJsonObject(next.compliance_documents);
   const nextComplianceDocuments: Record<string, unknown> = { ...existingComplianceDocuments };
 
-  for (const key of Object.keys(VERIFICATION_TO_COMPLIANCE_DOC_MAP) as ComplianceDocumentKey[]) {
+  for (const key of Object.values(VERIFICATION_TO_COMPLIANCE_DOC_MAP)) {
     if (!getComplianceDocumentUrl(nextComplianceDocuments[key]) && documents[key]) {
       nextComplianceDocuments[key] = documents[key];
       changed = true;

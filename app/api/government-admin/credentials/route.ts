@@ -7,6 +7,7 @@ import {
   updateGovernmentAdminAccount,
   updateGovernmentBody,
 } from '@/lib/government-admin-auth';
+import { authErrorResponse } from '@/lib/server-auth';
 import { supabase } from '@/lib/db';
 import { getErrorMessage } from '@/lib/utils';
 
@@ -34,6 +35,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, accounts: data || [] });
   } catch (error) {
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
     return NextResponse.json({ error: getErrorMessage(error) || 'Failed to load credentials' }, { status: 500 });
   }
 }
@@ -143,6 +146,8 @@ export async function POST(request: NextRequest) {
       password: passwordValue,
     });
   } catch (error) {
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
     return NextResponse.json({ error: getErrorMessage(error) || 'Failed to generate credential' }, { status: 500 });
   }
 }

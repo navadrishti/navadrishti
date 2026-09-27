@@ -110,7 +110,7 @@ export async function DELETE(req: NextRequest) {
     
     const { password } = validationResult.data;
     
-    const user = await db.users.findById(userId);
+    const user = await db.users.findByIdWithPassword(userId);
     
     if (!user) {
       return NextResponse.json({ 

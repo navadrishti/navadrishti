@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server'
 import { withAuth } from '@/lib/auth'
 import { supabase } from '@/lib/db'
+import { limitAttempts } from '@/lib/rate-limit'
 import { phoneOtpStore } from '../send-phone-otp/route'
+
+const PHONE_OTP_MAX_ATTEMPTS = 5
 
 const normalizePhone = (value: string) => value.trim().replace(/\s+/g, '')
 
@@ -21,6 +24,10 @@ export const POST = withAuth(async (req) => {
     }
 
     const storeKey = `${user.id}:${phone}`
+
+    const limited = limitAttempts(req, 'verify-phone-otp', storeKey)
+    if (limited) return limited
+
     const record = phoneOtpStore.get(storeKey)
 
     if (!record) {
@@ -33,6 +40,11 @@ export const POST = withAuth(async (req) => {
     }
 
     if (record.otp !== otp) {
+      record.attempts += 1
+      if (record.attempts >= PHONE_OTP_MAX_ATTEMPTS) {
+        phoneOtpStore.delete(storeKey)
+        return NextResponse.json({ error: 'Too many incorrect attempts. Please request a new phone OTP.' }, { status: 429 })
+      }
       return NextResponse.json({ error: 'Invalid phone OTP' }, { status: 400 })
     }
 

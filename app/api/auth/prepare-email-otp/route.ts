@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prepareEmailOtpSession } from '@/lib/email';
 
 const prepareEmailOtpSchema = z.object({
-  email: z.string().email('Invalid email address'),
+  email: z.string().trim().toLowerCase().email('Invalid email address'),
 });
 
 export async function POST(req: NextRequest) {

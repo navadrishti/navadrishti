@@ -1,6 +1,6 @@
-import { NextRequest } from 'next/server';
-import type { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import {
+  AuthError,
   CSR_ELIGIBILITY_REQUIRED_MESSAGE,
   CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE,
   CSR_TIMELINE_COVERAGE_REQUIRED_MESSAGE,
@@ -9,6 +9,7 @@ import {
   assertCsr1CoversRequiredThrough,
   ngoIsCsrEligible,
   resolveProjectCsrCoverageEndDate,
+  verifyAdminToken,
   verifyToken,
   type UserData,
 } from '@/lib/auth';
@@ -22,7 +23,9 @@ export const ADMIN_TOKEN_COOKIE = 'admin-token';
 export const GOVT_ADMIN_TOKEN_COOKIE = 'govt-admin-token';
 export const EVIDENCE_VERIFICATION_TOKEN_COOKIE = 'evidence-verification-token';
 
-type CookieCarrier = Pick<NextResponse, 'cookies'>;
+type CookieCarrier = Pick<NextResponse, 'cookies' | 'headers'>;
+
+const LEGACY_ADMIN_COOKIE_PATH = '/api/admin';
 
 type SessionCookieWriteOptions = {
   httpOnly?: boolean;
@@ -55,46 +58,36 @@ function writeSessionCookie(
   });
 }
 
-function expireSessionCookie(
-  response: CookieCarrier,
-  name: string,
-  options?: { path?: string; httpOnly?: boolean }
-) {
-  const base = sessionCookieBase(options?.httpOnly ?? true);
-  const path = options?.path ?? base.path;
-
+function expireSessionCookie(response: CookieCarrier, name: string) {
   response.cookies.set({
     name,
     value: '',
-    ...base,
-    path,
+    ...sessionCookieBase(),
     expires: new Date(0),
     maxAge: 0,
   });
-
-  if (base.secure) {
-    response.cookies.set({
-      name,
-      value: '',
-      ...base,
-      secure: false,
-      path,
-      expires: new Date(0),
-      maxAge: 0,
-    });
-  }
 }
 
-function clearSessionCookieNames(
-  response: CookieCarrier,
-  names: string[],
-  options?: { extraPaths?: string[]; httpOnly?: boolean }
-) {
-  const paths = ['/', ...(options?.extraPaths ?? [])];
+// ResponseCookies keeps one entry per name and rewrites every Set-Cookie header on each
+// cookies.set(), so this must be the last cookie write on the response.
+function appendLegacyAdminCookieExpiry(response: CookieCarrier) {
+  const attributes = [
+    `${ADMIN_TOKEN_COOKIE}=`,
+    `Path=${LEGACY_ADMIN_COOKIE_PATH}`,
+    `Expires=${new Date(0).toUTCString()}`,
+    'Max-Age=0',
+    'HttpOnly',
+    'SameSite=Strict',
+  ];
+  if (sessionCookieBase().secure) {
+    attributes.push('Secure');
+  }
+  response.headers.append('Set-Cookie', attributes.join('; '));
+}
+
+function clearSessionCookieNames(response: CookieCarrier, names: string[]) {
   for (const name of names) {
-    for (const path of paths) {
-      expireSessionCookie(response, name, { path, httpOnly: options?.httpOnly });
-    }
+    expireSessionCookie(response, name);
   }
 }
 
@@ -107,12 +100,13 @@ export function clearAuthTokenCookie(response: CookieCarrier) {
 }
 
 export function setAdminTokenCookie(response: CookieCarrier, token: string) {
-  expireSessionCookie(response, ADMIN_TOKEN_COOKIE, { path: '/api/admin' });
   writeSessionCookie(response, ADMIN_TOKEN_COOKIE, token);
+  appendLegacyAdminCookieExpiry(response);
 }
 
 export function clearAdminTokenCookie(response: CookieCarrier) {
-  clearSessionCookieNames(response, [ADMIN_TOKEN_COOKIE], { extraPaths: ['/api/admin'] });
+  expireSessionCookie(response, ADMIN_TOKEN_COOKIE);
+  appendLegacyAdminCookieExpiry(response);
 }
 
 export function setPlatformCaTokenCookie(
@@ -168,12 +162,12 @@ export function getAuthUserFromRequest(request: NextRequest): UserData {
   const token = extractBearerToken(authHeader);
 
   if (!token) {
-    throw new Error('Authentication required');
+    throw new AuthError('Authentication required');
   }
 
   const user = verifyToken(token);
   if (!user) {
-    throw new Error('Invalid authentication token');
+    throw new AuthError('Invalid authentication token');
   }
 
   return user;
@@ -181,8 +175,16 @@ export function getAuthUserFromRequest(request: NextRequest): UserData {
 
 export function assertUserType(user: UserData, allowed: Array<UserData['user_type']>) {
   if (!allowed.includes(user.user_type)) {
-    throw new Error('Insufficient permissions');
+    throw new AuthError('Insufficient permissions', 403);
   }
+}
+
+export function authErrorResponse(error: unknown): NextResponse | null {
+  if (!(error instanceof AuthError)) {
+    return null;
+  }
+
+  return NextResponse.json({ error: error.message }, { status: error.status });
 }
 
 async function loadNgoComplianceRow(userId: number) {
@@ -449,22 +451,13 @@ export function getAdminUser(request: NextRequest): UserData | null {
     return null;
   }
 
-  try {
-    const decoded = verifyToken(token);
-    if (!decoded || decoded.id !== -1) {
-      return null;
-    }
-
-    return decoded;
-  } catch {
-    return null;
-  }
+  return verifyAdminToken(token);
 }
 
 export function assertAdminUser(request: NextRequest): UserData {
   const admin = getAdminUser(request);
   if (!admin) {
-    throw new Error('Admin authentication required');
+    throw new AuthError('Admin authentication required');
   }
 
   return admin;

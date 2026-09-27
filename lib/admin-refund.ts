@@ -1,6 +1,6 @@
 import Razorpay from 'razorpay';
 import { db, supabase } from '@/lib/db';
-import { debitServiceRequestRefund } from '@/lib/service-request-payments';
+import { debitServiceRequestRefund, resolveRefundDebitInr } from '@/lib/service-request-payments';
 import { parseAmountToInr, parseJsonObject } from '@/lib/utils';
 
 export const isFinancialRequest = (
@@ -68,7 +68,7 @@ export async function processAdminRefund(input: ProcessAdminRefundInput) {
 
   const { data: paymentRow } = await supabase
     .from('razorpay_payments')
-    .select('id, amount_inr, payment_status, order:razorpay_payment_orders(service_request_id)')
+    .select('id, amount_inr, payment_status, order:razorpay_payment_orders(service_request_id, order_notes)')
     .eq('razorpay_payment_id', refundPaymentId)
     .maybeSingle();
 
@@ -156,7 +156,10 @@ export async function processAdminRefund(input: ProcessAdminRefundInput) {
   }
 
   const nextRaisedInr = refundProcessed
-    ? (await debitServiceRequestRefund(serviceRequestId, refundInr)) ?? currentRaisedInr
+    ? (await debitServiceRequestRefund(
+        serviceRequestId,
+        resolveRefundDebitInr({ refundInr, paidInr, orderNotes: order?.order_notes })
+      )) ?? currentRaisedInr
     : currentRaisedInr;
 
   if (supportTicketId) {

@@ -4,10 +4,11 @@ import { db } from '@/lib/db';
 import { comparePassword, generateToken, getAccountAccessBlockReason, type UserData } from '@/lib/auth';
 import { isCompanyCAUser } from '@/lib/company-ca';
 import { setAuthTokenCookie } from '@/lib/server-auth';
+import { limitAttempts } from '@/lib/rate-limit';
 
 // Validation schema for login
 const loginSchema = z.object({
-  email: z.string().email('Invalid email address'),
+  email: z.string().trim().toLowerCase().email('Invalid email address'),
   password: z.string().min(1, 'Password is required')
 });
 
@@ -21,10 +22,19 @@ export async function POST(req: NextRequest) {
     }
     
     const { email, password } = validationResult.data;
+
+    const limited = limitAttempts(req, 'login', email);
+    if (limited) return limited;
     
     const user = await db.users.findByEmail(email);
     
     if (!user) {
+      return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
+    }
+
+    const isPasswordValid = await comparePassword(password, user.password);
+    
+    if (!isPasswordValid) {
       return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
     }
 
@@ -42,12 +52,6 @@ export async function POST(req: NextRequest) {
     });
     if (accessBlock) {
       return NextResponse.json({ error: accessBlock }, { status: 403 });
-    }
-    
-    const isPasswordValid = await comparePassword(password, user.password);
-    
-    if (!isPasswordValid) {
-      return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
     }
     
     const userData: UserData = {

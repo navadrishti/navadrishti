@@ -1,6 +1,15 @@
+import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
-import { generateToken } from '@/lib/auth';
+import { generateAdminToken } from '@/lib/auth';
 import { setAdminTokenCookie } from '@/lib/server-auth';
+import { limitAttempts } from '@/lib/rate-limit';
+
+// Hashing first gives equal-length buffers, so neither the comparison nor its length check leaks the secret's size.
+const safeEqual = (a: string, b: string) =>
+  crypto.timingSafeEqual(
+    crypto.createHash('sha256').update(a).digest(),
+    crypto.createHash('sha256').update(b).digest()
+  );
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,17 +26,17 @@ export async function POST(request: NextRequest) {
       console.error('Admin credentials are not configured');
       return NextResponse.json({ error: 'Admin login is not configured' }, { status: 500 });
     }
-    if (username !== adminUsername || password !== adminPassword) {
+
+    const limited = limitAttempts(request, 'admin-login', String(username));
+    if (limited) return limited;
+
+    const usernameMatches = safeEqual(String(username), adminUsername);
+    const passwordMatches = safeEqual(String(password), adminPassword);
+    if (!usernameMatches || !passwordMatches) {
       return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
     }
 
-    // Generate admin-only session token (never a platform user id)
-    const adminToken = generateToken({
-      id: -1,
-      email: 'admin@system.local',
-      name: 'Administrator',
-      user_type: 'admin' as any,
-    });
+    const adminToken = generateAdminToken();
 
     const response = NextResponse.json({
       success: true,

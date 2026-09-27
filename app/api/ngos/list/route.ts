@@ -18,8 +18,8 @@ const tokenize = (value: string) =>
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const q = String(searchParams.get('q') || '').trim();
-    const limit = Number(searchParams.get('limit') || 30) || 30;
+    const q = String(searchParams.get('q') || '').replace(/[,.():*%\\"_]/g, ' ').replace(/\s+/g, ' ').trim();
+    const limit = Math.min(Math.max(Number(searchParams.get('limit') || 30) || 30, 1), 250);
     const endDate = normalizeExpiryDate(searchParams.get('end_date') || searchParams.get('endDate'));
 
     // fetch richer NGO data so we can score locally

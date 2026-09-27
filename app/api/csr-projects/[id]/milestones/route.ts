@@ -62,7 +62,7 @@ export async function GET(
 
     return NextResponse.json({ success: true, data: data ?? [] });
   } catch (error) {
-    if (error instanceof Error && error.message === 'Authentication required') {
+    if (error instanceof Error && ['Authentication required', 'Invalid authentication token'].includes(error.message)) {
       return NextResponse.json({ error: error.message }, { status: 401 });
     }
 
@@ -150,7 +150,7 @@ export async function POST(
 
     return NextResponse.json({ success: true, data }, { status: 201 });
   } catch (error) {
-    if (error instanceof Error && error.message === 'Authentication required') {
+    if (error instanceof Error && ['Authentication required', 'Invalid authentication token'].includes(error.message)) {
       return NextResponse.json({ error: error.message }, { status: 401 });
     }
 

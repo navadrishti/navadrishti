@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { listCAQueue, requireCA } from '@/lib/ca-review';
+import { caErrorResponse, listCAQueue, requireCA } from '@/lib/ca-review';
 import { CA_QUEUE_TYPES, type CAQueueType } from '@/lib/ca-review-types';
 
 export async function GET(request: NextRequest) {
@@ -8,7 +8,10 @@ export async function GET(request: NextRequest) {
     const status = request.nextUrl.searchParams.get('status') || 'unverified';
     const typeParam = request.nextUrl.searchParams.get('type');
 
-    if (typeParam && CA_QUEUE_TYPES.includes(typeParam as CAQueueType)) {
+    if (typeParam) {
+      if (!CA_QUEUE_TYPES.includes(typeParam as CAQueueType)) {
+        return NextResponse.json({ error: 'Invalid queue type' }, { status: 400 });
+      }
       const type = typeParam as CAQueueType;
       const data = await listCAQueue(type, status);
       return NextResponse.json({
@@ -30,9 +33,8 @@ export async function GET(request: NextRequest) {
       ngos,
     });
   } catch (error) {
-    if (error instanceof Error && error.message === 'CA authentication required') {
-      return NextResponse.json({ error: 'CA authentication required' }, { status: 401 });
-    }
+    const handled = caErrorResponse(error);
+    if (handled) return handled;
     console.error('CA queue API error:', error);
     return NextResponse.json({ error: 'Failed to fetch verification queue' }, { status: 500 });
   }

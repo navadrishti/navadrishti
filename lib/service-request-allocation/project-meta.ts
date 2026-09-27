@@ -1,3 +1,5 @@
+import { parseJsonObject } from '@/lib/utils'
+
 /** Structured extras for service_request_projects without new DB columns. */
 export type ServiceRequestProjectMeta = {
   category?: string | null
@@ -94,6 +96,22 @@ type RedactableProject = {
   contact_info?: unknown
   pending_company_applications?: unknown
   _raw_description?: unknown
+  ngo?: unknown
+}
+
+// Same profile_data keys app/api/profile/[userId] shows to viewers without private access.
+const PUBLIC_NGO_PROFILE_KEYS = ['bio', 'ca_badge_number', 'cover_image', 'website']
+
+function redactNgoContact(ngo: unknown) {
+  if (!ngo || typeof ngo !== 'object') return ngo
+  const { email: _email, phone: _phone, profile_data: profileData, ...safe } = ngo as Record<string, unknown>
+  const profile = parseJsonObject(profileData)
+  return {
+    ...safe,
+    profile_data: Object.fromEntries(
+      PUBLIC_NGO_PROFILE_KEYS.filter((key) => profile[key] !== undefined).map((key) => [key, profile[key]])
+    ),
+  }
 }
 
 export function redactProjectSensitiveFields<T extends RedactableProject>(project: T | null | undefined) {
@@ -106,6 +124,7 @@ export function redactProjectSensitiveFields<T extends RedactableProject>(projec
   } = project
   return {
     ...safe,
+    ...('ngo' in project ? { ngo: redactNgoContact(project.ngo) } : {}),
     contact_info: null,
     pending_company_applications: [],
   }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { assertAdminUser } from '@/lib/server-auth';
+import { assertAdminUser, authErrorResponse } from '@/lib/server-auth';
 import {
   getAdminModeration,
   type AdminModerationState,
@@ -225,6 +225,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     return NextResponse.json({ success: true, data, previous: existingUser });
   } catch (error) {
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
     console.error('Admin user update error:', error);
     return NextResponse.json({ error: getErrorMessage(error) || 'Internal server error' }, { status: 500 });
   }
@@ -264,6 +266,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       deleted: existingUser,
     });
   } catch (error) {
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
     console.error('Admin user delete error:', error);
     const message = String(getErrorMessage(error) || 'Internal server error');
     const status = message.toLowerCase().includes('foreign key') || message.includes('23503') ? 409 : 500;

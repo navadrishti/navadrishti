@@ -114,7 +114,7 @@ async function createLinkedAccount(params: NgoLinkedAccountOnboardingInput): Pro
       email: params.email,
       phone: normalizePhoneForRazorpay(params.phone),
       type: 'route',
-      reference_id: `navadrishti_ngo_${params.userId}`.slice(0, 20),
+      reference_id: `nd_ngo_${params.userId}`.slice(0, 20),
       legal_business_name: ngoName,
       customer_facing_business_name: ngoName,
       business_type: 'ngo',

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { assertGovernmentAdmin } from '@/lib/government-admin-auth';
+import { authErrorResponse } from '@/lib/server-auth';
 import { supabase } from '@/lib/db';
 import { getErrorMessage } from '@/lib/utils';
 
@@ -20,6 +21,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, projects: data || [] });
   } catch (error) {
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
     return NextResponse.json({ error: getErrorMessage(error) || 'Failed to load projects' }, { status: 500 });
   }
 }
@@ -89,6 +92,8 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
     return NextResponse.json({ error: getErrorMessage(error) || 'Failed to create project' }, { status: 500 });
   }
 }

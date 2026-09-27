@@ -9,6 +9,10 @@ import {
 } from '@/lib/document-generation/shared-layout'
 import type { ImpactReportPeriod } from '@/lib/document-generation/types'
 
+function formatAmount(amount: number | null | undefined): string {
+  return amount == null ? '—' : formatInr(amount)
+}
+
 export type CsrComplianceProfileData = {
   companyName: string
   cin: string
@@ -236,7 +240,7 @@ export function impactReportTemplate(data: ImpactReportData): string {
         <div class="field">
           <span class="field-label">Evidence Items Logged</span>
           <span class="field-value">${escapeHtml(
-            Number.isFinite(Number(data.evidenceCount)) ? String(data.evidenceCount) : '—'
+            data.evidenceCount != null && Number.isFinite(Number(data.evidenceCount)) ? String(data.evidenceCount) : '—'
           )}</span>
         </div>
       </div>
@@ -252,11 +256,11 @@ export function impactReportTemplate(data: ImpactReportData): string {
       <div class="field-grid-3">
         <div class="metric-card">
           <div class="field-label">Approved Budget</div>
-          <div class="field-value">${formatInr(data.budgetInr)}</div>
+          <div class="field-value">${formatAmount(data.budgetInr)}</div>
         </div>
         <div class="metric-card">
           <div class="field-label">Funds Utilized</div>
-          <div class="field-value">${formatInr(data.fundsUtilized)}</div>
+          <div class="field-value">${formatAmount(data.fundsUtilized)}</div>
         </div>
         <div class="metric-card">
           <div class="field-label">Beneficiaries</div>
@@ -318,7 +322,7 @@ export function impactReportTemplate(data: ImpactReportData): string {
                         : ''
                     }</td>
                     <td>${escapeHtml(milestone.status || '—')}</td>
-                    <td>${formatInr(milestone.budgetAllocated)}</td>
+                    <td>${formatAmount(milestone.budgetAllocated)}</td>
                     <td>${escapeHtml(formatDisplayDate(milestone.dueDate))}</td>
                   </tr>`
                   )
@@ -448,21 +452,21 @@ export function utilizationCertificateTemplate(data: UtilizationCertificateData)
       <div class="field-grid-3">
         <div class="metric-card">
           <div class="field-label">Amount Sanctioned / Budgeted</div>
-          <div class="field-value">${formatInr(data.budgetInr)}</div>
+          <div class="field-value">${formatAmount(data.budgetInr)}</div>
         </div>
         <div class="metric-card">
           <div class="field-label">Amount Received (Confirmed)</div>
-          <div class="field-value">${formatInr(data.fundsConfirmed)}</div>
+          <div class="field-value">${formatAmount(data.fundsConfirmed)}</div>
         </div>
         <div class="metric-card">
           <div class="field-label">Amount Utilized</div>
-          <div class="field-value">${formatInr(data.fundsUtilized)}</div>
+          <div class="field-value">${formatAmount(data.fundsUtilized)}</div>
         </div>
       </div>
       <div class="field-grid" style="margin-top:12px">
         <div class="field">
           <span class="field-label">Unutilized Balance (Received − Utilized)</span>
-          <span class="field-value">${formatInr(balance)}</span>
+          <span class="field-value">${formatAmount(balance)}</span>
         </div>
         <div class="field">
           <span class="field-label">Utilization vs Budget</span>
@@ -486,7 +490,7 @@ export function utilizationCertificateTemplate(data: UtilizationCertificateData)
                   <tr>
                     <td>${index + 1}</td>
                     <td>${escapeHtml(line.label)}</td>
-                    <td>${formatInr(line.amount)}</td>
+                    <td>${formatAmount(line.amount)}</td>
                     <td>${escapeHtml(line.status || '—')}</td>
                     <td>${escapeHtml(line.note || '—')}</td>
                   </tr>`
@@ -613,21 +617,21 @@ export function boardCsrAnnexureDraftTemplate(data: BoardCsrAnnexureDraftData): 
       <div class="field-grid-3">
         <div class="metric-card">
           <div class="field-label">Avg. Net Profit (3 yrs) — if entered</div>
-          <div class="field-value">${formatInr(data.averageNetProfit)}</div>
+          <div class="field-value">${formatAmount(data.averageNetProfit)}</div>
         </div>
         <div class="metric-card">
           <div class="field-label">Prescribed CSR (2%)</div>
-          <div class="field-value">${formatInr(data.prescribedSpend2Pct)}</div>
+          <div class="field-value">${formatAmount(data.prescribedSpend2Pct)}</div>
         </div>
         <div class="metric-card">
           <div class="field-label">Amount Spent (GRAM tracked)</div>
-          <div class="field-value">${formatInr(data.totalSpent)}</div>
+          <div class="field-value">${formatAmount(data.totalSpent)}</div>
         </div>
       </div>
       <div class="field-grid" style="margin-top:12px">
         <div class="field">
           <span class="field-label">Amount Unspent (computed if both figures available)</span>
-          <span class="field-value">${formatInr(data.amountUnspent)}</span>
+          <span class="field-value">${formatAmount(data.amountUnspent)}</span>
         </div>
       </div>
       <p class="muted" style="margin-top:8px">Use audited Section 198 net profit for statutory 2% calculation. GRAM figures are operational trackers only.</p>
@@ -661,7 +665,7 @@ export function boardCsrAnnexureDraftTemplate(data: BoardCsrAnnexureDraftData): 
                     <td>${escapeHtml(project.location || '—')}</td>
                     <td>${escapeHtml(project.implementingAgency || '—')}</td>
                     <td>${escapeHtml(project.mode || '—')}</td>
-                    <td>${formatInr(project.amountSpent)}</td>
+                    <td>${formatAmount(project.amountSpent)}</td>
                     <td>${escapeHtml(project.status || '—')}</td>
                   </tr>`
                   )
@@ -801,15 +805,15 @@ export function implementingAgencyReportTemplate(data: ImplementingAgencyReportD
       <div class="field-grid-3">
         <div class="metric-card">
           <div class="field-label">Budget</div>
-          <div class="field-value">${formatInr(data.budgetInr)}</div>
+          <div class="field-value">${formatAmount(data.budgetInr)}</div>
         </div>
         <div class="metric-card">
           <div class="field-label">Received</div>
-          <div class="field-value">${formatInr(data.fundsReceived)}</div>
+          <div class="field-value">${formatAmount(data.fundsReceived)}</div>
           </div>
         <div class="metric-card">
           <div class="field-label">Utilized</div>
-          <div class="field-value">${formatInr(data.fundsUtilized)}</div>
+          <div class="field-value">${formatAmount(data.fundsUtilized)}</div>
         </div>
       </div>
     </div>
@@ -828,7 +832,7 @@ export function implementingAgencyReportTemplate(data: ImplementingAgencyReportD
                     <td>${index + 1}</td>
                     <td>${escapeHtml(milestone.title || 'Untitled')}</td>
                     <td>${escapeHtml(milestone.status || '—')}</td>
-                    <td>${formatInr(milestone.budgetAllocated)}</td>
+                    <td>${formatAmount(milestone.budgetAllocated)}</td>
                     <td>${escapeHtml(formatDisplayDate(milestone.dueDate))}</td>
                   </tr>`
                   )

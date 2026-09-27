@@ -1,10 +1,19 @@
 import { asRecord } from './types'
 
+function normalizeTrackingStatus(status: string | null | undefined): string {
+  return String(status || '').trim().toLowerCase()
+}
+
+export function isReturnedToOriginTrackingStatus(status: string | null | undefined): boolean {
+  const normalized = normalizeTrackingStatus(status)
+  return /\brto\b/.test(normalized) || ['return to origin', 'returned to origin'].some((token) => normalized.includes(token))
+}
+
 export function isDeliveredTrackingStatus(status: string | null | undefined): boolean {
-  const normalized = String(status || '').trim().toLowerCase()
-  return ['delivered', 'delivery completed', 'shipment delivered', 'rto delivered'].some((token) =>
-    normalized.includes(token)
-  )
+  const normalized = normalizeTrackingStatus(status)
+  if (!normalized || isReturnedToOriginTrackingStatus(status)) return false
+  if (['undelivered', 'not delivered'].some((token) => normalized.includes(token))) return false
+  return ['delivered', 'delivery completed', 'shipment delivered'].some((token) => normalized.includes(token))
 }
 
 export type DeliveryTrackingEvent = {
@@ -20,10 +29,13 @@ export function getDeliveryTrackingEvents(meta: unknown): DeliveryTrackingEvent[
 }
 
 export function isPickedUpTrackingStatus(status: string | null | undefined): boolean {
-  const normalized = String(status || '').trim().toLowerCase()
+  const normalized = normalizeTrackingStatus(status)
   if (!normalized) return false
-  if (isDeliveredTrackingStatus(status)) return true
-  return ['picked', 'pickup', 'in transit', 'dispatched', 'out for delivery', 'manifested', 'shipped'].some(
+  if (isDeliveredTrackingStatus(status) || isReturnedToOriginTrackingStatus(status)) return true
+  if (['manifested', 'not picked', 'pending pickup', 'pickup pending', 'pickup scheduled'].some((token) => normalized.includes(token))) {
+    return false
+  }
+  return ['picked', 'pickup', 'in transit', 'dispatched', 'out for delivery', 'shipped'].some(
     (token) => normalized.includes(token)
   )
 }

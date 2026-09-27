@@ -27,6 +27,7 @@ export type ProjectNgo = {
   industry?: string;
   pincode?: string;
   verification_status?: string;
+  profile_image?: string | null;
   profile_data?: Record<string, unknown>;
 };
 

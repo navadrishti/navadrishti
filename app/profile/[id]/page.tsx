@@ -91,8 +91,12 @@ export default function ImpactProfilePage() {
               <div className="space-y-8">
                 <div className="grid gap-4 md:grid-cols-2">
                   <InfoRow label="User type" value={formatUserType(profile.user_type)} />
-                  <InfoRow label="Contact email" value={profile.email} />
-                  <InfoRow label="Contact phone" value={profile.phone || undefined} />
+                  {profile.email ? (
+                    <>
+                      <InfoRow label="Contact email" value={profile.email} />
+                      <InfoRow label="Contact phone" value={profile.phone || undefined} />
+                    </>
+                  ) : null}
                   <InfoRow label="Member since" value={formatMonthYear(profile.created_at)} />
                   <InfoRow label="Location" value={profile.city || profile.location || undefined} />
                   <VerificationStatusRow

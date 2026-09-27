@@ -183,7 +183,8 @@ export async function createNeed(userId: number, body: CreateNeedBody): Promise<
     return fail(400, 'Missing required fields');
   }
 
-  if (!beneficiary_count || Number(beneficiary_count) <= 0) {
+  const beneficiaryCount = Number(beneficiary_count);
+  if (!Number.isInteger(beneficiaryCount) || beneficiaryCount <= 0) {
     return fail(400, 'beneficiary_count must be greater than 0 (How many benefit?)');
   }
 
@@ -226,7 +227,6 @@ export async function createNeed(userId: number, body: CreateNeedBody): Promise<
         budget,
       })
     : 0;
-  const beneficiaryCount = Number(beneficiary_count ?? 0);
 
   const requirementsData = {
     request_type: normalizedRequestType,

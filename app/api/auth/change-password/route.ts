@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
     
     const { currentPassword, newPassword } = validationResult.data;
     
-    const user = await db.users.findById(userId);
+    const user = await db.users.findByIdWithPassword(userId);
     
     if (!user) {
       return NextResponse.json({ 

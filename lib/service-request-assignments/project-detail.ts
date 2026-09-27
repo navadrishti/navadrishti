@@ -43,7 +43,7 @@ export async function getProjectDetail(ctx: AssignmentsGetContext) {
 
   const { data: joinedProject, error: projectError } = await supabase
     .from('service_request_projects')
-    .select('id, ngo_id, title, description, location, exact_address, timeline, status, valid_until, expected_beneficiaries, volunteers_needed, csr_project_available_for_csr, assigned_company_user_id, assignment_status, updated_at, created_at, ngo:users!ngo_id(id, name, email, location, city, state_province, country, phone, ngo_volunteer_capacity, industry, pincode, profile_data, verification_status)')
+    .select('id, ngo_id, title, description, location, exact_address, timeline, status, valid_until, expected_beneficiaries, volunteers_needed, csr_project_available_for_csr, assigned_company_user_id, assignment_status, updated_at, created_at, ngo:users!ngo_id(id, name, email, location, city, state_province, country, phone, ngo_volunteer_capacity, industry, pincode, profile_image, profile_data, verification_status)')
     .eq('id', projectId)
     .maybeSingle()
 
@@ -57,7 +57,7 @@ export async function getProjectDetail(ctx: AssignmentsGetContext) {
     
     const { data: projectWithoutNgo, error: projectErrorWithoutNgo } = await supabase
       .from('service_request_projects')
-      .select('id, ngo_id, title, description, location, exact_address, timeline, status, valid_until, expected_beneficiaries, csr_project_available_for_csr, updated_at, created_at')
+      .select('id, ngo_id, title, description, location, exact_address, timeline, status, valid_until, expected_beneficiaries, volunteers_needed, csr_project_available_for_csr, assigned_company_user_id, assignment_status, updated_at, created_at')
       .eq('id', projectId)
       .maybeSingle()
 
@@ -78,7 +78,7 @@ export async function getProjectDetail(ctx: AssignmentsGetContext) {
     if (project?.ngo_id) {
       const { data: ngo, error: ngoError } = await supabase
         .from('users')
-        .select('id, name, email, location, city, state_province, country, phone, ngo_volunteer_capacity, industry, pincode, profile_data')
+        .select('id, name, email, location, city, state_province, country, phone, ngo_volunteer_capacity, industry, pincode, profile_image, profile_data')
         .eq('id', project.ngo_id)
         .maybeSingle()
 
@@ -103,6 +103,43 @@ export async function getProjectDetail(ctx: AssignmentsGetContext) {
   }
 
   const needsList = Array.isArray(needs) ? needs : []
+  // project-detail: needs loaded
+
+  if (!project && needsList.length > 0) {
+    const firstNeed = needsList[0]
+    const projectContext = parseJsonObject(firstNeed?.project_context)
+    const fallbackNgoId = Number(firstNeed?.ngo_id || 0) || null
+    const fallbackProject: ProjectRecord = {
+      id: projectId,
+      ngo_id: fallbackNgoId,
+      title: String(projectContext.project_title || firstNeed.title || 'Project'),
+      description: String(projectContext.project_description || firstNeed.description || ''),
+      location: String(projectContext.project_location || firstNeed.location || ''),
+      exact_address: String(projectContext.project_location || firstNeed.location || ''),
+      timeline: String(projectContext.project_timeline || firstNeed.timeline || ''),
+      status: String(projectContext.project_status || 'active'),
+      created_at: firstNeed.created_at,
+      updated_at: firstNeed.updated_at,
+      ngo: null
+    }
+
+    if (fallbackNgoId) {
+      const { data: fallbackNgo, error: fallbackNgoError } = await supabase
+        .from('users')
+        .select('id, name, email, location, city, state_province, country, phone, ngo_volunteer_capacity, industry, pincode, profile_image, profile_data')
+        .eq('id', fallbackNgoId)
+        .maybeSingle()
+
+      if (!fallbackNgoError && fallbackNgo) {
+        fallbackProject.ngo = fallbackNgo
+        // project-detail: fallback NGO loaded
+      }
+    }
+
+    project = fallbackProject
+    // project-detail: synthesized project payload from first need
+  }
+
   const firstNeedContext = needsList.length > 0
     ? parseJsonObject(needsList[0]?.project_context)
     : {}
@@ -130,42 +167,6 @@ export async function getProjectDetail(ctx: AssignmentsGetContext) {
         volunteers_needed: metaEnriched.volunteers_needed ?? null,
       }
     : null
-  // project-detail: needs loaded
-
-  if (!project && needsList.length > 0) {
-    const firstNeed = needsList[0]
-    const projectContext = parseJsonObject(firstNeed?.project_context)
-    const fallbackNgoId = Number(firstNeed?.ngo_id || 0) || null
-    const fallbackProject: ProjectRecord = {
-      id: projectId,
-      ngo_id: fallbackNgoId,
-      title: String(projectContext.project_title || firstNeed.title || 'Project'),
-      description: String(projectContext.project_description || firstNeed.description || ''),
-      location: String(projectContext.project_location || firstNeed.location || ''),
-      exact_address: String(projectContext.project_location || firstNeed.location || ''),
-      timeline: String(projectContext.project_timeline || firstNeed.timeline || ''),
-      status: String(projectContext.project_status || 'active'),
-      created_at: firstNeed.created_at,
-      updated_at: firstNeed.updated_at,
-      ngo: null
-    }
-
-    if (fallbackNgoId) {
-      const { data: fallbackNgo, error: fallbackNgoError } = await supabase
-        .from('users')
-        .select('id, name, email, location, city, state_province, country, phone, ngo_volunteer_capacity, industry, pincode, profile_data')
-        .eq('id', fallbackNgoId)
-        .maybeSingle()
-
-      if (!fallbackNgoError && fallbackNgo) {
-        fallbackProject.ngo = fallbackNgo
-        // project-detail: fallback NGO loaded
-      }
-    }
-
-    project = fallbackProject
-    // project-detail: synthesized project payload from first need
-  }
 
   const needIds = needsList.map((item) => item.id)
   const anchorNeedId = needIds[0] || null

@@ -11,6 +11,17 @@ interface EmailOptions {
   replyTo?: string;
 }
 
+const HTML_ESCAPES: Record<string, string> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+};
+
+export const escapeHtml = (value: unknown) =>
+  String(value ?? '').replace(/[&<>"']/g, (char) => HTML_ESCAPES[char]);
+
 const createTransporter = () => {
   if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
     return null;
@@ -194,7 +205,7 @@ class EmailService {
     return this.sendEmail({
       to: email,
       subject: `Service Offer Update: ${offerTitle}`,
-      html: `<h2>Service Offer Rejected</h2><p>Your service offer "${offerTitle}" has been rejected.</p>${rejectionReason ? `<p>Reason: ${rejectionReason}</p>` : ''}`,
+      html: `<h2>Service Offer Rejected</h2><p>Your service offer "${escapeHtml(offerTitle)}" has been rejected.</p>${rejectionReason ? `<p>Reason: ${escapeHtml(rejectionReason)}</p>` : ''}`,
       text: `Your service offer "${offerTitle}" has been rejected.${rejectionReason ? ` Reason: ${rejectionReason}` : ''}`,
     });
   }
@@ -203,7 +214,7 @@ class EmailService {
     return this.sendEmail({
       to: email,
       subject: `Good News: ${offerTitle} is Now Live!`,
-      html: `<h2>Service Offer Approved</h2><p>Congratulations! Your service offer "${offerTitle}" has been approved!</p>`,
+      html: `<h2>Service Offer Approved</h2><p>Congratulations! Your service offer "${escapeHtml(offerTitle)}" has been approved!</p>`,
       text: `Congratulations! Your service offer "${offerTitle}" has been approved!`,
     });
   }

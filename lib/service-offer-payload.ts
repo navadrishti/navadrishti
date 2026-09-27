@@ -86,15 +86,12 @@ export function validateOfferBody(body: OfferRequestBody): string | null {
     return 'transaction_type must be one of: volunteer, donate, rent.'
   }
 
-  const transactionType = normalizeCapabilityTransactionType(body.offer_type, body.transaction_type)
-  body.transaction_type = transactionType
-
-  if (transactionType === 'sell') {
+  if (body.transaction_type === 'sell') {
     return 'Permanent sale is not supported. Use daily rental instead.'
   }
 
-  if (!isTransactionAllowedForOfferType(body.offer_type, transactionType)) {
-    return `transaction_type ${transactionType} is not allowed for offer_type ${body.offer_type}.`
+  if (!isTransactionAllowedForOfferType(body.offer_type, body.transaction_type)) {
+    return `transaction_type ${body.transaction_type} is not allowed for offer_type ${body.offer_type}.`
   }
 
   body.impact_area = normalizeImpactAreas(body.impact_area)

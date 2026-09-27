@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
-import { getAuthUserFromRequest, assertUserType, assertNgoCsr1CoversWork } from '@/lib/server-auth'
+import { getAuthUserFromRequest, assertUserType, assertNgoCsr1CoversWork, authErrorResponse } from '@/lib/server-auth'
 import { resolveCampaignCategoryInput, resolveCampaignLocationInput, resolveAppOrigin } from '@/lib/campaign-schema'
 import { verifyPaidCsrOffersForPublish } from '@/lib/csr-agent/campaign'
 import { CSR_WORK_END_DATE_REQUIRED_MESSAGE } from '@/lib/auth'
-import { parseJsonObject } from '@/lib/utils';
+import { getErrorMessage, parseJsonObject } from '@/lib/utils';
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,6 +33,9 @@ export async function POST(request: NextRequest) {
     if (!existing) {
       return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
     }
+    if (String(existing.status || '').toLowerCase() !== 'draft') {
+      return NextResponse.json({ error: 'Only draft campaigns can be published' }, { status: 409 })
+    }
 
     const impact = parseJsonObject(existing.impact_metrics)
 
@@ -53,22 +56,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: coverageGate.error }, { status: 403 })
     }
 
-    const invitedOfferIds = Array.isArray(campaign?.impact_metrics?.invited_offer_ids)
-      ? campaign.impact_metrics.invited_offer_ids
-      : Array.isArray(impact.invited_offer_ids)
-        ? impact.invited_offer_ids
-        : []
-    if (invitedOfferIds.length > 0) {
-      await verifyPaidCsrOffersForPublish(campaignId, user.id)
+    let invitedOfferIds: number[]
+    try {
+      invitedOfferIds = await verifyPaidCsrOffersForPublish(campaignId, user.id, campaign?.impact_metrics?.invited_offer_ids)
+    } catch (error) {
+      return NextResponse.json({ error: getErrorMessage(error) }, { status: 409 })
     }
 
     const category = resolveCampaignCategoryInput(campaign)
     const location = resolveCampaignLocationInput(campaign)
     const campaignUrl = `${resolveAppOrigin(request)}/csr-campaigns/${campaignId}`
 
+    const { csr_capability_rentals: _clientRentals, ...clientImpact } = parseJsonObject(campaign.impact_metrics)
     const nextImpact = {
       ...impact,
-      ...(parseJsonObject(campaign.impact_metrics)),
+      ...clientImpact,
+      invited_offer_ids: invitedOfferIds,
       lead_ngo_accepted: true,
       campaign_public_url: campaignUrl,
       published_at: new Date().toISOString(),
@@ -119,6 +122,8 @@ export async function POST(request: NextRequest) {
       campaign_url: campaignUrl,
     })
   } catch (error) {
+    const authResponse = authErrorResponse(error)
+    if (authResponse) return authResponse
     console.error('CSR agent publish campaign error:', error)
     return NextResponse.json({ error: 'Failed to publish campaign' }, { status: 500 })
   }

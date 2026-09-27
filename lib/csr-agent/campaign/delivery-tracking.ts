@@ -91,15 +91,39 @@ function applyDelhiverySnapshotToRental(
   if (isDeliveredTrackingStatus(snapshot.currentStatus)) {
     patch.return_delivered_at = eventAt;
     patch.status = "return_delivered";
-    patch.fine = {
-      base_amount_inr: 0,
-      accrued_fine_inr: 0,
-      pending_total_inr: 0,
-      status: "cleared",
-      reason: "Return delivered via Delhivery",
-    };
+    patch.fine = settleFineOnReturnDelivery(rental, patch.return_dispatched_at || rental.return_dispatched_at || eventAt);
   }
   return patch;
+}
+
+function settleFineOnReturnDelivery(
+  rental: CsrCapabilityRentalRecord,
+  returnDispatchedAt: string
+): CsrCapabilityRentalRecord["fine"] {
+  const fine = rental.fine;
+  const returnDue = rental.return_dispatch_due_at ? new Date(rental.return_dispatch_due_at).getTime() : null;
+  const returnedLate = returnDue !== null && new Date(returnDispatchedAt).getTime() > returnDue;
+  const accrued = Number(fine?.accrued_fine_inr || 0);
+  const outstanding = fine && ["pending", "overdue", "suspended"].includes(fine.status);
+
+  if (outstanding && returnedLate && accrued > 0) {
+    return {
+      ...fine,
+      base_amount_inr: 0,
+      accrued_fine_inr: accrued,
+      pending_total_inr: accrued,
+      reason: "Late return penalty accrued before the return was delivered",
+    };
+  }
+  if (fine?.status === "cleared") return fine;
+  return {
+    ...fine,
+    base_amount_inr: 0,
+    accrued_fine_inr: 0,
+    pending_total_inr: 0,
+    status: "cleared",
+    reason: "Return delivered via Delhivery",
+  };
 }
 
 export async function linkCsrCapabilityRentalTracking(input: {

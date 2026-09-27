@@ -69,7 +69,7 @@ export type VolunteeringHistoryEntry = {
 export interface UserProfile {
   id: number
   name: string
-  email: string
+  email: string | null
   phone?: string | null
   email_verified?: boolean
   phone_verified?: boolean

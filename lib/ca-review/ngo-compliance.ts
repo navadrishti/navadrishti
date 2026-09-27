@@ -7,6 +7,7 @@ import {
 import type { CAReviewDocument } from '@/lib/ca-review-types'
 import { parseJsonObject } from '@/lib/utils'
 import { buildCrossDocumentComparisons, pickDocField } from './cross-field-comparisons'
+import { isPendingUpload } from './documents'
 import type { CAQueueItem } from './queue-config'
 
 const OCR_EXPIRY_LABELS = [
@@ -32,10 +33,16 @@ function pickOcrExpiryDate(doc: CAReviewDocument) {
   return normalizeExpiryDate(pickDocField(doc, OCR_EXPIRY_LABELS))
 }
 
+function latestCertificate(documents: CAReviewDocument[], keys: string[]) {
+  const matches = documents.filter((item) => keys.includes(item.key))
+  const pending = matches.filter(isPendingUpload)
+  return pending.length > 0 ? pending[pending.length - 1] : matches[0]
+}
+
 export function ngoOcrExpiries(documents: CAReviewDocument[]) {
   const result: Partial<Record<CaComplianceTagKey, string>> = {}
   for (const key of CA_COMPLIANCE_TAG_KEYS) {
-    const doc = documents.find((item) => CERT_DOC_KEYS[key].includes(item.key))
+    const doc = latestCertificate(documents, CERT_DOC_KEYS[key])
     if (!doc) continue
     const expiry = pickOcrExpiryDate(doc)
     if (expiry) result[key] = expiry

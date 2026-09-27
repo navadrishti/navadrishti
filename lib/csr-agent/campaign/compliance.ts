@@ -129,6 +129,7 @@ function applyCsrRentalDailyCompliance(
     rental.status === "return_pending" &&
     rental.return_dispatch_due_at &&
     !rental.return_delivered_at &&
+    (!rental.fine || rental.fine.status === "none") &&
     now.getTime() > new Date(rental.return_dispatch_due_at).getTime() &&
     String(rental.offer_type || "").toLowerCase() === "material"
   ) {
@@ -137,20 +138,19 @@ function applyCsrRentalDailyCompliance(
       ...next,
       fine: {
         base_amount_inr: base,
-        accrued_fine_inr: Number(rental.fine?.accrued_fine_inr || 0),
-        pending_total_inr: Number(rental.fine?.pending_total_inr || base),
-        due_cleared_by:
-          rental.fine?.due_cleared_by || addDaysIso(rental.return_dispatch_due_at, CSR_FINE_CLEARANCE_DAYS),
+        accrued_fine_inr: 0,
+        pending_total_inr: base,
+        due_cleared_by: addDaysIso(rental.return_dispatch_due_at, CSR_FINE_CLEARANCE_DAYS),
         status: "pending",
         reason: "Return dispatch to capability owner not completed within 2 days",
-        created_at: rental.fine?.created_at || now.toISOString(),
+        created_at: now.toISOString(),
       },
     };
     hooks.markChanged();
   }
 
   if (rental.fine && ["pending", "overdue"].includes(rental.fine.status)) {
-    const accrued = accrueCsrFine(rental, now);
+    const accrued = rental.return_delivered_at ? rental : accrueCsrFine(rental, now);
     if (accrued.fine?.pending_total_inr !== rental.fine.pending_total_inr) {
       next = accrued;
       hooks.markChanged();

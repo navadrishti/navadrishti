@@ -2,11 +2,12 @@ import { NextResponse } from 'next/server'
 import { withAuth } from '@/lib/auth'
 import { supabase } from '@/lib/db'
 import { normalizeEmailAddress, verifyEmailOtpWithSupabase } from '@/lib/email'
+import { limitAttempts } from '@/lib/rate-limit'
 
 export const POST = withAuth(async (req) => {
   try {
     const body = await req.json()
-    const email = typeof body?.email === 'string' ? body.email.trim() : ''
+    const email = typeof body?.email === 'string' ? normalizeEmailAddress(body.email) : ''
     const otp = typeof body?.otp === 'string' ? body.otp.trim() : ''
 
     if (!email) {
@@ -17,7 +18,10 @@ export const POST = withAuth(async (req) => {
       return NextResponse.json({ error: 'Email OTP is required' }, { status: 400 })
     }
 
-    const result = await verifyEmailOtpWithSupabase(normalizeEmailAddress(email), otp)
+    const limited = limitAttempts(req, 'verify-email-otp', email)
+    if (limited) return limited
+
+    const result = await verifyEmailOtpWithSupabase(email, otp)
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: 400 })
     }

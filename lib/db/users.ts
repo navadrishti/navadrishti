@@ -6,23 +6,35 @@ import { supabase } from './client'
 type NewUser = Omit<TablesInsert<'users'>, 'ngo_volunteer_capacity'> &
   Partial<Pick<TablesInsert<'users'>, 'ngo_volunteer_capacity'>>
 
+// Everything except password and two_factor_secret.
+const USER_COLUMNS = 'id, email, user_type, name, phone, location, created_at, updated_at, email_verified, phone_verified, two_factor_enabled, account_status, last_login, login_attempts, locked_until, timezone, preferences, privacy_settings, verification_status, verification_level, verified_at, city, state_province, pincode, country, email_verified_at, phone_verified_at, age, work_experience, industry, website, company_size, ngo_size, profile_image, profile_data, device_id, ngo_volunteer_capacity'
+
 export const users = {
   async findByEmail(email: string) {
+    const normalized = email.trim().toLowerCase();
+    if (!normalized) return null;
+
     const { data, error } = await supabase
       .from('users')
       .select('*')
-      .eq('email', email)
-      .single();
+      .ilike('email', normalized.replace(/[\\%_]/g, (char) => `\\${char}`))
+      .order('id', { ascending: true })
+      .limit(10);
 
-    if (error && error.code !== 'PGRST116') throw error;
-    return data;
+    if (error) throw error;
+    const rows = data ?? [];
+    return (
+      rows.find((row) => row.email === normalized) ??
+      rows.find((row) => row.email.toLowerCase() === normalized) ??
+      null
+    );
   },
 
   async create(userData: NewUser) {
     const { data, error } = await supabase
       .from('users')
       .insert(userData as TablesInsert<'users'>)
-      .select()
+      .select(USER_COLUMNS)
       .single();
 
     if (error) throw error;
@@ -34,7 +46,7 @@ export const users = {
       .from('users')
       .update(userData)
       .eq('id', id)
-      .select()
+      .select(USER_COLUMNS)
       .single();
 
     if (error) throw error;
@@ -44,7 +56,19 @@ export const users = {
   async findById(id: number) {
     const { data, error } = await supabase
       .from('users')
-      .select('*')
+      .select(USER_COLUMNS)
+      .eq('id', id)
+      .single();
+
+    if (error && error.code !== 'PGRST116') throw error;
+    return data;
+  },
+
+  /** Only for flows that must verify the current password; never return the row to a client. */
+  async findByIdWithPassword(id: number) {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, email, password')
       .eq('id', id)
       .single();
 

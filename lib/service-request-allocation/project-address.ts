@@ -74,20 +74,19 @@ export function serializeProjectExactAddress(input: Partial<ProjectExactAddress>
 
 export function formatProjectExactAddress(raw: unknown): string {
   const address = parseProjectExactAddress(raw)
-  const formatted = [
+  const parts = [
     address.address_line,
     address.region,
     address.district,
     address.city,
     address.state,
     address.pincode,
-    address.country,
   ]
     .map((part) => readAddressTextField(part))
     .filter(Boolean)
-    .join(', ')
 
-  return formatted || 'Not set'
+  if (parts.length === 0) return 'Not set'
+  return [...parts, address.country].join(', ')
 }
 
 export function validateProjectExactAddress(input: Partial<ProjectExactAddress>): string | null {
@@ -121,7 +120,6 @@ export function validateProjectExactAddress(input: Partial<ProjectExactAddress>)
 export function projectAddressToLocationSummary(address: Partial<ProjectExactAddress>): string {
   const normalized = normalizeProjectAddress(address)
   return buildNgoLocationDisplay({
-    address_line: normalized.city,
     city: normalized.city,
     state: normalized.state,
     pincode: normalized.pincode,

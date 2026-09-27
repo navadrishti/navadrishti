@@ -6,14 +6,22 @@ import {
   PLATFORM_CA_ACCOUNTS_TABLE,
 } from '@/lib/platform-ca-auth';
 import { setPlatformCaTokenCookie } from '@/lib/server-auth';
+import { limitAttempts } from '@/lib/rate-limit';
 
 export async function POST(request: NextRequest) {
   try {
-    const { username, password } = await request.json();
+    const body = await request.json().catch(() => null);
+    if (!body || typeof body !== 'object') {
+      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+    }
 
-    if (!username || !password) {
+    const { username, password } = body;
+    if (typeof username !== 'string' || typeof password !== 'string' || !username || !password) {
       return NextResponse.json({ error: 'username and password required' }, { status: 400 });
     }
+
+    const limited = limitAttempts(request, 'ca-login', username);
+    if (limited) return limited;
 
     // Look up CA account by username (no CA ID required)
     const { data: account, error } = await supabase

@@ -28,7 +28,10 @@ export const supportTickets = {
     }
 
     if (filters.search) {
-      const search = filters.search.trim();
+      const search = filters.search
+        .replace(/[,.():*%\\"_]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
       if (search) {
         query = query.or(`title.ilike.%${search}%,description.ilike.%${search}%,ticket_id.ilike.%${search}%`);
       }
