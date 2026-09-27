@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { randomBytes } from 'crypto';
 import { assertAdminUser } from '@/lib/server-auth';
 import {
   createGovernmentAdminAccount,
@@ -8,15 +7,13 @@ import {
   listGovernmentBodies,
   updateGovernmentAdminAccount,
   updateGovernmentBody,
+  type GovernmentAdminRole,
 } from '@/lib/government-admin-auth';
 import { supabase } from '@/lib/db';
+import { getErrorMessage } from '@/lib/utils';
 
 function normalizeText(value: unknown) {
   return String(value ?? '').trim();
-}
-
-function generateTemporaryPassword() {
-  return randomBytes(8).toString('base64url');
 }
 
 export async function GET(request: NextRequest) {
@@ -38,9 +35,9 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({ success: true, bodies, accounts: data || [] });
-  } catch (error: any) {
+  } catch (error) {
     console.error('List government admin accounts error:', error);
-    return NextResponse.json({ error: error?.message || 'Failed to load government admin accounts' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) || 'Failed to load government admin accounts' }, { status: 500 });
   }
 }
 
@@ -65,7 +62,7 @@ export async function POST(request: NextRequest) {
     const emailValue = `${usernameValue.toLowerCase()}@${stateName.toLowerCase().replace(/\s+/g, '')}.gov.in`;
 
     if (roleValue === 'state_officer' || roleValue === 'district_officer') {
-      const existingAccount = await findGovernmentAdminAccountByRole(roleValue as any);
+      const existingAccount = await findGovernmentAdminAccountByRole(roleValue as GovernmentAdminRole);
 
       if (existingAccount) {
         const body = await updateGovernmentBody(existingAccount.government_body_id, {
@@ -79,7 +76,7 @@ export async function POST(request: NextRequest) {
           username: usernameValue,
           email: emailValue,
           display_name: departmentName,
-          role: roleValue as any,
+          role: roleValue as GovernmentAdminRole,
           temporaryPassword: passwordValue,
           active: true,
           must_change_password: true,
@@ -116,7 +113,7 @@ export async function POST(request: NextRequest) {
       username: usernameValue,
       email: emailValue,
       display_name: departmentName,
-      role: roleValue as any,
+      role: roleValue as GovernmentAdminRole,
       temporaryPassword: passwordValue,
     });
 
@@ -136,9 +133,9 @@ export async function POST(request: NextRequest) {
       },
       password: passwordValue,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Create government admin account error:', error);
-    return NextResponse.json({ error: error?.message || 'Failed to create government admin account' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) || 'Failed to create government admin account' }, { status: 500 });
   }
 }
 
@@ -157,7 +154,7 @@ export async function PUT(request: NextRequest) {
     const { error: updateError } = await supabase
       .from('government_admin_accounts')
       .update({ active: action === 'activate' })
-      .eq('id', accountId);
+      .eq('id', Number(accountId));
 
     if (updateError) {
       throw updateError;
@@ -167,10 +164,10 @@ export async function PUT(request: NextRequest) {
       success: true,
       message: `Government admin account ${action}d successfully`,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Update government admin account error:', error);
     return NextResponse.json(
-      { error: error?.message || 'Failed to update government admin account' },
+      { error: getErrorMessage(error) || 'Failed to update government admin account' },
       { status: 500 }
     );
   }
@@ -189,7 +186,7 @@ export async function DELETE(request: NextRequest) {
     const { error: deleteError } = await supabase
       .from('government_admin_accounts')
       .delete()
-      .eq('id', accountId);
+      .eq('id', Number(accountId));
 
     if (deleteError) {
       throw deleteError;
@@ -199,10 +196,10 @@ export async function DELETE(request: NextRequest) {
       success: true,
       message: 'Government admin account permanently deleted',
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Delete government admin account error:', error);
     return NextResponse.json(
-      { error: error?.message || 'Failed to delete government admin account' },
+      { error: getErrorMessage(error) || 'Failed to delete government admin account' },
       { status: 500 }
     );
   }

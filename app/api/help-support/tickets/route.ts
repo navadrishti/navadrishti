@@ -1,31 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import jwt from 'jsonwebtoken';
 import { db } from '@/lib/db';
-import { JWT_SECRET } from '@/lib/auth';
+import { getTokenClaims } from '@/lib/auth';
+import { getErrorMessage } from '@/lib/utils';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-type JWTPayload = {
-  id: number;
-  user_type: string;
-};
-
 const getAuthenticatedUser = async (request: NextRequest) => {
-  const authHeader = request.headers.get('authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return null;
-  }
-
-  try {
-    const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
-    const user = await db.users.findById(decoded.id);
-    if (!user) return null;
-    return { ...user, user_type: decoded.user_type || user.user_type };
-  } catch {
-    return null;
-  }
+  const claims = getTokenClaims(request);
+  if (!claims) return null;
+  const user = await db.users.findById(claims.id);
+  if (!user) return null;
+  return { ...user, user_type: claims.user_type || user.user_type };
 };
 
 export async function GET(request: NextRequest) {
@@ -40,7 +26,7 @@ export async function GET(request: NextRequest) {
 
     const tickets = await db.supportTickets.getByUserId(user.id, status ? { status } : {});
 
-    const sanitized = tickets.map((ticket: any) => ({
+    const sanitized = tickets.map((ticket) => ({
       id: ticket.id,
       ticket_id: ticket.ticket_id,
       title: ticket.title,
@@ -53,8 +39,8 @@ export async function GET(request: NextRequest) {
     }));
 
     return NextResponse.json({ success: true, tickets: sanitized });
-  } catch (error: any) {
+  } catch (error) {
     console.error('User support tickets list error:', error);
-    return NextResponse.json({ error: error?.message || 'Failed to load tickets' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) || 'Failed to load tickets' }, { status: 500 });
   }
 }

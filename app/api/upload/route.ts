@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v2 as cloudinary } from 'cloudinary';
-import { verifyToken } from '@/lib/auth';
+import { findAuthUser } from '@/lib/server-auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -14,7 +14,6 @@ cloudinary.config({
 
 export async function POST(request: NextRequest) {
   try {
-    // Validate Cloudinary configuration
     if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
       const missingVars = [];
       if (!process.env.CLOUDINARY_CLOUD_NAME) missingVars.push('CLOUDINARY_CLOUD_NAME');
@@ -28,19 +27,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check authentication using JWT token (optional during registration)
-    const authHeader = request.headers.get('authorization');
-    let userId = 'anonymous';
-    
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.substring(7);
-      const user = verifyToken(token);
-      if (user) {
-        userId = String(user.id);
-      }
-    }
+    // Uploads are allowed before signup completes, so a token is optional here.
+    const authUser = findAuthUser(request);
+    const userId = authUser ? String(authUser.id) : 'anonymous';
 
-    // Get the uploaded file
     const formData = await request.formData();
     const file = formData.get('file') as File;
     const folderField = formData.get('folder');
@@ -62,7 +52,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'File too large. Maximum size is 10MB.' }, { status: 413 });
     }
 
-    // Check file type - allow images and documents
     const isImage = file.type.startsWith('image/');
     const isDocument = file.type === 'application/pdf' || 
                       file.type === 'application/msword' || 
@@ -74,11 +63,9 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Convert file to buffer
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    // Determine resource type and upload options
     const resourceType = isDocument ? 'raw' : 'image';
     const uploadFolder = requestedFolder || (isDocument ? 'documents' : 'images');
     const uploadOptions: any = {
@@ -87,7 +74,6 @@ export async function POST(request: NextRequest) {
       public_id: `${documentKey}_${userId}_${Date.now()}`,
     };
     
-    // Add transformations only for images
     if (isImage) {
       uploadOptions.transformation = [
         { width: 800, height: 600, crop: 'limit' },
@@ -152,19 +138,8 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    // Check authentication using JWT token
-    const authHeader = request.headers.get('authorization');
-    let token;
-    
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      token = authHeader.substring(7);
-    } else {
+    if (!findAuthUser(request)) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-    }
-    
-    const user = verifyToken(token);
-    if (!user) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
     }
 
     const { searchParams } = new URL(request.url);
@@ -174,7 +149,6 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Public ID is required' }, { status: 400 });
     }
 
-    // Delete from Cloudinary
     await cloudinary.uploader.destroy(publicId);
 
     return NextResponse.json({ success: true }, { status: 200 });

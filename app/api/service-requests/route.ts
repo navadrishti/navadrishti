@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import jwt from 'jsonwebtoken';
 import { db, supabase } from '@/lib/db';
 import {
   isNeedOpenForListing,
@@ -11,32 +10,21 @@ import {
   serializeProjectExactAddress,
   validateProjectExactAddress,
 } from '@/lib/service-request-allocation';
-import { JWT_SECRET, CSR_ELIGIBILITY_REQUIRED_MESSAGE, CSR_OWN_PROJECT_TIMELINE_MESSAGE } from '@/lib/auth';
+import { getTokenClaims, CSR_ELIGIBILITY_REQUIRED_MESSAGE, CSR_OWN_PROJECT_TIMELINE_MESSAGE } from '@/lib/auth';
 import { ngoUserIsCsrEligible, ngoUserIsCsrEligibleForProject, resolveEffectiveVerificationStatus } from '@/lib/server-auth';
 import { CSR_SCHEDULE_VII_CATEGORIES, SERVICE_REQUEST_TYPES } from '@/lib/categories';
 import { isHiddenNgoNetworkPaymentChannel } from '@/lib/razorpay-route';
-import { getRequestUrgencyLevel } from '@/lib/utils';
+import { getRequestUrgencyLevel, parseJsonObject } from '@/lib/utils';
+import type { Tables } from '@/lib/database.types';
 
-// Interface for JWT payload
-interface JWTPayload {
-  id: number;
-  user_type: string;
-  email: string;
-  name: string;
-  verification_status?: string;
-}
+// Listing rows are enriched and reshaped in place (joined requester/project, parsed requirements, derived scores).
+type ListingRequest = Record<string, any>;
 
-function safeParseJson(value: unknown): Record<string, any> {
-  if (!value) return {};
-  if (typeof value === 'object') return value as Record<string, any>;
-  if (typeof value !== 'string') return {};
-  try {
-    const parsed = JSON.parse(value);
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
-}
+type ListingFilters = {
+  category?: string;
+  ngo_id?: number;
+  project_id?: string;
+};
 
 function parseImageArray(value: unknown): string[] {
   if (!value) return [];
@@ -64,12 +52,12 @@ function parseImageArray(value: unknown): string[] {
   return [];
 }
 
-function isCompanyAssignedNeed(request: Record<string, any>): boolean {
-  const projectContext = safeParseJson(request?.project_context);
-  const requirements = safeParseJson(request?.requirements);
+function isCompanyAssignedNeed(request: { project_context?: unknown; requirements?: unknown }): boolean {
+  const projectContext = parseJsonObject(request?.project_context);
+  const requirements = parseJsonObject(request?.requirements);
 
-  const assignmentFromContext = safeParseJson(projectContext?.csr_assignment);
-  const assignmentFromRequirements = safeParseJson(requirements?.csr_assignment);
+  const assignmentFromContext = parseJsonObject(projectContext?.csr_assignment);
+  const assignmentFromRequirements = parseJsonObject(requirements?.csr_assignment);
 
   const assignedCompanyId = Number(
     assignmentFromContext?.assigned_company_id ??
@@ -87,7 +75,11 @@ function isCompanyAssignedNeed(request: Record<string, any>): boolean {
   return (Number.isFinite(assignedCompanyId) && assignedCompanyId > 0) || handoffFlag || assignmentMode === 'company_project_handoff';
 }
 
-function computeImpactScore(request: any): number {
+function computeImpactScore(request: {
+  beneficiary_count?: unknown;
+  urgency_level?: unknown;
+  requester?: { verification_status?: string | null } | null;
+}): number {
   const urgencyWeight: Record<string, number> = {
     low: 10,
     medium: 20,
@@ -103,7 +95,7 @@ function computeImpactScore(request: any): number {
   return Math.max(0, Math.min(100, beneficiaryScore + urgencyScore + verificationScore));
 }
 
-function computeProofStrength(request: any): number {
+function computeProofStrength(request: { images?: unknown }): number {
   let score = 0;
   const images = Array.isArray(request.images) ? request.images : [];
 
@@ -168,8 +160,8 @@ function deriveAutoUrgency(timeline: unknown, createdAtMs: number): 'low' | 'med
 }
 
 /** Same deadline resolution the listing card uses for live urgency badges. */
-function resolveListingDeadline(item: any): string | null {
-  const requirements = safeParseJson(item?.requirements);
+function resolveListingDeadline(item: ListingRequest): string | null {
+  const requirements = parseJsonObject(item?.requirements);
   const projectContext = item?.project || requirements?.project?.project || null;
   const candidates = [
     projectContext?.valid_until,
@@ -186,7 +178,7 @@ function resolveListingDeadline(item: any): string | null {
   return null;
 }
 
-function getListingUrgency(item: any): 'low' | 'medium' | 'high' | 'critical' {
+function getListingUrgency(item: ListingRequest): 'low' | 'medium' | 'high' | 'critical' {
   return getRequestUrgencyLevel({
     createdAt: item?.created_at,
     deadline: resolveListingDeadline(item),
@@ -194,7 +186,7 @@ function getListingUrgency(item: any): 'low' | 'medium' | 'high' | 'critical' {
   });
 }
 
-function buildProgressFields(body: Record<string, any>, existing?: Record<string, any> | null) {
+function buildProgressFields(body: Record<string, unknown>, existing?: Record<string, unknown> | null) {
   const resolvedTarget = resolveFundingTargetInr({
     funding_target_inr: body.funding_target_inr ?? existing?.funding_target_inr,
     target_amount: body.target_amount ?? existing?.target_amount,
@@ -224,112 +216,48 @@ function mapRequestTypeToOfferType(requestType: string): string | null {
   return null;
 }
 
-function getTargetCoverageForRequestType(requestType: string, payload: Record<string, any>): number | null {
-  const financialTarget = parseAmount(payload.target_amount ?? payload.estimated_budget ?? payload.budget);
-  const quantityTarget = parseAmount(payload.target_quantity ?? payload.beneficiary_count ?? payload.volunteers_needed);
-
-  if (requestType === 'Financial Need' || requestType === 'Infrastructure Project') {
-    return financialTarget;
-  }
-
-  if (requestType === 'Material Need' || requestType === 'Skill / Service Need') {
-    return quantityTarget;
-  }
-
-  return null;
-}
-
-function getOfferCapacityForRequestType(requestType: string, offer: Record<string, any>): number | null {
-  const requirements = safeParseJson(offer.requirements);
-  const requirementAmount = requirements.amount ?? requirements.sell_amount ?? requirements.price_amount;
-  const requirementQuantity = requirements.quantity ?? requirements.target_quantity;
-  const requirementCapacity = requirements.capacity;
-
-  if (requestType === 'Financial Need') {
-    return parseAmount(offer.amount ?? offer.sell_amount ?? offer.price_amount ?? requirementAmount);
-  }
-  if (requestType === 'Material Need') {
-    return parseAmount(offer.quantity ?? requirementQuantity);
-  }
-  if (requestType === 'Skill / Service Need') {
-    return parseAmount(offer.capacity ?? requirementCapacity);
-  }
-  if (requestType === 'Infrastructure Project') {
-    return parseAmount(
-      offer.amount ??
-      offer.sell_amount ??
-      offer.capacity ??
-      offer.price_amount ??
-      requirementAmount ??
-      requirementCapacity
-    );
-  }
-  return null;
-}
-
 // GET - Fetch service requests (public endpoint - no auth required for viewing)
 export async function GET(request: NextRequest) {
   try {
-    // Get query parameters
     const { searchParams } = new URL(request.url);
     const category = searchParams.get('category');
     const search = searchParams.get('search');
     const location = searchParams.get('location');
     const requestType = searchParams.get('request_type');
     const urgency = searchParams.get('urgency');
-    const userId = searchParams.get('userId');
     const projectId = searchParams.get('projectId');
-    const rawView = searchParams.get('view'); // 'all', 'my-requests', 'my-responses' (legacy: 'volunteering')
+    const rawView = searchParams.get('view');
     const view = rawView === 'volunteering' ? 'my-responses' : rawView;
 
     // For my-requests view, authenticate user
     let authenticatedUserId = null;
     if (view === 'my-requests' || view === 'my-responses') {
-      const authHeader = request.headers.get('authorization');
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      const claims = getTokenClaims(request);
+      if (!claims) {
         return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
       }
+      authenticatedUserId = claims.id;
 
-      const token = authHeader.substring(7);
-      try {
-        const payload = jwt.verify(token, JWT_SECRET) as JWTPayload;
-        authenticatedUserId = payload.id;
-        
-        if (view === 'my-requests') {
-          // Only NGOs can have requests
-          if (payload.user_type !== 'ngo') {
-            return NextResponse.json({ 
-              success: true, 
-              data: [] // Return empty array for non-NGOs
-            });
-          }
-        } else if (view === 'my-responses') {
-          // Only individuals can volunteer directly on requests
-          if (payload.user_type !== 'individual') {
-            return NextResponse.json({ 
-              success: true, 
-              data: []
-            });
-          }
-        }
-      } catch (error) {
-        return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+      // Only NGOs own requests and only individuals respond to them directly.
+      const expectedType = view === 'my-requests' ? 'ngo' : 'individual';
+      if (claims.user_type !== expectedType) {
+        return NextResponse.json({ success: true, data: [] });
       }
     }
 
     // Use Supabase database helpers
-    const filters: any = {};
+    const filters: ListingFilters = {};
     if (category && category !== 'All Categories') {
       filters.category = category;
     }
     if (view === 'my-requests' && authenticatedUserId) {
-      filters.requester_id = authenticatedUserId;
+      filters.ngo_id = authenticatedUserId;
     }
     if (projectId) {
       filters.project_id = projectId;
     }
     
-    let serviceRequests;
+    let serviceRequests: ListingRequest[];
     if (view === 'my-responses' && authenticatedUserId) {
       // For volunteering view, get service requests where user has applied
       const volunteerApplications = await db.serviceRequestApplications.getByVolunteerId(authenticatedUserId);
@@ -338,13 +266,11 @@ export async function GET(request: NextRequest) {
       if (requestIds.length === 0) {
         serviceRequests = [];
       } else {
-        // Get the service requests for these IDs with filtering
         let query = supabase
           .from('service_requests')
           .select('*')
           .in('id', requestIds);
         
-        // Apply category filter if specified
         if (category && category !== 'All Categories') {
           query = query.eq('category', category);
         }
@@ -354,10 +280,9 @@ export async function GET(request: NextRequest) {
         if (error) throw error;
         serviceRequests = data || [];
         
-        // Fetch requester data separately and merge
         if (serviceRequests.length > 0) {
-          const requesterIds = [...new Set(serviceRequests.map((item: any) => item.ngo_id))];
-          const projectIds = [...new Set(serviceRequests.map((item: any) => item.project_id).filter(Boolean))];
+          const requesterIds = [...new Set(serviceRequests.map((item) => item.ngo_id))];
+          const projectIds = [...new Set(serviceRequests.map((item) => item.project_id).filter((id): id is string => Boolean(id)))];
           const { data: users } = await supabase
             .from('users')
             .select('id, name, email, user_type')
@@ -367,12 +292,11 @@ export async function GET(request: NextRequest) {
                 .from('service_request_projects')
                 .select('*')
                 .in('id', projectIds)
-            : { data: [] as any[] };
+            : { data: [] as Tables<'service_request_projects'>[] };
           
-          // Merge requester data and volunteer application data
-          serviceRequests = serviceRequests.map((request: any) => {
-            const requester = users?.find((user: any) => user.id === request.ngo_id);
-            const project = projects?.find((item: any) => item.id === request.project_id) || null;
+          serviceRequests = serviceRequests.map((request) => {
+            const requester = users?.find((user) => user.id === request.ngo_id);
+            const project = projects?.find((item) => item.id === request.project_id) || null;
             const volunteerApp = volunteerApplications.find(app => app.service_request_id === request.id);
             
             return {
@@ -380,8 +304,6 @@ export async function GET(request: NextRequest) {
               requester,
               project,
               volunteer_application: volunteerApp,
-              // Add requester_id for backward compatibility
-              requester_id: request.ngo_id
             };
           });
         }
@@ -390,25 +312,21 @@ export async function GET(request: NextRequest) {
       serviceRequests = await db.serviceRequests.getAll(filters);
     }
 
-  // Ensure we have an array to process and handle old/new formats
   const requestsToProcess = (Array.isArray(serviceRequests) ? serviceRequests : []).filter(
-    (request: any) => !isHiddenNgoNetworkPaymentChannel(request)
+    (request) => !isHiddenNgoNetworkPaymentChannel(request)
   );
-  // Process the data to handle old and new formats
-  const processedRequests = requestsToProcess.map((request: any) => {
-      // Add ngo_name for backward compatibility with frontend
+  const processedRequests = requestsToProcess.map((request) => {
       if (request.requester) {
         request.ngo_name = request.requester.name;
       }
 
-      const requirementsObj = safeParseJson(request.requirements);
-      const projectContextObj = safeParseJson(request.project_context);
+      const requirementsObj = parseJsonObject(request.requirements);
+      const projectContextObj = parseJsonObject(request.project_context);
       const requirementImages = parseImageArray(requirementsObj.images);
       request.images = requirementImages.length > 0
         ? requirementImages
         : parseImageArray(request.images || request.image_url);
       
-      // Prefer direct DB columns, fall back to requirements JSON for legacy rows
       request.request_type = request.request_type || requirementsObj.request_type || (SERVICE_REQUEST_TYPES.includes(request.category) ? request.category : 'Skill / Service Need');
       request.category = requirementsObj.project_category || requirementsObj?.project?.category || request.category || 'Uncategorized';
       request.estimated_budget = request.estimated_budget != null ? String(request.estimated_budget) : (requirementsObj.estimated_budget || requirementsObj.budget || 'Not specified');
@@ -420,7 +338,6 @@ export async function GET(request: NextRequest) {
       request.proof_strength = computeProofStrength(request);
       request.completion_rate = request.status === 'completed' ? 100 : 0;
       
-      // Ensure project object is properly structured for card rendering
       if (request.project) {
         request.project = {
           id: String(request.project.id || ''),
@@ -430,7 +347,6 @@ export async function GET(request: NextRequest) {
           category: String(request.project.category || projectContextObj?.project_category || request.category || '')
         };
       } else if (projectContextObj && projectContextObj.project) {
-        // Fallback to project_context if project isn't hydrated
         request.project = {
           id: String(projectContextObj.project.id || ''),
           title: String(projectContextObj.project_title || projectContextObj.project.title || ''),
@@ -452,7 +368,6 @@ export async function GET(request: NextRequest) {
         const contactMatch = fullText.match(/Contact:\s*([^\n]*)/);
         const timelineMatch = fullText.match(/Timeline:\s*([^\n]*)/);
         
-        // Store the extracted info in requirements field for consistency
         try {
           const existingRequirements = request.requirements ? JSON.parse(request.requirements) : {};
           request.requirements = JSON.stringify({
@@ -462,12 +377,10 @@ export async function GET(request: NextRequest) {
             timeline: timelineMatch ? timelineMatch[1].trim() : null
           });
           
-          // Update deadline with timeline if found
           if (timelineMatch && timelineMatch[1].trim()) {
             request.deadline = timelineMatch[1].trim();
           }
         } catch (e) {
-          // If parsing fails, leave as is
           console.error('Error parsing old format data:', e);
         }
       }
@@ -481,19 +394,18 @@ export async function GET(request: NextRequest) {
       return request;
     });
 
-    // Filter out completed requests from "All Requests" view
     let finalRequests = processedRequests;
 
-    const isProjectLocked = (item: any) => {
-      const projectContext = safeParseJson(item?.project_context);
-      const assignment = safeParseJson(projectContext?.csr_assignment);
+    const isProjectLocked = (item: { project_context?: unknown }) => {
+      const projectContext = parseJsonObject(item?.project_context);
+      const assignment = parseJsonObject(projectContext?.csr_assignment);
       return projectContext?.csr_project_available_for_csr === false || assignment?.mode === 'company_project_handoff' || Number(assignment?.assigned_company_id || 0) > 0;
     };
 
     if (view === 'my-requests' && authenticatedUserId) {
-      const baseFiltered = processedRequests.filter((item: any) => !isCompanyAssignedNeed(item) && !isProjectLocked(item));
+      const baseFiltered = processedRequests.filter((item) => !isCompanyAssignedNeed(item) && !isProjectLocked(item));
       const filteredIds = baseFiltered
-        .map((item: any) => Number(item.id))
+        .map((item) => Number(item.id))
         .filter((id: number) => Number.isFinite(id) && id > 0);
 
       if (filteredIds.length > 0) {
@@ -506,11 +418,11 @@ export async function GET(request: NextRequest) {
 
         const assignedNeedIds = new Set(
           (assignedContributions || [])
-            .map((item: any) => Number(item.service_request_id))
+            .map((item) => Number(item.service_request_id))
             .filter((id: number) => Number.isFinite(id) && id > 0)
         );
 
-        finalRequests = baseFiltered.filter((item: any) => !assignedNeedIds.has(Number(item.id)));
+        finalRequests = baseFiltered.filter((item) => !assignedNeedIds.has(Number(item.id)));
       } else {
         finalRequests = baseFiltered;
       }
@@ -518,14 +430,14 @@ export async function GET(request: NextRequest) {
 
     if (view === 'all') {
       const browsableRequests = processedRequests.filter(
-        (item: any) =>
+        (item) =>
           !isCompanyAssignedNeed(item) &&
           !isProjectLocked(item) &&
           !isServiceRequestExpired(item)
       )
 
       const requestsWithVolunteerCount = await Promise.all(
-        browsableRequests.map(async (request: any) => {
+        browsableRequests.map(async (request) => {
           if (!request || typeof request !== 'object') {
             console.warn('Skipping invalid request during volunteer count:', request);
             return { accepted_volunteers_count: 0, is_full: false };
@@ -563,7 +475,7 @@ export async function GET(request: NextRequest) {
       );
 
       finalRequests = requestsWithVolunteerCount.filter(
-        (request: any) => !request.is_full && isNeedOpenForListing(request)
+        (request) => !request.is_full && isNeedOpenForListing(request)
       );
     }
 
@@ -573,7 +485,7 @@ export async function GET(request: NextRequest) {
     const urgencyFilter = String(urgency || '').trim().toLowerCase();
 
     if (searchTerm || locationTerm || requestTypeFilter || urgencyFilter) {
-      finalRequests = finalRequests.filter((item: any) => {
+      finalRequests = finalRequests.filter((item) => {
         if (requestTypeFilter && requestTypeFilter !== 'all' && requestTypeFilter !== 'All Types') {
           if (String(item.request_type || '').trim() !== requestTypeFilter) return false;
         }
@@ -634,29 +546,18 @@ export async function GET(request: NextRequest) {
 // POST - Create new service request (NGOs only) or volunteer for request
 export async function POST(request: NextRequest) {
   try {
-    // Get JWT token from Authorization header
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const decoded = getTokenClaims(request);
+    if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
-    const token = authHeader.split(' ')[1];
-    let decoded;
-    try {
-      decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
-    } catch (jwtError) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
-    }
-    
-    const { id: userId, user_type: userType, verification_status } = decoded;
+    const { id: userId, user_type: userType } = decoded;
 
     const body = await request.json();
     const { action } = body;
 
-    // If no action is specified, assume it's a create operation
     if (!action || action === 'create') {
 
-      
       // Only verified NGOs can create service requests
       if (userType !== 'ngo') {
         return NextResponse.json({ 
@@ -695,7 +596,6 @@ export async function POST(request: NextRequest) {
         details
       } = body;
 
-      // Validate required fields
       const missingRequiredFields = [title, description, location, timeline, budget, contactInfo, impact_description].some((value) => !String(value ?? '').trim());
       if (missingRequiredFields || !request_type || !(project_category || category)) {
         return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -757,7 +657,6 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: 'Project title, description, and timeline are required' }, { status: 400 });
         }
 
-        // Validate canonical project fields are provided and valid when creating nested project
           const rawExpected = projectPayload.expected_beneficiaries ?? null;
           const parsedExpected = rawExpected != null ? Number(rawExpected) : (Number(beneficiary_count) || null);
           const expectedBeneficiaries = parsedExpected != null && Number.isFinite(parsedExpected) && parsedExpected > 0 ? parsedExpected : null;
@@ -801,7 +700,7 @@ export async function POST(request: NextRequest) {
         resolvedProjectLocation = formatProjectExactAddress(serializedProjectAddress);
       }
 
-      let projectRecord: any = null
+      let projectRecord: Tables<'service_request_projects'> | null = null
       if (resolvedProjectId) {
         projectRecord = await db.requestProjects.getById(String(resolvedProjectId));
         if (projectRecord && projectRecord.ngo_id !== userId) {
@@ -812,7 +711,7 @@ export async function POST(request: NextRequest) {
       }
 
       const projectContext = {
-        ...(safeParseJson(project_context) || {}),
+        ...(parseJsonObject(project_context) || {}),
         project_category: normalizedProjectCategory,
         project: resolvedProjectId
           ? { id: resolvedProjectId, exact_address: resolvedProjectLocation, category: normalizedProjectCategory }
@@ -830,24 +729,16 @@ export async function POST(request: NextRequest) {
 
       const selectedRecommendedOfferIds: number[] = Array.isArray(details?.recommended_offer_ids)
         ? details.recommended_offer_ids
-            .map((value: any) => Number(value))
+            .map((value: unknown) => Number(value))
             .filter((value: number) => Number.isFinite(value) && value > 0)
         : [];
 
       const expectedOfferType = mapRequestTypeToOfferType(normalizedRequestType);
-      const coverageTarget = getTargetCoverageForRequestType(normalizedRequestType, {
-        target_amount,
-        estimated_budget,
-        budget,
-        target_quantity,
-        beneficiary_count,
-        volunteers_needed: body.volunteers_needed
-      });
 
       if (expectedOfferType) {
         const { data: matchingOffers, error: matchingOffersError } = await supabase
           .from('service_offers')
-          .select('id, status, offer_type, price_amount, requirements')
+          .select('id')
           .eq('offer_type', expectedOfferType)
           .eq('status', 'active')
           .limit(60);
@@ -855,14 +746,9 @@ export async function POST(request: NextRequest) {
         if (matchingOffersError) throw matchingOffersError;
 
         const offers = Array.isArray(matchingOffers) ? matchingOffers : [];
-        const offersWithCoverage = offers.map((offer: any) => ({
-          ...offer,
-          capacity: getOfferCapacityForRequestType(normalizedRequestType, offer)
-        }));
-        const directlyFulfillableOffers = offersWithCoverage.filter((offer: any) => (offer.capacity ?? 0) > 0);
 
         if (selectedRecommendedOfferIds.length > 0) {
-          const selectedOffers = offersWithCoverage.filter((offer: any) => selectedRecommendedOfferIds.includes(Number(offer.id)));
+          const selectedOffers = offers.filter((offer) => selectedRecommendedOfferIds.includes(Number(offer.id)));
 
           if (selectedOffers.length !== selectedRecommendedOfferIds.length) {
             return NextResponse.json({ error: 'One or more selected capability offers are invalid for this need.' }, { status: 400 });
@@ -870,7 +756,6 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Prepare requirements JSON
       const images = parseImageArray(body.images);
       const fundingTargetInr = normalizedRequestType === 'Financial Need'
         ? resolveFundingTargetInr({
@@ -894,9 +779,6 @@ export async function POST(request: NextRequest) {
         ...(fundingTargetInr > 0
           ? {
               funding_target_inr: fundingTargetInr,
-              funds_raised_inr: 0,
-              funds_remaining_inr: fundingTargetInr,
-              financial_transactions: [],
             }
           : {}),
       };
@@ -913,7 +795,6 @@ export async function POST(request: NextRequest) {
         quantity: body.quantity
       });
 
-      // Insert new service request using Supabase helpers
       const requestData = {
         ngo_id: userId,
         title: title,
@@ -955,14 +836,12 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Service request ID is required' }, { status: 400 });
       }
 
-      // Check if already volunteering using Supabase helper
       const existing = await db.serviceRequestApplications.findExisting(serviceRequestId, userId);
 
       if (existing) {
         return NextResponse.json({ error: 'Already volunteering for this request' }, { status: 400 });
       }
 
-      // Add volunteer using Supabase helper
       const volunteerData = {
         service_request_id: serviceRequestId,
         applicant_user_id: userId,

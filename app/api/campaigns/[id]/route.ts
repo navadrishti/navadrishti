@@ -38,14 +38,16 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         : null
     }
 
+    let selectedLeadNgoName: string | null = null
     let selectedLeadNgoVerificationStatus: string | null = null
     const selectedLeadNgoId = getCampaignLeadNgoId(campaign)
     if (selectedLeadNgoId > 0) {
       const { data: leadNgo } = await supabase
         .from('users')
-        .select('id, verification_status')
+        .select('id, name, verification_status')
         .eq('id', selectedLeadNgoId)
         .maybeSingle()
+      selectedLeadNgoName = leadNgo?.name ? String(leadNgo.name).trim() : null
       selectedLeadNgoVerificationStatus = leadNgo?.verification_status
         ? String(leadNgo.verification_status).trim().toLowerCase()
         : null
@@ -58,6 +60,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
         company_name: companyName,
         company_verification_status: companyVerificationStatus,
         company_verified: companyVerificationStatus === 'verified',
+        selected_lead_ngo_name: selectedLeadNgoName,
         selected_lead_ngo_verification_status: selectedLeadNgoVerificationStatus,
         selected_lead_ngo_verified: selectedLeadNgoVerificationStatus === 'verified',
       },
@@ -83,10 +86,10 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     await deleteCampaignWithDependencies(id)
 
     return NextResponse.json({ success: true })
-  } catch (error: any) {
+  } catch (error) {
     console.error('Campaign delete error:', error)
     const message = formatCampaignDeleteError(error)
-    const status = error?.code === '23503' ? 409 : 500
+    const status = (error as { code?: string } | null)?.code === '23503' ? 409 : 500
     return NextResponse.json({ error: message }, { status })
   }
 }

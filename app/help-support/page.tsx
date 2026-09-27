@@ -14,7 +14,7 @@ import { Header } from '@/components/header';
 import { DocumentFileViewer } from '@/components/ca-verification-review';
 import { useToast } from '@/hooks/use-toast';
 import { formatStatusLabel } from '@/lib/format-date';
-import { cn } from '@/lib/utils';
+import { cn, getErrorMessage } from '@/lib/utils';
 
 type TicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
 
@@ -122,8 +122,8 @@ export default function HelpSupportPage() {
         throw new Error(payload?.error || 'Failed to load tickets');
       }
       setTickets(Array.isArray(payload.tickets) ? payload.tickets : []);
-    } catch (error: any) {
-      toast({ title: 'Could not load tickets', description: error?.message || 'Please try again.', variant: 'destructive' });
+    } catch (error) {
+      toast({ title: 'Could not load tickets', description: getErrorMessage(error) || 'Please try again.', variant: 'destructive' });
       setTickets([]);
     } finally {
       setInboxLoading(false);
@@ -143,8 +143,8 @@ export default function HelpSupportPage() {
       }
       setSelectedTicket(payload.ticket || null);
       setMessages(Array.isArray(payload.messages) ? payload.messages : []);
-    } catch (error: any) {
-      toast({ title: 'Could not load ticket', description: error?.message || 'Please try again.', variant: 'destructive' });
+    } catch (error) {
+      toast({ title: 'Could not load ticket', description: getErrorMessage(error) || 'Please try again.', variant: 'destructive' });
     } finally {
       setDetailLoading(false);
     }
@@ -257,8 +257,8 @@ export default function HelpSupportPage() {
         prev.map((ticket) => (ticket.ticket_id === selectedTicketId ? { ...ticket, ...(payload.ticket || {}) } : ticket))
       );
       toast({ title: 'Message sent', description: 'The support team has been notified.' });
-    } catch (error: any) {
-      toast({ title: 'Send failed', description: error?.message || 'Could not send your message.', variant: 'destructive' });
+    } catch (error) {
+      toast({ title: 'Send failed', description: getErrorMessage(error) || 'Could not send your message.', variant: 'destructive' });
     } finally {
       setReplying(false);
     }

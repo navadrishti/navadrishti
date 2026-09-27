@@ -1,17 +1,19 @@
 import Razorpay from 'razorpay';
+import type { Orders } from 'razorpay/dist/types/orders';
 import { PHONE_VERIFICATION_ENABLED } from '@/lib/auth';
 import { supabase } from '@/lib/db';
 import {
   buildPricingOrderNotes,
-  buildPricingResponse,
   calculatePlatformCheckoutPricing,
   formatNgoBankDetailsSummary,
   maskAccountNumber,
+  parseJsonObject,
   sanitizePayoutAccountInput,
   validateNgoPayoutAccount,
   type NgoPayoutAccount,
   type NgoRazorpayLinkStatus,
   type PlatformCheckoutPricing,
+  getErrorMessage,
 } from '@/lib/utils';
 
 export type RoutePaymentKind =
@@ -22,19 +24,6 @@ export type RoutePaymentKind =
   | 'engagement_settlement'
   | 'company_ca'
   | 'csr_capability_rental';
-
-export function parseProfileData(raw: unknown): Record<string, unknown> {
-  if (!raw) return {};
-  if (typeof raw === 'string') {
-    try {
-      const parsed = JSON.parse(raw);
-      return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
-    } catch {
-      return {};
-    }
-  }
-  return typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
-}
 
 export function parseNgoPayoutAccountFromProfile(
   profile: Record<string, unknown> | null | undefined
@@ -103,26 +92,16 @@ export async function assertUserRazorpayPayoutActiveForCapabilities(userId: numb
     .eq('id', userId)
     .maybeSingle();
 
-  if (!isMerchantRazorpayPayoutActive(parseProfileData(data?.profile_data))) {
+  if (!isMerchantRazorpayPayoutActive(parseJsonObject(data?.profile_data))) {
     throw new Error(CAPABILITY_LISTING_REQUIRES_PAYOUT_MESSAGE);
   }
-}
-
-/**
- * @deprecated Prefer verification checks for listing and `isNgoRazorpayPayoutActive` for payments.
- * Kept as an alias of payout-active for payment-gate call sites.
- */
-export function isNgoEligibleForNetworkListing(
-  profile: Record<string, unknown> | null | undefined
-): boolean {
-  return isNgoRazorpayPayoutActive(profile);
 }
 
 export function buildNgoPayoutListingActivationUpdate(params: {
   ngoUserId: number;
   ngoName: string;
   existingProfile: Record<string, unknown>;
-}): Record<string, unknown> {
+}): Record<string, any> {
   const now = new Date().toISOString();
   const existingPayout = parseNgoPayoutAccountFromProfile(params.existingProfile);
   const payoutAccount =
@@ -176,7 +155,7 @@ export async function activateNgoPayoutListingForNetwork(ngoUserId: number) {
     throw new Error('Only verified NGOs can be activated for NGO Network listing');
   }
 
-  const profile = parseProfileData(data.profile_data);
+  const profile = parseJsonObject(data.profile_data);
   if (isNgoRazorpayPayoutActive(profile)) {
     return {
       id: data.id,
@@ -233,7 +212,7 @@ export async function activateVerifiedNgoPayoutListingsForNetwork() {
 
   for (const row of data || []) {
     try {
-      const profile = parseProfileData(row.profile_data);
+      const profile = parseJsonObject(row.profile_data);
       if (isNgoRazorpayPayoutActive(profile)) {
         results.push({
           id: row.id,
@@ -246,13 +225,13 @@ export async function activateVerifiedNgoPayoutListingsForNetwork() {
 
       const activated = await activateNgoPayoutListingForNetwork(Number(row.id));
       results.push(activated);
-    } catch (activationError: any) {
+    } catch (activationError) {
       results.push({
         id: row.id,
         name: row.name,
         updated: false,
         routeReady: false,
-        error: activationError?.message || 'Activation failed',
+        error: getErrorMessage(activationError) || 'Activation failed',
       });
     }
   }
@@ -358,7 +337,7 @@ async function loadNgoProfileData(ngoUserId: number) {
     return null;
   }
 
-  return parseProfileData(data.profile_data);
+  return parseJsonObject(data.profile_data);
 }
 
 export async function getNgoLinkedAccountId(ngoUserId: number): Promise<string | null> {
@@ -391,7 +370,7 @@ export async function getNgoBankDetailsOnFile(ngoUserId: number): Promise<string
     return null;
   }
 
-  const profile = parseProfileData(data.profile_data);
+  const profile = parseJsonObject(data.profile_data);
   const payoutAccount = parseNgoPayoutAccountFromProfile(profile);
   if (payoutAccount?.account_number) {
     return formatNgoBankDetailsSummary(payoutAccount);
@@ -399,20 +378,6 @@ export async function getNgoBankDetailsOnFile(ngoUserId: number): Promise<string
 
   const bankDetails = String(profile?.bank_details || '').trim();
   return bankDetails || null;
-}
-
-export async function ngoHasPayoutBankDetails(ngoUserId: number): Promise<boolean> {
-  if (!Number.isFinite(ngoUserId) || ngoUserId <= 0) {
-    return false;
-  }
-
-  const { data } = await supabase
-    .from('users')
-    .select('profile_data')
-    .eq('id', ngoUserId)
-    .maybeSingle();
-
-  return hasNgoPayoutDetailsOnFile(parseProfileData(data?.profile_data));
 }
 
 export async function ngoIsEligibleForNetworkListing(ngoUserId: number): Promise<boolean> {
@@ -427,49 +392,9 @@ export async function ngoIsEligibleForNetworkListing(ngoUserId: number): Promise
     .maybeSingle();
 
   // Payment readiness (Razorpay connected), not directory listing eligibility.
-  return isNgoRazorpayPayoutActive(parseProfileData(data?.profile_data));
+  return isNgoRazorpayPayoutActive(parseJsonObject(data?.profile_data));
 }
 
-export async function getBeneficiaryPayoutStatus(ngoUserId: number, ngoName?: string) {
-  const profile = await loadNgoProfileData(ngoUserId);
-  const linkedAccountId = profile
-    ? String(
-        profile.razorpay_linked_account_id ||
-          profile.razorpay_route_account_id ||
-          profile.razorpay_account_id ||
-          ''
-      ).trim() || null
-    : null;
-  const linkStatus = getNgoPayoutLinkStatus(profile);
-  const bankDetailsOnFile = profile ? hasNgoPayoutDetailsOnFile(profile) : false;
-
-  if (linkedAccountId && linkStatus === 'active') {
-    return {
-      ready: true,
-      linkedAccountId,
-      bankDetailsOnFile,
-      message: `${ngoName || 'NGO'} is ready for direct Razorpay Route payouts.`,
-    };
-  }
-
-  if (linkedAccountId) {
-    return {
-      ready: false,
-      linkedAccountId,
-      bankDetailsOnFile,
-      message: `${ngoName || 'NGO'} payout account is submitted to Razorpay and pending activation.`,
-    };
-  }
-
-  return {
-    ready: false,
-    linkedAccountId: null as string | null,
-    bankDetailsOnFile,
-    message: bankDetailsOnFile
-      ? `${ngoName || 'NGO'} has bank details on file, but Razorpay linked-account onboarding is still required for automatic bank/UPI settlement.`
-      : `${ngoName || 'NGO'} must add bank details and complete Razorpay linked-account onboarding.`,
-  };
-}
 export function shouldHoldTransferForKind(kind: RoutePaymentKind): boolean {
   return kind === 'financial_need';
 }
@@ -529,14 +454,17 @@ export function toRazorpayOrderSnapshot(order: unknown): PlatformRazorpayOrderSn
   };
 }
 
+// Razorpay's typings only allow string/number note values; platform notes also carry booleans.
+type RazorpayOrderNotes = Orders.RazorpayOrderCreateRequestBody['notes'];
+
 export async function createRoutedRazorpayOrder(params: CreateRoutedOrderParams): Promise<PlatformRazorpayOrderSnapshot> {
   const holdTransfer = params.onHold ?? shouldHoldTransferForKind(params.paymentKind);
 
-  const orderPayload: Record<string, unknown> = {
+  const orderPayload: Orders.RazorpayOrderCreateRequestBody & Orders.RazorpayTransferCreateRequestBody = {
     amount: params.pricing.totalChargePaise,
     currency: 'INR',
     receipt: params.receipt,
-    notes: params.notes,
+    notes: params.notes as RazorpayOrderNotes,
     transfers: [
       {
         account: params.beneficiaryLinkedAccountId,
@@ -551,7 +479,7 @@ export async function createRoutedRazorpayOrder(params: CreateRoutedOrderParams)
     ],
   };
 
-  const order = await params.razorpay.orders.create(orderPayload as any);
+  const order = await params.razorpay.orders.create(orderPayload);
   return toRazorpayOrderSnapshot(order);
 }
 
@@ -565,7 +493,7 @@ export async function createStandardRazorpayOrder(params: {
     amount: params.pricing.totalChargePaise,
     currency: 'INR',
     receipt: params.receipt,
-    notes: params.notes as any,
+    notes: params.notes as RazorpayOrderNotes,
   });
   return toRazorpayOrderSnapshot(order);
 }
@@ -630,12 +558,13 @@ export async function releaseHeldTransfersForPayment(params: {
 
   try {
     const payment = await params.razorpay.payments.fetch(params.razorpayPaymentId);
-    const transferId = (payment as any)?.transfer_id;
+    const transferId =
+      payment && 'transfer_id' in payment && typeof payment.transfer_id === 'string' ? payment.transfer_id : null;
     if (!transferId) {
       return;
     }
 
-    await (params.razorpay as any).transfers.edit(transferId, { on_hold: false });
+    await params.razorpay.transfers.edit(transferId, { on_hold: false });
   } catch (error) {
     console.error('Failed to release held Razorpay transfer:', error);
   }
@@ -890,7 +819,7 @@ export function buildNgoPayoutStatusResponse(user: {
   name?: string | null;
   profile_data?: unknown;
 }) {
-  const profile = parseProfileData(user.profile_data);
+  const profile = parseJsonObject(user.profile_data);
   const payoutAccount = parseNgoPayoutAccountFromProfile(profile);
   const payoutDraft = parseNgoPayoutAccountDraftFromProfile(profile);
   const linkStatus = getNgoPayoutLinkStatus(profile);
@@ -914,21 +843,9 @@ export function buildNgoPayoutStatusResponse(user: {
 }
 
 export const NGO_NETWORK_SOURCE = 'ngo_network';
-/** @deprecated Legacy auto-generated payment channels only */
+/** Source tag of the old auto-generated payment channels. */
 export const NGO_NETWORK_GENERAL_SOURCE = 'ngo_network_general';
 export const NGO_NETWORK_MAX_CONTRIBUTION_INR = 10_000_000;
-
-export function parseServiceRequestRequirements(value: unknown): Record<string, any> {
-  if (!value) return {};
-  if (typeof value === 'object' && !Array.isArray(value)) return value as Record<string, any>;
-  if (typeof value !== 'string') return {};
-  try {
-    const parsed = JSON.parse(value);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
-}
 
 export function isGeneralNgoNetworkNeed(requirements: Record<string, any>): boolean {
   return (
@@ -937,19 +854,19 @@ export function isGeneralNgoNetworkNeed(requirements: Record<string, any>): bool
   );
 }
 
-/** Legacy auto-generated "General support" rows that should never appear as NGO needs. */
+/** Auto-generated "General support" rows that should never appear as NGO needs. */
 export function isHiddenNgoNetworkPaymentChannel(input: {
   title?: unknown;
   requirements?: unknown;
   project_context?: unknown;
 }): boolean {
-  const requirements = parseServiceRequestRequirements(input.requirements);
+  const requirements = parseJsonObject(input.requirements);
   if (isGeneralNgoNetworkNeed(requirements)) return true;
 
   const title = String(input.title || '').trim();
   if (/^General support\s-/i.test(title)) return true;
 
-  const projectContext = parseServiceRequestRequirements(input.project_context);
+  const projectContext = parseJsonObject(input.project_context);
   return (
     projectContext?.source === NGO_NETWORK_GENERAL_SOURCE ||
     projectContext?.source === NGO_NETWORK_SOURCE
@@ -989,8 +906,8 @@ export async function removeLegacyGeneralSupportRequests(): Promise<{
       if (deleteError) throw deleteError;
 
       deleted += 1;
-    } catch (err: any) {
-      errors.push({ id, error: err?.message || 'Delete failed' });
+    } catch (err) {
+      errors.push({ id, error: getErrorMessage(err) || 'Delete failed' });
     }
   }
 
@@ -1262,24 +1179,12 @@ export type PaymentHistoryRecord = {
   ngo: { id: number | null; name: string };
 };
 
-function parsePaymentJsonRecord(value: unknown): Record<string, any> {
-  if (!value) return {};
-  if (typeof value === 'object' && !Array.isArray(value)) return value as Record<string, any>;
-  if (typeof value !== 'string') return {};
-  try {
-    const parsed = JSON.parse(value);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
 function formatPaymentCounterpartyName(row: { name?: string | null; email?: string | null } | null | undefined) {
   return String(row?.name || row?.email || 'User').trim();
 }
 
 export function isCompanyCaOrder(order: { order_notes?: unknown; ngo_user_id?: number | null; payer_user_id?: number | null }) {
-  const notes = parsePaymentJsonRecord(order.order_notes);
+  const notes = parseJsonObject(order.order_notes);
   return notes?.source === 'company_ca_payment';
 }
 
@@ -1363,89 +1268,13 @@ async function fetchMatchingPaymentOrders(userId: number, userType: string, role
   if (payerError) throw payerError;
   if (caError) throw caError;
 
-  const merged = new Map<number, any>();
-  for (const row of payerOrders || []) merged.set(Number(row.id), row);
+  const merged = new Map<string, NonNullable<typeof payerOrders>[number]>();
+  for (const row of payerOrders || []) merged.set(String(row.id), row);
   for (const row of caOrders || []) {
-    if (isCompanyCaOrder(row)) merged.set(Number(row.id), row);
+    if (isCompanyCaOrder(row)) merged.set(String(row.id), row);
   }
 
   return Array.from(merged.values());
-}
-
-async function fetchLegacyPaymentHistory(
-  userId: number,
-  role: PaymentHistoryRole,
-  existingPaymentIds: Set<string>
-): Promise<PaymentHistoryRecord[]> {
-  let requestQuery = supabase
-    .from('service_requests')
-    .select('id, title, requirements, ngo_id')
-    .order('updated_at', { ascending: false })
-    .limit(200);
-
-  if (role === 'received') {
-    requestQuery = requestQuery.eq('ngo_id', userId);
-  }
-
-  const { data: requestRows } = await requestQuery;
-  const legacy: PaymentHistoryRecord[] = [];
-  const ngoIds = [
-    ...new Set((requestRows || []).map((row) => Number(row.ngo_id || 0)).filter((id) => id > 0)),
-  ];
-  const { data: ngoUsers } = ngoIds.length
-    ? await supabase.from('users').select('id, name, email').in('id', ngoIds)
-    : { data: [] };
-  const ngoById = Object.fromEntries(((ngoUsers || []) as any[]).map((row) => [Number(row.id), row]));
-
-  for (const requestRow of requestRows || []) {
-    const requirements = parseServiceRequestRequirements(requestRow.requirements);
-    const requestType = String(requirements?.request_type || '').toLowerCase();
-    if (!requestType.includes('financial')) continue;
-
-    const transactions = Array.isArray(requirements.financial_transactions)
-      ? requirements.financial_transactions
-      : [];
-
-    for (const tx of transactions) {
-      const paymentId = String(tx?.razorpay_payment_id || '').trim();
-      if (!paymentId || existingPaymentIds.has(paymentId)) continue;
-
-      const contributorId = Number(tx?.contributor_id || tx?.payer_user_id || 0);
-      if (role === 'sent' && contributorId !== userId) continue;
-      if (role === 'received' && Number(requestRow.ngo_id || 0) !== userId) continue;
-
-      const ngoUser = ngoById[Number(requestRow.ngo_id || 0)];
-      const ngoName = formatPaymentCounterpartyName(ngoUser);
-      const contributorName = String(tx?.contributor_name || 'Contributor');
-      const { source, source_label } = resolvePaymentSource({}, requirements);
-      legacy.push({
-        id: `legacy-${requestRow.id}-${paymentId}`,
-        razorpay_payment_id: paymentId,
-        razorpay_order_id: tx?.razorpay_order_id ? String(tx.razorpay_order_id) : null,
-        amount_inr: Number(tx?.amount_inr || tx?.amount || 0),
-        payment_status: String(tx?.refund_status || '').toLowerCase() === 'processed' ? 'refunded' : 'paid',
-        payment_method: null,
-        paid_at: tx?.paid_at || null,
-        order_status: null,
-        service_request_id: Number(requestRow.id),
-        service_request_title: String(requestRow.title || 'Financial need'),
-        source,
-        source_label,
-        counterparty_name: role === 'received' ? contributorName : ngoName,
-        payer: {
-          id: contributorId || null,
-          name: contributorName,
-          user_type: tx?.contributor_type || null,
-        },
-        ngo: {
-          id: Number(requestRow.ngo_id || 0) || null,
-          name: ngoName,
-        },
-      });
-    }
-  }
-
-  return legacy;
 }
 
 export async function fetchUserPaymentHistory(options: {
@@ -1456,7 +1285,7 @@ export async function fetchUserPaymentHistory(options: {
 }): Promise<PaymentHistoryRecord[]> {
   const { userId, userType, role, limit = 100 } = options;
   const orders = await fetchMatchingPaymentOrders(userId, userType, role);
-  const orderIds = orders.map((row) => Number(row.id)).filter((id) => id > 0);
+  const orderIds = orders.map((row) => String(row.id));
 
   const { data: paymentRows, error: paymentError } = orderIds.length
     ? await supabase
@@ -1471,7 +1300,7 @@ export async function fetchUserPaymentHistory(options: {
 
   if (paymentError) throw paymentError;
 
-  const orderById = Object.fromEntries(orders.map((row) => [Number(row.id), row]));
+  const orderById = Object.fromEntries(orders.map((row) => [String(row.id), row]));
   const serviceRequestIds = [
     ...new Set(orders.map((row) => Number(row.service_request_id || 0)).filter((id) => id > 0)),
   ];
@@ -1479,7 +1308,7 @@ export async function fetchUserPaymentHistory(options: {
     ...new Set(
       orders
         .map((row) => {
-          const notes = parsePaymentJsonRecord(row.order_notes);
+          const notes = parseJsonObject(row.order_notes);
           return Number(notes?.service_offer_id || notes?.offer_id || 0);
         })
         .filter((id) => id > 0)
@@ -1503,15 +1332,15 @@ export async function fetchUserPaymentHistory(options: {
       : Promise.resolve({ data: [] }),
   ]);
 
-  const requestById = Object.fromEntries(((requestResult.data || []) as any[]).map((row) => [Number(row.id), row]));
-  const userById = Object.fromEntries(((userResult.data || []) as any[]).map((row) => [Number(row.id), row]));
-  const offerById = Object.fromEntries(((offerResult.data || []) as any[]).map((row) => [Number(row.id), row]));
+  const requestById = Object.fromEntries((requestResult.data || []).map((row) => [Number(row.id), row]));
+  const userById = Object.fromEntries((userResult.data || []).map((row) => [Number(row.id), row]));
+  const offerById = Object.fromEntries((offerResult.data || []).map((row) => [Number(row.id), row]));
 
-  const payments: PaymentHistoryRecord[] = (paymentRows || []).map((payment: any) => {
-    const order = orderById[Number(payment.order_id || 0)];
-    const orderNotes = parsePaymentJsonRecord(order?.order_notes);
+  const payments: PaymentHistoryRecord[] = (paymentRows || []).map((payment) => {
+    const order = orderById[String(payment.order_id)];
+    const orderNotes = parseJsonObject(order?.order_notes);
     const request = requestById[Number(order?.service_request_id || 0)];
-    const requirements = parseServiceRequestRequirements(request?.requirements);
+    const requirements = parseJsonObject(request?.requirements);
     const { source, source_label } = resolvePaymentSource(orderNotes, requirements);
     const offerId = Number(orderNotes?.service_offer_id || orderNotes?.offer_id || 0);
     const offer = offerById[offerId];
@@ -1536,7 +1365,7 @@ export async function fetchUserPaymentHistory(options: {
     }
 
     if (role === 'received' && !order?.payer_user_id && source !== 'company_ca') {
-      counterpartyName = String(payment?.provider_payload?.contributor_name || counterpartyName || 'Contributor');
+      counterpartyName = String(parseJsonObject(payment?.provider_payload).contributor_name || counterpartyName || 'Contributor');
     }
 
     return {
@@ -1565,10 +1394,7 @@ export async function fetchUserPaymentHistory(options: {
     };
   });
 
-  const existingPaymentIds = new Set(payments.map((row) => row.razorpay_payment_id).filter(Boolean));
-  const legacy = await fetchLegacyPaymentHistory(userId, role, existingPaymentIds);
-
-  return [...payments, ...legacy]
+  return payments
     .sort((a, b) => {
       const aTime = a.paid_at ? new Date(a.paid_at).getTime() : 0;
       const bTime = b.paid_at ? new Date(b.paid_at).getTime() : 0;

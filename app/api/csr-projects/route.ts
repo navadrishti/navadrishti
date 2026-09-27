@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth';
-import { isCARequest } from '@/lib/server-auth';
-import { getCompanyCAFromRequest } from '@/lib/server-auth';
+import { parseJsonObject } from '@/lib/utils';
+import { getAuthUserFromRequest, assertUserType, isCARequest, getCompanyCAFromRequest } from '@/lib/server-auth';
+import type { Tables } from '@/lib/database.types';
+
+type MilestoneWithDueDate = Tables<'csr_project_milestones'> & { due_date: string };
 
 export async function GET(request: NextRequest) {
   try {
@@ -52,33 +54,34 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch CSR projects' }, { status: 500 });
     }
 
-    const projects = (data ?? []).map((project: any) => ({
+    const attendanceSummary = (metadata: unknown) => parseJsonObject(parseJsonObject(metadata).attendance_summary);
+    const projects = (data ?? []).map((project) => ({
       ...project,
-      days_attended: Number(project?.metadata?.attendance_summary?.days_attended ?? project?.metadata?.attendance_summary?.total_entries ?? 0),
-      last_attendance_at: project?.metadata?.attendance_summary?.last_attendance_at ?? null,
+      days_attended: Number(attendanceSummary(project.metadata).days_attended ?? attendanceSummary(project.metadata).total_entries ?? 0),
+      last_attendance_at: attendanceSummary(project.metadata).last_attendance_at ?? null,
       milestones_count: Array.isArray(project.csr_project_milestones)
         ? project.csr_project_milestones.length
         : 0,
       completed_milestones_count: Array.isArray(project.csr_project_milestones)
-        ? project.csr_project_milestones.filter((m: any) => m.status === 'approved').length
+        ? project.csr_project_milestones.filter((m) => m.status === 'approved').length
         : 0,
       latest_impact: Array.isArray(project.csr_impact_metrics)
         ? project.csr_impact_metrics[0] ?? null
         : null,
       next_milestone: Array.isArray(project.csr_project_milestones)
         ? project.csr_project_milestones
-            .filter((m: any) => m.status !== 'completed')
-            .sort((a: any, b: any) => Number(a.milestone_order) - Number(b.milestone_order))[0] ?? null
+            .filter((m) => m.status !== 'completed')
+            .sort((a, b) => Number(a.milestone_order) - Number(b.milestone_order))[0] ?? null
         : null,
       deadline_at: Array.isArray(project.csr_project_milestones)
         ? project.csr_project_milestones
-            .filter((m: any) => m.status !== 'completed' && m.due_date)
-            .sort((a: any, b: any) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())[0]?.due_date ?? null
+            .filter((m): m is MilestoneWithDueDate => m.status !== 'completed' && Boolean(m.due_date))
+            .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())[0]?.due_date ?? null
         : null,
       confirmed_funds: Array.isArray(project.csr_payment_confirmations)
         ? project.csr_payment_confirmations
-            .filter((payment: any) => payment.payment_status === 'confirmed')
-            .reduce((sum: number, payment: any) => sum + Number(payment.amount || 0), 0)
+            .filter((payment) => payment.payment_status === 'confirmed')
+            .reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
         : 0
     }));
 

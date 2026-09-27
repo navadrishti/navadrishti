@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { getAuthUserFromRequest } from '@/lib/server-auth';
+import { getErrorMessage } from '@/lib/utils';
 
 export async function GET(request: NextRequest) {
   try {
@@ -32,8 +33,8 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({ success: true, data: data || [] });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Fetch assignments error:', error);
-    return NextResponse.json({ error: error?.message || 'Failed to fetch assignments' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) || 'Failed to fetch assignments' }, { status: 500 });
   }
 }

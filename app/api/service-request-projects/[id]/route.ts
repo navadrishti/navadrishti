@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import jwt from 'jsonwebtoken'
 import { db } from '@/lib/db'
-import { JWT_SECRET, CSR_OWN_PROJECT_TIMELINE_MESSAGE, CSR_PROJECT_CREATE_REQUIRED_MESSAGE } from '@/lib/auth'
+import { getTokenClaims, CSR_OWN_PROJECT_TIMELINE_MESSAGE, CSR_PROJECT_CREATE_REQUIRED_MESSAGE } from '@/lib/auth'
 import { ngoUserIsCsrEligible, ngoUserIsCsrEligibleForProject } from '@/lib/server-auth'
 import {
   formatProjectExactAddress,
@@ -13,23 +12,15 @@ import {
   stripProjectMetaFromDescription,
 } from '@/lib/service-request-allocation'
 
-interface JWTPayload {
-  id: number
-  user_type: string
-}
-
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const decoded = getTokenClaims(request)
+    if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
-
-    const token = authHeader.split(' ')[1]
-    const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload
 
     if (decoded.user_type !== 'ngo') {
       return NextResponse.json({ error: 'Only NGOs can update projects' }, { status: 403 })
@@ -170,13 +161,10 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const decoded = getTokenClaims(request)
+    if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
-
-    const token = authHeader.split(' ')[1]
-    const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload
 
     if (decoded.user_type !== 'ngo') {
       return NextResponse.json({ error: 'Only NGOs can delete projects' }, { status: 403 })

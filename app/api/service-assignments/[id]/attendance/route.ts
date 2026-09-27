@@ -1,30 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import jwt from 'jsonwebtoken';
 import { supabase } from '@/lib/db';
-import { JWT_SECRET } from '@/lib/auth';
+import { getTokenClaims } from '@/lib/auth';
 import { calculatePaymentProgress } from '@/lib/service-engagement';
 import { isCampaignVolunteerAssignment } from '@/lib/campaign-volunteer-attendance';
 
-interface JWTPayload {
-  id: number;
-  user_type: string;
-  email?: string;
-  name?: string;
-}
-
-function safeJson(value: unknown): Record<string, any> {
-  if (!value) return {};
-  if (typeof value === 'object') return value as Record<string, any>;
-  if (typeof value === 'string') {
-    try {
-      const parsed = JSON.parse(value);
-      return parsed && typeof parsed === 'object' ? parsed : {};
-    } catch {
-      return {};
-    }
-  }
-  return {};
-}
+import { parseJsonObject, getErrorMessage } from '@/lib/utils';
 
 function toNumber(value: unknown): number {
   const parsed = Number(value);
@@ -47,13 +27,9 @@ async function loadAssignment(assignmentId: string) {
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (!getTokenClaims(request)) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
-
-    const token = authHeader.substring(7);
-    jwt.verify(token, JWT_SECRET) as JWTPayload;
 
     const { id } = await params;
     const assignment = await loadAssignment(id);
@@ -80,7 +56,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         assignment: {
           ...assignment,
           meta: {
-            ...safeJson(assignment.meta),
+            ...parseJsonObject(assignment.meta),
             attendance_summary: {
               total_entries: entries.length,
               days_attended: entries.filter(
@@ -98,9 +74,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         campaign_volunteer: isCampaignVolunteerAssignment(assignment),
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Attendance fetch error:', error);
-    return NextResponse.json({ error: error?.message || 'Failed to fetch attendance' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) || 'Failed to fetch attendance' }, { status: 500 });
   }
 }
 

@@ -1,17 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, supabase } from '@/lib/db';
-import jwt from 'jsonwebtoken';
-import { JWT_SECRET } from '@/lib/auth';
+import { getTokenClaims } from '@/lib/auth';
 import { resolveEffectiveVerificationStatus } from '@/lib/server-auth';
 import { isOfferExpired, getCapabilityNeedRequestTypes, isCapabilityRentalTransaction, dedupeSelectedNeedSummaries } from '@/lib/service-offers';
-
-// Interface for JWT payload
-interface JWTPayload {
-  id: number;
-  user_type: string;
-  email: string;
-  name: string;
-}
 
 function parseNeedIds(value: unknown): number[] {
   if (!Array.isArray(value)) return [];
@@ -49,7 +40,6 @@ export async function GET(
     const { id } = await params;
     const offerId = parseInt(id);
     
-    // Check if this is a public request to check user application status
     const url = new URL(request.url);
     const userId = url.searchParams.get('userId');
     
@@ -68,17 +58,12 @@ export async function GET(
       return NextResponse.json(userApplication || null);
     }
     
-    // Get JWT token from Authorization header for owner requests
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const decoded = getTokenClaims(request);
+    if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
-
-    const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
     const { id: ownerUserId } = decoded;
 
-    // First, verify that this offer belongs to the authenticated owner
     const offer = await db.serviceOffers.getById(offerId);
 
     if (!offer) {
@@ -89,7 +74,6 @@ export async function GET(
       return NextResponse.json({ error: 'You can only view applicants for your own offers' }, { status: 403 });
     }
 
-    // Fetch clients for this offer
     const { data: clients, error } = await supabase
       .from('service_clients')
       .select(`
@@ -99,6 +83,8 @@ export async function GET(
       `)
       .eq('service_offer_id', offerId)
       .order('applied_at', { ascending: false });
+
+    if (error) throw error;
 
     return NextResponse.json({
       success: true,
@@ -124,7 +110,6 @@ export async function POST(
     const body = await request.json();
     const { client_id, client_type, message, start_date, end_date, proposed_amount, service_request_id, selected_need_ids, service_request_ids } = body;
 
-    // Validate required fields
     if (!client_id) {
       return NextResponse.json(
         { error: 'Client ID is required' },
@@ -213,7 +198,6 @@ export async function POST(
     const applicationMessage = String(message || '').trim() || `Applied for ${selectedNeeds.map((need) => need.title).join(', ')}`;
     const primaryServiceRequestId = needIds[0] || null;
 
-    // Check if the client has already applied
     const { data: existingApplication } = await supabase
       .from('service_clients')
       .select('id')
@@ -228,7 +212,6 @@ export async function POST(
       );
     }
 
-    // Insert the client application
     const { data: result, error: insertError } = await supabase
       .from('service_clients')
       .insert({

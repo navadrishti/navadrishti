@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { getAuthUserFromRequest } from '@/lib/server-auth';
-import { isCARequest } from '@/lib/server-auth';
-import { getCompanyCAFromRequest } from '@/lib/server-auth';
+import { getAuthUserFromRequest, isCARequest, getCompanyCAFromRequest } from '@/lib/server-auth';
+import type { Tables } from '@/lib/database.types';
 
-async function canAccessProject(request: NextRequest, project: any): Promise<boolean> {
+type IdRow = { id: string };
+
+async function canAccessProject(
+  request: NextRequest,
+  project: Pick<Tables<'csr_projects'>, 'company_user_id' | 'ngo_user_id'>
+): Promise<boolean> {
   if (isCARequest(request)) {
     return true;
   }
@@ -62,26 +66,26 @@ export async function GET(
       .select('id')
       .eq('project_id', projectId);
 
-    const milestoneIds = (milestones ?? []).map((item: any) => item.id);
+    const milestoneIds = (milestones ?? []).map((item) => item.id);
 
     const [evidence, reviews, payments] = await Promise.all([
       milestoneIds.length > 0
         ? supabase.from('csr_milestone_evidence').select('id').in('milestone_id', milestoneIds)
-        : Promise.resolve({ data: [] } as any),
+        : Promise.resolve({ data: [] as IdRow[] }),
       milestoneIds.length > 0
         ? supabase.from('csr_milestone_reviews').select('id').in('milestone_id', milestoneIds)
-        : Promise.resolve({ data: [] } as any),
+        : Promise.resolve({ data: [] as IdRow[] }),
       milestoneIds.length > 0
         ? supabase.from('csr_payment_confirmations').select('id').in('milestone_id', milestoneIds)
-        : Promise.resolve({ data: [] } as any)
+        : Promise.resolve({ data: [] as IdRow[] })
     ]);
 
     const auditEntityIds = [
       projectId,
       ...(milestoneIds ?? []),
-      ...((evidence.data ?? []).map((item: any) => item.id)),
-      ...((reviews.data ?? []).map((item: any) => item.id)),
-      ...((payments.data ?? []).map((item: any) => item.id))
+      ...((evidence.data ?? []).map((item) => item.id)),
+      ...((reviews.data ?? []).map((item) => item.id)),
+      ...((payments.data ?? []).map((item) => item.id))
     ];
 
     const { data: logs, error: logError } = await supabase

@@ -45,7 +45,6 @@ export default function IndividualRegister() {
 
     setFormData(prev => ({ ...prev, [name]: value }));
     
-    // Clear error for this field when user starts typing
     if (formErrors[name]) {
       setFormErrors(prev => {
         const newErrors = { ...prev };
@@ -117,10 +116,8 @@ export default function IndividualRegister() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Clear previous errors
     clearError();
     
-    // Validate form
     if (!validateForm()) {
       return;
     }
@@ -144,7 +141,6 @@ export default function IndividualRegister() {
     
     try {
       setIsSubmitting(true);
-      // Prepare user data for signup
       const userData = {
         email: formData.email,
         password: formData.password,
@@ -160,7 +156,6 @@ export default function IndividualRegister() {
         }
       };
       
-      // Call signup function from auth context
       await signup(userData);
 
       toast.success('Account created successfully!');

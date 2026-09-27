@@ -1,41 +1,21 @@
 // API endpoint for Company verification (manual document-first flow)
 import { NextRequest, NextResponse } from 'next/server';
 import { db, supabase } from '@/lib/db';
-import jwt from 'jsonwebtoken';
-import { JWT_SECRET, requireBankStatementDocument } from '@/lib/auth';
-
-function isValidGSTNumber(gstNumber: string): boolean {
-  const gstRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
-  return gstRegex.test(gstNumber);
-}
-
-function isValidCINNumber(cinNumber: string): boolean {
-  const cinRegex = /^[LU][0-9]{5}[A-Z]{2}[0-9]{4}[A-Z]{3}[0-9]{6}$/;
-  return cinRegex.test(cinNumber);
-}
-
-function isValidPANNumber(panNumber: string): boolean {
-  const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
-  return panRegex.test(panNumber);
-}
+import { getTokenClaims, requireBankStatementDocument } from '@/lib/auth';
+import { getErrorMessage, parseJsonObject } from '@/lib/utils';
 
 export async function POST(req: NextRequest) {
   try {
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const claims = getTokenClaims(req);
+    if (!claims) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    const userId = claims.id;
 
-    const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
-    const userId = decoded.id; // Changed from decoded.userId to decoded.id
-
-    // Validate userId
     if (!userId) {
       return NextResponse.json({ error: 'Invalid token: missing user ID' }, { status: 401 });
     }
 
-    // Verify user is a company
     const { data: user, error: userError } = await supabase
       .from('users')
       .select('user_type')
@@ -60,15 +40,6 @@ export async function POST(req: NextRequest) {
         if (bankStatementError) return bankStatementError;
         return await reverifyCompanyVerification(userId, companyName, cinNumber, companyType, documents, panNumber, gstNumber, registrationNumber);
       }
-      
-      case 'verify-gst':
-        return await verifyGST(userId, gstNumber);
-      
-      case 'verify-pan':
-        return await verifyCompanyPAN(userId, panNumber);
-      
-      case 'verify-cin':
-        return await verifyCIN(userId, cinNumber);
       
       default:
         return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
@@ -108,7 +79,6 @@ async function initiateCompanyVerification(
     if (entered.gst) verificationPayload.gst_number = entered.gst;
     if (entered.registration_number) verificationPayload.registration_number = entered.registration_number;
 
-    // Create or update verification record
     const { data: existingVerification } = await supabase
       .from('company_verifications')
       .select('id')
@@ -135,12 +105,8 @@ async function initiateCompanyVerification(
       .eq('id', userId)
       .single();
 
-    const existingProfileData = (userRow?.profile_data && typeof userRow.profile_data === 'object')
-      ? userRow.profile_data
-      : {};
-    const existingVerificationDocs = (existingProfileData.verification_documents && typeof existingProfileData.verification_documents === 'object')
-      ? existingProfileData.verification_documents
-      : {};
+    const existingProfileData = parseJsonObject(userRow?.profile_data);
+    const existingVerificationDocs = parseJsonObject(existingProfileData.verification_documents);
 
     await supabase
       .from('users')
@@ -178,12 +144,12 @@ async function initiateCompanyVerification(
       success: true,
       authUrl: null,
       mode: 'manual',
-      message: 'Verification initiated in manual mode. Your uploaded documents will be reviewed by admin.'
+      message: 'Verification initiated in manual mode. Your uploaded documents will be reviewed by a CA.'
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Company verification initiation error:', error);
     return NextResponse.json({
-      error: error.message || 'Failed to initiate verification',
+      error: getErrorMessage(error) || 'Failed to initiate verification',
       code: 'INITIATION_FAILED'
     }, { status: 500 });
   }
@@ -220,12 +186,8 @@ async function reverifyCompanyVerification(
       return NextResponse.json({ error: 'Only verified users can request reverification' }, { status: 400 });
     }
 
-    const existingProfileData = (userRow.profile_data && typeof userRow.profile_data === 'object')
-      ? userRow.profile_data
-      : {};
-    const existingVerificationDocs = (existingProfileData.verification_documents && typeof existingProfileData.verification_documents === 'object')
-      ? existingProfileData.verification_documents
-      : {};
+    const existingProfileData = parseJsonObject(userRow.profile_data);
+    const existingVerificationDocs = parseJsonObject(existingProfileData.verification_documents);
 
     const entered = {
       pan: typeof panNumber === 'string' ? panNumber.trim().toUpperCase() : '',
@@ -269,149 +231,27 @@ async function reverifyCompanyVerification(
       mode: 'reverification',
       message: 'Reverification submitted. You remain verified while your updated documents are reviewed.',
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Company reverification error:', error);
     return NextResponse.json({
-      error: error.message || 'Failed to submit reverification',
+      error: getErrorMessage(error) || 'Failed to submit reverification',
       code: 'REVERIFICATION_FAILED',
     }, { status: 500 });
   }
 }
 
-async function verifyGST(userId: number, gstNumber: string) {
-  // Validate GST number format
-  if (!isValidGSTNumber(gstNumber)) {
-    return NextResponse.json({ error: 'Invalid GST number format' }, { status: 400 });
-  }
-
-  await supabase
-    .from('company_verifications')
-    .update({
-      gst_number: gstNumber,
-    })
-    .eq('user_id', userId);
-
-  return NextResponse.json({
-    success: true,
-    message: 'GST verification completed'
-  });
-}
-
-async function verifyCompanyPAN(userId: number, panNumber: string) {
-  if (!isValidPANNumber(panNumber)) {
-    return NextResponse.json({ error: 'Invalid PAN number format' }, { status: 400 });
-  }
-
-  const { data: userRow } = await supabase
-    .from('users')
-    .select('profile_data')
-    .eq('id', userId)
-    .single();
-
-  const existingProfileData = (userRow?.profile_data && typeof userRow.profile_data === 'object')
-    ? userRow.profile_data
-    : {};
-  const existingVerificationDocs = (existingProfileData.verification_documents && typeof existingProfileData.verification_documents === 'object')
-    ? existingProfileData.verification_documents
-    : {};
-  const companyBlock = (existingVerificationDocs.company && typeof existingVerificationDocs.company === 'object')
-    ? existingVerificationDocs.company
-    : {};
-  const enteredFields = (companyBlock.entered_fields && typeof companyBlock.entered_fields === 'object')
-    ? companyBlock.entered_fields
-    : {};
-
-  await supabase
-    .from('users')
-    .update({
-      profile_data: {
-        ...existingProfileData,
-        verification_documents: {
-          ...existingVerificationDocs,
-          company: {
-            ...companyBlock,
-            entered_fields: {
-              ...enteredFields,
-              pan: panNumber,
-            },
-          },
-        },
-      },
-    })
-    .eq('id', userId);
-
-  return NextResponse.json({
-    success: true,
-    message: 'PAN verification completed'
-  });
-}
-
-async function verifyCIN(userId: number, cinNumber: string) {
-  if (!isValidCINNumber(cinNumber)) {
-    return NextResponse.json({ error: 'Invalid CIN number format' }, { status: 400 });
-  }
-
-  const { data: userRow } = await supabase
-    .from('users')
-    .select('profile_data')
-    .eq('id', userId)
-    .single();
-
-  const existingProfileData = (userRow?.profile_data && typeof userRow.profile_data === 'object')
-    ? userRow.profile_data
-    : {};
-  const existingVerificationDocs = (existingProfileData.verification_documents && typeof existingProfileData.verification_documents === 'object')
-    ? existingProfileData.verification_documents
-    : {};
-  const companyBlock = (existingVerificationDocs.company && typeof existingVerificationDocs.company === 'object')
-    ? existingVerificationDocs.company
-    : {};
-  const enteredFields = (companyBlock.entered_fields && typeof companyBlock.entered_fields === 'object')
-    ? companyBlock.entered_fields
-    : {};
-
-  await supabase
-    .from('users')
-    .update({
-      profile_data: {
-        ...existingProfileData,
-        verification_documents: {
-          ...existingVerificationDocs,
-          company: {
-            ...companyBlock,
-            entered_fields: {
-              ...enteredFields,
-              cin: cinNumber,
-            },
-          },
-        },
-      },
-    })
-    .eq('id', userId);
-
-  return NextResponse.json({
-    success: true,
-    message: 'CIN updated successfully'
-  });
-}
-
 export async function GET(req: NextRequest) {
   try {
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const claims = getTokenClaims(req);
+    if (!claims) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    const userId = claims.id;
 
-    const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
-    const userId = decoded.id; // Changed from decoded.userId to decoded.id
-
-    // Validate userId
     if (!userId) {
       return NextResponse.json({ error: 'Invalid token: missing user ID' }, { status: 401 });
     }
 
-    // Get verification status
     const { data: verification, error: verificationError } = await supabase
       .from('company_verifications')    
       .select(`
@@ -441,9 +281,7 @@ export async function GET(req: NextRequest) {
       .eq('id', userId)
       .single();
 
-    const profileData = (userRow?.profile_data && typeof userRow.profile_data === 'object')
-      ? userRow.profile_data
-      : {};
+    const profileData = parseJsonObject(userRow?.profile_data);
     // users.verification_status is the admin override — if admin explicitly downgraded,
     // that wins regardless of what the company_verifications table says.
     const adminStatus = String(userRow?.verification_status || '').trim().toLowerCase();
@@ -455,16 +293,13 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       verified: effectiveStatus === 'verified',
-      gstVerified: record.gst_verified || false,
-      panVerified: record.pan_verified || false,
       companyName: record.company_name,
-      cinNumber: record.cin_number,
-      companyType: record.company_type,
+      registrationNumber: record.registration_number,
+      gstNumber: record.gst_number,
       status: effectiveStatus,
       verification_status: effectiveStatus,
       reverification_pending: Boolean(profileData.reverification_pending),
-      verifiedAt: record.verified_at,
-      level: record.verification_level
+      verifiedAt: record.verification_date
     });
   } catch (error) {
     console.error('Get company verification status error:', error);

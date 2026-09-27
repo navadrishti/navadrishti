@@ -3,28 +3,27 @@
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Building, MessageSquare, CheckCircle, XCircle, Loader2, AlertTriangle, IndianRupee, ChevronLeft, ChevronRight } from 'lucide-react'
+import { ArrowLeft, Building, CheckCircle, XCircle, Loader2, AlertTriangle, IndianRupee, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
 import { Header } from '@/components/header'
 import { DetailField, DetailSection, displayValue, parseImages } from '@/components/detail-fields'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
-import { cn } from '@/lib/utils'
+import { cn, parseAmountToInr, getErrorMessage, parseJsonObject } from '@/lib/utils'
 import { formatStatusLabel } from '@/lib/format-date'
-import { getFundingProgress, resolveFundingTargetInr, resolveFundsRaisedInr } from '@/lib/service-request-allocation'
+import { getFundingProgress, resolveFundingTargetInr } from '@/lib/service-request-allocation'
 import { VerifiedAccountName } from '@/components/verification-badge'
 import { getGramAvatarFallbackStyle } from '@/lib/gram-avatar'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { openRazorpayCheckout } from '@/lib/razorpay-checkout'
-import { PlatformPaymentSummary, getTotalChargeLabel } from '@/components/profile-dashboard-tab'
+import { PlatformPaymentSummary, getTotalChargeLabel } from '@/components/platform-payment-summary'
 
 interface ServiceRequest {
   id: number
@@ -82,11 +81,9 @@ interface ServiceRequest {
   updated_at: string
 }
 
-type RequestType = 'financial' | 'material' | 'skill' | 'infrastructure' | 'other'
-
 interface VolunteerApplication {
   id: number
-  volunteer_id: number
+  applicant_user_id: number
   volunteer_type: 'individual' | 'company'
   application_message: string
   status: 'pending' | 'accepted' | 'rejected' | 'active' | 'completed' | 'cancelled'
@@ -121,7 +118,7 @@ interface VolunteerApplication {
 
 interface ApplicantEntry {
   id: number
-  volunteer_id: number
+  applicant_user_id: number
   application_message: string
   status: 'pending' | 'accepted' | 'rejected' | 'active' | 'completed' | 'cancelled'
   applied_at: string
@@ -160,15 +157,6 @@ interface ApplicantEntry {
     phone?: string | null
     ngo_name?: string | null
   }
-}
-
-const parseAmountToInr = (value: unknown): number => {
-  if (value === null || value === undefined) return 0
-  const text = String(value).trim()
-  if (!text) return 0
-  const normalized = text.replace(/[^\d.-]/g, '')
-  const parsed = Number(normalized)
-  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0
 }
 
 const formatDate = (value?: string | null) => {
@@ -329,14 +317,10 @@ function isLinkedToProject(requirements: Record<string, unknown>, project?: Requ
 
 function RequestNeedDetailsSection({ request }: { request: RequestRecord }) {
   const requirements = parseRequirements(request.requirements)
-  const projectContext = (requirements.project_context && typeof requirements.project_context === 'object'
-    ? requirements.project_context
-    : {}) as Record<string, unknown>
+  const projectContext = (parseJsonObject(requirements.project_context)) as Record<string, unknown>
   const categoryDetails = (requirements.category_details && typeof requirements.category_details === 'object'
     ? requirements.category_details
-    : requirements.details && typeof requirements.details === 'object'
-      ? requirements.details
-      : {}) as Record<string, unknown>
+    : parseJsonObject(requirements.details)) as Record<string, unknown>
 
   const requestType = normalizeRequestType(
     String(requirements.request_type || request.request_type || request.category || '')
@@ -464,7 +448,6 @@ export default function ServiceRequestDetailPage() {
   
   const [paymentAmount, setPaymentAmount] = useState('')
   const [paying, setPaying] = useState(false)
-  const [currentTimeMs, setCurrentTimeMs] = useState(0)
   const [request, setRequest] = useState<ServiceRequest | null>(null)
   const [userApplication, setUserApplication] = useState<VolunteerApplication | null>(null)
   const [applicants, setApplicants] = useState<ApplicantEntry[]>([])
@@ -508,22 +491,12 @@ export default function ServiceRequestDetailPage() {
     }
   }, [requestId, isAuthenticated, user])
 
-  useEffect(() => {
-    setCurrentTimeMs(Date.now())
-    const interval = setInterval(() => {
-      setCurrentTimeMs(Date.now())
-    }, 60 * 1000)
-
-    return () => clearInterval(interval)
-  }, [])
-
   const fetchRequestDetails = async () => {
     try {
       const response = await fetch(`/api/service-requests/${requestId}`)
       if (response.ok) {
         const data = await response.json()
         
-        // Handle the new API response format
         if (data.success) {
           setRequest(data.data)
         } else {
@@ -556,7 +529,7 @@ export default function ServiceRequestDetailPage() {
         const data = await response.json()
         // Handle both old and new API response formats
         const applications = data.success ? data.data : data
-        const existingApplication = applications.find((app: VolunteerApplication) => app.volunteer_id === user?.id)
+        const existingApplication = applications.find((app: VolunteerApplication) => Number(app.applicant_user_id) === Number(user?.id))
         setUserApplication(existingApplication || null)
       }
     } catch (error) {
@@ -729,8 +702,6 @@ export default function ServiceRequestDetailPage() {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          // volunteer_id is optional when authenticated; include for backward compatibility
-          volunteer_id: user.id,
           message: applicationMessage,
           fulfillment_amount: isFinancialRequest || isSkillServiceNeed ? applicationFulfillmentAmount : null,
           fulfillment_quantity: isFinancialRequest || isSkillServiceNeed ? null : applicationFulfillmentQuantity
@@ -764,7 +735,6 @@ export default function ServiceRequestDetailPage() {
         const error = await response.json()
         const errorMsg = error.error || 'Failed to submit application'
         
-        // Handle verification requirement specifically
         if (error.requiresVerification || response.status === 403) {
           const verificationMessage = error.message || 'Please complete account verification before applying for volunteer opportunities.'
           toast({
@@ -830,8 +800,8 @@ export default function ServiceRequestDetailPage() {
       toast({ title: 'Done', description: 'Your fulfillment has been marked as done.' })
       fetchRequestDetails()
       checkExistingApplication()
-    } catch (error: any) {
-      toast({ title: 'Update failed', description: error?.message || 'Could not mark completion', variant: 'destructive' })
+    } catch (error) {
+      toast({ title: 'Update failed', description: getErrorMessage(error) || 'Could not mark completion', variant: 'destructive' })
     }
   }
 
@@ -867,8 +837,8 @@ export default function ServiceRequestDetailPage() {
       toast({ title: 'Receipt confirmed', description: 'The fulfillment was moved to history.' })
       fetchRequestDetails()
       fetchApplicants()
-    } catch (error: any) {
-      toast({ title: 'Update failed', description: error?.message || 'Could not confirm fulfillment', variant: 'destructive' })
+    } catch (error) {
+      toast({ title: 'Update failed', description: getErrorMessage(error) || 'Could not confirm fulfillment', variant: 'destructive' })
     }
   }
 
@@ -904,8 +874,8 @@ export default function ServiceRequestDetailPage() {
       }
 
       toast({ title: 'Tracking synced', description: 'Latest Delhivery shipment status has been updated.' })
-    } catch (error: any) {
-      toast({ title: 'Sync failed', description: error?.message || 'Could not fetch Delhivery status', variant: 'destructive' })
+    } catch (error) {
+      toast({ title: 'Sync failed', description: getErrorMessage(error) || 'Could not fetch Delhivery status', variant: 'destructive' })
     } finally {
       setSyncingOwnTracking(false)
     }
@@ -1039,11 +1009,7 @@ export default function ServiceRequestDetailPage() {
     estimated_budget: parsedRequirements?.estimated_budget ?? request?.estimated_budget,
     budget: parsedRequirements?.budget,
   })
-  const fundsRaisedInr = resolveFundsRaisedInr({
-    funds_raised_inr: request?.funds_raised_inr ?? parsedRequirements?.funds_raised_inr,
-    current_amount: request?.current_amount,
-    financial_transactions: parsedRequirements?.financial_transactions,
-  })
+  const fundsRaisedInr = request?.funds_raised_inr ?? Number(request?.current_amount || 0)
   const funding = getFundingProgress(fundingTargetInr, fundsRaisedInr)
   const fundsRemainingInr = request?.funds_remaining_inr ?? funding.remaining
   const fundingProgress = request?.funding_progress ?? funding.progress

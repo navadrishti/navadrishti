@@ -8,7 +8,6 @@ import {
   assertCsr1CoversProject,
   assertCsr1CoversRequiredThrough,
   ngoIsCsrEligible,
-  ngoIsCsrEligibleForWorkThrough,
   resolveProjectCsrCoverageEndDate,
   verifyToken,
   type UserData,
@@ -16,6 +15,7 @@ import {
 import { verifyPlatformCAToken, PLATFORM_CA_COOKIE, type PlatformCATokenPayload } from '@/lib/platform-ca-auth';
 import { supabase } from '@/lib/db';
 import { ensureCompanyCaIdAssigned } from '@/lib/company-ca';
+import { parseJsonObject } from '@/lib/utils';
 
 export const AUTH_TOKEN_COOKIE = 'token';
 export const ADMIN_TOKEN_COOKIE = 'admin-token';
@@ -152,6 +152,17 @@ function extractBearerToken(authHeader: string | null): string | null {
   return token.length > 0 ? token : null;
 }
 
+export function findAuthUser(
+  request: NextRequest,
+  options: { allowCookie?: boolean } = {}
+): UserData | null {
+  const token =
+    extractBearerToken(request.headers.get('authorization')) ??
+    (options.allowCookie ? request.cookies.get(AUTH_TOKEN_COOKIE)?.value?.trim() || null : null);
+
+  return token ? verifyToken(token) : null;
+}
+
 export function getAuthUserFromRequest(request: NextRequest): UserData {
   const authHeader = request.headers.get('authorization');
   const token = extractBearerToken(authHeader);
@@ -240,21 +251,6 @@ export async function ngoUserIsCsrEligible(userId: number): Promise<boolean> {
   return ngoIsCsrEligible(data.verification_status, data.profile_data);
 }
 
-export async function ngoUserIsCsrEligibleForWorkThrough(
-  userId: number,
-  requiredThrough: unknown,
-  options?: { requireWorkEnd?: boolean }
-): Promise<boolean> {
-  const data = await loadNgoComplianceRow(userId);
-  if (!data) return false;
-  return ngoIsCsrEligibleForWorkThrough(
-    data.verification_status,
-    data.profile_data,
-    requiredThrough,
-    options
-  );
-}
-
 export async function ngoUserIsCsrEligibleForProject(
   userId: number,
   project: { valid_until?: unknown; timeline?: unknown } | null | undefined
@@ -316,38 +312,12 @@ function extractCAToken(request: NextRequest): string | null {
     return platformCAToken;
   }
 
-  const oldCAToken = request.cookies.get('ca-token')?.value;
-  if (oldCAToken) {
-    return oldCAToken;
-  }
-
   return extractBearerToken(request.headers.get('authorization'));
 }
 
 export function getCAFromRequest(request: NextRequest): PlatformCATokenPayload | null {
   const token = extractCAToken(request);
-
-  if (!token) {
-    return null;
-  }
-
-  const payload = verifyPlatformCAToken(token);
-  if (payload) {
-    return payload;
-  }
-
-  const oldPayload = verifyToken(token);
-  if (oldPayload && oldPayload.id === -2) {
-    return {
-      id: oldPayload.id,
-      ca_id: 'legacy',
-      username: 'ca',
-      email: oldPayload.email,
-      display_name: oldPayload.name || 'CA Portal User',
-    };
-  }
-
-  return null;
+  return token ? verifyPlatformCAToken(token) : null;
 }
 
 export function isCARequest(request: NextRequest): boolean {
@@ -414,7 +384,7 @@ export async function getCompanyCAFromRequest(request: NextRequest): Promise<Com
       company_user_id: identity.company_user_id,
       ca_id: caId,
       status: identity.status,
-      permissions: identity.permissions ?? {},
+      permissions: parseJsonObject(identity.permissions),
       must_change_password: identity.must_change_password || false
     }
   };

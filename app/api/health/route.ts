@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
+import { getErrorMessage } from '@/lib/utils';
 
 export async function GET() {
   try {
@@ -15,7 +16,6 @@ export async function GET() {
       }
     };
 
-    // Check database connection with timeout
     try {
       const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => reject(new Error('Database timeout')), 3000);
@@ -28,14 +28,13 @@ export async function GET() {
 
       await Promise.race([pingPromise, timeoutPromise]);
       checks.checks.database = 'healthy';
-    } catch (error: any) {
+    } catch (error) {
       checks.checks.database = 'unhealthy';
       if (process.env.NODE_ENV === 'development') {
-        console.error('Database health check failed:', error?.message);
+        console.error('Database health check failed:', getErrorMessage(error));
       }
     }
 
-    // Check external services configuration
     const requiredEnvVars = [
       'NEXT_PUBLIC_SUPABASE_URL',
       'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY',
@@ -46,7 +45,6 @@ export async function GET() {
     const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
     checks.checks.external_services = missingEnvVars.length === 0 ? 'healthy' : 'degraded';
 
-    // Determine overall health
     const isHealthy = checks.checks.database !== 'unhealthy' && 
                      checks.checks.external_services !== 'unhealthy';
 

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState, useMemo } from "react"
+import { useEffect, useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
@@ -9,8 +9,8 @@ import { ImageCarousel } from "@/components/ui/image-carousel"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { 
   Star, MapPin, Calendar, Target, Clock, IndianRupee, 
-  HeartHandshake, UserRound, Building, Users, Shield, 
-  Edit, Eye, MoreVertical, Trash2, ArrowRight, User, Briefcase,
+  HeartHandshake, Building, Users, 
+  Edit, MoreVertical, Trash2, ArrowRight, User, Briefcase,
   Truck, CheckCircle2, Loader2,
 } from "lucide-react"
 import { VerifiedAccountName } from "./verification-badge"
@@ -33,7 +33,6 @@ import {
   type CapabilityOfferUsageRecord,
   type CapabilityOfferPastReason,
 } from "@/lib/service-offers"
-import { useAuth } from "@/lib/auth-context"
 import { useToast } from "@/hooks/use-toast"
 import {
   formatDeliveryTrackingStatus,
@@ -69,6 +68,7 @@ interface ServiceCardProps {
   timeline?: string
   deadline?: string
   requirements?: string | object
+  current_amount?: number | string | null
   impact_score?: number
   
   // Service Offer specific props
@@ -134,24 +134,8 @@ interface ServiceCardProps {
   }
 }
 
-// Function to generate initials from name
-const listingCardClassName =
-  'h-full w-full max-w-[360px] overflow-hidden rounded-md border-2 border-slate-200 bg-white shadow-none'
-
 const listingCardImageClassName = 'mt-2 overflow-hidden rounded-md border border-slate-200 bg-slate-100'
 const listingCardImageFrameClassName = 'h-32 w-full'
-const listingBadgeClassName =
-  'inline-flex min-w-0 max-w-[48%] overflow-hidden rounded-md border border-gram-border bg-white px-2.5 py-0.5 text-xs font-medium text-gram-body'
-const listingCategoryBadgeClassName =
-  'inline-flex min-w-0 max-w-[52%] overflow-hidden rounded-md border border-gram-border bg-white px-2.5 py-0.5 text-xs font-medium text-gram-body'
-
-const renderListingBadge = (content: React.ReactNode, className: string, title?: string) => (
-  <span className={className} title={title}>
-    <span className="block truncate">{content}</span>
-  </span>
-)
-const listingDescriptionClassName = 'min-w-0 truncate text-[13px] leading-5 text-slate-700'
-const listingMetricValueClassName = 'min-w-0 truncate text-[13px] font-semibold text-slate-900'
 
 const getUrgencyBadgeClass = (level?: string) => {
   switch (String(level || 'medium').toLowerCase()) {
@@ -228,14 +212,12 @@ export function ServiceCard({
   provider,
   providerType = 'ngo',
   verified,
-  tags,
   created_at,
   urgency_level,
-  priority,
-  volunteers_needed,
   timeline,
   deadline,
   requirements,
+  current_amount,
   impact_score,
   project,
   price_amount,
@@ -255,7 +237,6 @@ export function ServiceCard({
   capacity,
   duration,
   scope,
-  experience_requirements,
   skills_required,
   benefits,
   currentTime,
@@ -264,19 +245,15 @@ export function ServiceCard({
   isDeleting,
   showDeleteButton,
   isOwner,
-  canInteract = true,
   volunteer_application
 }: ServiceCardProps) {
-  
   const router = useRouter();
-  const { user } = useAuth();
   const [isHydrated, setIsHydrated] = useState(false);
 
   useEffect(() => {
     setIsHydrated(true);
   }, []);
   
-  // Parse images safely
   const parseImages = (imgs?: string[] | string): string[] => {
     if (!imgs) return [];
     
@@ -314,49 +291,10 @@ export function ServiceCard({
   };
 
   const imageArray = parseImages(images);
-  const primaryImage = imageArray[0] || '';
 
-  // Parse tags safely
-  const parseTags = (tagData?: string[] | string): string[] => {
-    if (!tagData) return [];
-    
-    try {
-      if (Array.isArray(tagData)) {
-        return tagData;
-      }
-      
-      if (typeof tagData === 'string' && tagData.trim() !== '' && tagData !== '[]') {
-        const parsed = JSON.parse(tagData);
-        return Array.isArray(parsed) ? parsed : [];
-      }
-    } catch (e) {
-      console.warn('Failed to parse tags:', e);
-    }
-    
-    return [];
-  };
-
-  const tagArray = parseTags(tags);
-  
   const handleCardClick = () => {
     const basePath = type === 'request' ? '/service-requests' : '/service-offers';
     router.push(`${basePath}/${id}`);
-  };
-
-  const getPriorityColor = (level?: string) => {
-    if (!level) return 'bg-blue-500';
-    switch (level.toLowerCase()) {
-      case 'urgent':
-      case 'critical':
-      case 'high':
-        return 'bg-red-500';
-      case 'medium':
-        return 'bg-orange-500';
-      case 'low':
-        return 'bg-green-500';
-      default:
-        return 'bg-blue-500';
-    }
   };
 
   const getPriorityTextColor = (level?: string) => {
@@ -398,7 +336,6 @@ export function ServiceCard({
     }
   };
 
-  // Parse requirements for service requests
   const parseRequirements = (req?: string | object) => {
     if (!req) return null;
     
@@ -418,12 +355,11 @@ export function ServiceCard({
   const projectContext = project || requirementsData?.project?.project || null;
   const projectCategory = String(requirementsData?.project_category || projectContext?.category || category || '').trim();
   const categoryLabel = type === 'request' ? 'Need Type' : 'Type';
-  // Prefer canonical project-level fields when available
   const projectExpectedBeneficiaries = Number(projectContext?.expected_beneficiaries || 0);
   const beneficiaryCount = projectExpectedBeneficiaries > 0 ? projectExpectedBeneficiaries : Number(requirementsData?.beneficiary_count || 0);
   const estimatedBudget = requirementsData?.estimated_budget || requirementsData?.budget;
   const fundingTargetInr = isFinancialNeed ? Number(String(requirementsData?.funding_target_inr || estimatedBudget || '').replace(/[^\d.-]/g, '')) : 0;
-  const fundsRaisedInr = isFinancialNeed ? Number(String(requirementsData?.funds_raised_inr || 0).replace(/[^\d.-]/g, '')) : 0;
+  const fundsRaisedInr = isFinancialNeed ? Number(current_amount || 0) : 0;
   const fundingProgress = isFinancialNeed && Number.isFinite(fundingTargetInr) && fundingTargetInr > 0
     ? Math.min(100, Math.round((Math.max(fundsRaisedInr, 0) / fundingTargetInr) * 100))
     : 0;
@@ -536,17 +472,6 @@ export function ServiceCard({
     deadline: formattedRequestDeadline ? String(formattedRequestDeadline) : 'Not specified',
     impact: impactScore > 0 ? `${impactScore}/100` : 'Not scored'
   };
-
-  // Show selected lead NGO info if available on project context
-  const selectedLeadNgoName = projectContext?.selected_lead_ngo_name || null;
-  const assignedCompanyName = projectContext?.assigned_company_name || projectContext?.assigned_company_user_name || null;
-  
-  // Check if user types can interact
-  const isNGO = user?.user_type === 'ngo';
-  const isIndividual = user?.user_type === 'individual';
-  const isCompany = user?.user_type === 'company';
-  const canVolunteer = isIndividual || isCompany;
-  const canHireServices = isIndividual || isCompany;
 
   const offerPriceLabel = (() => {
     if (normalizedTransactionType === 'donate') return 'Free'

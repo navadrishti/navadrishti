@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { AlertCircle, CheckCircle, TrendingUp, BarChart3, MapPin } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { getErrorMessage } from '@/lib/utils';
 
 type DistrictSummary = {
   district_name: string;
@@ -58,8 +59,8 @@ export default function StateAnalyticsDashboard() {
       if (data.summary?.districts?.[0]) {
         setSelectedDistrict(data.summary.districts[0]);
       }
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load analytics');
+    } catch (err) {
+      setError(getErrorMessage(err) || 'Failed to load analytics');
     } finally {
       setLoading(false);
     }

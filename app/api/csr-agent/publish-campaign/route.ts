@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
 import { getAuthUserFromRequest, assertUserType, assertNgoCsr1CoversWork } from '@/lib/server-auth'
-import { resolveCampaignCategoryInput, resolveCampaignLocationInput } from '@/lib/campaign-schema'
-import { resolveAppOrigin } from '@/lib/campaign-schema'
+import { resolveCampaignCategoryInput, resolveCampaignLocationInput, resolveAppOrigin } from '@/lib/campaign-schema'
 import { verifyPaidCsrOffersForPublish } from '@/lib/csr-agent/campaign'
 import { CSR_WORK_END_DATE_REQUIRED_MESSAGE } from '@/lib/auth'
+import { parseJsonObject } from '@/lib/utils';
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
 
     const { data: existing, error: fetchError } = await supabase
       .from('campaigns')
-      .select('id, status, impact_metrics, end_date')
+      .select('id, status, impact_metrics, end_date, lead_ngo_user_id')
       .eq('id', campaignId)
       .eq('company_id', user.id)
       .maybeSingle()
@@ -34,11 +34,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
     }
 
-    const impact = existing.impact_metrics && typeof existing.impact_metrics === 'object'
-      ? existing.impact_metrics
-      : {}
+    const impact = parseJsonObject(existing.impact_metrics)
 
-    const leadNgoId = Number(impact.selected_lead_ngo_id || 0)
+    const leadNgoId = Number(existing.lead_ngo_user_id || 0)
     if (!impact.lead_ngo_accepted || !leadNgoId) {
       return NextResponse.json({
         error: 'A lead NGO must accept the invite from their dashboard before this campaign can be published.',
@@ -70,11 +68,8 @@ export async function POST(request: NextRequest) {
 
     const nextImpact = {
       ...impact,
-      ...(campaign.impact_metrics && typeof campaign.impact_metrics === 'object' ? campaign.impact_metrics : {}),
+      ...(parseJsonObject(campaign.impact_metrics)),
       lead_ngo_accepted: true,
-      selected_lead_ngo_id: impact.selected_lead_ngo_id,
-      selected_lead_ngo_name: impact.selected_lead_ngo_name,
-      selected_lead_ngo_email: impact.selected_lead_ngo_email,
       campaign_public_url: campaignUrl,
       published_at: new Date().toISOString(),
     }

@@ -8,6 +8,7 @@ import {
   updateGovernmentBody,
 } from '@/lib/government-admin-auth';
 import { supabase } from '@/lib/db';
+import { getErrorMessage } from '@/lib/utils';
 
 type CredentialRole = 'state_officer' | 'district_officer' | 'field_officer';
 
@@ -32,8 +33,8 @@ export async function GET(request: NextRequest) {
     if (error) throw error;
 
     return NextResponse.json({ success: true, accounts: data || [] });
-  } catch (error: any) {
-    return NextResponse.json({ error: error?.message || 'Failed to load credentials' }, { status: 500 });
+  } catch (error) {
+    return NextResponse.json({ error: getErrorMessage(error) || 'Failed to load credentials' }, { status: 500 });
   }
 }
 
@@ -141,7 +142,7 @@ export async function POST(request: NextRequest) {
       account,
       password: passwordValue,
     });
-  } catch (error: any) {
-    return NextResponse.json({ error: error?.message || 'Failed to generate credential' }, { status: 500 });
+  } catch (error) {
+    return NextResponse.json({ error: getErrorMessage(error) || 'Failed to generate credential' }, { status: 500 });
   }
 }

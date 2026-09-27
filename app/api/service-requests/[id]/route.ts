@@ -1,37 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, supabase } from '@/lib/db';
+import { db } from '@/lib/db';
 import {
   getFundingProgress,
   isFinancialNeedType,
-  parseInrNumber,
   resolveFundingTargetInr,
-  resolveFundsRaisedInr,
 } from '@/lib/service-request-allocation';
-import jwt from 'jsonwebtoken';
-import { JWT_SECRET, CSR_ELIGIBILITY_REQUIRED_MESSAGE, CSR_OWN_PROJECT_TIMELINE_MESSAGE } from '@/lib/auth';
+import { getTokenClaims, CSR_ELIGIBILITY_REQUIRED_MESSAGE, CSR_OWN_PROJECT_TIMELINE_MESSAGE } from '@/lib/auth';
 import { ngoUserIsCsrEligible, ngoUserIsCsrEligibleForProject } from '@/lib/server-auth';
 import { CSR_SCHEDULE_VII_CATEGORIES, SERVICE_REQUEST_TYPES } from '@/lib/categories';
 import { isHiddenNgoNetworkPaymentChannel } from '@/lib/razorpay-route';
-
-// Interface for JWT payload
-interface JWTPayload {
-  id: number;
-  user_type: string;
-  email: string;
-  name: string;
-}
-
-function safeParseJson(value: unknown): Record<string, any> {
-  if (!value) return {};
-  if (typeof value === 'object') return value as Record<string, any>;
-  if (typeof value !== 'string') return {};
-  try {
-    const parsed = JSON.parse(value);
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
-}
+import { parseAmountToInr, parseJsonObject } from '@/lib/utils';
 
 function parseImageArray(value: unknown): string[] {
   if (!value) return [];
@@ -122,41 +100,39 @@ function buildProgressFields(body: Record<string, any>, existing?: Record<string
 }
 
 function isLockedCsrProject(request: Record<string, any>): boolean {
-  const projectContext = safeParseJson(request?.project_context)
-  const assignment = safeParseJson(projectContext?.csr_assignment)
+  const projectContext = parseJsonObject(request?.project_context)
+  const assignment = parseJsonObject(projectContext?.csr_assignment)
   return projectContext?.csr_project_available_for_csr === false || assignment?.mode === 'company_project_handoff' || Number(assignment?.assigned_company_id || 0) > 0
 }
 
 // GET - Fetch single service request
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
     const requestId = parseInt(id);
 
-    // Fetch the service request using Supabase helpers (simplified for now)
-    const serviceRequest = await db.serviceRequests.getById(requestId);
+    const found = await db.serviceRequests.getById(requestId);
 
-    if (!serviceRequest) {
+    if (!found) {
       return NextResponse.json({ 
         success: false, 
         error: 'Service request not found' 
       }, { status: 404 });
     }
 
-    // Add ngo_name for backward compatibility with frontend
-    if (serviceRequest.requester) {
-      serviceRequest.ngo_name = serviceRequest.requester.name;
+    const serviceRequest: Record<string, any> = { ...found };
+    if (found.requester) {
+      serviceRequest.ngo_name = found.requester.name;
     }
 
-    const requirements = safeParseJson(serviceRequest.requirements);
+    const requirements = parseJsonObject(serviceRequest.requirements);
     const requirementImages = parseImageArray(requirements.images);
     serviceRequest.images = requirementImages.length > 0
       ? requirementImages
-      : parseImageArray(serviceRequest.images || serviceRequest.image_url);
-    // Prefer direct DB columns, fall back to requirements JSON for legacy rows
+      : parseImageArray(serviceRequest.image_url);
     serviceRequest.request_type = serviceRequest.request_type || requirements.request_type || (SERVICE_REQUEST_TYPES.includes(serviceRequest.category) ? serviceRequest.category : 'Skill / Service Need');
     serviceRequest.category = requirements.project_category || requirements?.project?.category || serviceRequest.category || 'Uncategorized';
     serviceRequest.estimated_budget = serviceRequest.estimated_budget != null ? String(serviceRequest.estimated_budget) : (requirements.estimated_budget || requirements.budget || 'Not specified');
@@ -165,29 +141,6 @@ export async function GET(
 
     const requestType = String(serviceRequest.request_type || requirements.request_type || '');
     if (isFinancialNeedType(requestType)) {
-      let razorpayTotalInr = 0;
-      try {
-        const { data: orderRows } = await supabase
-          .from('razorpay_payment_orders')
-          .select('id')
-          .eq('service_request_id', requestId);
-
-        const orderIds = (orderRows || []).map((row: { id: unknown }) => row.id).filter(Boolean);
-        if (orderIds.length > 0) {
-          const { data: paymentRows } = await supabase
-            .from('razorpay_payments')
-            .select('amount_inr, payment_status')
-            .in('order_id', orderIds)
-            .eq('payment_status', 'captured');
-
-          razorpayTotalInr = (paymentRows || []).reduce((sum: number, row: { amount_inr?: unknown }) => {
-            return sum + parseInrNumber(row.amount_inr);
-          }, 0);
-        }
-      } catch (paymentLookupError) {
-        console.warn('Failed to aggregate Razorpay payments for service request:', paymentLookupError);
-      }
-
       const targetInr = resolveFundingTargetInr({
         funding_target_inr: requirements.funding_target_inr,
         target_amount: serviceRequest.target_amount,
@@ -195,21 +148,13 @@ export async function GET(
         budget: requirements.budget,
       });
 
-      const raisedInr = resolveFundsRaisedInr({
-        funds_raised_inr: requirements.funds_raised_inr,
-        current_amount: serviceRequest.current_amount,
-        financial_transactions: requirements.financial_transactions,
-        razorpay_total_inr: razorpayTotalInr,
-      });
-
-      const funding = getFundingProgress(targetInr, raisedInr);
+      const funding = getFundingProgress(targetInr, parseAmountToInr(serviceRequest.current_amount));
       serviceRequest.funding_target_inr = funding.target;
       serviceRequest.funds_raised_inr = funding.raised;
       serviceRequest.funds_remaining_inr = funding.remaining;
       serviceRequest.funding_progress = funding.progress;
     }
 
-    // Return the service request data (publicly accessible)
     return NextResponse.json({
       success: true,
       data: serviceRequest
@@ -235,14 +180,10 @@ export async function PUT(
   try {
     const { id } = await params;
     
-    // Get JWT token from Authorization header
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const decoded = getTokenClaims(request);
+    if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
-
-    const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
     const { id: userId, user_type: userType } = decoded;
 
     // Only NGOs can update service requests
@@ -277,7 +218,6 @@ export async function PUT(
       details
     } = body;
 
-    // Validate required fields
     const missingRequiredFields = [title, description, location, timeline, impact_description].some((value) => !String(value ?? '').trim());
     if (missingRequiredFields || !request_type || !(project_category || category)) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -333,14 +273,13 @@ export async function PUT(
     const storedTimeline = trimmedTimeline && !isAnytimeTimeline ? trimmedTimeline : null;
     const timelineLabel = isAnytimeTimeline ? 'Anytime' : (trimmedTimeline || 'Not specified');
 
-    // First, verify that this request belongs to the authenticated NGO
     const existingRequest = await db.serviceRequests.getById(requestId);
 
     if (!existingRequest) {
       return NextResponse.json({ error: 'Service request not found' }, { status: 404 });
     }
 
-    if (Number(existingRequest.ngo_id || existingRequest.requester_id) !== userId) {
+    if (Number(existingRequest.ngo_id) !== userId) {
       return NextResponse.json({ error: 'You can only update your own requests' }, { status: 403 });
     }
 
@@ -365,7 +304,6 @@ export async function PUT(
         return NextResponse.json({ error: 'Project title, description, exact address, and timeline are required' }, { status: 400 });
       }
 
-      // Validate canonical project fields for nested project creation
       const rawExpected = projectPayload.expected_beneficiaries ?? null;
       const parsedExpected = rawExpected != null ? Number(rawExpected) : (Number(beneficiary_count) || null);
       const expectedBeneficiaries =
@@ -418,7 +356,7 @@ export async function PUT(
     }
 
     const projectContext = {
-      ...(safeParseJson(project_context) || {}),
+      ...(parseJsonObject(project_context) || {}),
       project_category: normalizedProjectCategory,
       ...(projectAvailableForCsr === undefined ? {} : { csr_project_available_for_csr: projectAvailableForCsr }),
       project: resolvedProjectId
@@ -432,7 +370,6 @@ export async function PUT(
     const safeCreatedAtMs = Number.isFinite(createdAtMs) ? createdAtMs : Date.now();
     const mappedUrgency = deriveAutoUrgency(timeline, safeCreatedAtMs);
 
-    // Prepare requirements JSON
     const parsedImages = parseImageArray(images);
 
     const requirementsData = {
@@ -460,7 +397,6 @@ export async function PUT(
       quantity: body.quantity
     }, existingRequest);
 
-    // Update the service request using Supabase helper
     const updateData = {
       title,
       description,
@@ -507,14 +443,10 @@ export async function DELETE(
     // Await params to get the id
     const { id } = await params;
     
-    // Get JWT token from Authorization header
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const decoded = getTokenClaims(request);
+    if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
-
-    const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
     const { id: userId, user_type: userType } = decoded;
 
     // Only NGOs can delete service requests
@@ -525,14 +457,13 @@ export async function DELETE(
     const requestId = parseInt(id);
     const forceDelete = new URL(request.url).searchParams.get('force') === 'true';
 
-    // First, verify that this request belongs to the authenticated NGO and delete it
     const existingRequest = await db.serviceRequests.getById(requestId);
 
     if (!existingRequest) {
       return NextResponse.json({ error: 'Service request not found' }, { status: 404 });
     }
 
-    if (Number(existingRequest.ngo_id || existingRequest.requester_id) !== userId) {
+    if (Number(existingRequest.ngo_id) !== userId) {
       return NextResponse.json({ error: 'You can only delete your own service requests' }, { status: 403 });
     }
 
@@ -545,7 +476,7 @@ export async function DELETE(
     }
 
     const applicants = await db.serviceRequestApplications.getByRequestId(requestId);
-    const hasAcceptedApplicant = (applicants || []).some((applicant: any) =>
+    const hasAcceptedApplicant = (applicants || []).some((applicant) =>
       ['accepted', 'active', 'completed'].includes(String(applicant.status || '').toLowerCase())
     );
 
@@ -556,7 +487,6 @@ export async function DELETE(
       );
     }
 
-    // Delete the service request (which will also delete related volunteers)
     await db.serviceRequests.delete(requestId, userId);
 
     return NextResponse.json({

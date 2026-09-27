@@ -43,8 +43,6 @@ export async function POST(
     const campaign = Array.isArray(project.campaigns) ? project.campaigns[0] : project.campaigns;
     const workEnd =
       project.end_date ||
-      project.deadline_at ||
-      project.valid_until ||
       campaign?.end_date ||
       null;
     if (!workEnd) {

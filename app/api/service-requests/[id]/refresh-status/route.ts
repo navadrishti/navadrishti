@@ -1,28 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, supabase } from '@/lib/db';
-import jwt from 'jsonwebtoken';
-import { JWT_SECRET } from '@/lib/auth';
-
-// Interface for JWT payload
-interface JWTPayload {
-  id: number;
-  user_type: string;
-  email: string;
-  name: string;
-}
+import { getTokenClaims } from '@/lib/auth';
 
 // POST - Manually refresh service request status based on volunteer completion
 export async function POST(request: NextRequest) {
   try {
-    // Get JWT token from Authorization header
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const claims = getTokenClaims(request);
+    if (!claims) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
-
-    const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
-    const { id: userId, user_type: userType } = decoded;
+    const { id: userId, user_type: userType } = claims;
 
     // Only NGOs can refresh their service request statuses
     if (userType !== 'ngo') {
@@ -36,13 +23,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Service request ID is required' }, { status: 400 });
     }
 
-    // Verify that this request belongs to the authenticated NGO
     const requestData = await db.serviceRequests.getById(serviceRequestId);
     if (!requestData || requestData.ngo_id !== userId) {
       return NextResponse.json({ error: 'Service request not found or unauthorized' }, { status: 404 });
     }
 
-    // Get all volunteers for this service request
     const { data: allVolunteers } = await supabase
       .from('service_request_applications')
       .select('id, status')
@@ -60,13 +45,11 @@ export async function POST(request: NextRequest) {
     const pendingCount = allVolunteers.filter(v => v.status === 'pending').length;
     const workingVolunteers = acceptedCount + activeCount;
 
-    // Determine correct status
     let newStatus = 'active'; // default
     if (workingVolunteers === 0 && completedCount > 0) {
       newStatus = 'completed';
     }
 
-    // Update service request status
     await supabase
       .from('service_requests')
       .update({ 

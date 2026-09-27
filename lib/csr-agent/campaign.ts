@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/db";
+import { parseJsonObject } from "@/lib/utils";
 import { z } from "zod";
 import Razorpay from "razorpay";
 import { emailService } from "@/lib/email";
@@ -16,7 +17,6 @@ import {
   CSR_OUTBOUND_DISPATCH_DAYS,
   CSR_RETURN_DISPATCH_DAYS,
   parseCsrCapabilityRentals,
-  parseImpactMetrics,
   rentalRecordKey,
   resolveCsrRentalAmountInr,
   resolveMaterialTotalWorthInr,
@@ -27,7 +27,7 @@ import {
   type CsrCapabilityRentalRecord,
 } from "@/lib/service-engagement";
 
-// ----------- Schemas -----------
+// Schemas
 
 function coerceInteger(schema: z.ZodNumber) {
   return z.preprocess((value) => {
@@ -70,18 +70,13 @@ const CampaignDraftSchema = z.object({
   ),
 });
 
-export const SelectedCampaignInSchema = z.object({
-  campaign:   CampaignDraftSchema,
-  company_id: z.number().int(),
-});
-
 export const UpdateSelectedCampaignSchema = z.object({
   campaign:    CampaignDraftSchema.partial().optional(),
   company_id:  z.number().int(),
   campaign_id: z.string().uuid(),
 });
 
-// ----------- Service Functions -----------
+// Service functions
 
 export async function getCampaignStatus(id: string, company_id: number) {
   const { data } = await supabase
@@ -93,28 +88,10 @@ export async function getCampaignStatus(id: string, company_id: number) {
   return data?.status || null;
 }
 
-export async function insertCampaignDb(data: z.infer<typeof SelectedCampaignInSchema>) {
-  const { data: inserted, error } = await supabase
-    .from("campaigns")
-    .insert({
-      ...data.campaign,
-      company_id: data.company_id,
-      status: "draft"
-    })
-    .select("id, title, status")
-    .single();
-
-  // Fix 1: Null safety on insertion
-  if (error || !inserted) {
-    throw new Error(error?.message || "Insert failed");
-  }
-  return inserted;
-}
-
 export async function updateCampaignDb(
-  id: string, 
-  company_id: number, 
-  updates: Partial<z.infer<typeof CampaignDraftSchema>> // Fix 3: Proper typing
+  id: string,
+  company_id: number,
+  updates: Partial<z.infer<typeof CampaignDraftSchema>>
 ) {
   const { data, error } = await supabase
     .from("campaigns")
@@ -143,7 +120,7 @@ async function loadCompanyCampaign(campaignId: string, companyId: number) {
 
 async function saveCampaignRentals(campaignId: string, companyId: number, rentals: CsrCapabilityRentalRecord[]) {
   const campaign = await loadCompanyCampaign(campaignId, companyId);
-  const impact = parseImpactMetrics(campaign.impact_metrics);
+  const impact = parseJsonObject(campaign.impact_metrics);
   const { error } = await supabase
     .from("campaigns")
     .update({
@@ -179,8 +156,7 @@ export async function ensureCsrCapabilityRentalDraft(input: {
   const existing = rentals.find((row) => row.id === id);
   if (existing?.payment_status === "paid") return existing;
 
-  const leadNgoId =
-    Number(campaign.lead_ngo_user_id || parseImpactMetrics(campaign.impact_metrics).selected_lead_ngo_id || 0) || null;
+  const leadNgoId = Number(campaign.lead_ngo_user_id || 0) || null;
   const draft: CsrCapabilityRentalRecord = {
     id,
     campaign_id: input.campaignId,
@@ -275,8 +251,7 @@ export async function attachCsrCapabilityAfterPayment(input: {
   if (rental.payment_status === "paid") return rental;
 
   const paidAt = new Date().toISOString();
-  const leadNgoId =
-    Number(campaign.lead_ngo_user_id || parseImpactMetrics(campaign.impact_metrics).selected_lead_ngo_id || 0) || null;
+  const leadNgoId = Number(campaign.lead_ngo_user_id || 0) || null;
 
   const { data: clientRow, error: clientError } = await supabase
     .from("service_clients")
@@ -325,8 +300,20 @@ export async function attachCsrCapabilityAfterPayment(input: {
   const { data: assignment } = await supabase
     .from("service_engagement_assignments")
     .insert({
-      ...assignmentMeta,
+      target_type: assignmentMeta.target_type,
+      target_id: assignmentMeta.target_id,
+      application_table: assignmentMeta.application_table,
+      application_id: assignmentMeta.application_id,
+      owner_user_id: offer.creator_id,
+      assignee_user_id: leadNgoId || input.companyId,
+      assigned_by_user_id: input.companyId,
       status: "active",
+      billing_cycle: assignmentMeta.billing_cycle,
+      payment_mode: assignmentMeta.payment_mode,
+      valid_until: assignmentMeta.valid_until,
+      assigned_at: assignmentMeta.assigned_at,
+      rate_per_unit: assignmentMeta.rate_per_unit,
+      rate_currency: assignmentMeta.currency,
       meta: {
         ...assignmentMeta,
         flow: "csr_capability_rental",
@@ -339,8 +326,7 @@ export async function attachCsrCapabilityAfterPayment(input: {
     .select("id")
     .single();
 
-  const offerDetails =
-    offer.offer_details && typeof offer.offer_details === "object" ? offer.offer_details : {};
+  const offerDetails = parseJsonObject(offer.offer_details);
   await supabase
     .from("service_offers")
     .update({
@@ -356,7 +342,7 @@ export async function attachCsrCapabilityAfterPayment(input: {
     })
     .eq("id", input.offerId);
 
-  const impact = parseImpactMetrics(campaign.impact_metrics);
+  const impact = parseJsonObject(campaign.impact_metrics);
   const invited = Array.isArray(impact.invited_offer_ids) ? impact.invited_offer_ids.map(Number) : [];
   const invitedOfferIds = invited.includes(input.offerId) ? invited : [...invited, input.offerId];
 
@@ -416,7 +402,7 @@ export async function updateCsrCapabilityRentalStatus(input: {
   if (!current) throw new Error("CSR capability rental not found");
 
   const next = upsertCsrCapabilityRental(rentals, { ...current, ...input.patch, id });
-  const impact = parseImpactMetrics(campaign.impact_metrics);
+  const impact = parseJsonObject(campaign.impact_metrics);
   await supabase
     .from("campaigns")
     .update({ impact_metrics: { ...impact, csr_capability_rentals: next } })
@@ -427,7 +413,7 @@ export async function updateCsrCapabilityRentalStatus(input: {
 
 export async function verifyPaidCsrOffersForPublish(campaignId: string, companyId: number) {
   const campaign = await loadCompanyCampaign(campaignId, companyId);
-  const impact = parseImpactMetrics(campaign.impact_metrics);
+  const impact = parseJsonObject(campaign.impact_metrics);
   const invitedIds = Array.isArray(impact.invited_offer_ids)
     ? impact.invited_offer_ids.map(Number).filter((id) => id > 0)
     : [];
@@ -478,7 +464,7 @@ export async function processCsrCapabilityDailyCompliance() {
     );
 
     if (changed) {
-      const impact = parseImpactMetrics(campaign.impact_metrics);
+      const impact = parseJsonObject(campaign.impact_metrics);
       await supabase
         .from("campaigns")
         .update({ impact_metrics: { ...impact, csr_capability_rentals: rentals } })
@@ -494,7 +480,7 @@ export async function processCsrCapabilityDailyCompliance() {
               .eq("id", rental.company_user_id)
               .single();
             if (companyUser && companyUser.verification_status !== "suspended") {
-              const profile = parseImpactMetrics(companyUser.profile_data);
+              const profile = parseJsonObject(companyUser.profile_data);
               await supabase
                 .from("users")
                 .update({
@@ -640,13 +626,7 @@ function scheduleCsrOutboundRefund(rental: CsrCapabilityRentalRecord) {
         .eq("id", rental.service_offer_id)
         .single();
 
-      const details =
-        offerRow?.offer_details && typeof offerRow.offer_details === "object"
-          ? (offerRow.offer_details as Record<string, unknown>)
-          : {};
-      const { csr_rental_lock: _removed, ...restDetails } = details as Record<string, unknown> & {
-        csr_rental_lock?: unknown;
-      };
+      const { csr_rental_lock: _removed, ...restDetails } = parseJsonObject(offerRow?.offer_details);
 
       await supabase
         .from("service_offers")
@@ -711,7 +691,7 @@ export async function markCsrProjectCompleted(input: {
     };
   });
 
-  const impact = parseImpactMetrics(campaign.impact_metrics);
+  const impact = parseJsonObject(campaign.impact_metrics);
   await supabase
     .from("campaigns")
     .update({ impact_metrics: { ...impact, csr_capability_rentals: rentals } })
@@ -812,17 +792,6 @@ export function assertCsrCapabilityDeliveryAccess(input: {
 
   if (role === "lead_ngo" || role === "company") return;
   throw new Error("Only the lead NGO or company can manage return Delhivery tracking");
-}
-
-export function canEditCsrCapabilityTrackingId(input: {
-  userId: number;
-  rental: CsrCapabilityRentalRecord;
-  leg: "outbound" | "return";
-}): boolean {
-  const role = resolveCsrDeliveryRole(input.userId, input.rental);
-  if (!role) return false;
-  if (input.leg === "outbound") return role === "provider";
-  return role === "lead_ngo";
 }
 
 export async function loadCampaignRentalByOffer(campaignId: string, offerId: number) {
@@ -971,7 +940,7 @@ async function loadUserShippingAddress(userId: number): Promise<CsrShippingAddre
 
   if (error || !user) throw new Error("User profile not found for Delhivery booking");
 
-  const profile = parseImpactMetrics(user.profile_data);
+  const profile = parseJsonObject(user.profile_data);
   const phone = String(user.phone || profile.phone || "").replace(/\D/g, "");
   const pincode = String(user.pincode || profile.pincode || "").replace(/\D/g, "").slice(0, 6);
 
@@ -1047,8 +1016,8 @@ async function loadCampaignDropAddress(
   };
 }
 
-function resolveDelhiveryPickupLocationName(userId: number, profileData: unknown): string {
-  const profile = parseImpactMetrics(profileData);
+function resolveDelhiveryPickupLocationName(profileData: unknown): string {
+  const profile = parseJsonObject(profileData);
   const fromProfile = String(profile.delhivery_pickup_location || "").trim();
   const fromEnv = String(process.env.DELHIVERY_PICKUP_LOCATION_NAME || "").trim();
   if (fromProfile) return fromProfile;
@@ -1173,10 +1142,7 @@ export async function bookCsrCapabilityRentalDelhivery(input: {
     .eq("id", input.bookedByUserId)
     .single();
 
-  const pickupLocationName = resolveDelhiveryPickupLocationName(
-    input.bookedByUserId,
-    bookingUser?.profile_data
-  );
+  const pickupLocationName = resolveDelhiveryPickupLocationName(bookingUser?.profile_data);
 
   const providerAddress = await loadOfferPickupAddress(offer as Record<string, unknown>);
   const dropAddress = await loadCampaignDropAddress(

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
-import { hashPassword, comparePassword, verifyToken } from '@/lib/auth';
+import { findAuthUser } from '@/lib/server-auth';
+import { hashPassword, comparePassword } from '@/lib/auth';
 
 // Validation schema
 const changePasswordSchema = z.object({
@@ -11,16 +12,9 @@ const changePasswordSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
-    // Get authenticated user
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-    }
-
-    const token = authHeader.substring(7);
-    const payload = verifyToken(token);
+    const payload = findAuthUser(req);
     if (!payload) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
     const userId = payload.id;
@@ -36,7 +30,6 @@ export async function POST(req: NextRequest) {
     
     const { currentPassword, newPassword } = validationResult.data;
     
-    // Find the user
     const user = await db.users.findById(userId);
     
     if (!user) {
@@ -45,7 +38,6 @@ export async function POST(req: NextRequest) {
       }, { status: 404 });
     }
     
-    // Verify current password
     const isCurrentPasswordValid = await comparePassword(currentPassword, user.password);
     
     if (!isCurrentPasswordValid) {
@@ -54,7 +46,6 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
     
-    // Check if new password is different from current password
     const isSamePassword = await comparePassword(newPassword, user.password);
     
     if (isSamePassword) {
@@ -66,7 +57,6 @@ export async function POST(req: NextRequest) {
     // Hash the new password
     const hashedNewPassword = await hashPassword(newPassword);
     
-    // Update user's password
     await db.users.update(userId, {
       password: hashedNewPassword,
       updated_at: new Date().toISOString()
@@ -77,7 +67,7 @@ export async function POST(req: NextRequest) {
       success: true
     });
     
-  } catch (error: any) {
+  } catch (error) {
     console.error('Change password error:', error);
     return NextResponse.json({ 
       error: 'An error occurred while changing your password' 

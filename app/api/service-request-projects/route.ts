@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import jwt from 'jsonwebtoken';
 import { db, supabase } from '@/lib/db';
 import {
-  JWT_SECRET,
+  getTokenClaims,
   CSR_OWN_PROJECT_TIMELINE_MESSAGE,
   CSR_PROJECT_CREATE_REQUIRED_MESSAGE,
 } from '@/lib/auth';
@@ -20,18 +19,10 @@ import {
   validateProjectExactAddress,
 } from '@/lib/service-request-allocation';
 
-interface JWTPayload {
-  id: number;
-  user_type: string;
-  email: string;
-  name: string;
-  verification_status?: string;
-}
-
 async function withNgoListingFields(projects: any[]) {
   const enriched = projects.map((project) => enrichProjectRecord(project))
   const ngoIds = Array.from(
-    new Set(enriched.map((project: any) => Number(project?.ngo_id)).filter((id) => Number.isFinite(id) && id > 0))
+    new Set(enriched.map((project) => Number(project?.ngo_id)).filter((id) => Number.isFinite(id) && id > 0))
   )
   if (ngoIds.length === 0) {
     return enriched.map((project) => redactProjectSensitiveFields(project))
@@ -47,8 +38,8 @@ async function withNgoListingFields(projects: any[]) {
     return enriched.map((project) => redactProjectSensitiveFields(project))
   }
 
-  const ngoById = new Map((ngos || []).map((ngo: any) => [Number(ngo.id), ngo]))
-  return enriched.map((project: any) => {
+  const ngoById = new Map((ngos || []).map((ngo) => [Number(ngo.id), ngo]))
+  return enriched.map((project) => {
     const ngo = ngoById.get(Number(project.ngo_id))
     return redactProjectSensitiveFields({
       ...project,
@@ -84,7 +75,7 @@ export async function GET(request: NextRequest) {
     // Default: return all matching projects (projects are CSR packages, not need parents).
     // Pass includeEmpty=false only when callers want projects that still have linked needs.
     if (!includeEmpty) {
-      const projectIds = projects.map((project: any) => project.id).filter(Boolean);
+      const projectIds = projects.map((project) => project.id).filter(Boolean);
       if (projectIds.length === 0) {
         return NextResponse.json({ success: true, data: [] });
       }
@@ -100,11 +91,11 @@ export async function GET(request: NextRequest) {
       }
 
       const validProjectIds = new Set(
-        (ongoingNeeds || []).map((need: any) => need.project_id).filter(Boolean)
+        (ongoingNeeds || []).map((need) => need.project_id).filter(Boolean)
       );
 
-      const filteredProjects = projects.filter((project: any) => validProjectIds.has(project.id));
-      const nonDemo = filteredProjects.filter((p: any) => {
+      const filteredProjects = projects.filter((project) => validProjectIds.has(project.id));
+      const nonDemo = filteredProjects.filter((p) => {
         const title = String(p.title || '').toLowerCase()
         return !title.includes('demo') && !title.includes('sample')
       })
@@ -112,7 +103,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: true, data: await withNgoListingFields(nonDemo) });
     }
 
-    const nonDemo = projects.filter((p: any) => {
+    const nonDemo = projects.filter((p) => {
       const title = String(p.title || '').toLowerCase()
       return !title.includes('demo') && !title.includes('sample')
     })
@@ -123,7 +114,7 @@ export async function GET(request: NextRequest) {
 
     const tokens = q.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).filter((t) => t.length > 2)
 
-    const scored = nonDemo.map((p: any) => {
+    const scored = nonDemo.map((p) => {
       let score = 0
       const hay = `${p.title || ''} ${p.description || ''} ${p.location || ''} ${p.timeline || ''}`.toLowerCase()
       for (const t of tokens) {
@@ -138,11 +129,11 @@ export async function GET(request: NextRequest) {
         else if (ageDays < 90) score += 3
       }
       return { project: p, score }
-    }).sort((a: any, b: any) => b.score - a.score)
+    }).sort((a, b) => b.score - a.score)
 
     return NextResponse.json({
       success: true,
-      data: await withNgoListingFields(scored.map((s: any) => s.project)),
+      data: await withNgoListingFields(scored.map((s) => s.project)),
     });
   } catch (error) {
     console.error('Failed to fetch service request projects:', error);
@@ -152,13 +143,10 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const decoded = getTokenClaims(request);
+    if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
-
-    const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
 
     if (decoded.user_type !== 'ngo') {
       return NextResponse.json({ error: 'Only NGOs can create service request projects' }, { status: 403 });

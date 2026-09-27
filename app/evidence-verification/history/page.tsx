@@ -74,7 +74,6 @@ export default function EvidenceVerificationHistoryPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [context, setContext] = useState<any>(null);
-  const [projects, setProjects] = useState<any[]>([]);
   const [projectAuditById, setProjectAuditById] = useState<Record<string, AuditEvent[]>>({});
   const [message, setMessage] = useState('');
   const [selectedEventType, setSelectedEventType] = useState<string>('ALL');
@@ -136,7 +135,6 @@ export default function EvidenceVerificationHistoryPage() {
         const projectsPayload = await projectsRes.json();
         if (projectsRes.ok && projectsPayload?.success && Array.isArray(projectsPayload.data)) {
           const loadedProjects = projectsPayload.data;
-          setProjects(loadedProjects);
 
           const auditEntries = await Promise.all(
             loadedProjects.map(async (project: any) => {
@@ -152,7 +150,6 @@ export default function EvidenceVerificationHistoryPage() {
 
           setProjectAuditById(auditById);
         } else {
-          setProjects([]);
           setProjectAuditById({});
           setMessage('No audit history available.');
         }

@@ -27,16 +27,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid username or password' }, { status: 401 });
     }
 
-    // Verify password
     const isValid = await verifyPlatformCAPassword(account.id, password);
     if (!isValid) {
       return NextResponse.json({ error: 'Invalid username or password' }, { status: 401 });
     }
 
-    // Generate CA token
     const token = generatePlatformCAToken(account);
 
-    // Update last_login_at
     await supabase
       .from(PLATFORM_CA_ACCOUNTS_TABLE)
       .update({ last_login_at: new Date().toISOString() })
@@ -56,7 +53,7 @@ export async function POST(request: NextRequest) {
     setPlatformCaTokenCookie(response, token, 12 * 60 * 60);
 
     return response;
-  } catch (error: any) {
+  } catch (error) {
     console.error('CA login error:', error);
     return NextResponse.json({ error: 'Login failed' }, { status: 500 });
   }

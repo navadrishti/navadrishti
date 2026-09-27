@@ -19,6 +19,7 @@ import {
 } from '@/components/evidence-verification/portal-ui';
 import { formatStatusLabel } from '@/lib/format-date';
 import { finalizeConsoleLogout } from '@/lib/utils';
+import type { CompanyCAContext, MilestoneDetail } from '../../types';
 
 export default function ReviewDetailPage() {
   const router = useRouter();
@@ -26,8 +27,8 @@ export default function ReviewDetailPage() {
   const milestoneId = params.milestoneId as string;
 
   const [loading, setLoading] = useState(true);
-  const [context, setContext] = useState<any>(null);
-  const [reviewData, setReviewData] = useState<any>(null);
+  const [context, setContext] = useState<CompanyCAContext | null>(null);
+  const [reviewData, setReviewData] = useState<MilestoneDetail | null>(null);
   const [comments, setComments] = useState<string>('');
   const [actionLoading, setActionLoading] = useState<'approved' | 'rejected' | null>(null);
   const [panelMessage, setPanelMessage] = useState<string>('');
@@ -167,7 +168,7 @@ export default function ReviewDetailPage() {
   }
 
   const evidence = Array.isArray(reviewData.evidence) ? reviewData.evidence : [];
-  const scopeLabels = formatVerifierScopeLabels(context);
+  const scopeLabels = formatVerifierScopeLabels(context ?? undefined);
 
   return (
     <EvidencePortalShell>
@@ -193,7 +194,7 @@ export default function ReviewDetailPage() {
             <EvidenceDetailField label="Status">
               <Badge variant="outline">{formatStatusLabel(reviewData.status)}</Badge>
             </EvidenceDetailField>
-            <EvidenceDetailField label="Due Date">{formatDateTime(reviewData.due_date) || 'N/A'}</EvidenceDetailField>
+            <EvidenceDetailField label="Due Date">{reviewData.due_date ? formatDateTime(reviewData.due_date) : 'N/A'}</EvidenceDetailField>
             <EvidenceDetailField label="Amount">Rs {reviewData.amount || 0}</EvidenceDetailField>
           </div>
           {reviewData.description ? (
@@ -208,7 +209,7 @@ export default function ReviewDetailPage() {
             <p className="text-sm text-slate-600">No evidence files submitted.</p>
           ) : (
             <div className="space-y-3">
-              {evidence.map((ev: any, idx: number) => (
+              {evidence.map((ev, idx) => (
                 <EvidenceQueueItem
                   key={ev.id || idx}
                   title={`Evidence #${idx + 1}`}
@@ -229,7 +230,7 @@ export default function ReviewDetailPage() {
                       {Array.isArray(ev.media) && ev.media.length > 0 ? (
                         <EvidenceDetailField label="Media Files">
                           <div className="space-y-1">
-                            {ev.media.map((media: any) => (
+                            {ev.media.map((media) => (
                               <a
                                 key={media.id}
                                 href={media.media_url}
@@ -246,7 +247,7 @@ export default function ReviewDetailPage() {
                       {Array.isArray(ev.documents) && ev.documents.length > 0 ? (
                         <EvidenceDetailField label="Documents">
                           <div className="space-y-1">
-                            {ev.documents.map((doc: any) => (
+                            {ev.documents.map((doc) => (
                               <a
                                 key={doc.id}
                                 href={doc.document_url}

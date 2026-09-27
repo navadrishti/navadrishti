@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { verifyToken } from '@/lib/auth'
 import { deleteAgentSessionForUser } from '@/lib/db'
+import { findAuthUser } from '@/lib/server-auth'
 
 type AgentKind = 'csr' | 'ngo'
 
@@ -9,24 +9,12 @@ const parseAgent = (value: unknown): AgentKind | null => {
   return null
 }
 
-const getUserIdFromRequest = (request: NextRequest): number | null => {
-  const authHeader = request.headers.get('authorization')
-  const token =
-    authHeader && authHeader.startsWith('Bearer ')
-      ? authHeader.substring(7)
-      : request.cookies.get('token')?.value || null
-
-  if (!token) return null
-  const user = verifyToken(token)
-  return user?.id ?? null
-}
-
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const userId = getUserIdFromRequest(request)
+    const userId = findAuthUser(request, { allowCookie: true })?.id
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }

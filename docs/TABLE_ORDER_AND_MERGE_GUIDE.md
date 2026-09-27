@@ -2,7 +2,7 @@
 
 ## Goal
 
-One canonical table order, one ownership boundary per domain, and clear keep/split decisions after the 2026 schema streamline.
+One canonical table order, one ownership boundary per domain, and clear keep/split decisions after the 2026 schema cleanup.
 
 ## Canonical database rule
 
@@ -58,6 +58,7 @@ One canonical table order, one ownership boundary per domain, and clear keep/spl
 - `project_user_assignments`
 - `csr_audit_log`
 - `embeddings`
+- `service_offer_embeddings`
 
 ### 6. Support, payments, webhooks
 - `support_tickets`
@@ -98,7 +99,7 @@ One canonical table order, one ownership boundary per domain, and clear keep/spl
 - `requester_id` → `ngo_id`
 - `navadrishti_ca_accounts` → `platform_ca_accounts`
 - `service_volunteers` → `service_request_applications` (+ fulfillments)
-- `impact_metrics.selected_lead_ngo_id` → `campaigns.lead_ngo_user_id` (JSON may remain draft mirror during cutover)
+- `impact_metrics.selected_lead_ngo_id` → `campaigns.lead_ngo_user_id`
 
 ## Working order for the team
 1. `users` + notifications

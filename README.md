@@ -1,183 +1,68 @@
 # Navadrishti
 
-A comprehensive platform connecting NGOs, individuals, and companies for social impact through service requests, service offerings, and community collaboration.
+Platform for NGOs, individuals, and companies to run verified service exchange, CSR campaigns, and field evidence workflows.
 
-## Technical Documentation
+## Documentation
 
-For the full structured technical knowledge dump (architecture, roles, APIs, workflows, database, AI/ML, deployment, and technical debt), see:
+- [Technical overview](docs/TECHNICAL_README.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [API reference](docs/API_REFERENCE.md)
+- [Database schema notes](docs/DATABASE_SCHEMA.md)
 
-**[docs/TECHNICAL_README.md](docs/TECHNICAL_README.md)**
+## Stack
 
-## Features
+- Next.js 16 (App Router) and React 19
+- TypeScript
+- Tailwind CSS and shadcn/ui
+- Supabase PostgreSQL (custom JWT sessions; not Supabase Auth)
+- Cloudinary for media
+- Razorpay for payments
 
-### For NGOs
-- **Service Requests**: Post volunteer opportunities and assistance needs
-- **Service Offerings**: Offer professional services to individuals and companies
-- **Volunteer Management**: Track and manage volunteer applications
-- **Client Management**: Handle service hire requests and client relationships
+## Setup
 
-### For Individuals & Companies
-- **Volunteer Opportunities**: Browse and apply for NGO service requests
-- **Professional Services**: Hire NGO services for specialized needs
-- **Impact Tracking**: Monitor contributions and community involvement
+Requires Node.js 18+ and pnpm.
 
-### For Everyone
-- **Unified Dashboard**: Personalized view of activities and opportunities
-- **Secure Authentication**: Multi-tier user verification system
-- **Real-time Updates**: Live notifications and status tracking
-- **Mobile Responsive**: Seamless experience across all devices
-
-## Technology Stack
-
-### Frontend
-- **Next.js 15**: React-based framework with App Router
-- **TypeScript**: Type-safe development
-- **Tailwind CSS**: Utility-first styling
-- **shadcn/ui**: Modern component library
-- **React Hook Form**: Form management with validation
-
-### Backend & Database
-- **Database**: Supabase PostgreSQL
-- **Authentication**: Supabase Auth + Custom JWT
-- **File Storage**: Supabase Storage
-- **Real-time**: Supabase Realtime subscriptions
-- **API**: Next.js API Routes
-
-### Deployment
-- **Development**: Vercel (Free Tier)
-- **Production**: Railway (Planned)
-- **CI/CD**: GitHub Actions with Vercel integration
-- **Domain**: Custom domain with HTTPS
-
-## Quick Start
-
-### Prerequisites
-- Node.js 18+ 
-- npm or pnpm
-- Git
-
-### Development Setup
 ```bash
-# Clone the repository
 git clone https://github.com/yourusername/Navadrishti.git
 cd Navadrishti
-
-# Install dependencies
-npm install
-
-# Set up environment variables
+pnpm install
 cp .env.example .env.local
-# Edit .env.local with your Supabase credentials
-
-# Run development server
-npm run dev
+pnpm dev
 ```
 
-Visit `http://localhost:3000` to see the application.
+Open `http://localhost:3000`.
 
-## Project Structure
+## Project layout
 
 ```
-Navadrishti/
-├── app/                    # Next.js App Router
-│   ├── api/               # API routes
-│   ├── (auth)/            # Authentication pages
-│   ├── service-requests/  # Service request management
-│   ├── service-offers/    # Service offer management
-│   └── layout.tsx         # Root layout
-├── components/            # Reusable UI components
-├── lib/                   # Utility functions and configs
-├── hooks/                 # Custom React hooks
-├── public/               # Static assets
-└── styles/               # Global styles
+app/           App Router pages and API routes
+components/    Shared UI
+lib/           Server helpers, auth, and database access
+hooks/         Client hooks
+docs/          Internal documentation
 ```
 
-## Environment Variables
+## Environment
 
-Create a `.env.local` file with the following variables:
+Copy `.env.example` and set at least:
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+- `SUPABASE_SECRET_KEY`
+- `JWT_SECRET`
+
+Additional keys (Razorpay, Cloudinary, cron, Gemini) are listed in `.env.example`.
+
+## Database
+
+PostgreSQL on Supabase. Application writes go through `lib/db.ts`. Canonical column names live in the local schema dump (`reference/completeschema.txt`, gitignored). Need applications are stored in `service_request_applications` with fulfillments in `service_request_fulfillments`. Capability applications use `service_clients`.
+
+## Scripts
 
 ```bash
-# Supabase Configuration
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
-SUPABASE_SECRET_KEY=your_supabase_secret_key
-
-# Application Configuration
-NODE_ENV=development
-APP_NAME=Navadrishti
-APP_URL=http://localhost:3000
-
-# JWT Configuration
-JWT_SECRET=your_jwt_secret
-JWT_EXPIRES_IN=7d
+pnpm dev
+pnpm build
+pnpm start
+pnpm typecheck
+pnpm test
 ```
-
-## Database Schema
-
-The application uses a PostgreSQL database with the following main tables:
-
-- **users**: User profiles and authentication data
-- **service_requests**: NGO volunteer and assistance requests
-- **service_offers**: NGO professional service offerings
-- **service_volunteers**: Volunteer application tracking
-- **service_hires**: Service hire request tracking
-
-## API Documentation
-
-### Authentication Endpoints
-- `POST /api/auth/register` - User registration
-- `POST /api/auth/login` - User login
-- `POST /api/auth/logout` - User logout
-- `GET /api/auth/user` - Get current user
-
-### Service Management
-- `GET /api/service-requests` - List service requests
-- `POST /api/service-requests` - Create service request
-- `GET /api/service-requests/[id]` - Get service request details
-- `PUT /api/service-requests/[id]` - Update service request
-- `DELETE /api/service-requests/[id]` - Delete service request
-
-### Social & Platform APIs
-- `GET /api/posts` - List community posts
-- `GET /api/platform-activities` - Fetch recent platform activity
-
-## Testing
-
-```bash
-# Run tests
-npm test
-
-# Run tests in watch mode
-npm run test:watch
-
-# Run tests with coverage
-npm run test:coverage
-```
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Acknowledgments
-
-- **NGO Community**: For inspiring the vision of digital social impact
-- **Open Source**: Built on the shoulders of amazing open source projects
-- **Contributors**: Everyone who helps make this platform better
-
-## Support
-
-- **GitHub Issues**: Report bugs and request features
-- **Documentation**: [Technical README](docs/TECHNICAL_README.md) · Check the `/docs` folder for additional guides
-- **Community**: Join our discussions in GitHub Discussions
-
----
-
-**Building bridges between compassion and action**

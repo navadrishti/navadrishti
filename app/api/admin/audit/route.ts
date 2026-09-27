@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { verifyToken } from '@/lib/auth';
+import { getAdminUser } from '@/lib/server-auth';
 
 function toDateKey(value: unknown): string {
   if (!value) return 'unknown';
@@ -11,21 +11,8 @@ function toDateKey(value: unknown): string {
 
 export async function GET(request: NextRequest) {
   try {
-    // Check for admin token authentication
-    const adminToken = request.cookies.get('admin-token')?.value;
-    
-    if (!adminToken) {
+    if (!getAdminUser(request)) {
       return NextResponse.json({ error: 'Admin authentication required' }, { status: 401 });
-    }
-
-    // Verify admin token
-    try {
-      const decoded = verifyToken(adminToken);
-      if (!decoded || decoded.id !== -1) {
-        return NextResponse.json({ error: 'Invalid admin token' }, { status: 401 });
-      }
-    } catch (error) {
-      return NextResponse.json({ error: 'Invalid admin token' }, { status: 401 });
     }
 
     const url = new URL(request.url);
@@ -37,7 +24,7 @@ export async function GET(request: NextRequest) {
       .from('service_offer_reviews')
       .select(`
         *,
-        service_offer:service_offers(id, title, category, created_at)
+        service_offer:service_offers(id, title, offer_type, created_at)
       `)
       .order('reviewed_at', { ascending: false });
 
@@ -54,20 +41,20 @@ export async function GET(request: NextRequest) {
 
     const reviewRows = reviews || [];
     const totalReviews = reviewRows.length;
-    const approvedCount = reviewRows.filter((review: any) => {
+    const approvedCount = reviewRows.filter((review) => {
       const decision = String(review.review_action || review.decision || '').toLowerCase();
       return decision === 'approved' || decision === 'accept' || decision === 'accepted';
     }).length;
-    const rejectedCount = reviewRows.filter((review: any) => {
+    const rejectedCount = reviewRows.filter((review) => {
       const decision = String(review.review_action || review.decision || '').toLowerCase();
       return decision === 'rejected' || decision === 'declined' || decision === 'decline';
     }).length;
-    const pendingCount = reviewRows.filter((review: any) => {
+    const pendingCount = reviewRows.filter((review) => {
       const decision = String(review.review_action || review.decision || 'pending').toLowerCase();
       return decision === 'pending' || decision === 'in_review';
     }).length;
 
-    const reviewTimes = reviewRows.map((review: any) => {
+    const reviewTimes = reviewRows.map((review) => {
       const createdAt = review.service_offer?.created_at;
       const reviewedAt = review.reviewed_at || review.review_date;
       if (!createdAt || !reviewedAt) return null;
@@ -81,7 +68,7 @@ export async function GET(request: NextRequest) {
       ? reviewTimes.reduce((sum, time) => sum + time, 0) / reviewTimes.length
       : 0;
 
-    const statsByDate = reviewRows.reduce((acc: Record<string, any>, review: any) => {
+    const statsByDate = reviewRows.reduce((acc: Record<string, any>, review) => {
       const dateKey = toDateKey(review.reviewed_at || review.review_date || review.created_at);
       if (!acc[dateKey]) {
         acc[dateKey] = {
@@ -117,7 +104,7 @@ export async function GET(request: NextRequest) {
     }, {});
 
     const stats = Object.values(statsByDate)
-      .map((entry: any) => ({
+      .map((entry) => ({
         review_date: entry.review_date,
         total_reviewed: entry.total_reviewed,
         approved_count: entry.approved_count,
@@ -127,7 +114,7 @@ export async function GET(request: NextRequest) {
           ? entry._review_times.reduce((sum: number, time: number) => sum + time, 0) / entry._review_times.length
           : 0
       }))
-      .sort((a: any, b: any) => String(a.review_date).localeCompare(String(b.review_date)));
+      .sort((a, b) => String(a.review_date).localeCompare(String(b.review_date)));
 
     const notifications: any[] = [];
     const emailStats = {

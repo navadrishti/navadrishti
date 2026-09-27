@@ -36,31 +36,3 @@ export async function uploadToCloudinary(
     throw new Error('Failed to upload image');
   }
 }
-
-// Helper function to delete image from Cloudinary
-export async function deleteFromCloudinary(publicId: string): Promise<void> {
-  try {
-    await cloudinary.uploader.destroy(publicId);
-  } catch (error) {
-    console.error('Failed to delete from Cloudinary:', error);
-    throw new Error('Failed to delete image');
-  }
-}
-
-// Helper function to generate upload signature for client-side uploads
-export function generateUploadSignature(params: Record<string, any>): string {
-  if (!process.env.CLOUDINARY_API_SECRET) {
-    throw new Error('Cloudinary API secret not configured');
-  }
-  
-  return cloudinary.utils.api_sign_request(params, process.env.CLOUDINARY_API_SECRET);
-}
-
-// Helper function to validate Cloudinary configuration
-export function validateCloudinaryConfig(): boolean {
-  return !!(
-    process.env.CLOUDINARY_CLOUD_NAME &&
-    process.env.CLOUDINARY_API_KEY &&
-    process.env.CLOUDINARY_API_SECRET
-  );
-}

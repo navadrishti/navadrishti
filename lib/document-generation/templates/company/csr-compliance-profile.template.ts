@@ -116,7 +116,6 @@ export function csrComplianceProfileTemplate(data: CsrComplianceProfileData): st
   )
 }
 
-
 export type ImpactReportMilestone = {
   title: string
   status?: string | null
@@ -137,7 +136,7 @@ export type ImpactReportData = {
   category?: string | null
   location?: string | null
   scheduleVii?: string | null
-  sdgAlignment?: string[] | null
+  sdgAlignment?: Array<string | number> | null
   budgetInr?: number | null
   fundsUtilized?: number | null
   beneficiaries?: number | null
@@ -900,8 +899,8 @@ export function ngoCompliancePackTemplate(data: NgoCompliancePackData): string {
           <span class="field-label">CA Badge (if issued)</span>
           <span class="field-value">${escapeHtml(data.caBadgeNumber || '—')}</span>
         </div>
-      </div>
-    </div>
+          </div>
+        </div>
 
     <div class="section">
       <div class="section-title">2. Statutory Registration Tags on Platform</div>

@@ -1,327 +1,21 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { after, NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
-import jwt from 'jsonwebtoken'
-import { JWT_SECRET } from '@/lib/auth'
+import { syncServiceOfferEmbedding } from '@/lib/embeddings'
+import { getTokenClaims } from '@/lib/auth'
 import {
-  CATEGORY_BY_OFFER_TYPE,
+  buildUsageRecordFromClient,
   impactAreaMatchesFilter,
-  isOfferType,
-  isOfferExpired,
   isCapabilityOfferAvailableForListing,
-  isTransactionAllowedForOfferType,
-  isTransactionType,
-  OfferType,
-  normalizeDateOnlyToEndOfDayIso,
-  normalizeCapabilityTransactionType,
-  normalizeImpactAreas,
-  resolveCapabilityRentalRate,
-  sanitizeTextArray,
-  parseCsvToStringArray,
-  toNullableNumber,
-  toNullablePositiveNumber
 } from '@/lib/service-offers'
 import {
   assertUserRazorpayPayoutActiveForCapabilities,
   CAPABILITY_LISTING_REQUIRES_PAYOUT_MESSAGE,
   isMerchantRazorpayPayoutActive,
-  parseProfileData,
 } from '@/lib/razorpay-route'
-import { buildUsageRecordFromClient } from '@/lib/service-offers'
+import { buildOfferCapabilityRow, buildOfferRow, coerceOfferBody, toOfferResponse, validateOfferBody } from '@/lib/service-offer-payload'
+import { parseJsonObject } from '@/lib/utils'
 
-interface JWTPayload {
-  id: number
-  user_type: string
-  email: string
-  name: string
-  verification_status?: string
-}
-
-const LEGACY_CATEGORY_TO_OFFER_TYPE: Record<string, string> = {
-  'Funding Capacity': 'financial',
-  'Material Supply': 'material',
-  'Skill / Expertise': 'service',
-  'Execution Capability': 'infrastructure'
-}
-
-const safeParseJson = (value: unknown): Record<string, any> => {
-  if (!value) return {}
-  if (typeof value === 'object') return value as Record<string, any>
-
-  if (typeof value === 'string') {
-    try {
-      return JSON.parse(value)
-    } catch {
-      return {}
-    }
-  }
-
-  return {}
-}
-
-// Try insert with fallback: if Supabase complains about a missing column
-// remove that key and retry up to 3 times. Returns { data, error } from Supabase.
-const insertWithSchemaFallback = async (table: string, payload: Record<string, any>) => {
-  let attempts = 0
-  let current = { ...payload }
-  while (attempts < 3) {
-    const { data, error } = await supabase.from(table).insert(current).select().single()
-    if (!error) {
-      if (!data) return { data: null, error: { message: 'Insert succeeded but returned no data' } }
-      return { data, error: null }
-    }
-
-    const msg = String(error.message || '')
-    const m = msg.match(/Could not find the '([^']+)' column/)
-    if (m) {
-      const col = m[1]
-      if (col in current) {
-        delete (current as any)[col]
-        attempts++
-        continue
-      }
-    }
-
-    return { data: null, error }
-  }
-
-  return { data: null, error: { message: 'Insert retries exhausted due to missing columns' } }
-}
-
-const updateWithSchemaFallback = async (table: string, id: number | string, payload: Record<string, any>) => {
-  let attempts = 0
-  let current = { ...payload }
-  while (attempts < 3) {
-    const { data, error } = await supabase.from(table).update(current).eq('id', id).select().single()
-    if (!error) return { data, error: null }
-
-    const msg = String(error.message || '')
-    const m = msg.match(/Could not find the '([^']+)' column/)
-    if (m) {
-      const col = m[1]
-      if (col in current) {
-        delete (current as any)[col]
-        attempts++
-        continue
-      }
-    }
-
-    return { data: null, error }
-  }
-
-  return { data: null, error: { message: 'Update retries exhausted due to missing columns' } }
-}
-
-const buildPriceInfo = (offerType: string, transactionType: string, body: Record<string, any>) => {
-  if (offerType === 'financial' || transactionType === 'volunteer' || transactionType === 'donate') {
-    return {
-      price_type: 'free',
-      price_amount: 0,
-      price_description: transactionType === 'donate' ? 'Donation support' : transactionType === 'volunteer' ? 'Volunteer support' : 'Funding support'
-    }
-  }
-
-  const priceType = body.price_type === 'negotiable' ? 'negotiable' : 'fixed'
-  const dailyRate = resolveCapabilityRentalRate({
-    unit_rate: body.unit_rate,
-    price_amount: body.price_amount,
-    offer_details: body.offer_details,
-  })
-
-  return {
-    price_type: priceType,
-    price_amount: dailyRate,
-    price_description: 'per day',
-  }
-}
-
-const normalizeOfferDetailsForStorage = (
-  offerType: string,
-  transactionType: string,
-  details: Record<string, any>,
-  body?: Record<string, any>
-) => {
-  const mergedDetails: Record<string, any> = {
-    ...details,
-    billing_cycle: body?.billing_cycle ?? details.billing_cycle ?? 'daily',
-    unit_rate: resolveCapabilityRentalRate({
-      unit_rate: body?.unit_rate ?? details.unit_rate,
-      price_amount: body?.price_amount ?? details.unit_rate,
-      offer_details: details,
-    }) || toNullablePositiveNumber(body?.unit_rate ?? details.unit_rate),
-    rate_currency: body?.rate_currency ?? details.rate_currency ?? 'INR',
-  }
-
-  if (offerType === 'material') {
-    return {
-      ...mergedDetails,
-      available_to: mergedDetails.available_to ?? null
-    }
-  }
-
-  if (offerType === 'infrastructure') {
-    return {
-      ...mergedDetails,
-      available_to: mergedDetails.available_to ?? null
-    }
-  }
-
-  return mergedDetails
-}
-
-const normalizeOffer = (offer: any) => {
-  const details = safeParseJson(offer.offer_details)
-  const fallbackDetails = safeParseJson(offer.requirements)
-  const mergedDetails = Object.keys(details).length > 0 ? details : fallbackDetails
-
-  const normalizedOfferType = isOfferType(offer.offer_type)
-    ? offer.offer_type
-    : LEGACY_CATEGORY_TO_OFFER_TYPE[offer.category] || 'service'
-
-  const inferredTransactionType = normalizeCapabilityTransactionType(
-    normalizedOfferType,
-    isTransactionType(offer.transaction_type)
-      ? offer.transaction_type
-      : offer.price_type === 'free'
-        ? 'donate'
-        : 'rent'
-  )
-
-  const skillsRequired = sanitizeTextArray(mergedDetails.skills_required)
-  const facilities = sanitizeTextArray(mergedDetails.facilities)
-  const expires_at = mergedDetails.expires_at ?? mergedDetails.valid_until ?? offer.expires_at ?? offer.valid_until ?? null
-
-  return {
-    ...offer,
-    ngo_id: offer.ngo_id ?? offer.creator_id,
-    offer_type: normalizedOfferType,
-    transaction_type: inferredTransactionType,
-    is_expired: isOfferExpired(offer),
-    impact_area: Array.isArray(offer.impact_area) ? offer.impact_area : [],
-    offer_details: mergedDetails,
-    unit_rate: toNullableNumber(offer.unit_rate ?? mergedDetails.unit_rate ?? offer.price_amount),
-    billing_cycle: offer.billing_cycle ?? mergedDetails.billing_cycle ?? null,
-    payment_mode: offer.payment_mode ?? mergedDetails.payment_mode ?? null,
-    rate_currency: offer.rate_currency ?? mergedDetails.rate_currency ?? 'INR',
-
-    // Legacy compatibility fields consumed by cards/details.
-    amount: toNullableNumber(offer.price_amount),
-    location_scope: offer.coverage_area ?? null,
-    conditions: typeof offer.requirements === 'string' ? offer.requirements : null,
-    item: mergedDetails.unit ?? null,
-    quantity: toNullableNumber(mergedDetails.quantity),
-    delivery_scope: offer.coverage_area ?? null,
-    skill: skillsRequired[0] ?? null,
-    capacity: toNullableNumber(mergedDetails.capacity),
-    duration: mergedDetails.duration ?? null,
-    scope: facilities.length > 0 ? facilities.join(', ') : null,
-    budget_range: mergedDetails.budget_amount ?? null,
-    skills_required: skillsRequired,
-    verified: String(offer?.ngo?.verification_status || '').toLowerCase() === 'verified',
-    verification_status: offer?.ngo?.verification_status || null,
-  }
-}
-
-const validateIncomingBody = (body: Record<string, any>) => {
-  if (!body.title || !body.description || !body.offer_type || !body.transaction_type) {
-    return 'Missing required fields: title, description, offer_type, transaction_type.'
-  }
-
-  if (!isOfferType(body.offer_type)) {
-    return 'offer_type must be one of: financial, material, service, infrastructure.'
-  }
-
-  if (!isTransactionType(body.transaction_type)) {
-    return 'transaction_type must be one of: volunteer, donate, rent.'
-  }
-
-  body.transaction_type = normalizeCapabilityTransactionType(body.offer_type, body.transaction_type)
-
-  if (body.transaction_type === 'sell') {
-    return 'Permanent sale is not supported. Use daily rental instead.'
-  }
-
-  if (!isTransactionAllowedForOfferType(body.offer_type, body.transaction_type)) {
-    return `transaction_type ${body.transaction_type} is not allowed for offer_type ${body.offer_type}.`
-  }
-
-  body.impact_area = normalizeImpactAreas(body.impact_area)
-  if (!Array.isArray(body.impact_area) || body.impact_area.length === 0) {
-    return 'Please select at least one impact area.'
-  }
-
-  // Require a validity end date for all new offers
-  if (!body.valid_until && !body.expires_at && !(body.offer_details && body.offer_details.valid_until)) {
-    return 'valid_until is required for all new offers.'
-  }
-
-  const validUntilValue = body.valid_until || body.expires_at || (body.offer_details && body.offer_details.valid_until)
-  const validUntilIso = normalizeDateOnlyToEndOfDayIso(validUntilValue)
-  const validUntilMs = validUntilIso ? Date.parse(validUntilIso) : Number.NaN
-  if (Number.isNaN(validUntilMs)) {
-    return 'valid_until must be a valid date.'
-  }
-
-  if (validUntilMs < Date.now()) {
-    return 'valid_until must be in the future.'
-  }
-
-  return null
-}
-
-// Coerce flexible client inputs into normalized shapes the backend expects.
-const coerceIncomingBody = (body: Record<string, any>) => {
-  // impact_area: accept CSV string, single value, or array
-  if (!Array.isArray(body.impact_area)) {
-    if (typeof body.impact_area === 'string') {
-      body.impact_area = parseCsvToStringArray(body.impact_area)
-    } else if (body.impact_area && typeof body.impact_area === 'object') {
-      body.impact_area = Array.isArray(body.impact_area) ? body.impact_area : []
-    } else if (body.impact_area) {
-      body.impact_area = [String(body.impact_area)]
-    } else {
-      body.impact_area = []
-    }
-  } else {
-    body.impact_area = sanitizeTextArray(body.impact_area)
-  }
-  body.impact_area = normalizeImpactAreas(body.impact_area)
-
-  // tags: accept CSV or array
-  if (!Array.isArray(body.tags)) {
-    if (typeof body.tags === 'string') body.tags = parseCsvToStringArray(body.tags)
-    else if (!body.tags) body.tags = []
-    else body.tags = sanitizeTextArray(body.tags)
-  } else {
-    body.tags = sanitizeTextArray(body.tags)
-  }
-
-  // offer_details: ensure object (parse JSON strings)
-  if (typeof body.offer_details === 'string') {
-    try { body.offer_details = JSON.parse(body.offer_details) } catch { body.offer_details = {} }
-  }
-  if (!body.offer_details || typeof body.offer_details !== 'object') body.offer_details = {}
-
-  // requirements: if object merge into offer_details, if array keep as array, if string keep as string
-  if (Array.isArray(body.requirements)) {
-    body.requirements = sanitizeTextArray(body.requirements)
-  } else if (body.requirements && typeof body.requirements === 'object') {
-    body.offer_details = { ...body.offer_details, ...body.requirements }
-    body.requirements = null
-  } else if (typeof body.requirements === 'string') {
-    body.requirements = body.requirements.trim() || null
-  } else {
-    body.requirements = null
-  }
-
-  // state/province mapping from clients that send alternate key
-  if (!body.state_province && body['state/province']) {
-    body.state_province = body['state/province']
-  }
-
-  return body
-}
-
-// GET - Fetch service offers with enhanced filtering
+// GET - List service offers with type, category, location and search filters
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -336,18 +30,11 @@ export async function GET(request: NextRequest) {
 
     let authenticatedUserId = null
     if (view === 'my-offers' || view === 'my-responses') {
-      const authHeader = request.headers.get('authorization')
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      const claims = getTokenClaims(request)
+      if (!claims) {
         return NextResponse.json({ error: 'Authentication required for this view' }, { status: 401 })
       }
-
-      const token = authHeader.substring(7)
-      try {
-        const payload = jwt.verify(token, JWT_SECRET) as JWTPayload
-        authenticatedUserId = payload.id
-      } catch {
-        return NextResponse.json({ error: 'Invalid token' }, { status: 401 })
-      }
+      authenticatedUserId = claims.id
     }
 
     let responseOfferIds: number[] | null = null
@@ -361,7 +48,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'Failed to fetch responded offers' }, { status: 500 })
       }
 
-      responseOfferIds = [...new Set((serviceClients || []).map((row: any) => row.service_offer_id))]
+      responseOfferIds = [...new Set((serviceClients || []).map((row) => row.service_offer_id))]
       if (responseOfferIds.length === 0) {
         return NextResponse.json({ success: true, data: [] })
       }
@@ -407,18 +94,18 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch service offers' }, { status: 500 })
     }
 
-    let filteredOffers = (offers || []).map(normalizeOffer)
+    let filteredOffers = (offers || []).map((offer) => toOfferResponse(offer))
 
     // Public marketplace: only list capabilities from merchants with Razorpay connected.
     if (view === 'all' || !view) {
-      filteredOffers = filteredOffers.filter((offer: any) =>
-        isMerchantRazorpayPayoutActive(parseProfileData(offer?.ngo?.profile_data))
+      filteredOffers = filteredOffers.filter((offer) =>
+        isMerchantRazorpayPayoutActive(parseJsonObject(offer?.ngo?.profile_data))
       )
     }
 
     // Server-side: remove expired offers based on expires_at if present
     const shouldIncludeExpired = includeExpired || view === 'my-offers'
-    filteredOffers = filteredOffers.filter((offer: any) => {
+    filteredOffers = filteredOffers.filter((offer) => {
       if (!offer) return false
       if (shouldIncludeExpired) return true
       const exp = offer.expires_at || offer.valid_until
@@ -437,7 +124,7 @@ export async function GET(request: NextRequest) {
     if (search) {
       const searchLower = search.toLowerCase()
       filteredOffers = filteredOffers.filter((offer) => {
-        const details = safeParseJson(offer.offer_details)
+        const details = parseJsonObject(offer.offer_details)
         const detailsText = JSON.stringify(details).toLowerCase()
 
         return offer.title?.toLowerCase().includes(searchLower)
@@ -472,7 +159,7 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    filteredOffers = filteredOffers.map((offer: any) => {
+    filteredOffers = filteredOffers.map((offer) => {
       const providerName = offer.ngo?.name || offer.ngo_name
       const providerType = offer.ngo?.user_type || 'ngo'
 
@@ -508,7 +195,7 @@ export async function GET(request: NextRequest) {
 
       if (clients) {
         const assignmentIds = clients
-          .map((client: any) => client?.response_meta?.assignment_id)
+          .map((client) => parseJsonObject(client.response_meta).assignment_id)
           .filter((id: unknown) => id != null && String(id).length > 0)
           .map((id: unknown) => String(id))
 
@@ -535,8 +222,8 @@ export async function GET(request: NextRequest) {
 
           const usageRecord = buildUsageRecordFromClient(
             client,
-            client?.response_meta?.assignment_id
-              ? assignmentMap.get(String(client.response_meta.assignment_id))
+            parseJsonObject(client.response_meta).assignment_id
+              ? assignmentMap.get(String(parseJsonObject(client.response_meta).assignment_id))
               : null
           )
           if (usageRecord) {
@@ -546,7 +233,7 @@ export async function GET(request: NextRequest) {
           return acc
         }, {})
 
-        filteredOffers.forEach((offer: any) => {
+        filteredOffers.forEach((offer) => {
           const offerCounts = counts[offer.id] || { total: 0, accepted: 0, pending: 0, usage: [] }
           offer.applications_count = offerCounts.total
           offer.pending_applications = offerCounts.pending
@@ -557,7 +244,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (view === 'all' || !view) {
-      filteredOffers = filteredOffers.filter((offer: any) => isCapabilityOfferAvailableForListing(offer))
+      filteredOffers = filteredOffers.filter((offer) => isCapabilityOfferAvailableForListing(offer))
     }
 
     return NextResponse.json({ success: true, data: filteredOffers })
@@ -569,18 +256,9 @@ export async function GET(request: NextRequest) {
 // POST - Create capability offer
 export async function POST(request: NextRequest) {
   try {
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const decoded = getTokenClaims(request)
+    if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
-    }
-
-    const token = authHeader.split(' ')[1]
-    let decoded: JWTPayload
-
-    try {
-      decoded = jwt.verify(token, JWT_SECRET) as JWTPayload
-    } catch {
-      return NextResponse.json({ error: 'Invalid authentication token' }, { status: 401 })
     }
 
     const { id: userId, verification_status, user_type } = decoded
@@ -623,69 +301,30 @@ export async function POST(request: NextRequest) {
 
     let body: Record<string, any>
     try {
-      body = coerceIncomingBody(await request.json())
+      body = coerceOfferBody(await request.json())
     } catch (jsonError) {
       console.error('JSON parse error:', jsonError)
       return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 })
     }
 
-    const validationError = validateIncomingBody(body)
+    const validationError = validateOfferBody(body)
     if (validationError) {
       console.error('Validation error:', validationError)
       return NextResponse.json({ error: validationError }, { status: 400 })
     }
 
-    const offerType = body.offer_type as OfferType
-    const transactionType = normalizeCapabilityTransactionType(
-      offerType,
-      body.transaction_type as import('@/lib/service-offers').TransactionType
-    )
-
-    const priceInfo = buildPriceInfo(offerType, transactionType, body)
-
-    const normalizedOfferDetails = normalizeOfferDetailsForStorage(
-      offerType,
-      transactionType,
-      body.offer_details && typeof body.offer_details === 'object' ? body.offer_details : {},
-      body
-    )
-    const dailyRate = resolveCapabilityRentalRate({
-      unit_rate: body.unit_rate,
-      price_amount: priceInfo.price_amount,
-      offer_details: normalizedOfferDetails,
-    })
-
     const offerData = {
+      ...buildOfferRow(body),
       creator_id: userId,
-      title: String(body.title || '').trim(),
-      description: String(body.description || '').trim(),
-      offer_type: offerType,
-      transaction_type: transactionType,
-      impact_area: normalizeImpactAreas(body.impact_area),
-      tags: sanitizeTextArray(body.tags),
-      requirements: Array.isArray(body.requirements) ? sanitizeTextArray(body.requirements) : (typeof body.requirements === 'string' && body.requirements.trim() ? [body.requirements.trim()] : null),
-      city: String(body.city || '').trim() || null,
-      state_province: String(body.state_province || '').trim() || null,
-      pincode: String(body.pincode || '').trim() || null,
-      coverage_area: String(body.coverage_area || '').trim() || null,
-      offer_details: normalizedOfferDetails,
-      price_type: priceInfo.price_type,
-      price_amount: priceInfo.price_amount,
-      price_description: priceInfo.price_description,
-      unit_rate: transactionType === 'rent' ? dailyRate : null,
-      billing_cycle: transactionType === 'rent' ? String(body.billing_cycle || normalizedOfferDetails.billing_cycle || 'daily') : null,
-      payment_mode: transactionType === 'rent' ? 'daily_due' : null,
-      rate_currency: String(body.rate_currency || normalizedOfferDetails.rate_currency || 'INR'),
-      validity_days: toNullablePositiveNumber(body.validity_days),
-      valid_until: normalizeDateOnlyToEndOfDayIso(body.valid_until || body.expires_at || normalizedOfferDetails.valid_until || null),
       status: 'inactive',
       admin_status: 'pending',
-      admin_reviewed_at: null,
-      admin_reviewed_by: null,
-      admin_comments: null
     }
 
-    const { data: offer, error: offerError } = await insertWithSchemaFallback('service_offers', offerData)
+    const { data: offer, error: offerError } = await supabase
+      .from('service_offers')
+      .insert(offerData)
+      .select('id')
+      .single()
 
     if (offerError) {
       console.error('Offer insert error:', offerError)
@@ -697,25 +336,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create service offer: no data returned' }, { status: 500 })
     }
 
-    const capabilityData = {
-      service_offer_id: offer.id,
-      capability_name: String(body.title || '').trim(),
-      capability_kind: offerType === 'financial' ? 'financial' : offerType === 'service' ? 'skill' : offerType === 'material' ? 'item' : 'asset',
-      capability_description: String(body.description || '').trim() || null,
-      synonyms: sanitizeTextArray(body.tags || []),
-      unit: offerType === 'financial' ? 'offer' : offerType === 'service' ? 'service' : offerType === 'material' ? 'item' : 'asset',
-      min_qty: 1,
-      max_qty: 1,
-      is_active: true
-    }
-
     let capabilityWarning: string | null = null
     let capabilityId: number | null = null
     
     try {
       const { data: capability, error: capabilitiesError } = await supabase
         .from('offer_capabilities')
-        .insert(capabilityData)
+        .insert(buildOfferCapabilityRow({ ...offerData, id: offer.id }))
         .select()
         .single()
 
@@ -729,6 +356,10 @@ export async function POST(request: NextRequest) {
       console.error('Exception creating offer capability:', capabilitiesException)
       capabilityWarning = 'Capability offer created, but capability indexing could not be saved. Please contact support if you need recommendations.'
     }
+
+    after(() =>
+      syncServiceOfferEmbedding(offer.id).catch((err) => console.error(`Failed to embed offer ${offer.id}:`, err))
+    )
 
     const responseData: any = {
       id: offer.id,

@@ -1,1419 +1,53 @@
 'use client';
 
-import { useState, useEffect, Suspense, useMemo } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { createClient as createSupabaseClient } from '@/lib/supabase';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import ProtectedRoute from '@/components/protected-route';
 import { Header } from '@/components/header';
 import { VerifiedAccountName } from '@/components/verification-badge';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Clock, CheckCircle, AlertTriangle, HeartHandshake, Trash2, Plus, Building, TicketCheck, MailCheck, Phone, Loader2, XCircle } from 'lucide-react';
-import { formatDisplayDate, formatCampaignLeadLifecycleLabel, formatStatusLabel, type CampaignLeadLifecycle } from '@/lib/format-date';
+import { CheckCircle, AlertTriangle, Plus, Loader2, XCircle } from 'lucide-react';
+import { formatDisplayDate, formatStatusLabel } from '@/lib/format-date';
 import { getGramAvatarFallbackStyle } from '@/lib/gram-avatar';
 import Link from 'next/link';
-import { cn, smoothScrollToElement } from '@/lib/utils';
+import { smoothScrollToElement } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
-import { Skeleton, SkeletonOrderItem, DashboardPageSkeleton } from '@/components/ui/skeleton';
-import { ProfileDashboardTab, PaymentHistoryPanel } from '@/components/profile-dashboard-tab';
+import { SkeletonOrderItem, DashboardPageSkeleton } from '@/components/ui/skeleton';
+import { ProfileDashboardTab } from '@/components/profile-dashboard-tab';
+import { PaymentHistoryPanel } from '@/components/payment-history-panel';
 import { ImpactReportsPanel } from '@/components/companies/impact-reports-panel';
 import { YourCapabilitiesPanel, InlineCsrCapabilityDelhivery } from '@/components/service-card';
 import { dashboardProfilePayoutHref, usePayoutConnection } from '@/hooks/use-payout-connection';
 import { DashboardBodyLayout, DashboardQuickSidebar } from '@/components/dashboard-quick-sidebar';
-import { CampaignVolunteerAssignmentCard, type CampaignVolunteerAssignmentItem } from '@/components/campaign-volunteer-assignment-card';
-import {
-  formatDeliveryTrackingStatus,
-  getDeliveryTrackingEvents,
-  getNeedRemainingQuantity,
-  getServiceRequestTarget,
-  isDeliveredTrackingStatus,
-  isPickedUpTrackingStatus,
-} from '@/lib/service-request-allocation';
-import {
-  formatAttendanceSummary,
-  getSkillServiceDailyRate,
-  getNgoNeedFulfillmentMode,
-  isDailyRentalEngagementMeta,
-  shouldUseDelhiveryForNeed,
-  shouldUseNgoMarkedDailyAttendance,
-} from '@/lib/service-request-allocation';
-import { openRazorpayCheckout } from '@/lib/razorpay-checkout';
-
-interface OfferRequestItem {
-  id: number;
-  service_offer_id: number;
-  service_request_id?: number;
-  assignment_id?: string;
-  offer_title: string;
-  client?: {
-    name?: string;
-    email?: string;
-    user_type?: string;
-    verification_status?: string | null;
-  };
-  message?: string;
-  response_meta?: Record<string, any> | null;
-  assigned_at?: string | null;
-  accepted_at?: string | null;
-  valid_until?: string | null;
-  billing_cycle?: string | null;
-  payment_mode?: string | null;
-  payment_required?: boolean | null;
-  payment_amount_inr?: number | null;
-  selected_need_summary?: Array<{
-    id: number;
-    title: string;
-    estimated_budget?: number | null;
-    target_amount?: number | null;
-    target_quantity?: number | null;
-    beneficiary_count?: number | null;
-  }>;
-  status: 'pending' | 'accepted' | 'rejected' | 'active' | 'completed' | 'cancelled';
-  isAssigned: boolean;
-}
-
-const getOfferRequestBucket = (request: OfferRequestItem) => {
-  const status = String(request.status || '').trim().toLowerCase();
-  if (['accepted', 'active', 'in_progress'].includes(status) || request.isAssigned) return 'in-progress';
-  if (['rejected', 'completed', 'cancelled', 'closed', 'expired'].includes(status)) return 'history';
-  return 'pending';
-};
-
-const formatSelectedNeeds = (request: OfferRequestItem) => {
-  const summaryNeeds = Array.isArray(request.selected_need_summary) ? request.selected_need_summary : [];
-  if (summaryNeeds.length > 0) {
-    return summaryNeeds.slice(0, 3).map((need: any) => {
-      const title = String(need?.title || 'Need');
-      const amount = Number(need?.estimated_budget ?? need?.target_amount ?? 0);
-      return amount > 0 ? `${title} | INR ${amount.toLocaleString('en-IN')}` : title;
-    });
-  }
-
-  const meta = request.response_meta && typeof request.response_meta === 'object' ? request.response_meta : {};
-  const selectedNeeds = Array.isArray(meta.selected_needs) ? meta.selected_needs : [];
-
-  if (selectedNeeds.length > 0) {
-    return selectedNeeds
-      .map((need: any) => {
-        const title = String(need?.title || 'Need');
-        const amount = Number(need?.estimated_budget ?? need?.target_amount ?? 0);
-        return amount > 0 ? `${title} | INR ${amount.toLocaleString('en-IN')}` : title;
-      })
-      .slice(0, 3);
-  }
-
-  const selectedNeedIds = Array.isArray(meta.selected_need_ids) ? meta.selected_need_ids : [];
-  if (selectedNeedIds.length > 0) {
-    return selectedNeedIds.slice(0, 3).map((id: any) => `Need #${id}`);
-  }
-
-  const fallbackRequestId = Number(meta.service_request_id || 0);
-  return fallbackRequestId > 0 ? [`Need #${fallbackRequestId}`] : [];
-};
-
-const formatInrAmount = (value: unknown): string => {
-  const amount = Number(value);
-  if (!Number.isFinite(amount) || amount <= 0) return 'Free';
-  return `INR ${amount.toLocaleString('en-IN')}`;
-};
-
-const getOfferRequestBillingDetails = (request: OfferRequestItem) => {
-  const meta = request.response_meta && typeof request.response_meta === 'object' ? request.response_meta : {};
-  const assignmentMeta = meta.assignment_meta && typeof meta.assignment_meta === 'object' ? meta.assignment_meta : {};
-  const paymentAmount = Number(meta.payment_amount_inr ?? assignmentMeta.payment_amount_inr ?? assignmentMeta.rate_per_unit ?? request.payment_amount_inr ?? 0);
-  const paymentRequired = Boolean(meta.payment_required ?? assignmentMeta.payment_required ?? request.payment_required ?? paymentAmount > 0);
-
-  return {
-    assignedAt: String(meta.accepted_at || meta.assigned_at || assignmentMeta.assigned_at || request.assigned_at || request.accepted_at || ''),
-    validUntil: String(meta.valid_until || assignmentMeta.valid_until || request.valid_until || ''),
-    billingCycle: String(meta.billing_cycle || assignmentMeta.billing_cycle || request.billing_cycle || ''),
-    paymentMode: String(meta.payment_mode || assignmentMeta.payment_mode || request.payment_mode || ''),
-    paymentAmount,
-    paymentRequired
-  };
-};
-
-const toOfferRentalApplication = (request: OfferRequestItem) => {
-  const billing = getOfferRequestBillingDetails(request);
-  return {
-    id: request.id,
-    fulfillment_amount: billing.paymentAmount,
-    assigned_amount: billing.paymentAmount,
-    response_meta: request.response_meta && typeof request.response_meta === 'object' ? request.response_meta : {},
-  };
-};
-
-interface CompanyProjectApplication {
-  project_id: string;
-  project_title: string;
-  project_location?: string;
-  project_address?: string;
-  project_timeline?: string;
-  project_valid_until?: string | null;
-  project_expected_beneficiaries?: number | null;
-  project_volunteers_needed?: number | null;
-  project_category?: string | null;
-  project_budget_inr?: number | null;
-  company_id: number;
-  company_name: string;
-  company_email?: string;
-  company_phone?: string;
-  company_industry?: string;
-  company_location?: string;
-  company_profile_image?: string | null;
-  company_verified?: boolean;
-  status: 'pending' | 'accepted' | 'rejected' | string;
-  note?: string;
-  applied_at?: string;
-  needs: Array<{
-    id: number;
-    title: string;
-    status: string;
-    request_type?: string;
-  }>;
-}
-
-interface CSRTrackingAssignment {
-  project_id: string;
-  project_title: string;
-  project_location?: string;
-  project_timeline?: string;
-  project_description?: string;
-  project_category?: string | null;
-  project_expected_beneficiaries?: number | null;
-  project_valid_until?: string | null;
-  project_status?: string | null;
-  csr_project_available_for_csr?: boolean | null;
-  lead_ngo_id: number;
-  lead_ngo_name: string;
-  lead_ngo_email?: string;
-  lead_ngo_verification_status?: string | null;
-  lead_ngo_verified?: boolean;
-  assigned_company_id: number;
-  assigned_company_name: string;
-  assigned_company_email?: string;
-  assigned_company_verification_status?: string | null;
-  assigned_company_verified?: boolean;
-  selected_lead_ngo_id?: number | null;
-  selected_lead_ngo_name?: string | null;
-  selected_lead_ngo_email?: string | null;
-  selected_lead_ngo_verification_status?: string | null;
-  selected_lead_ngo_verified?: boolean;
-  assignment_status: string;
-  assigned_at?: string | null;
-  review_note?: string;
-  needs: Array<{
-    id: number;
-    title: string;
-    status: string;
-    request_type?: string;
-  }>;
-}
-
-interface CampaignLeadAssignment {
-  id: string;
-  campaign_id: string;
-  campaign_title: string;
-  campaign_description?: string;
-  campaign_location?: string;
-  campaign_category?: string;
-  campaign_status: string;
-  start_date?: string | null;
-  end_date?: string | null;
-  lifecycle: CampaignLeadLifecycle;
-  accepted_at?: string | null;
-  company_id: number;
-  company_name: string;
-  company_email?: string;
-  company_verification_status?: string | null;
-  company_verified?: boolean;
-}
-
-interface CampaignVolunteerAssignment {
-  id: string;
-  campaign_id: string;
-  campaign_title: string;
-  campaign_description?: string;
-  campaign_location?: string;
-  campaign_category?: string;
-  campaign_status?: string;
-  start_date?: string | null;
-  end_date?: string | null;
-  lifecycle: CampaignLeadLifecycle;
-  volunteer_capacity?: number;
-  company_name?: string;
-  company_email?: string;
-  company_verification_status?: string | null;
-  company_verified?: boolean;
-  applied_at?: string | null;
-  assignment_id?: string | null;
-  attendance_summary?: {
-    last_attendance_at?: string | null;
-    days_attended?: number;
-    total_entries?: number;
-  };
-}
-
-interface CampaignLeadInvitation {
-  id: string;
-  campaign_id: string;
-  campaign_title: string;
-  campaign_description?: string;
-  campaign_location?: string;
-  campaign_cause?: string;
-  status: string;
-  invited_at?: string;
-  company_id: number;
-  company_name: string;
-  company_email?: string;
-  company_verification_status?: string | null;
-  company_verified?: boolean;
-}
+import { CampaignVolunteerAssignmentCard } from '@/components/campaign-volunteer-assignment-card';
+import { isDailyRentalEngagementMeta } from '@/lib/service-request-allocation';
+import { formatInrAmount, formatSelectedNeeds, getOfferRequestBillingDetails, getOfferRequestBucket, toOfferRentalApplication, type OfferRequestItem } from '@/lib/offer-requests';
+import { getStatusBadgeClass } from '@/components/dashboard-status';
+import { CsrTrackingProjectDetails, type CSRTrackingAssignment } from '@/components/csr-tracking-project-details';
+import { InlineSkillServiceFulfillment } from '@/components/engagement-fulfillment';
+import type {
+  CompanyProjectApplication,
+  CampaignLeadAssignment,
+  CampaignVolunteerAssignment,
+  CampaignLeadInvitation,
+  NgoNeedDashboardItem,
+} from './types';
+import { CampaignAssignmentDetails } from './campaign-assignment-details';
+import { NgoNeedCardSkeleton, NgoNeedDashboardInline } from './need-dashboard';
 
 const isActionableProjectApplicationStatus = (status: string): boolean => {
   const normalized = String(status || '').toLowerCase();
   return ['pending', 'pledged', 'invited', 'pending_acceptance', 'awaiting_acceptance', 'offered', 'assigned'].includes(normalized);
 };
 
-const getCampaignLifecycleBadgeClass = (lifecycle: CampaignLeadLifecycle): string => {
-  if (lifecycle === 'yet_to_start') return 'border-amber-300 bg-amber-50 text-amber-700';
-  if (lifecycle === 'started') return 'border-blue-300 bg-blue-50 text-blue-700';
-  return 'border-green-300 bg-green-50 text-green-700';
-};
-
-const getStatusBadgeClass = (status: string): string => {
-  const normalized = String(status || '').trim().toLowerCase();
-  if (normalized === 'accepted' || normalized === 'completed') return 'border-green-300 bg-green-50 text-green-700';
-  if (normalized === 'pending' || normalized === 'pledged' || normalized === 'invited' || normalized === 'pending_acceptance' || normalized === 'awaiting_acceptance' || normalized === 'offered' || normalized === 'assigned') return 'border-amber-300 bg-amber-50 text-amber-700';
-  if (normalized === 'in_progress' || normalized === 'active') return 'border-blue-300 bg-blue-50 text-blue-700';
-  if (normalized === 'rejected' || normalized === 'cancelled' || normalized === 'closed') return 'border-red-300 bg-red-50 text-red-700';
-  if (normalized === 'expired') return 'border-slate-300 bg-slate-100 text-slate-700';
-  return 'border-slate-300 bg-white text-slate-700';
-};
-
-function StaticStatusBadge({ children, className }: { children: React.ReactNode; className?: string }) {
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold pointer-events-none select-none',
-        className
-      )}
-    >
-      {children}
-    </span>
-  );
-}
-
-function NeedDetailLink({
-  need,
-}: {
-  need: { id: number; title: string; request_type?: string };
-}) {
-  return (
-    <Link
-      href={`/service-requests/${need.id}`}
-      className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700 no-underline hover:bg-slate-100 hover:text-slate-700 focus:bg-slate-100 focus:text-slate-700"
-    >
-      {need.title}
-      {need.request_type ? ` · ${need.request_type}` : ''}
-    </Link>
-  );
-}
-
-function CampaignAssignmentDetails({
-  assignment,
-  roleLabel,
-  capabilityRentals = [],
-  onRentalUpdated,
-}: {
-  assignment: CampaignLeadAssignment;
-  roleLabel: string;
-  capabilityRentals?: any[];
-  onRentalUpdated?: () => void | Promise<void>;
-}) {
-  const campaignRentals = capabilityRentals.filter(
-    (row) => String(row.campaign_id) === String(assignment.campaign_id)
-  );
-
-  return (
-    <div className="space-y-3">
-      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-        <div className="min-w-0">
-          <p className="font-semibold text-slate-900">{assignment.campaign_title}</p>
-          <p className="flex flex-wrap items-center gap-1 text-sm text-slate-600">
-            <span>{roleLabel} •</span>
-            <VerifiedAccountName
-              name={assignment.company_name}
-              status={assignment.company_verification_status}
-              verified={assignment.company_verified}
-              size="xs"
-              nameClassName="font-medium text-slate-800"
-            />
-          </p>
-          <p className="text-xs text-slate-500">
-            {assignment.company_email || 'No email'}
-            {assignment.accepted_at ? ` • Accepted ${formatDisplayDate(assignment.accepted_at)}` : ''}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2 shrink-0">
-          <StaticStatusBadge className={getCampaignLifecycleBadgeClass(assignment.lifecycle)}>
-            {formatCampaignLeadLifecycleLabel(assignment.lifecycle)}
-          </StaticStatusBadge>
-          {assignment.campaign_status ? (
-            <StaticStatusBadge className={getStatusBadgeClass(assignment.campaign_status)}>
-              Campaign: {formatStatusLabel(assignment.campaign_status)}
-            </StaticStatusBadge>
-          ) : null}
-        </div>
-      </div>
-
-      {assignment.campaign_description ? (
-        <p className="text-sm text-muted-foreground line-clamp-3">{assignment.campaign_description}</p>
-      ) : null}
-
-      {assignment.campaign_status === 'draft' && assignment.lifecycle === 'yet_to_start' ? (
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          Waiting for the company to publish this campaign.
-        </div>
-      ) : null}
-
-      <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm md:grid-cols-3">
-        <div>
-          <p className="text-xs uppercase tracking-wide text-slate-500">Category</p>
-          <p className="font-medium text-slate-800">{assignment.campaign_category || 'Not set'}</p>
-        </div>
-        <div>
-          <p className="text-xs uppercase tracking-wide text-slate-500">Location</p>
-          <p className="font-medium text-slate-800">{assignment.campaign_location || 'Not set'}</p>
-        </div>
-        <div>
-          <p className="text-xs uppercase tracking-wide text-slate-500">Timeline</p>
-          <p className="font-medium text-slate-800">
-            {formatDisplayDate(assignment.start_date) || 'Start TBD'} → {formatDisplayDate(assignment.end_date) || 'End TBD'}
-          </p>
-        </div>
-      </div>
-
-      {campaignRentals.length > 0 ? (
-        <div className="space-y-2 border-t border-slate-100 pt-3">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Capability logistics</p>
-          {campaignRentals.map((row) => {
-            const rental = row.rental || {};
-            const offerId = Number(rental.service_offer_id || 0);
-            const showReturn =
-              ['return_pending', 'project_active', 'return_delivered', 'completed'].includes(String(rental.status || '')) ||
-              Boolean(rental.return_delivery?.tracking_id);
-
-            return (
-              <div key={`${row.campaign_id}-${offerId}`} className="space-y-2">
-                <p className="text-xs font-medium text-slate-700">{row.offer_title || `Offer #${offerId}`}</p>
-                <InlineCsrCapabilityDelhivery
-                  campaignId={String(row.campaign_id)}
-                  offerId={offerId}
-                  leg="outbound"
-                  delivery={rental.outbound_delivery}
-                  onUpdated={() => void onRentalUpdated?.()}
-                />
-                {showReturn ? (
-                  <InlineCsrCapabilityDelhivery
-                    campaignId={String(row.campaign_id)}
-                    offerId={offerId}
-                    leg="return"
-                    delivery={rental.return_delivery}
-                    canRetry={row.role === 'lead_ngo'}
-                    onUpdated={() => void onRentalUpdated?.()}
-                  />
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
-      ) : null}
-
-      <div className="flex flex-wrap gap-2 pt-1">
-        <Button asChild variant="outline" size="sm">
-          <Link href={`/csr-campaigns/${assignment.campaign_id}`}>View Campaign</Link>
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function CsrTrackingProjectDetails({
-  assignment,
-  partnerLabel,
-  partnerName,
-  partnerEmail,
-  partnerStatus,
-  partnerVerified,
-}: {
-  assignment: CSRTrackingAssignment;
-  partnerLabel: string;
-  partnerName: string;
-  partnerEmail?: string;
-  partnerStatus?: string | null;
-  partnerVerified?: boolean | null;
-}) {
-  const beneficiaries =
-    assignment.project_expected_beneficiaries != null && assignment.project_expected_beneficiaries > 0
-      ? Number(assignment.project_expected_beneficiaries).toLocaleString('en-IN')
-      : null;
-  const needs = assignment.needs || [];
-  const visibleNeeds = needs.slice(0, 4);
-  const hiddenNeedCount = Math.max(0, needs.length - visibleNeeds.length);
-  const hasDistinctLeadNgo = Boolean(
-    assignment.selected_lead_ngo_id &&
-    Number(assignment.selected_lead_ngo_id) !== Number(assignment.lead_ngo_id)
-  );
-
-  return (
-    <div className="space-y-3">
-      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-        <div className="min-w-0">
-          <p className="font-semibold text-slate-900">{assignment.project_title}</p>
-          <p className="flex flex-wrap items-center gap-1 text-sm text-slate-600">
-            <span>{partnerLabel}:</span>
-            <VerifiedAccountName
-              name={partnerName}
-              status={partnerStatus}
-              verified={partnerVerified}
-              size="xs"
-              nameClassName="font-medium text-slate-800"
-            />
-          </p>
-          <p className="text-xs text-slate-500">
-            {partnerEmail || 'No email'}
-            {assignment.assigned_at ? ` • Handoff ${formatDisplayDate(assignment.assigned_at)}` : ''}
-          </p>
-          <p className="mt-1 flex flex-wrap items-center gap-1 text-xs text-slate-500">
-            <span>Owner NGO:</span>
-            <VerifiedAccountName
-              name={assignment.lead_ngo_name}
-              status={assignment.lead_ngo_verification_status}
-              verified={assignment.lead_ngo_verified}
-              size="xs"
-              nameClassName="font-medium text-slate-700"
-            />
-            {hasDistinctLeadNgo && assignment.selected_lead_ngo_name ? (
-              <>
-                <span>•</span>
-                <span>Lead NGO:</span>
-                <VerifiedAccountName
-                  name={assignment.selected_lead_ngo_name}
-                  status={assignment.selected_lead_ngo_verification_status}
-                  verified={assignment.selected_lead_ngo_verified}
-                  size="xs"
-                  nameClassName="font-medium text-slate-700"
-                />
-              </>
-            ) : null}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2 shrink-0">
-          <StaticStatusBadge className={getStatusBadgeClass(assignment.assignment_status)}>
-            Assignment: {formatStatusLabel(assignment.assignment_status)}
-          </StaticStatusBadge>
-          {assignment.project_status ? (
-            <StaticStatusBadge className={getStatusBadgeClass(assignment.project_status)}>
-              Project: {formatStatusLabel(assignment.project_status)}
-            </StaticStatusBadge>
-          ) : null}
-        </div>
-      </div>
-
-      {assignment.project_description ? (
-        <p className="text-sm text-muted-foreground line-clamp-3">{assignment.project_description}</p>
-      ) : null}
-
-      {assignment.review_note ? (
-        <div className="rounded-md border bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          <span className="font-medium">Acceptance note:</span> {assignment.review_note}
-        </div>
-      ) : null}
-
-      <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm md:grid-cols-3">
-        <div>
-          <p className="text-xs uppercase tracking-wide text-slate-500">Category</p>
-          <p className="font-medium text-slate-800">{assignment.project_category || 'Not set'}</p>
-        </div>
-        <div>
-          <p className="text-xs uppercase tracking-wide text-slate-500">Location</p>
-          <p className="font-medium text-slate-800">{assignment.project_location || 'Not set'}</p>
-        </div>
-        <div>
-          <p className="text-xs uppercase tracking-wide text-slate-500">Timeline</p>
-          <p className="font-medium text-slate-800">{assignment.project_timeline || 'Not set'}</p>
-        </div>
-        <div>
-          <p className="text-xs uppercase tracking-wide text-slate-500">Beneficiaries</p>
-          <p className="font-medium text-slate-800">{beneficiaries || 'Not set'}</p>
-        </div>
-        <div>
-          <p className="text-xs uppercase tracking-wide text-slate-500">Valid until</p>
-          <p className="font-medium text-slate-800">{formatDisplayDate(assignment.project_valid_until) || 'Not set'}</p>
-        </div>
-      </div>
-
-      {needs.length > 0 ? (
-        <div>
-          <p className="mb-1.5 text-xs uppercase tracking-wide text-slate-500">Legacy linked listings ({needs.length})</p>
-          <div className="flex flex-wrap gap-1.5">
-            {visibleNeeds.map((need) => (
-              <NeedDetailLink key={need.id} need={need} />
-            ))}
-            {hiddenNeedCount > 0 ? (
-              <StaticStatusBadge className="border-slate-200 bg-white text-slate-600">+{hiddenNeedCount} more</StaticStatusBadge>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
-
-      <div className="flex flex-wrap gap-2 pt-1">
-        <Link href={`/service-requests/projects/${assignment.project_id}`}>
-          <Button size="sm" variant="outline">View Project</Button>
-        </Link>
-      </div>
-    </div>
-  );
-}
-
-function formatDelhiveryEventTime(value: unknown) {
-  if (!value) return 'Time not available';
-  const date = new Date(String(value));
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleString('en-IN', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
-function InlineDelhiveryFulfillment({
-  serviceRequestId,
-  volunteerApplicationId,
-  responseMeta,
-  canEditTrackingId = true,
-  canVerifyPickup = false,
-  onUpdated,
-}: {
-  serviceRequestId: number;
-  volunteerApplicationId: number;
-  responseMeta?: Record<string, any> | null;
-  canEditTrackingId?: boolean;
-  canVerifyPickup?: boolean;
-  onUpdated?: (nextMeta: Record<string, any>) => void | Promise<void>;
-}) {
-  const { toast } = useToast();
-  const meta = responseMeta && typeof responseMeta === 'object' ? responseMeta : {};
-  const [trackingId, setTrackingId] = useState(String(meta.delivery_tracking_id || ''));
-  const [syncing, setSyncing] = useState(false);
-
-  const events = useMemo(() => getDeliveryTrackingEvents(meta), [meta]);
-  const currentStatus = formatDeliveryTrackingStatus(meta);
-  const pickedUp = isPickedUpTrackingStatus(meta.delivery_tracking_last_status);
-  const delivered = isDeliveredTrackingStatus(meta.delivery_tracking_last_status);
-
-  const handleVerifyPickup = async () => {
-    const resolvedTrackingId = trackingId.trim() || String(meta.delivery_tracking_id || '').trim();
-    if (!resolvedTrackingId) {
-      toast({
-        title: 'Tracking ID required',
-        description: 'Enter the Delhivery tracking ID from your shipment.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setSyncing(true);
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('Please sign in again');
-
-      const response = await fetch(
-        `/api/service-requests/${serviceRequestId}/volunteers/${volunteerApplicationId}/delivery/sync`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ trackingId: resolvedTrackingId }),
-        }
-      );
-
-      const data = await response.json();
-      if (!response.ok || !data?.success) {
-        throw new Error(data?.error || 'Could not verify Delhivery pickup');
-      }
-
-      const nextMeta =
-        data?.data?.assignment?.response_meta && typeof data.data.assignment.response_meta === 'object'
-          ? data.data.assignment.response_meta
-          : meta;
-
-      setTrackingId(String(nextMeta.delivery_tracking_id || resolvedTrackingId));
-
-      toast({
-        title: isDeliveredTrackingStatus(nextMeta.delivery_tracking_last_status)
-          ? 'Delivery updated'
-          : isPickedUpTrackingStatus(nextMeta.delivery_tracking_last_status)
-            ? 'Pickup verified'
-            : 'Delhivery status synced',
-        description: formatDeliveryTrackingStatus(nextMeta),
-      });
-
-      await onUpdated?.(nextMeta);
-    } catch (error) {
-      toast({
-        title: 'Verification failed',
-        description: error instanceof Error ? error.message : 'Could not sync Delhivery status',
-        variant: 'destructive',
-      });
-    } finally {
-      setSyncing(false);
-    }
-  };
-
-  return (
-    <div className="space-y-3 border-t border-gram-border pt-3">
-      <div>
-        <p className="text-sm font-medium text-gram-ink">Delhivery delivery</p>
-        <p className="text-xs text-gram-muted">
-          Material fulfillment is tracked through Delhivery pickup and delivery updates.
-        </p>
-      </div>
-
-      {syncing ? (
-        <div className="space-y-3" aria-busy="true" aria-label="Updating delivery status">
-          <div className="grid gap-2 sm:grid-cols-2">
-            <Skeleton className="h-4 w-40" />
-            <Skeleton className="h-4 w-44" />
-          </div>
-          <Skeleton className="h-9 w-full max-w-xs" />
-          <div className="space-y-2">
-            <Skeleton className="h-3 w-28" />
-            <Skeleton className="h-12 w-full" />
-          </div>
-        </div>
-      ) : (
-        <>
-          <div className="grid gap-2 text-sm text-gram-muted sm:grid-cols-2">
-            <p>
-              Status:{' '}
-              <span className="font-medium text-gram-ink">{currentStatus}</span>
-            </p>
-            <p>
-              Last location:{' '}
-              <span className="font-medium text-gram-ink">
-                {meta.delivery_tracking_last_location || 'Not available yet'}
-              </span>
-            </p>
-          </div>
-
-          {canEditTrackingId ? (
-            <div className="space-y-2">
-              <Label htmlFor={`delhivery-tracking-${volunteerApplicationId}`} className="text-xs text-gram-muted">
-                Delhivery tracking ID
-              </Label>
-              <Input
-                id={`delhivery-tracking-${volunteerApplicationId}`}
-                value={trackingId}
-                onChange={(event) => setTrackingId(event.target.value)}
-                placeholder="Enter tracking ID after Delhivery pickup"
-                className="border-gram-border bg-white"
-              />
-            </div>
-          ) : meta.delivery_tracking_id ? (
-            <p className="text-xs text-gram-muted">
-              Tracking ID: <span className="font-medium text-gram-ink">{meta.delivery_tracking_id}</span>
-            </p>
-          ) : null}
-
-          {canVerifyPickup ? (
-            <Button
-              size="sm"
-              variant="outline"
-              className="border-gram-border text-gram-ink hover:bg-gram-sage"
-              onClick={handleVerifyPickup}
-              disabled={syncing}
-            >
-              {delivered || pickedUp ? 'Refresh delivery status' : 'Verify Delhivery pickup'}
-            </Button>
-          ) : null}
-
-          {events.length > 0 ? (
-            <div className="space-y-2">
-              <p className="text-xs font-medium uppercase tracking-wide text-gram-muted">
-                Delivery timeline
-              </p>
-              <ol className="space-y-2">
-                {events.map((event: any, index: number) => (
-                  <li key={`${event.status}-${event.timestamp}-${index}`} className="border-l-2 border-gram-border pl-3">
-                    <p className="text-sm font-medium text-gram-ink">
-                      {String(event.status || 'Update')}
-                    </p>
-                    <p className="text-xs text-gram-muted">
-                      {event.location ? `${event.location} · ` : ''}
-                      {formatDelhiveryEventTime(event.timestamp)}
-                    </p>
-                    {event.details ? (
-                      <p className="text-xs text-gram-muted">{String(event.details)}</p>
-                    ) : null}
-                  </li>
-                ))}
-              </ol>
-            </div>
-          ) : (
-            <p className="text-xs text-gram-muted">
-              {meta.delivery_tracking_id
-                ? canVerifyPickup
-                  ? 'No timeline events yet. Use verify pickup to pull the latest Delhivery updates.'
-                  : 'No timeline events yet. The individual will sync Delhivery updates after pickup.'
-                : canVerifyPickup
-                  ? 'Add the tracking ID once Delhivery picks up the goods to start live tracking.'
-                  : 'Waiting for the individual to verify Delhivery pickup and share tracking updates.'}
-            </p>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
-function NgoNeedCardSkeleton() {
-  return (
-    <div className="overflow-hidden rounded-md border border-gram-border bg-white shadow-none" aria-busy="true">
-      <Skeleton className="h-40 w-full rounded-none bg-[#EEF0ED]" />
-      <div className="flex flex-col gap-2 px-3 pb-3 pt-2.5">
-        <div className="flex min-w-0 items-baseline justify-between gap-2">
-          <Skeleton className="h-3 w-16 rounded" />
-          <Skeleton className="h-3 w-24 rounded" />
-        </div>
-        <div className="min-w-0 space-y-1">
-          <Skeleton className="h-5 w-3/4 rounded" />
-          <Skeleton className="h-3.5 w-full rounded" />
-        </div>
-        <Skeleton className="h-3 w-2/3 rounded" />
-        <div className="mt-auto flex min-w-0 items-center gap-2 border-t border-gram-border pt-2">
-          <Skeleton className="h-7 w-7 shrink-0 rounded-full" />
-          <div className="min-w-0 flex-1 space-y-1">
-            <Skeleton className="h-3.5 w-28 rounded" />
-            <Skeleton className="h-3 w-16 rounded" />
-          </div>
-          <Skeleton className="h-7 w-24 shrink-0 rounded-md" />
-          <Skeleton className="h-8 w-8 shrink-0 rounded-md" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function getSkillLocalDateString(reference: Date = new Date()) {
-  const year = reference.getFullYear();
-  const month = String(reference.getMonth() + 1).padStart(2, '0');
-  const day = String(reference.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function InlineSkillServiceFulfillment({
-  application,
-  role,
-  title = 'Skill / service rental',
-  onUpdated,
-}: {
-  application: {
-    id: number;
-    fulfillment_amount?: number | null;
-    fulfillment_quantity?: number | null;
-    assigned_amount?: number | null;
-    assigned_quantity?: number | null;
-    proposed_amount?: number | null;
-    response_meta?: Record<string, any> | null;
-  };
-  role: 'ngo' | 'individual';
-  title?: string;
-  onUpdated?: () => void | Promise<void>;
-}) {
-  const { toast } = useToast();
-  const [settling, setSettling] = useState(false);
-  const meta = application.response_meta && typeof application.response_meta === 'object'
-    ? application.response_meta
-    : {};
-  const assignmentId =
-    meta.assignment_id || meta.assignmentMeta?.id || meta.assignment_meta?.id;
-  const dailyRate = getSkillServiceDailyRate(application);
-  const summary = formatAttendanceSummary(meta);
-  const settlementStatus = String(meta.settlement_status || '').toLowerCase();
-  const isSettled = settlementStatus === 'settled';
-  const outstanding = Math.max(0, summary.totalDue - summary.paidTotal);
-
-
-  const handleSettle = async () => {
-    if (!assignmentId) {
-      toast({
-        title: 'Settlement unavailable',
-        description: 'Assignment is not linked yet.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    setSettling(true);
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('Please sign in again');
-
-      const response = await fetch(`/api/service-assignments/${assignmentId}/settle`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ action: 'start' }),
-      });
-
-      const data = await response.json();
-      if (!response.ok || !data?.success) {
-        throw new Error(data?.error || 'Failed to start settlement');
-      }
-
-      const payload = data.data;
-      if (payload?.settled) {
-        toast({
-          title: 'Service completed',
-          description: payload.settledAmount > 0
-            ? `Settlement recorded for INR ${Number(payload.settledAmount).toLocaleString('en-IN')}.`
-            : 'Service marked complete with no payment due.',
-        });
-        await onUpdated?.();
-        return;
-      }
-
-      if (!payload?.paymentRequired) {
-        await onUpdated?.();
-        return;
-      }
-
-      await openRazorpayCheckout({
-        keyId: payload.keyId,
-        orderId: payload.orderId,
-        amountInr: Number(payload.totalCharge || payload.amount),
-        currency: payload.currency || 'INR',
-        description: 'Daily rental settlement',
-        themeColor: '#059669',
-        onSuccess: async (paymentResponse) => {
-          const verifyRes = await fetch(`/api/service-assignments/${assignmentId}/settle`, {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${token}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              action: 'verify',
-              razorpay_order_id: paymentResponse.razorpay_order_id,
-              razorpay_payment_id: paymentResponse.razorpay_payment_id,
-              razorpay_signature: paymentResponse.razorpay_signature,
-            }),
-          });
-
-          const verifyData = await verifyRes.json();
-          if (!verifyRes.ok || !verifyData?.success) {
-            throw new Error(verifyData?.error || 'Payment verification failed');
-          }
-
-          toast({
-            title: 'Payment successful',
-            description: `Settled INR ${Number(verifyData.data?.settledAmount || payload.amount).toLocaleString('en-IN')} and marked service complete.`,
-          });
-          await onUpdated?.();
-        },
-        onFailure: (error) => {
-          toast({
-            title: 'Payment failed',
-            description: error.description || error.reason || 'Razorpay could not complete the payment.',
-            variant: 'destructive',
-          });
-        },
-      });
-    } catch (error) {
-      toast({
-        title: 'Could not settle',
-        description: error instanceof Error ? error.message : 'Something went wrong',
-        variant: 'destructive',
-      });
-    } finally {
-      setSettling(false);
-    }
-  };
-
-  return (
-    <div className="space-y-3 rounded-md border border-emerald-200 bg-emerald-50/60 p-3">
-      <div>
-        <p className="text-sm font-medium text-emerald-950">{title}</p>
-        <p className="text-xs text-emerald-900/80">
-          {role === 'ngo'
-            ? 'Settle the cumulative total when this skill/service engagement ends.'
-            : 'Payment is calculated from present days times your quoted daily rate.'}
-        </p>
-      </div>
-
-      <div className="grid gap-2 text-sm sm:grid-cols-3">
-        <p>
-          Daily rate:{' '}
-          <span className="font-medium text-slate-900">
-            {dailyRate > 0 ? `INR ${dailyRate.toLocaleString('en-IN')}` : 'Not set'}
-          </span>
-        </p>
-        <p>
-          Days present: <span className="font-medium text-slate-900">{summary.daysPresent}</span>
-        </p>
-        <p>
-          Cumulative due:{' '}
-          <span className="font-medium text-slate-900">
-            INR {summary.totalDue.toLocaleString('en-IN')}
-          </span>
-        </p>
-      </div>
-
-      {isSettled ? (
-        <p className="text-xs font-medium text-emerald-800">
-          Settled
-          {meta.settled_amount != null ? ` · INR ${Number(meta.settled_amount).toLocaleString('en-IN')}` : ''}
-          {meta.settlement_mode ? ` (${meta.settlement_mode})` : ''}
-        </p>
-      ) : role === 'ngo' ? (
-        <div className="flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleSettle}
-            disabled={settling || isSettled}
-          >
-            {settling ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Settling…
-              </>
-            ) : outstanding > 0 ? (
-              `Complete service & pay INR ${outstanding.toLocaleString('en-IN')}`
-            ) : (
-              'Complete service (no payment due)'
-            )}
-          </Button>
-        </div>
-      ) : outstanding > 0 ? (
-        <p className="text-xs text-slate-600">
-          Outstanding: INR {outstanding.toLocaleString('en-IN')}.
-        </p>
-      ) : null}
-    </div>
-  );
-}
-function InlineInfrastructureAssignment({
-  application,
-  serviceRequestId,
-  role,
-  onUpdated,
-}: {
-  application: {
-    id: number;
-    status?: string;
-    response_meta?: Record<string, any> | null;
-  };
-  serviceRequestId: number;
-  role: 'ngo' | 'individual';
-  onUpdated?: () => void | Promise<void>;
-}) {
-  const { toast } = useToast();
-  const [completing, setCompleting] = useState(false);
-  const status = String(application.status || '').toLowerCase();
-  const inProgress = ['accepted', 'active'].includes(status);
-
-  const handleMarkComplete = async () => {
-    setCompleting(true);
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('Please sign in again');
-
-      const response = await fetch(
-        `/api/service-requests/${serviceRequestId}/volunteers/${application.id}`,
-        {
-          method: 'PUT',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ status: 'completed' }),
-        }
-      );
-
-      const data = await response.json();
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to mark complete');
-      }
-
-      toast({
-        title: 'Infrastructure need completed',
-        description: 'The individual can now apply to other needs.',
-      });
-      await onUpdated?.();
-    } catch (error) {
-      toast({
-        title: 'Could not mark complete',
-        description: error instanceof Error ? error.message : 'Something went wrong',
-        variant: 'destructive',
-      });
-    } finally {
-      setCompleting(false);
-    }
-  };
-
-  if (!inProgress) return null;
-
-  return (
-    <div className="space-y-2 rounded-md border border-violet-200 bg-violet-50/60 p-3">
-      <p className="text-sm font-medium text-violet-950">Infrastructure assignment</p>
-      <p className="text-xs text-violet-900/80">
-        {role === 'individual'
-          ? 'You are assigned to this infrastructure need. You cannot take another need until the NGO marks this complete.'
-          : 'Mark this infrastructure engagement complete when work is done so the individual can take new needs.'}
-      </p>
-      {role === 'ngo' ? (
-        <Button size="sm" variant="outline" onClick={handleMarkComplete} disabled={completing}>
-          {completing ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Marking…
-            </>
-          ) : (
-            'Mark complete'
-          )}
-        </Button>
-      ) : null}
-    </div>
-  );
-}
-type NgoNeedAssignment = {
-  id: number;
-  status?: string;
-  assigned_quantity?: number | null;
-  assigned_amount?: number | null;
-  fulfillment_quantity?: number | null;
-  fulfillment_amount?: number | null;
-  response_meta?: Record<string, any> | null;
-  volunteer?: { id?: number; name?: string | null; email?: string | null; user_type?: string | null } | null;
-};
-
-type NgoNeedDashboardItem = {
-  id: number;
-  title: string;
-  status?: string;
-  category?: string;
-  request_type?: string | null;
-  location?: string;
-  beneficiary_count?: number | null;
-  target_quantity?: number | null;
-  remaining_quantity?: number | null;
-  current_quantity?: number | null;
-  estimated_budget?: number | null;
-  target_amount?: number | null;
-  accepted_count?: number;
-  completed_count?: number;
-  project?: { title?: string | null; exact_address?: string | null; location?: string | null } | null;
-  assignments?: NgoNeedAssignment[];
-};
-
-function getAcceptedNgoNeedAssignments(item: NgoNeedDashboardItem) {
-  return (item.assignments || []).filter((assignment) =>
-    ['accepted', 'active', 'completed'].includes(String(assignment.status || '').toLowerCase())
-  );
-}
-
-function getPendingNgoNeedAssignments(item: NgoNeedDashboardItem) {
-  return (item.assignments || []).filter(
-    (assignment) => String(assignment.status || '').toLowerCase() === 'pending'
-  );
-}
-
-function formatNgoNeedOfferValue(item: NgoNeedDashboardItem, assignment: NgoNeedAssignment) {
-  const mode = getNgoNeedFulfillmentMode(item);
-  if (mode === 'financial') {
-    const amount = Number(assignment.fulfillment_amount ?? assignment.assigned_amount ?? 0);
-    return amount > 0 ? `INR ${amount.toLocaleString('en-IN')}` : 'Amount not set';
-  }
-  if (mode === 'skill_service') {
-    const amount = Number(assignment.fulfillment_amount ?? assignment.assigned_amount ?? 0);
-    return amount > 0 ? `INR ${amount.toLocaleString('en-IN')}/day` : 'Daily rate not set';
-  }
-
-  const quantity = Number(assignment.fulfillment_quantity ?? assignment.assigned_quantity ?? 0);
-  return quantity > 0 ? `${quantity} units` : 'Quantity not set';
-}
-
-function formatNgoNeedTargetSummary(item: NgoNeedDashboardItem) {
-  const target = getServiceRequestTarget(item);
-  const remaining = getNeedRemainingQuantity(item);
-
-  if (target.isFinancial) {
-    const targetLabel = target.amount > 0 ? `INR ${target.amount.toLocaleString('en-IN')}` : 'Open budget';
-    const remainingLabel = target.amount > 0 ? `INR ${remaining.toLocaleString('en-IN')}` : 'Open';
-    return { targetLabel, remainingLabel };
-  }
-
-  const targetLabel = target.quantity > 0 ? `${target.quantity} units` : String(item.beneficiary_count || 0);
-  const remainingLabel = target.quantity > 0 ? `${remaining} units` : String(remaining);
-  return { targetLabel, remainingLabel };
-}
-
-function NgoNeedDashboardInline({
-  need,
-  variant = 'ongoing',
-  onUpdated,
-}: {
-  need: NgoNeedDashboardItem;
-  variant?: 'ongoing' | 'history';
-  onUpdated?: () => void | Promise<void>;
-}) {
-  const { toast } = useToast();
-  const [updatingId, setUpdatingId] = useState<number | null>(null);
-
-  const accepted = getAcceptedNgoNeedAssignments(need);
-  const pending = getPendingNgoNeedAssignments(need);
-  const { targetLabel, remainingLabel } = formatNgoNeedTargetSummary(need);
-  const remainingQty = getNeedRemainingQuantity(need);
-  const assignmentLabel =
-    remainingQty <= 0
-      ? 'Fully assigned'
-      : accepted.length > 0
-        ? 'Partially assigned'
-        : null;
-  const target = getServiceRequestTarget(need);
-  const location = need.location || 'Not set';
-
-  const handleApplicantDecision = async (
-    assignment: NgoNeedAssignment,
-    decision: 'accepted' | 'rejected'
-  ) => {
-    setUpdatingId(assignment.id);
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        throw new Error('Please sign in again');
-      }
-
-      const payload: Record<string, unknown> = { status: decision };
-      if (decision === 'accepted') {
-        const remaining = getNeedRemainingQuantity(need);
-        if (target.isFinancial) {
-          const offer = Number(assignment.fulfillment_amount ?? assignment.assigned_amount ?? 0);
-          payload.allocationAmount = Math.min(offer > 0 ? offer : remaining, remaining);
-        } else {
-          const offer = Number(assignment.fulfillment_quantity ?? assignment.assigned_quantity ?? 0);
-          payload.allocationQuantity = Math.min(offer > 0 ? offer : remaining, remaining);
-        }
-      }
-
-      const response = await fetch(
-        `/api/service-requests/${need.id}/volunteers/${assignment.id}`,
-        {
-          method: 'PUT',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(payload),
-        }
-      );
-
-      const data = await response.json();
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to update application');
-      }
-
-      toast({
-        title: decision === 'accepted' ? 'Application accepted' : 'Application rejected',
-        description:
-          decision === 'accepted'
-            ? `${assignment.volunteer?.name || 'Applicant'} is now assigned to this need.`
-            : `${assignment.volunteer?.name || 'Applicant'} was not selected.`,
-      });
-
-      await onUpdated?.();
-    } catch (error) {
-      toast({
-        title: 'Could not update application',
-        description: error instanceof Error ? error.message : 'Something went wrong',
-        variant: 'destructive',
-      });
-    } finally {
-      setUpdatingId(null);
-    }
-  };
-
-  return (
-    <div className="space-y-3 rounded-md border bg-white p-4">
-      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-        <div>
-          <p className="font-semibold">{need.title}</p>
-          <p className="text-sm text-muted-foreground">
-            {need.location || need.request_type || need.category || 'Need'}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Badge variant="outline" className="border-gram-border bg-gram-page text-gram-ink">
-            {formatStatusLabel(need.status || 'active')}
-          </Badge>
-          {variant === 'ongoing' && assignmentLabel ? (
-            <Badge variant="outline" className="border-gram-border bg-gram-sage/40 text-udaan-blue">
-              {assignmentLabel}
-            </Badge>
-          ) : null}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-2 text-sm text-muted-foreground md:grid-cols-4">
-        <p>Target: {targetLabel}</p>
-        <p>Remaining: {remainingLabel}</p>
-        <p>Pending review: {pending.length}</p>
-        <p>Location: {location}</p>
-      </div>
-
-      {pending.length > 0 && variant === 'ongoing' ? (
-        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-2">
-          <p className="text-sm font-medium text-amber-900">Pending applications</p>
-          {pending.map((assignment) => (
-            <div
-              key={assignment.id}
-              className="flex flex-col gap-2 border-t border-amber-200 pt-2 first:border-t-0 first:pt-0 sm:flex-row sm:items-center sm:justify-between"
-            >
-              <div>
-                <p className="text-sm font-medium text-slate-900">
-                  {assignment.volunteer?.name || 'Individual'}
-                </p>
-                <p className="text-xs text-slate-600">
-                  Offer: {formatNgoNeedOfferValue(need, assignment)}
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  className="bg-green-600 hover:bg-green-700"
-                  disabled={updatingId === assignment.id}
-                  onClick={() => handleApplicantDecision(assignment, 'accepted')}
-                >
-                  {updatingId === assignment.id ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    'Accept'
-                  )}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="border-red-200 text-red-600 hover:bg-red-50"
-                  disabled={updatingId === assignment.id}
-                  onClick={() => handleApplicantDecision(assignment, 'rejected')}
-                >
-                  Reject
-                </Button>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : null}
-
-      {accepted.length > 0 ? (
-        <div className="rounded-md border border-slate-200 bg-slate-50 p-3 space-y-3">
-          <p className="text-sm font-medium text-slate-900">Assigned individuals</p>
-          {accepted.map((assignment) => {
-            const mode = getNgoNeedFulfillmentMode(need);
-            const inFulfillment = ['accepted', 'active'].includes(String(assignment.status || '').toLowerCase());
-
-            return (
-              <div key={assignment.id} className="space-y-2 border-t border-slate-200 pt-2 first:border-t-0 first:pt-0">
-                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-slate-900">
-                      {assignment.volunteer?.name || 'Individual'}
-                    </p>
-                    <p className="text-xs text-slate-600">
-                      Promised: {formatNgoNeedOfferValue(need, assignment)}
-                    </p>
-                  </div>
-                  <p className="text-xs capitalize text-slate-600 sm:text-right">
-                    {formatStatusLabel(assignment.status || 'accepted')}
-                  </p>
-                </div>
-
-                {shouldUseDelhiveryForNeed(need) && inFulfillment ? (
-                  <InlineDelhiveryFulfillment
-                    serviceRequestId={need.id}
-                    volunteerApplicationId={assignment.id}
-                    responseMeta={assignment.response_meta || {}}
-                    canEditTrackingId={false}
-                    canVerifyPickup={false}
-                    onUpdated={onUpdated}
-                  />
-                ) : null}
-
-                {shouldUseNgoMarkedDailyAttendance(need) && inFulfillment ? (
-                  <InlineSkillServiceFulfillment
-                    application={assignment}
-                    role="ngo"
-                    onUpdated={onUpdated}
-                  />
-                ) : null}
-
-                {mode === 'infrastructure' && inFulfillment ? (
-                  <InlineInfrastructureAssignment
-                    application={assignment}
-                    serviceRequestId={need.id}
-                    role="ngo"
-                    onUpdated={onUpdated}
-                  />
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
-      ) : null}
-
-      <div className="flex flex-wrap gap-2">
-        <Link href={`/service-requests/${need.id}`}>
-          <Button variant="outline" size="sm">
-            View
-          </Button>
-        </Link>
-        {variant === 'ongoing' ? (
-          <>
-            <Link href={`/service-requests/edit/${need.id}`}>
-              <Button variant="outline" size="sm">
-                Edit
-              </Button>
-            </Link>
-            {pending.length > 0 ? (
-              <Link href={`/service-requests/applicants/${need.id}`}>
-                <Button variant="outline" size="sm">
-                  All applicants ({pending.length})
-                </Button>
-              </Link>
-            ) : null}
-          </>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
 function NGODashboardContent() {
-  const { user, refreshUser } = useAuth();
+  const { user } = useAuth();
   const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -1435,7 +69,6 @@ function NGODashboardContent() {
   const [loadingCampaignLeadInvitations, setLoadingCampaignLeadInvitations] = useState(false);
   const [loadingCampaignLeadAssignments, setLoadingCampaignLeadAssignments] = useState(false);
   const [csrCapabilityRentals, setCsrCapabilityRentals] = useState<any[]>([]);
-  const [loadingCsrCapabilityRentals, setLoadingCsrCapabilityRentals] = useState(false);
   const [respondingCampaignLeadInviteId, setRespondingCampaignLeadInviteId] = useState<string | null>(null);
   const [ongoingNeeds, setOngoingNeeds] = useState<any[]>([]);
   const [historyNeeds, setHistoryNeeds] = useState<any[]>([]);
@@ -1452,7 +85,6 @@ function NGODashboardContent() {
   const [trackingTab, setTrackingTab] = useState<'ongoing-needs' | 'history-needs'>('ongoing-needs');
   const [csrProjectsTab, setCsrProjectsTab] = useState<'invitations' | 'ongoing' | 'completed'>('invitations');
   const [csrProjectsSectionTab, setCsrProjectsSectionTab] = useState<'ngo-projects' | 'other-csr'>('ngo-projects');
-  const [deletingRequest, setDeletingRequest] = useState<number | null>(null);
   const sidebarItems = [
     { value: 'profile', label: 'Profile' },
     { value: 'service-offers', label: 'Capability Offers' },
@@ -1462,52 +94,6 @@ function NGODashboardContent() {
     { value: 'payments', label: 'Payments' },
   ];
 
-  // Handle service request deletion
-  const handleDeleteRequest = async (requestId: number, requestTitle: string) => {
-    if (!confirm(`Are you sure you want to delete "${requestTitle}"? This action cannot be undone.`)) {
-      return;
-    }
-
-    try {
-      setDeletingRequest(requestId);
-      const token = localStorage.getItem('token');
-      
-      const response = await fetch(`/api/service-requests/${requestId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        toast({
-          title: "Success",
-          description: "Service request deleted successfully",
-        });
-        // Refresh the service requests
-        fetchServiceRequests();
-      } else {
-        toast({
-          title: "Error",
-          description: data.error || "Failed to delete service request",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to delete service request",
-        variant: "destructive",
-      });
-    } finally {
-      setDeletingRequest(null);
-    }
-  };
-
-  // Fetch real service offers data
   const fetchServiceOffers = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -1530,12 +116,6 @@ function NGODashboardContent() {
     }
   };
 
-  const isHistoryNeed = (request: any) => {
-    const status = String(request?.status || '').toLowerCase();
-    return status === 'completed' || status === 'cancelled';
-  };
-
-  // Fetch NGO's own service requests for dashboard Your Needs
   const fetchServiceRequests = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -1736,7 +316,6 @@ function NGODashboardContent() {
 
   const fetchCsrCapabilityRentals = async () => {
     try {
-      setLoadingCsrCapabilityRentals(true);
       const token = localStorage.getItem('token');
       if (!token) {
         setCsrCapabilityRentals([]);
@@ -1755,8 +334,6 @@ function NGODashboardContent() {
     } catch (error) {
       console.error('Error fetching CSR capability rentals:', error);
       setCsrCapabilityRentals([]);
-    } finally {
-      setLoadingCsrCapabilityRentals(false);
     }
   };
 
@@ -1909,11 +486,6 @@ function NGODashboardContent() {
             };
           }
 
-          const isActionableProjectApplicationStatus = (status: string): boolean => {
-            const normalized = String(status || '').toLowerCase();
-            return ['pending', 'pledged', 'invited', 'pending_acceptance', 'awaiting_acceptance', 'offered', 'assigned'].includes(normalized);
-          };
-
           if (
             newStatus === 'accepted' &&
             request.service_offer_id === data.data.service_offer_id &&
@@ -1975,7 +547,6 @@ function NGODashboardContent() {
     }
   };
 
-
   const refreshDashboardData = async () => {
     if (!user?.id) return;
 
@@ -2019,7 +590,6 @@ function NGODashboardContent() {
     }
   };
 
-  // Fetch all real data when component mounts
   useEffect(() => {
     if (!user?.id) return;
 
@@ -2118,15 +688,6 @@ function NGODashboardContent() {
     }
 
     return 'ongoing';
-  };
-
-  const getNeedTrackingBadgeClass = (status: string): string => {
-    const normalized = String(status || '').toLowerCase();
-    if (normalized === 'completed') return 'bg-green-100 text-green-800 border-green-200';
-    if (normalized === 'in_progress' || normalized === 'active') return 'bg-blue-100 text-blue-800 border-blue-200';
-    if (normalized === 'accepted') return 'bg-amber-100 text-amber-800 border-amber-200';
-    if (normalized === 'cancelled' || normalized === 'rejected') return 'bg-red-100 text-red-800 border-red-200';
-    return 'bg-slate-100 text-slate-700 border-slate-200';
   };
 
   const ongoingCampaignVolunteerAssignments = campaignVolunteerAssignments.filter((assignment) => assignment.lifecycle !== 'completed');
@@ -2367,11 +928,11 @@ function NGODashboardContent() {
                                         {request.message}
                                       </div>
                                     ) : null}
-                                    {formatSelectedNeeds(request).length > 0 ? (
+                                    {formatSelectedNeeds(request, 3).length > 0 ? (
                                       <div className="mt-3 rounded-md bg-slate-50 p-3">
                                         <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Selected needs</p>
                                         <div className="mt-2 flex flex-wrap gap-2">
-                                          {formatSelectedNeeds(request).map((needLabel) => (
+                                          {formatSelectedNeeds(request, 3).map((needLabel) => (
                                             <Badge key={needLabel} variant="secondary" className="rounded-full bg-white text-slate-700 border border-slate-200">
                                               {needLabel}
                                             </Badge>
@@ -2477,9 +1038,9 @@ function NGODashboardContent() {
                                   </div>
 
                                   {request.message ? <p className="text-sm text-slate-600 break-words">{request.message}</p> : null}
-                                  {formatSelectedNeeds(request).length > 0 ? (
+                                  {formatSelectedNeeds(request, 3).length > 0 ? (
                                     <p className="text-xs text-slate-500 break-words">
-                                      Needs: {formatSelectedNeeds(request).join(' · ')}
+                                      Needs: {formatSelectedNeeds(request, 3).join(' · ')}
                                     </p>
                                   ) : null}
 
@@ -2544,11 +1105,11 @@ function NGODashboardContent() {
                                         {request.message}
                                       </div>
                                     ) : null}
-                                    {formatSelectedNeeds(request).length > 0 ? (
+                                    {formatSelectedNeeds(request, 3).length > 0 ? (
                                       <div className="mt-3 rounded-md bg-slate-50 p-3">
                                         <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Selected needs</p>
                                         <div className="mt-2 flex flex-wrap gap-2">
-                                          {formatSelectedNeeds(request).map((needLabel) => (
+                                          {formatSelectedNeeds(request, 3).map((needLabel) => (
                                             <Badge key={needLabel} variant="secondary" className="rounded-full bg-white text-slate-700 border border-slate-200">
                                               {needLabel}
                                             </Badge>
@@ -2639,7 +1200,6 @@ function NGODashboardContent() {
                       </TabsContent>
                     </Tabs>
                   </TabsContent>
-                  
 
                   <TabsContent value="csr-projects" className="mt-4 space-y-4">
                     <div className="rounded-md border border-gram-border bg-white p-4 space-y-3">

@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import jwt from 'jsonwebtoken'
 import Razorpay from 'razorpay'
 import { supabase } from '@/lib/db'
-import { JWT_SECRET } from '@/lib/auth'
+import { getTokenClaims } from '@/lib/auth'
 import {
   createEngagementSettlementOrder,
   finalizeEngagementSettlement,
@@ -12,23 +11,15 @@ import {
 } from '@/lib/engagement-settlement'
 import { validateCapturedPaymentAmounts } from '@/lib/razorpay-route'
 
-interface JWTPayload {
-  id: number
-  user_type: string
-}
-
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const decoded = getTokenClaims(request)
+    if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
-
-    const token = authHeader.split(' ')[1]
-    const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload
     const { id } = await params
     const body = await request.json()
     const action = String(body.action || 'start').toLowerCase()

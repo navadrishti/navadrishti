@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { CAConsoleHeader, formatVerifierScopeLabels } from '@/components/ca-console-header';
 import {
-  EvidenceActionRow,
   EvidenceMessageCard,
   EvidenceMetaGrid,
   EvidencePageHeader,
@@ -19,24 +18,84 @@ import {
 } from '@/components/evidence-verification/portal-ui';
 import { formatStatusLabel } from '@/lib/format-date';
 import { openRazorpayCheckout } from '@/lib/razorpay-checkout';
-import { finalizeConsoleLogout } from '@/lib/utils';
-import { getTotalChargeLabel } from '@/components/profile-dashboard-tab';
+import { finalizeConsoleLogout, getErrorMessage } from '@/lib/utils';
+import { getTotalChargeLabel } from '@/components/platform-payment-summary';
+import type { CampaignVolunteerAttendanceSummary } from '@/lib/campaign-volunteer-attendance';
+import type { Tables } from '@/lib/database.types';
+import type { CompanyCAContext, MilestoneEvidence } from './types';
+
+type Milestone = Tables<'csr_project_milestones'>;
+type PaymentConfirmation = Tables<'csr_payment_confirmations'>;
+
+type CsrProjectSummary = Tables<'csr_projects'> & {
+  ngo?: { name?: string };
+  milestones_count: number;
+  completed_milestones_count: number;
+  next_milestone: Milestone | null;
+  deadline_at: string | null;
+  confirmed_funds: number;
+};
+
+type ProjectTimelineEntry = {
+  milestone: Milestone;
+  evidence: MilestoneEvidence[];
+  latest_review: Tables<'csr_milestone_reviews'> | null;
+  reviews: Tables<'csr_milestone_reviews'>[];
+  latest_payment: PaymentConfirmation | null;
+  payments: PaymentConfirmation[];
+};
+
+type ProjectTimeline = {
+  project: Tables<'csr_projects'>;
+  summary: {
+    total_milestones: number;
+    completed_milestones: number;
+    confirmed_funds: number;
+    next_milestone: Milestone | null;
+  };
+  timeline: ProjectTimelineEntry[];
+};
+
+type PendingPaymentItem = Partial<Tables<'service_attendance_entries'> & Tables<'service_request_contributions'>> & {
+  id: string;
+  request_id?: string | number | null;
+  service_request?: string | number | null;
+  title?: string | null;
+  service_request_title?: string | null;
+};
+
+type VolunteerAttendanceData = {
+  campaigns: CampaignVolunteerAttendanceSummary[];
+  totals: {
+    campaigns: number;
+    volunteers: number;
+    checked_in_volunteers: number;
+    never_checked_in: number;
+    person_days_checked_in: number;
+  };
+};
+
+type MilestonePaymentItem = {
+  projectId: string;
+  projectTitle: string;
+  ngoName: string;
+  milestoneId: string;
+  milestoneTitle: string;
+  amount: number;
+};
 
 export default function VerificationPanelClient() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [context, setContext] = useState<any>(null);
-  const [projects, setProjects] = useState<any[]>([]);
-  const [projectTimelineById, setProjectTimelineById] = useState<Record<string, any>>({});
+  const [context, setContext] = useState<CompanyCAContext | null>(null);
+  const [projects, setProjects] = useState<CsrProjectSummary[]>([]);
+  const [projectTimelineById, setProjectTimelineById] = useState<Record<string, ProjectTimeline>>({});
   const [panelMessage, setPanelMessage] = useState<string>('');
   const [actionLoadingKey, setActionLoadingKey] = useState<string | null>(null);
-  const [caPendingPayments, setCaPendingPayments] = useState<any[]>([]);
-  const [volunteerAttendance, setVolunteerAttendance] = useState<{
-    campaigns: any[];
-    totals: any;
-  } | null>(null);
+  const [caPendingPayments, setCaPendingPayments] = useState<PendingPaymentItem[]>([]);
+  const [volunteerAttendance, setVolunteerAttendance] = useState<VolunteerAttendanceData | null>(null);
 
-  const fetchProjectTimeline = async (projectId: string) => {
+  const fetchProjectTimeline = async (projectId: string): Promise<ProjectTimeline | null> => {
     const response = await fetch(`/api/csr-projects/${projectId}/evidence`, {
       credentials: 'include',
     });
@@ -99,9 +158,9 @@ export default function VerificationPanelClient() {
 
       const projectsPayload = await projectsResponse.json();
       if (projectsResponse.ok && projectsPayload?.success) {
-        const loadedProjects = Array.isArray(projectsPayload.data) ? projectsPayload.data : [];
+        const loadedProjects: CsrProjectSummary[] = Array.isArray(projectsPayload.data) ? projectsPayload.data : [];
         setProjects(loadedProjects);
-        await Promise.all(loadedProjects.map((project: any) => fetchProjectTimeline(project.id)));
+        await Promise.all(loadedProjects.map((project) => fetchProjectTimeline(project.id)));
       } else {
         setProjects([]);
       }
@@ -127,13 +186,13 @@ export default function VerificationPanelClient() {
     void loadPanel();
   }, []);
 
-  const pendingEvidenceItems = Object.entries(projectTimelineById).flatMap(([projectId, timelineData]: [string, any]) => {
+  const pendingEvidenceItems = Object.entries(projectTimelineById).flatMap(([projectId, timelineData]) => {
     const project = projects.find((item) => item.id === projectId);
     const timeline = Array.isArray(timelineData?.timeline) ? timelineData.timeline : [];
 
     return timeline
-      .filter((entry: any) => entry?.milestone?.status === 'submitted')
-      .map((entry: any) => ({
+      .filter((entry) => entry?.milestone?.status === 'submitted')
+      .map((entry) => ({
         projectId,
         projectTitle: project?.title || timelineData?.project?.title || 'Project',
         ngoName: project?.ngo?.name || project?.ngo_user_id || 'NGO',
@@ -148,19 +207,19 @@ export default function VerificationPanelClient() {
       }));
   });
 
-  const pendingPaymentItems = Object.entries(projectTimelineById).flatMap(([projectId, timelineData]: [string, any]) => {
+  const pendingPaymentItems = Object.entries(projectTimelineById).flatMap(([projectId, timelineData]) => {
     const project = projects.find((item) => item.id === projectId);
     const timeline = Array.isArray(timelineData?.timeline) ? timelineData.timeline : [];
 
     return timeline
-      .map((entry: any) => {
+      .map((entry): MilestonePaymentItem | null => {
         const milestone = entry?.milestone;
         if (!milestone || String(milestone.status || '').toLowerCase() !== 'approved') {
           return null;
         }
 
         const hasConfirmedPayment = Array.isArray(entry.payments)
-          ? entry.payments.some((payment: any) => payment.payment_status === 'confirmed')
+          ? entry.payments.some((payment) => payment.payment_status === 'confirmed')
           : false;
 
         if (hasConfirmedPayment) {
@@ -170,18 +229,18 @@ export default function VerificationPanelClient() {
         return {
           projectId,
           projectTitle: project?.title || timelineData?.project?.title || 'Project',
-          ngoName: project?.ngo?.name || project?.ngo_user_id || 'Lead NGO',
+          ngoName: String(project?.ngo?.name || project?.ngo_user_id || 'Lead NGO'),
           milestoneId: milestone.id,
           milestoneTitle: milestone.title,
           amount: milestone.amount,
         };
       })
-      .filter(Boolean);
+      .filter((item) => item !== null);
   });
 
-  const groupByRequest = (items: any[]) => {
-    const map: Record<string, any[]> = {};
-    items.forEach((it: any) => {
+  const groupByRequest = (items: PendingPaymentItem[]) => {
+    const map: Record<string, PendingPaymentItem[]> = {};
+    items.forEach((it) => {
       const req = String(it.service_request_id || it.request_id || it.service_request || 'unknown');
       if (!map[req]) map[req] = [];
       map[req].push(it);
@@ -189,13 +248,13 @@ export default function VerificationPanelClient() {
     return map;
   };
 
-  const handlePayGroup = async (items: any[]) => {
+  const handlePayGroup = async (items: PendingPaymentItem[]) => {
     if (!items || items.length === 0) return;
     setActionLoadingKey('ca-pay-group');
     setPanelMessage('');
 
     try {
-      const attendanceEntryIds = items.filter((i: any) => i?.id && i?.attendance_date).map((i: any) => i.id);
+      const attendanceEntryIds = items.filter((i) => i?.id && i?.attendance_date).map((i) => i.id);
 
       const res = await fetch('/api/evidence-verification/payments/create-order', {
         method: 'POST',
@@ -239,14 +298,14 @@ export default function VerificationPanelClient() {
           setPanelMessage(error.description || error.reason || 'Payment failed');
         },
       });
-    } catch (e: any) {
-      setPanelMessage(e?.message || 'Payment failed');
+    } catch (e) {
+      setPanelMessage(getErrorMessage(e) || 'Payment failed');
     } finally {
       setActionLoadingKey(null);
     }
   };
 
-  const handleMilestonePayment = async (item: any) => {
+  const handleMilestonePayment = async (item: MilestonePaymentItem) => {
     setActionLoadingKey(`payment-${item.milestoneId}`);
     setPanelMessage('');
 
@@ -292,14 +351,14 @@ export default function VerificationPanelClient() {
           setPanelMessage(error.description || error.reason || 'Milestone payment failed');
         },
       });
-    } catch (error: any) {
-      setPanelMessage(error?.message || 'Milestone payment failed');
+    } catch (error) {
+      setPanelMessage(getErrorMessage(error) || 'Milestone payment failed');
     } finally {
       setActionLoadingKey(null);
     }
   };
 
-  const scopeLabels = formatVerifierScopeLabels(context);
+  const scopeLabels = formatVerifierScopeLabels(context ?? undefined);
 
   return (
     <EvidencePortalShell>
@@ -370,7 +429,7 @@ export default function VerificationPanelClient() {
             <p className="text-sm text-slate-600">No campaign volunteer attendance yet.</p>
           ) : (
             <div className="space-y-4">
-              {volunteerAttendance.campaigns.map((campaign: any) => (
+              {volunteerAttendance.campaigns.map((campaign) => (
                 <div key={campaign.campaign_id} className="rounded-md border border-slate-200 p-3">
                   <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
                     <div>
@@ -390,7 +449,7 @@ export default function VerificationPanelClient() {
                     <p>Never checked in: {campaign.volunteers_never_checked_in}</p>
                   </EvidenceMetaGrid>
                   <div className="mt-3 space-y-2">
-                    {(campaign.roster || []).map((row: any) => (
+                    {(campaign.roster || []).map((row) => (
                       <div
                         key={`${campaign.campaign_id}-${row.user_id}`}
                         className="grid gap-1 rounded border border-slate-100 bg-slate-50 px-2 py-2 text-xs text-slate-700 sm:grid-cols-4"
@@ -430,7 +489,7 @@ export default function VerificationPanelClient() {
             <p className="text-sm text-slate-600">No approved milestones awaiting payment.</p>
           ) : (
             <div className="space-y-3">
-              {pendingPaymentItems.map((item: any) => (
+              {pendingPaymentItems.map((item) => (
                 <EvidenceQueueItem
                   key={`${item.projectId}-${item.milestoneId}-payment`}
                   title={item.projectTitle}
@@ -473,7 +532,7 @@ export default function VerificationPanelClient() {
                 <div className="space-y-3">
                   {Object.entries(groups).map(([reqId, items]) => {
                     const total = items.reduce(
-                      (sum: number, it: any) => sum + Number(it.amount_due ?? it.amount ?? 0),
+                      (sum, it) => sum + Number(it.amount_due ?? it.amount ?? 0),
                       0
                     );
                     return (
@@ -484,7 +543,7 @@ export default function VerificationPanelClient() {
                         badge={<Badge variant="outline">Rs {total.toFixed(2)}</Badge>}
                         meta={
                           <div className="space-y-2">
-                            {items.map((it: any) => (
+                            {items.map((it) => (
                               <div
                                 key={it.id}
                                 className="flex items-center justify-between gap-3 rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-sm text-slate-600"
@@ -531,7 +590,7 @@ export default function VerificationPanelClient() {
             <p className="text-sm text-slate-600">No projects available for your verification scope.</p>
           ) : (
             <div className="space-y-3">
-              {projects.map((project: any) => (
+              {projects.map((project) => (
                 <EvidenceQueueItem
                   key={project.id}
                   title={project.title}

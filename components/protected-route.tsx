@@ -5,14 +5,12 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { smoothNavigate } from '@/lib/utils';
 import { 
-  getUserPermissions, 
   hasPermission, 
   getPermissionErrorMessage, 
   canAccessRoute, 
   getRedirectPathForUserType,
   type AccessPermissions 
 } from '@/lib/access-control';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Shield, AlertTriangle, ArrowRight } from 'lucide-react';
@@ -22,46 +20,6 @@ import { DashboardPageSkeleton } from '@/components/ui/skeleton';
 
 function PageSkeleton({ userType }: { userType?: string }) {
   return <DashboardPageSkeleton userType={userType} />;
-}
-
-interface PermissionGateProps {
-  children: React.ReactNode;
-  permission: keyof AccessPermissions;
-  fallback?: React.ReactNode;
-  showError?: boolean;
-}
-
-/**
- * Component that conditionally renders content based on user permissions
- */
-export function PermissionGate({ 
-  children, 
-  permission, 
-  fallback = null, 
-  showError = true 
-}: PermissionGateProps) {
-  const { user } = useAuth();
-  
-  if (hasPermission(user, permission)) {
-    return <>{children}</>;
-  }
-  
-  if (fallback) {
-    return <>{fallback}</>;
-  }
-  
-  if (!showError) {
-    return null;
-  }
-  
-  const errorMessage = getPermissionErrorMessage(permission, user);
-  
-  return (
-    <Alert variant="destructive" className="my-4">
-      <AlertTriangle className="h-4 w-4" />
-      <AlertDescription>{errorMessage}</AlertDescription>
-    </Alert>
-  );
 }
 
 interface ProtectedRouteProps {
@@ -93,7 +51,6 @@ export default function ProtectedRoute({
       return;
     }
 
-    // Check user type restrictions
     if (userTypes && userTypes.length > 0) {
       if (!userTypes.includes(user.user_type)) {
         // Redirect to appropriate dashboard for user type
@@ -103,19 +60,16 @@ export default function ProtectedRoute({
       }
     }
 
-    // Check verification requirements
     if (requireVerification && user.verification_status !== 'verified') {
       smoothNavigate(router, '/verification', { delay: 150 });
       return;
     }
 
-    // Check specific permission if provided
     if (permission && !hasPermission(user, permission)) {
       // Stay on page but show error - handled by render logic below
       return;
     }
 
-    // Check route-specific access
     const currentPath = window.location.pathname;
     if (!canAccessRoute(user.user_type, currentPath)) {
       const redirectPath = getRedirectPathForUserType(user.user_type);
@@ -124,7 +78,6 @@ export default function ProtectedRoute({
     }
   }, [user, loading, router, userTypes, requireVerification, permission, mounted]);
 
-  // Show loading state with skeleton
   if (!mounted || loading) {
     return <PageSkeleton userType={user?.user_type || userTypes?.[0]} />;
   }
@@ -134,7 +87,6 @@ export default function ProtectedRoute({
     return <PageSkeleton userType={userTypes?.[0]} />;
   }
 
-  // Check user type restrictions
   if (userTypes && userTypes.length > 0 && !userTypes.includes(user.user_type)) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -159,7 +111,6 @@ export default function ProtectedRoute({
     );
   }
 
-  // Check verification requirements
   if (requireVerification && user.verification_status !== 'verified') {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -184,7 +135,6 @@ export default function ProtectedRoute({
     );
   }
 
-  // Check specific permission
   if (permission && !hasPermission(user, permission)) {
     const errorMessage = getPermissionErrorMessage(permission, user);
     

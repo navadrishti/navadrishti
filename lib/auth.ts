@@ -1,6 +1,7 @@
 import jwt, { JsonWebTokenError, TokenExpiredError, type SignOptions } from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { NextRequest, NextResponse } from 'next/server';
+import { parseJsonObject } from '@/lib/utils';
 
 export const JWT_SECRET = String(process.env.JWT_SECRET || '').trim();
 
@@ -60,9 +61,9 @@ export function verifyToken(token: string): UserData | null {
       return null;
     }
 
-    const decoded = jwt.verify(cleanToken, JWT_SECRET) as any;
+    const decoded = jwt.verify(cleanToken, JWT_SECRET);
 
-    if (!decoded || !decoded.id || !decoded.email) {
+    if (typeof decoded === 'string' || !decoded.id || !decoded.email) {
       return null;
     }
 
@@ -86,6 +87,25 @@ export function verifyToken(token: string): UserData | null {
   }
 }
 
+export type TokenClaims = {
+  id: number;
+  user_type: string;
+  email?: string;
+  name?: string;
+  verification_status?: string;
+};
+
+/** Claims from the request's Bearer token, or null when it is missing, malformed or expired. */
+export function getTokenClaims(request: NextRequest): TokenClaims | null {
+  const header = request.headers.get('authorization');
+  if (!header?.startsWith('Bearer ') || !JWT_SECRET) return null;
+  try {
+    return jwt.verify(header.slice(7).trim(), JWT_SECRET) as TokenClaims;
+  } catch {
+    return null;
+  }
+}
+
 /** Platform end-user sessions only — never treat console admin JWTs as users. */
 export function isPlatformUserSession(user: UserData | null | undefined): user is UserData {
   if (!user) return false;
@@ -104,18 +124,19 @@ export async function comparePassword(password: string, hash: string): Promise<b
   return bcrypt.compare(password, hash);
 }
 
-export function withAuth(handler: Function) {
-  return async (req: NextRequest, ...args: any[]) => {
+export type AuthenticatedRequest = NextRequest & { user: UserData };
+
+export function withAuth<Args extends unknown[]>(
+  handler: (req: AuthenticatedRequest, ...args: Args) => Promise<Response> | Response
+) {
+  return async (req: NextRequest, ...args: Args) => {
     try {
-      // Extract token from Authorization header or cookies
       const authHeader = req.headers.get('authorization');
       let token;
       
       if (authHeader && authHeader.startsWith('Bearer ')) {
-        // Extract token from Authorization header
         token = authHeader.substring(7);
       } else {
-        // Try to get from cookies
         const cookieToken = req.cookies.get('token')?.value;
         if (!cookieToken) {
           return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
@@ -123,26 +144,20 @@ export function withAuth(handler: Function) {
         token = cookieToken;
       }
 
-      // Verify token
       const user = verifyToken(token);
       if (!isPlatformUserSession(user)) {
         return NextResponse.json({ error: 'Invalid or expired token' }, { status: 401 });
       }
 
-      // Attach user to request
-      (req as any).user = user;
-
-      // Call the original handler
-      return handler(req, ...args);
+      const authedRequest = req as AuthenticatedRequest;
+      authedRequest.user = user;
+      return handler(authedRequest, ...args);
     } catch (error) {
       console.error('Authentication error:', error);
       return NextResponse.json({ error: 'Authentication failed' }, { status: 401 });
     }
   };
 }
-
-export const COMPLIANCE_FILE_ACCEPT = '.pdf,.jpg,.jpeg,.png,.webp,.doc,.docx';
-export const MAX_COMPLIANCE_FILE_SIZE = 10 * 1024 * 1024;
 
 export type ComplianceDocumentKey = 'twelve_a' | 'eighty_g' | 'csr1';
 
@@ -181,12 +196,12 @@ export function getComplianceDocumentUrl(value: unknown): string {
 }
 
 export function getNgoFcraDocumentUrl(profileData: unknown): string {
-  const data = asNgoRecord(profileData);
-  const complianceDocs = asNgoRecord(data.compliance_documents);
-  const pendingCompliance = asNgoRecord(complianceDocs.pending_reverification);
-  const ngoBlock = asNgoRecord(asNgoRecord(data.verification_documents).ngo);
-  const verificationDocs = asNgoRecord(ngoBlock.documents);
-  const pendingVerification = asNgoRecord(ngoBlock.reverification_documents);
+  const data = parseJsonObject(profileData);
+  const complianceDocs = parseJsonObject(data.compliance_documents);
+  const pendingCompliance = parseJsonObject(complianceDocs.pending_reverification);
+  const ngoBlock = parseJsonObject(parseJsonObject(data.verification_documents).ngo);
+  const verificationDocs = parseJsonObject(ngoBlock.documents);
+  const pendingVerification = parseJsonObject(ngoBlock.reverification_documents);
 
   return (
     getComplianceDocumentUrl(complianceDocs.fcra) ||
@@ -194,13 +209,6 @@ export function getNgoFcraDocumentUrl(profileData: unknown): string {
     getComplianceDocumentUrl(pendingVerification.ngoFcraPhoto) ||
     getComplianceDocumentUrl(pendingCompliance.fcra)
   );
-}
-
-export function hasComplianceDocument(
-  documents: Record<string, unknown> | null | undefined,
-  key: ComplianceDocumentKey
-): boolean {
-  return Boolean(getComplianceDocumentUrl(documents?.[key]));
 }
 
 export function requireBankStatementDocument(documents: unknown): NextResponse | null {
@@ -218,55 +226,10 @@ export function requireBankStatementDocument(documents: unknown): NextResponse |
   );
 }
 
-export async function uploadNgoComplianceDocument(
-  file: File,
-  documentKey: ComplianceDocumentKey,
-  options?: {
-    folder?: string;
-    authToken?: string | null;
-  }
-): Promise<{ url: string; publicId: string }> {
-  if (file.size > MAX_COMPLIANCE_FILE_SIZE) {
-    throw new Error(`${COMPLIANCE_DOCUMENT_LABELS[documentKey]} must be 10MB or smaller`);
-  }
-
-  const body = new FormData();
-  body.append('file', file);
-  body.append('folder', options?.folder || 'ngos/compliance');
-  body.append('documentKey', documentKey);
-
-  const headers: HeadersInit = {};
-  if (options?.authToken) {
-    headers.Authorization = `Bearer ${options.authToken}`;
-  }
-
-  const response = await fetch('/api/upload', {
-    method: 'POST',
-    headers,
-    body,
-  });
-
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok || !result?.data?.url) {
-    throw new Error(result.error || `Failed to upload ${COMPLIANCE_DOCUMENT_LABELS[documentKey]}`);
-  }
-
-  return {
-    url: result.data.url as string,
-    publicId: String(result.data.public_id || ''),
-  };
-}
-
 // --- NGO profile helpers (registration, network, verification) ---
 
-function asNgoRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
-
 export function getCaBadgeNumber(profileData: unknown): string | null {
-  const value = String(asNgoRecord(profileData).ca_badge_number || '').trim().toUpperCase();
+  const value = String(parseJsonObject(profileData).ca_badge_number || '').trim().toUpperCase();
   return /^ND-CA-[A-Z0-9]{6,12}$/.test(value) ? value : null;
 }
 
@@ -461,12 +424,12 @@ export function listCaComplianceTagOptions(args: {
 }
 
 export function listCaComplianceTagOptionsFromProfile(profileData: unknown): CaComplianceTagOption[] {
-  const data = asNgoRecord(profileData);
+  const data = parseJsonObject(profileData);
   const expiries = getDocumentExpiries(profileData);
-  const ngoBlock = asNgoRecord(asNgoRecord(data.verification_documents).ngo);
-  const entered = asNgoRecord(ngoBlock.entered_fields);
-  const verificationDocs = asNgoRecord(ngoBlock.documents);
-  const complianceDocs = asNgoRecord(data.compliance_documents);
+  const ngoBlock = parseJsonObject(parseJsonObject(data.verification_documents).ngo);
+  const entered = parseJsonObject(ngoBlock.entered_fields);
+  const verificationDocs = parseJsonObject(ngoBlock.documents);
+  const complianceDocs = parseJsonObject(data.compliance_documents);
 
   return listCaComplianceTagOptions({
     numbers: {
@@ -539,7 +502,7 @@ function complianceTagExpiryValue(
   profileData: unknown,
   tag: CaComplianceTagKey
 ): unknown {
-  const data = asNgoRecord(profileData);
+  const data = parseJsonObject(profileData);
   const expiries = getDocumentExpiries(profileData);
   if (tag === 'fcra') {
     return expiries.fcra?.valid_until || data.fcra_expiry_date;
@@ -567,7 +530,7 @@ export function getStoredCaComplianceTags(
     return [];
   }
 
-  const data = asNgoRecord(profileData);
+  const data = parseJsonObject(profileData);
   if (Object.prototype.hasOwnProperty.call(data, 'ca_compliance_tags')) {
     return sanitizeCaComplianceTags(data.ca_compliance_tags);
   }
@@ -701,20 +664,6 @@ export function resolveProjectCsrCoverageEndDate(input: {
   const candidates = [validUntil, timelineEnd].filter((value): value is string => Boolean(value));
   if (candidates.length === 0) return null;
   return candidates.sort()[candidates.length - 1];
-}
-
-/** Prefer structured end dates (campaign end_date / project coverage end). */
-export function resolveCsrWorkEndDate(input: {
-  end_date?: unknown;
-  valid_until?: unknown;
-  timeline?: unknown;
-  timeline_end?: unknown;
-}): string | null {
-  const projectCoverage = resolveProjectCsrCoverageEndDate({
-    valid_until: input.valid_until,
-    timeline: input.timeline || input.timeline_end,
-  });
-  return normalizeExpiryDate(input.end_date) || projectCoverage || null;
 }
 
 /**
@@ -899,12 +848,12 @@ export function extractNgoComplianceFromVerification(profileData: Record<string,
   numbers: Partial<NgoComplianceNumbers>;
   documents: ComplianceDocuments;
 } {
-  const verificationDocuments = asNgoRecord(profileData.verification_documents);
-  const ngoBlock = asNgoRecord(verificationDocuments.ngo);
-  const storedNumbers = asNgoRecord(ngoBlock.compliance_numbers);
-  const pendingNumbers = asNgoRecord(ngoBlock.reverification_compliance_numbers);
-  const complianceDocumentsRoot = asNgoRecord(profileData.compliance_documents);
-  const pendingComplianceDocuments = asNgoRecord(complianceDocumentsRoot.pending_reverification);
+  const verificationDocuments = parseJsonObject(profileData.verification_documents);
+  const ngoBlock = parseJsonObject(verificationDocuments.ngo);
+  const storedNumbers = parseJsonObject(ngoBlock.compliance_numbers);
+  const pendingNumbers = parseJsonObject(ngoBlock.reverification_compliance_numbers);
+  const complianceDocumentsRoot = parseJsonObject(profileData.compliance_documents);
+  const pendingComplianceDocuments = parseJsonObject(complianceDocumentsRoot.pending_reverification);
 
   const numbers: Partial<NgoComplianceNumbers> = {};
   for (const field of COMPLIANCE_NUMBER_FIELDS) {
@@ -920,8 +869,8 @@ export function extractNgoComplianceFromVerification(profileData: Record<string,
   const documentSources = [
     complianceDocumentsRoot,
     pendingComplianceDocuments,
-    asNgoRecord(ngoBlock.documents),
-    asNgoRecord(ngoBlock.reverification_documents),
+    parseJsonObject(ngoBlock.documents),
+    parseJsonObject(ngoBlock.reverification_documents),
   ];
 
   for (const source of documentSources) {
@@ -958,7 +907,7 @@ export function backfillNgoComplianceProfileData(profileData: Record<string, unk
     }
   }
 
-  const existingComplianceDocuments = asNgoRecord(next.compliance_documents);
+  const existingComplianceDocuments = parseJsonObject(next.compliance_documents);
   const nextComplianceDocuments: Record<string, unknown> = { ...existingComplianceDocuments };
 
   for (const key of Object.keys(VERIFICATION_TO_COMPLIANCE_DOC_MAP) as ComplianceDocumentKey[]) {
@@ -1011,12 +960,6 @@ const DOCUMENT_EXPIRY_LABELS: Record<DocumentExpiryKey, string> = {
 const DOCUMENT_EXPIRY_KEYS: DocumentExpiryKey[] = ['fcra', 'twelve_a', 'eighty_g', 'csr1'];
 
 export const DOCUMENT_EXPIRY_DUE_SOON_DAYS = 90;
-
-function asExpiryRecord(value: unknown): Record<string, any> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, any>)
-    : {};
-}
 
 function toIsoExpiryDate(year: number, month: number, day: number): string | null {
   if (year < 1900 || month < 1 || month > 12 || day < 1 || day > 31) return null;
@@ -1113,7 +1056,7 @@ export function certificateExpiryCopy(validUntil: unknown, now = new Date()): Ce
 }
 
 export function getDocumentExpiries(profileData: unknown): DocumentExpiries {
-  const raw = asExpiryRecord(asExpiryRecord(profileData).document_expiries);
+  const raw = parseJsonObject(parseJsonObject(profileData).document_expiries);
   const next: DocumentExpiries = {};
   for (const key of DOCUMENT_EXPIRY_KEYS) {
     if (raw[key]) next[key] = raw[key] as DocumentExpiryEntry;
@@ -1270,10 +1213,10 @@ export function backfillNgoDocumentExpiries(profileData: Record<string, any>): {
   profileData: Record<string, any>;
   changed: boolean;
 } {
-  const verificationDocuments = asExpiryRecord(profileData.verification_documents);
-  const ngoBlock = asExpiryRecord(verificationDocuments.ngo);
-  const entered = asExpiryRecord(ngoBlock.entered_fields);
-  const documents = asExpiryRecord(ngoBlock.documents);
+  const verificationDocuments = parseJsonObject(profileData.verification_documents);
+  const ngoBlock = parseJsonObject(verificationDocuments.ngo);
+  const entered = parseJsonObject(ngoBlock.entered_fields);
+  const documents = parseJsonObject(ngoBlock.documents);
   const nextExpiries = buildNgoDocumentExpiries({
     profileData,
     enteredFields: {
@@ -1363,32 +1306,10 @@ export function normalizePastProjects(value: unknown): NgoPastProject[] {
   return [];
 }
 
-export function getPastProjectsCount(value: unknown): number {
-  return normalizePastProjects(value).length;
-}
-
 export function formatPastProjectsForSearch(value: unknown): string {
   return normalizePastProjects(value)
     .map((project) => `${project.title} ${project.description}`.trim())
     .join(' ');
-}
-
-export function summarizePastProjects(value: unknown, limit = 2): string | null {
-  const projects = normalizePastProjects(value);
-  if (projects.length === 0) {
-    return null;
-  }
-
-  const preview = projects
-    .slice(0, limit)
-    .map((project) => project.title)
-    .join(', ');
-
-  if (projects.length > limit) {
-    return `${preview}, +${projects.length - limit} more`;
-  }
-
-  return preview;
 }
 
 export function normalizePlatformProjects(

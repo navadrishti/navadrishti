@@ -1,25 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, supabase } from '@/lib/db';
 import { sendEmail } from '@/lib/email';
-import { verifyToken } from '@/lib/auth';
-import { parseAmountToInr, processAdminRefund } from '@/lib/admin-refund';
-
-const isAdminRequest = (request: NextRequest) => {
-  const adminToken = request.cookies.get('admin-token')?.value;
-  if (!adminToken) return null;
-
-  try {
-    const decoded = verifyToken(adminToken);
-    if (!decoded || decoded.id !== -1) return null;
-    return decoded;
-  } catch {
-    return null;
-  }
-};
+import { getAdminUser } from '@/lib/server-auth';
+import { processAdminRefund } from '@/lib/admin-refund';
+import { parseAmountToInr, getErrorMessage } from '@/lib/utils';
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ ticketId: string }> }) {
   try {
-    const admin = isAdminRequest(request);
+    const admin = getAdminUser(request);
     if (!admin) {
       return NextResponse.json({ error: 'Admin authentication required' }, { status: 401 });
     }
@@ -111,15 +99,15 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
 
     return NextResponse.json({ success: true, ticket: data });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Admin support ticket update error:', error);
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) || 'Internal server error' }, { status: 500 });
   }
 }
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ ticketId: string }> }) {
   try {
-    const admin = isAdminRequest(request);
+    const admin = getAdminUser(request);
     if (!admin) {
       return NextResponse.json({ error: 'Admin authentication required' }, { status: 401 });
     }
@@ -145,15 +133,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     });
 
     return NextResponse.json({ success: true, data: result });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Admin support ticket refund error:', error);
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) || 'Internal server error' }, { status: 500 });
   }
 }
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ ticketId: string }> }) {
   try {
-    const admin = isAdminRequest(request);
+    const admin = getAdminUser(request);
     if (!admin) {
       return NextResponse.json({ error: 'Admin authentication required' }, { status: 401 });
     }
@@ -171,8 +159,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const messages = await db.supportTicketMessages.getByTicketId(ticketId);
 
     return NextResponse.json({ success: true, ticket, messages });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Admin support ticket fetch error:', error);
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) || 'Internal server error' }, { status: 500 });
   }
 }

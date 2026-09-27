@@ -1,23 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { verifyToken } from '@/lib/auth';
+import { findAuthUser } from '@/lib/server-auth';
 
-// Auto-update service request statuses (server-side API)
 export async function POST(request: NextRequest) {
   try {
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const user = findAuthUser(request);
+    if (!user?.id) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
+    const userId = user.id;
 
-    const token = authHeader.split(' ')[1];
-    const decoded = verifyToken(token);
-    if (!decoded?.id) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-    }
-    const userId = decoded.id;
-
-    // Get all active/open service requests for this NGO
     const { data: requests } = await supabase
       .from('service_requests')
       .select('id, title, status')
@@ -36,7 +28,6 @@ export async function POST(request: NextRequest) {
     let updatedCount = 0;
 
     for (const request of requests) {
-      // Get all volunteers for this request
       const { data: volunteers } = await supabase
         .from('service_request_applications')
         .select('status')
@@ -49,7 +40,6 @@ export async function POST(request: NextRequest) {
         const completedCount = volunteers.filter(v => v.status === 'completed').length;
         const workingVolunteers = acceptedCount + activeCount;
 
-        // Check if request should be marked as completed
         if (workingVolunteers === 0 && completedCount > 0) {
           await supabase
             .from('service_requests')

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db, supabase } from '@/lib/db';
-import { comparePassword, generateToken } from '@/lib/auth';
+import { comparePassword, generateToken, type UserData } from '@/lib/auth';
 import { ensureCompanyCaIdAssigned } from '@/lib/company-ca';
 import { setEvidenceVerificationTokenCookie } from '@/lib/server-auth';
 
@@ -51,8 +51,8 @@ export async function POST(request: NextRequest) {
       id: user.id,
       email: user.email,
       name: user.name,
-      user_type: user.user_type,
-      verification_status: user.verification_status || 'verified',
+      user_type: user.user_type as UserData['user_type'],
+      verification_status: (user.verification_status || 'verified') as UserData['verification_status'],
       email_verified: user.email_verified || false,
       phone_verified: user.phone_verified || false
     });

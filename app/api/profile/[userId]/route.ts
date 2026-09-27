@@ -20,12 +20,13 @@ import {
 import { applyCaBadgeToProfile } from '@/lib/platform-ca-auth';
 import { isCompanyCAUser } from '@/lib/company-ca';
 import { isNgoRazorpayPayoutActive } from '@/lib/razorpay-route';
+import { getErrorMessage } from '@/lib/utils';
 
 interface RouteParams {
   params: Promise<{ userId: string }>
 }
 
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export async function GET(_request: NextRequest, { params }: RouteParams) {
   try {
     const { userId } = await params;
     const parsedUserId = Number.parseInt(userId, 10);
@@ -44,7 +45,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       }, { status: 404 });
     }
 
-    // Get user profile data with location and profile image
     const { data: userResult, error: userError } = await supabase
       .from('users')
       .select(`
@@ -75,7 +75,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       }, { status: 404 });
     }
 
-    // Get verification status based on user type - check database only
     let verificationStatus = 'unverified';
     let verificationDetails = null;
 
@@ -87,7 +86,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         .single();
       
       if (verification) {
-        verificationStatus = verification.verification_status;
+        verificationStatus = verification.verification_status ?? 'unverified';
         verificationDetails = {
           ...verification,
           aadhaar_verification_date: verification.aadhaar_verified_at,
@@ -102,7 +101,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         .single();
       
       if (verification) {
-        verificationStatus = verification.verification_status;
+        verificationStatus = verification.verification_status ?? 'unverified';
         verificationDetails = verification;
       }
     } else if (userResult.user_type === 'ngo') {
@@ -113,12 +112,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         .single();
       
       if (verification) {
-        verificationStatus = verification.verification_status;
+        verificationStatus = verification.verification_status ?? 'unverified';
         verificationDetails = verification;
       }
     }
 
-    // Helper function to detect fake/mock location data
     const isFakeLocation = (location: string): boolean => {
       if (!location) return false;
       
@@ -321,13 +319,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       profile: formattedProfile
     });
 
-  } catch (error: any) {
+  } catch (error) {
     console.error('Profile fetch error:', error);
-    console.error('Error stack:', error.stack);
     return Response.json({ 
       success: false,
       error: 'Failed to fetch profile',
-      details: error.message 
+      details: getErrorMessage(error) 
     }, { status: 500 });
   }
 }

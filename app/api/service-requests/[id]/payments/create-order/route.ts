@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import jwt from 'jsonwebtoken';
 import Razorpay from 'razorpay';
 import { db, supabase } from '@/lib/db';
-import { JWT_SECRET } from '@/lib/auth';
+import { getTokenClaims } from '@/lib/auth';
+import { isFinancialRequest } from '@/lib/admin-refund';
+import { parseAmountToInr, parseJsonObject } from '@/lib/utils';
 import {
   assertNgoLiveCsr1,
   CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE,
 } from '@/lib/server-auth';
-import { resolveFundingTargetInr, resolveFundsRaisedInr } from '@/lib/service-request-allocation';
+import { resolveFundingTargetInr } from '@/lib/service-request-allocation';
 import {
   assertBeneficiaryRouteReady,
   buildPricingOrderNotes,
@@ -20,42 +21,18 @@ import {
   isRazorpayRouteEnabled,
   NGO_NETWORK_GENERAL_SOURCE,
   NGO_NETWORK_MAX_CONTRIBUTION_INR,
-  parseServiceRequestRequirements,
   type RoutePaymentKind,
 } from '@/lib/razorpay-route';
-
-interface JWTPayload {
-  id: number;
-  user_type: string;
-}
-
-function parseAmountToInr(value: unknown): number {
-  if (value === null || value === undefined) return 0;
-  const text = String(value).trim();
-  if (!text) return 0;
-
-  const numericText = text.replace(/[^\d.-]/g, '');
-  const parsed = Number(numericText);
-  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
-}
-
-function isFinancialRequest(request: any, requirements: Record<string, any>): boolean {
-  const requestType = String(requirements?.request_type || request?.request_type || request?.category || '').toLowerCase();
-  return requestType.includes('financial');
-}
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const decoded = getTokenClaims(request);
+    if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
-
-    const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
 
     if (!canContributeViaPlatform(decoded.user_type)) {
       return NextResponse.json({ error: 'Only companies and individuals can contribute directly' }, { status: 403 });
@@ -73,7 +50,7 @@ export async function POST(
       return NextResponse.json({ error: 'Service request not found' }, { status: 404 });
     }
 
-    const requirements = parseServiceRequestRequirements(serviceRequest.requirements) as Record<string, any>;
+    const requirements = parseJsonObject(serviceRequest.requirements);
     const isGeneralNeed = isGeneralNgoNetworkNeed(requirements);
 
     if (!isFinancialRequest(serviceRequest, requirements)) {
@@ -94,6 +71,11 @@ export async function POST(
       budget: requirements?.budget,
     });
 
+    const raisedInr = parseAmountToInr(serviceRequest.current_amount);
+    const remainingInr = isGeneralNeed
+      ? NGO_NETWORK_MAX_CONTRIBUTION_INR
+      : Math.max(0, targetInr - raisedInr);
+
     let contributionInr = 0;
 
     if (isGeneralNeed) {
@@ -106,28 +88,12 @@ export async function POST(
         return NextResponse.json({ error: 'This request has no valid financial target configured' }, { status: 400 });
       }
 
-      const raisedInr = resolveFundsRaisedInr({
-        funds_raised_inr: requirements?.funds_raised_inr,
-        current_amount: serviceRequest.current_amount,
-        financial_transactions: requirements?.financial_transactions,
-      });
-      const remainingInr = Math.max(0, targetInr - raisedInr);
-
       if (remainingInr <= 0) {
         return NextResponse.json({ error: 'Funding target already reached' }, { status: 400 });
       }
 
       contributionInr = Math.min(Math.max(desiredAmountInr, 1), remainingInr);
     }
-
-    const raisedInr = resolveFundsRaisedInr({
-      funds_raised_inr: requirements?.funds_raised_inr,
-      current_amount: serviceRequest.current_amount,
-      financial_transactions: requirements?.financial_transactions,
-    });
-    const remainingInr = isGeneralNeed
-      ? NGO_NETWORK_MAX_CONTRIBUTION_INR
-      : Math.max(0, targetInr - raisedInr);
 
     const keyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
     const keySecret = process.env.RAZORPAY_KEY_SECRET;
@@ -137,7 +103,7 @@ export async function POST(
     }
 
     const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret });
-    const ngoUserId = Number(serviceRequest.ngo_id || serviceRequest.requester_id || serviceRequest.requester?.id || 0);
+    const ngoUserId = Number(serviceRequest.ngo_id || 0);
 
     if (decoded.user_type === 'company') {
       const csrGate = await assertNgoLiveCsr1(ngoUserId, CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE);
@@ -153,7 +119,7 @@ export async function POST(
     if (isRazorpayRouteEnabled()) {
       const routeReady = await assertBeneficiaryRouteReady(
         ngoUserId,
-        serviceRequest.ngo_name || serviceRequest.requester?.name || 'NGO'
+        serviceRequest.requester?.name || 'NGO'
       );
       beneficiaryLinkedAccountId = routeReady.linkedAccountId;
     }
@@ -184,9 +150,8 @@ export async function POST(
           notes: orderNotes,
         });
 
-    // Dual-write: persist normalized order record while keeping existing flow unchanged.
     try {
-      const ngoUserIdForOrder = Number(serviceRequest.ngo_id || serviceRequest.requester_id || serviceRequest.requester?.id || 0);
+      const ngoUserIdForOrder = Number(serviceRequest.ngo_id || 0);
 
       const { data: assignment } = await supabase
         .from('service_request_applications')
@@ -199,7 +164,7 @@ export async function POST(
         .maybeSingle();
 
       const nowIso = new Date().toISOString();
-      const orderPayload: Record<string, any> = {
+      const orderPayload = {
         service_request_id: requestId,
         application_id: assignment?.id || null,
         contribution_id: null,
@@ -218,8 +183,8 @@ export async function POST(
       await supabase
         .from('razorpay_payment_orders')
         .upsert(orderPayload, { onConflict: 'razorpay_order_id' });
-    } catch (dualWriteError) {
-      console.error('Razorpay order dual-write skipped:', dualWriteError);
+    } catch (orderRecordError) {
+      console.error('Failed to record Razorpay order:', orderRecordError);
     }
 
     return NextResponse.json({
@@ -231,7 +196,7 @@ export async function POST(
         keyId,
         requestId,
         requestTitle: serviceRequest.title,
-        ngoName: serviceRequest.ngo_name || serviceRequest.requester?.name || 'NGO Request',
+        ngoName: serviceRequest.requester?.name || 'NGO Request',
         targetInr,
         raisedInr,
         remainingInr,
@@ -239,7 +204,7 @@ export async function POST(
         paymentKind,
       }
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error creating Razorpay order for service request:', error);
     return NextResponse.json({ error: 'Failed to create payment order' }, { status: 500 });
   }

@@ -2,18 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { assertAdminUser } from '@/lib/server-auth';
 import { deleteCampaignWithDependencies, formatCampaignDeleteError } from '@/lib/campaign-delete';
-
-function safeJson(value: unknown): Record<string, any> {
-  if (!value) return {};
-  if (typeof value === 'object' && !Array.isArray(value)) return value as Record<string, any>;
-  if (typeof value !== 'string') return {};
-  try {
-    const parsed = JSON.parse(value);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
-}
+import { parseJsonObject, getErrorMessage } from '@/lib/utils';
 
 function parseJsonField(value: unknown, fallback: unknown) {
   if (value === undefined) return undefined;
@@ -68,9 +57,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     return NextResponse.json({ success: true, data: campaign });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Admin campaign fetch error:', error);
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) || 'Internal server error' }, { status: 500 });
   }
 }
 
@@ -103,7 +92,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       updatePayload.impact_metrics = parseJsonField(body.impact_metrics, {});
     } else if (body.volunteer_requirement !== undefined) {
       updatePayload.impact_metrics = {
-        ...safeJson(existing.impact_metrics),
+        ...parseJsonObject(existing.impact_metrics),
         volunteer_requirement: String(body.volunteer_requirement || '').trim(),
       };
     }
@@ -134,12 +123,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
 
     return NextResponse.json({ success: true, data: { ...data, company } });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Admin campaign update error:', error);
     if (error instanceof SyntaxError) {
       return NextResponse.json({ error: 'Invalid JSON in impact metrics or milestones' }, { status: 400 });
     }
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) || 'Internal server error' }, { status: 500 });
   }
 }
 
@@ -156,10 +145,10 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     await deleteCampaignWithDependencies(id);
 
     return NextResponse.json({ success: true, message: 'Campaign deleted successfully' });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Admin campaign delete error:', error);
     const message = formatCampaignDeleteError(error);
-    const status = error?.code === '23503' ? 409 : 500;
+    const status = (error as { code?: string } | null)?.code === '23503' ? 409 : 500;
     return NextResponse.json({ error: message }, { status });
   }
 }

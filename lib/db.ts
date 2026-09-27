@@ -12,15 +12,16 @@ import {
   getElapsedCampaignDays,
   getInclusiveDayCount,
   isCampaignVolunteerAssignment,
-  safeJson,
   type CampaignVolunteerAttendanceSummary,
   type VolunteerAttendanceRosterRow,
 } from '@/lib/campaign-volunteer-attendance'
+import { parseJsonObject, getErrorMessage } from '@/lib/utils'
+import type { Database, Json, Tables, TablesInsert, TablesUpdate } from '@/lib/database.types'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseSecretKey = process.env.SUPABASE_SECRET_KEY!;
 
-export const supabase = createClient(supabaseUrl, supabaseSecretKey, {
+export const supabase = createClient<Database>(supabaseUrl, supabaseSecretKey, {
   auth: {
     autoRefreshToken: false,
     persistSession: false
@@ -46,23 +47,7 @@ export type VerificationDocumentRow = {
   uploaded_at?: string | null
   reviewed_at?: string | null
   reviewed_by_platform_ca_id?: number | null
-  metadata?: Record<string, unknown> | null
-}
-
-/** Map verification_documents rows into legacy profile_data.document_expiries shape. */
-export function documentExpiriesFromRows(
-  rows: VerificationDocumentRow[]
-): Record<string, { number?: string | null; valid_until?: string | null; label?: string }> {
-  const out: Record<string, { number?: string | null; valid_until?: string | null; label?: string }> = {}
-  for (const row of rows) {
-    if (!row.doc_key) continue
-    out[row.doc_key] = {
-      number: row.doc_number || null,
-      valid_until: row.valid_until || null,
-      label: row.doc_key,
-    }
-  }
-  return out
+  metadata?: Record<string, any> | null
 }
 
 /** Applicant on service_request_applications. */
@@ -127,8 +112,29 @@ export function splitApplicationUpdatePayload(payload: Record<string, unknown>):
   return { application, fulfillment }
 }
 
-/** Flatten fulfillment + alias volunteer_id for API/UI compatibility. */
-export function shapeApplicationForApi(row: Record<string, unknown> | null | undefined): any {
+// The generated Insert type requires ngo_volunteer_capacity, but non-NGO signups never send it.
+type NewUser = Omit<TablesInsert<'users'>, 'ngo_volunteer_capacity'> &
+  Partial<Pick<TablesInsert<'users'>, 'ngo_volunteer_capacity'>>
+
+type ApplicationFulfillmentFields = Omit<
+  Tables<'service_request_fulfillments'>,
+  'id' | 'application_id' | 'service_request_id' | 'created_at' | 'updated_at'
+>
+
+export type ApiApplication = Tables<'service_request_applications'> &
+  Partial<ApplicationFulfillmentFields> & {
+    message: string
+    [key: string]: unknown
+  }
+
+/** Flatten the joined fulfillment row onto the application for API responses. */
+export function shapeApplicationForApi(row: Record<string, unknown>): ApiApplication
+export function shapeApplicationForApi(
+  row: Record<string, unknown> | null | undefined
+): ApiApplication | null | undefined
+export function shapeApplicationForApi(
+  row: Record<string, unknown> | null | undefined
+): ApiApplication | null | undefined {
   if (!row) return row
   const nested = row.fulfillment ?? row.service_request_fulfillments
   const fulfillment = Array.isArray(nested) ? nested[0] : nested
@@ -144,11 +150,10 @@ export function shapeApplicationForApi(row: Record<string, unknown> | null | und
     ...rest,
     ...flatFulfillment,
     applicant_user_id: applicantId || rest.applicant_user_id,
-    volunteer_id: applicantId || Number(rest.volunteer_id || 0) || null,
     // UI alias — DB column is application_message
     message: rest.application_message ?? rest.message ?? '',
     application_message: rest.application_message ?? rest.message ?? '',
-  }
+  } as ApiApplication
 }
 
 export const db = {
@@ -165,10 +170,10 @@ export const db = {
       return data;
     },
 
-    async create(userData: any) {
+    async create(userData: NewUser) {
       const { data, error } = await supabase
         .from('users')
-        .insert(userData)
+        .insert(userData as TablesInsert<'users'>)
         .select()
         .single();
       
@@ -176,7 +181,7 @@ export const db = {
       return data;
     },
 
-    async update(id: number, userData: any) {
+    async update(id: number, userData: TablesUpdate<'users'>) {
       const { data, error } = await supabase
         .from('users')
         .update(userData)
@@ -202,7 +207,7 @@ export const db = {
 
   // Service Requests
   requestProjects: {
-    async getAll(filters: any = {}) {
+    async getAll(filters: { ngo_id?: number; status?: string; q?: string; limit?: number } = {}) {
       let query = supabase.from('service_request_projects').select('*');
 
       if (filters.ngo_id) {
@@ -238,7 +243,7 @@ export const db = {
       return data;
     },
 
-    async create(projectData: any) {
+    async create(projectData: TablesInsert<'service_request_projects'>) {
       const { data, error } = await supabase
         .from('service_request_projects')
         .insert(projectData)
@@ -249,7 +254,7 @@ export const db = {
       return data;
     },
 
-    async update(id: string, projectData: any) {
+    async update(id: string, projectData: TablesUpdate<'service_request_projects'>) {
       const { data, error } = await supabase
         .from('service_request_projects')
         .update(projectData)
@@ -284,28 +289,27 @@ export const db = {
                 ? need.project_context
                 : (typeof need.project_context === 'string' ? JSON.parse(need.project_context || '{}') : {});
 
-              const nextCtx: Record<string, any> = {
+              const nextProject = { ...parseJsonObject(existingCtx.project) };
+              const nextCtx: { [key: string]: Json | undefined } = {
                 ...existingCtx,
-                project: {
-                  ...(existingCtx.project && typeof existingCtx.project === 'object' ? existingCtx.project : {}),
-                },
+                project: nextProject,
               };
 
               if (projectData.valid_until !== undefined) {
                 nextCtx.project_valid_until = projectData.valid_until;
-                nextCtx.project.valid_until = projectData.valid_until;
+                nextProject.valid_until = projectData.valid_until;
               }
               if (projectData.csr_project_available_for_csr !== undefined) {
                 nextCtx.csr_project_available_for_csr = projectData.csr_project_available_for_csr;
-                nextCtx.project.csr_project_available_for_csr = projectData.csr_project_available_for_csr;
+                nextProject.csr_project_available_for_csr = projectData.csr_project_available_for_csr;
               }
               if (projectData.exact_address !== undefined) {
                 nextCtx.project_location = projectData.exact_address;
-                nextCtx.project.exact_address = projectData.exact_address;
+                nextProject.exact_address = projectData.exact_address;
               }
               if (projectData.expected_beneficiaries !== undefined) {
                 nextCtx.project_expected_beneficiaries = projectData.expected_beneficiaries;
-                nextCtx.project.expected_beneficiaries = projectData.expected_beneficiaries;
+                nextProject.expected_beneficiaries = projectData.expected_beneficiaries;
               }
 
               await supabase
@@ -326,7 +330,7 @@ export const db = {
       const { data: linkedRequests, error: linkedRequestsError } = await supabase
         .from('service_requests')
         .select('id')
-        .eq('project_id', id);
+        .eq('project_id', String(id));
 
       if (linkedRequestsError) throw linkedRequestsError;
 
@@ -337,7 +341,7 @@ export const db = {
       const { error } = await supabase
         .from('service_request_projects')
         .delete()
-        .eq('id', id);
+        .eq('id', String(id));
 
       if (error) throw error;
       return true;
@@ -345,7 +349,7 @@ export const db = {
   },
 
   serviceRequests: {
-    async getAll(filters: any = {}) {
+    async getAll(filters: { category?: string; status?: string; ngo_id?: number; project_id?: string } = {}) {
       let query = supabase.from('service_requests').select('*');
       
       if (filters.category) {
@@ -354,8 +358,8 @@ export const db = {
       if (filters.status) {
         query = query.eq('status', filters.status);
       }
-      if (filters.ngo_id || filters.requester_id) {
-        query = query.eq('ngo_id', filters.ngo_id || filters.requester_id);
+      if (filters.ngo_id) {
+        query = query.eq('ngo_id', filters.ngo_id);
       }
       if (filters.project_id) {
         query = query.eq('project_id', filters.project_id);
@@ -365,11 +369,10 @@ export const db = {
       
       if (error) throw error;
       
-      // Fetch requester data and volunteer counts separately
       if (data && data.length > 0) {
-        const requesterIds = [...new Set(data.map((item: any) => item.ngo_id))];
-        const projectIds = [...new Set(data.map((item: any) => item.project_id).filter(Boolean))];
-        const requestIds = data.map((item: any) => item.id);
+        const requesterIds = [...new Set(data.map((item) => item.ngo_id))];
+        const projectIds = [...new Set(data.map((item) => item.project_id).filter((id): id is string => Boolean(id)))];
+        const requestIds = data.map((item) => item.id);
         
         const [usersResult, projectsResult, volunteersResult] = await Promise.all([
           supabase
@@ -394,20 +397,16 @@ export const db = {
         const volunteers = volunteersResult.data || [];
         
         // Count volunteers per request
-        const volunteerCounts = volunteers.reduce((acc: any, vol: any) => {
+        const volunteerCounts = volunteers.reduce<Record<string, number>>((acc, vol) => {
           acc[vol.service_request_id] = (acc[vol.service_request_id] || 0) + 1;
           return acc;
         }, {});
         
-        // Merge requester data and volunteer counts
-        return data.map((request: any) => ({
+        return data.map((request) => ({
           ...request,
-          requester: users?.find((user: any) => user.id === request.ngo_id),
-          project: projects?.find((project: any) => project.id === request.project_id) || null,
+          requester: users?.find((user) => user.id === request.ngo_id),
+          project: projects?.find((project) => project.id === request.project_id) || null,
           volunteers_count: volunteerCounts[request.id] || 0,
-          // Compatibility alias (prefer ngo_id in new code)
-          ngo_id: request.ngo_id,
-          requester_id: request.ngo_id
         }));
       }
       
@@ -422,37 +421,31 @@ export const db = {
         .single();
       
       if (error && error.code !== 'PGRST116') throw error;
-      
-      // Fetch requester data separately
-      if (data && data.ngo_id) {
-        const [{ data: requester }, { data: project }] = await Promise.all([
-          supabase
-            .from('users')
-            .select('id, name, email, user_type, location, city, state_province, country, phone, pincode, ngo_volunteer_capacity, profile_image, profile_data, industry, verification_status')
-            .eq('id', data.ngo_id)
-            .single(),
-          data.project_id
-            ? supabase
-                .from('service_request_projects')
-                .select('*')
-                .eq('id', data.project_id)
-                .single()
-            : Promise.resolve({ data: null })
-        ]);
-        
-        return {
-          ...data,
-          requester,
-          project: project || null,
-          // Add requester_id for backward compatibility
-          requester_id: data.ngo_id
-        };
-      }
-      
-      return data;
+      if (!data) return null;
+
+      const [{ data: requester }, { data: project }] = await Promise.all([
+        supabase
+          .from('users')
+          .select('id, name, email, user_type, location, city, state_province, country, phone, pincode, ngo_volunteer_capacity, profile_image, profile_data, industry, verification_status')
+          .eq('id', data.ngo_id)
+          .single(),
+        data.project_id
+          ? supabase
+              .from('service_request_projects')
+              .select('*')
+              .eq('id', data.project_id)
+              .single()
+          : Promise.resolve({ data: null })
+      ]);
+
+      return {
+        ...data,
+        requester,
+        project: project || null,
+      };
     },
 
-    async create(requestData: any) {
+    async create(requestData: TablesInsert<'service_requests'>) {
       // If requestData includes project_id, try to inherit canonical project fields
       if (requestData.project_id) {
         try {
@@ -467,8 +460,7 @@ export const db = {
             requestData.location = requestData.location || projectRow.exact_address || projectRow.location || requestData.location;
             requestData.impact_description = requestData.impact_description || projectRow.description || requestData.impact_description;
             requestData.timeline = requestData.timeline || projectRow.timeline || requestData.timeline;
-            // Ensure project_context contains canonical project reference
-            const existingCtx = requestData.project_context && typeof requestData.project_context === 'object' ? requestData.project_context : {};
+            const existingCtx = parseJsonObject(requestData.project_context);
             requestData.project_context = {
               ...existingCtx,
               project: {
@@ -494,7 +486,7 @@ export const db = {
       return data;
     },
 
-    async update(id: string | number, requestData: any) {
+    async update(id: string | number, requestData: TablesUpdate<'service_requests'>) {
       // If updating project_id, try to inherit project canonical fields when missing
       if (requestData.project_id) {
         try {
@@ -512,7 +504,7 @@ export const db = {
             requestData.impact_description = requestData.impact_description || projectRow.description || requestData.impact_description;
             requestData.timeline = requestData.timeline || projectRow.timeline || requestData.timeline;
 
-            const existingCtx = requestData.project_context && typeof requestData.project_context === 'object' ? requestData.project_context : {};
+            const existingCtx = parseJsonObject(requestData.project_context);
             requestData.project_context = {
               ...existingCtx,
               project: {
@@ -533,13 +525,12 @@ export const db = {
       // accidental single-need expiry outside the project expiry flow.
       if (String(requestData.status || '').toLowerCase() === 'expired') {
         try {
-          // Fetch the request's project_id if not provided
           let projectId = requestData.project_id
           if (!projectId) {
             const { data: currentRow } = await supabase
               .from('service_requests')
               .select('id, project_id')
-              .eq('id', id)
+              .eq('id', Number(id))
               .maybeSingle();
 
             projectId = currentRow?.project_id
@@ -569,7 +560,7 @@ export const db = {
       const { data, error } = await supabase
         .from('service_requests')
         .update(requestData)
-        .eq('id', id)
+        .eq('id', Number(id))
         .select()
         .single();
 
@@ -621,17 +612,15 @@ export const db = {
     },
 
     async delete(id: string | number, requesterId?: number) {
-      // First delete related volunteers
       await supabase
         .from('service_request_applications')
         .delete()
-        .eq('service_request_id', id);
+        .eq('service_request_id', Number(id));
 
-      // Then delete the service request
       let query = supabase
         .from('service_requests')
         .delete()
-        .eq('id', id);
+        .eq('id', Number(id));
       
       if (requesterId) {
         query = query.eq('ngo_id', requesterId);
@@ -645,7 +634,7 @@ export const db = {
   },
 
   serviceRequestContributions: {
-    async create(contributionData: any) {
+    async create(contributionData: TablesInsert<'service_request_contributions'>) {
       const { data, error } = await supabase
         .from('service_request_contributions')
         .insert(contributionData)
@@ -673,7 +662,15 @@ export const db = {
 
   // Service Offers
   serviceOffers: {
-    async getAll(filters: any = {}) {
+    async getAll(
+      filters: {
+        category?: string
+        status?: string
+        creator_id?: number
+        ngo_id?: number
+        includeExpired?: boolean
+      } = {}
+    ) {
       let query = supabase.from('service_offers').select(`
         *,
         ngo:users!creator_id(name, email, user_type, verification_status)
@@ -685,8 +682,9 @@ export const db = {
       if (filters.status) {
         query = query.eq('status', filters.status);
       }
-      if (filters.creator_id || filters.ngo_id) {
-        query = query.eq('creator_id', filters.creator_id || filters.ngo_id);
+      const creatorId = filters.creator_id || filters.ngo_id;
+      if (creatorId) {
+        query = query.eq('creator_id', creatorId);
       }
       
       const { data, error } = await query.order('created_at', { ascending: false });
@@ -697,17 +695,16 @@ export const db = {
       const now = Date.now()
       const nonExpiredOffers = includeExpired
         ? (data || [])
-        : (data || []).filter((offer: any) => {
-            const expiryValue = offer.valid_until || offer.expires_at
+        : (data || []).filter((offer) => {
+            const expiryValue = offer.valid_until
             if (!expiryValue) return true
             const expiryMs = Date.parse(String(expiryValue))
             if (Number.isNaN(expiryMs)) return true
             return expiryMs >= now
           })
       
-      // Fetch application counts for each service offer
       if (nonExpiredOffers && nonExpiredOffers.length > 0) {
-        const offerIds = nonExpiredOffers.map((item: any) => item.id);
+        const offerIds = nonExpiredOffers.map((item) => item.id);
         
         const { data: hires } = await supabase
           .from('service_clients') // Correct table name
@@ -716,20 +713,19 @@ export const db = {
           .eq('status', 'accepted'); // Only count accepted clients
         
         // Count applications per offer
-        const hireCounts = (hires || []).reduce((acc: any, hire: any) => {
+        const hireCounts = (hires || []).reduce<Record<string, number>>((acc, hire) => {
           acc[hire.service_offer_id] = (acc[hire.service_offer_id] || 0) + 1;
           return acc;
         }, {});
         
-        // Add application counts to offers
-        return nonExpiredOffers.map((offer: any) => ({
+        return nonExpiredOffers.map((offer) => ({
           ...offer,
           ngo_id: offer.creator_id,
           applications_count: hireCounts[offer.id] || 0
         }));
       }
       
-      return nonExpiredOffers.map((offer: any) => ({
+      return nonExpiredOffers.map((offer) => ({
         ...offer,
         ngo_id: offer.creator_id
       }));
@@ -749,7 +745,7 @@ export const db = {
       return data ? { ...data, ngo_id: data.creator_id } : data;
     },
 
-    async create(offerData: any) {
+    async create(offerData: TablesInsert<'service_offers'>) {
       const { data, error } = await supabase
         .from('service_offers')
         .insert(offerData)
@@ -760,11 +756,11 @@ export const db = {
       return data;
     },
 
-    async update(id: string | number, offerData: any) {
+    async update(id: string | number, offerData: TablesUpdate<'service_offers'>) {
       const { data, error } = await supabase
         .from('service_offers')
         .update(offerData)
-        .eq('id', id)
+        .eq('id', Number(id))
         .select()
         .single();
       
@@ -776,7 +772,7 @@ export const db = {
       let query = supabase
         .from('service_offers')
         .delete()
-        .eq('id', id);
+        .eq('id', Number(id));
       
       if (ngoId) {
         query = query.eq('creator_id', ngoId);
@@ -791,7 +787,7 @@ export const db = {
 
   // Service Clients (for hiring)
   serviceClients: {
-    async create(clientData: any) {
+    async create(clientData: TablesInsert<'service_clients'>) {
       const { data, error } = await supabase
         .from('service_clients')
         .insert(clientData)
@@ -830,7 +826,7 @@ export const db = {
       return data;
     },
 
-    async create(verificationData: any) {
+    async create(verificationData: TablesInsert<'individual_verifications'>) {
       const { data, error } = await supabase
         .from('individual_verifications')
         .insert(verificationData)
@@ -841,20 +837,20 @@ export const db = {
       return data;
     },
 
-    async update(userId: number, updateData: any) {
-      const payload = { ...updateData };
-      // Canonical columns are aadhaar_verified_at / pan_verified_at
-      if ('aadhaar_verification_date' in payload) {
-        if (payload.aadhaar_verified_at == null) {
-          payload.aadhaar_verified_at = payload.aadhaar_verification_date;
-        }
-        delete payload.aadhaar_verification_date;
+    async update(
+      userId: number,
+      updateData: TablesUpdate<'individual_verifications'> & {
+        aadhaar_verification_date?: string | null
+        pan_verification_date?: string | null
       }
-      if ('pan_verification_date' in payload) {
-        if (payload.pan_verified_at == null) {
-          payload.pan_verified_at = payload.pan_verification_date;
-        }
-        delete payload.pan_verification_date;
+    ) {
+      const { aadhaar_verification_date, pan_verification_date, ...payload } = updateData;
+      // Canonical columns are aadhaar_verified_at / pan_verified_at
+      if ('aadhaar_verification_date' in updateData && payload.aadhaar_verified_at == null) {
+        payload.aadhaar_verified_at = aadhaar_verification_date;
+      }
+      if ('pan_verification_date' in updateData && payload.pan_verified_at == null) {
+        payload.pan_verified_at = pan_verification_date;
       }
 
       const { data, error } = await supabase
@@ -868,7 +864,7 @@ export const db = {
       return data;
     },
 
-    async upsert(verificationData: any) {
+    async upsert(verificationData: TablesInsert<'individual_verifications'>) {
       const { data, error } = await supabase
         .from('individual_verifications')
         .upsert(verificationData, { onConflict: 'user_id' })
@@ -882,7 +878,7 @@ export const db = {
 
   // First-class KYC files (verification_documents)
   verificationDocuments: {
-    async upsert(row: VerificationDocumentRow): Promise<{ ok: boolean; skipped?: boolean; error?: string }> {
+    async upsert(row: VerificationDocumentRow): Promise<{ ok: boolean; error?: string }> {
       try {
         const payload = {
           user_id: row.user_id,
@@ -903,15 +899,10 @@ export const db = {
           onConflict: 'user_id,actor_type,doc_key',
         })
 
-        if (error) {
-          if (/verification_documents|does not exist|schema cache/i.test(String(error.message || ''))) {
-            return { ok: false, skipped: true, error: error.message }
-          }
-          return { ok: false, error: error.message }
-        }
+        if (error) return { ok: false, error: error.message }
         return { ok: true }
-      } catch (error: any) {
-        return { ok: false, skipped: true, error: String(error?.message || error) }
+      } catch (error) {
+        return { ok: false, error: getErrorMessage(error) }
       }
     },
 
@@ -957,7 +948,14 @@ export const db = {
 
   // Service request applications (formerly service_volunteers)
   serviceRequestApplications: {
-    async create(applicationData: any) {
+    async create(
+      applicationData: TablesInsert<'service_request_applications'> &
+        Partial<ApplicationFulfillmentFields> & {
+          message?: string | null
+          volunteer_type?: string | null
+          created_at?: string | null
+        }
+    ) {
       const payload = normalizeApplicationApplicantFields({
         ...applicationData,
         application_message: applicationData.application_message ?? applicationData.message ?? '',
@@ -996,7 +994,7 @@ export const db = {
         completion_note: payload.completion_note ?? null,
         completed_at: payload.completed_at ?? null,
       }
-      for (const key of Object.keys(fulfillmentFields)) {
+      for (const key of Object.keys(fulfillmentFields) as Array<keyof typeof fulfillmentFields>) {
         delete payload[key]
       }
 
@@ -1008,19 +1006,17 @@ export const db = {
       
       if (error) throw error;
 
-      // Ensure paired fulfillment row exists (schema split)
-      try {
-        await supabase.from('service_request_fulfillments').upsert(
-          {
-            application_id: data.id,
-            service_request_id: data.service_request_id,
-            ...fulfillmentFields,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'application_id' }
-        );
-      } catch {
-        // Table may not exist until migration applied
+      const { error: fulfillmentError } = await supabase.from('service_request_fulfillments').upsert(
+        {
+          application_id: data.id,
+          service_request_id: data.service_request_id,
+          ...fulfillmentFields,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'application_id' }
+      );
+      if (fulfillmentError) {
+        console.error('Failed to create fulfillment row:', fulfillmentError);
       }
 
       return shapeApplicationForApi(data);
@@ -1052,7 +1048,7 @@ export const db = {
         .order('applied_at', { ascending: false });
 
       if (error) throw error;
-      return (data || []).map((row: any) => shapeApplicationForApi(row));
+      return (data || []).map((row) => shapeApplicationForApi(row));
     },
 
     async getByRequestId(serviceRequestId: number) {
@@ -1067,7 +1063,7 @@ export const db = {
         .order('applied_at', { ascending: false });
 
       if (error) throw error;
-      return (data || []).map((row: any) => shapeApplicationForApi(row));
+      return (data || []).map((row) => shapeApplicationForApi(row));
     },
 
     async getUserApplication(serviceRequestId: number, applicantUserId: number) {
@@ -1134,7 +1130,7 @@ export const db = {
 
   // Support Tickets
   supportTickets: {
-    async create(ticketData: any) {
+    async create(ticketData: TablesInsert<'support_tickets'>) {
       const { data, error } = await supabase
         .from('support_tickets')
         .insert(ticketData)
@@ -1170,11 +1166,11 @@ export const db = {
       return data || [];
     },
 
-    async update(id: number | string, updateData: any) {
+    async update(id: number | string, updateData: TablesUpdate<'support_tickets'>) {
       const { data, error } = await supabase
         .from('support_tickets')
         .update(updateData)
-        .eq('id', id)
+        .eq('id', Number(id))
         .select()
         .single();
 
@@ -1207,7 +1203,7 @@ export const db = {
           *,
           user:users!user_id(id, name, email, user_type, verification_status, profile_image)
         `)
-        .eq('id', id)
+        .eq('id', Number(id))
         .single();
 
       if (error && error.code !== 'PGRST116') throw error;
@@ -1234,7 +1230,7 @@ export const db = {
   },
 
   supportTicketMessages: {
-    async create(messageData: any) {
+    async create(messageData: TablesInsert<'support_ticket_messages'>) {
       const { data, error } = await supabase
         .from('support_ticket_messages')
         .insert(messageData)
@@ -1283,8 +1279,7 @@ export const db = {
       return data;
     },
 
-    async create(addressData: any) {
-      // If this is being set as default, unset others first
+    async create(addressData: TablesInsert<'user_addresses'>) {
       if (addressData.is_default) {
         await supabase
           .from('user_addresses')
@@ -1302,8 +1297,7 @@ export const db = {
       return data;
     },
 
-    async update(id: number, addressData: any) {
-      // If this is being set as default, unset others first
+    async update(id: number, addressData: TablesUpdate<'user_addresses'>) {
       if (addressData.is_default) {
         const address = await this.getById(id);
         if (address) {
@@ -1337,11 +1331,6 @@ export const db = {
     }
   }
 };
-
-/** @deprecated Prefer db.serviceRequestApplications */
-;(db as any).serviceVolunteers = db.serviceRequestApplications
-
-// Export the main database object for easy use
 export default db;
 
 export async function applyVolunteerAcceptanceAllocation(
@@ -1377,10 +1366,12 @@ export async function applyVolunteerAcceptanceAllocation(
   return data
 }
 
+// The csr_* and ngo_* session and message tables share a schema, and state rows are only
+// deleted by session_id here, so the ngo_* types describe both.
 const aiAgentTables = (agent: AgentKind) => ({
-  sessions: agent === 'csr' ? 'csr_ai_agent_sessions' : 'ngo_ai_agent_sessions',
-  state: agent === 'csr' ? 'csr_ai_agent_session_state' : 'ngo_ai_agent_session_state',
-  messages: agent === 'csr' ? 'csr_ai_agent_messages' : 'ngo_ai_agent_messages',
+  sessions: (agent === 'csr' ? 'csr_ai_agent_sessions' : 'ngo_ai_agent_sessions') as 'ngo_ai_agent_sessions',
+  state: (agent === 'csr' ? 'csr_ai_agent_session_state' : 'ngo_ai_agent_session_state') as 'ngo_ai_agent_session_state',
+  messages: (agent === 'csr' ? 'csr_ai_agent_messages' : 'ngo_ai_agent_messages') as 'ngo_ai_agent_messages',
 })
 
 async function deleteAiAgentSessionChildren(agent: AgentKind, sessionId: string) {
@@ -1397,7 +1388,7 @@ export async function archiveAgentSession(
 ) {
   const { sessions } = aiAgentTables(agent)
   const now = new Date().toISOString()
-  const archivedContext: Record<string, unknown> = {
+  const archivedContext: Record<string, any> = {
     ...existingContext,
     ai_agent_archived_at: now,
     ai_agent_published_at:
@@ -1565,18 +1556,23 @@ export async function ensureCampaignVolunteerAssignment(input: {
   return data
 }
 
+type AttendanceEntryRow = Pick<
+  Tables<'service_attendance_entries'>,
+  'id' | 'assignment_id' | 'attendance_date' | 'attendance_status' | 'units' | 'marked_for_user_id' | 'meta'
+>
+
 export async function buildCampaignVolunteerAttendanceSummary(
   campaignId: string
 ): Promise<CampaignVolunteerAttendanceSummary | null> {
   const { data: campaign, error } = await supabase
     .from('campaigns')
-    .select('id, title, company_id, status, start_date, end_date, impact_metrics')
+    .select('id, title, company_id, status, start_date, end_date, impact_metrics, lead_ngo_user_id')
     .eq('id', campaignId)
     .maybeSingle()
 
   if (error || !campaign) return null
 
-  const applications = filterVolunteerApplicationsExcludingLeadNgo(campaign.impact_metrics)
+  const applications = filterVolunteerApplicationsExcludingLeadNgo(campaign)
   const projectDays = getInclusiveDayCount(campaign.start_date, campaign.end_date)
   const elapsedDays = getElapsedCampaignDays(campaign.start_date, campaign.end_date)
 
@@ -1586,7 +1582,7 @@ export async function buildCampaignVolunteerAttendanceSummary(
     .eq('target_id', campaignId)
 
   const assignments = (assignmentRows || []).filter((row) => isCampaignVolunteerAssignment(row))
-  const assignmentByUser = new Map<number, any>()
+  const assignmentByUser = new Map<number, (typeof assignments)[number]>()
   for (const row of assignments) {
     assignmentByUser.set(Number(row.assignee_user_id), row)
   }
@@ -1600,9 +1596,9 @@ export async function buildCampaignVolunteerAttendanceSummary(
             'id, assignment_id, attendance_date, attendance_status, units, marked_for_user_id, meta'
           )
           .in('assignment_id', assignmentIds)
-      : { data: [] as any[] }
+      : { data: [] as AttendanceEntryRow[] }
 
-  const entriesByAssignment = new Map<string, any[]>()
+  const entriesByAssignment = new Map<string, AttendanceEntryRow[]>()
   for (const entry of entries || []) {
     const key = String(entry.assignment_id)
     const list = entriesByAssignment.get(key) || []
@@ -1610,7 +1606,7 @@ export async function buildCampaignVolunteerAttendanceSummary(
     entriesByAssignment.set(key, list)
   }
 
-  const roster: VolunteerAttendanceRosterRow[] = applications.map((app: any) => {
+  const roster: VolunteerAttendanceRosterRow[] = applications.map((app) => {
     const userId = Number(app?.user_id || 0)
     const capacity = Math.max(1, Number(app?.capacity || 1) || 1)
     const assignment = assignmentByUser.get(userId) || null
@@ -1628,7 +1624,7 @@ export async function buildCampaignVolunteerAttendanceSummary(
       0
     )
     const photoSealedDays = presentEntries.filter((entry) => {
-      const meta = safeJson(entry.meta)
+      const meta = parseJsonObject(entry.meta)
       return Array.isArray(meta.photos) && meta.photos.length > 0
     }).length
     const last = presentEntries
@@ -1731,7 +1727,7 @@ export async function processCompletedCampaignVolunteerOutcomes(
       .maybeSingle()
 
     if (!userRow) continue
-    const profile = safeJson(userRow.profile_data)
+    const profile = parseJsonObject(userRow.profile_data)
 
     if (projectDays > 0 && row.days_present / projectDays < 0.25) {
       const ratePct = Math.round((row.days_present / projectDays) * 1000) / 10
@@ -1762,7 +1758,7 @@ export async function processCompletedCampaignVolunteerOutcomes(
         ? [...profile.volunteering_history]
         : []
       const already = history.some(
-        (entry: any) => String(entry?.campaign_id || '') === summary.campaign_id
+        (entry) => String(entry?.campaign_id || '') === summary.campaign_id
       )
       if (!already) {
         history.push({

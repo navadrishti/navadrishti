@@ -1,24 +1,22 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 import { Header } from "@/components/header"
 import { DetailField, DetailSection, displayValue } from "@/components/detail-fields"
-import { formatDetailDate } from "@/lib/format-date"
-import { Badge } from "@/components/ui/badge"
-import { readCampaignCategory, readCampaignDuration, readCampaignLocation } from "@/lib/campaign-schema"
+import { formatDetailDate, formatDisplayDate, isCampaignStarted, isVolunteerRegistrationPastDeadline } from "@/lib/format-date"
+import { getVolunteerButtonState, readCampaignCategory, readCampaignDuration, readCampaignLocation, sumVolunteerApplicationCount } from "@/lib/campaign-schema"
 import { useAuth } from '@/lib/auth-context'
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { ArrowLeft, CheckCircle2 } from "lucide-react"
-import { formatDisplayDate, isCampaignStarted, isVolunteerRegistrationPastDeadline } from "@/lib/format-date"
-import { getVolunteerButtonState, sumVolunteerApplicationCount } from '@/lib/campaign-schema'
 import { isCampaignLeadNgo } from '@/lib/campaign-volunteer-attendance'
 import { VerifiedAccountName } from '@/components/verification-badge'
+import { parseJsonObject } from '@/lib/utils';
 
 interface Campaign {
   id: string
@@ -40,6 +38,8 @@ interface Campaign {
   company_name?: string | null
   company_verification_status?: string | null
   company_verified?: boolean
+  lead_ngo_user_id?: number | null
+  selected_lead_ngo_name?: string | null
   selected_lead_ngo_verification_status?: string | null
   selected_lead_ngo_verified?: boolean
   status?: string | null
@@ -63,6 +63,8 @@ type CampaignRecord = {
   company_name?: string | null
   company_verification_status?: string | null
   company_verified?: boolean
+  lead_ngo_user_id?: number | null
+  selected_lead_ngo_name?: string | null
   selected_lead_ngo_verification_status?: string | null
   selected_lead_ngo_verified?: boolean
   status?: string | null
@@ -95,16 +97,14 @@ function labelForBudgetKey(key: string) {
 }
 
 function CampaignDetailFields({ campaign }: { campaign: CampaignRecord }) {
-  const impact = campaign.impact_metrics && typeof campaign.impact_metrics === 'object'
-    ? campaign.impact_metrics
-    : {}
+  const impact = parseJsonObject(campaign.impact_metrics)
   const location = readCampaignLocation(campaign)
   const { city, state } = parseCityState(location, impact)
   const volunteerRequirement = String(impact.volunteer_requirement || impact.volunteerRequirement || '')
   const beneficiaries = impact.beneficiaries ?? impact.impact_reach
   const duration = readCampaignDuration(campaign)
-  const selectedLeadNgoName = String(impact.selected_lead_ngo_name || '')
-  const selectedLeadNgoId = Number(impact.selected_lead_ngo_id || 0)
+  const selectedLeadNgoName = String(campaign.selected_lead_ngo_name || '')
+  const selectedLeadNgoId = Number(campaign.lead_ngo_user_id || 0)
   const invitedOfferIds = Array.isArray(impact.invited_offer_ids) ? impact.invited_offer_ids : []
   const sdgAlignment = Array.isArray(campaign.sdg_alignment) ? campaign.sdg_alignment : []
   const budgetParts = Object.entries(campaign.budget_breakdown || {})
@@ -369,7 +369,7 @@ export default function CSRCampaignDetailPage() {
       const impact = campaign?.impact_metrics || {}
       const apps = Array.isArray(impact.volunteer_applications) ? impact.volunteer_applications : []
       return effectiveUserId > 0
-        ? apps.some((a: any) => Number(a?.user_id || 0) === effectiveUserId)
+        ? apps.some((a) => Number(a?.user_id || 0) === effectiveUserId)
         : false
     } catch {
       return false
@@ -425,9 +425,9 @@ export default function CSRCampaignDetailPage() {
     }
   }
 
-  const selectedLeadNgoId = Number(campaign?.impact_metrics?.selected_lead_ngo_id || 0)
+  const selectedLeadNgoId = Number(campaign?.lead_ngo_user_id || 0)
   const isLeadNgoForCampaign = Boolean(
-    campaign && effectiveUserId > 0 && isCampaignLeadNgo(campaign.impact_metrics, effectiveUserId)
+    campaign && effectiveUserId > 0 && isCampaignLeadNgo(campaign, effectiveUserId)
   )
   const canShowVolunteerAction = baseCanVolunteer && !isLeadNgoForCampaign
   const ownerName = campaign?.company_id ? `Company #${campaign.company_id}` : 'Company not set'

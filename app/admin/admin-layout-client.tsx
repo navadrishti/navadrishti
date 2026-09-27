@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/sheet';
 import { AdminPortalMain, AdminPortalShell } from '@/components/evidence-verification/portal-ui';
 import { Menu, RefreshCw, X } from 'lucide-react';
-import { cn, finalizeConsoleLogout, hasConsoleTabSession, clearConsoleTabSession } from '@/lib/utils';
+import { cn, hasConsoleTabSession, clearConsoleTabSession } from '@/lib/utils';
 import { ProductBrand } from '@/components/product-brand';
 
 export { AdminPortalMain, AdminPortalShell };

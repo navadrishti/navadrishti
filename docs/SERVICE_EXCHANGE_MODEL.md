@@ -7,7 +7,7 @@ This document defines the production-grade lifecycle for service requests, servi
 - `service_requests` remains the source of truth for needs.
 - `service_offers` remains the source of truth for capabilities.
 - `service_clients` remains the application record for offer applicants.
-- `service_volunteers` remains the application record for request applicants.
+- `service_request_applications` is the application record for request applicants; `service_request_fulfillments` holds payment/attendance outcomes.
 - `razorpay_payment_orders` and `razorpay_payments` remain the payment ledger.
 - `csr_projects`, `csr_project_milestones`, and `csr_payment_confirmations` remain the CSR delivery ledger.
 
@@ -40,7 +40,7 @@ Add nullable columns:
 - `assigned_until timestamp with time zone`
 - `assignment_meta jsonb not null default '{}'::jsonb`
 
-### Extend `service_volunteers`
+### Extend `service_request_applications`
 
 Add the same lifecycle columns as `service_clients` plus:
 
@@ -87,7 +87,7 @@ Repeated attendance / usage events need their own table because one assignment c
 ```sql
 CREATE TABLE public.service_attendance_entries (
   id uuid NOT NULL DEFAULT uuid_generate_v4(),
-  application_table text NOT NULL CHECK (application_table IN ('service_clients', 'service_volunteers')),
+  application_table text NOT NULL CHECK (application_table IN ('service_clients', 'service_request_applications')),
   application_id bigint NOT NULL,
   service_request_id integer,
   service_offer_id integer,
@@ -118,7 +118,7 @@ Why this table is necessary:
 ## Canonical lifecycle
 
 1. User is invited or discovers an opening.
-2. User submits an application into `service_clients` or `service_volunteers`.
+2. User submits an application into `service_clients` or `service_request_applications`.
 3. Owner accepts exactly one application.
 4. Accepted application becomes the active assignment.
 5. Attendance entries are added each day or billing period.
@@ -138,17 +138,14 @@ This enables a clean UX where a CA sees a single "Pay Now" button for all pendin
 ## Rental / Attendance Billing (Clarification)
 
 - Rental-style offers (e.g., machine at Rs 10/day) are supported via `service_offers.unit_rate`, `service_offers.billing_cycle` and `service_attendance_entries.rate_per_unit`.
-- Default marking is NGO/PWA-driven: the NGO or PWA marks attendance/usage rows which generate `service_attendance_entries` with `amount_due` computed by `lib/service-engagement.ts`.
+- Marking happens only in the GRAM field app (PWA), which writes `service_attendance_entries` including `amount_due`. The web app reads these rows but does not create them.
 - On payment these attendance entries are reconciled as described above. If you want fully automated recurring invoicing (system-generated daily/monthly charges), we can add a scheduled job to auto-create attendance rows and orders — currently marking-by-NGO/PWA is considered sufficient per your instruction.
 
 ## Implemented APIs
 
-- `POST /api/service-invitations` creates a manual, agent, or system invitation for `service_request`, `service_offer`, or `csr_project`.
-- `GET /api/service-invitations?role=inbox|sent` lists invitations for the current user.
-- `POST /api/service-invitations/[id]/respond` accepts or rejects an invitation and creates the corresponding application or assignment row.
 - `GET /api/service-assignments?role=assigned|owned|all` lists assignments for dashboards.
 - `GET /api/service-assignments/[id]/attendance` lists attendance entries for an assignment.
-- `POST /api/service-assignments/[id]/attendance` marks daily attendance and computes the due amount.
+- `POST /api/service-assignments/[id]/attendance` returns 403 (`ATTENDANCE_PWA_ONLY`); attendance is marked in the GRAM field app.
 
 ## CSR mapping
 

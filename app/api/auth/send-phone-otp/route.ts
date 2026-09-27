@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { withAuth } from '@/lib/auth'
 import { sendSMS, generateOTPMessage } from '@/lib/sms'
@@ -27,9 +27,9 @@ const cleanupExpiredRecords = () => {
   }
 }
 
-export const POST = withAuth(async (req: NextRequest) => {
+export const POST = withAuth(async (req) => {
   try {
-    const user = (req as any).user
+    const user = req.user
     const body = await req.json()
     const phone = typeof body?.phone === 'string' ? normalizePhone(body.phone) : ''
 

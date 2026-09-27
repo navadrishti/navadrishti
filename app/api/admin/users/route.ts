@@ -6,6 +6,7 @@ import {
   activateVerifiedNgoPayoutListingsForNetwork,
   removeLegacyGeneralSupportRequests,
 } from '@/lib/razorpay-route';
+import { getErrorMessage } from '@/lib/utils';
 
 export async function GET(request: NextRequest) {
   try {
@@ -41,12 +42,12 @@ export async function GET(request: NextRequest) {
     if (error) throw error;
 
     return NextResponse.json({ success: true, users: data || [] });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Admin users fetch error:', error);
-    if (error?.message === 'Admin authentication required') {
+    if (getErrorMessage(error) === 'Admin authentication required') {
       return NextResponse.json({ error: 'Admin authentication required' }, { status: 401 });
     }
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) || 'Internal server error' }, { status: 500 });
   }
 }
 
@@ -96,11 +97,11 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Admin users action error:', error);
-    if (error?.message === 'Admin authentication required') {
+    if (getErrorMessage(error) === 'Admin authentication required') {
       return NextResponse.json({ error: 'Admin authentication required' }, { status: 401 });
     }
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) || 'Internal server error' }, { status: 500 });
   }
 }

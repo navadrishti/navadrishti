@@ -1,24 +1,8 @@
 // API endpoint for NGO verification (manual document-first flow)
 import { NextRequest, NextResponse } from 'next/server';
 import { db, supabase } from '@/lib/db';
-import jwt from 'jsonwebtoken';
-import { JWT_SECRET, getComplianceDocumentUrl, mergeNgoComplianceNumbers, parseSubmittedComplianceNumbers, requireBankStatementDocument, type NgoComplianceNumbers, buildNgoDocumentExpiries, normalizeExpiryDate } from '@/lib/auth';
-function isValidGSTNumber(gstNumber: string): boolean {
-  const gstRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
-  return gstRegex.test(gstNumber);
-}
-
-function isValidPANNumber(panNumber: string): boolean {
-  const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
-  return panRegex.test(panNumber);
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
-
+import { getTokenClaims, getComplianceDocumentUrl, mergeNgoComplianceNumbers, parseSubmittedComplianceNumbers, requireBankStatementDocument, type NgoComplianceNumbers, buildNgoDocumentExpiries, normalizeExpiryDate } from '@/lib/auth';
+import { parseJsonObject, getErrorMessage } from '@/lib/utils';
 function firstDocumentUrl(...values: unknown[]): string {
   for (const value of values) {
     const url = getComplianceDocumentUrl(value);
@@ -56,9 +40,9 @@ function validateOptionalNgoCertificates(options: {
   eightyGExpiry?: string;
   csr1Expiry?: string;
 }): NextResponse | null {
-  const existingDocs = asRecord(options.existingProfileData.compliance_documents);
-  const existingVerification = asRecord(
-    asRecord(asRecord(options.existingProfileData.verification_documents).ngo).documents
+  const existingDocs = parseJsonObject(options.existingProfileData.compliance_documents);
+  const existingVerification = parseJsonObject(
+    parseJsonObject(parseJsonObject(options.existingProfileData.verification_documents).ngo).documents
   );
   const submitted = options.documents || {};
   const compliance = options.complianceDocuments || {};
@@ -150,8 +134,8 @@ function mergeSubmittedComplianceDocuments(
   existingComplianceDocuments: Record<string, unknown>,
   complianceDocuments?: Record<string, string>,
   verificationDocuments?: Record<string, string>
-): Record<string, unknown> {
-  const next: Record<string, unknown> = { ...existingComplianceDocuments };
+): Record<string, any> {
+  const next: Record<string, any> = { ...existingComplianceDocuments };
 
   if (complianceDocuments && typeof complianceDocuments === 'object') {
     for (const [key, value] of Object.entries(complianceDocuments)) {
@@ -184,21 +168,16 @@ function mergeSubmittedComplianceDocuments(
 
 export async function POST(req: NextRequest) {
   try {
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const claims = getTokenClaims(req);
+    if (!claims) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    const userId = claims.id;
 
-    const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
-    const userId = decoded.id; // Changed from decoded.userId to decoded.id
-
-    // Validate userId
     if (!userId) {
       return NextResponse.json({ error: 'Invalid token: missing user ID' }, { status: 401 });
     }
 
-    // Verify user is an NGO
     const { data: user, error: userError } = await supabase
       .from('users')
       .select('user_type')
@@ -212,7 +191,6 @@ export async function POST(req: NextRequest) {
     const {
       action,
       organizationName,
-      gstNumber,
       panNumber,
       registrationNumber,
       registrationType,
@@ -269,12 +247,6 @@ export async function POST(req: NextRequest) {
         );
       }
       
-      case 'verify-gst':
-        return await verifyGST(userId, gstNumber);
-      
-      case 'verify-pan':
-        return await verifyNGOPAN(userId, panNumber);
-      
       default:
         return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
     }
@@ -311,9 +283,7 @@ async function initiateNGOVerification(
       .eq('id', userId)
       .single();
 
-    const existingProfileData = (userRow?.profile_data && typeof userRow.profile_data === 'object')
-      ? userRow.profile_data
-      : {};
+    const existingProfileData = parseJsonObject(userRow?.profile_data);
 
     const resolvedComplianceNumbers = resolveComplianceNumbersForSubmission(
       existingProfileData,
@@ -370,7 +340,6 @@ async function initiateNGOVerification(
     };
     if (entered.fcra_number) ngoPayload.fcra_number = entered.fcra_number;
 
-    // Create or update verification record using Supabase
     const { data: existingVerification } = await supabase
       .from('ngo_verifications')
       .select('id')
@@ -391,13 +360,9 @@ async function initiateNGOVerification(
         .eq('user_id', userId);
     }
 
-    const existingVerificationDocs = (existingProfileData.verification_documents && typeof existingProfileData.verification_documents === 'object')
-      ? existingProfileData.verification_documents
-      : {};
+    const existingVerificationDocs = parseJsonObject(existingProfileData.verification_documents);
     const existingComplianceDocuments =
-      existingProfileData.compliance_documents && typeof existingProfileData.compliance_documents === 'object'
-        ? existingProfileData.compliance_documents
-        : {};
+      parseJsonObject(existingProfileData.compliance_documents);
     const nextComplianceDocuments = mergeSubmittedComplianceDocuments(
       existingComplianceDocuments,
       complianceDocuments,
@@ -456,12 +421,12 @@ async function initiateNGOVerification(
       success: true,
       authUrl: null,
       mode: 'manual',
-      message: 'Verification initiated in manual mode. Your uploaded documents will be reviewed by admin.'
+      message: 'Verification initiated in manual mode. Your uploaded documents will be reviewed by a CA.'
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('NGO verification initiation error:', error);
     return NextResponse.json({
-      error: error.message || 'Failed to initiate verification',
+      error: getErrorMessage(error) || 'Failed to initiate verification',
       code: 'INITIATION_FAILED'
     }, { status: 500 });
   }
@@ -495,9 +460,7 @@ async function reverifyNGOVerification(
       return NextResponse.json({ error: 'Only verified users can request reverification' }, { status: 400 });
     }
 
-    const existingProfileData = (userRow.profile_data && typeof userRow.profile_data === 'object')
-      ? userRow.profile_data
-      : {};
+    const existingProfileData = parseJsonObject(userRow.profile_data);
 
     const resolvedComplianceNumbers = resolveComplianceNumbersForSubmission(
       existingProfileData,
@@ -556,13 +519,9 @@ async function reverifyNGOVerification(
       submittedAt,
     });
 
-    const existingVerificationDocs = (existingProfileData.verification_documents && typeof existingProfileData.verification_documents === 'object')
-      ? existingProfileData.verification_documents
-      : {};
+    const existingVerificationDocs = parseJsonObject(existingProfileData.verification_documents);
     const existingComplianceDocuments =
-      existingProfileData.compliance_documents && typeof existingProfileData.compliance_documents === 'object'
-        ? existingProfileData.compliance_documents
-        : {};
+      parseJsonObject(existingProfileData.compliance_documents);
     const pendingComplianceDocuments =
       complianceDocuments && typeof complianceDocuments === 'object'
         ? Object.fromEntries(
@@ -617,111 +576,27 @@ async function reverifyNGOVerification(
       mode: 'reverification',
       message: 'Reverification submitted. You remain verified while your updated documents are reviewed.',
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('NGO reverification error:', error);
     return NextResponse.json({
-      error: error.message || 'Failed to submit reverification',
+      error: getErrorMessage(error) || 'Failed to submit reverification',
       code: 'REVERIFICATION_FAILED',
     }, { status: 500 });
   }
 }
 
-async function verifyGST(userId: number, gstNumber: string) {
-  // Validate GST number format
-  if (!isValidGSTNumber(gstNumber)) {
-    return NextResponse.json({ error: 'Invalid GST number format' }, { status: 400 });
-  }
-
-  const { data: currentVerification } = await supabase
-    .from('ngo_verifications')
-    .select('pan_verified')
-    .eq('user_id', userId)
-    .single();
-
-  const newStatus = currentVerification?.pan_verified ? 'verified' : 'pending';
-
-  await supabase
-    .from('ngo_verifications')
-    .update({
-      gst_number: gstNumber,
-      gst_verified: true,
-      gst_verified_at: new Date().toISOString(),
-      verification_status: newStatus,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('user_id', userId);
-
-  return NextResponse.json({
-    success: true,
-    message: 'GST verification completed'
-  });
-}
-
-async function verifyNGOPAN(userId: number, panNumber: string) {
-  // Validate PAN number format
-  if (!isValidPANNumber(panNumber)) {
-    return NextResponse.json({ error: 'Invalid PAN number format' }, { status: 400 });
-  }
-
-  const { data: currentVerification } = await supabase
-    .from('ngo_verifications')
-    .select('gst_verified')
-    .eq('user_id', userId)
-    .single();
-
-  const newStatus = currentVerification?.gst_verified ? 'verified' : 'pending';
-
-  await supabase
-    .from('ngo_verifications')
-    .update({
-      pan_number: panNumber,
-      pan_verified: true,
-      pan_verified_at: new Date().toISOString(),
-      verification_status: newStatus,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('user_id', userId);
-
-  const { data: verification } = await supabase
-    .from('ngo_verifications')
-    .select('gst_verified, pan_verified')
-    .eq('user_id', userId)
-    .single();
-
-  if (verification?.gst_verified && verification?.pan_verified) {
-    await supabase
-      .from('users')
-      .update({
-        verification_status: 'verified',
-        verified_at: new Date().toISOString(),
-        verification_level: 'advanced'
-      })
-      .eq('id', userId);
-  }
-
-  return NextResponse.json({
-    success: true,
-    message: 'PAN verification completed'
-  });
-}
-
 export async function GET(req: NextRequest) {
   try {
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const claims = getTokenClaims(req);
+    if (!claims) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    const userId = claims.id;
 
-    const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
-    const userId = decoded.id; // Changed from decoded.userId to decoded.id
-
-    // Validate userId
     if (!userId) {
       return NextResponse.json({ error: 'Invalid token: missing user ID' }, { status: 401 });
     }
 
-    // Get verification status from Supabase
     const { data: verification, error } = await supabase
       .from('ngo_verifications')
       .select('*')
@@ -747,7 +622,7 @@ export async function GET(req: NextRequest) {
       ? userRow.profile_data
       : {};
     // Prefer table columns; fall back to interim profile mirror until pass-4 SQL is applied
-    const tax = asRecord((profileData as Record<string, unknown>).ngo_tax_verification);
+    const tax = parseJsonObject((profileData as Record<string, unknown>).ngo_tax_verification);
     // users.verification_status is the admin override — if admin explicitly downgraded,
     // that wins regardless of what the ngo_verifications table says.
     const adminStatus = String(userRow?.verification_status || '').trim().toLowerCase();
