@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { sendEmail } from '@/lib/email';
 import { getTokenClaims } from '@/lib/auth';
 import { getErrorMessage } from '@/lib/utils';
+import type { Tables } from '@/lib/database.types';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -28,7 +29,7 @@ const getAuthenticatedUser = async (request: NextRequest) => {
   };
 };
 
-const sanitizeTicketForUser = (ticket: any) => ({
+const sanitizeTicketForUser = (ticket: Tables<'support_tickets'>) => ({
   id: ticket.id,
   ticket_id: ticket.ticket_id,
   title: ticket.title,

@@ -40,8 +40,8 @@ export async function POST(request: NextRequest) {
     // a `recommendations` array in the request body, we'll echo it back in the
     // response. Do NOT perform server-side matching here to keep concerns
     // separated and avoid unexpected DB calls from the LLM flow.
-    const recommendations: CapabilityMatch[] = Array.isArray((body as any).recommendations)
-      ? (body as any).recommendations
+    const recommendations: CapabilityMatch[] = Array.isArray(body.recommendations)
+      ? body.recommendations
       : [];
 
     let campaigns: Campaign[];

@@ -10,8 +10,55 @@ import type { Json, Tables, TablesInsert } from "@/lib/database.types"
 
 type AgentKind = "csr" | "ngo"
 
+type JsonObject = { [key: string]: Json | undefined }
+
+type PersistedSessionState = {
+  conversation_stage?: string
+  project_data?: Json
+  milestone_count?: number | null
+  milestone_inputs?: Json
+  service_suggestions?: Json
+  generated_campaigns?: Json
+  needs_data?: Json
+  generated_draft?: Json
+  selected_offer_ids_by_need?: Json
+  ui_state?: JsonObject
+}
+
+type PersistedMessage = {
+  role?: string
+  content?: unknown
+  meta?: Json
+  createdAt?: string
+}
+
 // Sessions are client-authored UI snapshots mixing camelCase and snake_case fields.
-type PersistedSession = Record<string, any>
+type PersistedSession = {
+  id: string
+  title?: string
+  status?: string
+  project_context?: Json
+  createdAt?: string
+  lastMessageAt?: string | null
+  messages?: Array<PersistedMessage | null>
+  state?: PersistedSessionState
+  session_state?: PersistedSessionState
+  conversationStage?: string
+  projectData?: Json
+  projectStep?: number
+  milestoneCount?: number | null
+  milestoneInputs?: Json
+  milestoneIndex?: number
+  milestoneQuestionIndex?: number
+  serviceSuggestions?: Json
+  generatedCampaigns?: Json
+  needCount?: number | null
+  needsData?: Json
+  activeNeedIndex?: number
+  activeNeedQuestionIndex?: number
+  selectedOfferIdsByNeed?: Json
+  generatedDraft?: Json
+}
 
 type SessionStateRow = Partial<Tables<"csr_ai_agent_session_state"> & Tables<"ngo_ai_agent_session_state">>
 
@@ -34,8 +81,8 @@ const toNumberOr = (value: unknown, fallback: number) => {
 }
 
 const buildStateFromSession = (agent: AgentKind, session: PersistedSession) => {
-  const sessionState = session?.state || session?.session_state || {}
-  const incomingUiState = (sessionState?.ui_state && typeof sessionState.ui_state === "object") ? sessionState.ui_state : {}
+  const sessionState: PersistedSessionState = session?.state || session?.session_state || {}
+  const incomingUiState: JsonObject = (sessionState?.ui_state && typeof sessionState.ui_state === "object") ? sessionState.ui_state : {}
 
   if (agent === "csr") {
     return {
@@ -79,7 +126,7 @@ async function upsertSessionState(
   agent: AgentKind,
   sessionId: string,
   state: BuiltSessionState,
-  uiState: BuiltSessionState["ui_state"],
+  uiState: JsonObject,
   updatedAt: string
 ) {
   const shared = {
@@ -173,7 +220,7 @@ async function buildLatestPayloadFromTables(userId: number, agent: AgentKind) {
 
   const sessions = (rows || []).map((r) => {
     const state = stateBySession[r.id] || {}
-    const uiState: { [key: string]: Json | undefined } =
+    const uiState: JsonObject =
       state.ui_state && typeof state.ui_state === "object" && !Array.isArray(state.ui_state) ? state.ui_state : {}
     const projectContext =
       r.project_context && typeof r.project_context === "object" ? r.project_context : {}
@@ -364,7 +411,7 @@ export async function POST(request: NextRequest) {
             const idToUse = isValidUUID(origId) ? origId : Object.keys(legacyIdMap).find(k => legacyIdMap[k] === origId) || randomUUID()
             if (s.state || s.session_state || s.projectData || s.project_context || s.conversationStage) {
               const state = buildStateFromSession(agent, s)
-              const ui_state = state.ui_state || {}
+              const ui_state: JsonObject = state.ui_state || {}
               if (!isValidUUID(origId) && origId) ui_state.legacyId = origId
               await upsertSessionState(agent, idToUse, state, ui_state, legacy.updatedAt || new Date().toISOString())
             }
@@ -455,7 +502,7 @@ export async function POST(request: NextRequest) {
       const assignedId = isValidUUID(origId) ? origId : idMap[origId]
       if (!assignedId) continue
       const state = buildStateFromSession(agent, s)
-      const ui_state = state.ui_state || {}
+      const ui_state: JsonObject = state.ui_state || {}
       if (!isValidUUID(origId) && origId) ui_state.legacyId = origId
       const { error: upsertStateErr } = await upsertSessionState(
         agent,

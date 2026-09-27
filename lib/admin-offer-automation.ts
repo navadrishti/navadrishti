@@ -22,7 +22,7 @@ export async function autoRejectExpiredServiceOffers() {
     throw fetchError;
   }
 
-  const rejectedOffers: any[] = [];
+  const rejectedOffers: NonNullable<typeof expiredOffers> = [];
 
   for (const offer of expiredOffers || []) {
     const { error: updateError } = await supabase

@@ -25,18 +25,20 @@ export const COMPANY_PROJECT_CONTRIBUTION_TYPE = 'company_project_csr'
 export const LEAD_NGO_INVITE_CONTRIBUTION_TYPE = 'project_lead_ngo_invite'
 export const EXPIRED_STATUS = 'expired'
 
-export function safeProjectIdFromMeta(meta: any): string | null {
+type AssignmentMeta = { project_id?: unknown; note?: unknown }
+
+export function safeProjectIdFromMeta(meta: unknown): string | null {
   if (!meta || typeof meta !== 'object') return null
-  const value = String(meta.project_id || '').trim()
+  const value = String((meta as AssignmentMeta).project_id || '').trim()
   return value || null
 }
 
-export function safeNoteFromMeta(meta: any): string {
+export function safeNoteFromMeta(meta: unknown): string {
   if (!meta || typeof meta !== 'object') return ''
-  return String(meta.note || '').trim()
+  return String((meta as AssignmentMeta).note || '').trim()
 }
 
-export function safeBoolean(value: any): boolean {
+export function safeBoolean(value: unknown): boolean {
   if (typeof value === 'boolean') return value
   if (typeof value === 'number') return value === 1
   if (typeof value === 'string') return ['true', '1', 'yes'].includes(value.toLowerCase())
@@ -50,7 +52,7 @@ export type AssignmentsGetContext = {
 }
 
 export type AssignmentsPutContext = {
-  body: Record<string, any>
+  body: Record<string, unknown>
   userId: number
   userType: string
 }

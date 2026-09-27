@@ -61,7 +61,10 @@ export async function submitProjectApplication(request: NextRequest) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 
-    const projectRow = enrichProjectRecord(projectRowRaw) as any
+    const projectRow = enrichProjectRecord(projectRowRaw)
+    if (!projectRow) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+    }
     const ownerNgoId = Number(projectRow.ngo_id || 0)
 
     if (ownerNgoId === userId) {
@@ -198,9 +201,10 @@ export async function submitProjectApplication(request: NextRequest) {
     }
 
     if (action === 'invite-lead-ngo') {
-      const ngoIds = (Array.isArray(body.ngoIds)
-        ? [...new Set(body.ngoIds.map((value: any) => Number(value)).filter((value: number) => Number.isFinite(value) && value > 0))]
-        : []) as number[]
+      const rawNgoIds: unknown = body.ngoIds
+      const ngoIds = Array.isArray(rawNgoIds)
+        ? [...new Set(rawNgoIds.map((value: unknown) => Number(value)).filter((value) => Number.isFinite(value) && value > 0))]
+        : []
 
       if (ngoIds.length === 0) {
         return NextResponse.json({ error: 'At least one NGO id is required' }, { status: 400 })
@@ -295,9 +299,9 @@ export async function submitProjectApplication(request: NextRequest) {
 
       if (existingInvitesError) throw existingInvitesError
 
-      const existingByNgo = new Map<number, any>((existingInvites || []).map((item) => [Number(item.contributor_id), item]))
+      const existingInvitedNgoIds = new Set((existingInvites || []).map((item) => Number(item.contributor_id)))
       const rowsToInsert = ngoIds
-        .filter((ngoId: number) => !existingByNgo.has(ngoId))
+        .filter((ngoId: number) => !existingInvitedNgoIds.has(ngoId))
         .map((ngoId: number) => ({
           service_request_id: anchorNeedId,
           contributor_id: ngoId,

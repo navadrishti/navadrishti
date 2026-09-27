@@ -1,5 +1,9 @@
 import { supabase } from '@/lib/db'
-import { getNgoNeedFulfillmentMode, normalizeServiceRequestRecord } from '@/lib/service-request-allocation'
+import {
+  getNgoNeedFulfillmentMode,
+  normalizeServiceRequestRecord,
+  type ServiceRequestInput,
+} from '@/lib/service-request-allocation'
 
 export async function getActiveInfrastructureVolunteerApplication(userId: number) {
   const { data, error } = await supabase
@@ -29,7 +33,7 @@ export async function getActiveInfrastructureVolunteerApplication(userId: number
   }) || null
 }
 
-export async function canIndividualApplyToNeed(userId: number, requestData: Record<string, any>) {
+export async function canIndividualApplyToNeed(userId: number, requestData: ServiceRequestInput) {
   const mode = getNgoNeedFulfillmentMode(requestData)
   if (mode !== 'infrastructure') {
     const existing = await getActiveInfrastructureVolunteerApplication(userId)

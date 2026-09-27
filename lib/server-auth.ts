@@ -343,7 +343,7 @@ export interface CompanyCAContext {
     company_user_id: number;
     ca_id?: string | null;
     status: string;
-    permissions: Record<string, any>;
+    permissions: Record<string, unknown>;
     must_change_password?: boolean;
   };
 }

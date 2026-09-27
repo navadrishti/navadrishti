@@ -10,6 +10,7 @@ import {
 } from '@/lib/auth';
 import { applyCaBadgeToProfile } from '@/lib/platform-ca-auth';
 import { parseJsonObject } from '@/lib/utils';
+import type { Json } from '@/lib/database.types';
 
 type UserType = 'individual' | 'ngo' | 'company';
 
@@ -122,7 +123,10 @@ async function loadReverificationUser(userId: number) {
   return { user, summary };
 }
 
-function buildClearedTypeBlock(typeBlock: Record<string, any>, updates: Record<string, any>) {
+function buildClearedTypeBlock(
+  typeBlock: Record<string, Json | undefined>,
+  updates: Record<string, Json | undefined>
+) {
   const nextBlock = { ...typeBlock, ...updates };
   delete nextBlock.reverification_documents;
   delete nextBlock.reverification_compliance_numbers;
@@ -164,7 +168,7 @@ export async function approveReverification(
   }
 
   const pendingNumbers = parseJsonObject(typeBlock.reverification_compliance_numbers);
-  let nextProfileData: Record<string, any> = {
+  let nextProfileData: Record<string, unknown> = {
     ...profileData,
     reverification_pending: false,
     compliance_documents: complianceDocuments,
@@ -237,7 +241,7 @@ export async function approveReverification(
   const { data, error } = await supabase
     .from('users')
     .update({
-      profile_data: nextProfileData,
+      profile_data: nextProfileData as Json,
       verification_status: 'verified',
       updated_at: new Date().toISOString(),
     })

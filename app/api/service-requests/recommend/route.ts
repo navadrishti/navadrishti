@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
 import { embedText } from '@/lib/embeddings'
-import { getErrorMessage } from '@/lib/utils'
+import { getErrorMessage, parseJsonObject } from '@/lib/utils'
 
 function toNumber(value: unknown): number | null {
   if (value === null || value === undefined) return null
@@ -115,7 +115,14 @@ export async function POST(req: NextRequest) {
 
     const availableRows = unexpiredRows.filter((row) => !usedOfferIds.has(Number(row.id)))
 
-    const candidateMap = new Map<number, any>()
+    const candidateMap = new Map<number, {
+      id: number
+      title: string
+      provider_name: string | null
+      raw: (typeof availableRows)[number]
+      capacity: number | null
+      vector_similarity: number
+    }>()
 
     for (const r of availableRows) {
       const capacity = toNumber(r.price_amount) || null
@@ -132,7 +139,11 @@ export async function POST(req: NextRequest) {
     const candidates = Array.from(candidateMap.values())
 
     const scored = candidates.map((offer) => {
-      const offerText = `${offer.title || ''} ${String(offer.raw?.description || '')} ${offer.raw?.item || ''} ${offer.raw?.skill || ''} ${offer.raw?.scope || ''}`.toLowerCase()
+      const detailText = Object.values(parseJsonObject(offer.raw.offer_details))
+        .flat()
+        .filter((value) => typeof value === 'string' || typeof value === 'number')
+        .join(' ')
+      const offerText = `${offer.title || ''} ${String(offer.raw?.description || '')} ${detailText}`.toLowerCase()
       let score = 0
 
       const vecSim = Number(offer.vector_similarity || 0)
@@ -211,10 +222,7 @@ export async function POST(req: NextRequest) {
     const creatorIds = [
       ...new Set(
         recommendations
-          .map((item) => {
-            const raw = candidateMap.get(Number(item.id))?.raw || {}
-            return Number(raw.creator_id || raw.ngo_id || 0)
-          })
+          .map((item) => Number(candidateMap.get(Number(item.id))?.raw.creator_id || 0))
           .filter((id: number) => id > 0)
       ),
     ]
@@ -223,10 +231,9 @@ export async function POST(req: NextRequest) {
         .from('users')
         .select('id, name, verification_status')
         .in('id', creatorIds)
-      const creatorById = new Map<number, any>((creators || []).map((row) => [Number(row.id), row]))
+      const creatorById = new Map((creators || []).map((row) => [Number(row.id), row] as const))
       recommendations = recommendations.map((item) => {
-        const raw = candidateMap.get(Number(item.id))?.raw || {}
-        const creator = creatorById.get(Number(raw.creator_id || raw.ngo_id || 0))
+        const creator = creatorById.get(Number(candidateMap.get(Number(item.id))?.raw.creator_id || 0))
         const providerName = item.provider_name || creator?.name || null
         const verificationStatus = creator?.verification_status || null
         return {
@@ -274,7 +281,7 @@ export async function POST(req: NextRequest) {
         // No subset reaches the target: take the largest offers until it's covered or we run out.
         const capacitySorted = recommendations
           .filter((r) => r.capacity && r.capacity > 0)
-          .sort((a, b) => (b.capacity - a.capacity) || (b.score - a.score))
+          .sort((a, b) => ((b.capacity ?? 0) - (a.capacity ?? 0)) || (b.score - a.score))
 
         let accumulated = 0
         for (const r of capacitySorted) {

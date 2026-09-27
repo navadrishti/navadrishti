@@ -16,7 +16,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
-import { CAVerificationReview, caReviewDescription, isCaReviewLocked } from '@/components/ca-verification-review';
+import { CAVerificationReview, caReviewDescription, isCaReviewLocked, type CAReviewItem } from '@/components/ca-verification-review';
 import { getErrorMessage } from '@/lib/utils';
 
 interface Individual {
@@ -125,7 +125,7 @@ export default function CADashboardClient() {
   const [error, setError]             = useState('');
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('unverified');
   const [searchQuery, setSearchQuery]   = useState('');
-  const [selectedItem, setSelectedItem] = useState<any>(null);
+  const [selectedItem, setSelectedItem] = useState<CAReviewItem | null>(null);
   const [selectedType, setSelectedType] = useState<'individuals' | 'companies' | 'ngos' | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [reviewLoading, setReviewLoading] = useState(false);
@@ -183,7 +183,7 @@ export default function CADashboardClient() {
       ngo.ngo_description.toLowerCase().includes(q)
     ), [ngos, q]);
 
-  const handleItemClick = async (item: any, type: 'individuals' | 'companies' | 'ngos') => {
+  const handleItemClick = async (item: CAReviewItem, type: 'individuals' | 'companies' | 'ngos') => {
     setSelectedItem(item);
     setSelectedType(type);
     setRejectionReason('');

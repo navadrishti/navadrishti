@@ -13,7 +13,34 @@ export type ServiceRequestTarget = {
   isDeliverable: boolean
 }
 
-export function getServiceRequestTarget(request: Record<string, any> | null | undefined): ServiceRequestTarget {
+type ServiceRequestFields = {
+  requirements?: unknown
+  request_type?: unknown
+  category?: unknown
+  status?: unknown
+  listing_open?: unknown
+  valid_until?: unknown
+  project?: unknown
+  project_context?: unknown
+  target_amount?: unknown
+  current_amount?: unknown
+  remaining_amount?: unknown
+  target_quantity?: unknown
+  current_quantity?: unknown
+  remaining_quantity?: unknown
+  volunteers_needed?: unknown
+  beneficiary_count?: unknown
+}
+
+export type ServiceRequestLike = ServiceRequestFields | Record<string, unknown>
+
+export type ServiceRequestInput = ServiceRequestLike | ServiceRequestLike[] | null | undefined
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
+}
+
+export function getServiceRequestTarget(request: ServiceRequestLike | null | undefined): ServiceRequestTarget {
   const requirements = parseJsonObject(request?.requirements)
 
   const type = String(
@@ -46,7 +73,7 @@ export function getServiceRequestTarget(request: Record<string, any> | null | un
   }
 }
 
-export function getNeedRemainingQuantity(request: Record<string, any> | null | undefined): number {
+export function getNeedRemainingQuantity(request: ServiceRequestLike | null | undefined): number {
   const target = getServiceRequestTarget(request)
   if (target.isFinancial) {
     const remaining = request?.remaining_amount
@@ -74,7 +101,7 @@ function isPastValidUntil(value: unknown, now = new Date()): boolean {
 }
 
 export function isServiceRequestExpired(
-  request: Record<string, any> | null | undefined,
+  request: ServiceRequestLike | null | undefined,
   now = new Date()
 ): boolean {
   if (!request) return false
@@ -84,7 +111,7 @@ export function isServiceRequestExpired(
   if (request.listing_open === false) return true
 
   if (isPastValidUntil(request.valid_until, now)) return true
-  if (isPastValidUntil(request.project?.valid_until, now)) return true
+  if (isPastValidUntil(asRecord(request.project).valid_until, now)) return true
 
   const projectContext = parseJsonObject(request.project_context)
   if (isPastValidUntil(projectContext.project_valid_until, now)) return true
@@ -96,7 +123,7 @@ export function isServiceRequestExpired(
   return false
 }
 
-export function isNeedOpenForListing(request: Record<string, any> | null | undefined): boolean {
+export function isNeedOpenForListing(request: ServiceRequestLike | null | undefined): boolean {
   if (isServiceRequestExpired(request)) return false
   const status = String(request?.status || '').toLowerCase()
   if (['completed', 'cancelled', 'closed', 'expired'].includes(status)) return false
@@ -104,7 +131,7 @@ export function isNeedOpenForListing(request: Record<string, any> | null | undef
 }
 
 export function buildAllocationUpdatePayload(
-  request: Record<string, any>,
+  request: ServiceRequestLike,
   input: { amount?: number; quantity?: number }
 ) {
   const target = getServiceRequestTarget(request)
@@ -141,9 +168,16 @@ export function isDeliveredTrackingStatus(status: string | null | undefined): bo
   )
 }
 
-export function getDeliveryTrackingEvents(meta: Record<string, any> | null | undefined) {
-  const events = meta?.delivery_tracking_events
-  return Array.isArray(events) ? events : []
+export type DeliveryTrackingEvent = {
+  status?: string | null
+  timestamp?: string | null
+  location?: string | null
+  details?: string | null
+}
+
+export function getDeliveryTrackingEvents(meta: unknown): DeliveryTrackingEvent[] {
+  const events = asRecord(meta).delivery_tracking_events
+  return Array.isArray(events) ? (events as DeliveryTrackingEvent[]) : []
 }
 
 export function isPickedUpTrackingStatus(status: string | null | undefined): boolean {
@@ -155,8 +189,8 @@ export function isPickedUpTrackingStatus(status: string | null | undefined): boo
   )
 }
 
-export function formatDeliveryTrackingStatus(meta: Record<string, any> | null | undefined): string {
-  const status = String(meta?.delivery_tracking_last_status || '').trim()
+export function formatDeliveryTrackingStatus(meta: unknown): string {
+  const status = String(asRecord(meta).delivery_tracking_last_status || '').trim()
   if (!status) return 'Tracking not linked yet'
   return status
 }
@@ -218,7 +252,7 @@ export function isFinancialNeedType(value: unknown): boolean {
 }
 
 export function validateAcceptanceAllocation(
-  request: Record<string, any>,
+  request: ServiceRequestLike,
   input: { amount?: number; quantity?: number }
 ) {
   const target = getServiceRequestTarget(request)
@@ -255,10 +289,14 @@ export function normalizeServiceRequestRecord(request: unknown) {
   return null
 }
 
-export function getNgoNeedFulfillmentMode(
-  request: Record<string, any> | null | undefined
-): NgoNeedFulfillmentMode {
-  const normalized = normalizeServiceRequestRecord(request)
+function firstServiceRequest(request: ServiceRequestInput): ServiceRequestLike | null {
+  if (!request) return null
+  if (Array.isArray(request)) return request[0] || null
+  return typeof request === 'object' ? request : null
+}
+
+export function getNgoNeedFulfillmentMode(request: ServiceRequestInput): NgoNeedFulfillmentMode {
+  const normalized = firstServiceRequest(request)
   const type = String(
     normalized?.request_type || normalized?.category || getServiceRequestTarget(normalized).type || ''
   ).toLowerCase()
@@ -270,35 +308,38 @@ export function getNgoNeedFulfillmentMode(
   return 'skill_service'
 }
 
-export function shouldUseDelhiveryForNeed(request: Record<string, any> | null | undefined) {
+export function shouldUseDelhiveryForNeed(request: ServiceRequestInput) {
   return getNgoNeedFulfillmentMode(request) === 'material'
 }
 
-export function shouldUseRazorpayForNeed(request: Record<string, any> | null | undefined) {
+export function shouldUseRazorpayForNeed(request: ServiceRequestInput) {
   return getNgoNeedFulfillmentMode(request) === 'financial'
 }
 
-export function shouldUseNgoMarkedDailyAttendance(
-  request: Record<string, any> | null | undefined
-) {
+export function shouldUseNgoMarkedDailyAttendance(request: ServiceRequestInput) {
   return getNgoNeedFulfillmentMode(request) === 'skill_service'
 }
 
-export function isInfrastructureNeed(request: Record<string, any> | null | undefined) {
+export function isInfrastructureNeed(request: ServiceRequestInput) {
   return getNgoNeedFulfillmentMode(request) === 'infrastructure'
 }
 
-export function shouldCreateSkillServiceAssignment(
-  request: Record<string, any> | null | undefined
-) {
+export function shouldCreateSkillServiceAssignment(request: ServiceRequestInput) {
   const mode = getNgoNeedFulfillmentMode(request)
   return mode === 'skill_service' || mode === 'infrastructure'
 }
 
-export function getSkillServiceDailyRate(application: Record<string, any>) {
-  const meta = application?.response_meta && typeof application.response_meta === 'object'
-    ? application.response_meta
-    : {}
+type SkillServiceApplicationLike = {
+  response_meta?: unknown
+  fulfillment_amount?: unknown
+  assigned_amount?: unknown
+  proposed_amount?: unknown
+  fulfillment_quantity?: unknown
+  assigned_quantity?: unknown
+}
+
+export function getSkillServiceDailyRate(application: SkillServiceApplicationLike) {
+  const meta = asRecord(application?.response_meta)
   const assignmentMeta = parseJsonObject(meta.assignment_meta)
 
   const amount = Number(
@@ -313,7 +354,7 @@ export function getSkillServiceDailyRate(application: Record<string, any>) {
   return Number(application?.fulfillment_quantity ?? application?.assigned_quantity ?? 0)
 }
 
-export function isDailyRentalEngagementMeta(meta: Record<string, any> | null | undefined) {
+export function isDailyRentalEngagementMeta(meta: unknown) {
   const source = parseJsonObject(meta)
   const assignmentMeta = parseJsonObject(source.assignment_meta)
   const billingCycle = String(source.billing_cycle || assignmentMeta.billing_cycle || '').toLowerCase()
@@ -321,16 +362,14 @@ export function isDailyRentalEngagementMeta(meta: Record<string, any> | null | u
   return billingCycle === 'daily' || paymentMode === 'daily_due'
 }
 
-export function formatAttendanceSummary(meta: Record<string, any> | null | undefined) {
-  const summary = meta?.attendance_summary && typeof meta.attendance_summary === 'object'
-    ? meta.attendance_summary
-    : {}
+export function formatAttendanceSummary(meta: unknown) {
+  const summary = asRecord(asRecord(meta).attendance_summary)
 
   return {
     daysPresent: Number(summary.days_attended || summary.total_entries || 0),
     totalDue: Number(summary.total_due || 0),
     paidTotal: Number(summary.paid_total || 0),
-    lastAttendanceAt: summary.last_attendance_at || null,
+    lastAttendanceAt: summary.last_attendance_at ? String(summary.last_attendance_at) : null,
   }
 }
 
@@ -402,7 +441,15 @@ export function withProjectMeta(
   return `${visible}\n\n${PROJECT_META_START}${JSON.stringify(next)}${PROJECT_META_END}`.trim()
 }
 
-export function enrichProjectRecord<T extends Record<string, any>>(project: T | null | undefined) {
+type EnrichableProject = {
+  description?: string | null
+  category?: string | null
+  budget_inr?: number | null
+  impact_description?: string | null
+  contact_info?: string | null
+}
+
+export function enrichProjectRecord<T extends EnrichableProject>(project: T | null | undefined) {
   if (!project) return project
   const meta = parseProjectMeta(project.description)
   return {
@@ -418,7 +465,13 @@ export function enrichProjectRecord<T extends Record<string, any>>(project: T | 
 }
 
 /** Public/anonymous responses must not expose applicant or contact meta. */
-export function redactProjectSensitiveFields<T extends Record<string, any>>(project: T | null | undefined) {
+type RedactableProject = {
+  contact_info?: unknown
+  pending_company_applications?: unknown
+  _raw_description?: unknown
+}
+
+export function redactProjectSensitiveFields<T extends RedactableProject>(project: T | null | undefined) {
   if (!project) return project
   const {
     contact_info: _contact,

@@ -118,7 +118,7 @@ interface CampaignApiItem {
   created_at: string
   start_date?: string | null
   end_date?: string | null
-  impact_metrics?: Record<string, any> | null
+  impact_metrics?: Record<string, unknown> | null
 }
 
 function CSRCampaignCtaSkeleton() {

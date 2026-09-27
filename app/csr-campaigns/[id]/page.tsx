@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation"
 import { Header } from "@/components/header"
 import { DetailField, DetailSection, displayValue } from "@/components/detail-fields"
 import { formatDetailDate, formatDisplayDate, isCampaignStarted, isVolunteerRegistrationPastDeadline } from "@/lib/format-date"
-import { getVolunteerButtonState, readCampaignCategory, readCampaignDuration, readCampaignLocation, sumVolunteerApplicationCount } from "@/lib/campaign-schema"
+import { getVolunteerButtonState, readCampaignCategory, readCampaignDuration, readCampaignLocation, sumVolunteerApplicationCount, type VolunteerApplication } from "@/lib/campaign-schema"
 import { useAuth } from '@/lib/auth-context'
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -18,6 +18,13 @@ import { isCampaignLeadNgo } from '@/lib/campaign-volunteer-attendance'
 import { VerifiedAccountName } from '@/components/verification-badge'
 import { parseJsonObject } from '@/lib/utils';
 
+type CampaignImpactMetrics = Record<string, unknown> & {
+  volunteer_requirement?: number | string | null
+  volunteer_limit?: number | string | null
+  volunteer_applications?: VolunteerApplication[]
+  lead_ngo_accepted?: boolean
+}
+
 interface Campaign {
   id: string
   title: string | null
@@ -28,8 +35,8 @@ interface Campaign {
   budget_breakdown: Record<string, number> | null
   schedule_vii: string | null
   sdg_alignment: number[] | null
-  impact_metrics: Record<string, any> | null
-  milestones: Array<Record<string, any>> | null
+  impact_metrics: CampaignImpactMetrics | null
+  milestones: Array<Record<string, unknown>> | null
   created_at: string
   updated_at: string
   start_date: string | null
@@ -366,7 +373,7 @@ export default function CSRCampaignDetailPage() {
 
   const appliedByCurrentUser = (() => {
     try {
-      const impact = campaign?.impact_metrics || {}
+      const impact: CampaignImpactMetrics = campaign?.impact_metrics || {}
       const apps = Array.isArray(impact.volunteer_applications) ? impact.volunteer_applications : []
       return effectiveUserId > 0
         ? apps.some((a) => Number(a?.user_id || 0) === effectiveUserId)

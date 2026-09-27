@@ -14,13 +14,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
-import { CAVerificationReview, caReviewDescription, isCaReviewLocked } from '@/components/ca-verification-review';
+import { CAVerificationReview, caReviewDescription, isCaReviewLocked, type CAReviewItem } from '@/components/ca-verification-review';
 
-interface VerificationDetail {
-  id: number;
+type VerificationDetail = CAReviewItem & {
   user_id: number;
-  [key: string]: any;
-}
+};
 
 interface VerificationDetailsPageProps {
   type: 'individuals' | 'companies' | 'ngos';

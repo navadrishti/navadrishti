@@ -8,12 +8,14 @@ import {
 import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth'
 import { parseLeadNgoInvites, type LeadNgoInvite } from '@/lib/campaign-volunteer-attendance'
 import { parseJsonObject } from '@/lib/utils'
+import type { Tables } from '@/lib/database.types'
 
-function summarizeLeadInviteState(campaign: {
-  id: string
-  impact_metrics?: Record<string, any> | null
-  lead_ngo_user_id?: number | null
-}) {
+type CampaignDraft = Pick<
+  Tables<'campaigns'>,
+  'id' | 'status' | 'impact_metrics' | 'start_date' | 'end_date' | 'lead_ngo_user_id'
+>
+
+function summarizeLeadInviteState(campaign: CampaignDraft) {
   const impact = parseJsonObject(campaign.impact_metrics)
   const invites = parseLeadNgoInvites(impact.lead_ngo_invites)
   const leadNgoId = Number(campaign.lead_ngo_user_id || 0) || null
@@ -28,7 +30,10 @@ function summarizeLeadInviteState(campaign: {
   }
 }
 
-function readProjectEndDate(projectData: Record<string, any>, campaign?: any): string | null {
+function readProjectEndDate(
+  projectData: Record<string, unknown>,
+  campaign?: Pick<CampaignDraft, 'end_date'> | null
+): string | null {
   return (
     normalizeExpiryDate(projectData?.endDate) ||
     normalizeExpiryDate(projectData?.end_date) ||
@@ -37,7 +42,7 @@ function readProjectEndDate(projectData: Record<string, any>, campaign?: any): s
   )
 }
 
-function readProjectStartDate(projectData: Record<string, any>): string | null {
+function readProjectStartDate(projectData: Record<string, unknown>): string | null {
   return normalizeExpiryDate(projectData?.startDate) || normalizeExpiryDate(projectData?.start_date)
 }
 
@@ -94,7 +99,7 @@ export async function GET(request: NextRequest) {
     const sessionId = String(new URL(request.url).searchParams.get('sessionId') || '').trim()
     const draftCampaignId = String(new URL(request.url).searchParams.get('draftCampaignId') || '').trim()
 
-    let campaign: any = null
+    let campaign: CampaignDraft | null = null
     if (draftCampaignId) {
       const { data, error } = await supabase
         .from('campaigns')
@@ -151,7 +156,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Valid ngoId is required' }, { status: 400 })
     }
 
-    let campaign: any = null
+    let campaign: CampaignDraft | null = null
     if (draftCampaignId) {
       const { data, error } = await supabase
         .from('campaigns')

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { v2 as cloudinary } from 'cloudinary';
+import { v2 as cloudinary, type UploadApiOptions, type UploadApiResponse } from 'cloudinary';
 import { findAuthUser } from '@/lib/server-auth';
 
 export const runtime = 'nodejs';
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(bytes);
 
     const isImage = file.type.startsWith('image/');
-    const uploadOptions: Record<string, any> = {
+    const uploadOptions: UploadApiOptions = {
       resource_type: isImage ? 'image' : 'raw',
       folder: `verification/${safeCategory}/${user.id}`,
       public_id: `${safeDocumentKey}_${Date.now()}_${crypto.randomUUID()}`,
@@ -80,10 +80,10 @@ export async function POST(request: NextRequest) {
       ];
     }
 
-    const uploadResult = await new Promise<any>((resolve, reject) => {
+    const uploadResult = await new Promise<UploadApiResponse>((resolve, reject) => {
       cloudinary.uploader.upload_stream(uploadOptions, (error, result) => {
-        if (error) {
-          reject(error);
+        if (error || !result) {
+          reject(error ?? new Error('Cloudinary upload returned no result'));
           return;
         }
         resolve(result);

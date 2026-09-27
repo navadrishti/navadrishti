@@ -17,8 +17,41 @@ import { isHiddenNgoNetworkPaymentChannel } from '@/lib/razorpay-route';
 import { getRequestUrgencyLevel, parseJsonObject } from '@/lib/utils';
 import type { Tables } from '@/lib/database.types';
 
-// Listing rows are enriched and reshaped in place (joined requester/project, parsed requirements, derived scores).
-type ListingRequest = Record<string, any>;
+type ListingRequester = Pick<Tables<'users'>, 'id' | 'name' | 'email' | 'user_type'> & {
+  verification_status?: Tables<'users'>['verification_status'];
+};
+
+type ListingSource = Tables<'service_requests'> & {
+  requester?: ListingRequester;
+  project?: Tables<'service_request_projects'> | null;
+  volunteer_application?: unknown;
+  volunteers_count?: number;
+};
+
+type ListingProject = {
+  id: string;
+  title: string;
+  location: string;
+  timeline: string;
+  category: string;
+};
+
+// Listing rows are enriched with parsed requirements, a flattened project summary and derived scores.
+type ListingRequest = Omit<ListingSource, 'project' | 'estimated_budget'> & {
+  project: ListingProject | null | undefined;
+  estimated_budget: string;
+  ngo_name?: string;
+  images: string[];
+  request_type: string;
+  category: string;
+  beneficiary_count: number;
+  impact_description: string;
+  trust_badge_weight: number;
+  verified: boolean;
+  impact_score: number;
+  proof_strength: number;
+  completion_rate: number;
+};
 
 type ListingFilters = {
   category?: string;
@@ -162,7 +195,7 @@ function deriveAutoUrgency(timeline: unknown, createdAtMs: number): 'low' | 'med
 /** Same deadline resolution the listing card uses for live urgency badges. */
 function resolveListingDeadline(item: ListingRequest): string | null {
   const requirements = parseJsonObject(item?.requirements);
-  const projectContext = item?.project || requirements?.project?.project || null;
+  const projectContext: Record<string, unknown> | null = item?.project || requirements?.project?.project || null;
   const candidates = [
     projectContext?.valid_until,
     item?.deadline,
@@ -230,7 +263,7 @@ export async function GET(request: NextRequest) {
     const view = rawView === 'volunteering' ? 'my-responses' : rawView;
 
     // For my-requests view, authenticate user
-    let authenticatedUserId = null;
+    let authenticatedUserId: number | null = null;
     if (view === 'my-requests' || view === 'my-responses') {
       const claims = getTokenClaims(request);
       if (!claims) {
@@ -257,7 +290,7 @@ export async function GET(request: NextRequest) {
       filters.project_id = projectId;
     }
     
-    let serviceRequests: ListingRequest[];
+    let serviceRequests: ListingSource[];
     if (view === 'my-responses' && authenticatedUserId) {
       // For volunteering view, get service requests where user has applied
       const volunteerApplications = await db.serviceRequestApplications.getByVolunteerId(authenticatedUserId);
@@ -315,52 +348,47 @@ export async function GET(request: NextRequest) {
   const requestsToProcess = (Array.isArray(serviceRequests) ? serviceRequests : []).filter(
     (request) => !isHiddenNgoNetworkPaymentChannel(request)
   );
-  const processedRequests = requestsToProcess.map((request) => {
-      if (request.requester) {
-        request.ngo_name = request.requester.name;
-      }
-
+  const processedRequests = requestsToProcess.map((request): ListingRequest => {
       const requirementsObj = parseJsonObject(request.requirements);
       const projectContextObj = parseJsonObject(request.project_context);
       const requirementImages = parseImageArray(requirementsObj.images);
-      request.images = requirementImages.length > 0
+      const images = requirementImages.length > 0
         ? requirementImages
-        : parseImageArray(request.images || request.image_url);
+        : parseImageArray(request.image_url);
       
-      request.request_type = request.request_type || requirementsObj.request_type || (SERVICE_REQUEST_TYPES.includes(request.category) ? request.category : 'Skill / Service Need');
-      request.category = requirementsObj.project_category || requirementsObj?.project?.category || request.category || 'Uncategorized';
-      request.estimated_budget = request.estimated_budget != null ? String(request.estimated_budget) : (requirementsObj.estimated_budget || requirementsObj.budget || 'Not specified');
-      request.beneficiary_count = request.beneficiary_count != null ? Number(request.beneficiary_count) : Number(requirementsObj.beneficiary_count || 0);
-      request.impact_description = request.impact_description || requirementsObj.impact_description || '';
-      request.trust_badge_weight = request.requester?.verification_status === 'verified' ? 1.0 : 0.6;
-      request.verified = String(request.requester?.verification_status || '').toLowerCase() === 'verified';
-      request.impact_score = computeImpactScore(request);
-      request.proof_strength = computeProofStrength(request);
-      request.completion_rate = request.status === 'completed' ? 100 : 0;
-      
+      const category: string = requirementsObj.project_category || requirementsObj?.project?.category || request.category || 'Uncategorized';
+      const beneficiaryCount = request.beneficiary_count != null ? Number(request.beneficiary_count) : Number(requirementsObj.beneficiary_count || 0);
+
+      let project: ListingProject | null | undefined;
       if (request.project) {
-        request.project = {
+        project = {
           id: String(request.project.id || ''),
           title: String(request.project.title || projectContextObj?.project_title || 'Project'),
           location: String(request.project.location || request.project.exact_address || projectContextObj?.project_location || ''),
           timeline: String(request.project.timeline || projectContextObj?.project_timeline || ''),
-          category: String(request.project.category || projectContextObj?.project_category || request.category || '')
+          category: String(projectContextObj?.project_category || category || '')
         };
       } else if (projectContextObj && projectContextObj.project) {
-        request.project = {
+        project = {
           id: String(projectContextObj.project.id || ''),
           title: String(projectContextObj.project_title || projectContextObj.project.title || ''),
           location: String(projectContextObj.project_location || projectContextObj.project.exact_address || ''),
           timeline: String(projectContextObj.project_timeline || projectContextObj.project.timeline || ''),
           category: String(projectContextObj.project_category || projectContextObj.project.category || '')
         };
+      } else {
+        project = request.project;
       }
       
+      let description = request.description;
+      let requirements = request.requirements;
+      let deadline = request.deadline;
+
       // Handle old concatenated description format
-      if (request.description && (request.description.includes('Budget:') || request.description.includes('Requirements:'))) {
+      if (description && (description.includes('Budget:') || description.includes('Requirements:'))) {
         // Split by newlines and extract parts
-        const lines = request.description.split('\n');
-        request.description = lines[0]; // Just the actual description
+        const lines = description.split('\n');
+        description = lines[0]; // Just the actual description
         
         // Extract additional info from the concatenated format
         const fullText = lines.join('\n');
@@ -369,8 +397,8 @@ export async function GET(request: NextRequest) {
         const timelineMatch = fullText.match(/Timeline:\s*([^\n]*)/);
         
         try {
-          const existingRequirements = request.requirements ? JSON.parse(request.requirements) : {};
-          request.requirements = JSON.stringify({
+          const existingRequirements = requirements ? JSON.parse(String(requirements)) : {};
+          requirements = JSON.stringify({
             ...existingRequirements,
             budget: budgetMatch ? budgetMatch[1].trim() : null,
             contactInfo: contactMatch ? contactMatch[1].trim() : null,
@@ -378,7 +406,7 @@ export async function GET(request: NextRequest) {
           });
           
           if (timelineMatch && timelineMatch[1].trim()) {
-            request.deadline = timelineMatch[1].trim();
+            deadline = timelineMatch[1].trim();
           }
         } catch (e) {
           console.error('Error parsing old format data:', e);
@@ -386,12 +414,30 @@ export async function GET(request: NextRequest) {
       }
       
       // Handle fake deadline - clear timestamp-style deadlines
-      const deadlineStr = String(request.deadline || '');
+      const deadlineStr = String(deadline || '');
       if (deadlineStr && (deadlineStr.includes('T') && deadlineStr.includes('Z'))) {
-        request.deadline = null;
+        deadline = null;
       }
       
-      return request;
+      return {
+        ...request,
+        ...(request.requester ? { ngo_name: request.requester.name } : {}),
+        images,
+        request_type: request.request_type || requirementsObj.request_type || (SERVICE_REQUEST_TYPES.includes(request.category) ? request.category : 'Skill / Service Need'),
+        category,
+        estimated_budget: request.estimated_budget != null ? String(request.estimated_budget) : (requirementsObj.estimated_budget || requirementsObj.budget || 'Not specified'),
+        beneficiary_count: beneficiaryCount,
+        impact_description: request.impact_description || requirementsObj.impact_description || '',
+        trust_badge_weight: request.requester?.verification_status === 'verified' ? 1.0 : 0.6,
+        verified: String(request.requester?.verification_status || '').toLowerCase() === 'verified',
+        impact_score: computeImpactScore({ ...request, beneficiary_count: beneficiaryCount }),
+        proof_strength: computeProofStrength({ images }),
+        completion_rate: request.status === 'completed' ? 100 : 0,
+        project,
+        description,
+        requirements,
+        deadline,
+      };
     });
 
     let finalRequests = processedRequests;
@@ -438,11 +484,6 @@ export async function GET(request: NextRequest) {
 
       const requestsWithVolunteerCount = await Promise.all(
         browsableRequests.map(async (request) => {
-          if (!request || typeof request !== 'object') {
-            console.warn('Skipping invalid request during volunteer count:', request);
-            return { accepted_volunteers_count: 0, is_full: false };
-          }
-
           try {
             const { data: acceptedVolunteers, error: countError } = await supabase
               .from('service_request_applications')
@@ -498,7 +539,6 @@ export async function GET(request: NextRequest) {
           const locationHaystack = [
             item.location,
             item.project?.location,
-            item.project?.exact_address,
           ]
             .map((value) => String(value || '').toLowerCase())
             .join(' ');

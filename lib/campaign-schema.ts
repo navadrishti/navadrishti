@@ -1,4 +1,5 @@
 import { parseJsonObject } from '@/lib/utils'
+import type { Json, TablesInsert } from '@/lib/database.types'
 
 type CampaignLike = Record<string, unknown> | null | undefined
 
@@ -28,7 +29,21 @@ export function resolveCampaignLocationInput(body: Record<string, unknown>): str
   return String(body.location || body.region || '').trim()
 }
 
-export function buildCampaignWritePayload(body: Record<string, any>, companyId: number) {
+export type CampaignWriteBody = Record<string, unknown> & {
+  title?: string | null
+  description?: string | null
+  budget_inr?: number | null
+  budget_breakdown?: Json | null
+  schedule_vii?: string | null
+  sdg_alignment?: number[] | null
+  impact_metrics?: Json | null
+  milestones?: Json | null
+  start_date?: string | null
+  end_date?: string | null
+  status?: string
+}
+
+export function buildCampaignWritePayload(body: CampaignWriteBody, companyId: number): TablesInsert<'campaigns'> {
   const category = resolveCampaignCategoryInput(body)
   const location = resolveCampaignLocationInput(body)
 

@@ -15,6 +15,12 @@ type DistrictSummary = {
   field_officers_count: number;
 };
 
+type ProjectWithMilestones = {
+  id: string;
+  created_by_government_admin_id: number | null;
+  government_project_milestones: { is_fulfilled: boolean }[] | null;
+};
+
 export async function GET(request: NextRequest) {
   try {
     const admin = await assertGovernmentAdmin(request);
@@ -52,7 +58,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    let projects: any[] = [];
+    let projects: ProjectWithMilestones[] = [];
     if (districtByAdminId.size > 0) {
       const { data, error: projectsError } = await supabase
         .from('government_projects')
@@ -65,9 +71,9 @@ export async function GET(request: NextRequest) {
 
     const districtMap = new Map<string, { total: number; active: number; progressSum: number }>();
     for (const project of projects) {
-      const district = districtByAdminId.get(project.created_by_government_admin_id) || 'Unassigned';
+      const district = districtByAdminId.get(Number(project.created_by_government_admin_id)) || 'Unassigned';
       const entry = districtMap.get(district) || { total: 0, active: 0, progressSum: 0 };
-      const milestones: { is_fulfilled: boolean }[] = project.government_project_milestones || [];
+      const milestones = project.government_project_milestones || [];
       const completed = milestones.filter((m) => m.is_fulfilled).length;
 
       entry.total++;
