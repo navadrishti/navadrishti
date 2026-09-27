@@ -22,7 +22,7 @@ export function readPublishedEntity(projectContext: unknown): PublishedEntity | 
 export function buildProjectContextWithPublished(
   session: Record<string, unknown>,
   existingContext: Record<string, unknown> = {},
-): Record<string, unknown> {
+): Record<string, any> {
   const base = {
     ...existingContext,
     ...(session.project_context && typeof session.project_context === 'object'
@@ -72,14 +72,10 @@ export function restoreMobileChatScrollPosition(y: number | null) {
   window.scrollTo({ top: y, left: 0, behavior: 'auto' })
 }
 
-export const AI_SUITE_NAME = 'GRAM AI Suite'
-
 export const AGENT_NAMES = {
   atlas: 'Atlas',
   catalyst: 'Catalyst',
   pulse: 'Pulse',
-  sentinel: 'Sentinel',
-  insight: 'Insight',
 } as const
 
 export const AGENT_ROUTES = {

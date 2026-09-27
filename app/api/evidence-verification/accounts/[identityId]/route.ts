@@ -123,7 +123,6 @@ export async function DELETE(
       return NextResponse.json({ error: 'Invalid company CA identity id' }, { status: 400 });
     }
 
-    // Verify the company CA belongs to the current company
     const { data: existing, error: findError } = await supabase
       .from('company_ca_identities')
       .select('*')
@@ -135,7 +134,6 @@ export async function DELETE(
       return NextResponse.json({ error: 'Company CA identity not found' }, { status: 404 });
     }
 
-    // Delete the company CA identity
     const { error: deleteError } = await supabase
       .from('company_ca_identities')
       .delete()
@@ -147,7 +145,6 @@ export async function DELETE(
       return NextResponse.json({ error: 'Failed to delete company CA account' }, { status: 500 });
     }
 
-    // Log the deletion event
     await supabase.from('csr_audit_log').insert({
       entity_type: 'company_ca_identity',
       entity_id: identityId,

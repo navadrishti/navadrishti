@@ -1,327 +1,16 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { after, NextRequest, NextResponse } from 'next/server'
 import { db, supabase } from '@/lib/db'
-import jwt from 'jsonwebtoken'
-import { JWT_SECRET } from '@/lib/auth'
-import {
-  CATEGORY_BY_OFFER_TYPE,
-  getDefaultTransactionType,
-  isOfferType,
-  isTransactionAllowedForOfferType,
-  isTransactionType,
-  OfferType,
-  normalizeDateOnlyToEndOfDayIso,
-  normalizeCapabilityTransactionType,
-  normalizeImpactAreas,
-  resolveCapabilityRentalRate,
-  sanitizeTextArray,
-  parseCsvToStringArray,
-  TransactionType,
-  toNullableNumber,
-  toNullablePositiveNumber
-} from '@/lib/service-offers'
+import { syncServiceOfferEmbedding } from '@/lib/embeddings'
+import { getTokenClaims } from '@/lib/auth'
+import { buildOfferCapabilityRow, buildOfferRow, coerceOfferBody, toOfferResponse, validateOfferBody } from '@/lib/service-offer-payload'
 import {
   assertUserRazorpayPayoutActiveForCapabilities,
   CAPABILITY_LISTING_REQUIRES_PAYOUT_MESSAGE,
 } from '@/lib/razorpay-route'
 
-interface JWTPayload {
-  id: number
-  user_type: string
-  email: string
-  name: string
-}
-
-const LEGACY_CATEGORY_TO_OFFER_TYPE: Record<string, string> = {
-  'Funding Capacity': 'financial',
-  'Material Supply': 'material',
-  'Skill / Expertise': 'service',
-  'Execution Capability': 'infrastructure'
-}
-
-const safeParseJson = (value: unknown): Record<string, any> => {
-  if (!value) return {}
-  if (typeof value === 'object') return value as Record<string, any>
-
-  if (typeof value === 'string') {
-    try {
-      return JSON.parse(value)
-    } catch {
-      return {}
-    }
-  }
-
-  return {}
-}
-
-const updateWithSchemaFallback = async (table: string, id: number | string, payload: Record<string, any>) => {
-  let attempts = 0
-  let current = { ...payload }
-  while (attempts < 3) {
-    const { data, error } = await supabase.from(table).update(current).eq('id', id).select().single()
-    if (!error) return { data, error: null }
-
-    const msg = String(error.message || '')
-    const m = msg.match(/Could not find the '([^']+)' column/)
-    if (m) {
-      const col = m[1]
-      if (col in current) {
-        delete (current as any)[col]
-        attempts++
-        continue
-      }
-    }
-
-    return { data: null, error }
-  }
-
-  return { data: null, error: { message: 'Update retries exhausted due to missing columns' } }
-}
-
-const buildPriceInfo = (offerType: string, transactionType: string, body: Record<string, any>) => {
-  if (offerType === 'financial' || transactionType === 'volunteer' || transactionType === 'donate') {
-    return {
-      price_type: 'free',
-      price_amount: 0,
-      price_description: transactionType === 'donate' ? 'Donation support' : transactionType === 'volunteer' ? 'Volunteer support' : 'Funding support'
-    }
-  }
-
-  const priceType = body.price_type === 'negotiable' ? 'negotiable' : 'fixed'
-  const dailyRate = resolveCapabilityRentalRate({
-    unit_rate: body.unit_rate,
-    price_amount: body.price_amount,
-    offer_details: body.offer_details,
-  })
-
-  return {
-    price_type: priceType,
-    price_amount: dailyRate,
-    price_description: 'per day',
-  }
-}
-
-const normalizeOfferDetailsForStorage = (
-  offerType: string,
-  transactionType: string,
-  details: Record<string, any>,
-  body?: Record<string, any>
-) => {
-  const mergedDetails: Record<string, any> = {
-    ...details,
-    billing_cycle: body?.billing_cycle ?? details.billing_cycle ?? 'daily',
-    unit_rate: resolveCapabilityRentalRate({
-      unit_rate: body?.unit_rate ?? details.unit_rate,
-      price_amount: body?.price_amount ?? details.unit_rate,
-      offer_details: details,
-    }) || toNullablePositiveNumber(body?.unit_rate ?? details.unit_rate),
-    rate_currency: body?.rate_currency ?? details.rate_currency ?? 'INR',
-  }
-
-  if (offerType === 'material') {
-    return {
-      ...mergedDetails,
-      available_to: mergedDetails.available_to ?? null
-    }
-  }
-
-  if (offerType === 'infrastructure') {
-    return {
-      ...mergedDetails,
-      available_to: mergedDetails.available_to ?? null
-    }
-  }
-
-  return mergedDetails
-}
-
-const buildBackendCapabilities = (offer: Record<string, any>) => {
-  const capabilityKind = offer.offer_type === 'financial'
-    ? 'financial'
-    : offer.offer_type === 'service'
-      ? 'skill'
-      : offer.offer_type === 'material'
-        ? 'item'
-        : 'asset'
-
-  const unit = offer.offer_type === 'financial'
-    ? 'offer'
-    : offer.offer_type === 'service'
-      ? 'service'
-      : offer.offer_type === 'material'
-        ? 'item'
-        : 'asset'
-
-  return [{
-    service_offer_id: Number(offer.id),
-    capability_name: String(offer.title || '').trim(),
-    capability_kind: capabilityKind,
-    capability_description: String(offer.description || '').trim() || null,
-    synonyms: sanitizeTextArray(offer.tags),
-    unit,
-    min_qty: 1,
-    max_qty: 1,
-    is_active: true
-  }]
-}
-
-const validateIncomingOfferBody = (body: Record<string, any>) => {
-  if (!body.title || !body.description || !body.offer_type || !body.transaction_type) {
-    return 'Missing required fields: title, description, offer_type, transaction_type.'
-  }
-
-  if (!isOfferType(body.offer_type)) {
-    return 'offer_type must be one of: financial, material, service, infrastructure.'
-  }
-
-  if (!isTransactionType(body.transaction_type)) {
-    return 'transaction_type must be one of: volunteer, donate, rent.'
-  }
-
-  body.transaction_type = normalizeCapabilityTransactionType(
-    body.offer_type as OfferType,
-    body.transaction_type
-  )
-
-  if (body.transaction_type === 'sell') {
-    return 'Permanent sale is not supported. Use daily rental instead.'
-  }
-
-  if (!isTransactionAllowedForOfferType(body.offer_type, body.transaction_type)) {
-    return `transaction_type ${body.transaction_type} is not allowed for offer_type ${body.offer_type}.`
-  }
-
-  body.impact_area = normalizeImpactAreas(body.impact_area)
-  if (!Array.isArray(body.impact_area) || body.impact_area.length === 0) {
-    return 'Please select at least one impact area.'
-  }
-
-  if (!body.valid_until && !body.expires_at && !(body.offer_details && body.offer_details.valid_until)) {
-    return 'valid_until is required for all offers.'
-  }
-
-  const validUntilValue = body.valid_until || body.expires_at || (body.offer_details && body.offer_details.valid_until)
-  const validUntilIso = normalizeDateOnlyToEndOfDayIso(validUntilValue)
-  const validUntilMs = validUntilIso ? Date.parse(validUntilIso) : Number.NaN
-  if (Number.isNaN(validUntilMs)) {
-    return 'valid_until must be a valid date.'
-  }
-
-  if (validUntilMs < Date.now()) {
-    return 'valid_until must be in the future.'
-  }
-
-  const requiresPricing = body.transaction_type === 'rent'
-  if (requiresPricing) {
-    if (!['fixed', 'negotiable'].includes(String(body.price_type || 'fixed'))) {
-      return 'price_type must be fixed or negotiable for rental offers.'
-    }
-
-    const dailyRate = resolveCapabilityRentalRate({
-      unit_rate: body.unit_rate,
-      price_amount: body.price_amount,
-      offer_details: body.offer_details,
-    })
-    if (dailyRate <= 0) {
-      return 'Daily rental rate must be a positive number.'
-    }
-  }
-
-  return null
-}
-
-const normalizeOffer = (offer: any, capabilities: any[]) => {
-  const details = safeParseJson(offer.offer_details)
-  const fallbackDetails = safeParseJson(offer.requirements)
-  const mergedDetails = Object.keys(details).length > 0 ? details : fallbackDetails
-
-  const normalizedOfferType = isOfferType(offer.offer_type)
-    ? offer.offer_type
-    : LEGACY_CATEGORY_TO_OFFER_TYPE[offer.category] || 'service'
-
-  const inferredTransactionType = normalizeCapabilityTransactionType(
-    normalizedOfferType,
-    isTransactionType(offer.transaction_type)
-      ? offer.transaction_type
-      : offer.price_type === 'free'
-        ? 'donate'
-        : 'rent'
-  )
-
-  return {
-    ...offer,
-    ngo_id: offer.ngo_id ?? offer.creator_id,
-    offer_type: normalizedOfferType,
-    transaction_type: inferredTransactionType,
-    impact_area: Array.isArray(offer.impact_area) ? offer.impact_area : [],
-    offer_details: mergedDetails,
-    unit_rate: toNullableNumber(offer.unit_rate ?? mergedDetails.unit_rate ?? offer.price_amount),
-    billing_cycle: offer.billing_cycle ?? mergedDetails.billing_cycle ?? null,
-    payment_mode: offer.payment_mode ?? mergedDetails.payment_mode ?? null,
-    rate_currency: offer.rate_currency ?? mergedDetails.rate_currency ?? 'INR',
-    capabilities,
-
-    // Legacy compatibility fields consumed by pages/components.
-    amount: toNullableNumber(offer.price_amount),
-    location_scope: offer.coverage_area ?? null,
-    conditions: typeof offer.requirements === 'string' ? offer.requirements : null,
-    item: mergedDetails.unit ?? null,
-    quantity: toNullableNumber(mergedDetails.quantity),
-    delivery_scope: offer.coverage_area ?? null,
-    skill: Array.isArray(mergedDetails.skills_required) ? mergedDetails.skills_required[0] : null,
-    capacity: toNullableNumber(mergedDetails.capacity),
-    duration: mergedDetails.duration ?? null,
-    scope: Array.isArray(mergedDetails.facilities) ? mergedDetails.facilities.join(', ') : null,
-    budget_range: mergedDetails.budget_amount ?? null,
-    verified: String(offer?.ngo?.verification_status || '').toLowerCase() === 'verified',
-    verification_status: offer?.ngo?.verification_status || null,
-  }
-}
-
-const validateIncomingBody = validateIncomingOfferBody
-
-const coerceIncomingBody = (body: Record<string, any>) => {
-  if (!Array.isArray(body.impact_area)) {
-    if (typeof body.impact_area === 'string') body.impact_area = parseCsvToStringArray(body.impact_area)
-    else if (body.impact_area && typeof body.impact_area === 'object') body.impact_area = Array.isArray(body.impact_area) ? body.impact_area : []
-    else if (body.impact_area) body.impact_area = [String(body.impact_area)]
-    else body.impact_area = []
-  } else {
-    body.impact_area = sanitizeTextArray(body.impact_area)
-  }
-  body.impact_area = normalizeImpactAreas(body.impact_area)
-
-  if (!Array.isArray(body.tags)) {
-    if (typeof body.tags === 'string') body.tags = parseCsvToStringArray(body.tags)
-    else if (!body.tags) body.tags = []
-    else body.tags = sanitizeTextArray(body.tags)
-  } else {
-    body.tags = sanitizeTextArray(body.tags)
-  }
-
-  if (typeof body.offer_details === 'string') {
-    try { body.offer_details = JSON.parse(body.offer_details) } catch { body.offer_details = {} }
-  }
-  if (!body.offer_details || typeof body.offer_details !== 'object') body.offer_details = {}
-
-  if (Array.isArray(body.requirements)) {
-    body.requirements = sanitizeTextArray(body.requirements)
-  } else if (body.requirements && typeof body.requirements === 'object') {
-    body.offer_details = { ...body.offer_details, ...body.requirements }
-    body.requirements = null
-  } else if (typeof body.requirements === 'string') {
-    body.requirements = body.requirements.trim() || null
-  } else {
-    body.requirements = null
-  }
-
-  if (!body.state_province && body['state/province']) body.state_province = body['state/province']
-
-  return body
-}
-
 // GET - Fetch single service offer
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -340,18 +29,16 @@ export async function GET(
       .eq('is_active', true)
       .order('id', { ascending: true })
 
-    const providerName = serviceOffer.ngo?.name || serviceOffer.ngo_name
+    const providerName = serviceOffer.ngo?.name
     const providerType = serviceOffer.ngo?.user_type || 'ngo'
     const providerProfileImage = serviceOffer.ngo?.profile_image || null
 
     return NextResponse.json({
-      ...normalizeOffer(serviceOffer, capabilities || []),
+      ...toOfferResponse(serviceOffer, capabilities || []),
       ngo_name: providerName,
       provider_name: providerName,
       provider_type: providerType,
       provider_profile_image: providerProfileImage,
-      verified: String(serviceOffer.ngo?.verification_status || '').toLowerCase() === 'verified',
-      verification_status: serviceOffer.ngo?.verification_status || null,
     })
   } catch (error) {
     return NextResponse.json({ error: 'Failed to fetch service offer' }, { status: 500 })
@@ -366,28 +53,19 @@ export async function PUT(
   try {
     const { id } = await params
 
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const decoded = getTokenClaims(request)
+    if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
-
-    const token = authHeader.split(' ')[1]
-    const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload
     const { id: userId } = decoded
 
     const offerId = parseInt(id)
-    const body = coerceIncomingBody(await request.json())
+    const body = coerceOfferBody(await request.json())
 
-    const validationError = validateIncomingOfferBody(body)
+    const validationError = validateOfferBody(body)
     if (validationError) {
       return NextResponse.json({ error: validationError }, { status: 400 })
     }
-
-    const offerType = body.offer_type as OfferType
-    const transactionType = normalizeCapabilityTransactionType(
-      offerType,
-      body.transaction_type as TransactionType
-    )
 
     const existingOffer = await db.serviceOffers.getById(offerId)
     if (!existingOffer) {
@@ -410,46 +88,11 @@ export async function PUT(
       )
     }
 
-    const priceInfo = buildPriceInfo(offerType, transactionType, body)
-
-    const normalizedOfferDetails = normalizeOfferDetailsForStorage(
-      offerType,
-      transactionType,
-      body.offer_details && typeof body.offer_details === 'object' ? body.offer_details : {},
-      body
-    )
-    const dailyRate = resolveCapabilityRentalRate({
-      unit_rate: body.unit_rate,
-      price_amount: priceInfo.price_amount,
-      offer_details: normalizedOfferDetails,
-    })
-
-    const updateData = {
-      title: String(body.title || '').trim(),
-      description: String(body.description || '').trim(),
-      offer_type: offerType,
-      transaction_type: transactionType,
-      impact_area: normalizeImpactAreas(body.impact_area),
-      tags: sanitizeTextArray(body.tags),
-      requirements: Array.isArray(body.requirements) ? sanitizeTextArray(body.requirements) : (typeof body.requirements === 'string' && body.requirements.trim() ? [body.requirements.trim()] : null),
-      city: String(body.city || '').trim() || null,
-      state_province: String(body.state_province || '').trim() || null,
-      pincode: String(body.pincode || '').trim() || null,
-      coverage_area: String(body.coverage_area || '').trim() || null,
-      offer_details: normalizedOfferDetails,
-      price_type: priceInfo.price_type,
-      price_amount: priceInfo.price_amount,
-      price_description: priceInfo.price_description,
-      unit_rate: transactionType === 'rent' ? dailyRate : null,
-      billing_cycle: transactionType === 'rent' ? (body.billing_cycle || normalizedOfferDetails.billing_cycle || 'daily') : null,
-      payment_mode: transactionType === 'rent' ? (body.payment_mode || 'daily_due') : null,
-      rate_currency: body.rate_currency || normalizedOfferDetails.rate_currency || 'INR',
-      validity_days: toNullablePositiveNumber(body.validity_days),
-      valid_until: normalizeDateOnlyToEndOfDayIso(body.valid_until || body.expires_at || normalizedOfferDetails.valid_until || null),
-      updated_at: new Date().toISOString()
-    }
-
-    const { data: updated, error: updateError } = await updateWithSchemaFallback('service_offers', offerId, updateData)
+    const updateData = { ...buildOfferRow(body), updated_at: new Date().toISOString() }
+    const { error: updateError } = await supabase
+      .from('service_offers')
+      .update(updateData)
+      .eq('id', offerId)
     if (updateError) {
       console.error('Offer update error:', updateError)
       return NextResponse.json({ error: `Failed to update offer: ${updateError.message || updateError}` }, { status: 500 })
@@ -460,22 +103,17 @@ export async function PUT(
       .delete()
       .eq('service_offer_id', offerId)
 
-    const capabilitiesPayload = buildBackendCapabilities({
-      id: offerId,
-      ...existingOffer,
-      ...body,
-      offer_type: offerType,
-      title: String(body.title || '').trim(),
-      description: String(body.description || '').trim(),
-      tags: body.tags
-    })
     const { error: capabilitiesError } = await supabase
       .from('offer_capabilities')
-      .insert(capabilitiesPayload)
+      .insert(buildOfferCapabilityRow({ ...updateData, id: offerId }))
 
     if (capabilitiesError) {
       return NextResponse.json({ error: 'Offer updated but failed to save capability details' }, { status: 500 })
     }
+
+    after(() =>
+      syncServiceOfferEmbedding(offerId).catch((err) => console.error(`Failed to embed offer ${offerId}:`, err))
+    )
 
     return NextResponse.json({
       success: true,
@@ -494,13 +132,10 @@ export async function DELETE(
   try {
     const { id } = await params
 
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const decoded = getTokenClaims(request)
+    if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
-
-    const token = authHeader.split(' ')[1]
-    const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload
     const { id: userId } = decoded
 
     const offerId = parseInt(id)

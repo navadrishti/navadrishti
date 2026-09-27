@@ -92,7 +92,6 @@ export default function EvidenceVerificationLoginPage() {
     }
   };
 
-
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-[#F6F5F1] to-[#FFF6ED] p-4">
       <div className="w-full max-w-md">

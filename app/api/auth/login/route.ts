@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
-import { comparePassword, generateToken, getAccountAccessBlockReason } from '@/lib/auth';
+import { comparePassword, generateToken, getAccountAccessBlockReason, type UserData } from '@/lib/auth';
 import { isCompanyCAUser } from '@/lib/company-ca';
 import { setAuthTokenCookie } from '@/lib/server-auth';
 
@@ -13,7 +13,6 @@ const loginSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
-    // Parse and validate request body
     const body = await req.json();
     const validationResult = loginSchema.safeParse(body);
     
@@ -23,7 +22,6 @@ export async function POST(req: NextRequest) {
     
     const { email, password } = validationResult.data;
     
-    // Fetch user from database using Supabase
     const user = await db.users.findByEmail(email);
     
     if (!user) {
@@ -46,19 +44,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: accessBlock }, { status: 403 });
     }
     
-    // Verify password
     const isPasswordValid = await comparePassword(password, user.password);
     
     if (!isPasswordValid) {
       return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
     }
     
-    const userData = {
+    const userData: UserData = {
       id: user.id,
       email: user.email,
       name: user.name,
-      user_type: user.user_type,
-      verification_status: user.verification_status || 'unverified',
+      user_type: user.user_type as UserData['user_type'],
+      verification_status: (user.verification_status || 'unverified') as UserData['verification_status'],
       email_verified: user.email_verified || false,
       phone_verified: user.phone_verified || false
     };
@@ -74,7 +71,7 @@ export async function POST(req: NextRequest) {
     
     return response;
     
-  } catch (error: any) {
+  } catch (error) {
     console.error('Login error:', error);
     return NextResponse.json({ 
       error: 'Something went wrong during login'

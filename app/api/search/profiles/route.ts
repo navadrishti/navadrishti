@@ -69,7 +69,6 @@ export async function GET(request: NextRequest) {
       const nameB = b.name.toLowerCase().trim();
       const searchLower = searchTerm.toLowerCase().trim();
       
-      // Find position of search term in each name
       const aIndex = nameA.indexOf(searchLower);
       const bIndex = nameB.indexOf(searchLower);
       
@@ -77,15 +76,12 @@ export async function GET(request: NextRequest) {
       const aStartsWith = aIndex === 0;
       const bStartsWith = bIndex === 0;
       
-      // If one starts with search term and other doesn't, prioritize the starter
       if (aStartsWith && !bStartsWith) return -1;
       if (!aStartsWith && bStartsWith) return 1;
       
-      // Sort by position of match (earlier position = higher priority)
       return aIndex - bIndex;
     });
 
-    // Format the results for frontend (apply response limit after relevance sort)
     const formattedProfiles = sortedProfiles?.slice(0, limit).map(profile => ({
       id: profile.id,
       name: profile.name || 'Unknown User',
@@ -99,13 +95,11 @@ export async function GET(request: NextRequest) {
                   : profile.city || profile.state_province || null)
     })) || [];
 
-    // Sort by verification status and name
     formattedProfiles.sort((a, b) => {
       // Verified profiles first
       if (a.verification_status === 'verified' && b.verification_status !== 'verified') return -1;
       if (b.verification_status === 'verified' && a.verification_status !== 'verified') return 1;
       
-      // Then sort by name
       return a.name.localeCompare(b.name);
     });
 

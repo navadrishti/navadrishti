@@ -1,24 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import jwt from 'jsonwebtoken'
 import { uploadToCloudinary } from '@/lib/cloudinary'
-import { JWT_SECRET } from '@/lib/auth'
-
-interface JWTPayload {
-  id: number;
-  user_type: string;
-  email: string;
-  name: string;
-}
+import { getTokenClaims } from '@/lib/auth'
 
 export async function POST(request: NextRequest) {
   try {
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const decoded = getTokenClaims(request)
+    if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
-
-    const token = authHeader.split(' ')[1]
-    const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload
 
     const formData = await request.formData()
     const file = formData.get('file')

@@ -19,7 +19,7 @@ import {
 import { useAuth } from "@/lib/auth-context"
 import { getGramAvatarFallbackStyle } from "@/lib/gram-avatar"
 import { ProfileCoverMedia } from "@/components/profile-card"
-import { NgoPayDialog } from "@/components/profile-dashboard-tab"
+import { NgoPayDialog } from "@/components/ngo-pay-dialog"
 import { NgoComplianceBadges, VerificationBadge } from "@/components/verification-badge"
 import { CSR_SCHEDULE_VII_CATEGORIES } from "@/lib/categories"
 import {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, supabase } from '@/lib/db';
 import { assertAdminUser } from '@/lib/server-auth';
+import { getErrorMessage } from '@/lib/utils';
 
 function toNullableText(value: unknown) {
   if (value === null || value === undefined) return null;
@@ -19,9 +20,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     return NextResponse.json({ success: true, data: project });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Admin project fetch error:', error);
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) || 'Internal server error' }, { status: 500 });
   }
 }
 
@@ -64,9 +65,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (error) throw error;
 
     return NextResponse.json({ success: true, data, previous: existingProject });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Admin project update error:', error);
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) || 'Internal server error' }, { status: 500 });
   }
 }
 
@@ -83,8 +84,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     await db.requestProjects.delete(id);
 
     return NextResponse.json({ success: true, message: 'Project deleted successfully' });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Admin project delete error:', error);
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) || 'Internal server error' }, { status: 500 });
   }
 }

@@ -301,11 +301,8 @@ OUTPUT FORMAT
 
 /* ───────────────── SERVICE ───────────────── */
 
-
-
 export async function generateCampaigns(input: GenerateCampaignsInput): Promise<Campaign[]> {
   const prompt = buildPrompt(input);
-  
 
   try {
     const raw = await GeminiChat([{ role: "user", content: prompt }]);
@@ -390,8 +387,7 @@ export function buildFallbackCampaigns(input: GenerateCampaignsInput): Campaign[
   const budget = Math.max(1, Math.round(input.budget))
   const milestoneCount = Math.max(1, Math.min(10, Math.round(input.milestones || 1)))
   const requirementText = (input.requirementDetails || "community impact").trim()
-    const volunteerRequirement = (input.volunteerRequirement || "cross-functional volunteer support").trim()
-  const beneficiaryCount = Math.max(1, Math.round(Number(input.beneficiaries || Math.max(1, Math.round(budget / 5000))) || Math.max(1, Math.round(budget / 5000))))
+  const volunteerRequirement = (input.volunteerRequirement || "cross-functional volunteer support").trim()
   const sourceMilestones = Array.isArray(input.milestone_info) ? input.milestone_info : []
 
   const defaultMilestones = Array.from({ length: milestoneCount }, (_, index) => ({

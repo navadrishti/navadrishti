@@ -1,27 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
-import { verifyToken } from '@/lib/auth'
-import { getAuthUserFromRequest } from '@/lib/server-auth'
+import { findAuthUser } from '@/lib/server-auth'
 import { scoreNgosForCampaign, type CampaignMatchInput } from '@/lib/csr-agent/recommendation-utils'
 
 type ScoreRequest = CampaignMatchInput & {
   limit?: number
 }
 
-function getUserIdFromRequest(request: NextRequest): number | null {
-  try {
-    return getAuthUserFromRequest(request).id
-  } catch {
-    const cookieToken = request.cookies.get('token')?.value
-    if (!cookieToken) return null
-    const user = verifyToken(cookieToken)
-    return user?.id ?? null
-  }
-}
-
 export async function POST(request: NextRequest) {
   try {
-    const userId = getUserIdFromRequest(request)
+    const userId = findAuthUser(request, { allowCookie: true })?.id
     if (!userId) return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
 
     const body = (await request.json()) as ScoreRequest

@@ -1,22 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyToken } from '@/lib/auth';
+import { getAdminUser } from '@/lib/server-auth';
 import { processAdminRefund } from '@/lib/admin-refund';
-
-const isAdminRequest = (request: NextRequest) => {
-  const adminToken = request.cookies.get('admin-token')?.value;
-  if (!adminToken) return null;
-  try {
-    const decoded = verifyToken(adminToken);
-    if (!decoded || decoded.id !== -1) return null;
-    return decoded;
-  } catch {
-    return null;
-  }
-};
+import { getErrorMessage } from '@/lib/utils';
 
 export async function POST(request: NextRequest) {
   try {
-    const admin = isAdminRequest(request);
+    const admin = getAdminUser(request);
     if (!admin) {
       return NextResponse.json({ error: 'Admin authentication required' }, { status: 401 });
     }
@@ -40,8 +29,8 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({ success: true, data: result });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Admin payment refund error:', error);
-    return NextResponse.json({ error: error?.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) || 'Internal server error' }, { status: 500 });
   }
 }

@@ -1,6 +1,6 @@
 "use client"
 
-import React, { use, useEffect, useState } from 'react'
+import { use, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Loader2 } from 'lucide-react'
@@ -19,8 +19,11 @@ import {
   type ProjectExactAddress,
 } from '@/lib/service-request-allocation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Skeleton, SkeletonHeader, SkeletonForm, SkeletonButton } from '@/components/ui/skeleton'
+import { SkeletonHeader, SkeletonForm, SkeletonButton } from '@/components/ui/skeleton'
 import { useToast } from '@/hooks/use-toast'
+import type { Tables } from '@/lib/database.types'
+
+type ServiceRequestProject = Tables<'service_request_projects'>
 
 export default function EditProjectPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -31,7 +34,7 @@ export default function EditProjectPage({ params }: { params: Promise<{ id: stri
 
   const [loading, setLoading] = useState(true)
   const [savingProject, setSavingProject] = useState(false)
-  const [project, setProject] = useState<any | null>(null)
+  const [project, setProject] = useState<ServiceRequestProject | null>(null)
 
   const canEditProject = ngoIsCsrEligibleForProject(
     user?.verification_status,
@@ -58,7 +61,8 @@ export default function EditProjectPage({ params }: { params: Promise<{ id: stri
         const resp = await fetch(`/api/service-request-projects?ngoId=${user.id}`, { headers: { Authorization: `Bearer ${token}` } })
         const data = await resp.json()
         if (resp.ok && data.success) {
-          const found = (data.data || []).find((p: any) => String(p.id) === String(id))
+          const projects: ServiceRequestProject[] = data.data || []
+          const found = projects.find((p) => String(p.id) === String(id))
           if (!found) {
             toast({ title: 'Not found', description: 'Project not found or you are not the owner', variant: 'destructive' })
             router.push('/service-requests')
@@ -198,15 +202,15 @@ export default function EditProjectPage({ params }: { params: Promise<{ id: stri
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
                   <Label>Title</Label>
-                  <Input value={project?.title || ''} onChange={(e) => setProject((p: any) => ({ ...p, title: e.target.value }))} />
+                  <Input value={project?.title || ''} onChange={(e) => setProject((p) => p && { ...p, title: e.target.value })} />
                 </div>
                 <div>
                   <Label>Expected beneficiaries</Label>
-                  <Input type="number" value={String(project?.expected_beneficiaries || '')} onChange={(e) => setProject((p: any) => ({ ...p, expected_beneficiaries: Number(e.target.value) }))} />
+                  <Input type="number" value={String(project?.expected_beneficiaries || '')} onChange={(e) => setProject((p) => p && { ...p, expected_beneficiaries: Number(e.target.value) })} />
                 </div>
                 <div className="md:col-span-2">
                   <Label>Description</Label>
-                  <Textarea value={project?.description || ''} onChange={(e) => setProject((p: any) => ({ ...p, description: e.target.value }))} rows={3} />
+                  <Textarea value={project?.description || ''} onChange={(e) => setProject((p) => p && { ...p, description: e.target.value })} rows={3} />
                 </div>
 
                 <div className="md:col-span-2 space-y-4 rounded-md border border-slate-200 p-4">
@@ -276,11 +280,11 @@ export default function EditProjectPage({ params }: { params: Promise<{ id: stri
 
                 <div>
                   <Label>Valid Until</Label>
-                  <Input type="date" value={project?.valid_until || ''} onChange={(e) => setProject((p: any) => ({ ...p, valid_until: e.target.value }))} />
+                  <Input type="date" value={project?.valid_until || ''} onChange={(e) => setProject((p) => p && { ...p, valid_until: e.target.value })} />
                 </div>
                 <div>
                   <Label>Timeline</Label>
-                  <Input placeholder="e.g. Oct-Dec 2026" value={project?.timeline || ''} onChange={(e) => setProject((p: any) => ({ ...p, timeline: e.target.value }))} />
+                  <Input placeholder="e.g. Oct-Dec 2026" value={project?.timeline || ''} onChange={(e) => setProject((p) => p && { ...p, timeline: e.target.value })} />
                 </div>
               </div>
 

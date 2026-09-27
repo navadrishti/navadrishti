@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import { useEffect, useState } from "react"
 import { useAuth } from "@/lib/auth-context"
@@ -45,7 +45,7 @@ export default function CSRBudgetPage() {
       name: 'New Category',
       amount: 0,
       percentage: 0,
-      color: '#' + Math.floor(Math.random()*16777215).toString(16)
+      color: '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0')
     }
     setCategories([...categories, newCategory])
   }

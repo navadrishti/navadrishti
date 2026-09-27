@@ -1,39 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import jwt from 'jsonwebtoken';
-import { JWT_SECRET } from '@/lib/auth';
+import { getTokenClaims } from '@/lib/auth';
 import { isCapabilityRentalTransaction, resolveCapabilityRentalRate } from '@/lib/service-offers';
 
-interface JWTPayload {
-  id: number;
-}
-
-function safeParseJson(value: unknown): Record<string, any> {
-  if (!value) return {}
-  if (typeof value === 'object') return value as Record<string, any>
-  if (typeof value === 'string') {
-    try {
-      return JSON.parse(value)
-    } catch {
-      return {}
-    }
-  }
-  return {}
-}
+import { parseJsonObject } from '@/lib/utils';
 
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ requestId: string }> }
 ) {
   try {
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const claims = getTokenClaims(request);
+    if (!claims) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
-
-    const token = authHeader.substring(7);
-    const payload = jwt.verify(token, JWT_SECRET) as JWTPayload;
-    const ownerId = payload.id;
+    const ownerId = claims.id;
 
     const { requestId } = await params;
     const parsedRequestId = Number(requestId);
@@ -83,9 +64,7 @@ export async function PUT(
       return NextResponse.json({ error: 'This offer has expired and can no longer be accepted.' }, { status: 409 })
     }
 
-    const currentMeta = targetRequest.response_meta && typeof targetRequest.response_meta === 'object'
-      ? targetRequest.response_meta
-      : {};
+    const currentMeta = parseJsonObject(targetRequest.response_meta);
 
     const nowIso = new Date().toISOString()
 
@@ -158,11 +137,9 @@ export async function PUT(
           .eq('service_offer_id', targetRequest.service_offer_id);
       }
 
-      const currentMeta = targetRequest.response_meta && typeof targetRequest.response_meta === 'object'
-        ? targetRequest.response_meta
-        : {};
+      const currentMeta = parseJsonObject(targetRequest.response_meta);
 
-      const offerDetails = safeParseJson(offer.offer_details)
+      const offerDetails = parseJsonObject(offer.offer_details)
       const isRent = isCapabilityRentalTransaction(offer.transaction_type)
       const dailyRate = resolveCapabilityRentalRate({
         unit_rate: offer.unit_rate,

@@ -1,33 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, getApplicationApplicantUserId, shapeApplicationForApi, supabase, applyVolunteerAcceptanceAllocation } from '@/lib/db';
-import jwt from 'jsonwebtoken';
-import { JWT_SECRET } from '@/lib/auth';
+import { getTokenClaims } from '@/lib/auth';
 import {
   getNeedRemainingQuantity,
   getServiceRequestTarget,
-  parseAllocationNumber,
   validateAcceptanceAllocation,
   getNgoNeedFulfillmentMode,
   getSkillServiceDailyRate,
   shouldCreateSkillServiceAssignment,
 } from '@/lib/service-request-allocation';
-
-// Interface for JWT payload
-interface JWTPayload {
-  id: number;
-  user_type: string;
-  email: string;
-  name: string;
-}
-
-function getRequestTarget(request: any): { amount: number; quantity: number; type: string } {
-  const target = getServiceRequestTarget(request);
-  return {
-    type: target.type,
-    amount: target.amount,
-    quantity: target.quantity,
-  };
-}
+import { parseAmountToInr, getErrorMessage, parseJsonObject } from '@/lib/utils';
 
 // PUT - Update volunteer status
 export async function PUT(
@@ -37,14 +19,10 @@ export async function PUT(
   try {
     const { id, volunteerId } = await params;
     
-    // Get JWT token from Authorization header
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const decoded = getTokenClaims(request);
+    if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
-
-    const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
     const { id: userId, user_type: userType } = decoded;
 
     // NGOs can update applicants for their requests; individuals can mark their own accepted work as done
@@ -57,24 +35,21 @@ export async function PUT(
     const body = await request.json();
     const { status, decisionComment, allocationAmount, allocationQuantity, receiptUrl, completionNote, deliveryTrackingId } = body;
 
-    // Validate status
     const validStatuses = ['pending', 'accepted', 'rejected', 'active', 'completed', 'cancelled'];
     if (!validStatuses.includes(status)) {
       return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
     }
 
-    // First, verify that this request belongs to the authenticated NGO
     const request_data = await db.serviceRequests.getById(requestId);
 
     if (!request_data) {
       return NextResponse.json({ error: 'Service request not found' }, { status: 404 });
     }
 
-    if (userType === 'ngo' && Number(request_data.ngo_id || request_data.requester_id) !== userId) {
+    if (userType === 'ngo' && Number(request_data.ngo_id) !== userId) {
       return NextResponse.json({ error: 'You can only update volunteers for your own requests' }, { status: 403 });
     }
 
-    // Find the volunteer application by its ID (include fulfillment row)
     const { data: rawApplication, error } = await supabase
       .from('service_request_applications')
       .select(`
@@ -104,10 +79,10 @@ export async function PUT(
       const requestTarget = getServiceRequestTarget(request_data);
       const resolvedAllocationAmount = allocationAmount != null
         ? Number(allocationAmount)
-        : parseAllocationNumber(volunteerApplication.fulfillment_amount || volunteerApplication.assigned_amount);
+        : parseAmountToInr(volunteerApplication.fulfillment_amount || volunteerApplication.assigned_amount);
       const resolvedAllocationQuantity = allocationQuantity != null
         ? Number(allocationQuantity)
-        : parseAllocationNumber(volunteerApplication.fulfillment_quantity || volunteerApplication.assigned_quantity);
+        : parseAmountToInr(volunteerApplication.fulfillment_quantity || volunteerApplication.assigned_quantity);
 
       const allocationError = validateAcceptanceAllocation(request_data, {
         amount: requestTarget.isFinancial ? resolvedAllocationAmount : 0,
@@ -126,7 +101,7 @@ export async function PUT(
         const { data: rpcResult, error: rpcError } = await supabase.rpc('accept_volunteer_assignment', {
           p_request_id: requestId,
           p_volunteer_app_id: volId,
-          p_ngo_user_id: request_data.ngo_id || request_data.requester_id,
+          p_ngo_user_id: request_data.ngo_id,
           p_allocation_amount: allocationAmountParam,
           p_allocation_quantity: allocationQuantityParam,
           p_actor_user_id: userId
@@ -137,17 +112,15 @@ export async function PUT(
         } else if (rpcResult) {
           return NextResponse.json({ success: true, data: rpcResult });
         }
-      } catch (e: any) {
-        console.warn('RPC call attempted and failed:', e?.message || e)
+      } catch (e) {
+        console.warn('RPC call attempted and failed:', getErrorMessage(e) || e)
       }
     }
 
     const existingMeta =
-      volunteerApplication.response_meta && typeof volunteerApplication.response_meta === 'object'
-        ? volunteerApplication.response_meta
-        : {};
+      parseJsonObject(volunteerApplication.response_meta);
 
-    const nextMeta = {
+    const nextMeta: Record<string, any> = {
       ...existingMeta,
       ngo_decision_comment: status === 'rejected' ? commentText : null,
       ngo_decision_at: new Date().toISOString()
@@ -155,14 +128,14 @@ export async function PUT(
 
     const trackingId = typeof deliveryTrackingId === 'string' ? deliveryTrackingId.trim() : '';
     if (trackingId) {
-      (nextMeta as any).delivery_tracking_id = trackingId;
-      (nextMeta as any).delivery_provider = 'delhivery';
-      (nextMeta as any).delivery_tracking_updated_at = new Date().toISOString();
-      (nextMeta as any).delivery_tracking_last_status = (nextMeta as any).delivery_tracking_last_status || null;
-      (nextMeta as any).delivery_tracking_last_location = (nextMeta as any).delivery_tracking_last_location || null;
-      (nextMeta as any).delivery_tracking_last_event_at = (nextMeta as any).delivery_tracking_last_event_at || null;
-      (nextMeta as any).delivery_tracking_events = Array.isArray((nextMeta as any).delivery_tracking_events)
-        ? (nextMeta as any).delivery_tracking_events
+      nextMeta.delivery_tracking_id = trackingId;
+      nextMeta.delivery_provider = 'delhivery';
+      nextMeta.delivery_tracking_updated_at = new Date().toISOString();
+      nextMeta.delivery_tracking_last_status = nextMeta.delivery_tracking_last_status || null;
+      nextMeta.delivery_tracking_last_location = nextMeta.delivery_tracking_last_location || null;
+      nextMeta.delivery_tracking_last_event_at = nextMeta.delivery_tracking_last_event_at || null;
+      nextMeta.delivery_tracking_events = Array.isArray(nextMeta.delivery_tracking_events)
+        ? nextMeta.delivery_tracking_events
         : [];
     }
 
@@ -173,8 +146,8 @@ export async function PUT(
     }
 
     if (userType === 'ngo' && status === 'accepted') {
-      updatePayload.assigned_amount = allocationAmount != null ? Number(allocationAmount) : parseAllocationNumber(volunteerApplication.fulfillment_amount || volunteerApplication.assigned_amount)
-      updatePayload.assigned_quantity = allocationQuantity != null ? Number(allocationQuantity) : parseAllocationNumber(volunteerApplication.fulfillment_quantity || volunteerApplication.assigned_quantity)
+      updatePayload.assigned_amount = allocationAmount != null ? Number(allocationAmount) : parseAmountToInr(volunteerApplication.fulfillment_amount || volunteerApplication.assigned_amount)
+      updatePayload.assigned_quantity = allocationQuantity != null ? Number(allocationQuantity) : parseAmountToInr(volunteerApplication.fulfillment_quantity || volunteerApplication.assigned_quantity)
       updatePayload.fulfilled_amount = volunteerApplication.fulfilled_amount || 0
       updatePayload.fulfilled_quantity = volunteerApplication.fulfilled_quantity || 0
     }
@@ -199,9 +172,7 @@ export async function PUT(
     }
 
     if (userType === 'ngo' && status === 'accepted') {
-      const acceptedMeta = updatedVolunteer.response_meta && typeof updatedVolunteer.response_meta === 'object'
-        ? updatedVolunteer.response_meta
-        : {};
+      const acceptedMeta = parseJsonObject(updatedVolunteer.response_meta);
       const fulfillmentMode = getNgoNeedFulfillmentMode(request_data);
 
       if (shouldCreateSkillServiceAssignment(request_data)) {
@@ -214,7 +185,7 @@ export async function PUT(
           invitation_id: acceptedMeta.invitation_id || null,
           application_table: 'service_request_applications',
           application_id: String(volId),
-          owner_user_id: request_data.requester_id,
+          owner_user_id: request_data.ngo_id,
           assignee_user_id: getApplicationApplicantUserId(updatedVolunteer),
           assigned_by_user_id: userId,
           assigned_at: new Date().toISOString(),

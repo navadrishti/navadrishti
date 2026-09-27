@@ -9,7 +9,7 @@ export async function autoRejectExpiredServiceOffers() {
     .from('service_offers')
     .select(`
       *,
-      organization:creator_id (
+      organization:users!creator_id (
         id,
         name,
         email

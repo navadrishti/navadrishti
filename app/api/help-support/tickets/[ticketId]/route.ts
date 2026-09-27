@@ -1,18 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import jwt from 'jsonwebtoken';
 import { db } from '@/lib/db';
 import { sendEmail } from '@/lib/email';
-import { JWT_SECRET } from '@/lib/auth';
+import { getTokenClaims } from '@/lib/auth';
+import { getErrorMessage } from '@/lib/utils';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-type JWTPayload = {
-  id: number;
-  user_type: string;
-  name?: string;
-  email?: string;
-};
 
 const escapeHtml = (value: string) =>
   value
@@ -23,25 +16,16 @@ const escapeHtml = (value: string) =>
     .replace(/'/g, '&#39;');
 
 const getAuthenticatedUser = async (request: NextRequest) => {
-  const authHeader = request.headers.get('authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return null;
-  }
-
-  try {
-    const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
-    const user = await db.users.findById(decoded.id);
-    if (!user) return null;
-    return {
-      id: user.id,
-      name: user.name || decoded.name,
-      email: user.email || decoded.email,
-      user_type: decoded.user_type || user.user_type,
-    };
-  } catch {
-    return null;
-  }
+  const claims = getTokenClaims(request);
+  if (!claims) return null;
+  const user = await db.users.findById(claims.id);
+  if (!user) return null;
+  return {
+    id: user.id,
+    name: user.name || claims.name,
+    email: user.email || claims.email,
+    user_type: claims.user_type || user.user_type,
+  };
 };
 
 const sanitizeTicketForUser = (ticket: any) => ({
@@ -78,7 +62,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const messages = await db.supportTicketMessages.getByTicketId(ticketId);
-    const userMessages = messages.map((message: any) => ({
+    const userMessages = messages.map((message) => ({
       id: message.id,
       sender_type: message.sender_type,
       message_type: message.message_type,
@@ -92,9 +76,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       ticket: sanitizeTicketForUser(ticket),
       messages: userMessages,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('User support ticket fetch error:', error);
-    return NextResponse.json({ error: error?.message || 'Failed to load ticket' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) || 'Failed to load ticket' }, { status: 500 });
   }
 }
 
@@ -170,7 +154,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({
       success: true,
       ticket: sanitizeTicketForUser(updatedTicket || ticket),
-      messages: messages.map((item: any) => ({
+      messages: messages.map((item) => ({
         id: item.id,
         sender_type: item.sender_type,
         message_type: item.message_type,
@@ -179,8 +163,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         created_at: item.created_at,
       })),
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('User support ticket reply error:', error);
-    return NextResponse.json({ error: error?.message || 'Failed to send message' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) || 'Failed to send message' }, { status: 500 });
   }
 }

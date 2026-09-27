@@ -1,12 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { withAuth } from '@/lib/auth'
+import { supabase } from '@/lib/db'
 import { phoneOtpStore } from '../send-phone-otp/route'
 
 const normalizePhone = (value: string) => value.trim().replace(/\s+/g, '')
 
-export const POST = withAuth(async (req: NextRequest) => {
+export const POST = withAuth(async (req) => {
   try {
-    const user = (req as any).user
+    const user = req.user
     const body = await req.json()
     const phone = typeof body?.phone === 'string' ? normalizePhone(body.phone) : ''
     const otp = typeof body?.otp === 'string' ? body.otp.trim() : ''
@@ -36,6 +37,12 @@ export const POST = withAuth(async (req: NextRequest) => {
     }
 
     phoneOtpStore.delete(storeKey)
+
+    const { error } = await supabase
+      .from('users')
+      .update({ phone, phone_verified: true, phone_verified_at: new Date().toISOString() })
+      .eq('id', user.id)
+    if (error) throw error
 
     return NextResponse.json({
       success: true,

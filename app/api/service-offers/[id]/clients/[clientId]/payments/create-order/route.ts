@@ -1,42 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
-import jwt from 'jsonwebtoken';
 import Razorpay from 'razorpay';
 import { db, supabase } from '@/lib/db';
-import { JWT_SECRET } from '@/lib/auth';
+import { getTokenClaims } from '@/lib/auth';
+import { parseAmountToInr, getErrorMessage, parseJsonObject } from '@/lib/utils';
 import {
   buildPricingResponse,
   createPlatformPricedOrder,
   isRazorpayRouteEnabled,
 } from '@/lib/razorpay-route';
 
-interface JWTPayload {
-  id: number;
-  user_type: string;
-  email?: string;
-  name?: string;
-}
-
-function parseAmountToInr(value: unknown): number {
-  if (value === null || value === undefined) return 0;
-  const text = String(value).trim();
-  if (!text) return 0;
-  const numericText = text.replace(/[^\d.-]/g, '');
-  const parsed = Number(numericText);
-  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
-}
-
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string; clientId: string }> }
 ) {
   try {
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const decoded = getTokenClaims(request);
+    if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
-
-    const token = authHeader.substring(7);
-    const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
 
     const { id, clientId } = await params;
     const offerId = Number(id);
@@ -74,14 +55,14 @@ export async function POST(
       return NextResponse.json({ error: 'Payment can only be created after the offer is accepted' }, { status: 400 });
     }
 
-    const linkedServiceRequestId = Number(application.service_request_id || application.response_meta?.service_request_id || 0);
+    const linkedServiceRequestId = Number(application.service_request_id || parseJsonObject(application.response_meta).service_request_id || 0);
     if (!Number.isFinite(linkedServiceRequestId) || linkedServiceRequestId <= 0) {
       return NextResponse.json({ error: 'This application is not linked to a service request, so payment cannot be created' }, { status: 400 });
     }
 
     const baseAmountInr = Math.max(
       0,
-      parseAmountToInr(application.proposed_amount || offer.price_amount || application.response_meta?.payment_amount_inr || 0)
+      parseAmountToInr(application.proposed_amount || offer.price_amount || parseJsonObject(application.response_meta).payment_amount_inr || 0)
     );
 
     if (baseAmountInr <= 0) {
@@ -103,7 +84,7 @@ export async function POST(
       receipt: `so_${offerId}_${payerUserId}_${Date.now()}`,
       paymentKind: 'service_offer',
       beneficiaryUserId: ngoUserId > 0 ? ngoUserId : undefined,
-      beneficiaryName: offer.creator_name || offer.ngo_name || 'NGO',
+      beneficiaryName: offer.ngo?.name || 'NGO',
       notes: {
         service_offer_id: String(offerId),
         service_client_id: String(application.id),
@@ -152,8 +133,8 @@ export async function POST(
         routeEnabled: isRazorpayRouteEnabled(),
       }
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error creating service-offer payment order:', error);
-    return NextResponse.json({ error: error?.message || 'Failed to create payment order' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) || 'Failed to create payment order' }, { status: 500 });
   }
 }

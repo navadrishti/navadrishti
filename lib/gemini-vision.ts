@@ -97,14 +97,14 @@ export async function GeminiVisionJSON(
 
     if (!output) throw new Error("Empty response from document reader.")
     return parseGeminiJson(output)
-  } catch (error: any) {
+  } catch (error) {
     clearTimeout(timeoutId)
-    const isNetworkError = error instanceof TypeError || error.name === 'FetchError'
+    const isNetworkError = error instanceof TypeError || (error instanceof Error && error.name === 'FetchError')
     if (isNetworkError && retryCount < 3) {
       await new Promise((r) => setTimeout(r, 1500))
       return GeminiVisionJSON(prompt, file, retryCount + 1, systemInstruction, options)
     }
-    if (error.name === 'AbortError') throw new Error('Document reading timed out.')
+    if (error instanceof Error && error.name === 'AbortError') throw new Error('Document reading timed out.')
     throw error
   }
 }
@@ -145,7 +145,6 @@ Copy a quote from the file only if the string is visibly printed.
 Do not correct, complete, reformat, or guess.
 If the string is not clearly printed, found must be false and quote must be empty.
 Return JSON only.`
-
 
 const ALLOWED_LABELS = new Set(
   [
@@ -416,4 +415,3 @@ If the string is not clearly printed, found=false and quote="".`,
     return []
   }
 }
-

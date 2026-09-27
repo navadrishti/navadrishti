@@ -1,28 +1,21 @@
 import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
+import Razorpay from 'razorpay';
+import { normalizeRefundStatus } from '@/lib/admin-refund';
+import { isCompanyCaPaymentOrder, settleCompanyCaPayment } from '@/lib/company-ca-payments';
+import { supabase } from '@/lib/db';
+import {
+  creditServiceRequestContribution,
+  debitServiceRequestRefund,
+  isServiceRequestContributionOrder,
+} from '@/lib/service-request-payments';
+import { getErrorMessage } from '@/lib/utils';
 
-import { db, supabase } from '@/lib/db';
-
-function parseAmountToInr(value: unknown): number {
+// Razorpay sends amounts in paise.
+function paiseToInr(value: unknown): number {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return 0;
   return Math.max(0, Number((numeric / 100).toFixed(2)));
-}
-
-function parseInrNumber(value: unknown): number {
-  if (value === null || value === undefined) return 0;
-  const text = String(value).trim();
-  if (!text) return 0;
-  const numericText = text.replace(/[^\d.-]/g, '');
-  const parsed = Number(numericText);
-  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
-}
-
-function normalizeRefundStatus(status: unknown): 'processed' | 'pending' | 'failed' {
-  const normalized = String(status || '').toLowerCase();
-  if (normalized === 'processed') return 'processed';
-  if (normalized === 'failed') return 'failed';
-  return 'pending';
 }
 
 function verifyWebhookSignature(rawBody: string, signature: string, secret: string): boolean {
@@ -42,66 +35,6 @@ async function markWebhookStatus(eventRowId: string, status: 'processed' | 'fail
       error_message: errorMessage || null,
     })
     .eq('id', eventRowId);
-}
-
-async function applyProcessedRefundToServiceRequest(params: {
-  serviceRequestId: number;
-  razorpayPaymentId: string;
-  refundInr: number;
-  refundId: string;
-}) {
-  const { serviceRequestId, razorpayPaymentId, refundInr, refundId } = params;
-
-  const serviceRequest = await db.serviceRequests.getById(serviceRequestId);
-  if (!serviceRequest) return;
-
-  const requirements = (() => {
-    try {
-      return typeof serviceRequest.requirements === 'string'
-        ? JSON.parse(serviceRequest.requirements)
-        : (serviceRequest.requirements || {});
-    } catch {
-      return {};
-    }
-  })() as Record<string, any>;
-
-  const previousPayments = Array.isArray(requirements?.financial_transactions)
-    ? requirements.financial_transactions
-    : [];
-
-  const targetInr = parseInrNumber(
-    requirements?.funding_target_inr ?? requirements?.estimated_budget ?? requirements?.budget
-  );
-
-  let changed = false;
-  const updatedTransactions = previousPayments.map((item: any) => {
-    if (item?.razorpay_payment_id !== razorpayPaymentId) return item;
-    if (item?.refund_status === 'processed') return item;
-    changed = true;
-    return {
-      ...item,
-      refund_status: 'processed',
-      refund_id: refundId,
-      refunded_amount_inr: refundInr,
-      refunded_at: new Date().toISOString(),
-    };
-  });
-
-  if (!changed) return;
-
-  const currentRaisedInr = parseInrNumber(requirements?.funds_raised_inr);
-  const nextRaisedInr = Math.max(0, currentRaisedInr - refundInr);
-
-  await db.serviceRequests.update(serviceRequestId, {
-    requirements: JSON.stringify({
-      ...requirements,
-      funds_raised_inr: Number(nextRaisedInr.toFixed(2)),
-      funds_remaining_inr: targetInr > 0 ? Number(Math.max(0, targetInr - nextRaisedInr).toFixed(2)) : null,
-      financial_transactions: updatedTransactions,
-    }),
-    status: nextRaisedInr > 0 ? 'in_progress' : 'active',
-    updated_at: new Date().toISOString(),
-  });
 }
 
 export async function POST(request: NextRequest) {
@@ -182,7 +115,7 @@ export async function POST(request: NextRequest) {
 
       const { data: orderRow } = await supabase
         .from('razorpay_payment_orders')
-        .select('id, service_request_id')
+        .select('id, service_request_id, order_notes')
         .eq('razorpay_order_id', String(paymentEntity.order_id))
         .maybeSingle();
 
@@ -192,14 +125,6 @@ export async function POST(request: NextRequest) {
       }
 
       await supabase
-        .from('razorpay_payment_orders')
-        .update({
-          order_status: 'paid',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', orderRow.id);
-
-      await supabase
         .from('razorpay_payments')
         .upsert(
           {
@@ -207,7 +132,7 @@ export async function POST(request: NextRequest) {
             razorpay_order_id: String(paymentEntity.order_id),
             razorpay_payment_id: String(paymentEntity.id),
             razorpay_signature: null,
-            amount_inr: parseAmountToInr(paymentEntity.amount),
+            amount_inr: paiseToInr(paymentEntity.amount),
             amount_paise: Number(paymentEntity.amount || 0),
             currency: String(paymentEntity.currency || 'INR').toUpperCase(),
             payment_status: 'captured',
@@ -218,8 +143,40 @@ export async function POST(request: NextRequest) {
             provider_payload: paymentEntity,
             updated_at: new Date().toISOString(),
           },
-          { onConflict: 'razorpay_payment_id' }
+          { onConflict: 'razorpay_payment_id', ignoreDuplicates: true }
         );
+
+      if (orderRow.service_request_id && isServiceRequestContributionOrder(orderRow.order_notes)) {
+        await creditServiceRequestContribution({
+          razorpay: new Razorpay({
+            key_id: String(process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || ''),
+            key_secret: String(process.env.RAZORPAY_KEY_SECRET || ''),
+          }),
+          serviceRequestId: Number(orderRow.service_request_id),
+          razorpayOrderId: String(paymentEntity.order_id),
+          razorpayPaymentId: String(paymentEntity.id),
+        });
+      } else if (isCompanyCaPaymentOrder(orderRow.order_notes)) {
+        const result = await settleCompanyCaPayment({
+          razorpayOrderId: String(paymentEntity.order_id),
+          razorpayPaymentId: String(paymentEntity.id),
+          razorpaySignature: null,
+          paidInr: paiseToInr(paymentEntity.amount),
+          paymentMethod: paymentEntity.method || null,
+          paidAt: paymentEntity.created_at
+            ? new Date(Number(paymentEntity.created_at) * 1000).toISOString()
+            : new Date().toISOString(),
+        });
+        if (!result.ok) {
+          await markWebhookStatus(eventRowId, 'failed', result.error);
+          return NextResponse.json({ success: true, settled: false });
+        }
+      } else {
+        await supabase
+          .from('razorpay_payment_orders')
+          .update({ order_status: 'paid', updated_at: new Date().toISOString() })
+          .eq('id', orderRow.id);
+      }
 
       await markWebhookStatus(eventRowId, 'processed', null);
       return NextResponse.json({ success: true, event: eventType });
@@ -256,7 +213,13 @@ export async function POST(request: NextRequest) {
       }
 
       const normalizedRefundStatus = normalizeRefundStatus(refundEntity?.status || eventType.replace('refund.', ''));
-      const refundInr = parseAmountToInr(refundEntity?.amount);
+      const refundInr = paiseToInr(refundEntity?.amount);
+
+      const { data: previousRefund } = await supabase
+        .from('razorpay_refunds')
+        .select('refund_status')
+        .eq('razorpay_refund_id', refundId)
+        .maybeSingle();
 
       await supabase
         .from('razorpay_refunds')
@@ -287,13 +250,8 @@ export async function POST(request: NextRequest) {
         })
         .eq('id', paymentRow.id);
 
-      if (normalizedRefundStatus === 'processed') {
-        await applyProcessedRefundToServiceRequest({
-          serviceRequestId: Number(orderRow.service_request_id),
-          razorpayPaymentId,
-          refundInr,
-          refundId,
-        });
+      if (normalizedRefundStatus === 'processed' && previousRefund?.refund_status !== 'processed') {
+        await debitServiceRequestRefund(Number(orderRow.service_request_id), refundInr);
       }
 
       await markWebhookStatus(eventRowId, 'processed', null);
@@ -302,8 +260,8 @@ export async function POST(request: NextRequest) {
 
     await markWebhookStatus(eventRowId, 'ignored', `Unhandled event type: ${eventType}`);
     return NextResponse.json({ success: true, ignored: true });
-  } catch (error: any) {
-    await markWebhookStatus(eventRowId, 'failed', error?.message || 'Webhook processing failed');
+  } catch (error) {
+    await markWebhookStatus(eventRowId, 'failed', getErrorMessage(error) || 'Webhook processing failed');
     console.error('Razorpay webhook processing error:', error);
     return NextResponse.json({ error: 'Webhook processing failed' }, { status: 500 });
   }

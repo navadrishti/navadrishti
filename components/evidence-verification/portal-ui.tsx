@@ -185,17 +185,6 @@ export function EvidenceActionRow({ children, className }: { children: ReactNode
   );
 }
 
-export function EvidenceFilterBar({ label, children }: { label?: string; children: ReactNode }) {
-  return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-      <div className="flex flex-wrap items-center gap-2">
-        {label ? <span className="mr-1 text-sm font-medium text-slate-600">{label}</span> : null}
-        {children}
-      </div>
-    </div>
-  );
-}
-
 export function EvidenceDetailField({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="space-y-1 rounded-lg border border-slate-100 bg-slate-50/80 p-3">
@@ -331,54 +320,8 @@ export function AdminDetailItems({ items }: { items: AdminDetailItem[] }) {
   );
 }
 
-export function safeParseRecordJson(value: unknown): Record<string, any> {
-  if (!value) return {};
-  if (typeof value === 'object' && !Array.isArray(value)) return value as Record<string, any>;
-  if (typeof value !== 'string') return {};
-  try {
-    const parsed = JSON.parse(value);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-const ADMIN_NAV_ITEM_COUNT = 9;
-
 function AdminCardTitleSkeleton({ className }: { className?: string }) {
   return <Skeleton className={cn('h-7 w-44 max-w-full rounded-md bg-slate-200', className)} />;
-}
-
-function AdminStatBoxSkeleton() {
-  return (
-    <div className="rounded-lg border border-blue-100 bg-slate-50 p-3">
-      <Skeleton className="h-3 w-16 rounded bg-slate-200" />
-      <Skeleton className="mt-2 h-8 w-12 rounded bg-slate-200" />
-    </div>
-  );
-}
-
-function AdminSummaryRowSkeleton() {
-  return (
-    <div className="flex h-12 items-center justify-between rounded-lg border border-blue-100 bg-slate-50 px-3">
-      <Skeleton className="h-4 w-28 rounded bg-slate-200" />
-      <Skeleton className="h-6 w-14 rounded-full bg-slate-200" />
-    </div>
-  );
-}
-
-export function AdminSidebarSkeleton({ className }: { className?: string }) {
-  return (
-    <div className={cn('hidden lg:block lg:col-span-3 lg:sticky lg:top-6', className)}>
-      <Card className="border-slate-200 bg-white shadow-sm">
-        <CardContent className="space-y-3 pt-6">
-          {Array.from({ length: ADMIN_NAV_ITEM_COUNT }).map((_, index) => (
-            <Skeleton key={`admin-nav-${index}`} className="h-10 w-full rounded-md bg-slate-200/80" />
-          ))}
-        </CardContent>
-      </Card>
-    </div>
-  );
 }
 
 export function AdminListItemSkeleton() {
@@ -528,139 +471,6 @@ export function AdminSplitViewSkeleton({
       <AdminInboxPanelSkeleton titleWidth={inboxTitleWidth} mode={inboxMode} />
       <AdminDetailPanelSkeleton withEditor={detailWithEditor} />
     </div>
-  );
-}
-
-function AdminOverviewSkeleton() {
-  return (
-    <div className="mt-0 h-full min-h-0 space-y-6 overflow-y-auto pr-1">
-      <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-        <Card className="min-w-0 border-blue-100 bg-white shadow-sm">
-          <CardHeader className="p-6">
-            <AdminCardTitleSkeleton className="w-40" />
-          </CardHeader>
-          <CardContent className="space-y-3 p-6 pt-0">
-            <div className="grid gap-3 sm:grid-cols-2">
-              {Array.from({ length: 4 }).map((_, index) => (
-                <AdminStatBoxSkeleton key={`stat-${index}`} />
-              ))}
-            </div>
-            {Array.from({ length: 4 }).map((_, index) => (
-              <AdminSummaryRowSkeleton key={`summary-${index}`} />
-            ))}
-          </CardContent>
-        </Card>
-        <Card className="min-w-0 border-blue-100 bg-white shadow-sm">
-          <CardHeader className="p-6">
-            <AdminCardTitleSkeleton className="w-56" />
-          </CardHeader>
-          <CardContent className="space-y-4 p-6 pt-0">
-            <div className="space-y-2">
-              <Skeleton className="mb-2 h-4 w-28 rounded bg-slate-200" />
-              {Array.from({ length: 3 }).map((_, index) => (
-                <AdminSummaryRowSkeleton key={`health-${index}`} />
-              ))}
-            </div>
-            <div className="border-t border-blue-100 pt-4">
-              <Skeleton className="mb-2 h-4 w-32 rounded bg-slate-200" />
-              <div className="max-h-[200px] space-y-2 overflow-hidden">
-                {Array.from({ length: 3 }).map((_, index) => (
-                  <div key={`activity-${index}`} className="rounded-lg border border-blue-100 bg-slate-50 p-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1 space-y-2">
-                        <Skeleton className="h-3 w-32 rounded bg-slate-200" />
-                        <Skeleton className="h-3 w-full rounded bg-slate-100" />
-                      </div>
-                      <Skeleton className="h-3 w-16 shrink-0 rounded bg-slate-100" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
-}
-
-function AdminManagementPanelSkeleton() {
-  return (
-    <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
-      <Card className="border-blue-100 bg-white shadow-sm">
-        <CardHeader className="p-6">
-          <AdminCardTitleSkeleton className="w-56" />
-        </CardHeader>
-        <CardContent className="space-y-4 p-6 pt-0">
-          <Skeleton className="h-10 w-full rounded-md bg-slate-200" />
-          <Skeleton className="h-10 w-full rounded-md bg-slate-200" />
-          <Skeleton className="h-10 w-full rounded-md bg-slate-200" />
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Skeleton className="h-10 w-full rounded-md bg-slate-200" />
-            <Skeleton className="h-10 w-full rounded-md bg-slate-200" />
-          </div>
-          <Skeleton className="h-10 w-full rounded-md bg-slate-200" />
-        </CardContent>
-      </Card>
-      <Card className="min-h-[420px] border-blue-100 bg-white shadow-sm">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 p-6">
-          <AdminCardTitleSkeleton className="w-40" />
-          <Skeleton className="h-9 w-24 rounded-md bg-slate-200" />
-        </CardHeader>
-        <CardContent className="space-y-3 p-6 pt-0">
-          {Array.from({ length: 3 }).map((_, index) => (
-            <Skeleton key={`mgmt-row-${index}`} className="h-28 w-full rounded-lg bg-slate-100" />
-          ))}
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-function renderAdminTabSkeleton(activeTab: string) {
-  switch (activeTab) {
-    case 'overview':
-      return <AdminOverviewSkeleton />;
-    case 'support':
-      return (
-        <AdminSplitViewSkeleton
-          inboxTitleWidth="w-36"
-          detailWithEditor={false}
-          inboxMode="support"
-          columns="equal"
-        />
-      );
-    case 'refunds':
-      return (
-        <AdminSplitViewSkeleton
-          inboxTitleWidth="w-44"
-          detailWithEditor={false}
-          inboxMode="refunds"
-          columns="equal"
-        />
-      );
-    case 'government-admins':
-    case 'ca-credentials':
-      return <AdminManagementPanelSkeleton />;
-    default:
-      return (
-        <AdminSplitViewSkeleton
-          inboxTitleWidth="w-36"
-          detailWithEditor
-          inboxMode="support"
-          columns="editor"
-        />
-      );
-  }
-}
-
-export function AdminConsoleSkeleton({ activeTab = 'overview' }: { activeTab?: string }) {
-  return (
-    <Card className="h-full min-h-0 overflow-hidden border-slate-200 bg-white text-slate-900 shadow-sm">
-      <CardContent className="h-full min-h-0 overflow-y-auto pt-6 pr-4 lg:overflow-y-auto">
-        {renderAdminTabSkeleton(activeTab)}
-      </CardContent>
-    </Card>
   );
 }
 

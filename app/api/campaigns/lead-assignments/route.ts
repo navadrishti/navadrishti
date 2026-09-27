@@ -5,13 +5,13 @@ import { getCampaignLeadLifecycle } from '@/lib/format-date'
 import { readCampaignCategory, readCampaignLocation } from '@/lib/campaign-schema'
 import {
   assertCsrCapabilityDeliveryAccess,
-  bookCsrCapabilityRentalDelhivery,
   linkCsrCapabilityRentalTracking,
   listCsrCapabilityRentalsForUser,
   loadCampaignRentalByOffer,
   retryCsrCapabilityDelhiveryBooking,
   syncCsrCapabilityRentalDelhivery,
 } from '@/lib/csr-agent/campaign'
+import { getErrorMessage, parseJsonObject } from '@/lib/utils'
 
 export async function GET(request: NextRequest) {
   try {
@@ -29,17 +29,14 @@ export async function GET(request: NextRequest) {
     const { data: campaigns, error } = await supabase
       .from('campaigns')
       .select('id, title, description, category, location, schedule_vii, status, start_date, end_date, impact_metrics, lead_ngo_user_id, created_at, company_id')
-      .or(`lead_ngo_user_id.eq.${user.id},impact_metrics->>selected_lead_ngo_id.eq.${user.id}`)
+      .eq('lead_ngo_user_id', user.id)
       .order('created_at', { ascending: false })
 
     if (error) throw error
 
     const acceptedCampaigns = (campaigns || []).filter((campaign) => {
-      const impact = campaign.impact_metrics && typeof campaign.impact_metrics === 'object'
-        ? campaign.impact_metrics
-        : {}
-      const leadId = Number(campaign.lead_ngo_user_id || impact.selected_lead_ngo_id || 0)
-      return Boolean(impact.lead_ngo_accepted) && leadId === user.id
+      const impact = parseJsonObject(campaign.impact_metrics)
+      return Boolean(impact.lead_ngo_accepted)
     })
 
     const companyIds = [...new Set(acceptedCampaigns.map((row) => Number(row.company_id || 0)).filter((id) => id > 0))]
@@ -50,9 +47,7 @@ export async function GET(request: NextRequest) {
     const companiesById = new Map<number, any>((companies || []).map((row) => [Number(row.id), row]))
 
     const payload = acceptedCampaigns.map((campaign) => {
-      const impact = campaign.impact_metrics && typeof campaign.impact_metrics === 'object'
-        ? campaign.impact_metrics
-        : {}
+      const impact = parseJsonObject(campaign.impact_metrics)
       const company = companiesById.get(Number(campaign.company_id || 0))
       const lifecycle = getCampaignLeadLifecycle({
         startDate: campaign.start_date,
@@ -142,9 +137,9 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ error: 'Unsupported action' }, { status: 400 })
-  } catch (error: any) {
+  } catch (error) {
     console.error('CSR capability rental delivery error:', error)
-    const message = error?.message || 'Failed to update CSR capability delivery'
+    const message = getErrorMessage(error) || 'Failed to update CSR capability delivery'
     const status = message.toLowerCase().includes('permission') ? 403 : 500
     return NextResponse.json({ error: message }, { status })
   }

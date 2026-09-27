@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { assertAdminUser } from '@/lib/server-auth';
 import { autoRejectExpiredServiceOffers } from '@/lib/admin-offer-automation';
+import { getErrorMessage } from '@/lib/utils';
 
 async function safeQuery<T>(
   label: string,
-  queryPromise: PromiseLike<{ data: T | null; error: any }> | Promise<{ data: T | null; error: any }>,
-  fallback: T
+  queryPromise: PromiseLike<{ data: T | null; error: unknown }>,
+  fallback: NoInfer<T>
 ) {
   try {
     const result = await queryPromise;
@@ -28,11 +29,11 @@ export async function GET(request: NextRequest) {
 
     await autoRejectExpiredServiceOffers();
 
-    const users = await safeQuery('users', supabase.from('users').select('id, user_type, verification_status, created_at'), [] as any[]);
-    const offers = await safeQuery('service_offers', supabase.from('service_offers').select('id, admin_status, created_at, submitted_for_review_at'), [] as any[]);
-    const allRequests = await safeQuery('service_requests summary', supabase.from('service_requests').select('id, status'), [] as any[]);
-    const allProjects = await safeQuery('service_request_projects summary', supabase.from('service_request_projects').select('id, status'), [] as any[]);
-    const allTickets = await safeQuery('support_tickets summary', supabase.from('support_tickets').select('ticket_id, status'), [] as any[]);
+    const users = await safeQuery('users', supabase.from('users').select('id, user_type, verification_status, created_at'), []);
+    const offers = await safeQuery('service_offers', supabase.from('service_offers').select('id, admin_status, created_at, submitted_for_review_at'), []);
+    const allRequests = await safeQuery('service_requests summary', supabase.from('service_requests').select('id, status'), []);
+    const allProjects = await safeQuery('service_request_projects summary', supabase.from('service_request_projects').select('id, status'), []);
+    const allTickets = await safeQuery('support_tickets summary', supabase.from('support_tickets').select('ticket_id, status'), []);
 
     const requests = await safeQuery(
       'service_requests recent',
@@ -52,7 +53,7 @@ export async function GET(request: NextRequest) {
         `)
         .order('created_at', { ascending: false })
         .limit(8),
-      [] as any[],
+      [],
     );
 
     const projects = await safeQuery(
@@ -71,7 +72,7 @@ export async function GET(request: NextRequest) {
         `)
         .order('created_at', { ascending: false })
         .limit(8),
-      [] as any[],
+      [],
     );
 
     const tickets = await safeQuery(
@@ -90,22 +91,22 @@ export async function GET(request: NextRequest) {
         `)
         .order('created_at', { ascending: false })
         .limit(8),
-      [] as any[],
+      [],
     );
 
-    const countsByUserType = users.reduce((acc: Record<string, number>, user: any) => {
+    const countsByUserType = users.reduce((acc: Record<string, number>, user) => {
       const key = String(user.user_type || 'unknown');
       acc[key] = (acc[key] || 0) + 1;
       return acc;
     }, {});
 
-    const countsByVerification = users.reduce((acc: Record<string, number>, user: any) => {
+    const countsByVerification = users.reduce((acc: Record<string, number>, user) => {
       const key = String(user.verification_status || 'unknown');
       acc[key] = (acc[key] || 0) + 1;
       return acc;
     }, {});
 
-    const countsByOfferStatus = offers.reduce((acc: Record<string, number>, offer: any) => {
+    const countsByOfferStatus = offers.reduce((acc: Record<string, number>, offer) => {
       const key = String(offer.admin_status || 'pending');
       acc[key] = (acc[key] || 0) + 1;
       return acc;
@@ -125,17 +126,17 @@ export async function GET(request: NextRequest) {
           users_by_type: countsByUserType,
           users_by_verification: countsByVerification,
           offers_by_status: countsByOfferStatus,
-          requests_by_status: allRequests.reduce((acc: Record<string, number>, requestItem: any) => {
+          requests_by_status: allRequests.reduce((acc: Record<string, number>, requestItem) => {
             const key = String(requestItem.status || 'unknown');
             acc[key] = (acc[key] || 0) + 1;
             return acc;
           }, {}),
-          projects_by_status: allProjects.reduce((acc: Record<string, number>, project: any) => {
+          projects_by_status: allProjects.reduce((acc: Record<string, number>, project) => {
             const key = String(project.status || 'unknown');
             acc[key] = (acc[key] || 0) + 1;
             return acc;
           }, {}),
-          tickets_by_status: allTickets.reduce((acc: Record<string, number>, ticket: any) => {
+          tickets_by_status: allTickets.reduce((acc: Record<string, number>, ticket) => {
             const key = String(ticket.status || 'open');
             acc[key] = (acc[key] || 0) + 1;
             return acc;
@@ -148,8 +149,8 @@ export async function GET(request: NextRequest) {
         },
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Admin overview fetch error:', error);
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) || 'Internal server error' }, { status: 500 });
   }
 }

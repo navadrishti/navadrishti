@@ -1,5 +1,6 @@
 import { CSR_SCHEDULE_VII_CATEGORIES } from '@/lib/categories'
 import { formatPastProjectsForSearch, ngoIsCsrEligibleForWorkThrough } from '@/lib/auth'
+import { parseJsonObject } from '@/lib/utils'
 
 export type CampaignMatchInput = {
   campaignName?: string
@@ -100,13 +101,13 @@ export function scoreNgosForCampaign(ngos: any[], input: CampaignMatchInput, lim
   const requiredVolunteers = Number(input.volunteers_needed || 0)
 
   const scored = (ngos || [])
-    .filter((ngo: any) =>
+    .filter((ngo) =>
       ngoIsCsrEligibleForWorkThrough(ngo.verification_status, ngo.profile_data, input.end_date, {
         requireWorkEnd: true,
       })
     )
-    .map((ngo: any) => {
-    const profile = ngo.profile_data && typeof ngo.profile_data === 'object' ? ngo.profile_data : {}
+    .map((ngo) => {
+    const profile = parseJsonObject(ngo.profile_data)
     const focus = String(profile.focus_areas || profile.cause_areas || profile.sectors || '')
     const past =
       formatPastProjectsForSearch(profile.past_projects) ||
@@ -192,14 +193,8 @@ export type NetworkNgoCandidate = {
   search_haystack?: string | null
 }
 
-function asProfileObject(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {}
-}
-
 function collectViewerFocusTerms(viewer: ViewerRecommendationProfile): string[] {
-  const profile = asProfileObject(viewer.profile_data)
+  const profile = parseJsonObject(viewer.profile_data)
   const buckets = [
     profile.focus_areas,
     profile.cause_areas,
@@ -225,7 +220,7 @@ function collectViewerFocusTerms(viewer: ViewerRecommendationProfile): string[] 
 }
 
 function viewerLocationParts(viewer: ViewerRecommendationProfile) {
-  const profile = asProfileObject(viewer.profile_data)
+  const profile = parseJsonObject(viewer.profile_data)
   const city = String(viewer.city || profile.city || '').trim().toLowerCase()
   const state = String(viewer.state_province || profile.state_province || profile.state || '')
     .trim()
@@ -284,7 +279,7 @@ export function scoreNgoForViewer(
     score += Math.min(55, sectorHits * 18 + textHits * 6)
   }
 
-  const industryTokens = tokenize(String(viewer.industry || asProfileObject(viewer.profile_data).industry || ''))
+  const industryTokens = tokenize(String(viewer.industry || parseJsonObject(viewer.profile_data).industry || ''))
   if (industryTokens.length > 0) {
     const industryHits = industryTokens.filter((token) => haystack.includes(token)).length
     score += Math.min(16, industryHits * 5)
@@ -391,12 +386,4 @@ export function scoreProjectSuggestions<T extends {
     })
     .sort((left, right) => right.score - left.score)
     .map((entry) => entry.project)
-}
-
-export function ensureTopMatches<T extends { score: number }>(matches: T[], minimum = 1, limit = 5): T[] {
-  if (matches.length === 0) return []
-  const sorted = [...matches].sort((left, right) => right.score - left.score)
-  const strong = sorted.filter((match) => match.score >= 20)
-  const chosen = strong.length >= minimum ? strong : sorted
-  return chosen.slice(0, limit)
 }

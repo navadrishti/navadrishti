@@ -23,7 +23,6 @@ import {
   normalizeImpactAreas,
   isOfferType,
   isTransactionAllowedForOfferType,
-  isTransactionType,
   normalizeCapabilityTransactionType,
   OFFER_TYPE_OPTIONS,
   OFFER_TYPE_TRANSACTION_MATRIX,
@@ -408,15 +407,13 @@ export default function EditServiceOfferPage({ params }: { params: Promise<{ id:
         return 'Please select a billing cycle for rental offers.'
       }
 
-        if (formData.transaction_type === 'rent' && toNullablePositiveNumber((formData as any).unit_rate) === null) {
+        if (formData.transaction_type === 'rent' && toNullablePositiveNumber(formData.unit_rate) === null) {
           return 'Please enter a valid daily rental rate (INR/day).'
         }
 
-        if (formData.transaction_type === 'rent' && !(formData as any).billing_cycle) {
+        if (formData.transaction_type === 'rent' && !formData.billing_cycle) {
           return 'Please select a billing cycle for rent offers.'
         }
-
-      // kept for backwards-compat but already enforced above
     }
 
     return null
@@ -676,19 +673,19 @@ export default function EditServiceOfferPage({ params }: { params: Promise<{ id:
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                       <Label htmlFor="unit_rate">Daily Rental Rate (INR)</Label>
-                      <Input id="unit_rate" name="unit_rate" type="number" min="0" value={(formData as any).unit_rate} onChange={handleTextInput} />
+                      <Input id="unit_rate" name="unit_rate" type="number" min="0" value={formData.unit_rate} onChange={handleTextInput} />
                     </div>
                     <div>
                       <Label>Billing Cycle</Label>
                       <StyledSelect
-                        value={(formData as any).billing_cycle}
+                        value={formData.billing_cycle}
                         options={[{ value: 'daily', label: 'Daily' }, { value: 'monthly', label: 'Monthly' }, { value: 'one_time', label: 'One-time' }]}
-                        onValueChange={(value) => setField('billing_cycle' as any, value)}
+                        onValueChange={(value) => setField('billing_cycle', value)}
                       />
                     </div>
                     <div>
                       <Label htmlFor="rate_currency">Currency</Label>
-                      <Input id="rate_currency" name="rate_currency" value={(formData as any).rate_currency} onChange={handleTextInput} />
+                      <Input id="rate_currency" name="rate_currency" value={formData.rate_currency} onChange={handleTextInput} />
                     </div>
                   </div>
                   <div>

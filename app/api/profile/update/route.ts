@@ -1,26 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { createClient } from '@supabase/supabase-js';
-import { buildNgoLocationDisplay, verifyToken } from '@/lib/auth';
-import { assertUserType, getAuthUserFromRequest } from '@/lib/server-auth';
+import { supabase } from '@/lib/db';
+import { buildNgoLocationDisplay, isPlatformUserSession } from '@/lib/auth';
+import { assertUserType, getAuthUserFromRequest, findAuthUser } from '@/lib/server-auth';
 import {
   buildNgoPayoutStatusResponse,
   buildPayoutProfileUpdate,
-  formatNgoBankDetailsSummary,
   getNgoPayoutLinkStatus,
   onboardNgoRazorpayLinkedAccount,
   parseNgoPayoutAccountFromProfile,
-  parseProfileData,
   refreshNgoRazorpayLinkStatus,
   sanitizePayoutAccountInput,
   validateNgoPayoutAccount,
   type NgoPayoutAccount,
 } from '@/lib/razorpay-route';
+import { parseJsonObject } from '@/lib/utils';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!
-);
+const SERVER_OWNED_PROFILE_KEYS = [
+  'ca_badge_number',
+  'ca_verified_at',
+  'ca_verified_by',
+  'allotted_compliance_tags',
+  'reverification_pending',
+  'verification_documents',
+  'document_expiries',
+  'payout_account',
+  'payout_details_on_file',
+  'payout_listing',
+  'payout_listings',
+  'payout_listing_activated_at',
+  'payout_listing_activation_source',
+  'razorpay_account_id',
+  'razorpay_linked_account_id',
+  'razorpay_route_account_id',
+  'razorpay_route_product_id',
+  'razorpay_link_status',
+  'razorpay_link_error',
+  'razorpay_link_updated_at',
+];
 
 // Validation schema for PUT request (authenticated users updating their own profile)
 const updateProfileSchema = z.object({
@@ -35,8 +52,7 @@ const updateProfileSchema = z.object({
   location: z.string().optional(),
   timezone: z.string().optional(),
   skills: z.string().optional(),
-  interests: z.string().optional()
-  ,
+  interests: z.string().optional(),
   ngo_volunteer_capacity: z.union([z.number().int(), z.string()]).optional()
 });
 
@@ -117,7 +133,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const user = await loadPayoutUser(authUser.id);
-    const currentProfile = parseProfileData(user.profile_data);
+    const currentProfile = parseJsonObject(user.profile_data);
     const action = String(body?.action || '').trim();
 
     if (action === 'save') {
@@ -286,7 +302,7 @@ export async function PATCH(request: NextRequest) {
       if (connectAttempt) {
         const authUser = getAuthUserFromRequest(request);
         const user = await loadPayoutUser(authUser.id);
-        const currentProfile = parseProfileData(user.profile_data);
+        const currentProfile = parseJsonObject(user.profile_data);
         await supabase
           .from('users')
           .update({
@@ -310,15 +326,16 @@ export async function PATCH(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const authUser = findAuthUser(request, { allowCookie: true });
+    if (!isPlatformUserSession(authUser)) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
+    const userId = authUser.id;
+
     const body = await request.json();
-    const { 
-      userId, 
+    const {
       name,
       email,
-      email_verified,
-      email_verified_at,
-      phone_verified,
-      phone_verified_at,
       profileImageUrl, 
       city, 
       state_province, 
@@ -332,21 +349,9 @@ export async function POST(request: NextRequest) {
       profile_data
     } = body;
 
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'User ID is required' },
-        { status: 400 }
-      );
-    }
-
-    // Prepare update data - only include fields that are provided
     const updateData: any = {};
     if (name !== undefined) updateData.name = name;
     if (email !== undefined) updateData.email = email;
-    if (email_verified !== undefined) updateData.email_verified = email_verified;
-    if (email_verified_at !== undefined) updateData.email_verified_at = email_verified_at;
-    if (phone_verified !== undefined) updateData.phone_verified = phone_verified;
-    if (phone_verified_at !== undefined) updateData.phone_verified_at = phone_verified_at;
     if (profileImageUrl !== undefined) updateData.profile_image = profileImageUrl;
     const coverImageUrl = body.coverImageUrl;
     if (city !== undefined) updateData.city = city;
@@ -356,7 +361,6 @@ export async function POST(request: NextRequest) {
     if (phone !== undefined) updateData.phone = phone;
     if (location !== undefined) updateData.location = location;
     if (timezone !== undefined) updateData.timezone = timezone;
-    if (bio !== undefined) updateData.bio = bio;
 
     if (ngo_volunteer_capacity !== undefined && ngo_volunteer_capacity !== null) {
       const raw = ngo_volunteer_capacity;
@@ -371,10 +375,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Handle profile_data for additional fields (including bio)
     const { data: currentUser, error: fetchError } = await supabase
       .from('users')
-      .select('profile_data, user_type, city, state_province, pincode, country')
+      .select('email, phone, profile_data, user_type, city, state_province, pincode, country')
       .eq('id', userId)
       .single();
 
@@ -386,9 +389,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (email !== undefined && String(email).trim().toLowerCase() !== String(currentUser?.email || '').trim().toLowerCase()) {
+      updateData.email_verified = false;
+      updateData.email_verified_at = null;
+    }
+    if (phone !== undefined && String(phone).replace(/\s+/g, '') !== String(currentUser?.phone || '').replace(/\s+/g, '')) {
+      updateData.phone_verified = false;
+      updateData.phone_verified_at = null;
+    }
+
     if (profile_data && typeof profile_data === 'object') {
-      const currentProfileData = currentUser?.profile_data || {};
+      const currentProfileData = parseJsonObject(currentUser?.profile_data);
       const incomingProfileData = { ...profile_data };
+      for (const key of SERVER_OWNED_PROFILE_KEYS) delete incomingProfileData[key];
       if (currentUser?.user_type === 'ngo') {
         delete incomingProfileData.past_projects;
       }
@@ -398,12 +411,12 @@ export async function POST(request: NextRequest) {
       }
       updateData.profile_data = newProfileData;
     } else if (bio !== undefined) {
-      const currentProfileData = currentUser?.profile_data || {};
+      const currentProfileData = parseJsonObject(currentUser?.profile_data);
       updateData.profile_data = { ...currentProfileData, bio };
     }
 
     if (coverImageUrl !== undefined) {
-      const currentProfileData = updateData.profile_data || currentUser?.profile_data || {};
+      const currentProfileData = updateData.profile_data || parseJsonObject(currentUser?.profile_data);
       updateData.profile_data = {
         ...currentProfileData,
         cover_image: typeof coverImageUrl === 'string' ? coverImageUrl.trim() : '',
@@ -422,7 +435,7 @@ export async function POST(request: NextRequest) {
           ((profile_data.ngo_headquarters && typeof profile_data.ngo_headquarters === 'object') ||
             (profile_data.company_headquarters && typeof profile_data.company_headquarters === 'object'))))
     ) {
-      const mergedProfile = updateData.profile_data || currentUser?.profile_data || {};
+      const mergedProfile = updateData.profile_data || parseJsonObject(currentUser?.profile_data);
       const headquartersKey = currentUser?.user_type === 'company' ? 'company_headquarters' : 'ngo_headquarters';
       const headquarters =
         mergedProfile[headquartersKey] && typeof mergedProfile[headquartersKey] === 'object'
@@ -438,7 +451,6 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Only proceed if there's data to update
     if (Object.keys(updateData).length === 0) {
       return NextResponse.json(
         { error: 'No data provided to update' },
@@ -446,10 +458,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Add updated timestamp
     updateData.updated_at = new Date().toISOString();
 
-    // Update the user's profile in the database
     const { data, error } = await supabase
       .from('users')
       .update(updateData)
@@ -482,18 +492,9 @@ export async function POST(request: NextRequest) {
 // PUT method for authenticated users updating their own profile
 export async function PUT(request: NextRequest) {
   try {
-    // Get authenticated user
-    const authHeader = request.headers.get('authorization');
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-    }
-
-    const token = authHeader.substring(7);
-    
-    const payload = verifyToken(token);
+    const payload = findAuthUser(request);
     if (!payload) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
     const userId = payload.id;
@@ -512,8 +513,6 @@ export async function PUT(request: NextRequest) {
     
     const updateData = validationResult.data;
     
-    // Remove undefined values
-    // Coerce ngo_volunteer_capacity to integer when present
     if (updateData.ngo_volunteer_capacity !== undefined && updateData.ngo_volunteer_capacity !== null) {
       const raw = updateData.ngo_volunteer_capacity;
       const parsed = typeof raw === 'number' ? Math.trunc(raw) : (String(raw).match(/\d+/) ? Number(String(raw).match(/\d+/)![0]) : null);
@@ -531,60 +530,44 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Add updated timestamp
     cleanUpdateData.updated_at = new Date().toISOString();
-    
-    // Get current profile_data to merge with new data
-    
-    // First try with just profile_data
-    let { data: currentUser, error: fetchError } = await supabase
+
+    const { data: currentUser, error: fetchError } = await supabase
       .from('users')
-      .select('profile_data')
+      .select('phone, profile_data')
       .eq('id', userId)
       .single();
 
-    if (fetchError) {
-      // Try with just id to test basic access
-      const { data: testUser, error: testError } = await supabase
-        .from('users')
-        .select('id')
-        .eq('id', userId)
-        .single();
-        
-      if (testError) {
-        return NextResponse.json(
-          { error: 'Failed to access user data' },
-          { status: 500 }
-        );
-      }
-      
-      currentUser = { profile_data: {} };
+    if (fetchError || !currentUser) {
+      return NextResponse.json(
+        { error: 'Failed to access user data' },
+        { status: 500 }
+      );
     }
 
-
-
-
-
-    // Separate profile_data fields from direct user fields
-    const { skills, interests, ...directUserFields } = cleanUpdateData;
+    const { skills, interests, bio, profileImageUrl, ...directUserFields } = cleanUpdateData;
     
-    // Prepare profile_data update
-    const currentProfileData = currentUser?.profile_data || {};
-    const updatedProfileData = { ...currentProfileData };
+    const updatedProfileData = parseJsonObject(currentUser.profile_data);
     
     // Only update profile_data fields that were provided
     if (skills !== undefined) updatedProfileData.skills = skills;
     if (interests !== undefined) updatedProfileData.interests = interests;
+    if (bio !== undefined) updatedProfileData.bio = bio;
     
-    // Prepare final update data
-    const finalUpdateData = {
+    const finalUpdateData: Record<string, any> = {
       ...directUserFields,
       profile_data: updatedProfileData,
       updated_at: new Date().toISOString()
     };
-    
-    // Update the user's profile in the database
-    
+    if (profileImageUrl !== undefined) finalUpdateData.profile_image = profileImageUrl;
+    if (
+      directUserFields.phone !== undefined &&
+      String(directUserFields.phone).replace(/\s+/g, '') !== String(currentUser.phone || '').replace(/\s+/g, '')
+    ) {
+      finalUpdateData.phone_verified = false;
+      finalUpdateData.phone_verified_at = null;
+    }
+
     const { data, error } = await supabase
       .from('users')
       .update(finalUpdateData)
@@ -606,11 +589,8 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-
-
-    // Format response to include profile_data fields at the top level for compatibility
     const user = data[0];
-    const profileData = user.profile_data || {};
+    const profileData = parseJsonObject(user.profile_data);
     
     const formattedUser = {
       ...user,

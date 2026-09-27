@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, Suspense, useMemo } from 'react'
+import { useState, useEffect, Suspense, useMemo, type ComponentProps } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Header } from '@/components/header'
@@ -20,10 +20,47 @@ import { formatDisplayDate } from '@/lib/format-date'
 import { formatProjectExactAddress } from '@/lib/service-request-allocation'
 import { VerifiedAccountName } from '@/components/verification-badge'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import type { Tables } from '@/lib/database.types'
 
 const compactControlClass = 'h-9 text-sm'
 
 type ListingKind = 'needs' | 'projects'
+
+type ServiceRequestListing = Pick<
+  ComponentProps<typeof ServiceCard>,
+  | 'id'
+  | 'title'
+  | 'description'
+  | 'category'
+  | 'location'
+  | 'images'
+  | 'ngo_name'
+  | 'ngo_id'
+  | 'verified'
+  | 'tags'
+  | 'created_at'
+  | 'urgency_level'
+  | 'volunteers_needed'
+  | 'timeline'
+  | 'deadline'
+  | 'requirements'
+  | 'current_amount'
+  | 'impact_score'
+  | 'project'
+> & {
+  accepted_volunteers_count?: number | null
+  volunteers_count?: number | null
+}
+
+type ProjectListing = Tables<'service_request_projects'> & {
+  category?: string | null
+  budget_inr?: number | null
+  ngo_name?: string
+  ngo_verified?: boolean
+  ngo_location?: string | null
+  formatted_address?: string | null
+  location_summary?: string | null
+}
 
 const CATEGORY_OPTIONS = [
   { value: 'all', label: 'All categories' },
@@ -81,7 +118,7 @@ function ProjectListingCard({
   isDeleting,
   onDelete,
 }: {
-  project: any
+  project: ProjectListing
   isOwner: boolean
   isDeleting?: boolean
   onDelete?: () => void
@@ -140,7 +177,7 @@ function ProjectListingCard({
               {project.title}
             </CardTitle>
           </Link>
-          <p className="min-w-0 truncate text-[13px] leading-5 text-gram-muted" title={project.description}>
+          <p className="min-w-0 truncate text-[13px] leading-5 text-gram-muted" title={project.description ?? undefined}>
             {project.description}
           </p>
         </div>
@@ -246,8 +283,8 @@ function ServiceRequestsContent() {
   const [selectedUrgency, setSelectedUrgency] = useState('all')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [debouncedLocation, setDebouncedLocation] = useState('')
-  const [requests, setRequests] = useState<any[]>([])
-  const [projects, setProjects] = useState<any[]>([])
+  const [requests, setRequests] = useState<ServiceRequestListing[]>([])
+  const [projects, setProjects] = useState<ProjectListing[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [deleting, setDeleting] = useState<number | null>(null)
@@ -446,7 +483,7 @@ function ServiceRequestsContent() {
     })
   }, [projects, selectedCategory, debouncedLocation])
 
-  const hasAcceptedApplicant = (request: any) => {
+  const hasAcceptedApplicant = (request: ServiceRequestListing) => {
     const count = Number(request?.accepted_volunteers_count ?? request?.volunteers_count ?? 0)
     return Number.isFinite(count) && count > 0
   }
@@ -701,6 +738,7 @@ function ServiceRequestsContent() {
                   timeline={request.timeline}
                   deadline={request.deadline}
                   requirements={request.requirements}
+                  current_amount={request.current_amount}
                   impact_score={request.impact_score}
                   project={request.project}
                   currentTime={currentTime}

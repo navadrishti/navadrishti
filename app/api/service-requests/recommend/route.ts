@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
-import { embedText } from '@/lib/csr-agent/check-ngo'
+import { embedText } from '@/lib/embeddings'
+import { getErrorMessage } from '@/lib/utils'
 
 function toNumber(value: unknown): number | null {
   if (value === null || value === undefined) return null
@@ -8,6 +9,16 @@ function toNumber(value: unknown): number | null {
   if (!text) return null
   const parsed = Number(text.replace(/[^0-9.-]/g, ''))
   return Number.isFinite(parsed) ? parsed : null
+}
+
+// gte-small scores unrelated short texts around 0.75, so similarity only counts
+// above SEMANTIC_FLOOR and is scaled from there up to 1.
+const SEMANTIC_FLOOR = 0.8
+const STRONG_SEMANTIC_MATCH = 0.85
+
+function semanticBoost(similarity: number): number {
+  if (similarity <= SEMANTIC_FLOOR) return 0
+  return Math.round(((similarity - SEMANTIC_FLOOR) / (1 - SEMANTIC_FLOOR)) * 70)
 }
 
 const STOPWORDS = new Set([
@@ -48,28 +59,28 @@ export async function POST(req: NextRequest) {
       return null
     })()
 
-    // Step A: try vector search using embeddings (if available)
-    let vectorCandidates: any[] = []
-    try {
-      const embedding = await embedText(needText)
-      const { data: vectorMatches } = await supabase.rpc('match_ngo_service', {
-        query_embedding: embedding,
-        match_count: 100
-      })
-
-      if (Array.isArray(vectorMatches)) {
-        vectorCandidates = vectorMatches
-          .filter((m: any) => m.source === 'service_offer' || m.entity_type === 'service_offer' || String(m.source) === 'service_offer')
-          .map((m: any) => ({ id: Number(m.entity_id), similarity: Number(m.similarity || 0), metadata: m.metadata || {} }))
+    // Semantic similarity only boosts offers that pass the filters below; if the
+    // embed function is unavailable, scoring falls back to keywords and capacity.
+    const similarityByOfferId = new Map<number, number>()
+    if (needText.trim()) {
+      try {
+        const embedding = await embedText(needText)
+        const { data: matches, error: matchError } = await supabase.rpc('match_service_offers', {
+          query_embedding: embedding,
+          match_count: 100
+        })
+        if (matchError) throw matchError
+        for (const match of matches || []) {
+          similarityByOfferId.set(Number(match.service_offer_id), Number(match.similarity) || 0)
+        }
+      } catch (err) {
+        console.warn('[api/service-requests/recommend] semantic matching skipped:', getErrorMessage(err))
       }
-    } catch (err) {
-      // embedding or vector search failed — fall back to lexical matching below
     }
 
-    // Step B: fetch direct offers as fallback/augmentation
     const { data: offers, error } = await supabase
       .from('service_offers')
-      .select('*')
+      .select('*, ngo:users!creator_id(name)')
       .eq('offer_type', expectedOfferType)
       .in('status', ['active'])
       .limit(200)
@@ -104,51 +115,31 @@ export async function POST(req: NextRequest) {
 
     const availableRows = unexpiredRows.filter((row) => !usedOfferIds.has(Number(row.id)))
 
-    // Build candidate map from vector results and direct rows
     const candidateMap = new Map<number, any>()
 
     for (const r of availableRows) {
-      const capacity = toNumber(r.capacity) || toNumber(r.quantity) || toNumber(r.amount) || toNumber(r.price_amount) || toNumber(r.sell_amount) || null
+      const capacity = toNumber(r.price_amount) || null
       candidateMap.set(Number(r.id), {
         id: Number(r.id),
         title: r.title,
-        provider_name: r.provider_name || r.ngo_name || null,
+        provider_name: r.ngo?.name || null,
         raw: r,
         capacity,
-        vector_similarity: 0
+        vector_similarity: similarityByOfferId.get(Number(r.id)) || 0
       })
-    }
-
-    for (const v of vectorCandidates) {
-      const id = Number(v.id)
-      const existing = candidateMap.get(id)
-      if (existing) {
-        existing.vector_similarity = Math.max(existing.vector_similarity || 0, v.similarity || 0)
-      } else {
-        // metadata may contain title/provider
-        candidateMap.set(id, {
-          id,
-          title: v.metadata?.title || v.metadata?.capability_name || `Offer ${id}`,
-          provider_name: v.metadata?.provider_name || v.metadata?.ngo_name || null,
-          raw: v.metadata || {},
-          capacity: toNumber(v.metadata?.capacity) || toNumber(v.metadata?.quantity) || null,
-          vector_similarity: Number(v.similarity || 0)
-        })
-      }
     }
 
     const candidates = Array.from(candidateMap.values())
 
-    // Score candidates combining vector similarity, keyword overlap, phrase matching, and capacity
-    const scored = candidates.map((offer: any) => {
+    const scored = candidates.map((offer) => {
       const offerText = `${offer.title || ''} ${String(offer.raw?.description || '')} ${offer.raw?.item || ''} ${offer.raw?.skill || ''} ${offer.raw?.scope || ''}`.toLowerCase()
       let score = 0
 
-      // vector similarity influence (increased weight)
       const vecSim = Number(offer.vector_similarity || 0)
-      if (vecSim > 0) score += Math.round(vecSim * 70) // stronger semantic boost
+      const semanticScore = semanticBoost(vecSim)
+      score += semanticScore
 
-      // phrase / exact item matches (stricter): prefer exact multi-word phrases from material_items or skill_role
+      // Whole items from the need's material list, matched as exact phrases.
       const matched_phrases: string[] = []
       const rawItems = String(body.material_items || '').toLowerCase()
       const phraseCandidates = rawItems.split(/[,;|\n]/).map(s => s.trim()).filter(Boolean)
@@ -162,7 +153,6 @@ export async function POST(req: NextRequest) {
         score += Math.min(40, matched_phrases.length * 18)
       }
 
-      // keyword overlap (reduced influence, stricter whole-word matching)
       const keywordMatches = keywords.reduce((matches: string[], k) => {
         const re = new RegExp(`\\b${k.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'i')
         if (re.test(offerText)) matches.push(k)
@@ -170,20 +160,19 @@ export async function POST(req: NextRequest) {
       }, [] as string[])
       score += Math.min(30, keywordMatches.length * 6)
 
-      // collect matched fields/tokens for explanation
       const matched_fields: string[] = []
       if (keywordMatches.length) matched_fields.push('keyword')
       if (matched_phrases.length) matched_fields.push('phrase')
-      if (vecSim > 0) matched_fields.push('semantic')
+      if (semanticScore > 0) matched_fields.push('semantic')
 
       const capacity = offer.capacity || null
       const coverageRatio = targetCoverage && capacity ? capacity / targetCoverage : null
       if (coverageRatio !== null) {
-        if (coverageRatio >= 1) score += 12 // reduced full-capacity bonus
+        if (coverageRatio >= 1) score += 12
         else score += Math.max(2, Math.floor(coverageRatio * 8))
       }
 
-      if (offer.provider_name) score += 2 // smaller provider boost
+      if (offer.provider_name) score += 2
 
       const rationale = coverageRatio === null ? (matched_fields.length ? `Matched by ${matched_fields.join(', ')}` : 'Type and context match') : coverageRatio >= 1 ? 'Can fully fulfill this need' : `Can partially fulfill ~${Math.max(1, Math.round(coverageRatio * 100))}%`
 
@@ -202,20 +191,19 @@ export async function POST(req: NextRequest) {
       }
     })
 
-    // For stricter filtering on Material Needs, require either a phrase/keyword match or high semantic similarity
+    // Material needs are specific items, so drop offers that match on type and capacity alone.
     let filtered = scored
     if (requestType === 'Material Need') {
-      filtered = scored.filter((s: any) => {
+      filtered = scored.filter((s) => {
         const hasPhrase = Array.isArray(s.matched_phrases) && s.matched_phrases.length > 0
         const hasKeyword = Array.isArray(s.matched_keywords) && s.matched_keywords.length > 0
-        const highSemantic = typeof s.vector_similarity === 'number' && s.vector_similarity >= 0.75
+        const highSemantic = typeof s.vector_similarity === 'number' && s.vector_similarity >= STRONG_SEMANTIC_MATCH
         return hasPhrase || hasKeyword || highSemantic
       })
     }
 
-    const fullSorted = filtered.sort((a: any, b: any) => b.score - a.score)
+    const fullSorted = filtered.sort((a, b) => b.score - a.score)
 
-    // support pagination via offset/limit
     const offset = Number.isFinite(Number(body.offset)) ? Math.max(0, Number(body.offset)) : 0
     const limit = Number.isFinite(Number(body.limit)) ? Math.max(1, Math.min(200, Number(body.limit))) : 60
     let recommendations = fullSorted.slice(offset, offset + limit)
@@ -223,7 +211,7 @@ export async function POST(req: NextRequest) {
     const creatorIds = [
       ...new Set(
         recommendations
-          .map((item: any) => {
+          .map((item) => {
             const raw = candidateMap.get(Number(item.id))?.raw || {}
             return Number(raw.creator_id || raw.ngo_id || 0)
           })
@@ -235,8 +223,8 @@ export async function POST(req: NextRequest) {
         .from('users')
         .select('id, name, verification_status')
         .in('id', creatorIds)
-      const creatorById = new Map<number, any>((creators || []).map((row: any) => [Number(row.id), row]))
-      recommendations = recommendations.map((item: any) => {
+      const creatorById = new Map<number, any>((creators || []).map((row) => [Number(row.id), row]))
+      recommendations = recommendations.map((item) => {
         const raw = candidateMap.get(Number(item.id))?.raw || {}
         const creator = creatorById.get(Number(raw.creator_id || raw.ngo_id || 0))
         const providerName = item.provider_name || creator?.name || null
@@ -250,15 +238,14 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    // Improved cover selection: search small subsets among top candidates for minimal slack
+    // Suggested set: the smallest combination of top offers that covers the target
+    // with the least excess capacity (at most 6 of the top 12, so 2^12 subsets max).
     const suggested_set: number[] = []
     if (targetCoverage && targetCoverage > 0) {
-      // use top candidates from the full sorted list for cover selection
-      const capCandidates = fullSorted.filter((r: any) => r.capacity && r.capacity > 0).slice(0, 12)
+      const capCandidates = fullSorted.filter((r) => r.capacity && r.capacity > 0).slice(0, 12)
       let best: { ids: number[]; slack: number; totalCapacity: number; count: number; scoreSum: number } | null = null
 
       const m = capCandidates.length
-      // enumerate subsets via bitmask but limit subset size to 6
       const maxMask = 1 << m
       for (let mask = 1; mask < maxMask; mask++) {
         const count = mask.toString(2).replace(/0/g, '').length
@@ -284,10 +271,10 @@ export async function POST(req: NextRequest) {
       if (best) {
         suggested_set.push(...best.ids)
       } else {
-        // fallback greedy accumulation by capacity then score
+        // No subset reaches the target: take the largest offers until it's covered or we run out.
         const capacitySorted = recommendations
-          .filter((r: any) => r.capacity && r.capacity > 0)
-          .sort((a: any, b: any) => (b.capacity - a.capacity) || (b.score - a.score))
+          .filter((r) => r.capacity && r.capacity > 0)
+          .sort((a, b) => (b.capacity - a.capacity) || (b.score - a.score))
 
         let accumulated = 0
         for (const r of capacitySorted) {
@@ -299,8 +286,8 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ success: true, data: { recommendations, suggested_set } })
-  } catch (err: any) {
+  } catch (err) {
     console.error('[api/service-requests/recommend]', err)
-    return NextResponse.json({ success: false, error: err?.message || 'Failed to compute recommendations' }, { status: 500 })
+    return NextResponse.json({ success: false, error: getErrorMessage(err) || 'Failed to compute recommendations' }, { status: 500 })
   }
 }

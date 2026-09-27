@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/db';
+import type { Database } from '@/lib/database.types';
 
-async function deleteIn(table: string, column: string, ids: string[]) {
+async function deleteIn(table: keyof Database['public']['Tables'], column: string, ids: string[]) {
   if (ids.length === 0) return;
   const { error } = await supabase.from(table).delete().in(column, ids);
   if (error) throw error;

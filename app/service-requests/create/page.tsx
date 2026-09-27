@@ -462,7 +462,6 @@ export default function CreateServiceRequestPage() {
       .sort((a, b) => b.score - a.score)
   }
 
-  // Map server-side recommendation shape into NeedRecommendation shape used by the UI
   const mapServerToNeedRecommendation = (rec: any): NeedRecommendation => {
     const coverageRatio = typeof rec.coverageRatio === 'number' ? rec.coverageRatio : null
     const coverageLabel: NeedRecommendation['coverageLabel'] = coverageRatio === null ? 'possible' : coverageRatio >= 1 ? 'full' : 'partial'
@@ -486,7 +485,6 @@ export default function CreateServiceRequestPage() {
     }
   }
 
-  // Fetch server recommendations for all needs when needs change
   useEffect(() => {
     const fetchRecs = async (index: number, need: NeedDraft, page = 0) => {
       try {
@@ -537,7 +535,6 @@ export default function CreateServiceRequestPage() {
       [needIndex]: Array.from(new Set([...(prev[needIndex] || []), offerId]))
     }))
 
-    // If we have an existing need id (editing or after create), call the offer apply endpoint
     const needId = Number(createdNeedId || 0)
     if (!Number.isFinite(needId) || needId <= 0) return
 

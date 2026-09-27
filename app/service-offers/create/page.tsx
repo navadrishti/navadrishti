@@ -1,7 +1,6 @@
 'use client'
 
-import { useState } from 'react'
-import React from 'react'
+import { useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
@@ -28,7 +27,6 @@ import {
   OfferType,
   parseCsvToStringArray,
   PriceType,
-  toNullableNumber,
   toNullablePositiveNumber,
   TransactionType,
   TRANSACTION_TYPE_OPTIONS
@@ -152,7 +150,7 @@ export default function CreateServiceOfferPage() {
     setFormData((prev) => ({ ...prev, [name]: value }))
   }
 
-  const imagesTextareaRef = React.useRef<HTMLTextAreaElement | null>(null)
+  const imagesTextareaRef = useRef<HTMLTextAreaElement | null>(null)
 
   const parseImageUrls = (value: string) => {
     return value
@@ -197,7 +195,7 @@ export default function CreateServiceOfferPage() {
     return { urls, failures }
   }
 
-  const handleTextInput = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleTextInput = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
     const numericFields = new Set([
       'price_amount',
@@ -328,7 +326,7 @@ export default function CreateServiceOfferPage() {
     return null
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
 
     if (!token) {

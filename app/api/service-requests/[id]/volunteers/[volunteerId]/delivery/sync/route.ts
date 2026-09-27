@@ -1,15 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import jwt from 'jsonwebtoken';
-
-import { JWT_SECRET } from '@/lib/auth';
+import { getTokenClaims } from '@/lib/auth';
 import { db, getApplicationApplicantUserId, shapeApplicationForApi, supabase } from '@/lib/db';
 import { getDelhiveryTrackingSnapshot } from '@/lib/delhivery';
 import { isDeliveredTrackingStatus } from '@/lib/service-request-allocation';
-
-interface JWTPayload {
-  id: number;
-  user_type: string;
-}
+import { getErrorMessage, parseJsonObject } from '@/lib/utils';
 
 function extractTrackingId(input: unknown): string {
   return typeof input === 'string' ? input.trim() : '';
@@ -20,13 +14,10 @@ export async function POST(
   { params }: { params: Promise<{ id: string; volunteerId: string }> }
 ) {
   try {
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const decoded = getTokenClaims(request);
+    if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
-
-    const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
     const { id: userId, user_type: userType } = decoded;
 
     if (!['ngo', 'individual', 'admin'].includes(userType)) {
@@ -62,7 +53,7 @@ export async function POST(
       return NextResponse.json({ error: 'Volunteer assignment not found' }, { status: 404 });
     }
 
-    if (userType === 'ngo' && Number(serviceRequest.ngo_id || serviceRequest.requester_id) !== Number(userId)) {
+    if (userType === 'ngo' && Number(serviceRequest.ngo_id) !== Number(userId)) {
       return NextResponse.json({ error: 'You can only track deliveries for your own requests' }, { status: 403 });
     }
 
@@ -78,9 +69,7 @@ export async function POST(
     }
 
     const existingMeta =
-      volunteerApplication.response_meta && typeof volunteerApplication.response_meta === 'object'
-        ? volunteerApplication.response_meta
-        : {};
+      parseJsonObject(volunteerApplication.response_meta);
 
     const trackingId =
       extractTrackingId(body?.trackingId) ||
@@ -163,7 +152,7 @@ export async function POST(
           .limit(200);
 
         const existingKeys = new Set(
-          (existingEvents || []).map((event: any) =>
+          (existingEvents || []).map((event) =>
             `${String(event.event_status || '')}|${String(event.event_location || '')}|${String(event.event_at || '')}`
           )
         );
@@ -192,8 +181,8 @@ export async function POST(
           }
         }
       }
-    } catch (dualWriteError) {
-      console.error('Delhivery shipment dual-write skipped:', dualWriteError);
+    } catch (shipmentRecordError) {
+      console.error('Failed to record Delhivery shipment:', shipmentRecordError);
     }
 
     const delivered = isDeliveredTrackingStatus(snapshot.currentStatus)
@@ -238,10 +227,10 @@ export async function POST(
         assignment: updatedVolunteer
       }
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Delivery sync error:', error);
     return NextResponse.json(
-      { error: error?.message || 'Failed to sync Delhivery tracking' },
+      { error: getErrorMessage(error) || 'Failed to sync Delhivery tracking' },
       { status: 500 }
     );
   }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateGovernmentAdminToken, getGovernmentAdminFromRequest, verifyGovernmentAdminPassword } from '@/lib/government-admin-auth';
+import { generateGovernmentAdminToken, verifyGovernmentAdminPassword, type GovernmentAdminRole } from '@/lib/government-admin-auth';
 import { supabase } from '@/lib/db';
 import { setGovtAdminTokenCookie } from '@/lib/server-auth';
 
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
     }
 
-    const token = generateGovernmentAdminToken(account);
+    const token = generateGovernmentAdminToken({ ...account, role: account.role as GovernmentAdminRole });
 
     await supabase
       .from('government_admin_accounts')

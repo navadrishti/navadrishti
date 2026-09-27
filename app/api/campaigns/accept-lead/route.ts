@@ -2,18 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
 import { CSR_ELIGIBILITY_REQUIRED_MESSAGE, CSR_TIMELINE_COVERAGE_REQUIRED_MESSAGE, CSR_WORK_END_DATE_REQUIRED_MESSAGE } from '@/lib/auth'
 import { getAuthUserFromRequest, assertUserType, ngoUserIsCsrEligible, assertNgoCsr1CoversWork } from '@/lib/server-auth'
-import { buildCampaignLeadNgoPatch, getCampaignLeadNgoId } from '@/lib/campaign-volunteer-attendance'
-
-function normalizeInvites(raw: unknown) {
-  if (!Array.isArray(raw)) return []
-  return raw.map((item) => ({
-    ngo_id: Number((item as any)?.ngo_id || (item as any)?.ngoId || 0),
-    name: String((item as any)?.name || ''),
-    email: String((item as any)?.email || ''),
-    status: String((item as any)?.status || 'invited').toLowerCase(),
-    invited_at: (item as any)?.invited_at || (item as any)?.invitedAt || null,
-  })).filter((item) => item.ngo_id > 0)
-}
+import { getCampaignLeadNgoId, parseLeadNgoInvites } from '@/lib/campaign-volunteer-attendance'
+import { parseJsonObject } from '@/lib/utils'
 
 export async function POST(request: NextRequest) {
   try {
@@ -49,10 +39,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: coverageGate.error || CSR_TIMELINE_COVERAGE_REQUIRED_MESSAGE }, { status: 403 })
     }
 
-    const impact = campaign.impact_metrics && typeof campaign.impact_metrics === 'object' ? campaign.impact_metrics : {}
+    const impact = parseJsonObject(campaign.impact_metrics)
     const status = String(campaign.status || '').toLowerCase()
     const selectedLead = getCampaignLeadNgoId(campaign)
-    const invites = normalizeInvites(impact.lead_ngo_invites)
+    const invites = parseLeadNgoInvites(impact.lead_ngo_invites)
     const inviteForUser = invites.find((invite) => invite.ngo_id === user.id)
     const actionableInvite = inviteForUser && ['invited', 'pending', 'pending_acceptance', 'awaiting_acceptance', 'offered', 'assigned'].includes(inviteForUser.status)
 
@@ -65,12 +55,6 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'A lead NGO is already assigned to this campaign.' }, { status: 409 })
       }
 
-      const { data: ngoUser } = await supabase
-        .from('users')
-        .select('id, name, email')
-        .eq('id', user.id)
-        .maybeSingle()
-
       const updatedInvites = invites.map((invite) => ({
         ...invite,
         status: invite.ngo_id === user.id ? 'accepted' : 'expired',
@@ -79,20 +63,15 @@ export async function POST(request: NextRequest) {
       const newImpact = {
         ...impact,
         lead_ngo_invites: updatedInvites,
-        selected_lead_ngo_id: user.id,
-        selected_lead_ngo_name: ngoUser?.name || inviteForUser.name || 'NGO',
-        selected_lead_ngo_email: ngoUser?.email || inviteForUser.email || '',
         lead_ngo_accepted: true,
         lead_ngo_accepted_at: new Date().toISOString(),
       }
 
-      const leadPatch = buildCampaignLeadNgoPatch(user.id, newImpact)
-
       const { data: updated, error: updateErr } = await supabase
         .from('campaigns')
         .update({
-          lead_ngo_user_id: leadPatch.lead_ngo_user_id,
-          impact_metrics: leadPatch.impact_metrics,
+          lead_ngo_user_id: user.id,
+          impact_metrics: newImpact,
           updated_at: new Date().toISOString(),
         })
         .eq('id', campaignId)
@@ -120,7 +99,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'You are not the selected lead NGO for this campaign' }, { status: 403 })
     }
 
-    const required = Number(impact.volunteer_requirement ?? campaign.volunteers_needed ?? 0)
+    const required = Number(impact.volunteer_requirement ?? 0)
 
     const { data: ngoUser, error: ngoErr } = await supabase
       .from('users')

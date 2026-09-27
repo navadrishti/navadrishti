@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import { RefreshCw } from 'lucide-react';
+import { getErrorMessage } from '@/lib/utils';
 
 type GovtAdminAccount = {
   id: number;
@@ -167,8 +167,8 @@ export default function GovernmentAdminPage() {
         }
 
         await loadDashboardData();
-      } catch (err: any) {
-        setError(err?.message || 'Failed to load dashboard');
+      } catch (err) {
+        setError(getErrorMessage(err) || 'Failed to load dashboard');
       } finally {
         setLoading(false);
       }
@@ -183,8 +183,8 @@ export default function GovernmentAdminPage() {
     try {
       await loadDashboardData();
       toast.success('Dashboard refreshed');
-    } catch (err: any) {
-      const message = err?.message || 'Failed to refresh dashboard';
+    } catch (err) {
+      const message = getErrorMessage(err) || 'Failed to refresh dashboard';
       setError(message);
       toast.error(message);
     } finally {
@@ -220,8 +220,8 @@ export default function GovernmentAdminPage() {
       setProjectForm({ ...initialProjectForm, milestoneRequirements: [''] });
       await loadDashboardData();
       toast.success('Project created');
-    } catch (err: any) {
-      const message = err?.message || 'Failed to create project';
+    } catch (err) {
+      const message = getErrorMessage(err) || 'Failed to create project';
       setError(message);
       toast.error(message);
     } finally {
@@ -259,8 +259,8 @@ export default function GovernmentAdminPage() {
       setCredentialForm(initialCredentialForm);
       await loadDashboardData();
       toast.success(data?.action === 'updated' ? 'Credential updated' : 'Credential generated');
-    } catch (err: any) {
-      const message = err?.message || 'Failed to generate credential';
+    } catch (err) {
+      const message = getErrorMessage(err) || 'Failed to generate credential';
       setError(message);
       toast.error(message);
     } finally {

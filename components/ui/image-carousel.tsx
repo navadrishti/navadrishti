@@ -28,12 +28,6 @@ export function ImageCarousel({
   showImageCount = true,
   enableKeyboardNav = true
 }: ImageCarouselProps) {
-  // Simple filter - only remove empty/null values
-  const isValidImageUrl = (url: string): boolean => {
-    return !!(url && typeof url === 'string' && url.trim() !== '');
-  }
-
-  // Filter out empty/invalid images
   const validImages = images?.filter(img => 
     img && 
     typeof img === 'string' && 
@@ -42,15 +36,12 @@ export function ImageCarousel({
     img !== 'null'
   ) || []
 
-
-  
   const [currentIndex, setCurrentIndex] = useState(0)
   const [isHovered, setIsHovered] = useState(false)
-  const [isPlaying, setIsPlaying] = useState(autoplay)
 
   // Auto-play functionality
   React.useEffect(() => {
-    const shouldPlay = hoverToPlay ? (autoplay && isHovered) : (autoplay && isPlaying)
+    const shouldPlay = autoplay && (!hoverToPlay || isHovered)
     if (!shouldPlay || validImages.length <= 1) return
 
     const interval = setInterval(() => {
@@ -58,7 +49,7 @@ export function ImageCarousel({
     }, autoplayInterval)
 
     return () => clearInterval(interval)
-  }, [autoplay, autoplayInterval, validImages.length, hoverToPlay, isHovered, isPlaying])
+  }, [autoplay, autoplayInterval, validImages.length, hoverToPlay, isHovered])
 
   // Keyboard navigation
   React.useEffect(() => {
@@ -96,7 +87,6 @@ export function ImageCarousel({
     setCurrentIndex(index)
   }
 
-  // Handle empty or invalid image arrays
   if (!validImages || validImages.length === 0) {
     return (
       <div className="relative flex h-full w-full items-center justify-center bg-[#EEF0ED]">

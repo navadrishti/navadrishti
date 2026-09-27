@@ -7,10 +7,9 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ArrowLeft, Loader2, Users, Mail, Phone, Calendar, CheckCircle, XCircle, Clock } from 'lucide-react'
+import { ArrowLeft, Loader2, Users, Mail, Calendar, CheckCircle, XCircle, Clock } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
-import Link from 'next/link'
 import { formatStatusLabel } from '@/lib/format-date'
 import {
   formatDeliveryTrackingStatus,
@@ -18,6 +17,7 @@ import {
   getServiceRequestTarget,
 } from '@/lib/service-request-allocation'
 import { VerifiedAccountName } from '@/components/verification-badge'
+import { parseJsonObject } from '@/lib/utils';
 
 interface ServiceRequest {
   id: number;
@@ -38,7 +38,7 @@ interface ServiceRequest {
 
 interface Volunteer {
   id: number;
-  volunteer_id: number;
+  applicant_user_id: number;
   volunteer_name: string;
   volunteer_email: string;
   volunteer_type: 'individual' | 'company';
@@ -61,7 +61,7 @@ function normalizeVolunteer(raw: any): Volunteer {
 
   return {
     id: Number(raw.id),
-  volunteer_id: Number(raw.applicant_user_id ?? raw.volunteer_id),
+    applicant_user_id: Number(raw.applicant_user_id),
     volunteer_name: String(volunteer.name || raw.volunteer_name || 'Volunteer'),
     volunteer_email: String(volunteer.email || raw.volunteer_email || ''),
     volunteer_type: (volunteer.user_type || raw.volunteer_type || 'individual') as Volunteer['volunteer_type'],
@@ -113,7 +113,6 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
   const [volunteers, setVolunteers] = useState<Volunteer[]>([]);
   const [updating, setUpdating] = useState<number | null>(null);
 
-  // Check if user is authorized (NGO only)
   useEffect(() => {
     if (!user) {
       router.push('/login');
@@ -130,7 +129,6 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
     }
   }, [user, router, toast]);
 
-  // Fetch request and volunteers data
   useEffect(() => {
     if (!user || !resolvedParams.id) return;
 
@@ -138,7 +136,6 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
       try {
         const token = localStorage.getItem('token');
         
-        // Fetch need details
         const requestResponse = await fetch(`/api/service-requests/${resolvedParams.id}`, {
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -158,7 +155,6 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
           return;
         }
 
-        // Fetch volunteers
         const volunteersResponse = await fetch(`/api/service-requests/${resolvedParams.id}/volunteers`, {
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -549,9 +545,7 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
                           {deliverableNeed ? (
                             <p className="text-sm text-indigo-700">
                               Delhivery: {formatDeliveryTrackingStatus(
-                                volunteer.response_meta && typeof volunteer.response_meta === 'object'
-                                  ? volunteer.response_meta
-                                  : {}
+                                parseJsonObject(volunteer.response_meta)
                               )}
                             </p>
                           ) : null}
@@ -637,9 +631,7 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
                           {deliverableNeed ? (
                             <p className="text-sm text-indigo-700">
                               Delhivery: {formatDeliveryTrackingStatus(
-                                volunteer.response_meta && typeof volunteer.response_meta === 'object'
-                                  ? volunteer.response_meta
-                                  : {}
+                                parseJsonObject(volunteer.response_meta)
                               )}
                             </p>
                           ) : null}

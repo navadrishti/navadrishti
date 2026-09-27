@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
 import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth'
+import { parseLeadNgoInvites } from '@/lib/campaign-volunteer-attendance'
+import { parseJsonObject } from '@/lib/utils'
 
 export async function GET(request: NextRequest) {
   try {
@@ -24,28 +26,17 @@ export async function GET(request: NextRequest) {
 
     const payload = (campaigns || [])
       .map((campaign) => {
-        const impact = campaign.impact_metrics && typeof campaign.impact_metrics === 'object'
-          ? campaign.impact_metrics
-          : {}
-        const invites = Array.isArray(impact.lead_ngo_invites) ? impact.lead_ngo_invites : []
-        const invite = invites.find((item: any) => Number(item?.ngo_id || item?.ngoId || 0) === user.id)
+        const impact = parseJsonObject(campaign.impact_metrics)
+        const invite = parseLeadNgoInvites(impact.lead_ngo_invites).find((item) => item.ngo_id === user.id)
         if (!invite) return null
 
-        const inviteStatus = String(invite.status || 'invited').toLowerCase()
+        const inviteStatus = invite.status
 
-        if (impact.lead_ngo_accepted && Number(impact.selected_lead_ngo_id || 0) === user.id) {
-          return null
-        }
-
-        if (['rejected', 'expired', 'accepted'].includes(inviteStatus)) {
+        if (impact.lead_ngo_accepted) {
           return null
         }
 
         if (!['invited', 'pending', 'pending_acceptance', 'awaiting_acceptance', 'offered', 'assigned'].includes(inviteStatus)) {
-          return null
-        }
-
-        if (impact.lead_ngo_accepted && Number(impact.selected_lead_ngo_id || 0) !== user.id) {
           return null
         }
 

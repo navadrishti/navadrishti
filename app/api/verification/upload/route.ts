@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v2 as cloudinary } from 'cloudinary';
-import { verifyToken } from '@/lib/auth';
+import { findAuthUser } from '@/lib/server-auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -33,15 +33,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-    }
-
-    const token = authHeader.substring(7);
-    const user = verifyToken(token);
+    const user = findAuthUser(request);
     if (!user) {
-      return NextResponse.json({ error: 'Invalid or expired token' }, { status: 401 });
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
     const formData = await request.formData();

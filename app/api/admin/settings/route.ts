@@ -1,26 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyToken } from '@/lib/auth';
+import { getAdminUser } from '@/lib/server-auth';
 
 export async function GET(request: NextRequest) {
   try {
-    // Check for admin token authentication
-    const adminToken = request.cookies.get('admin-token')?.value;
-    
-    if (!adminToken) {
+    if (!getAdminUser(request)) {
       return NextResponse.json({ error: 'Admin authentication required' }, { status: 401 });
     }
 
-    // Verify admin token
-    try {
-      const decoded = verifyToken(adminToken);
-      if (!decoded || decoded.id !== -1) {
-        return NextResponse.json({ error: 'Invalid admin token' }, { status: 401 });
-      }
-    } catch (error) {
-      return NextResponse.json({ error: 'Invalid admin token' }, { status: 401 });
-    }
-
-    // Get current admin username
     const currentUsername = process.env.ADMIN_USERNAME || 'admin';
 
     return NextResponse.json({ 

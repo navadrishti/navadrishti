@@ -92,7 +92,6 @@ export function PageTransition({ children }: PageTransitionProps) {
         setTransitionStage('entering');
         exitingRef.current = false;
         
-        // Then trigger enter animation
         const enterTimer = setTimeout(() => {
           setTransitionStage('visible');
         }, prefersReducedMotion ? 0 : 50);
@@ -111,7 +110,6 @@ export function PageTransition({ children }: PageTransitionProps) {
     }
   }, [pathname, displayPath, transitionStage]);
   
-  // Determine CSS classes based on transition stage
   const getTransitionClass = () => {
     switch (transitionStage) {
       case 'exiting':

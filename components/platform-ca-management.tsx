@@ -17,6 +17,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
+import { getErrorMessage } from '@/lib/utils';
 
 type PlatformCAAccount = {
   id: number;
@@ -123,8 +124,8 @@ export function PlatformCAManagement() {
       setForm({ ca_id: '', username: '', display_name: '', password: '' });
       setAutoGenerateCaId(true);
       fetchAccounts();
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to create CA account');
+    } catch (error) {
+      toast.error(getErrorMessage(error) || 'Failed to create CA account');
     } finally {
       setLoading(false);
     }
@@ -184,8 +185,8 @@ export function PlatformCAManagement() {
       toast.success(`Password reset for ${resetTarget.username}. They must change it on next login.`);
       closeResetPasswordDialog();
       fetchAccounts();
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to reset CA password');
+    } catch (error) {
+      toast.error(getErrorMessage(error) || 'Failed to reset CA password');
     } finally {
       setLoading(false);
     }
@@ -217,8 +218,8 @@ export function PlatformCAManagement() {
 
       toast.success(`CA account ${action}d successfully`);
       fetchAccounts();
-    } catch (error: any) {
-      toast.error(error.message || `Failed to ${action} CA account`);
+    } catch (error) {
+      toast.error(getErrorMessage(error) || `Failed to ${action} CA account`);
     } finally {
       setLoading(false);
     }
@@ -226,7 +227,7 @@ export function PlatformCAManagement() {
 
   const handleDeleteAccount = async (accountId: number, username: string) => {
     const confirmed = window.confirm(
-      `⚠️  PERMANENTLY DELETE CA account "${username}"?\n\nThis action cannot be undone. All data associated with this account will be permanently removed.`
+      `Permanently delete CA account "${username}"?\n\nThis action cannot be undone. All data associated with this account will be permanently removed.`
     );
     if (!confirmed) return;
 
@@ -244,8 +245,8 @@ export function PlatformCAManagement() {
 
       toast.success('CA account permanently deleted');
       fetchAccounts();
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to delete CA account');
+    } catch (error) {
+      toast.error(getErrorMessage(error) || 'Failed to delete CA account');
     } finally {
       setLoading(false);
     }
@@ -466,8 +467,6 @@ export function PlatformCAManagement() {
                         </p>
                       </div>
                     </div>
-
-                    {/* textual action buttons removed to match government-admin layout; icons in header handle actions */}
                   </div>
                 ))
               )}

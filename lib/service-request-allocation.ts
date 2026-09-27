@@ -3,6 +3,7 @@ import {
   buildNgoLocationDisplay,
   normalizePincode,
 } from '@/lib/auth'
+import { parseAmountToInr, parseJsonObject } from '@/lib/utils'
 
 export type ServiceRequestTarget = {
   type: string
@@ -12,24 +13,8 @@ export type ServiceRequestTarget = {
   isDeliverable: boolean
 }
 
-export function parseAllocationNumber(value: unknown): number {
-  if (value === null || value === undefined) return 0
-  const text = String(value).trim()
-  if (!text) return 0
-  const parsed = Number(text.replace(/[^\d.-]/g, ''))
-  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0
-}
-
 export function getServiceRequestTarget(request: Record<string, any> | null | undefined): ServiceRequestTarget {
-  const requirements = (() => {
-    try {
-      return typeof request?.requirements === 'string'
-        ? JSON.parse(request.requirements)
-        : (request?.requirements || {})
-    } catch {
-      return {}
-    }
-  })()
+  const requirements = parseJsonObject(request?.requirements)
 
   const type = String(
     requirements?.request_type ||
@@ -43,13 +28,13 @@ export function getServiceRequestTarget(request: Record<string, any> | null | un
 
   return {
     type,
-    amount: parseAllocationNumber(
+    amount: parseAmountToInr(
       request?.target_amount ??
         requirements?.funding_target_inr ??
         requirements?.estimated_budget ??
         requirements?.budget
     ),
-    quantity: parseAllocationNumber(
+    quantity: parseAmountToInr(
       request?.target_quantity ??
         requirements?.target_quantity ??
         request?.volunteers_needed ??
@@ -88,20 +73,6 @@ function isPastValidUntil(value: unknown, now = new Date()): boolean {
   return ms < now.getTime()
 }
 
-function safeParseRecord(value: unknown): Record<string, any> {
-  if (!value) return {}
-  if (typeof value === 'object') return value as Record<string, any>
-  if (typeof value === 'string') {
-    try {
-      const parsed = JSON.parse(value)
-      return parsed && typeof parsed === 'object' ? parsed : {}
-    } catch {
-      return {}
-    }
-  }
-  return {}
-}
-
 export function isServiceRequestExpired(
   request: Record<string, any> | null | undefined,
   now = new Date()
@@ -115,11 +86,11 @@ export function isServiceRequestExpired(
   if (isPastValidUntil(request.valid_until, now)) return true
   if (isPastValidUntil(request.project?.valid_until, now)) return true
 
-  const projectContext = safeParseRecord(request.project_context)
+  const projectContext = parseJsonObject(request.project_context)
   if (isPastValidUntil(projectContext.project_valid_until, now)) return true
   if (isPastValidUntil(projectContext.valid_until, now)) return true
 
-  const requirements = safeParseRecord(request.requirements)
+  const requirements = parseJsonObject(request.requirements)
   if (isPastValidUntil(requirements.project_valid_until, now)) return true
 
   return false
@@ -137,8 +108,8 @@ export function buildAllocationUpdatePayload(
   input: { amount?: number; quantity?: number }
 ) {
   const target = getServiceRequestTarget(request)
-  const addAmount = parseAllocationNumber(input.amount)
-  const addQuantity = parseAllocationNumber(input.quantity)
+  const addAmount = parseAmountToInr(input.amount)
+  const addQuantity = parseAmountToInr(input.quantity)
 
   if (target.isFinancial) {
     const currentAmount = Number(request?.current_amount || 0)
@@ -170,21 +141,6 @@ export function isDeliveredTrackingStatus(status: string | null | undefined): bo
   )
 }
 
-export function isDeliverableNeedCategory(value: string | null | undefined): boolean {
-  const normalized = String(value || '').toLowerCase()
-  return normalized.includes('material') || normalized.includes('deliver')
-}
-
-export function isDeliverableServiceRequest(request: Record<string, any> | null | undefined): boolean {
-  if (!request) return false
-  const normalized = Array.isArray(request) ? request[0] : request
-  if (!normalized || typeof normalized !== 'object') return false
-  if (isDeliverableNeedCategory(normalized.category) || isDeliverableNeedCategory(normalized.request_type)) {
-    return true
-  }
-  return getServiceRequestTarget(normalized).isDeliverable
-}
-
 export function getDeliveryTrackingEvents(meta: Record<string, any> | null | undefined) {
   const events = meta?.delivery_tracking_events
   return Array.isArray(events) ? events : []
@@ -205,29 +161,21 @@ export function formatDeliveryTrackingStatus(meta: Record<string, any> | null | 
   return status
 }
 
-export function parseInrNumber(value: unknown): number {
-  if (value === null || value === undefined) return 0
-  const text = String(value).trim()
-  if (!text) return 0
-  const parsed = Number(text.replace(/[^\d.-]/g, ''))
-  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0
-}
-
 /** Parse preset budget range labels into a numeric INR upper bound. */
 export function parseBudgetUpperBound(budget: unknown): number {
   const text = String(budget || '').trim()
   if (!text || /negotiable/i.test(text)) return 0
 
   const underMatch = text.match(/under\s+(?:₹|inr)?\s*([\d,]+)/i)
-  if (underMatch) return parseInrNumber(underMatch[1])
+  if (underMatch) return parseAmountToInr(underMatch[1])
 
   const rangeMatch = text.match(/(?:₹|inr)?\s*([\d,]+)\s*-\s*(?:₹|inr)?\s*([\d,]+)/i)
-  if (rangeMatch) return parseInrNumber(rangeMatch[2])
+  if (rangeMatch) return parseAmountToInr(rangeMatch[2])
 
   const plusMatch = text.match(/(?:₹|inr)?\s*([\d,]+)\+/i)
-  if (plusMatch) return parseInrNumber(plusMatch[1])
+  if (plusMatch) return parseAmountToInr(plusMatch[1])
 
-  const plain = parseInrNumber(text)
+  const plain = parseAmountToInr(text)
   if (plain > 0 && !text.includes('-')) return plain
 
   return 0
@@ -241,42 +189,20 @@ type FundingSource = {
 }
 
 export function resolveFundingTargetInr(source: FundingSource): number {
-  const explicit = parseInrNumber(source.funding_target_inr)
+  const explicit = parseAmountToInr(source.funding_target_inr)
   if (explicit > 0) return explicit
 
-  const targetAmount = parseInrNumber(source.target_amount)
+  const targetAmount = parseAmountToInr(source.target_amount)
   if (targetAmount > 0) return targetAmount
 
   const budgetText = String(source.budget || source.estimated_budget || '')
   const fromRange = parseBudgetUpperBound(budgetText)
   if (fromRange > 0) return fromRange
 
-  const estimated = parseInrNumber(source.estimated_budget)
+  const estimated = parseAmountToInr(source.estimated_budget)
   if (estimated > 0 && !budgetText.includes('-')) return estimated
 
   return 0
-}
-
-type RaisedSource = {
-  funds_raised_inr?: unknown
-  current_amount?: unknown
-  financial_transactions?: unknown
-  razorpay_total_inr?: unknown
-}
-
-export function resolveFundsRaisedInr(source: RaisedSource): number {
-  const fromRequirements = parseInrNumber(source.funds_raised_inr)
-  const fromColumn = parseInrNumber(source.current_amount)
-  const fromRazorpay = parseInrNumber(source.razorpay_total_inr)
-
-  const fromTransactions = Array.isArray(source.financial_transactions)
-    ? source.financial_transactions.reduce((sum, item) => {
-        const tx = item as Record<string, unknown>
-        return sum + parseInrNumber(tx.amount_inr)
-      }, 0)
-    : 0
-
-  return Math.max(fromRequirements, fromColumn, fromTransactions, fromRazorpay)
 }
 
 export function getFundingProgress(targetInr: number, raisedInr: number) {
@@ -299,7 +225,7 @@ export function validateAcceptanceAllocation(
   const remaining = getNeedRemainingQuantity(request)
 
   if (target.isFinancial) {
-    const amount = parseAllocationNumber(input.amount)
+    const amount = parseAmountToInr(input.amount)
     if (amount <= 0) return 'Fulfillment amount must be greater than zero'
     if (target.amount > 0 && amount > remaining) {
       return `Only INR ${remaining.toLocaleString('en-IN')} remains for this need`
@@ -307,7 +233,7 @@ export function validateAcceptanceAllocation(
     return null
   }
 
-  const quantity = parseAllocationNumber(input.quantity)
+  const quantity = parseAmountToInr(input.quantity)
   if (quantity <= 0) return 'Fulfillment quantity must be greater than zero'
   if (target.quantity > 0 && quantity > remaining) {
     return `Only ${remaining} units remain for this need`
@@ -373,9 +299,7 @@ export function getSkillServiceDailyRate(application: Record<string, any>) {
   const meta = application?.response_meta && typeof application.response_meta === 'object'
     ? application.response_meta
     : {}
-  const assignmentMeta = meta.assignment_meta && typeof meta.assignment_meta === 'object'
-    ? meta.assignment_meta
-    : {}
+  const assignmentMeta = parseJsonObject(meta.assignment_meta)
 
   const amount = Number(
     application?.fulfillment_amount ??
@@ -390,10 +314,8 @@ export function getSkillServiceDailyRate(application: Record<string, any>) {
 }
 
 export function isDailyRentalEngagementMeta(meta: Record<string, any> | null | undefined) {
-  const source = meta && typeof meta === 'object' ? meta : {}
-  const assignmentMeta = source.assignment_meta && typeof source.assignment_meta === 'object'
-    ? source.assignment_meta
-    : {}
+  const source = parseJsonObject(meta)
+  const assignmentMeta = parseJsonObject(source.assignment_meta)
   const billingCycle = String(source.billing_cycle || assignmentMeta.billing_cycle || '').toLowerCase()
   const paymentMode = String(source.payment_mode || assignmentMeta.payment_mode || '').toLowerCase()
   return billingCycle === 'daily' || paymentMode === 'daily_due'

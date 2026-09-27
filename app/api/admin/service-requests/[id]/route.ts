@@ -1,18 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, supabase } from '@/lib/db';
-import { assertAdminUser } from '@/lib/server-auth';
-
-function safeParseJson(value: unknown): Record<string, any> {
-  if (!value) return {};
-  if (typeof value === 'object') return value as Record<string, any>;
-  if (typeof value !== 'string') return {};
-  try {
-    const parsed = JSON.parse(value);
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
-}
+import { assertAdminUser } from '@/lib/server-auth';
+import { parseJsonObject, getErrorMessage } from '@/lib/utils';
 
 function toNumberOrNull(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
@@ -39,9 +28,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     return NextResponse.json({ success: true, data: serviceRequest });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Admin service request fetch error:', error);
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) || 'Internal server error' }, { status: 500 });
   }
 }
 
@@ -60,18 +49,18 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     if (fetchError) throw fetchError;
 
-    const existingRequirements = safeParseJson(existingRequest?.requirements);
-    const existingProjectContext = safeParseJson(existingRequest?.project_context);
+    const existingRequirements = parseJsonObject(existingRequest?.requirements);
+    const existingProjectContext = parseJsonObject(existingRequest?.project_context);
     const timeline = normalizeTimeline(body.timeline ?? existingRequest?.timeline);
 
     const nextRequirements = {
       ...existingRequirements,
-      ...(body.requirements && typeof body.requirements === 'object' ? body.requirements : {}),
+      ...(parseJsonObject(body.requirements)),
     };
 
     const nextProjectContext = {
       ...existingProjectContext,
-      ...(body.project_context && typeof body.project_context === 'object' ? body.project_context : {}),
+      ...(parseJsonObject(body.project_context)),
     };
 
     if (body.request_type !== undefined) {
@@ -127,9 +116,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (error) throw error;
 
     return NextResponse.json({ success: true, data });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Admin service request update error:', error);
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) || 'Internal server error' }, { status: 500 });
   }
 }
 
@@ -151,8 +140,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     await db.serviceRequests.delete(requestId);
 
     return NextResponse.json({ success: true, message: 'Service request deleted successfully' });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Admin service request delete error:', error);
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) || 'Internal server error' }, { status: 500 });
   }
 }

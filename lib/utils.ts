@@ -6,6 +6,37 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+// Supabase and Razorpay errors are plain objects with a message, not Error instances.
+export function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
+    return error.message
+  }
+  return ''
+}
+
+// jsonb columns come back as objects, but older rows stored them as JSON strings.
+export function parseJsonObject(value: unknown): Record<string, any> {
+  if (!value) return {}
+  if (typeof value === 'string') {
+    try {
+      return parseJsonObject(JSON.parse(value))
+    } catch {
+      return {}
+    }
+  }
+  return typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, any>) : {}
+}
+
+// Accepts numbers or strings like "₹1,50,000" and never returns a negative amount.
+export function parseAmountToInr(value: unknown): number {
+  if (value === null || value === undefined) return 0
+  const text = String(value).trim()
+  if (!text) return 0
+  const parsed = Number(text.replace(/[^\d.-]/g, ''))
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0
+}
+
 // Currency formatting
 export function formatCurrency(amount: number | string, showDecimals = false): string {
   const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount
@@ -20,10 +51,6 @@ export function formatCurrency(amount: number | string, showDecimals = false): s
 
 export function formatPrice(amount: number | string): string {
   return formatCurrency(amount, false)
-}
-
-export function formatDetailedPrice(amount: number | string): string {
-  return formatCurrency(amount, true)
 }
 
 export type RequestUrgency = 'low' | 'medium' | 'high' | 'critical'
@@ -195,7 +222,7 @@ export function smoothScrollToElement(
   }
 }
 
-// --- Platform checkout pricing & payout account helpers ---
+// Checkout pricing and NGO payout accounts
 
 export type PlatformCheckoutPricing = {
   baseAmountInr: number
@@ -294,7 +321,7 @@ export function formatInr(amount: number): string {
 export function buildPricingOrderNotes(
   pricing: PlatformCheckoutPricing,
   extra: Record<string, unknown> = {}
-): Record<string, unknown> {
+): Record<string, any> {
   return {
     ...extra,
     pricing_model: 'fee_on_top',
@@ -321,27 +348,18 @@ export function buildPricingResponse(pricing: PlatformCheckoutPricing) {
   }
 }
 
-function parseCheckoutAmountToInr(value: unknown): number {
-  if (value === null || value === undefined) return 0
-  const text = String(value).trim()
-  if (!text) return 0
-  const numericText = text.replace(/[^\d.-]/g, '')
-  const parsed = Number(numericText)
-  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0
-}
-
 export function validateCapturedPaymentAmounts(params: {
   orderNotes?: Record<string, unknown> | null
   paidInr: number
 }): { ok: true; paidInr: number; baseAmountInr: number } | { ok: false; error: string } {
   const notes = params.orderNotes || {}
-  const paidInr = parseCheckoutAmountToInr(params.paidInr)
-  const expectedTotalInr = parseCheckoutAmountToInr(notes.total_charge_inr)
+  const paidInr = parseAmountToInr(params.paidInr)
+  const expectedTotalInr = parseAmountToInr(notes.total_charge_inr)
   if (expectedTotalInr > 0 && Math.abs(paidInr - expectedTotalInr) > 0.01) {
     return { ok: false, error: 'Paid amount does not match checkout total' }
   }
 
-  const baseAmountInr = parseCheckoutAmountToInr(notes.base_amount_inr) || paidInr
+  const baseAmountInr = parseAmountToInr(notes.base_amount_inr) || paidInr
   return { ok: true, paidInr, baseAmountInr }
 }
 

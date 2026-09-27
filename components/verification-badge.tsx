@@ -1,4 +1,3 @@
-import { AlertCircle } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
@@ -99,7 +98,7 @@ export function VerificationBadge({
   const label = showNumber ? `CA verified · ${number}` : 'Verified'
 
   return (
-    <div
+    <span
       className={`inline-flex max-w-full min-w-0 items-center ${showNumber ? '' : 'shrink-0'} ${className}`}
       title={label}
       aria-label={label}
@@ -153,79 +152,7 @@ export function VerificationBadge({
           Verified
         </span>
       ) : null}
-    </div>
-  )
-}
-
-interface VerificationDetailsProps {
-  userType: 'individual' | 'company' | 'ngo'
-  verificationDetails: any
-  className?: string
-}
-
-export function VerificationDetails({ 
-  userType, 
-  verificationDetails, 
-  className = '' 
-}: VerificationDetailsProps) {
-  const formattedVerificationDate = verificationDetails?.verification_date
-    ? new Date(verificationDetails.verification_date).toLocaleDateString('en-IN', { timeZone: 'UTC' })
-    : null
-
-  if (!verificationDetails) {
-    return (
-      <div className={`text-sm text-gray-600 ${className}`}>
-        <div className="flex items-center gap-2">
-          <AlertCircle size={16} className="text-gray-400" />
-          <span>No verification details available</span>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className={`text-sm space-y-2 ${className}`}>
-      {userType === 'individual' && (
-        <div className="space-y-1">
-          <div className="flex items-center justify-between">
-            <span className="text-gray-600">Aadhaar:</span>
-            <VerificationBadge 
-              status={verificationDetails.aadhaar_verified ? 'verified' : 'unverified'} 
-              size="sm" 
-              showText={false}
-            />
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-gray-600">PAN:</span>
-            <VerificationBadge 
-              status={verificationDetails.pan_verified ? 'verified' : 'unverified'} 
-              size="sm" 
-              showText={false}
-            />
-          </div>
-        </div>
-      )}
-      
-      {userType === 'company' && verificationDetails.company_name && (
-        <div>
-          <span className="text-gray-600">Company:</span>
-          <span className="ml-2 font-medium">{verificationDetails.company_name}</span>
-        </div>
-      )}
-      
-      {userType === 'ngo' && verificationDetails.ngo_name && (
-        <div>
-          <span className="text-gray-600">Organization:</span>
-          <span className="ml-2 font-medium">{verificationDetails.ngo_name}</span>
-        </div>
-      )}
-      
-      {formattedVerificationDate && (
-        <div className="text-xs text-gray-500">
-          Verified on {formattedVerificationDate}
-        </div>
-      )}
-    </div>
+    </span>
   )
 }
 

@@ -69,7 +69,6 @@ export async function GeminiChat(messages: ChatMessage[], retryCount = 0): Promi
         return GeminiChat(messages, retryCount + 1);
       }
       
-      // If not retrying, throw the error with the API's message
       throw new GeminiError(res.status, await res.text());
     }
 
@@ -94,19 +93,19 @@ export async function GeminiChat(messages: ChatMessage[], retryCount = 0): Promi
     
     return output;
 
-  } catch (error: any) {
+  } catch (error) {
     clearTimeout(timeoutId);
     
     // 8. TRANSIENT NETWORK FAILURES
     // Retries if the internet connection blipped (DNS/Socket issues).
-    const isNetworkError = error instanceof TypeError || error.name === 'FetchError';
+    const isNetworkError = error instanceof TypeError || (error instanceof Error && error.name === 'FetchError');
     if (isNetworkError && retryCount < 3) {
       await new Promise((r) => setTimeout(r, 1500));
       return GeminiChat(messages, retryCount + 1);
     }
 
     // Pass the AbortError or standard errors back to the caller
-    if (error.name === "AbortError") throw new Error("Drafting request timed out.");
+    if (error instanceof Error && error.name === "AbortError") throw new Error("Drafting request timed out.");
     throw error;
   }
 }

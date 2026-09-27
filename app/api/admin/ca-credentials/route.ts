@@ -3,6 +3,7 @@ import { supabase } from '@/lib/db';
 import { assertAdminUser } from '@/lib/server-auth';
 import { createPlatformCAAccount, resetPlatformCAPasswordByAdmin, PLATFORM_CA_ACCOUNTS_TABLE } from '@/lib/platform-ca-auth';
 import crypto from 'crypto';
+import { getErrorMessage } from '@/lib/utils';
 
 // Generate a random CA ID (new accounts only; existing DB rows keep their ca_id values)
 function generateCaId(): string {
@@ -17,7 +18,6 @@ export async function GET(request: NextRequest) {
     const url = new URL(request.url);
     const query = url.searchParams.get('query');
 
-    // If query=unique-ca-ids, return list of distinct CA IDs for reuse
     if (query === 'unique-ca-ids') {
       const { data, error } = await supabase
         .from(PLATFORM_CA_ACCOUNTS_TABLE)
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
 
       // Group by ca_id to show available CA IDs with their account count
       const caIdMap = new Map<string, any>();
-      data?.forEach((account: any) => {
+      data?.forEach((account) => {
         if (!caIdMap.has(account.ca_id)) {
           caIdMap.set(account.ca_id, {
             ca_id: account.ca_id,
@@ -60,11 +60,11 @@ export async function GET(request: NextRequest) {
       success: true,
       data: data || [],
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Get CA credentials error:', error);
     return NextResponse.json(
-      { error: error?.message || 'Failed to fetch CA credentials' },
-      { status: error?.message?.includes('unauthorized') ? 401 : 500 }
+      { error: getErrorMessage(error) || 'Failed to fetch CA credentials' },
+      { status: getErrorMessage(error)?.includes('unauthorized') ? 401 : 500 }
     );
   }
 }
@@ -95,7 +95,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if account with this username already exists for the provided CA instance
     const { data: existing, error: checkError } = await supabase
       .from(PLATFORM_CA_ACCOUNTS_TABLE)
       .select('id')
@@ -132,11 +131,11 @@ export async function POST(request: NextRequest) {
         created_at: account.created_at,
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Create CA credentials error:', error);
     return NextResponse.json(
-      { error: error?.message || 'Failed to create CA credentials' },
-      { status: error?.message?.includes('unauthorized') ? 401 : 500 }
+      { error: getErrorMessage(error) || 'Failed to create CA credentials' },
+      { status: getErrorMessage(error)?.includes('unauthorized') ? 401 : 500 }
     );
   }
 }
@@ -193,7 +192,7 @@ export async function PUT(request: NextRequest) {
     const { data, error } = await supabase
       .from(PLATFORM_CA_ACCOUNTS_TABLE)
       .update({ active: isActive, updated_at: new Date().toISOString() })
-      .eq('id', accountId)
+      .eq('id', Number(accountId))
       .select()
       .single();
 
@@ -217,10 +216,10 @@ export async function PUT(request: NextRequest) {
         updated_at: data.updated_at,
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Update CA account status error:', error);
     return NextResponse.json(
-      { error: error?.message || 'Failed to update CA account status' },
+      { error: getErrorMessage(error) || 'Failed to update CA account status' },
       { status: 500 }
     );
   }
@@ -241,11 +240,10 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Get account details before deletion (for response)
     const { data: account, error: fetchError } = await supabase
       .from(PLATFORM_CA_ACCOUNTS_TABLE)
       .select('id, ca_id, username, display_name')
-      .eq('id', accountId)
+      .eq('id', Number(accountId))
       .single();
 
     if (fetchError || !account) {
@@ -255,11 +253,10 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Delete the account
     const { error: deleteError } = await supabase
       .from(PLATFORM_CA_ACCOUNTS_TABLE)
       .delete()
-      .eq('id', accountId);
+      .eq('id', Number(accountId));
 
     if (deleteError) throw deleteError;
 
@@ -273,10 +270,10 @@ export async function DELETE(request: NextRequest) {
         display_name: account.display_name,
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Delete CA account error:', error);
     return NextResponse.json(
-      { error: error?.message || 'Failed to delete CA account' },
+      { error: getErrorMessage(error) || 'Failed to delete CA account' },
       { status: 500 }
     );
   }

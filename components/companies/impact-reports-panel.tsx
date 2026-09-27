@@ -18,6 +18,14 @@ import {
 } from "@/lib/document-generation/types"
 import { getCampaignLeadNgoId } from "@/lib/campaign-volunteer-attendance"
 import { formatStatusLabel } from "@/lib/format-date"
+import { getErrorMessage } from "@/lib/utils"
+import type { Tables } from "@/lib/database.types"
+
+type CampaignRow = Tables<"campaigns">
+
+type CsrProjectRow = Tables<"csr_projects"> & {
+  campaigns?: Pick<CampaignRow, "title"> | null
+}
 
 type EntityOption = {
   id: string
@@ -109,9 +117,9 @@ export function ImpactReportsPanel({ audience }: ImpactReportsPanelProps) {
           headers: authHeaders,
         })
         const payload = await response.json().catch(() => null)
-        const rows = Array.isArray(payload?.data) ? payload.data : []
+        const rows: CampaignRow[] = Array.isArray(payload?.data) ? payload.data : []
         setEntities(
-          rows.map((row: any) => ({
+          rows.map((row) => ({
             id: `campaign:${String(row.id)}`,
             kind: "campaign" as const,
             title: String(row.title || row.category || "Untitled campaign").trim(),
@@ -129,10 +137,10 @@ export function ImpactReportsPanel({ audience }: ImpactReportsPanelProps) {
       const projectsPayload = await projectsResponse.json().catch(() => null)
       const campaignsPayload = await campaignsResponse.json().catch(() => null)
 
-      const projects = Array.isArray(projectsPayload?.data) ? projectsPayload.data : []
-      const campaigns = Array.isArray(campaignsPayload?.data) ? campaignsPayload.data : []
+      const projects: CsrProjectRow[] = Array.isArray(projectsPayload?.data) ? projectsPayload.data : []
+      const campaigns: CampaignRow[] = Array.isArray(campaignsPayload?.data) ? campaignsPayload.data : []
 
-      const projectOptions: EntityOption[] = projects.map((row: any) => ({
+      const projectOptions: EntityOption[] = projects.map((row) => ({
         id: `project:${String(row.id)}`,
         kind: "project",
         title: String(row.title || row.campaigns?.title || "Untitled project").trim(),
@@ -142,8 +150,8 @@ export function ImpactReportsPanel({ audience }: ImpactReportsPanelProps) {
       }))
 
       const leadCampaignOptions: EntityOption[] = campaigns
-        .filter((row: any) => getCampaignLeadNgoId(row.impact_metrics) === user.id)
-        .map((row: any) => ({
+        .filter((row) => getCampaignLeadNgoId(row) === user.id)
+        .map((row) => ({
           id: `campaign:${String(row.id)}`,
           kind: "campaign" as const,
           title: String(row.title || row.category || "Untitled campaign").trim(),
@@ -232,8 +240,8 @@ export function ImpactReportsPanel({ audience }: ImpactReportsPanelProps) {
       writeHistory(resolvedAudience, nextHistory)
 
       toast.success("Document downloaded. Open the HTML file and use Print → Save as PDF if needed.")
-    } catch (error: any) {
-      toast.error(error?.message || "Failed to generate document")
+    } catch (error) {
+      toast.error(getErrorMessage(error) || "Failed to generate document")
     } finally {
       setGenerating(false)
     }

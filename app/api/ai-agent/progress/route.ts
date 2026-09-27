@@ -1,16 +1,29 @@
 import { NextRequest, NextResponse } from "next/server"
-import { verifyToken } from "@/lib/auth"
 import { supabase, pruneRemovedAgentSessions } from "@/lib/db"
 import { randomUUID } from 'crypto'
+import { findAuthUser } from "@/lib/server-auth"
 import {
   buildProjectContextWithPublished,
   readPublishedEntity,
 } from "@/lib/ai-agent-sessions"
+import type { Json, Tables, TablesInsert } from "@/lib/database.types"
 
 type AgentKind = "csr" | "ngo"
 
+// Sessions are client-authored UI snapshots mixing camelCase and snake_case fields.
+type PersistedSession = Record<string, any>
+
+type SessionStateRow = Partial<Tables<"csr_ai_agent_session_state"> & Tables<"ngo_ai_agent_session_state">>
+
+type SessionMessage = {
+  role: string
+  content: string
+  meta: Json
+  createdAt: string
+}
+
 type PersistedPayload = {
-  sessions: any[]
+  sessions: PersistedSession[]
   activeSessionId?: string
   updatedAt?: string
 }
@@ -20,7 +33,7 @@ const toNumberOr = (value: unknown, fallback: number) => {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
-const buildStateFromSession = (agent: AgentKind, session: any) => {
+const buildStateFromSession = (agent: AgentKind, session: PersistedSession) => {
   const sessionState = session?.state || session?.session_state || {}
   const incomingUiState = (sessionState?.ui_state && typeof sessionState.ui_state === "object") ? sessionState.ui_state : {}
 
@@ -72,21 +85,6 @@ const parseAgent = (value: unknown): AgentKind | null => {
 
 const isValidUUID = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v)
 
-const getTokenFromRequest = (request: NextRequest): string | null => {
-  const authHeader = request.headers.get("authorization")
-  if (authHeader && authHeader.startsWith("Bearer ")) {
-    return authHeader.substring(7)
-  }
-  return request.cookies.get("token")?.value || null
-}
-
-const getUserIdFromRequest = (request: NextRequest): number | null => {
-  const token = getTokenFromRequest(request)
-  if (!token) return null
-  const user = verifyToken(token)
-  return user?.id ?? null
-}
-
 const readProfileData = async (userId: number) => {
   const { data, error } = await supabase
     .from("users")
@@ -114,9 +112,9 @@ async function buildLatestPayloadFromTables(userId: number, agent: AgentKind) {
 
   if (error) throw error
 
-  const sessionIds = (rows || []).map((r: any) => r.id)
+  const sessionIds = (rows || []).map((r) => r.id)
   const { data: stateRows } = await supabase.from(stateTable).select("*").in("session_id", sessionIds)
-  const stateBySession: Record<string, any> = {}
+  const stateBySession: Record<string, SessionStateRow> = {}
   for (const s of stateRows || []) stateBySession[s.session_id] = s
 
   const messagesTable = agent === "csr" ? "csr_ai_agent_messages" : "ngo_ai_agent_messages"
@@ -126,15 +124,16 @@ async function buildLatestPayloadFromTables(userId: number, agent: AgentKind) {
     .in("session_id", sessionIds)
     .order("created_at", { ascending: true })
 
-  const messagesBySession: Record<string, any[]> = {}
+  const messagesBySession: Record<string, SessionMessage[]> = {}
   for (const m of messageRows || []) {
     messagesBySession[m.session_id] = messagesBySession[m.session_id] || []
     messagesBySession[m.session_id].push({ role: m.role, content: m.content, meta: m.meta, createdAt: m.created_at })
   }
 
-  const sessions = (rows || []).map((r: any) => {
+  const sessions = (rows || []).map((r) => {
     const state = stateBySession[r.id] || {}
-    const uiState = state.ui_state && typeof state.ui_state === "object" ? state.ui_state : {}
+    const uiState: { [key: string]: Json | undefined } =
+      state.ui_state && typeof state.ui_state === "object" && !Array.isArray(state.ui_state) ? state.ui_state : {}
     const projectContext =
       r.project_context && typeof r.project_context === "object" ? r.project_context : {}
     const published = readPublishedEntity(projectContext)
@@ -185,13 +184,13 @@ async function buildLatestPayloadFromTables(userId: number, agent: AgentKind) {
     }
   })
 
-  const updatedAt = sessions.reduce((acc: string | null, s: any) => {
+  const updatedAt = sessions.reduce((acc: string | null, s) => {
     return acc === null || (s.updatedAt && new Date(s.updatedAt) > new Date(acc)) ? s.updatedAt : acc
   }, null as string | null)
 
   const profileData = await readProfileData(userId)
   const key = keyByAgent[agent]
-  const legacy = profileData[key] as any
+  const legacy = profileData[key] as PersistedPayload | undefined
 
   return {
     sessions,
@@ -202,7 +201,7 @@ async function buildLatestPayloadFromTables(userId: number, agent: AgentKind) {
 
 export async function GET(request: NextRequest) {
   try {
-    const userId = getUserIdFromRequest(request)
+    const userId = findAuthUser(request, { allowCookie: true })?.id
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
@@ -244,7 +243,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const userId = getUserIdFromRequest(request)
+    const userId = findAuthUser(request, { allowCookie: true })?.id
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
@@ -283,7 +282,7 @@ export async function POST(request: NextRequest) {
       .eq("user_id", userId)
 
     const serverUpdatedAt = Array.isArray(existingSessions) && existingSessions.length > 0
-      ? existingSessions.reduce((acc: string | null, r: any) => acc === null || (r.updated_at && new Date(r.updated_at) > new Date(acc)) ? r.updated_at : acc, null as string | null)
+      ? existingSessions.reduce((acc: string | null, r) => acc === null || (r.updated_at && new Date(r.updated_at) > new Date(acc)) ? r.updated_at : acc, null as string | null)
       : null
 
     if (serverUpdatedAt && Date.parse(incomingUpdatedAt) < Date.parse(serverUpdatedAt)) {
@@ -298,7 +297,7 @@ export async function POST(request: NextRequest) {
         const key = keyByAgent[agent]
         const legacy = profileData[key] as PersistedPayload | undefined
         if (legacy && Array.isArray(legacy.sessions) && legacy.sessions.length > 0) {
-          const toInsert: any[] = []
+          const toInsert: TablesInsert<"csr_ai_agent_sessions">[] = []
           const legacyIdMap: Record<string, string> = {}
           for (const s of legacy.sessions) {
             const origId = s.id
@@ -319,7 +318,7 @@ export async function POST(request: NextRequest) {
           const { error: upsertErr } = await supabase.from(sessionsTable).upsert(toInsert, { onConflict: 'id' })
           if (upsertErr) console.warn('Migration upsert sessions error', upsertErr)
 
-          const legacyMessageRows: any[] = []
+          const legacyMessageRows: TablesInsert<"csr_ai_agent_messages">[] = []
           for (const s of legacy.sessions) {
             const origId = s.id
             const idToUse = isValidUUID(origId) ? origId : Object.keys(legacyIdMap).find(k => legacyIdMap[k] === origId) || randomUUID()
@@ -377,9 +376,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Upsert incoming sessions/state into the dedicated tables
-    const incomingSessions = normalizedPayload.sessions as any[]
+    const incomingSessions = normalizedPayload.sessions
     const idMap: Record<string, string> = {}
-    const sessionRows = incomingSessions.map((s: any) => {
+    const sessionRows = incomingSessions.map((s) => {
       const origId = s.id
       const idToUse = isValidUUID(origId) ? origId : randomUUID()
       if (!isValidUUID(origId) && origId) idMap[origId] = idToUse
@@ -400,7 +399,7 @@ export async function POST(request: NextRequest) {
     const { error: upsertSessionsError } = await supabase.from(sessionsTable).upsert(sessionRows, { onConflict: 'id' })
     if (upsertSessionsError) throw upsertSessionsError
 
-    const messageRows: any[] = []
+    const messageRows: TablesInsert<"csr_ai_agent_messages">[] = []
     for (const s of incomingSessions) {
       const origId = s.id
       const assignedId = isValidUUID(origId) ? origId : idMap[origId]
@@ -440,7 +439,7 @@ export async function POST(request: NextRequest) {
       const state = buildStateFromSession(agent, s)
       const ui_state = state.ui_state || {}
       if (!isValidUUID(origId) && origId) ui_state.legacyId = origId
-      const stateRow: any = agent === "csr"
+      const stateRow = agent === "csr"
         ? {
             session_id: assignedId,
             conversation_stage: state.conversation_stage || undefined,

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { verifyToken } from '@/lib/auth';
+import { getAdminUser } from '@/lib/server-auth';
 import { emailService } from '@/lib/email';
 
 export async function POST(
@@ -11,21 +11,8 @@ export async function POST(
     const { offerId } = await params;
     const { action, comments } = await request.json();
 
-    // Check for admin token authentication
-    const adminToken = request.cookies.get('admin-token')?.value;
-    
-    if (!adminToken) {
+    if (!getAdminUser(request)) {
       return NextResponse.json({ error: 'Admin authentication required' }, { status: 401 });
-    }
-
-    // Verify admin token
-    try {
-      const decoded = verifyToken(adminToken);
-      if (!decoded || decoded.id !== -1) {
-        return NextResponse.json({ error: 'Invalid admin token' }, { status: 401 });
-      }
-    } catch (error) {
-      return NextResponse.json({ error: 'Invalid admin token' }, { status: 401 });
     }
 
     if (!['approve', 'reject'].includes(action)) {
@@ -36,12 +23,11 @@ export async function POST(
       return NextResponse.json({ error: 'Review comments are required' }, { status: 400 });
     }
 
-    // Get the service offer with organization details
     const { data: serviceOffer, error: fetchError } = await supabase
       .from('service_offers')
       .select(`
         *,
-        organization:creator_id (
+        organization:users!creator_id (
           id,
           name,
           email,
@@ -55,13 +41,11 @@ export async function POST(
       return NextResponse.json({ error: 'Service offer not found' }, { status: 404 });
     }
 
-    // Update the service offer with admin decision
     const updateData = {
       admin_status: action === 'approve' ? 'approved' : 'rejected',
       admin_reviewed_at: new Date().toISOString(),
-      admin_reviewed_by: null, // No admin user in database, using environment auth
+      admin_reviewed_by: null,
       admin_comments: comments.trim(),
-      // If approved, set the offer as active
       ...(action === 'approve' ? { status: 'active' } : {})
     };
 
@@ -75,7 +59,6 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to update service offer' }, { status: 500 });
     }
 
-    // Best-effort audit record. Some environments do not have the review table yet.
     const { error: auditError } = await supabase
       .from('service_offer_reviews')
       .insert({
@@ -92,11 +75,10 @@ export async function POST(
         review_category: 'standard_review'
       });
 
-    if (auditError && auditError.code !== 'PGRST205') {
+    if (auditError) {
       console.error('Error creating audit record:', auditError);
     }
 
-    // Send notification email to the organization
     try {
       const isApproved = action === 'approve';
       const subject = `Service Offer ${isApproved ? 'Approved' : 'Rejected'} - ${serviceOffer.title}`;
@@ -132,7 +114,6 @@ export async function POST(
         </div>
       `;
 
-      // Send the email
       const emailResult = await emailService.sendEmail({
         to: serviceOffer.organization.email,
         subject,
@@ -150,15 +131,13 @@ export async function POST(
           .order('created_at', { ascending: false })
           .limit(1);
 
-        if (updateReviewError && updateReviewError.code !== 'PGRST205') {
+        if (updateReviewError) {
           console.error('Error updating review audit record:', updateReviewError);
         }
       }
 
     } catch (emailError) {
       console.error('Error sending notification email:', emailError);
-      
-      // Don't fail the entire operation if email fails
     }
 
     return NextResponse.json({ 

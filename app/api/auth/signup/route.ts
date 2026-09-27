@@ -1,19 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { db } from '@/lib/db';
+import { db, supabase } from '@/lib/db';
 import { hashPassword, generateToken, validateNgoHeadquartersLocation, validateCompanyHeadquartersLocation, normalizePincode, buildNgoLocationDisplay, normalizePhoneDigits, isPermanentlyBannedAccount } from '@/lib/auth';
-import { supabase } from '@/lib/db';
 import { setAuthTokenCookie } from '@/lib/server-auth';
-
-const parseNumeric = (value: unknown): number | null => {
-  if (value === null || value === undefined) return null;
-  const text = String(value).trim();
-  if (!text) return null;
-  const cleaned = text.replace(/[^0-9.\-]/g, '');
-  if (!cleaned) return null;
-  const parsed = Number(cleaned);
-  return Number.isFinite(parsed) ? parsed : null;
-};
 
 const parseInteger = (value: unknown): number | null => {
   if (value === null || value === undefined) return null;
@@ -31,7 +20,6 @@ const hasMeaningfulValue = (value: unknown): boolean => {
   if (value && typeof value === 'object') return Object.keys(value as Record<string, unknown>).length > 0;
   return value !== null && value !== undefined;
 };
-
 
 const validateProfileRequirements = (userType: 'individual' | 'ngo' | 'company', profile: Record<string, any>): string | null => {
   if (userType === 'ngo') {
@@ -94,7 +82,6 @@ const getFriendlySignupError = (error: unknown): string => {
 
 export async function POST(req: NextRequest) {
   try {
-    // Parse and validate request body
     const body = await req.json();
     const validationResult = signupSchema.safeParse(body);
     
@@ -172,7 +159,6 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
     
-    // Check if user already exists
     const existingUser = await db.users.findByEmail(email);
     
     if (existingUser) {
@@ -213,7 +199,6 @@ export async function POST(req: NextRequest) {
     // Hash password
     const hashedPassword = await hashPassword(password);
     
-    // Create user with profile data
     const userData = {
       email,
       password: hashedPassword,
@@ -252,7 +237,6 @@ export async function POST(req: NextRequest) {
     
     const newUser = await db.users.create(userData);
     
-    // Generate JWT token with verification status
     const user = {
       id: newUser.id,
       email,
@@ -265,7 +249,6 @@ export async function POST(req: NextRequest) {
     
     const token = generateToken(user);
     
-    // Return success response with token
     const response = NextResponse.json({
       message: 'User registered successfully',
       user: {
@@ -292,7 +275,7 @@ export async function POST(req: NextRequest) {
 
     return response;
     
-  } catch (error: any) {
+  } catch (error) {
     console.error('Signup error:', error);
 
     const errorMessage = getFriendlySignupError(error);

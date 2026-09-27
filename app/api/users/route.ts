@@ -1,17 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
-import jwt from 'jsonwebtoken'
-import { JWT_SECRET } from '@/lib/auth'
+import { getTokenClaims } from '@/lib/auth'
 import { getCompanyCAUserIdSet } from '@/lib/company-ca'
 import { fetchUserPaymentHistory } from '@/lib/razorpay-route'
 import { fetchCompanyCsrCapabilityFines } from '@/lib/csr-agent/campaign'
-
-interface JWTPayload {
-  id: number;
-  user_type: string;
-  email: string;
-  name: string;
-}
 
 // GET - Fetch users based on type
 export async function GET(request: NextRequest) {
@@ -23,18 +15,9 @@ export async function GET(request: NextRequest) {
     const verified_only = searchParams.get('verified') === 'true'
     
     // Authenticate user for this request
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const decoded = getTokenClaims(request)
+    if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
-    }
-
-    const token = authHeader.substring(7)
-    let decoded: JWTPayload
-    
-    try {
-      decoded = jwt.verify(token, JWT_SECRET) as JWTPayload
-    } catch (jwtError) {
-      return NextResponse.json({ error: 'Invalid authentication token' }, { status: 401 })
     }
 
     if (view === 'payment-history') {
@@ -68,19 +51,16 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Build query
     let query = supabase
       .from('users')
       .select('id, name, email, user_type, location, city, state_province, pincode, verification_status, profile_image')
       .order('name', { ascending: true })
       .limit(limit)
 
-    // Filter by user type if specified
     if (type && ['individual', 'ngo', 'company'].includes(type)) {
       query = query.eq('user_type', type)
     }
 
-    // Filter by verified status if specified
     if (verified_only) {
       query = query.eq('verification_status', 'verified')
     }

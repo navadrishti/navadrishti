@@ -1,14 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { db, supabase } from '@/lib/db';
-import { withAuth, UserData, backfillNgoComplianceProfileData, backfillNgoDocumentExpiries, summarizeDocumentExpiries, ngoIsCsrEligible, getCaComplianceTags, getAccountAccessBlockReason } from '@/lib/auth';
+import { withAuth, type AuthenticatedRequest, backfillNgoComplianceProfileData, backfillNgoDocumentExpiries, summarizeDocumentExpiries, ngoIsCsrEligible, getCaComplianceTags, getAccountAccessBlockReason } from '@/lib/auth';
 import { applyCaBadgeToProfile } from '@/lib/platform-ca-auth';
+import { parseJsonObject } from '@/lib/utils';
 
-async function handler(req: NextRequest) {
+async function handler(req: AuthenticatedRequest) {
   try {
-    // The user is attached by the withAuth middleware
-    const user = (req as any).user as UserData;
-    
-    // Fetch fresh user data from database including profile_image
+    const user = req.user;
+
     const freshUserData = await db.users.findById(user.id);
     
     if (!freshUserData) {
@@ -25,7 +24,6 @@ async function handler(req: NextRequest) {
       return NextResponse.json({ error: accessBlock }, { status: 403 });
     }
 
-    // Get verification status based on user type - check database only.
     // users.verification_status is the admin's authoritative override:
     //   - 'verified'    → trust users table (CA has approved)
     //   - 'unverified' / 'suspended' / 'pending' → admin explicitly downgraded; do NOT
@@ -46,7 +44,7 @@ async function handler(req: NextRequest) {
         if (verification) {
           verificationStatus = freshUserData.verification_status === 'verified'
             ? 'verified'
-            : verification.verification_status;
+            : verification.verification_status ?? 'unverified';
           verificationDetails = {
             ...verification,
             // UI aliases for older clients
@@ -63,7 +61,7 @@ async function handler(req: NextRequest) {
         if (verification) {
           verificationStatus = freshUserData.verification_status === 'verified'
             ? 'verified'
-            : verification.verification_status;
+            : verification.verification_status ?? 'unverified';
           verificationDetails = verification;
         }
       } else if (freshUserData.user_type === 'ngo') {
@@ -75,15 +73,13 @@ async function handler(req: NextRequest) {
         if (verification) {
           verificationStatus = freshUserData.verification_status === 'verified'
             ? 'verified'
-            : verification.verification_status;
+            : verification.verification_status ?? 'unverified';
           verificationDetails = verification;
         }
       }
     }
 
-    let profileData = (freshUserData.profile_data && typeof freshUserData.profile_data === 'object')
-      ? freshUserData.profile_data as Record<string, unknown>
-      : {};
+    let profileData: Record<string, any> = parseJsonObject(freshUserData.profile_data);
 
     if (freshUserData.user_type === 'ngo') {
       const backfill = backfillNgoComplianceProfileData(profileData);
@@ -121,7 +117,7 @@ async function handler(req: NextRequest) {
         name: freshUserData.name,
         user_type: freshUserData.user_type,
         phone: freshUserData.phone || '',
-        bio: freshUserData.bio || '',
+        bio: profileData.bio || '',
         email_verified: freshUserData.email_verified || false,
         phone_verified: freshUserData.phone_verified || false,
         email_verified_at: freshUserData.email_verified_at,
@@ -148,7 +144,6 @@ async function handler(req: NextRequest) {
         ngo_volunteer_capacity: freshUserData.ngo_volunteer_capacity ?? null,
         created_at: freshUserData.created_at,
         profile_data: profileData,
-        // For backward compatibility, also extract profile fields
         profile: profileData
       }
     });
@@ -159,5 +154,4 @@ async function handler(req: NextRequest) {
   }
 }
 
-// Apply authentication middleware
 export const GET = withAuth(handler);

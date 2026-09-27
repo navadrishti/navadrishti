@@ -29,11 +29,6 @@ export async function getActiveInfrastructureVolunteerApplication(userId: number
   }) || null
 }
 
-export async function hasActiveInfrastructureAssignment(userId: number) {
-  const active = await getActiveInfrastructureVolunteerApplication(userId)
-  return Boolean(active)
-}
-
 export async function canIndividualApplyToNeed(userId: number, requestData: Record<string, any>) {
   const mode = getNgoNeedFulfillmentMode(requestData)
   if (mode !== 'infrastructure') {

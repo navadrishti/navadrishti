@@ -70,7 +70,6 @@ export default function CompanyRegistration() {
 
     setFormData(prev => ({ ...prev, [name]: value }))
     
-    // Clear error for this field when user starts typing
     if (formErrors[name]) {
       setFormErrors(prev => {
         const newErrors = { ...prev }
@@ -159,40 +158,11 @@ export default function CompanyRegistration() {
     return Object.keys(errors).length === 0
   }
 
-  const uploadFileToCloudinary = async (file: File, folder: string = 'companies') => {
-    const formData = new FormData();
-    formData.append('file', file);
-    
-    const token = localStorage.getItem('token');
-    if (!token) {
-      throw new Error('Authentication required');
-    }
-
-    const response = await fetch('/api/upload', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`
-      },
-      body: formData
-    });
-
-    if (!response.ok) {
-      throw new Error('Upload failed');
-    }
-
-    const result = await response.json();
-    return result.data.url;
-  };
-
-
-
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     
-    // Clear previous errors
     clearError()
     
-    // Validate form
     if (!validateForm()) {
       return
     }
@@ -259,7 +229,6 @@ export default function CompanyRegistration() {
         profile_data: profileData,
       }
       
-      // Call signup function from auth context
       await signup(userData)
 
       toast.success('Company account created successfully!');

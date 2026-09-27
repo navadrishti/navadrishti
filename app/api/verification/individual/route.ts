@@ -1,34 +1,21 @@
 // API endpoint for individual verification (manual document-first flow)
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import jwt from 'jsonwebtoken';
-import { JWT_SECRET, requireBankStatementDocument } from '@/lib/auth';
-
-function isValidAadhaarNumber(aadhaarNumber: string): boolean {
-  return /^\d{12}$/.test(aadhaarNumber);
-}
-
-function isValidPANNumber(panNumber: string): boolean {
-  return /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(panNumber);
-}
+import { getTokenClaims, requireBankStatementDocument } from '@/lib/auth';
+import { getErrorMessage, parseJsonObject } from '@/lib/utils';
 
 export async function POST(req: NextRequest) {
   try {
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const claims = getTokenClaims(req);
+    if (!claims) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    const userId = claims.id;
 
-    const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
-    const userId = decoded.id; // Changed from decoded.userId to decoded.id
-
-    // Validate userId
     if (!userId) {
       return NextResponse.json({ error: 'Invalid token: missing user ID' }, { status: 401 });
     }
 
-    // Verify user is an individual
     const user = await db.users.findById(userId);
     
     if (!user) {
@@ -55,12 +42,6 @@ export async function POST(req: NextRequest) {
         return await reverifyVerification(userId, documentType, documents, aadhaarNumber, panNumber);
       }
       
-      case 'verify-aadhaar':
-        return await verifyAadhaar(userId, aadhaarNumber);
-      
-      case 'verify-pan':
-        return await verifyPAN(userId, panNumber);
-      
       default:
         return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
     }
@@ -86,7 +67,6 @@ async function initiateVerification(
       pan: typeof panNumber === 'string' ? panNumber.trim().toUpperCase() : '',
     };
 
-    // Create or update verification record
     const existingVerification = await db.individualVerifications.findByUserId(userId);
 
     const verificationPayload: Record<string, any> = {
@@ -109,10 +89,8 @@ async function initiateVerification(
 
     const user = await db.users.findById(userId);
     if (user) {
-      const existingProfileData = (user.profile_data && typeof user.profile_data === 'object') ? user.profile_data : {};
-      const existingVerificationDocs = (existingProfileData.verification_documents && typeof existingProfileData.verification_documents === 'object')
-        ? existingProfileData.verification_documents
-        : {};
+      const existingProfileData = parseJsonObject(user.profile_data);
+      const existingVerificationDocs = parseJsonObject(existingProfileData.verification_documents);
 
       const nextProfileData = {
         ...existingProfileData,
@@ -149,13 +127,13 @@ async function initiateVerification(
       success: true,
       authUrl: null,
       mode: 'manual',
-      message: 'Verification initiated in manual mode. Your uploaded documents will be reviewed by admin.',
+      message: 'Verification initiated in manual mode. Your uploaded documents will be reviewed by a CA.',
       documentType
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Individual verification initiation error:', error);
     return NextResponse.json({
-      error: error.message || 'Failed to initiate verification',
+      error: getErrorMessage(error) || 'Failed to initiate verification',
       code: 'INITIATION_FAILED'
     }, { status: 500 });
   }
@@ -179,10 +157,8 @@ async function reverifyVerification(
       return NextResponse.json({ error: 'Only verified users can request reverification' }, { status: 400 });
     }
 
-    const existingProfileData = (user.profile_data && typeof user.profile_data === 'object') ? user.profile_data : {};
-    const existingVerificationDocs = (existingProfileData.verification_documents && typeof existingProfileData.verification_documents === 'object')
-      ? existingProfileData.verification_documents
-      : {};
+    const existingProfileData = parseJsonObject(user.profile_data);
+    const existingVerificationDocs = parseJsonObject(existingProfileData.verification_documents);
 
     await db.users.update(userId, {
       profile_data: {
@@ -210,95 +186,28 @@ async function reverifyVerification(
       message: 'Reverification submitted. You remain verified while your updated documents are reviewed.',
       documentType
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Individual reverification error:', error);
     return NextResponse.json({
-      error: error.message || 'Failed to submit reverification',
+      error: getErrorMessage(error) || 'Failed to submit reverification',
       code: 'REVERIFICATION_FAILED'
     }, { status: 500 });
   }
 }
 
-async function verifyAadhaar(userId: number, aadhaarNumber: string) {
-  // Validate Aadhaar number format
-  if (!isValidAadhaarNumber(aadhaarNumber)) {
-    return NextResponse.json({ error: 'Invalid Aadhaar number format' }, { status: 400 });
-  }
-
-  // Manual verification flow: record provided details and mark submitted checks
-  
-  const verification = await db.individualVerifications.findByUserId(userId);
-  
-  await db.individualVerifications.update(userId, {
-    aadhaar_number: aadhaarNumber,
-    aadhaar_verified: true,
-    aadhaar_verified_at: new Date().toISOString(),
-    verification_status: verification?.pan_verified ? 'verified' : 'pending'
-  });
-
-  // Update user verification status
-  await db.users.update(userId, {
-    verification_status: 'pending'
-  });
-
-  return NextResponse.json({
-    success: true,
-    message: 'Aadhaar verification completed'
-  });
-}
-
-async function verifyPAN(userId: number, panNumber: string) {
-  // Validate PAN number format
-  if (!isValidPANNumber(panNumber)) {
-    return NextResponse.json({ error: 'Invalid PAN number format' }, { status: 400 });
-  }
-
-  const verification = await db.individualVerifications.findByUserId(userId);
-  
-  await db.individualVerifications.update(userId, {
-    pan_number: panNumber,
-    pan_verified: true,
-    pan_verified_at: new Date().toISOString(),
-    verification_status: verification?.aadhaar_verified ? 'verified' : 'pending'
-  });
-
-  // Check if both documents are verified
-  const updatedVerification = await db.individualVerifications.findByUserId(userId);
-
-  if (updatedVerification?.aadhaar_verified && updatedVerification?.pan_verified) {
-    await db.users.update(userId, {
-      verification_status: 'verified',
-      verified_at: new Date().toISOString(),
-      verification_level: 'advanced'
-    });
-  }
-
-  return NextResponse.json({
-    success: true,
-    message: 'PAN verification completed'
-  });
-}
-
 export async function GET(req: NextRequest) {
   try {
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      console.error('Missing or invalid authorization header');
+    const claims = getTokenClaims(req);
+    if (!claims) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    const userId = claims.id;
 
-    const token = authHeader.split(' ')[1];
-    
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
-    const userId = decoded.id; // Changed from decoded.userId to decoded.id
-
-    // Validate userId
     if (!userId) {
       console.error('Invalid token: missing user ID');
       return NextResponse.json({ error: 'Invalid token: missing user ID' }, { status: 401 });
     }
 
-    // First check if user exists
     const user = await db.users.findById(userId);
 
     if (!user) {
@@ -311,11 +220,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid user type for individual verification' }, { status: 400 });
     }
 
-    // Check if individual_verifications record exists, if not create one
     let verification = await db.individualVerifications.findByUserId(userId);
 
     if (!verification) {
-      // Create initial verification record
       verification = await db.individualVerifications.create({
         user_id: userId,
         aadhaar_verified: false,
@@ -323,7 +230,6 @@ export async function GET(req: NextRequest) {
         verification_status: 'unverified'
       });
 
-      // Return default unverified status
       return NextResponse.json({
         verified: false,
         aadhaarVerified: false,
@@ -333,7 +239,7 @@ export async function GET(req: NextRequest) {
       });
     }
     
-    const profileData = (user.profile_data && typeof user.profile_data === 'object') ? user.profile_data : {};
+    const profileData = parseJsonObject(user.profile_data);
     // users.verification_status is the admin override — if admin explicitly downgraded,
     // that wins regardless of what the individual_verifications table says.
     const adminStatus = String(user.verification_status || '').trim().toLowerCase();
