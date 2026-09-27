@@ -62,6 +62,12 @@ export async function createCsrCapabilityRentalOrder(input: {
   companyId: number;
   offerId: number;
 }) {
+  const campaign = await loadCompanyCampaign(input.campaignId, input.companyId);
+  const impact = parseJsonObject(campaign.impact_metrics);
+  if (!Number(campaign.lead_ngo_user_id || 0) || impact.lead_ngo_accepted === false) {
+    throw new Error("Capability offers can be reserved once a lead NGO accepts the campaign.");
+  }
+
   const rental = await ensureCsrCapabilityRentalDraft(input);
   if (rental.payment_status === "paid") {
     return { paymentRequired: false, rental };

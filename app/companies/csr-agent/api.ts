@@ -25,6 +25,7 @@ export type CampaignApiRow = {
   sdg_alignment?: unknown
   start_date?: string | null
   end_date?: string | null
+  lead_ngo_user_id?: number | null
   impact_metrics?: {
     beneficiaries?: number | string | null
     volunteer_requirement?: unknown

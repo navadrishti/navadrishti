@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { campaignRowToDraft, fetchCampaignRow } from "./api"
 import type { ConversationStage, GeneratedCampaign, ProjectIntakeData } from "./session"
 
@@ -19,6 +19,8 @@ export function useEditingCampaign({
   setPublishedCampaignId,
   setConversationStage,
 }: EditingCampaignOptions) {
+  const [editingCampaignHasLead, setEditingCampaignHasLead] = useState(false)
+
   useEffect(() => {
     if (!mounted || !editingCampaignId) return
 
@@ -41,6 +43,7 @@ export function useEditingCampaign({
         })
         setGeneratedCampaigns([draft])
         setPublishedCampaignId(String(campaign.id))
+        setEditingCampaignHasLead(Number(campaign.lead_ngo_user_id || 0) > 0)
         setConversationStage('complete')
       } catch (error) {
         console.error('Failed to hydrate campaign for editing:', error)
@@ -49,4 +52,6 @@ export function useEditingCampaign({
 
     void hydrateCampaign()
   }, [mounted, editingCampaignId])
+
+  return { editingCampaignHasLead }
 }

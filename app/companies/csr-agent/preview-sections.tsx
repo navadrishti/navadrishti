@@ -98,6 +98,7 @@ export function ServiceMatchesSection({
   loading,
   error,
   actionsEnabled,
+  leadAccepted,
   payingOfferId,
   paidOfferIds,
   paidRentals,
@@ -109,6 +110,7 @@ export function ServiceMatchesSection({
   loading: boolean
   error: string | null
   actionsEnabled: boolean
+  leadAccepted: boolean
   payingOfferId: number | null
   paidOfferIds: number[]
   paidRentals: Record<number, CsrCapabilityRentalRecord>
@@ -122,6 +124,9 @@ export function ServiceMatchesSection({
         <p className="text-sm font-semibold text-slate-950">{AGENT_NAMES.pulse} matches</p>
         {loading && <Loader2 className="h-4 w-4 animate-spin text-slate-500" />}
       </div>
+      {!leadAccepted && suggestions.length > 0 ? (
+        <p className="mt-1 text-xs text-slate-500">You can pay and reserve these offers once a lead NGO accepts the campaign.</p>
+      ) : null}
       <div className="mt-3 space-y-3">
         {error ? (
           <div className="rounded-xl border border-red-200 bg-white p-3 text-sm text-red-700">{error}</div>
@@ -139,7 +144,12 @@ export function ServiceMatchesSection({
                     type="button"
                     size="sm"
                     className="whitespace-nowrap"
-                    disabled={!actionsEnabled || payingOfferId === service.service_offer_id}
+                    disabled={
+                      paidOfferIds.includes(service.service_offer_id) ||
+                      !actionsEnabled ||
+                      !leadAccepted ||
+                      payingOfferId === service.service_offer_id
+                    }
                     variant={paidOfferIds.includes(service.service_offer_id) ? 'secondary' : 'default'}
                     onClick={() => void onPayAndReserve(service.service_offer_id, service.offer_type)}
                   >
