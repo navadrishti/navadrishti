@@ -8,10 +8,29 @@ export default defineConfig({
     },
   },
   test: {
-    environment: 'node',
-    include: ['tests/**/*.test.ts'],
     env: {
       JWT_SECRET: 'test-secret',
     },
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: 'server',
+          environment: 'node',
+          include: ['tests/**/*.test.ts'],
+          exclude: ['tests/ui/**'],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'ui',
+          environment: 'jsdom',
+          include: ['tests/ui/**/*.test.tsx'],
+          setupFiles: ['tests/ui/setup.ts'],
+          testTimeout: 20_000,
+        },
+      },
+    ],
   },
 })
