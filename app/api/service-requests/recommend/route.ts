@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
 import { embedText } from '@/lib/embeddings'
 import { getErrorMessage, parseJsonObject } from '@/lib/utils'
+import { findAuthUser } from '@/lib/server-auth'
 
 function toNumber(value: unknown): number | null {
   if (value === null || value === undefined) return null
@@ -34,6 +35,10 @@ function extractKeywords(text: string): string[] {
 }
 
 export async function POST(req: NextRequest) {
+  if (!findAuthUser(req, { allowCookie: true })) {
+    return NextResponse.json({ success: false, error: 'Login required' }, { status: 401 })
+  }
+
   try {
     const body = await req.json()
 

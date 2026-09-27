@@ -2,11 +2,13 @@ import { useEffect, useState } from "react"
 import { useAuth } from '@/lib/auth-context'
 import { isCampaignStarted, isVolunteerRegistrationPastDeadline } from "@/lib/format-date"
 import { getVolunteerButtonState, sumVolunteerApplicationCount } from "@/lib/campaign-schema"
-import { isCampaignLeadNgo } from '@/lib/campaign-volunteer-attendance'
+import { isCampaignLeadNgo, parseLeadNgoInvites } from '@/lib/campaign-volunteer-attendance'
 import type { Campaign } from "./types"
 
+const PENDING_INVITE_STATUSES = ['invited', 'pending', 'pending_acceptance', 'awaiting_acceptance', 'offered']
+
 export function useCampaignDetail(campaignId: string) {
-  const { user, token } = useAuth()
+  const { user, token, loading: authLoading } = useAuth()
   const [campaign, setCampaign] = useState<Campaign | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -38,9 +40,9 @@ export function useCampaignDetail(campaignId: string) {
   }
 
   useEffect(() => {
-    if (!campaignId) return
+    if (!campaignId || authLoading) return
     void loadCampaign()
-  }, [campaignId, currentUserId])
+  }, [campaignId, currentUserId, authLoading])
 
   const impact = campaign?.impact_metrics
   const applications = Array.isArray(impact?.volunteer_applications) ? impact.volunteer_applications : []
@@ -65,13 +67,25 @@ export function useCampaignDetail(campaignId: string) {
   const isLeadNgoForCampaign = Boolean(
     campaign && currentUserId > 0 && isCampaignLeadNgo(campaign, currentUserId)
   )
-  const canShowVolunteerAction = (user?.user_type === 'ngo' || user?.user_type === 'individual') && !isLeadNgoForCampaign
-  const hasPendingLeadInvite = Boolean(
+  const isDraft = campaign?.status === 'draft'
+  const canShowVolunteerAction = (user?.user_type === 'ngo' || user?.user_type === 'individual') && !isLeadNgoForCampaign && !isDraft
+  const invitedToDraft = Boolean(
+    isDraft &&
+    currentUserId > 0 &&
+    !impact?.lead_ngo_accepted &&
+    parseLeadNgoInvites(impact?.lead_ngo_invites).some(
+      (invite) => invite.ngo_id === currentUserId && PENDING_INVITE_STATUSES.includes(invite.status)
+    )
+  )
+  const selectedBeforeLaunch = Boolean(
     campaign &&
+    !isDraft &&
     currentUserId > 0 &&
     Number(campaign.lead_ngo_user_id || 0) === currentUserId &&
     campaign.status !== 'active'
   )
+  const hasPendingLeadInvite = invitedToDraft || selectedBeforeLaunch
+  const acceptedDraftLead = Boolean(isDraft && isLeadNgoForCampaign && impact?.lead_ngo_accepted)
 
   const volunteer = async () => {
     if (!token) {
@@ -134,7 +148,9 @@ export function useCampaignDetail(campaignId: string) {
     accepting,
     volunteerState,
     canShowVolunteerAction,
+    isDraft,
     hasPendingLeadInvite,
+    acceptedDraftLead,
     volunteer,
     acceptLeadRole,
   }

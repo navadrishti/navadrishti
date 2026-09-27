@@ -6,6 +6,7 @@ import {
   type Campaign,
 } from "@/lib/csr-agent/llm";
 import type { CapabilityMatch } from "@/lib/csr-agent/find-service-offers";
+import { findAuthUser } from "@/lib/server-auth";
 
 /* ───────────────── TYPES ───────────────── */
 
@@ -20,6 +21,14 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const user = findAuthUser(request, { allowCookie: true });
+  if (!user || user.user_type !== "company") {
+    return NextResponse.json<CampaignResponse>(
+      { success: false, error: "Company login required" },
+      { status: 401 }
+    );
+  }
+
   try {
     const body = await request.json();
 

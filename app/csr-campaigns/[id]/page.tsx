@@ -24,7 +24,9 @@ export default function CSRCampaignDetailPage() {
     accepting,
     volunteerState,
     canShowVolunteerAction,
+    isDraft,
     hasPendingLeadInvite,
+    acceptedDraftLead,
     volunteer,
     acceptLeadRole,
   } = useCampaignDetail(campaignId)
@@ -57,6 +59,10 @@ export default function CSRCampaignDetailPage() {
                 {volunteerState.label}
               </Button>
             )
+          ) : isDraft && campaign ? (
+            <span className="self-start rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600 sm:self-auto">
+              Draft – not launched yet
+            </span>
           ) : null}
         </div>
 
@@ -88,6 +94,10 @@ export default function CSRCampaignDetailPage() {
                           <Button onClick={acceptLeadRole} disabled={accepting}>
                             {accepting ? 'Accepting…' : 'Accept Lead Role'}
                           </Button>
+                        </div>
+                      ) : acceptedDraftLead ? (
+                        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+                          You accepted the lead NGO role. The company will launch the campaign once its draft is finalised.
                         </div>
                       ) : null}
                     </TabsContent>

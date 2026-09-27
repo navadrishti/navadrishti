@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
+import { getAdminUser } from '@/lib/server-auth';
 import { getErrorMessage } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    if (!getAdminUser(request)) {
+      return NextResponse.json({ success: false, error: 'Admin authentication required' }, { status: 401 });
+    }
+
     const { data: announcements, error } = await supabase
       .from('platform_announcements')
       .select('*')
@@ -28,6 +33,10 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    if (!getAdminUser(request)) {
+      return NextResponse.json({ success: false, error: 'Admin authentication required' }, { status: 401 });
+    }
+
     const body = await request.json();
     const { type, title } = body;
 
@@ -66,6 +75,10 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    if (!getAdminUser(request)) {
+      return NextResponse.json({ success: false, error: 'Admin authentication required' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 

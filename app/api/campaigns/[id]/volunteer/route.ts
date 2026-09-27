@@ -58,6 +58,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     const status = String(campaign.status || '').toLowerCase()
+    if (status === 'draft') {
+      return NextResponse.json({ error: 'This campaign has not been launched yet' }, { status: 400 })
+    }
     if (['completed', 'cancelled', 'closed'].includes(status)) {
       return NextResponse.json({ error: 'Volunteering for this campaign has closed' }, { status: 400 })
     }
