@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, supabase } from '@/lib/db';
 import { getTokenClaims, requireBankStatementDocument } from '@/lib/auth';
 import { getErrorMessage, parseJsonObject } from '@/lib/utils';
+import type { TablesUpdate } from '@/lib/database.types';
 
 export async function POST(req: NextRequest) {
   try {
@@ -72,7 +73,7 @@ async function initiateCompanyVerification(
       company_type: companyType || '',
     };
 
-    const verificationPayload: Record<string, any> = {
+    const verificationPayload: TablesUpdate<'company_verifications'> = {
       company_name: companyName,
       verification_status: 'pending',
     };

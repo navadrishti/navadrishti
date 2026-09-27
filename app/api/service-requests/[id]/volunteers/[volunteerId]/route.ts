@@ -197,10 +197,11 @@ export async function PUT(
           fulfillment_mode: fulfillmentMode,
         };
 
+        const { fulfillment_mode: _fulfillmentMode, ...assignmentColumns } = assignmentMeta;
         const { data: assignment } = await supabase
           .from('service_engagement_assignments')
           .insert({
-            ...assignmentMeta,
+            ...assignmentColumns,
             status: 'active',
             meta: assignmentMeta,
           })

@@ -23,6 +23,7 @@ import {
 } from '@/lib/reverification'
 import type { CAFieldComparison, CAFieldComparisonSource, CAQueueType, CAReviewDocument } from '@/lib/ca-review-types'
 import { parseJsonObject } from '@/lib/utils'
+import type { TablesUpdate } from '@/lib/database.types'
 
 const TYPE_CONFIG: Record<
   CAQueueType,
@@ -772,22 +773,25 @@ export async function applyCAVerificationAction(options: {
 
   const nextStatus = action === 'approve' ? 'verified' : 'rejected'
   const userStatus = action === 'approve' ? 'verified' : 'unverified'
-  const verificationUpdate: Record<string, any> = {
+  const verificationUpdate = {
     verification_status: nextStatus,
     updated_at: reviewedAt,
+    ...(action === 'approve' ? { verification_date: reviewedAt } : {}),
   }
 
-  if (action === 'approve') {
-    if (type === 'individuals') {
-      verificationUpdate.aadhaar_verified = true
-      verificationUpdate.pan_verified = true
-      verificationUpdate.aadhaar_verified_at = reviewedAt
-      verificationUpdate.pan_verified_at = reviewedAt
-    }
-    verificationUpdate.verification_date = reviewedAt
-  }
-
-  const { error: verificationError } = await supabase.from(table).update(verificationUpdate).eq('id', id)
+  const { error: verificationError } =
+    action === 'approve' && type === 'individuals'
+      ? await supabase
+          .from('individual_verifications')
+          .update({
+            ...verificationUpdate,
+            aadhaar_verified: true,
+            pan_verified: true,
+            aadhaar_verified_at: reviewedAt,
+            pan_verified_at: reviewedAt,
+          })
+          .eq('id', id)
+      : await supabase.from(table).update(verificationUpdate).eq('id', id)
   if (verificationError) {
     if (nextStatus === 'rejected') {
       const { error: fallbackError } = await supabase
@@ -853,7 +857,7 @@ export async function applyCAVerificationAction(options: {
     caBadgeNumber = attached.badge
   }
 
-  const userUpdate: Record<string, any> = {
+  const userUpdate: TablesUpdate<'users'> = {
     verification_status: userStatus,
     profile_data: nextProfileData,
     updated_at: reviewedAt,

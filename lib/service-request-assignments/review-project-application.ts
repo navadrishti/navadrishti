@@ -15,6 +15,7 @@ import {
   reviewQueueProjectApplicationStatuses,
   type AssignmentsPutContext,
 } from '@/lib/service-request-assignments/shared'
+import type { TablesUpdate } from '@/lib/database.types'
 
 export async function reviewProjectApplication(ctx: AssignmentsPutContext) {
   const { body, userId, userType } = ctx
@@ -170,7 +171,7 @@ export async function reviewProjectApplication(ctx: AssignmentsPutContext) {
       pending_company_applications: nextPending,
     })
 
-    const projectUpdate: Record<string, any> = {
+    const projectUpdate: TablesUpdate<'service_request_projects'> = {
       description: nextDescription,
       updated_at: new Date().toISOString(),
     }

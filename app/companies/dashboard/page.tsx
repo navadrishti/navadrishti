@@ -513,7 +513,7 @@ function CompanyDashboardContent() {
             </div>
 
             <Card>
-              <CardContent className="pt-6">
+                  <CardContent className="pt-6">
                     <Tabs value={activeTab} onValueChange={(value) => {
                       window.history.replaceState(null, '', `/companies/dashboard?tab=${value}`);
                       router.replace(`/companies/dashboard?tab=${value}`, { scroll: false });
@@ -598,7 +598,7 @@ function CompanyDashboardContent() {
                     </Tabs>
                   </CardContent>
                 </Card>
-          </div>
+              </div>
         </DashboardBodyLayout>
       </div>
     </ProtectedRoute>

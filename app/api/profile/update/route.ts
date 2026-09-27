@@ -15,6 +15,7 @@ import {
   type NgoPayoutAccount,
 } from '@/lib/razorpay-route';
 import { parseJsonObject } from '@/lib/utils';
+import type { TablesUpdate } from '@/lib/database.types';
 
 const SERVER_OWNED_PROFILE_KEYS = [
   'ca_badge_number',
@@ -511,17 +512,15 @@ export async function PUT(request: NextRequest) {
       }, { status: 400 });
     }
     
-    const updateData = validationResult.data;
-    
-    if (updateData.ngo_volunteer_capacity !== undefined && updateData.ngo_volunteer_capacity !== null) {
-      const raw = updateData.ngo_volunteer_capacity;
-      const parsed = typeof raw === 'number' ? Math.trunc(raw) : (String(raw).match(/\d+/) ? Number(String(raw).match(/\d+/)![0]) : null);
-      updateData.ngo_volunteer_capacity = parsed ?? undefined;
-    }
+    const { ngo_volunteer_capacity: rawCapacity, ...updateData } = validationResult.data;
+    const capacityDigits = rawCapacity == null ? null : String(rawCapacity).match(/\d+/);
+    const ngoVolunteerCapacity =
+      typeof rawCapacity === 'number' ? Math.trunc(rawCapacity) : capacityDigits ? Number(capacityDigits[0]) : undefined;
 
-    const cleanUpdateData = Object.fromEntries(
-      Object.entries(updateData).filter(([_, value]) => value !== undefined)
-    );
+    const cleanUpdateData: Partial<typeof updateData> & { ngo_volunteer_capacity?: number; updated_at?: string } =
+      Object.fromEntries(
+        Object.entries({ ...updateData, ngo_volunteer_capacity: ngoVolunteerCapacity }).filter(([_, value]) => value !== undefined)
+      );
     
     if (Object.keys(cleanUpdateData).length === 0) {
       return NextResponse.json(
@@ -554,7 +553,7 @@ export async function PUT(request: NextRequest) {
     if (interests !== undefined) updatedProfileData.interests = interests;
     if (bio !== undefined) updatedProfileData.bio = bio;
     
-    const finalUpdateData: Record<string, any> = {
+    const finalUpdateData: TablesUpdate<'users'> = {
       ...directUserFields,
       profile_data: updatedProfileData,
       updated_at: new Date().toISOString()

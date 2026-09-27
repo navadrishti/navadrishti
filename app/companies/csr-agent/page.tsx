@@ -259,30 +259,30 @@ function CSRAgentPage() {
     ? "Ready to publish"
     : isQuestionnaireComplete
       ? (acceptedLeadNgo ? "Ready to publish" : leadNgoInvites.length > 0 ? "Waiting for lead NGO" : "Invite a lead NGO")
-      : conversationStage === "project"
-        ? "Step 1: Campaign details"
-        : conversationStage === "milestone-count"
-          ? "Step 2: Milestone count"
-          : "Step 3: Milestone details"
+    : conversationStage === "project"
+      ? "Step 1: Campaign details"
+      : conversationStage === "milestone-count"
+        ? "Step 2: Milestone count"
+        : "Step 3: Milestone details"
 
   const sessionState = useMemo(() => ({
-    messages,
-    projectData,
-    milestoneCount,
-    milestoneInputs,
-    projectStep,
-    milestoneIndex,
-    milestoneQuestionIndex,
-    conversationStage,
-    serviceSuggestions,
-    projectSuggestions,
-    selectedProjectSuggestionId,
-    invitedOfferIds,
-    ngoDirectory,
-    leadNgoInvites,
+      messages,
+      projectData,
+      milestoneCount,
+      milestoneInputs,
+      projectStep,
+      milestoneIndex,
+      milestoneQuestionIndex,
+      conversationStage,
+      serviceSuggestions,
+      projectSuggestions,
+      selectedProjectSuggestionId,
+      invitedOfferIds,
+      ngoDirectory,
+      leadNgoInvites,
     draftCampaignId,
-    publishedCampaignId,
-    generatedCampaigns,
+      publishedCampaignId,
+      generatedCampaigns,
   }), [messages, projectData, milestoneCount, milestoneInputs, projectStep, milestoneIndex, milestoneQuestionIndex, conversationStage, serviceSuggestions, projectSuggestions, selectedProjectSuggestionId, invitedOfferIds, ngoDirectory, leadNgoInvites, draftCampaignId, publishedCampaignId, generatedCampaigns])
   const sessionSyncKey = useMemo(() => JSON.stringify(sessionState), [sessionState])
 
@@ -584,11 +584,11 @@ function CSRAgentPage() {
 
     const { campaigns, warning } = await requestCampaignDrafts({
       companyId: user.id,
-      budget,
+        budget,
       payload,
       milestoneCount,
       milestoneInputs,
-      recommendations,
+        recommendations,
     })
     setGeneratedCampaigns(campaigns)
     if (warning) {
@@ -890,9 +890,9 @@ function CSRAgentPage() {
       if (nextSession) persistSessions(upsertSession(sessions, nextSession), nextSession.id)
     }
     if (acceptedLeadNgo) {
-      setTimeout(() => {
-        void finalizeConversation()
-      }, 0)
+    setTimeout(() => {
+      void finalizeConversation()
+    }, 0)
     }
   }
 
@@ -1046,7 +1046,7 @@ function CSRAgentPage() {
         cloudSaveText={cloudSaveText}
       />
 
-      <div className="grid flex-1 gap-4 min-h-0 lg:grid-cols-[280px_1.1fr_0.9fr] lg:items-stretch lg:gap-6">
+          <div className="grid flex-1 gap-4 min-h-0 lg:grid-cols-[280px_1.1fr_0.9fr] lg:items-stretch lg:gap-6">
         <SessionSidebar
           sessions={orderedSessions}
           activeSessionId={activeSessionId}
@@ -1055,24 +1055,24 @@ function CSRAgentPage() {
           onDeleteSession={deleteSession}
         />
 
-        <Card className="flex h-[35rem] min-h-0 flex-col overflow-hidden border-slate-200/70 bg-white/90 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur lg:h-full">
-          <CardHeader className="border-b border-slate-100 bg-gradient-to-r from-white to-slate-50/80">
+            <Card className="flex h-[35rem] min-h-0 flex-col overflow-hidden border-slate-200/70 bg-white/90 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur lg:h-full">
+              <CardHeader className="border-b border-slate-100 bg-gradient-to-r from-white to-slate-50/80">
             <CardTitle className="text-slate-950">{AGENT_NAMES.catalyst}</CardTitle>
             <CardDescription className="text-slate-600">Capture the campaign, milestones, and execution details step by step.</CardDescription>
-          </CardHeader>
-          <CardContent className="flex min-h-0 flex-1 flex-col p-0">
-            <div className="flex min-h-0 flex-1 flex-col">
-              <div className="flex flex-col items-start gap-3 border-b border-slate-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Conversation</p>
-                  <p className="mt-1 text-sm text-slate-600">{generatedCampaigns.length > 0 ? "Draft complete" : activeQuestionLabel}</p>
-                </div>
-                <div className="max-w-full rounded-full bg-[#1d4ed8]/8 px-3 py-1 text-xs font-medium text-[#1d4ed8] sm:max-w-[50%]">
-                  {conversationStage === "complete" ? "Draft ready" : activeQuestionLabel}
-                </div>
-              </div>
+              </CardHeader>
+              <CardContent className="flex min-h-0 flex-1 flex-col p-0">
+                <div className="flex min-h-0 flex-1 flex-col">
+                  <div className="flex flex-col items-start gap-3 border-b border-slate-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Conversation</p>
+                      <p className="mt-1 text-sm text-slate-600">{generatedCampaigns.length > 0 ? "Draft complete" : activeQuestionLabel}</p>
+                    </div>
+                    <div className="max-w-full rounded-full bg-[#1d4ed8]/8 px-3 py-1 text-xs font-medium text-[#1d4ed8] sm:max-w-[50%]">
+                      {conversationStage === "complete" ? "Draft ready" : activeQuestionLabel}
+                    </div>
+                  </div>
 
-              <div className="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-5 sm:py-5">
+                  <div className="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-5 sm:py-5">
                 <ChatMessageList
                   containerRef={messagesContainerRef}
                   messages={messages}
@@ -1109,21 +1109,21 @@ function CSRAgentPage() {
                   }}
                   onSelectSuggestedSet={handleSelectSuggestedSet}
                 />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
         <Card className="flex h-auto min-h-0 flex-col overflow-hidden border-slate-200/70 bg-white/90 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur max-md:[overflow-anchor:none] md:h-full">
-          <CardHeader className="border-b border-slate-100 bg-gradient-to-r from-white to-slate-50/80">
-            <CardTitle className="text-slate-950">Campaign Preview</CardTitle>
-            <CardDescription className="text-slate-600">Matched offers, captured fields, and generated campaign drafts.</CardDescription>
-          </CardHeader>
-          <CardContent className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-5">
-            <div className="space-y-5">
-              {generationError && (
-                <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{generationError}</div>
-              )}
+              <CardHeader className="border-b border-slate-100 bg-gradient-to-r from-white to-slate-50/80">
+                <CardTitle className="text-slate-950">Campaign Preview</CardTitle>
+                <CardDescription className="text-slate-600">Matched offers, captured fields, and generated campaign drafts.</CardDescription>
+              </CardHeader>
+              <CardContent className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-5">
+                <div className="space-y-5">
+                  {generationError && (
+                    <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{generationError}</div>
+                  )}
 
               <CampaignDetailsCard
                 projectData={projectData}
@@ -1171,7 +1171,7 @@ function CSRAgentPage() {
                   actionsEnabled={canUseCampaignActions}
                   onToggleInvite={handleInviteLeadNgoToggle}
                 />
-              ) : null}
+                                ) : null}
 
               <MilestonesCard
                 milestoneCount={milestoneCount}
@@ -1190,10 +1190,10 @@ function CSRAgentPage() {
                 actionsEnabled={canUseCampaignActions}
                 onPublish={handlePublishDraft}
               />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
     </AgentShell>
   )
 }
