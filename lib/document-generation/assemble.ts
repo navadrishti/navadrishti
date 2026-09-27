@@ -178,44 +178,49 @@ function pickLatestImpact(project: ProjectImpactSource) {
 }
 
 function milestonesFromCampaign(campaign: { milestones?: unknown }) {
-  const raw: Record<string, any>[] = Array.isArray(campaign?.milestones) ? campaign.milestones : []
-  return raw.map((item) => ({
-    title: asString(item?.title) || 'Untitled milestone',
-    status: asString(item?.status) || null,
-    budgetAllocated: asNumber(item?.budget_allocated ?? item?.budget),
-    dueDate: item?.due_date || item?.end_date || null,
-    description: asString(item?.description) || null,
-  }))
+  const raw: Array<Record<string, unknown> | null> = Array.isArray(campaign?.milestones) ? campaign.milestones : []
+  return raw.map((item) => {
+    const dueDate = item?.due_date || item?.end_date
+    return {
+      title: asString(item?.title) || 'Untitled milestone',
+      status: asString(item?.status) || null,
+      budgetAllocated: asNumber(item?.budget_allocated ?? item?.budget),
+      dueDate: dueDate ? String(dueDate) : null,
+      description: asString(item?.description) || null,
+    }
+  })
 }
 
 function milestonesFromProject(project: ProjectMilestoneSource) {
-  const raw: Record<string, any>[] = Array.isArray(project?.csr_project_milestones) ? project.csr_project_milestones : []
+  const raw: Array<Record<string, unknown>> = Array.isArray(project?.csr_project_milestones)
+    ? project.csr_project_milestones
+    : []
   return raw
     .slice()
     .sort((a, b) => Number(a.milestone_order || 0) - Number(b.milestone_order || 0))
     .map((item) => ({
       title: asString(item?.title) || 'Untitled milestone',
       status: asString(item?.status) || null,
-      budgetAllocated: asNumber(item?.budget_allocated),
-      dueDate: item?.due_date || null,
+      budgetAllocated: asNumber(item?.amount),
+      dueDate: item?.due_date ? String(item.due_date) : null,
       description: asString(item?.description) || null,
     }))
 }
 
 function paymentLineItems(project: ProjectPaymentSource) {
-  const payments: Record<string, any>[] = Array.isArray(project?.csr_payment_confirmations)
+  const payments: Array<Record<string, unknown>> = Array.isArray(project?.csr_payment_confirmations)
     ? project.csr_payment_confirmations
     : []
   return payments.map((payment, index: number) => ({
-    label: asString(payment?.description) || `Payment ${index + 1}`,
+    label: `Payment ${index + 1}`,
     amount: asNumber(payment?.amount),
     status: asString(payment?.payment_status) || null,
-    note: asString(payment?.reference_id) || null,
+    note: asString(payment?.payment_reference) || null,
   }))
 }
 
 function confirmedFunds(project: ProjectPaymentSource): number {
-  const payments: Record<string, any>[] = Array.isArray(project?.csr_payment_confirmations)
+  const payments = Array.isArray(project?.csr_payment_confirmations)
     ? project.csr_payment_confirmations
     : []
   return payments
@@ -232,13 +237,13 @@ function currentFinancialYearLabel(): string {
   return `FY ${year - 1}-${String(year).slice(-2)}`
 }
 
-function companyFocusAreas(profile: Record<string, any>): string[] {
+function companyFocusAreas(profile: Record<string, unknown>): string[] {
   const focusRaw = profile.focus_areas_schedule_vii ?? profile.focus_areas ?? profile.focusAreas
   if (Array.isArray(focusRaw)) return focusRaw.map((item) => asString(item)).filter(Boolean)
   return asString(focusRaw) ? [asString(focusRaw)] : []
 }
 
-function companyWebsite(profile: Record<string, any>): string | null {
+function companyWebsite(profile: Record<string, unknown>): string | null {
   return (
     asString(profile.website || profile.company_website || profile.csr_policy_url || profile.csrPolicyUrl) ||
     null

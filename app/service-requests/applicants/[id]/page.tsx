@@ -53,11 +53,40 @@ interface Volunteer {
   fulfillment_quantity?: number | null;
   assigned_amount?: number | null;
   assigned_quantity?: number | null;
-  response_meta?: Record<string, any> | null;
+  response_meta?: Record<string, unknown> | null;
 }
 
-function normalizeVolunteer(raw: any): Volunteer {
-  const volunteer = raw?.volunteer && typeof raw.volunteer === 'object' ? raw.volunteer : {}
+interface VolunteerApplicationResponse {
+  id: number | string;
+  applicant_user_id: number | string;
+  volunteer?: {
+    name?: string | null;
+    email?: string | null;
+    user_type?: string | null;
+    verification_status?: string | null;
+  } | null;
+  volunteer_name?: string | null;
+  volunteer_email?: string | null;
+  volunteer_type?: string | null;
+  volunteer_verification_status?: string | null;
+  application_message?: string | null;
+  message?: string | null;
+  status: Volunteer['status'];
+  applied_at?: string | null;
+  created_at?: string | null;
+  start_date?: string;
+  end_date?: string;
+  hours_contributed?: number | null;
+  fulfillment_amount?: number | null;
+  fulfillment_quantity?: number | null;
+  assigned_amount?: number | null;
+  assigned_quantity?: number | null;
+  response_meta?: Record<string, unknown> | null;
+}
+
+function normalizeVolunteer(raw: VolunteerApplicationResponse): Volunteer {
+  const volunteer: NonNullable<VolunteerApplicationResponse['volunteer']> =
+    raw?.volunteer && typeof raw.volunteer === 'object' ? raw.volunteer : {}
 
   return {
     id: Number(raw.id),

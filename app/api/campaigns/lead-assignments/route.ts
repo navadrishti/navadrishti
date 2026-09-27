@@ -12,6 +12,9 @@ import {
   syncCsrCapabilityRentalDelhivery,
 } from '@/lib/csr-agent/campaign'
 import { getErrorMessage, parseJsonObject } from '@/lib/utils'
+import type { Tables } from '@/lib/database.types'
+
+type CompanySummary = Pick<Tables<'users'>, 'id' | 'name' | 'email' | 'verification_status'>
 
 export async function GET(request: NextRequest) {
   try {
@@ -42,9 +45,9 @@ export async function GET(request: NextRequest) {
     const companyIds = [...new Set(acceptedCampaigns.map((row) => Number(row.company_id || 0)).filter((id) => id > 0))]
     const { data: companies } = companyIds.length > 0
       ? await supabase.from('users').select('id, name, email, verification_status').in('id', companyIds)
-      : { data: [] as any[] }
+      : { data: [] as CompanySummary[] }
 
-    const companiesById = new Map<number, any>((companies || []).map((row) => [Number(row.id), row]))
+    const companiesById = new Map<number, CompanySummary>((companies || []).map((row) => [Number(row.id), row]))
 
     const payload = acceptedCampaigns.map((campaign) => {
       const impact = parseJsonObject(campaign.impact_metrics)

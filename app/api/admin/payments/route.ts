@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { assertAdminUser } from '@/lib/server-auth';
+import { assertAdminUser } from '@/lib/server-auth';
 import { getErrorMessage } from '@/lib/utils';
+import type { Tables } from '@/lib/database.types';
+
+type ServiceRequestSummary = Pick<Tables<'service_requests'>, 'id' | 'title' | 'status' | 'request_type' | 'category'> & {
+  requester: Pick<Tables<'users'>, 'id' | 'name' | 'email'> | null;
+};
 
 export async function GET(request: NextRequest) {
   try {
@@ -40,7 +45,7 @@ export async function GET(request: NextRequest) {
     if (paymentError) throw paymentError;
 
     const paymentIds = (paymentRows || []).map((row) => row.id).filter(Boolean);
-    let refundsByPaymentId: Record<string, any[]> = {};
+    let refundsByPaymentId: Record<string, Tables<'razorpay_refunds'>[]> = {};
 
     if (paymentIds.length > 0) {
       const { data: refundRows } = await supabase
@@ -49,7 +54,7 @@ export async function GET(request: NextRequest) {
         .in('payment_id', paymentIds)
         .order('created_at', { ascending: false });
 
-      refundsByPaymentId = (refundRows || []).reduce((acc: Record<string, any[]>, row) => {
+      refundsByPaymentId = (refundRows || []).reduce((acc: Record<string, Tables<'razorpay_refunds'>[]>, row) => {
         const key = String(row.payment_id);
         if (!acc[key]) acc[key] = [];
         acc[key].push(row);
@@ -60,12 +65,12 @@ export async function GET(request: NextRequest) {
     const serviceRequestIds = [
       ...new Set(
         (paymentRows || [])
-          .map((row: any) => Number(row.order?.service_request_id || 0))
+          .map((row) => Number(row.order?.service_request_id || 0))
           .filter((id) => id > 0)
       ),
     ];
 
-    let requestById: Record<number, any> = {};
+    let requestById: Record<number, ServiceRequestSummary> = {};
     if (serviceRequestIds.length > 0) {
       const { data: requests } = await supabase
         .from('service_requests')
@@ -75,7 +80,7 @@ export async function GET(request: NextRequest) {
       requestById = Object.fromEntries((requests || []).map((row) => [Number(row.id), row]));
     }
 
-    let payments = (paymentRows || []).map((row: any) => {
+    let payments = (paymentRows || []).map((row) => {
       const refunds = refundsByPaymentId[String(row.id)] || [];
       const latestRefund = refunds[0] || null;
       const serviceRequestId = Number(row.order?.service_request_id || 0);

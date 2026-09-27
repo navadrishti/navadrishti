@@ -177,7 +177,7 @@ class EmailService {
     });
   }
 
-  async sendEmail({ to, subject, html, text }: EmailOptions): Promise<{ success: boolean; error?: any }> {
+  async sendEmail({ to, subject, html, text }: EmailOptions): Promise<{ success: boolean; error?: unknown }> {
     if (!this.transporter) return { success: false, error: 'Email service not configured' };
     try {
       await this.transporter.sendMail({

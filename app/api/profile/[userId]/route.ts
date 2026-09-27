@@ -210,12 +210,11 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
       portfolio: [],
       volunteering_history: Array.isArray(profileData.volunteering_history)
         ? profileData.volunteering_history.filter(
-            (entry: any) =>
-              entry &&
-              typeof entry === 'object' &&
-              String(entry.campaign_id || '') &&
-              Number(entry.days_present || 0) > 0 &&
-              Number(entry.project_days || 0) > 0
+            (entry: unknown) => {
+              if (!entry || typeof entry !== 'object') return false;
+              const { campaign_id, days_present, project_days } = entry as Record<string, unknown>;
+              return Boolean(String(campaign_id || '')) && Number(days_present || 0) > 0 && Number(project_days || 0) > 0;
+            }
           )
         : [],
       profile_data: nextProfileData,

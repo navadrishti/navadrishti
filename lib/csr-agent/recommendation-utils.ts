@@ -90,7 +90,22 @@ export function buildRequirementDetails(input: {
   return parts.join('. ') || 'CSR campaign execution support'
 }
 
-export function scoreNgosForCampaign(ngos: any[], input: CampaignMatchInput, limit = 10): ScoredNgo[] {
+export type CampaignNgoCandidate = {
+  id: number
+  name?: string | null
+  email?: string | null
+  city?: string | null
+  state_province?: string | null
+  verification_status?: string | null
+  ngo_volunteer_capacity?: number | null
+  profile_data?: unknown
+}
+
+export function scoreNgosForCampaign(
+  ngos: CampaignNgoCandidate[],
+  input: CampaignMatchInput,
+  limit = 10
+): ScoredNgo[] {
   const reqTokens = [
     ...tokenize(input.campaignName),
     ...categoryKeywords(input.category),

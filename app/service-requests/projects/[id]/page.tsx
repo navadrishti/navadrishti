@@ -65,7 +65,7 @@ type ProjectDetailPayload = {
       industry?: string;
       pincode?: string;
       verification_status?: string;
-      profile_data?: Record<string, any>;
+      profile_data?: Record<string, unknown>;
     };
   };
   needs: NeedItem[];
@@ -84,7 +84,7 @@ type ProjectDetailPayload = {
     status: string;
     reference_text?: string;
     note?: string;
-    meta?: Record<string, any>;
+    meta?: Record<string, unknown>;
     ngo?: { id: number; name: string; email?: string };
   }>;
   csr_project_eligible_for_company_apply: boolean;
@@ -358,7 +358,7 @@ export default function ServiceRequestProjectDetailPage() {
   }
 
   const primaryNeed = payload.needs[0] || null;
-  const projectData = payload.project || {
+  const projectData: ProjectDetailPayload['project'] = payload.project || {
     id: projectId,
     ngo_id: Number(primaryNeed?.ngo_id || 0),
     title: primaryNeed?.title || 'Project',
@@ -374,7 +374,7 @@ export default function ServiceRequestProjectDetailPage() {
   const canCompanyApply = user?.user_type === 'company' && payload.csr_project_eligible_for_company_apply;
   const canCompanyManageCsr = user?.user_type === 'company' && allVerified;
   const ngo = projectData.ngo;
-  const ngoProfileData = ngo?.profile_data || {};
+  const ngoProfileData: Record<string, unknown> = ngo?.profile_data || {};
   const ngoLocation = ngo?.city && ngo?.state_province
     ? `${ngo.city}, ${ngo.state_province}${ngo.country ? `, ${ngo.country}` : ''}`
     : ngo?.location || projectData.exact_address || projectData.location || 'Location not set';
@@ -450,10 +450,10 @@ export default function ServiceRequestProjectDetailPage() {
                         expected_beneficiaries: projectData.expected_beneficiaries,
                         valid_until: projectData.valid_until,
                         category: projectCategory,
-                        budget_inr: (projectData as any).budget_inr ?? null,
-                        impact_description: (projectData as any).impact_description ?? null,
-                        contact_info: (projectData as any).contact_info ?? null,
-                        volunteers_needed: (projectData as any).volunteers_needed ?? null,
+                        budget_inr: projectData.budget_inr ?? null,
+                        impact_description: projectData.impact_description ?? null,
+                        contact_info: projectData.contact_info ?? null,
+                        volunteers_needed: projectData.volunteers_needed ?? null,
                         csr_project_available_for_csr: csrProjectAvailable,
                       }}
                     />

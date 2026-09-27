@@ -13,7 +13,7 @@ export interface OfferRequestItem {
     verification_status?: string | null;
   };
   message?: string;
-  response_meta?: Record<string, any> | null;
+  response_meta?: Record<string, unknown> | null;
   assigned_at?: string | null;
   accepted_at?: string | null;
   valid_until?: string | null;

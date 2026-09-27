@@ -3,16 +3,20 @@ import { supabase } from '@/lib/db';
 import { getTokenClaims } from '@/lib/auth';
 import { parseJsonObject } from '@/lib/utils';
 
-function parseSelectedNeeds(meta: Record<string, any>) {
+function isNeedRecord(need: unknown): need is Record<string, unknown> {
+  return Boolean(need) && typeof need === 'object';
+}
+
+function parseSelectedNeeds(meta: Record<string, unknown>): Record<string, unknown>[] {
   const rawNeeds = meta.selected_needs;
   if (Array.isArray(rawNeeds)) {
-    return rawNeeds.filter((need) => need && typeof need === 'object');
+    return rawNeeds.filter(isNeedRecord);
   }
 
   if (typeof rawNeeds === 'string') {
     try {
-      const parsed = JSON.parse(rawNeeds);
-      return Array.isArray(parsed) ? parsed.filter((need) => need && typeof need === 'object') : [];
+      const parsed: unknown = JSON.parse(rawNeeds);
+      return Array.isArray(parsed) ? parsed.filter(isNeedRecord) : [];
     } catch {
       return [];
     }
@@ -21,7 +25,7 @@ function parseSelectedNeeds(meta: Record<string, any>) {
   return [];
 }
 
-function buildSelectedNeedSummary(meta: Record<string, any>) {
+function buildSelectedNeedSummary(meta: Record<string, unknown>) {
   const selectedNeeds = parseSelectedNeeds(meta);
   if (selectedNeeds.length > 0) {
     return selectedNeeds.slice(0, 3).map((need) => ({

@@ -1,4 +1,4 @@
-import { v2 as cloudinary } from 'cloudinary';
+import { v2 as cloudinary, type UploadApiOptions, type UploadApiResponse } from 'cloudinary';
 
 if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) {
   cloudinary.config({
@@ -15,11 +15,11 @@ export async function uploadToCloudinary(
   options: {
     folder?: string;
     public_id?: string;
-    transformation?: any;
+    transformation?: UploadApiOptions['transformation'];
     format?: string;
     quality?: string | number;
   } = {}
-): Promise<{ secure_url: string; public_id: string; [key: string]: any }> {
+): Promise<UploadApiResponse> {
   try {
     const uploadOptions = {
       folder: options.folder || 'Navadrishti',

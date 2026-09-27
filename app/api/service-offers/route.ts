@@ -6,6 +6,7 @@ import {
   buildUsageRecordFromClient,
   impactAreaMatchesFilter,
   isCapabilityOfferAvailableForListing,
+  type CapabilityOfferUsageRecord,
 } from '@/lib/service-offers'
 import {
   assertUserRazorpayPayoutActiveForCapabilities,
@@ -14,6 +15,13 @@ import {
 } from '@/lib/razorpay-route'
 import { buildOfferCapabilityRow, buildOfferRow, coerceOfferBody, toOfferResponse, validateOfferBody } from '@/lib/service-offer-payload'
 import { parseJsonObject } from '@/lib/utils'
+
+type OfferUsageCounts = {
+  total: number
+  accepted: number
+  pending: number
+  usage: CapabilityOfferUsageRecord[]
+}
 
 // GET - List service offers with type, category, location and search filters
 export async function GET(request: NextRequest) {
@@ -28,7 +36,7 @@ export async function GET(request: NextRequest) {
     const transactionTypeFilter = searchParams.get('transaction_type')
     const includeExpired = searchParams.get('include_expired') === 'true'
 
-    let authenticatedUserId = null
+    let authenticatedUserId: number | null = null
     if (view === 'my-offers' || view === 'my-responses') {
       const claims = getTokenClaims(request)
       if (!claims) {
@@ -211,9 +219,9 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        const counts = clients.reduce((acc: Record<number, any>, client) => {
+        const counts = clients.reduce((acc: Record<number, OfferUsageCounts>, client) => {
           if (!acc[client.service_offer_id]) {
-            acc[client.service_offer_id] = { total: 0, accepted: 0, pending: 0, usage: [] as any[] }
+            acc[client.service_offer_id] = { total: 0, accepted: 0, pending: 0, usage: [] }
           }
 
           acc[client.service_offer_id].total += 1
@@ -299,7 +307,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    let body: Record<string, any>
+    let body: ReturnType<typeof coerceOfferBody>
     try {
       body = coerceOfferBody(await request.json())
     } catch (jsonError) {
@@ -361,7 +369,7 @@ export async function POST(request: NextRequest) {
       syncServiceOfferEmbedding(offer.id).catch((err) => console.error(`Failed to embed offer ${offer.id}:`, err))
     )
 
-    const responseData: any = {
+    const responseData: { id: number; message: string; warning?: string; capability_id?: number } = {
       id: offer.id,
       message: 'Capability offer created successfully and submitted for approval'
     }

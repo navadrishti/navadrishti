@@ -37,6 +37,7 @@ import { useToast } from '@/hooks/use-toast';
 import { formatInrAmount, getOfferRequestBillingDetails, getOfferRequestBucket, toOfferRentalApplication, type OfferRequestItem } from '@/lib/offer-requests';
 import { InlineInfrastructureAssignment, InlineSkillServiceFulfillment } from '@/components/engagement-fulfillment';
 import { parseJsonObject } from '@/lib/utils';
+import type { CapabilityOfferSummary } from '@/lib/service-offers';
 
 const formatDisplayDate = (value?: string | null): string => {
   if (!value) return 'Not set';
@@ -72,10 +73,10 @@ function InlineDelhiveryFulfillment({
 }: {
   serviceRequestId: number;
   volunteerApplicationId: number;
-  responseMeta?: Record<string, any> | null;
+  responseMeta?: Record<string, unknown> | null;
   canEditTrackingId?: boolean;
   canVerifyPickup?: boolean;
-  onUpdated?: (nextMeta: Record<string, any>) => void | Promise<void>;
+  onUpdated?: (nextMeta: Record<string, unknown>) => void | Promise<void>;
 }) {
   const { toast } = useToast();
   const meta = parseJsonObject(responseMeta);
@@ -255,7 +256,7 @@ type IndividualNgoRequestApplication = {
   fulfillment_quantity?: number | null;
   assigned_amount?: number | null;
   assigned_quantity?: number | null;
-  response_meta?: Record<string, any> | null;
+  response_meta?: Record<string, unknown> | null;
   request?: {
     id?: number;
     title?: string;
@@ -266,7 +267,7 @@ type IndividualNgoRequestApplication = {
     project?: { title?: string | null } | null;
     ngo?: { name?: string | null; email?: string | null } | null;
     requester?: { name?: string | null; email?: string | null } | null;
-  } | null | any;
+  } | null;
 };
 
 function normalizeNgoRequestApplication(application: IndividualNgoRequestApplication) {
@@ -459,7 +460,7 @@ function IndividualDashboardContent() {
     requestedTab === 'services-hired' || requestedTab === 'service-requests'
       ? 'ngo-requests'
       : requestedTab;
-  const [serviceOffers, setServiceOffers] = useState<any[]>([]);
+  const [serviceOffers, setServiceOffers] = useState<CapabilityOfferSummary[]>([]);
   const [offerRequests, setOfferRequests] = useState<OfferRequestItem[]>([]);
   const [loadingServiceOffers, setLoadingServiceOffers] = useState(true);
   const [loadingOfferRequests, setLoadingOfferRequests] = useState(true);

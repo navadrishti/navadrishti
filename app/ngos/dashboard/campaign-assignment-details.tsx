@@ -7,7 +7,8 @@ import { formatDisplayDate, formatCampaignLeadLifecycleLabel, formatStatusLabel,
 import Link from 'next/link';
 import { InlineCsrCapabilityDelhivery } from '@/components/service-card';
 import { StaticStatusBadge, getStatusBadgeClass } from '@/components/dashboard-status';
-import type { CampaignLeadAssignment } from './types';
+import type { CsrCapabilityRentalRecord } from '@/lib/service-engagement';
+import type { CampaignLeadAssignment, CsrCapabilityRentalRow } from './types';
 
 const getCampaignLifecycleBadgeClass = (lifecycle: CampaignLeadLifecycle): string => {
   if (lifecycle === 'yet_to_start') return 'border-amber-300 bg-amber-50 text-amber-700';
@@ -23,7 +24,7 @@ export function CampaignAssignmentDetails({
 }: {
   assignment: CampaignLeadAssignment;
   roleLabel: string;
-  capabilityRentals?: any[];
+  capabilityRentals?: CsrCapabilityRentalRow[];
   onRentalUpdated?: () => void | Promise<void>;
 }) {
   const campaignRentals = capabilityRentals.filter(
@@ -93,7 +94,7 @@ export function CampaignAssignmentDetails({
         <div className="space-y-2 border-t border-slate-100 pt-3">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Capability logistics</p>
           {campaignRentals.map((row) => {
-            const rental = row.rental || {};
+            const rental: Partial<CsrCapabilityRentalRecord> = row.rental || {};
             const offerId = Number(rental.service_offer_id || 0);
             const showReturn =
               ['return_pending', 'project_active', 'return_delivered', 'completed'].includes(String(rental.status || '')) ||

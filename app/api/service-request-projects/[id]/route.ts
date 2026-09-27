@@ -11,6 +11,7 @@ import {
   mergeClientProjectDescription,
   stripProjectMetaFromDescription,
 } from '@/lib/service-request-allocation'
+import type { TablesUpdate } from '@/lib/database.types'
 
 export async function PUT(
   request: NextRequest,
@@ -43,7 +44,7 @@ export async function PUT(
       return NextResponse.json({ error: CSR_PROJECT_CREATE_REQUIRED_MESSAGE }, { status: 403 })
     }
 
-    const updates: any = {}
+    const updates: TablesUpdate<'service_request_projects'> = {}
     if (body.title !== undefined) updates.title = String(body.title).trim() || undefined
     if (body.description !== undefined) {
       updates.description = mergeClientProjectDescription(

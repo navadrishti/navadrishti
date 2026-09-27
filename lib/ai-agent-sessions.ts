@@ -1,3 +1,5 @@
+import type { Json } from '@/lib/database.types'
+
 export type AgentKind = 'csr' | 'ngo'
 
 export type PublishedEntity =
@@ -22,8 +24,8 @@ export function readPublishedEntity(projectContext: unknown): PublishedEntity | 
 export function buildProjectContextWithPublished(
   session: Record<string, unknown>,
   existingContext: Record<string, unknown> = {},
-): Record<string, any> {
-  const base = {
+): { [key: string]: Json | undefined } {
+  const base: Record<string, unknown> = {
     ...existingContext,
     ...(session.project_context && typeof session.project_context === 'object'
       ? (session.project_context as Record<string, unknown>)
@@ -49,7 +51,7 @@ export function buildProjectContextWithPublished(
         : new Date().toISOString()
   }
 
-  return base
+  return base as { [key: string]: Json | undefined }
 }
 
 export function isMobileAgentViewport(): boolean {

@@ -23,7 +23,36 @@ import {
 } from '@/lib/reverification'
 import type { CAFieldComparison, CAFieldComparisonSource, CAQueueType, CAReviewDocument } from '@/lib/ca-review-types'
 import { parseJsonObject } from '@/lib/utils'
-import type { TablesUpdate } from '@/lib/database.types'
+import type { Json, TablesUpdate } from '@/lib/database.types'
+
+type VerificationQueueRow = {
+  id: number
+  user_id: number
+  verification_status: string | null
+  created_at: string | null
+  updated_at: string | null
+  users: unknown
+  aadhaar_number?: string | null
+  pan_number?: string | null
+  company_name?: string | null
+  gst_number?: string | null
+  ngo_name?: string | null
+  registration_number?: string | null
+  fcra_number?: string | null
+}
+
+type CAQueueItem = {
+  id: number
+  user_id: number
+  verification_status: string
+  documents: CAReviewDocument[]
+  documents_total: number
+  documents_verified: number
+  ocr_error: string
+  reverification_pending?: boolean
+  field_comparisons?: CAFieldComparison[]
+  [key: string]: unknown
+}
 
 const TYPE_CONFIG: Record<
   CAQueueType,
@@ -187,7 +216,7 @@ function pickCanonicalValue(kind: CrossFieldSpec['kind'], values: string[]) {
 function buildCrossDocumentComparisons(
   type: CAQueueType,
   documents: CAReviewDocument[],
-  item: Record<string, any> = {}
+  item: Record<string, unknown> = {}
 ): CAFieldComparison[] {
   const specs =
     type === 'individuals' ? INDIVIDUAL_CROSS_FIELDS : type === 'companies' ? COMPANY_CROSS_FIELDS : NGO_CROSS_FIELDS
@@ -321,7 +350,7 @@ function ngoOcrExpiries(documents: CAReviewDocument[]) {
   return result
 }
 
-function ngoTagOptionsFromItem(item: Record<string, any>, documents: CAReviewDocument[]) {
+function ngoTagOptionsFromItem(item: Record<string, unknown>, documents: CAReviewDocument[]) {
   return listCaComplianceTagOptions({
     numbers: {
       twelve_a: item.twelve_a,
@@ -345,10 +374,10 @@ function ngoTagOptionsFromItem(item: Record<string, any>, documents: CAReviewDoc
 }
 
 function applyNgoExpiryOverlay(
-  item: Record<string, any>,
+  item: CAQueueItem,
   documents: CAReviewDocument[],
   persistedOcrExpiries?: Record<string, unknown>
-): Record<string, any> {
+): CAQueueItem {
   const merged = {
     ...parseJsonObject(persistedOcrExpiries),
     ...ngoOcrExpiries(documents),
@@ -368,7 +397,7 @@ function applyNgoExpiryOverlay(
   }
 }
 
-function extractDocuments(profileData: Record<string, any>, profileKey: string, prefix: string): CAReviewDocument[] {
+function extractDocuments(profileData: Record<string, unknown>, profileKey: string, prefix: string): CAReviewDocument[] {
   const verificationDocuments = parseJsonObject(profileData.verification_documents)
   const typeBlock = parseJsonObject(verificationDocuments[profileKey])
   const docs = documentsFromMap(parseJsonObject(typeBlock.documents), prefix)
@@ -397,7 +426,7 @@ function extractDocuments(profileData: Record<string, any>, profileKey: string, 
   return docs
 }
 
-function mapQueueItem(type: CAQueueType, row: any): Record<string, any> {
+function mapQueueItem(type: CAQueueType, row: VerificationQueueRow): CAQueueItem {
   const user = unwrapUser(row.users)
   const profileData = parseJsonObject(user.profile_data)
   const profileKey = TYPE_CONFIG[type].profileKey
@@ -472,8 +501,8 @@ function mapQueueItem(type: CAQueueType, row: any): Record<string, any> {
   }
 }
 
-function hasReviewableSubmission(item: ReturnType<typeof mapQueueItem>) {
-  if ((item as { reverification_pending?: boolean }).reverification_pending) return true
+function hasReviewableSubmission(item: CAQueueItem) {
+  if (item.reverification_pending) return true
   if (item.verification_status === 'pending') return true
   return item.documents_total > 0
 }
@@ -509,22 +538,18 @@ export function requireCA(request: NextRequest): PlatformCATokenPayload {
 
 export async function listCAQueue(type: CAQueueType, status: string) {
   const { table } = TYPE_CONFIG[type]
-  const applyStatus = (query: any) => {
-    if (status === 'verified') return query.eq('verification_status', 'verified')
-    if (status === 'unverified') return query.in('verification_status', ['pending', 'unverified'])
-    return query
-  }
+  let query = supabase.from(table).select(selectColumns(type)).order('updated_at', { ascending: false }).limit(100)
+  if (status === 'verified') query = query.eq('verification_status', 'verified')
+  else if (status === 'unverified') query = query.in('verification_status', ['pending', 'unverified'])
 
-  let { data, error } = await applyStatus(
-    supabase.from(table).select(selectColumns(type)).order('updated_at', { ascending: false }).limit(100)
-  )
+  const { data, error } = await query
 
   if (error) {
     console.error(`CA queue query failed for ${table}:`, error)
     throw error
   }
 
-  let mapped = (data || []).map((row: any) => mapQueueItem(type, row))
+  let mapped = ((data || []) as unknown as VerificationQueueRow[]).map((row) => mapQueueItem(type, row))
   if (status === 'unverified') {
     mapped = mapped.filter(hasReviewableSubmission)
     if (type === 'ngos') {
@@ -537,12 +562,10 @@ export async function listCAQueue(type: CAQueueType, status: string) {
       if (verifiedError) {
         console.error('CA queue query failed for NGO reverifications:', verifiedError)
       } else {
-        const pending = (verifiedRows || [])
+        const pending = ((verifiedRows || []) as unknown as VerificationQueueRow[])
           .map((row) => mapQueueItem(type, row))
-          .filter((item: ReturnType<typeof mapQueueItem>) =>
-            Boolean((item as { reverification_pending?: boolean }).reverification_pending)
-          )
-        const seen = new Set(mapped.map((item: { id: number }) => item.id))
+          .filter((item) => Boolean(item.reverification_pending))
+        const seen = new Set(mapped.map((item) => item.id))
         for (const item of pending) {
           if (!seen.has(item.id)) mapped.push(item)
         }
@@ -568,7 +591,7 @@ async function ocrDocument(doc: CAReviewDocument): Promise<CAReviewDocument> {
   }
 }
 
-async function applyOcr(type: CAQueueType, row: any, item: ReturnType<typeof mapQueueItem>) {
+async function applyOcr(type: CAQueueType, row: VerificationQueueRow, item: CAQueueItem) {
   const user = unwrapUser(row.users)
   const profileData = parseJsonObject(user.profile_data)
   const profileKey = TYPE_CONFIG[type].profileKey
@@ -665,7 +688,8 @@ export async function getCAReview(type: CAQueueType, id: number) {
   if (error || !data) {
     throw new Error('Verification record not found')
   }
-  return applyOcr(type, data, mapQueueItem(type, data))
+  const row = data as unknown as VerificationQueueRow
+  return applyOcr(type, row, mapQueueItem(type, row))
 }
 
 async function notifyUser(userId: number, title: string, message: string) {
@@ -815,7 +839,7 @@ export async function applyCAVerificationAction(options: {
     ...(ocrExpiries.fcra ? { fcra_expiry: ocrExpiries.fcra } : {}),
   }
 
-  let nextProfileData: Record<string, any> = {
+  let nextProfileData: Record<string, unknown> = {
     ...profileData,
     verification_documents: {
       ...verificationDocuments,
@@ -859,7 +883,7 @@ export async function applyCAVerificationAction(options: {
 
   const userUpdate: TablesUpdate<'users'> = {
     verification_status: userStatus,
-    profile_data: nextProfileData,
+    profile_data: nextProfileData as Json,
     updated_at: reviewedAt,
   }
 

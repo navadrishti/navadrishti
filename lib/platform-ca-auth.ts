@@ -21,24 +21,19 @@ export function issueCaBadgeNumber(userId: number, profileData?: unknown): strin
   return `ND-CA-${digest}`;
 }
 
-export function applyCaBadgeToProfile(
-  profileData: Record<string, any>,
+export function applyCaBadgeToProfile<T extends Record<string, unknown>>(
+  profileData: T,
   userId: number,
   meta?: { verifiedAt?: string; verifiedBy?: string }
 ) {
   const existing = getCaBadgeNumber(profileData);
   const badge = existing || issueCaBadgeNumber(userId, profileData);
-  const next: Record<string, any> = {
+  const next = {
     ...profileData,
     ca_badge_number: badge,
+    ...(meta?.verifiedAt && !profileData.ca_verified_at ? { ca_verified_at: meta.verifiedAt } : {}),
+    ...(meta?.verifiedBy ? { ca_verified_by: meta.verifiedBy } : {}),
   };
-
-  if (meta?.verifiedAt && !profileData.ca_verified_at) {
-    next.ca_verified_at = meta.verifiedAt;
-  }
-  if (meta?.verifiedBy) {
-    next.ca_verified_by = meta.verifiedBy;
-  }
 
   return {
     profileData: next,

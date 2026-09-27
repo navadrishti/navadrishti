@@ -15,7 +15,7 @@ import {
   type NgoPayoutAccount,
 } from '@/lib/razorpay-route';
 import { parseJsonObject } from '@/lib/utils';
-import type { TablesUpdate } from '@/lib/database.types';
+import type { Json, TablesUpdate } from '@/lib/database.types';
 
 const SERVER_OWNED_PROFILE_KEYS = [
   'ca_badge_number',
@@ -350,7 +350,7 @@ export async function POST(request: NextRequest) {
       profile_data
     } = body;
 
-    const updateData: any = {};
+    const updateData: TablesUpdate<'users'> = {};
     if (name !== undefined) updateData.name = name;
     if (email !== undefined) updateData.email = email;
     if (profileImageUrl !== undefined) updateData.profile_image = profileImageUrl;
@@ -399,6 +399,7 @@ export async function POST(request: NextRequest) {
       updateData.phone_verified_at = null;
     }
 
+    let nextProfileData: Record<string, Json | undefined> | undefined;
     if (profile_data && typeof profile_data === 'object') {
       const currentProfileData = parseJsonObject(currentUser?.profile_data);
       const incomingProfileData = { ...profile_data };
@@ -410,19 +411,21 @@ export async function POST(request: NextRequest) {
       if (bio !== undefined) {
         newProfileData.bio = bio;
       }
-      updateData.profile_data = newProfileData;
+      nextProfileData = newProfileData;
     } else if (bio !== undefined) {
       const currentProfileData = parseJsonObject(currentUser?.profile_data);
-      updateData.profile_data = { ...currentProfileData, bio };
+      nextProfileData = { ...currentProfileData, bio };
     }
 
     if (coverImageUrl !== undefined) {
-      const currentProfileData = updateData.profile_data || parseJsonObject(currentUser?.profile_data);
-      updateData.profile_data = {
+      const currentProfileData = nextProfileData || parseJsonObject(currentUser?.profile_data);
+      nextProfileData = {
         ...currentProfileData,
         cover_image: typeof coverImageUrl === 'string' ? coverImageUrl.trim() : '',
       };
     }
+
+    if (nextProfileData) updateData.profile_data = nextProfileData;
 
     if (
       (currentUser?.user_type === 'ngo' || currentUser?.user_type === 'company') &&
@@ -436,7 +439,7 @@ export async function POST(request: NextRequest) {
           ((profile_data.ngo_headquarters && typeof profile_data.ngo_headquarters === 'object') ||
             (profile_data.company_headquarters && typeof profile_data.company_headquarters === 'object'))))
     ) {
-      const mergedProfile = updateData.profile_data || parseJsonObject(currentUser?.profile_data);
+      const mergedProfile = nextProfileData || parseJsonObject(currentUser?.profile_data);
       const headquartersKey = currentUser?.user_type === 'company' ? 'company_headquarters' : 'ngo_headquarters';
       const headquarters =
         mergedProfile[headquartersKey] && typeof mergedProfile[headquartersKey] === 'object'

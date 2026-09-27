@@ -21,7 +21,7 @@ const hasMeaningfulValue = (value: unknown): boolean => {
   return value !== null && value !== undefined;
 };
 
-const validateProfileRequirements = (userType: 'individual' | 'ngo' | 'company', profile: Record<string, any>): string | null => {
+const validateProfileRequirements = (userType: 'individual' | 'ngo' | 'company', profile: Record<string, unknown>): string | null => {
   if (userType === 'ngo') {
     const requiredNgoFields: Array<{ key: string; label: string }> = [
       { key: 'registration_date', label: 'Registration Date' },

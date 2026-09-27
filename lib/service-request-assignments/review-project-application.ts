@@ -15,7 +15,7 @@ import {
   reviewQueueProjectApplicationStatuses,
   type AssignmentsPutContext,
 } from '@/lib/service-request-assignments/shared'
-import type { TablesUpdate } from '@/lib/database.types'
+import type { Tables, TablesUpdate } from '@/lib/database.types'
 
 export async function reviewProjectApplication(ctx: AssignmentsPutContext) {
   const { body, userId, userType } = ctx
@@ -73,8 +73,8 @@ export async function reviewProjectApplication(ctx: AssignmentsPutContext) {
     return NextResponse.json({ error: 'Project not found under your NGO' }, { status: 404 })
   }
 
-  const projectForReview = enrichProjectRecord(projectForReviewRaw) as any
-  const pendingApps = Array.isArray(projectForReview.pending_company_applications)
+  const projectForReview = enrichProjectRecord(projectForReviewRaw)
+  const pendingApps = Array.isArray(projectForReview?.pending_company_applications)
     ? [...projectForReview.pending_company_applications]
     : []
   const metaAppIndex = pendingApps.findIndex((item) => Number(item.company_id) === companyId)
@@ -91,7 +91,7 @@ export async function reviewProjectApplication(ctx: AssignmentsPutContext) {
 
   const needIds = (ownNeeds || []).map((item) => item.id)
 
-  let targetRows: any[] = []
+  let targetRows: Pick<Tables<'service_request_contributions'>, 'id' | 'service_request_id' | 'meta'>[] = []
   if (needIds.length > 0) {
     const { data: rows, error: targetRowsError } = await supabase
       .from('service_request_contributions')
@@ -120,7 +120,7 @@ export async function reviewProjectApplication(ctx: AssignmentsPutContext) {
 
   if (decision === 'accepted') {
     const alreadyAcceptedMeta = pendingApps.some(
-      (item: any) =>
+      (item) =>
         Number(item.company_id) !== companyId &&
         String(item.status || '').toLowerCase() === 'accepted'
     )
@@ -217,7 +217,7 @@ export async function reviewProjectApplication(ctx: AssignmentsPutContext) {
   if (decision === 'accepted') {
     // Capacity check against project volunteers_needed (standalone) or legacy child needs.
     try {
-      const volunteersNeeded = Number(projectForReview.volunteers_needed || 0)
+      const volunteersNeeded = Number(projectForReview?.volunteers_needed || 0)
       let totalVolunteersNeeded = volunteersNeeded
 
       if (needIds.length > 0) {

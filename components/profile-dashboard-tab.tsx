@@ -1,101 +1,43 @@
 "use client"
 
 import { useEffect, useRef, useState } from 'react'
-import Link from 'next/link'
 import { toast } from 'sonner'
-import { Camera } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
-import { getGramAvatarFallbackStyle } from '@/lib/gram-avatar'
 import { useOtpSender } from '@/hooks/use-otp-sender'
-import { formatDisplayDate } from '@/lib/format-date'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { NgoComplianceBadges, VerificationBadge } from '@/components/verification-badge'
-import { ProfileCoverMedia } from '@/components/profile-card'
-import { MultiSelectDropdown } from '@/components/ui/multi-select-dropdown'
-import {
-  CSR_SCHEDULE_VII_CATEGORIES,
-  COMPANY_CSR_GOVERNANCE_MECHANISMS,
-  COMPANY_CSR_IMPLEMENTATION_MODELS,
-  normalizeCompanyFocusAreasScheduleVii,
-  normalizeCompanyGovernanceMechanism,
-  normalizeCompanyImplementationModel,
-} from '@/lib/categories'
 import { shouldShowPayoutAccountPanel } from '@/lib/access-control'
 import {
-  EMPTY_EXECUTION_CAPACITY,
-  EMPTY_GEOGRAPHIC_COVERAGE_AREA,
-  INDIAN_STATES_AND_UTS,
   PHONE_VERIFICATION_ENABLED,
-  buildNgoLocationDisplay,
-  getComplianceDocumentUrl,
   getCoverImageUrl,
-  normalizeExecutionCapacity,
-  normalizeGeographicCoverage,
-  normalizePincode,
   summarizeDocumentExpiries,
-  validateNgoHeadquartersLocation,
-  validateCompanyHeadquartersLocation,
   visibleCaBadgeNumber,
-  type ComplianceDocuments,
-  type NgoExecutionCapacity,
-  type NgoGeographicCoverageArea,
 } from '@/lib/auth'
 import { PayoutAccountPanel } from '@/components/payout-account-panel'
+import { useProfileDetails } from './profile-dashboard-tab/use-profile-details'
+import { useProfileImages } from './profile-dashboard-tab/use-profile-images'
+import { ProfileMediaEditor } from './profile-dashboard-tab/profile-media-editor'
+import { HeadquartersFields, IndividualLocationFields } from './profile-dashboard-tab/location-fields'
+import { CompanyProfileFields } from './profile-dashboard-tab/company-profile-fields'
+import { NgoProfileFields } from './profile-dashboard-tab/ngo-profile-fields'
+import { VerificationStatusCard } from './profile-dashboard-tab/verification-status-card'
+import type { FetchedProfileUser, FormErrors } from './profile-dashboard-tab/types'
 
-type FormErrors = Record<string, string>
+const normalizeEmail = (value: string) => value.trim().toLowerCase()
+const normalizePhone = (value: string) => value.trim().replace(/\s+/g, '')
 
 export function ProfileDashboardTab() {
   const { user, updateUser, refreshUser } = useAuth()
   const [mounted, setMounted] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [profileImageUrl, setProfileImageUrl] = useState('')
-  const [coverImageUrl, setCoverImageUrl] = useState('')
-  const [uploadingProfileImage, setUploadingProfileImage] = useState(false)
-  const [uploadingCoverImage, setUploadingCoverImage] = useState(false)
+  const images = useProfileImages(refreshUser)
+  const details = useProfileDetails()
   const [editableName, setEditableName] = useState('')
   const [editableEmail, setEditableEmail] = useState('')
   const [phone, setPhone] = useState('')
-  const [city, setCity] = useState('')
-  const [stateProvince, setStateProvince] = useState('')
-  const [pincode, setPincode] = useState('')
-  const [country, setCountry] = useState('India')
-  const [bio, setBio] = useState('')
-  const [sector, setSector] = useState('')
-  const [foundedYear, setFoundedYear] = useState('')
-  const [website, setWebsite] = useState('')
-  const [industry, setIndustry] = useState('')
-  const [companySize, setCompanySize] = useState('')
-  const [ngoVolunteerCapacity, setNgoVolunteerCapacity] = useState('')
-  const [twelveANumber, setTwelveANumber] = useState('')
-  const [eightyGNumber, setEightyGNumber] = useState('')
-  const [csr1RegistrationNumber, setCsr1RegistrationNumber] = useState('')
-  const [complianceDocuments, setComplianceDocuments] = useState<ComplianceDocuments>({})
-  const [age, setAge] = useState('')
-  const [addressLine, setAddressLine] = useState('')
-  const [registrationDate, setRegistrationDate] = useState('')
-  const [sectorsScheduleVii, setSectorsScheduleVii] = useState<string[]>([])
-  const [geographicCoverageAreas, setGeographicCoverageAreas] = useState<NgoGeographicCoverageArea[]>([
-    { ...EMPTY_GEOGRAPHIC_COVERAGE_AREA },
-  ])
-  const [executionCapacity, setExecutionCapacity] = useState<NgoExecutionCapacity>({ ...EMPTY_EXECUTION_CAPACITY })
-  const [netWorth, setNetWorth] = useState('')
-  const [turnover, setTurnover] = useState('')
-  const [netProfit, setNetProfit] = useState('')
-  const [csrVision, setCsrVision] = useState('')
-  const [focusAreasScheduleVii, setFocusAreasScheduleVii] = useState<string[]>([])
-  const [implementationModel, setImplementationModel] = useState('')
-  const [governanceMechanism, setGovernanceMechanism] = useState('')
   const [formErrors, setFormErrors] = useState<FormErrors>({})
   const [otpInput, setOtpInput] = useState({ email: '', phone: '' })
   const [profileVerificationStatus, setProfileVerificationStatus] = useState<'verified' | 'unverified' | 'pending'>('unverified')
@@ -104,10 +46,8 @@ export function ProfileDashboardTab() {
   const [verifiedPhoneValue, setVerifiedPhoneValue] = useState('')
   const initialEmailRef = useRef('')
   const initialPhoneRef = useRef('')
-  const { otpSending, otpSent, otpCooldown, otpVerifying, otpVerified, handleSendEmailOtp, handleVerifyEmailOtp, handleSendPhoneOtp, handleVerifyPhoneOtp, resetEmailOtpState, resetPhoneOtpState } = useOtpSender(setFormErrors)
-
-  const normalizeEmail = (value: string) => value.trim().toLowerCase()
-  const normalizePhone = (value: string) => value.trim().replace(/\s+/g, '')
+  const otp = useOtpSender(setFormErrors)
+  const { otpVerified, handleVerifyEmailOtp, handleVerifyPhoneOtp, resetEmailOtpState, resetPhoneOtpState } = otp
 
   const currentEmail = normalizeEmail(editableEmail)
   const currentPhone = normalizePhone(phone)
@@ -167,30 +107,6 @@ export function ProfileDashboardTab() {
     setVerifiedPhoneValue('')
   }, [phone, resetPhoneOtpState])
 
-  const addGeographicArea = () => {
-    setGeographicCoverageAreas((prev) => [...prev, { ...EMPTY_GEOGRAPHIC_COVERAGE_AREA }])
-  }
-
-  const removeGeographicArea = (index: number) => {
-    setGeographicCoverageAreas((prev) =>
-      prev.length <= 1 ? prev : prev.filter((_, itemIndex) => itemIndex !== index)
-    )
-  }
-
-  const updateGeographicArea = (
-    index: number,
-    field: keyof NgoGeographicCoverageArea,
-    value: string
-  ) => {
-    setGeographicCoverageAreas((prev) =>
-      prev.map((area, itemIndex) => (itemIndex === index ? { ...area, [field]: value } : area))
-    )
-  }
-
-  const updateExecutionCapacityField = (field: keyof NgoExecutionCapacity, value: string) => {
-    setExecutionCapacity((prev) => ({ ...prev, [field]: value }))
-  }
-
   const fetchProfile = async () => {
     try {
       setLoading(true)
@@ -208,8 +124,7 @@ export function ProfileDashboardTab() {
       }
 
       const data = await response.json()
-      const freshUser = data.user
-      const userProfile = freshUser?.profile_data || {}
+      const freshUser: FetchedProfileUser | undefined = data.user
 
       setEditableName(freshUser?.name || '')
       setEditableEmail(freshUser?.email || '')
@@ -218,76 +133,9 @@ export function ProfileDashboardTab() {
       initialPhoneRef.current = freshUser?.phone || ''
       setVerifiedEmailValue(freshUser?.email_verified ? normalizeEmail(freshUser?.email || '') : '')
       setVerifiedPhoneValue(freshUser?.phone_verified ? normalizePhone(freshUser?.phone || '') : '')
-      setCity(freshUser?.city || '')
-      setStateProvince(freshUser?.state_province || '')
-      setPincode(freshUser?.pincode || '')
-      setCountry(freshUser?.country || 'India')
-      setBio(userProfile.bio || freshUser?.bio || '')
-      setSector(userProfile.sector || '')
-      setFoundedYear(userProfile.founded || userProfile.founded_year || '')
-      setWebsite(userProfile.website || userProfile.company_website || userProfile.organization_website || '')
-      setIndustry(userProfile.industry || '')
-      setCompanySize(userProfile.company_size || '')
-      setNgoVolunteerCapacity(String(freshUser?.ngo_volunteer_capacity ?? userProfile.ngo_volunteer_capacity ?? ''))
-      setTwelveANumber(String(userProfile.twelve_a_number || ''))
-      setEightyGNumber(String(userProfile.eighty_g_number || ''))
-      setCsr1RegistrationNumber(String(userProfile.csr1_registration_number || ''))
-
-      const existingComplianceDocuments =
-        userProfile.compliance_documents && typeof userProfile.compliance_documents === 'object'
-          ? (userProfile.compliance_documents as ComplianceDocuments)
-          : {}
-
-      setComplianceDocuments({
-        twelve_a: getComplianceDocumentUrl(existingComplianceDocuments.twelve_a),
-        eighty_g: getComplianceDocumentUrl(existingComplianceDocuments.eighty_g),
-        csr1: getComplianceDocumentUrl(existingComplianceDocuments.csr1),
-      })
-      setAge(userProfile.age || '')
-      setProfileImageUrl(freshUser?.profile_image || '')
-      setCoverImageUrl(getCoverImageUrl(freshUser?.cover_image || userProfile))
-
-      if (freshUser?.user_type === 'ngo') {
-        const headquarters =
-          userProfile.ngo_headquarters && typeof userProfile.ngo_headquarters === 'object'
-            ? (userProfile.ngo_headquarters as Record<string, string>)
-            : {}
-
-        setAddressLine(headquarters.address_line || '')
-        setRegistrationDate(String(userProfile.registration_date || ''))
-        setSectorsScheduleVii(
-          Array.isArray(userProfile.sectors_schedule_vii)
-            ? userProfile.sectors_schedule_vii.filter((item: unknown): item is string => typeof item === 'string')
-            : []
-        )
-
-        const normalizedGeographicCoverage = normalizeGeographicCoverage(userProfile.geographic_coverage)
-        setGeographicCoverageAreas(
-          normalizedGeographicCoverage.length > 0
-            ? normalizedGeographicCoverage
-            : [{ ...EMPTY_GEOGRAPHIC_COVERAGE_AREA }]
-        )
-
-        setExecutionCapacity(
-          normalizeExecutionCapacity(userProfile.execution_capacity) || { ...EMPTY_EXECUTION_CAPACITY }
-        )
-      }
-
-      if (freshUser?.user_type === 'company') {
-        const headquarters =
-          userProfile.company_headquarters && typeof userProfile.company_headquarters === 'object'
-            ? (userProfile.company_headquarters as Record<string, string>)
-            : {}
-
-        setAddressLine(headquarters.address_line || '')
-        setNetWorth(String(userProfile.net_worth || ''))
-        setTurnover(String(userProfile.turnover || ''))
-        setNetProfit(String(userProfile.net_profit || ''))
-        setCsrVision(String(userProfile.csr_vision || ''))
-        setFocusAreasScheduleVii(normalizeCompanyFocusAreasScheduleVii(userProfile.focus_areas_schedule_vii))
-        setImplementationModel(normalizeCompanyImplementationModel(userProfile.implementation_model))
-        setGovernanceMechanism(normalizeCompanyGovernanceMechanism(userProfile.governance_mechanism))
-      }
+      details.applyFetchedProfile(freshUser)
+      images.setProfileImageUrl(freshUser?.profile_image || '')
+      images.setCoverImageUrl(getCoverImageUrl(freshUser?.cover_image || freshUser?.profile_data || {}))
     } catch (error) {
       console.error('Error fetching profile:', error)
     } finally {
@@ -316,130 +164,6 @@ export function ProfileDashboardTab() {
     }
   }
 
-  const handleProfileImageUpload = async (file: File) => {
-    try {
-      setUploadingProfileImage(true)
-
-      const token = localStorage.getItem('token')
-      if (!token) {
-        throw new Error('Authentication required. Please log in again.')
-      }
-
-      const formData = new FormData()
-      formData.append('file', file)
-
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: formData,
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Upload failed')
-      }
-
-      const result = await response.json()
-      const imageUrl = result.data.url
-      setProfileImageUrl(imageUrl)
-
-      const saveResponse = await fetch('/api/profile/update', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ profileImageUrl: imageUrl }),
-      })
-
-      if (!saveResponse.ok) {
-        throw new Error('Failed to persist profile image')
-      }
-
-      await refreshUser()
-      toast.success('Profile picture updated successfully!')
-    } catch (error) {
-      console.error('Error uploading profile image:', error)
-      toast.error(error instanceof Error ? error.message : 'Failed to upload profile picture.')
-    } finally {
-      setUploadingProfileImage(false)
-    }
-  }
-
-  const persistCoverImage = async (imageUrl: string) => {
-    const token = localStorage.getItem('token')
-    if (!token) {
-      throw new Error('Authentication required. Please log in again.')
-    }
-
-    const saveResponse = await fetch('/api/profile/update', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ coverImageUrl: imageUrl }),
-    })
-
-    if (!saveResponse.ok) {
-      throw new Error('Failed to persist cover photo')
-    }
-  }
-
-  const handleCoverImageUpload = async (file: File) => {
-    try {
-      setUploadingCoverImage(true)
-
-      const token = localStorage.getItem('token')
-      if (!token) {
-        throw new Error('Authentication required. Please log in again.')
-      }
-
-      const formData = new FormData()
-      formData.append('file', file)
-
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: formData,
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Upload failed')
-      }
-
-      const result = await response.json()
-      const imageUrl = result.data.url
-      setCoverImageUrl(imageUrl)
-      await persistCoverImage(imageUrl)
-      await refreshUser()
-      toast.success('Cover photo updated successfully!')
-    } catch (error) {
-      console.error('Error uploading cover photo:', error)
-      toast.error(error instanceof Error ? error.message : 'Failed to upload cover photo.')
-    } finally {
-      setUploadingCoverImage(false)
-    }
-  }
-
-  const handleRemoveCoverImage = async () => {
-    try {
-      setUploadingCoverImage(true)
-      setCoverImageUrl('')
-      await persistCoverImage('')
-      await refreshUser()
-      toast.success('Cover photo removed')
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to remove cover photo.')
-    } finally {
-      setUploadingCoverImage(false)
-    }
-  }
-
   const handleSaveProfile = async () => {
     try {
       if (!user?.id) {
@@ -458,142 +182,25 @@ export function ProfileDashboardTab() {
         return
       }
 
-      if (user.user_type === 'ngo') {
-        const locationError = validateNgoHeadquartersLocation({
-          address_line: addressLine,
-          city,
-          state: stateProvince,
-          pincode,
-          country,
-        })
-        if (locationError) {
-          toast.error(locationError)
-          return
-        }
-      }
-
-      if (user.user_type === 'company') {
-        const locationError = validateCompanyHeadquartersLocation({
-          address_line: addressLine,
-          city,
-          state: stateProvince,
-          pincode,
-          country,
-        })
-        if (locationError) {
-          toast.error(locationError)
-          return
-        }
+      const locationError = details.getHeadquartersError(user.user_type)
+      if (locationError) {
+        toast.error(locationError)
+        return
       }
 
       setLoading(true)
 
-      const profileData: Record<string, any> = {
-        name: editableName,
-        email: editableEmail,
-        phone,
-        city,
-        state_province: stateProvince,
-        pincode,
-        country,
-        profileImageUrl,
-        coverImageUrl,
-        bio,
-        profile_data: {
-          bio,
+      const profileData = details.buildProfilePayload(
+        user.user_type,
+        {
+          name: editableName,
+          email: editableEmail,
+          phone,
+          profileImageUrl: images.profileImageUrl,
+          coverImageUrl: images.coverImageUrl,
         },
-      }
-
-      if (user.user_type === 'individual' && age) {
-        profileData.profile_data.age = parseInt(age)
-      }
-
-      if (user.user_type === 'company') {
-        const headquarters = {
-          address_line: addressLine.trim(),
-          city: city.trim(),
-          state: stateProvince.trim(),
-          pincode: normalizePincode(pincode, country),
-          country,
-        }
-
-        profileData.location = buildNgoLocationDisplay(headquarters)
-        profileData.profile_data.industry = industry
-        profileData.profile_data.company_size = companySize
-        profileData.profile_data.website = website.trim() || undefined
-        profileData.profile_data.sector = sector.trim() || undefined
-        if (foundedYear) profileData.profile_data.founded = parseInt(foundedYear)
-        profileData.profile_data.company_name = editableName || user?.name
-        profileData.profile_data.company_headquarters = headquarters
-        profileData.profile_data.net_worth = netWorth.trim() || undefined
-        profileData.profile_data.turnover = turnover.trim() || undefined
-        profileData.profile_data.net_profit = netProfit.trim() || undefined
-        profileData.profile_data.csr_vision = csrVision.trim() || undefined
-        if (focusAreasScheduleVii.length > 0) {
-          profileData.profile_data.focus_areas_schedule_vii = focusAreasScheduleVii
-        }
-        profileData.profile_data.implementation_model = implementationModel || undefined
-        profileData.profile_data.governance_mechanism = governanceMechanism || undefined
-      }
-
-      if (user.user_type === 'ngo') {
-        const headquarters = {
-          address_line: addressLine.trim(),
-          city: city.trim(),
-          state: stateProvince.trim(),
-          pincode: normalizePincode(pincode, country),
-          country,
-        }
-
-        const normalizedGeographicCoverage = geographicCoverageAreas
-          .map((area) => ({
-            region: area.region.trim(),
-            state: area.state.trim(),
-            district: area.district.trim(),
-            area_type: area.area_type,
-          }))
-          .filter((area) => area.state || area.region || area.district)
-
-        const normalizedExecutionCapacity = {
-          concurrent_projects: executionCapacity.concurrent_projects.trim(),
-          annual_beneficiaries: executionCapacity.annual_beneficiaries.trim(),
-          delivery_model: executionCapacity.delivery_model,
-          notes: executionCapacity.notes.trim(),
-        }
-        const hasExecutionCapacity = Boolean(
-          normalizedExecutionCapacity.concurrent_projects ||
-            normalizedExecutionCapacity.annual_beneficiaries ||
-            normalizedExecutionCapacity.delivery_model ||
-            normalizedExecutionCapacity.notes
-        )
-
-        if (ngoVolunteerCapacity) {
-          const parsedCapacity = Number(String(ngoVolunteerCapacity).replace(/[^0-9]/g, ''))
-          profileData.ngo_volunteer_capacity = parsedCapacity
-        }
-
-        profileData.location = buildNgoLocationDisplay(headquarters)
-        profileData.profile_data.sector = sectorsScheduleVii[0] || undefined
-        if (foundedYear) profileData.profile_data.founded = parseInt(foundedYear)
-        profileData.profile_data.ngo_name = editableName || user?.name
-        profileData.profile_data.registration_date = registrationDate
-        profileData.profile_data.sectors_schedule_vii = sectorsScheduleVii
-        profileData.profile_data.geographic_coverage = normalizedGeographicCoverage
-        profileData.profile_data.execution_capacity = hasExecutionCapacity
-          ? normalizedExecutionCapacity
-          : null
-        profileData.profile_data.ngo_headquarters = headquarters
-        profileData.profile_data.team_strength = String(ngoVolunteerCapacity).trim()
-        profileData.profile_data.twelve_a_number = twelveANumber.trim()
-        profileData.profile_data.eighty_g_number = eightyGNumber.trim()
-        profileData.profile_data.csr1_registration_number = csr1RegistrationNumber.trim()
-        profileData.profile_data.compliance_documents = complianceDocuments
-        if (ngoVolunteerCapacity) {
-          profileData.profile_data.ngo_volunteer_capacity = Number(
-            String(ngoVolunteerCapacity).replace(/[^0-9]/g, '')
-          )
-        }
-      }
+        user?.name
+      )
 
       const response = await fetch('/api/profile/update', {
         method: 'POST',
@@ -621,9 +228,9 @@ export function ProfileDashboardTab() {
       setVerifiedEmailValue(normalizeEmail(editableEmail))
       setVerifiedPhoneValue(normalizePhone(phone))
       setOtpInput({ email: '', phone: '' })
-      setComplianceDocuments(
+      details.setComplianceDocuments(
         user.user_type === 'ngo'
-          ? complianceDocuments
+          ? details.complianceDocuments
           : {}
       )
 
@@ -634,6 +241,26 @@ export function ProfileDashboardTab() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const verifyPhoneOtp = async () => {
+    const verified = await handleVerifyPhoneOtp(phone || user?.phone || '', otpInput.phone)
+    if (!verified) return
+
+    const verifiedAt = new Date().toISOString()
+    updateUser({ phone: phone || user?.phone, phone_verified: true, phone_verified_at: verifiedAt })
+    setVerifiedPhoneValue(normalizePhone(phone || user?.phone || ''))
+    toast.success('Phone verified successfully.')
+  }
+
+  const verifyEmailOtp = async () => {
+    const verified = await handleVerifyEmailOtp(editableEmail || user?.email || '', otpInput.email, { persist: true })
+    if (!verified) return
+
+    const verifiedAt = new Date().toISOString()
+    updateUser({ email: editableEmail || user?.email, email_verified: true, email_verified_at: verifiedAt })
+    setVerifiedEmailValue(normalizeEmail(editableEmail || user?.email || ''))
+    toast.success('Email verified successfully.')
   }
 
   if (!mounted || !user) {
@@ -651,72 +278,7 @@ export function ProfileDashboardTab() {
             <CardDescription>Manage your profile information for this account.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="overflow-hidden rounded-lg border pb-4">
-              <div className="relative">
-                <ProfileCoverMedia src={coverImageUrl} className="h-36 w-full sm:h-44" alt="Cover photo" />
-                <div className="absolute bottom-3 right-3 flex gap-2">
-                  <label className="cursor-pointer">
-                    <span className="inline-flex h-9 items-center gap-2 rounded-md border border-white/30 bg-black/45 px-3 text-xs font-medium text-white hover:bg-black/60">
-                      <Camera className="h-3.5 w-3.5" />
-                      {uploadingCoverImage ? 'Uploading...' : coverImageUrl ? 'Change cover' : 'Add cover'}
-                    </span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0]
-                        if (file) void handleCoverImageUpload(file)
-                      }}
-                      className="hidden"
-                      disabled={uploadingCoverImage}
-                    />
-                  </label>
-                  {coverImageUrl ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-9 border-white/30 bg-black/45 text-xs text-white hover:bg-black/60 hover:text-white"
-                      onClick={() => void handleRemoveCoverImage()}
-                      disabled={uploadingCoverImage}
-                    >
-                      Remove
-                    </Button>
-                  ) : null}
-                </div>
-              </div>
-              <div className="flex flex-col items-start gap-3 px-4">
-                <div className="-mt-12 relative">
-                  <div className="h-24 w-24 overflow-hidden rounded-full border-4 border-white bg-white shadow-sm">
-                    {profileImageUrl ? (
-                      <img src={profileImageUrl} alt="Profile" className="h-full w-full object-cover" />
-                    ) : (
-                      <div
-                        className="flex h-full w-full items-center justify-center text-xl font-semibold"
-                        style={getGramAvatarFallbackStyle(user?.name || 'U')}
-                      >
-                        {user?.name ? user.name.split(' ').map((n) => n[0]).join('').toUpperCase() : 'U'}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <label className="cursor-pointer">
-                  <Button variant="outline" size="sm" disabled={uploadingProfileImage} asChild className="w-full max-w-full whitespace-normal break-words text-center">
-                    <span>{uploadingProfileImage ? 'Uploading...' : 'Change Profile Picture'}</span>
-                  </Button>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0]
-                      if (file) handleProfileImageUpload(file)
-                    }}
-                    className="hidden"
-                    disabled={uploadingProfileImage}
-                  />
-                </label>
-              </div>
-            </div>
+            <ProfileMediaEditor images={images} userName={user?.name} />
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -735,457 +297,36 @@ export function ProfileDashboardTab() {
             </div>
 
             {user.user_type === 'ngo' ? (
-              <>
-                <p className="text-sm text-muted-foreground">
-                  Keep your NGO headquarters address, city, state, and pincode accurate so CSR campaigns and company matches can recommend you correctly.
-                </p>
-                <div className="space-y-4 rounded-lg border p-4">
-                  <div>
-                    <Label>Registered office address</Label>
-                    <Textarea
-                      value={addressLine}
-                      onChange={(e) => setAddressLine(e.target.value)}
-                      placeholder="Building, street, locality"
-                      rows={2}
-                    />
-                  </div>
-                  <div>
-                    <Label>Headquarters city / town</Label>
-                    <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="e.g., Pune, Guwahati" />
-                  </div>
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                    <div>
-                      <Label>Country</Label>
-                      <Select
-                        value={country}
-                        onValueChange={(value) => {
-                          setCountry(value)
-                          if (value !== 'India') {
-                            setStateProvince('')
-                          }
-                        }}
-                      >
-                        <SelectTrigger><SelectValue placeholder="Select country" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="India">India</SelectItem>
-                          <SelectItem value="Bangladesh">Bangladesh</SelectItem>
-                          <SelectItem value="Nepal">Nepal</SelectItem>
-                          <SelectItem value="Sri Lanka">Sri Lanka</SelectItem>
-                          <SelectItem value="Pakistan">Pakistan</SelectItem>
-                          <SelectItem value="Other">Other</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    {country === 'India' ? (
-                      <div>
-                        <Label>State / UT</Label>
-                        <Select
-                          value={stateProvince || 'unset'}
-                          onValueChange={(value) => setStateProvince(value === 'unset' ? '' : value)}
-                        >
-                          <SelectTrigger><SelectValue placeholder="Select state or UT" /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="unset">Select state or UT</SelectItem>
-                            {INDIAN_STATES_AND_UTS.map((stateName) => (
-                              <SelectItem key={stateName} value={stateName}>{stateName}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    ) : (
-                      <div>
-                        <Label>State/Province</Label>
-                        <Input value={stateProvince} onChange={(e) => setStateProvince(e.target.value)} placeholder="State or province" />
-                      </div>
-                    )}
-                    <div>
-                      <Label>Pincode</Label>
-                      <Input
-                        value={pincode}
-                        onChange={(e) => setPincode(e.target.value.replace(/[^\d]/g, '').slice(0, country === 'India' ? 6 : 10))}
-                        placeholder={country === 'India' ? '6-digit pincode' : 'Postal code'}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </>
+              <HeadquartersFields
+                details={details}
+                description="Keep your NGO headquarters address, city, state, and pincode accurate so CSR campaigns and company matches can recommend you correctly."
+                cityPlaceholder="e.g., Pune, Guwahati"
+              />
             ) : user.user_type === 'company' ? (
-              <>
-                <p className="text-sm text-muted-foreground">
-                  Keep your registered office address, city, state, and pincode accurate for CSR matching and regional recommendations.
-                </p>
-                <div className="space-y-4 rounded-lg border p-4">
-                  <div>
-                    <Label>Registered office address</Label>
-                    <Textarea
-                      value={addressLine}
-                      onChange={(e) => setAddressLine(e.target.value)}
-                      placeholder="Building, street, locality"
-                      rows={2}
-                    />
-                  </div>
-                  <div>
-                    <Label>Headquarters city / town</Label>
-                    <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="e.g., Pune, Mumbai" />
-                  </div>
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                    <div>
-                      <Label>Country</Label>
-                      <Select
-                        value={country}
-                        onValueChange={(value) => {
-                          setCountry(value)
-                          if (value !== 'India') {
-                            setStateProvince('')
-                          }
-                        }}
-                      >
-                        <SelectTrigger><SelectValue placeholder="Select country" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="India">India</SelectItem>
-                          <SelectItem value="Bangladesh">Bangladesh</SelectItem>
-                          <SelectItem value="Nepal">Nepal</SelectItem>
-                          <SelectItem value="Sri Lanka">Sri Lanka</SelectItem>
-                          <SelectItem value="Pakistan">Pakistan</SelectItem>
-                          <SelectItem value="Other">Other</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    {country === 'India' ? (
-                      <div>
-                        <Label>State / UT</Label>
-                        <Select
-                          value={stateProvince || 'unset'}
-                          onValueChange={(value) => setStateProvince(value === 'unset' ? '' : value)}
-                        >
-                          <SelectTrigger><SelectValue placeholder="Select state or UT" /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="unset">Select state or UT</SelectItem>
-                            {INDIAN_STATES_AND_UTS.map((stateName) => (
-                              <SelectItem key={stateName} value={stateName}>{stateName}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    ) : (
-                      <div>
-                        <Label>State/Province</Label>
-                        <Input value={stateProvince} onChange={(e) => setStateProvince(e.target.value)} placeholder="State or province" />
-                      </div>
-                    )}
-                    <div>
-                      <Label>Pincode</Label>
-                      <Input
-                        value={pincode}
-                        onChange={(e) => setPincode(e.target.value.replace(/[^\d]/g, '').slice(0, country === 'India' ? 6 : 10))}
-                        placeholder={country === 'India' ? '6-digit pincode' : 'Postal code'}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </>
+              <HeadquartersFields
+                details={details}
+                description="Keep your registered office address, city, state, and pincode accurate for CSR matching and regional recommendations."
+                cityPlaceholder="e.g., Pune, Mumbai"
+              />
             ) : (
-              <>
-                <div>
-                  <Label>City</Label>
-                  <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="e.g., Mumbai, Delhi" />
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <Label>State/Province</Label>
-                    <Input value={stateProvince} onChange={(e) => setStateProvince(e.target.value)} placeholder="e.g., Maharashtra, Karnataka" />
-                  </div>
-                  <div>
-                    <Label>Pincode</Label>
-                    <Input value={pincode} onChange={(e) => setPincode(e.target.value)} placeholder="e.g., 400001" />
-                  </div>
-                  <div>
-                    <Label>Country</Label>
-                    <Input value={country} onChange={(e) => setCountry(e.target.value)} placeholder="Country" />
-                  </div>
-                </div>
-              </>
+              <IndividualLocationFields details={details} />
             )}
 
             <div>
               <Label>Bio</Label>
-              <Textarea value={bio} onChange={(e) => setBio(e.target.value)} rows={4} placeholder="Tell others about yourself..." />
+              <Textarea value={details.bio} onChange={(e) => details.setBio(e.target.value)} rows={4} placeholder="Tell others about yourself..." />
             </div>
 
             {user.user_type === 'individual' && (
               <div>
                 <Label>Age</Label>
-                <Input type="number" min="18" max="100" placeholder="Enter your age" value={age} onChange={(e) => setAge(e.target.value)} />
+                <Input type="number" min="18" max="100" placeholder="Enter your age" value={details.age} onChange={(e) => details.setAge(e.target.value)} />
               </div>
             )}
 
-            {user.user_type === 'company' && (
-              <>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label>Industry</Label>
-                    <Select value={industry} onValueChange={setIndustry}>
-                      <SelectTrigger><SelectValue placeholder="Select industry" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="technology">Technology</SelectItem>
-                        <SelectItem value="healthcare">Healthcare</SelectItem>
-                        <SelectItem value="education">Education</SelectItem>
-                        <SelectItem value="manufacturing">Manufacturing</SelectItem>
-                        <SelectItem value="finance">Finance & Banking</SelectItem>
-                        <SelectItem value="retail">Retail</SelectItem>
-                        <SelectItem value="consulting">Consulting</SelectItem>
-                        <SelectItem value="media">Media & Entertainment</SelectItem>
-                        <SelectItem value="energy">Energy</SelectItem>
-                        <SelectItem value="ecommerce">E-commerce</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label>Company Size</Label>
-                    <Select value={companySize} onValueChange={setCompanySize}>
-                      <SelectTrigger><SelectValue placeholder="Select company size" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1-10">1-10 employees</SelectItem>
-                        <SelectItem value="11-50">11-50 employees</SelectItem>
-                        <SelectItem value="51-200">51-200 employees</SelectItem>
-                        <SelectItem value="201-500">201-500 employees</SelectItem>
-                        <SelectItem value="501-1000">501-1000 employees</SelectItem>
-                        <SelectItem value="1001+">1001+ employees</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label>Website</Label>
-                    <Input type="url" placeholder="https://www.yourcompany.com" value={website} onChange={(e) => setWebsite(e.target.value)} />
-                  </div>
-                  <div>
-                    <Label>Sector</Label>
-                    <Input placeholder="e.g., CSR, Education, Healthcare" value={sector} onChange={(e) => setSector(e.target.value)} />
-                  </div>
-                </div>
-                <div>
-                  <Label>Founded Year</Label>
-                  <Input type="number" min="1800" max={new Date().getFullYear()} placeholder="e.g., 2010" value={foundedYear} onChange={(e) => setFoundedYear(e.target.value)} />
-                </div>
+            {user.user_type === 'company' && <CompanyProfileFields details={details} />}
 
-                <div className="space-y-3 rounded-lg border p-4">
-                  <div>
-                    <h4 className="text-sm font-semibold">CSR Program Details</h4>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Optional details that help with CSR matching.
-                    </p>
-                  </div>
-
-                  <div>
-                    <Label>
-                      Focus Areas (Schedule VII){' '}
-                      <span className="font-normal text-muted-foreground">(optional)</span>
-                    </Label>
-                    <MultiSelectDropdown
-                      value={focusAreasScheduleVii}
-                      options={CSR_SCHEDULE_VII_CATEGORIES}
-                      placeholder="Select Schedule VII focus areas"
-                      onValueChange={setFocusAreasScheduleVii}
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <div>
-                      <Label>
-                        Implementation Model{' '}
-                        <span className="font-normal text-muted-foreground">(optional)</span>
-                      </Label>
-                      <Select
-                        value={implementationModel || 'unset'}
-                        onValueChange={(value) => setImplementationModel(value === 'unset' ? '' : value)}
-                      >
-                        <SelectTrigger><SelectValue placeholder="Select implementation model" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="unset">Select implementation model</SelectItem>
-                          {COMPANY_CSR_IMPLEMENTATION_MODELS.map((option) => (
-                            <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label>
-                        Governance Mechanism{' '}
-                        <span className="font-normal text-muted-foreground">(optional)</span>
-                      </Label>
-                      <Select
-                        value={governanceMechanism || 'unset'}
-                        onValueChange={(value) => setGovernanceMechanism(value === 'unset' ? '' : value)}
-                      >
-                        <SelectTrigger><SelectValue placeholder="Select governance mechanism" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="unset">Select governance mechanism</SelectItem>
-                          {COMPANY_CSR_GOVERNANCE_MECHANISMS.map((option) => (
-                            <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div>
-                    <Label>Net Worth <span className="font-normal text-muted-foreground">(optional)</span></Label>
-                    <Input value={netWorth} onChange={(e) => setNetWorth(e.target.value)} placeholder="e.g. INR 120 Cr" />
-                  </div>
-                  <div>
-                    <Label>Turnover <span className="font-normal text-muted-foreground">(optional)</span></Label>
-                    <Input value={turnover} onChange={(e) => setTurnover(e.target.value)} placeholder="e.g. INR 450 Cr" />
-                  </div>
-                </div>
-                <div>
-                  <Label>Net Profit <span className="font-normal text-muted-foreground">(optional)</span></Label>
-                  <Input value={netProfit} onChange={(e) => setNetProfit(e.target.value)} placeholder="e.g. INR 35 Cr" />
-                </div>
-                <div>
-                  <Label>CSR Vision <span className="font-normal text-muted-foreground">(optional)</span></Label>
-                  <Textarea value={csrVision} onChange={(e) => setCsrVision(e.target.value)} placeholder="Describe your long-term CSR vision" rows={3} />
-                </div>
-                </div>
-              </>
-            )}
-
-            {user.user_type === 'ngo' && (
-              <>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label>Exact volunteer capacity</Label>
-                    <div className="flex gap-2">
-                      <Input type="number" min="0" placeholder="e.g., 42" value={ngoVolunteerCapacity} onChange={(e) => setNgoVolunteerCapacity(e.target.value)} />
-                      <span className="text-sm text-gray-600 self-center">people</span>
-                    </div>
-                  </div>
-                  <div>
-                    <Label>Founded Year</Label>
-                    <Input type="number" min="1800" max={new Date().getFullYear()} placeholder="e.g., 2010" value={foundedYear} onChange={(e) => setFoundedYear(e.target.value)} />
-                  </div>
-                </div>
-                <div>
-                  <Label>Registration Date</Label>
-                  <Input type="date" value={registrationDate} onChange={(e) => setRegistrationDate(e.target.value)} />
-                </div>
-
-                <div>
-                  <Label>Sectors Worked (Schedule VII)</Label>
-                  <MultiSelectDropdown
-                    value={sectorsScheduleVii}
-                    options={CSR_SCHEDULE_VII_CATEGORIES}
-                    placeholder="Select Schedule VII sectors"
-                    onValueChange={setSectorsScheduleVii}
-                  />
-                </div>
-
-                <div className="space-y-3">
-                  <div>
-                    <Label>Geographic Coverage <span className="font-normal text-muted-foreground">(optional)</span></Label>
-                    <p className="mt-1 text-xs text-muted-foreground">Add each region where you operate.</p>
-                  </div>
-                  {geographicCoverageAreas.map((area, index) => (
-                    <div key={`profile-geo-area-${index}`} className="space-y-3 rounded-lg border bg-slate-50/60 p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm font-medium">Coverage area {index + 1}</p>
-                        {geographicCoverageAreas.length > 1 ? (
-                          <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-red-600" onClick={() => removeGeographicArea(index)}>
-                            Remove
-                          </Button>
-                        ) : null}
-                      </div>
-                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                        <div>
-                          <Label>Region <span className="font-normal text-muted-foreground">(optional)</span></Label>
-                          <Input value={area.region} onChange={(e) => updateGeographicArea(index, 'region', e.target.value)} />
-                        </div>
-                        <div>
-                          <Label>State / UT</Label>
-                          <Input value={area.state} onChange={(e) => updateGeographicArea(index, 'state', e.target.value)} />
-                        </div>
-                        <div>
-                          <Label>District <span className="font-normal text-muted-foreground">(optional)</span></Label>
-                          <Input value={area.district} onChange={(e) => updateGeographicArea(index, 'district', e.target.value)} />
-                        </div>
-                        <div>
-                          <Label>Area type <span className="font-normal text-muted-foreground">(optional)</span></Label>
-                          <Select
-                            value={area.area_type || 'unset'}
-                            onValueChange={(value) => updateGeographicArea(index, 'area_type', value === 'unset' ? '' : value)}
-                          >
-                            <SelectTrigger><SelectValue placeholder="Select area type" /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="unset">Not specified</SelectItem>
-                              <SelectItem value="urban">Urban</SelectItem>
-                              <SelectItem value="rural">Rural</SelectItem>
-                              <SelectItem value="both">Urban & rural</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  <Button type="button" variant="outline" size="sm" onClick={addGeographicArea}>Add another coverage area</Button>
-                </div>
-
-                <div className="space-y-3">
-                  <div>
-                    <Label>Execution Capacity <span className="font-normal text-muted-foreground">(optional)</span></Label>
-                  </div>
-                  <div className="space-y-4 rounded-lg border bg-slate-50/60 p-4">
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                      <div>
-                        <Label>Max concurrent projects</Label>
-                        <Input
-                          value={executionCapacity.concurrent_projects}
-                          onChange={(e) => updateExecutionCapacityField('concurrent_projects', e.target.value.replace(/[^\d]/g, ''))}
-                          inputMode="numeric"
-                          placeholder="e.g. 5"
-                        />
-                      </div>
-                      <div>
-                        <Label>Annual beneficiaries</Label>
-                        <Input
-                          value={executionCapacity.annual_beneficiaries}
-                          onChange={(e) => updateExecutionCapacityField('annual_beneficiaries', e.target.value.replace(/[^\d]/g, ''))}
-                          inputMode="numeric"
-                          placeholder="e.g. 10000"
-                        />
-                      </div>
-                      <div className="md:col-span-2">
-                        <Label>Delivery model</Label>
-                        <Select
-                          value={executionCapacity.delivery_model || 'unset'}
-                          onValueChange={(value) => updateExecutionCapacityField('delivery_model', value === 'unset' ? '' : value)}
-                        >
-                          <SelectTrigger><SelectValue placeholder="Select delivery model" /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="unset">Not specified</SelectItem>
-                            <SelectItem value="direct">Direct delivery</SelectItem>
-                            <SelectItem value="partner_led">Partner-led</SelectItem>
-                            <SelectItem value="hybrid">Hybrid (direct + partners)</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="md:col-span-2">
-                        <Label>Additional notes</Label>
-                        <Textarea
-                          value={executionCapacity.notes}
-                          onChange={(e) => updateExecutionCapacityField('notes', e.target.value)}
-                          rows={2}
-                          placeholder="Partner network, reporting cadence, or other capacity details"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-              </>
-            )}
+            {user.user_type === 'ngo' && <NgoProfileFields details={details} />}
 
             {shouldShowPayoutAccountPanel(user.user_type) &&
             (user.user_type === 'ngo' || user.user_type === 'individual' || user.user_type === 'company') ? (
@@ -1212,230 +353,25 @@ export function ProfileDashboardTab() {
       </div>
 
       <div className="min-w-0 space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Verification Status</CardTitle>
-            <CardDescription>Track verification and open the verification workflow.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="space-y-4">
-              {PHONE_VERIFICATION_ENABLED ? (
-              <div className="rounded-lg border p-4 space-y-3">
-                <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
-                  <span className="shrink-0 text-sm font-medium">Mobile Number Verification</span>
-                  <VerificationBadge
-                    status={resolvedPhoneVerified ? 'verified' : 'unverified'}
-                    size="readable"
-                    showText={true}
-                    className="max-w-full min-w-0"
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground">{(phone || user?.phone) ? `Phone: ${phone || user?.phone}` : 'Add a phone number in your profile settings.'}</p>
-                {!resolvedPhoneVerified && (
-                  <div className="space-y-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="w-full max-w-full whitespace-normal break-words"
-                      onClick={() => handleSendPhoneOtp(phone || user?.phone || '')}
-                      disabled={otpSending.phone || otpCooldown.phone > 0}
-                    >
-                      {otpSending.phone
-                        ? 'Sending...'
-                        : otpCooldown.phone > 0
-                          ? `Resend in ${otpCooldown.phone}s`
-                          : otpSent.phone
-                            ? 'Resend OTP'
-                            : 'Verify Mobile'}
-                    </Button>
-                    {formErrors.phone && <p className="text-sm text-red-500">{formErrors.phone}</p>}
-                    {otpSent.phone && (
-                      <div className="space-y-2">
-                        <Label htmlFor="profilePhoneOtp">Phone OTP</Label>
-                        <div className="flex flex-col gap-2 sm:flex-row">
-                          <Input
-                            id="profilePhoneOtp"
-                            value={otpInput.phone}
-                            onChange={(e) => setOtpInput((prev) => ({ ...prev, phone: e.target.value }))}
-                            placeholder="Enter OTP"
-                            className="min-w-0"
-                          />
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="w-full max-w-full whitespace-normal break-words sm:w-auto"
-                            onClick={async () => {
-                              const verified = await handleVerifyPhoneOtp(phone || user?.phone || '', otpInput.phone)
-                              if (!verified) return
-
-                              const verifiedAt = new Date().toISOString()
-                              updateUser({ phone: phone || user?.phone, phone_verified: true, phone_verified_at: verifiedAt })
-                              setVerifiedPhoneValue(normalizePhone(phone || user?.phone || ''))
-                              toast.success('Phone verified successfully.')
-                            }}
-                            disabled={otpVerifying.phone}
-                          >
-                            {otpVerifying.phone ? 'Verifying...' : 'Verify OTP'}
-                          </Button>
-                        </div>
-                        {formErrors.phoneOtp && <p className="text-sm text-red-500">{formErrors.phoneOtp}</p>}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-              ) : null}
-
-              <div className="rounded-lg border p-4 space-y-3">
-                <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
-                  <span className="shrink-0 text-sm font-medium">Email Verification</span>
-                  <VerificationBadge
-                    status={resolvedEmailVerified ? 'verified' : 'unverified'}
-                    size="readable"
-                    showText={true}
-                    className="max-w-full min-w-0"
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground">Email: {editableEmail || user?.email || 'No email found'}</p>
-                {emailChanged && !resolvedEmailVerified && (
-                  <>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="w-full max-w-full whitespace-normal break-words"
-                      onClick={() => handleSendEmailOtp(editableEmail || user?.email || '')}
-                      disabled={otpSending.email || otpCooldown.email > 0}
-                    >
-                      {otpSending.email ? 'Sending...' : otpCooldown.email > 0 ? `Resend in ${otpCooldown.email}s` : otpSent.email ? 'Resend OTP' : 'Verify Email'}
-                    </Button>
-                    {otpSent.email && (
-                      <div className="space-y-2">
-                        <Label htmlFor="profileEmailOtp">Email OTP</Label>
-                        <div className="flex flex-col gap-2 sm:flex-row">
-                          <Input
-                            id="profileEmailOtp"
-                            value={otpInput.email}
-                            onChange={(e) => setOtpInput((prev) => ({ ...prev, email: e.target.value }))}
-                            placeholder="Enter OTP"
-                            className="min-w-0"
-                          />
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="w-full max-w-full whitespace-normal break-words sm:w-auto"
-                            onClick={async () => {
-                              const verified = await handleVerifyEmailOtp(editableEmail || user?.email || '', otpInput.email, { persist: true })
-                              if (!verified) return
-
-                              const verifiedAt = new Date().toISOString()
-                              updateUser({ email: editableEmail || user?.email, email_verified: true, email_verified_at: verifiedAt })
-                              setVerifiedEmailValue(normalizeEmail(editableEmail || user?.email || ''))
-                              toast.success('Email verified successfully.')
-                            }}
-                            disabled={otpVerifying.email}
-                          >
-                            {otpVerifying.email ? 'Verifying...' : 'Verify OTP'}
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-
-              <div className="rounded-lg border p-4 space-y-4 overflow-hidden">
-                <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
-                  <span className="shrink-0 text-sm font-medium">Document Verification</span>
-                  <VerificationBadge
-                    status={resolvedVerificationStatus}
-                    size="readable"
-                    showText={true}
-                    badgeNumber={caBadgeNumber}
-                    className="max-w-full min-w-0"
-                  />
-                </div>
-                {user?.user_type === 'ngo' ? (
-                  <NgoComplianceBadges
-                    tags={user.ca_compliance_tags}
-                    registrationType={
-                      (user.profile_data as { registration_type?: string } | undefined)?.registration_type ||
-                      (user.verification_details as { registration_type?: string } | undefined)?.registration_type ||
-                      null
-                    }
-                    size="lg"
-                    className="max-w-full"
-                  />
-                ) : null}
-                <p className="text-xs leading-5 text-muted-foreground">
-                  {resolvedVerificationStatus === 'verified'
-                    ? 'Your documents are CA-verified. Submit updated documents anytime from the verification dashboard.'
-                    : 'Complete identity verification from the verification dashboard.'}
-                </p>
-                {showDocumentExpiryBanner && documentExpirySummary ? (
-                  <div className="rounded-md border bg-background px-3 py-2 text-xs leading-5">
-                    {documentExpirySummary.has_expired ? (
-                      <p>
-                        One or more certificates have expired
-                        {documentExpirySummary.soonest
-                          ? ` (${documentExpirySummary.soonest.label} on ${formatDisplayDate(
-                              documentExpirySummary.soonest.valid_until
-                            )})`
-                          : ''}
-                        . The matching CA tag has been dropped. Reverify with an updated certificate to restore it. You stay verified.
-                      </p>
-                    ) : (
-                      <p>
-                        Certificates expire soon
-                        {documentExpirySummary.soonest
-                          ? ` — ${documentExpirySummary.soonest.label} on ${formatDisplayDate(
-                              documentExpirySummary.soonest.valid_until
-                            )} (${Math.max(documentExpirySummary.soonest.days_remaining, 0)} days left)`
-                          : ''}
-                        . Reverify before they lapse to keep the matching CA tag.
-                      </p>
-                    )}
-                  </div>
-                ) : null}
-                {reverificationPending && (
-                  <p className="text-xs leading-5 text-muted-foreground">
-                    Reverification is under review. You remain verified while we process your updated documents.
-                  </p>
-                )}
-                {resolvedVerificationStatus !== 'verified' ? (
-                  <Link href={`/verification?userType=${user?.user_type}`} className="block">
-                    <Button
-                      type="button"
-                      variant="default"
-                      size="sm"
-                      className="h-auto w-full max-w-full whitespace-normal break-words px-3 py-2 leading-snug"
-                    >
-                      Open Verification Dashboard
-                    </Button>
-                  </Link>
-                ) : (
-                  <Link href={`/verification?userType=${user?.user_type}`} className="block">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={reverificationPending}
-                      className="h-auto w-full max-w-full whitespace-normal break-words border-udaan-orange px-3 py-2 leading-snug text-udaan-orange hover:bg-orange-50"
-                    >
-                      {reverificationPending
-                        ? 'Reverification pending'
-                        : showDocumentExpiryBanner
-                          ? 'Update expiring documents'
-                          : 'Reverify documents'}
-                    </Button>
-                  </Link>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
+        <VerificationStatusCard
+          user={user}
+          phone={phone}
+          editableEmail={editableEmail}
+          emailChanged={emailChanged}
+          resolvedPhoneVerified={resolvedPhoneVerified}
+          resolvedEmailVerified={resolvedEmailVerified}
+          resolvedVerificationStatus={resolvedVerificationStatus}
+          caBadgeNumber={caBadgeNumber}
+          documentExpirySummary={documentExpirySummary}
+          showDocumentExpiryBanner={showDocumentExpiryBanner}
+          reverificationPending={reverificationPending}
+          otp={otp}
+          otpInput={otpInput}
+          setOtpInput={setOtpInput}
+          formErrors={formErrors}
+          onVerifyPhoneOtp={verifyPhoneOtp}
+          onVerifyEmailOtp={verifyEmailOtp}
+        />
       </div>
     </div>
   )

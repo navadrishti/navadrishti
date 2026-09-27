@@ -85,7 +85,7 @@ export async function POST(
       return NextResponse.json({ error: 'Payment not captured yet' }, { status: 409 });
     }
 
-    const orderNotes = (providerOrder.notes || {}) as Record<string, any>;
+    const orderNotes: Record<string, string | number | null> = providerOrder.notes || {};
     if (String(orderNotes.milestone_id || '') !== String(milestoneId)) {
       return NextResponse.json({ error: 'Payment is linked to a different milestone' }, { status: 403 });
     }

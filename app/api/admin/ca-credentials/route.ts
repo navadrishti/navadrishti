@@ -27,16 +27,23 @@ export async function GET(request: NextRequest) {
       if (error) throw error;
 
       // Group by ca_id to show available CA IDs with their account count
-      const caIdMap = new Map<string, any>();
+      type CaAccount = NonNullable<typeof data>[number];
+      const caIdMap = new Map<string, {
+        ca_id: CaAccount['ca_id'];
+        accounts: Pick<CaAccount, 'username' | 'display_name'>[];
+        createdAt: CaAccount['created_at'];
+      }>();
       data?.forEach((account) => {
-        if (!caIdMap.has(account.ca_id)) {
-          caIdMap.set(account.ca_id, {
+        let group = caIdMap.get(account.ca_id);
+        if (!group) {
+          group = {
             ca_id: account.ca_id,
             accounts: [],
             createdAt: account.created_at,
-          });
+          };
+          caIdMap.set(account.ca_id, group);
         }
-        caIdMap.get(account.ca_id).accounts.push({
+        group.accounts.push({
           username: account.username,
           display_name: account.display_name,
         });

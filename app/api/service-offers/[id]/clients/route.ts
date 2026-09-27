@@ -3,6 +3,7 @@ import { db, supabase } from '@/lib/db';
 import { getTokenClaims } from '@/lib/auth';
 import { resolveEffectiveVerificationStatus } from '@/lib/server-auth';
 import { isOfferExpired, getCapabilityNeedRequestTypes, isCapabilityRentalTransaction, dedupeSelectedNeedSummaries } from '@/lib/service-offers';
+import type { Tables } from '@/lib/database.types';
 
 function parseNeedIds(value: unknown): number[] {
   if (!Array.isArray(value)) return [];
@@ -13,7 +14,12 @@ function parseNeedIds(value: unknown): number[] {
   )];
 }
 
-function summarizeNeeds(needs: Array<Record<string, any>>) {
+type LinkedNeed = Pick<
+  Tables<'service_requests'>,
+  'id' | 'title' | 'status' | 'request_type' | 'estimated_budget' | 'target_amount' | 'target_quantity' | 'beneficiary_count' | 'project_id'
+>;
+
+function summarizeNeeds(needs: LinkedNeed[]) {
   return dedupeSelectedNeedSummaries(
     needs.map((need) => ({
       id: Number(need.id),

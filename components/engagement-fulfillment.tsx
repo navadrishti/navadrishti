@@ -7,6 +7,10 @@ import { useToast } from '@/hooks/use-toast';
 import { openRazorpayCheckout } from '@/lib/razorpay-checkout';
 import { formatAttendanceSummary, getSkillServiceDailyRate } from '@/lib/service-request-allocation';
 
+function readNestedId(value: unknown) {
+  return value && typeof value === 'object' && 'id' in value ? value.id : undefined;
+}
+
 export function InlineSkillServiceFulfillment({
   application,
   role,
@@ -20,7 +24,7 @@ export function InlineSkillServiceFulfillment({
     assigned_amount?: number | null;
     assigned_quantity?: number | null;
     proposed_amount?: number | null;
-    response_meta?: Record<string, any> | null;
+    response_meta?: Record<string, unknown> | null;
   };
   role: 'ngo' | 'individual';
   title?: string;
@@ -28,11 +32,11 @@ export function InlineSkillServiceFulfillment({
 }) {
   const { toast } = useToast();
   const [settling, setSettling] = useState(false);
-  const meta = application.response_meta && typeof application.response_meta === 'object'
+  const meta: Record<string, unknown> = application.response_meta && typeof application.response_meta === 'object'
     ? application.response_meta
     : {};
   const assignmentId =
-    meta.assignment_id || meta.assignmentMeta?.id || meta.assignment_meta?.id;
+    meta.assignment_id || readNestedId(meta.assignmentMeta) || readNestedId(meta.assignment_meta);
   const dailyRate = getSkillServiceDailyRate(application);
   const summary = formatAttendanceSummary(meta);
   const settlementStatus = String(meta.settlement_status || '').toLowerCase();
@@ -210,7 +214,7 @@ export function InlineInfrastructureAssignment({
   application: {
     id: number;
     status?: string;
-    response_meta?: Record<string, any> | null;
+    response_meta?: Record<string, unknown> | null;
   };
   serviceRequestId: number;
   role: 'ngo' | 'individual';

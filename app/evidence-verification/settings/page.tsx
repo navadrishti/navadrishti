@@ -15,11 +15,12 @@ import {
   EvidenceSectionCard,
 } from '@/components/evidence-verification/portal-ui';
 import { finalizeConsoleLogout } from '@/lib/utils';
+import type { CompanyCAContext } from '../types';
 
 export default function EvidenceVerificationSettingsPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [context, setContext] = useState<any>(null);
+  const [context, setContext] = useState<CompanyCAContext | null>(null);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -111,7 +112,7 @@ export default function EvidenceVerificationSettingsPage() {
     }
   };
 
-  const scopeLabels = formatVerifierScopeLabels(context);
+  const scopeLabels = formatVerifierScopeLabels(context ?? undefined);
 
   return (
     <EvidencePortalShell>

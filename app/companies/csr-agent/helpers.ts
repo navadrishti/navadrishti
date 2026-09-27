@@ -262,6 +262,19 @@ export function upsertSession(sessions: CSRAgentSession[], session: CSRAgentSess
     : [session, ...sessions]
 }
 
+export function sortSessionsByRecency(sessions: CSRAgentSession[]) {
+  return [...sessions].sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
+}
+
+export function getUserInitials(name: string | undefined) {
+  return (name || "U")
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "U"
+}
+
 export function readStoredSessionPayload(raw: string | null) {
   if (!raw) return null
   try {

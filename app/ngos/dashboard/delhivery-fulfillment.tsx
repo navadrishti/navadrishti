@@ -38,10 +38,10 @@ export function InlineDelhiveryFulfillment({
 }: {
   serviceRequestId: number;
   volunteerApplicationId: number;
-  responseMeta?: Record<string, any> | null;
+  responseMeta?: Record<string, unknown> | null;
   canEditTrackingId?: boolean;
   canVerifyPickup?: boolean;
-  onUpdated?: (nextMeta: Record<string, any>) => void | Promise<void>;
+  onUpdated?: (nextMeta: Record<string, unknown>) => void | Promise<void>;
 }) {
   const { toast } = useToast();
   const meta = parseJsonObject(responseMeta);

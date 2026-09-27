@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, supabase } from '@/lib/db';
 import { getTokenClaims, getComplianceDocumentUrl, mergeNgoComplianceNumbers, parseSubmittedComplianceNumbers, requireBankStatementDocument, type NgoComplianceNumbers, buildNgoDocumentExpiries, normalizeExpiryDate } from '@/lib/auth';
 import { parseJsonObject, getErrorMessage } from '@/lib/utils';
-import type { TablesUpdate } from '@/lib/database.types';
+import type { Json, TablesUpdate } from '@/lib/database.types';
 function firstDocumentUrl(...values: unknown[]): string {
   for (const value of values) {
     const url = getComplianceDocumentUrl(value);
@@ -132,11 +132,11 @@ function resolveComplianceNumbersForSubmission(
 }
 
 function mergeSubmittedComplianceDocuments(
-  existingComplianceDocuments: Record<string, unknown>,
+  existingComplianceDocuments: Record<string, Json | undefined>,
   complianceDocuments?: Record<string, string>,
   verificationDocuments?: Record<string, string>
-): Record<string, any> {
-  const next: Record<string, any> = { ...existingComplianceDocuments };
+): Record<string, Json | undefined> {
+  const next = { ...existingComplianceDocuments };
 
   if (complianceDocuments && typeof complianceDocuments === 'object') {
     for (const [key, value] of Object.entries(complianceDocuments)) {
