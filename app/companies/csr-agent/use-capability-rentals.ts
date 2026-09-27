@@ -15,6 +15,7 @@ type CapabilityRentalsOptions = {
   campaignId: string | null
   ensureCampaignId: () => Promise<string | null>
   actionsEnabled: boolean
+  leadAccepted: boolean
   appendAssistantMessage: (content: string) => void
   onOfferInvited: (offerId: number) => void
   onPaymentVerified: (offerId: number) => void
@@ -26,6 +27,7 @@ export function useCapabilityRentals({
   campaignId,
   ensureCampaignId,
   actionsEnabled,
+  leadAccepted,
   appendAssistantMessage,
   onOfferInvited,
   onPaymentVerified,
@@ -37,6 +39,10 @@ export function useCapabilityRentals({
   const handlePayAndReserveOffer = async (offerId: number, offerType?: string) => {
     if (!actionsEnabled) {
       appendAssistantMessage('Please finish campaign details before paying for a capability rental.')
+      return
+    }
+    if (!leadAccepted) {
+      appendAssistantMessage('Capability offers can be reserved once a lead NGO accepts the campaign.')
       return
     }
     if (!user?.id || !token) {

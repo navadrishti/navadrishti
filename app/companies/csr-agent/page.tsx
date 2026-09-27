@@ -101,7 +101,7 @@ function CSRAgentPage() {
     setActiveSessionId,
   })
 
-  useEditingCampaign({
+  const { editingCampaignHasLead } = useEditingCampaign({
     mounted,
     editingCampaignId,
     setProjectData: campaign.setProjectData,
@@ -228,12 +228,14 @@ function CSRAgentPage() {
     mobileChatScrollYRef.current = captureMobileChatScrollPosition()
   }
 
+  const canReserveOffers = hasLockedLeadNgo || editingCampaignHasLead
   const { paidOfferIds, paidRentalsByOfferId, payingOfferId, handlePayAndReserveOffer, refreshPaidRental } = useCapabilityRentals({
     user,
     token,
     campaignId: draftCampaignId || editingCampaignId,
     ensureCampaignId: async () => draftCampaignId || editingCampaignId || ensureDraftCampaign(),
     actionsEnabled: canUseCampaignActions,
+    leadAccepted: canReserveOffers,
     appendAssistantMessage,
     onOfferInvited: (offerId) => setInvitedOfferIds((current) => [...new Set([...current, offerId])]),
     onPaymentVerified: (offerId) => {
@@ -461,6 +463,7 @@ function CSRAgentPage() {
             loading={isFetchingRecommendations}
             error={recommendationError}
             actionsEnabled={canUseCampaignActions}
+            leadAccepted={canReserveOffers}
             payingOfferId={payingOfferId}
             paidOfferIds={paidOfferIds}
             paidRentals={paidRentalsByOfferId}
