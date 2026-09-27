@@ -26,11 +26,27 @@ import {
   type UtilizationCertificateData,
 } from '@/lib/document-generation/templates/company/csr-compliance-profile.template'
 import { csrPolicyDocumentTemplate } from '@/lib/document-generation/templates/company/csr-policy-document.template'
+import { parseJsonObject } from '@/lib/utils'
+import type { Tables } from '@/lib/database.types'
 
-function asRecord(value: unknown): Record<string, any> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
-  return value as Record<string, any>
-}
+type OrganizationRow = Pick<
+  Tables<'users'>,
+  'id' | 'name' | 'email' | 'user_type' | 'profile_data' | 'verification_status'
+>
+
+type CampaignRow = Tables<'campaigns'>
+
+type ProjectImpactSource = { csr_impact_metrics?: Tables<'csr_impact_metrics'>[] | null }
+type ProjectMilestoneSource = { csr_project_milestones?: Tables<'csr_project_milestones'>[] | null }
+type ProjectPaymentSource = { csr_payment_confirmations?: Tables<'csr_payment_confirmations'>[] | null }
+
+// Report builders also fall back to legacy keys (category, location, budget_inr, …) that are not csr_projects columns.
+type CsrProjectDetail = Tables<'csr_projects'> &
+  ProjectImpactSource &
+  ProjectMilestoneSource &
+  ProjectPaymentSource & {
+    campaigns?: CampaignRow | null
+  } & Record<string, unknown>
 
 function asNumber(value: unknown): number {
   const n = Number(value)
@@ -156,14 +172,14 @@ async function resolvePartnerName(userId: number | null | undefined): Promise<st
   return data?.name ? String(data.name) : null
 }
 
-function pickLatestImpact(project: any) {
+function pickLatestImpact(project: ProjectImpactSource) {
   const metrics = Array.isArray(project?.csr_impact_metrics) ? project.csr_impact_metrics : []
   return metrics[0] || null
 }
 
-function milestonesFromCampaign(campaign: any) {
-  const raw = Array.isArray(campaign?.milestones) ? campaign.milestones : []
-  return raw.map((item: any) => ({
+function milestonesFromCampaign(campaign: { milestones?: unknown }) {
+  const raw: Record<string, any>[] = Array.isArray(campaign?.milestones) ? campaign.milestones : []
+  return raw.map((item) => ({
     title: asString(item?.title) || 'Untitled milestone',
     status: asString(item?.status) || null,
     budgetAllocated: asNumber(item?.budget_allocated ?? item?.budget),
@@ -172,12 +188,12 @@ function milestonesFromCampaign(campaign: any) {
   }))
 }
 
-function milestonesFromProject(project: any) {
-  const raw = Array.isArray(project?.csr_project_milestones) ? project.csr_project_milestones : []
+function milestonesFromProject(project: ProjectMilestoneSource) {
+  const raw: Record<string, any>[] = Array.isArray(project?.csr_project_milestones) ? project.csr_project_milestones : []
   return raw
     .slice()
-    .sort((a: any, b: any) => Number(a.milestone_order || 0) - Number(b.milestone_order || 0))
-    .map((item: any) => ({
+    .sort((a, b) => Number(a.milestone_order || 0) - Number(b.milestone_order || 0))
+    .map((item) => ({
       title: asString(item?.title) || 'Untitled milestone',
       status: asString(item?.status) || null,
       budgetAllocated: asNumber(item?.budget_allocated),
@@ -186,11 +202,11 @@ function milestonesFromProject(project: any) {
     }))
 }
 
-function paymentLineItems(project: any) {
-  const payments = Array.isArray(project?.csr_payment_confirmations)
+function paymentLineItems(project: ProjectPaymentSource) {
+  const payments: Record<string, any>[] = Array.isArray(project?.csr_payment_confirmations)
     ? project.csr_payment_confirmations
     : []
-  return payments.map((payment: any, index: number) => ({
+  return payments.map((payment, index: number) => ({
     label: asString(payment?.description) || `Payment ${index + 1}`,
     amount: asNumber(payment?.amount),
     status: asString(payment?.payment_status) || null,
@@ -198,13 +214,13 @@ function paymentLineItems(project: any) {
   }))
 }
 
-function confirmedFunds(project: any): number {
-  const payments = Array.isArray(project?.csr_payment_confirmations)
+function confirmedFunds(project: ProjectPaymentSource): number {
+  const payments: Record<string, any>[] = Array.isArray(project?.csr_payment_confirmations)
     ? project.csr_payment_confirmations
     : []
   return payments
-    .filter((payment: any) => String(payment?.payment_status || '').toLowerCase() === 'confirmed')
-    .reduce((sum: number, payment: any) => sum + asNumber(payment?.amount), 0)
+    .filter((payment) => String(payment?.payment_status || '').toLowerCase() === 'confirmed')
+    .reduce((sum: number, payment) => sum + asNumber(payment?.amount), 0)
 }
 
 function currentFinancialYearLabel(): string {
@@ -229,8 +245,8 @@ function companyWebsite(profile: Record<string, any>): string | null {
   )
 }
 
-function buildCompliance(userRow: any) {
-  const profile = asRecord(userRow.profile_data)
+function buildCompliance(userRow: OrganizationRow) {
+  const profile = parseJsonObject(userRow.profile_data)
   const netWorth = asNumber(profile.net_worth ?? profile.netWorth)
   const turnover = asNumber(profile.turnover)
   const netProfit = asNumber(profile.net_profit ?? profile.netProfit)
@@ -265,8 +281,8 @@ function buildCompliance(userRow: any) {
   }
 }
 
-function buildPolicy(userRow: any) {
-  const profile = asRecord(userRow.profile_data)
+function buildPolicy(userRow: OrganizationRow) {
+  const profile = parseJsonObject(userRow.profile_data)
   const focusAreas = companyFocusAreas(profile)
   const policyUrl = companyWebsite(profile)
 
@@ -297,7 +313,7 @@ function buildPolicy(userRow: any) {
 }
 
 function buildImpactFromCampaign(args: {
-  campaign: any
+  campaign: CampaignRow
   organizationName: string
   audienceLabel: string
   partnerName?: string | null
@@ -310,7 +326,7 @@ function buildImpactFromCampaign(args: {
   customMetrics?: Record<string, unknown> | null
   gaps?: string[]
 }) {
-  const impact = asRecord(args.campaign.impact_metrics)
+  const impact = parseJsonObject(args.campaign.impact_metrics)
   const bounds = defaultPeriodBounds(args.period)
   const periodStart = args.periodStart || bounds.start
   const periodEnd = args.periodEnd || bounds.end
@@ -336,7 +352,7 @@ function buildImpactFromCampaign(args: {
     partnerName: args.partnerName || null,
     description: asString(args.campaign.description) || null,
     milestones: milestonesFromCampaign(args.campaign),
-    customMetrics: args.customMetrics ?? asRecord(impact.custom_metrics),
+    customMetrics: args.customMetrics ?? parseJsonObject(impact.custom_metrics),
     gaps: args.gaps || [],
   }
 
@@ -349,7 +365,7 @@ function buildImpactFromCampaign(args: {
 }
 
 function buildImpactFromProject(args: {
-  project: any
+  project: CsrProjectDetail
   organizationName: string
   audienceLabel: string
   partnerName?: string | null
@@ -357,8 +373,8 @@ function buildImpactFromProject(args: {
   periodStart?: string | null
   periodEnd?: string | null
 }) {
-  const campaign = asRecord(args.project.campaigns)
-  const impact = pickLatestImpact(args.project) || asRecord(args.project.latest_impact)
+  const campaign = parseJsonObject(args.project.campaigns)
+  const impact = pickLatestImpact(args.project) || parseJsonObject(args.project.latest_impact)
   const bounds = defaultPeriodBounds(args.period)
   const periodStart = args.periodStart || bounds.start
   const periodEnd = args.periodEnd || bounds.end
@@ -389,7 +405,7 @@ function buildImpactFromProject(args: {
     partnerName: args.partnerName || null,
     description: asString(args.project.description || campaign.description) || null,
     milestones: milestonesFromProject(args.project),
-    customMetrics: asRecord(impact?.custom_metrics),
+    customMetrics: parseJsonObject(impact?.custom_metrics),
     gaps,
   }
 
@@ -453,8 +469,8 @@ async function loadCompanyProjects(companyId: number) {
   return Array.isArray(data) ? data : []
 }
 
-async function buildBoardAnnexureDraft(userRow: any, companyId: number) {
-  const profile = asRecord(userRow.profile_data)
+async function buildBoardAnnexureDraft(userRow: OrganizationRow, companyId: number) {
+  const profile = parseJsonObject(userRow.profile_data)
   const focusAreas = companyFocusAreas(profile)
   const cin = asString(profile.cin || profile.CIN)
   const websiteUrl = companyWebsite(profile)
@@ -488,18 +504,18 @@ async function buildBoardAnnexureDraft(userRow: any, companyId: number) {
 
   if (projects.length) {
     for (const project of projects) {
-      const campaign = asRecord(project.campaigns)
+      const campaign = parseJsonObject(project.campaigns)
       const impact = pickLatestImpact(project)
       const agencyName = await resolvePartnerName(project.ngo_user_id)
       const spent = asNumber(impact?.funds_utilized) || confirmedFunds(project)
       rows.push({
         name: asString(project.title) || asString(campaign.title) || 'CSR Project',
-        scheduleVii: asString(project.schedule_vii || campaign.schedule_vii) || null,
+        scheduleVii: asString(campaign.schedule_vii) || null,
         location:
-          asString(project.region || project.location) || readCampaignLocation(campaign) || null,
+          asString(project.region) || readCampaignLocation(campaign) || null,
         implementingAgency: agencyName,
         amountSpent: spent || null,
-        status: asString(project.project_status || project.status) || null,
+        status: asString(project.project_status) || null,
         mode: agencyName ? 'Through implementing agency' : 'Direct / as recorded',
       })
     }
@@ -507,7 +523,7 @@ async function buildBoardAnnexureDraft(userRow: any, companyId: number) {
     for (const campaign of campaigns) {
       const agencyId = getCampaignLeadNgoId(campaign)
       const agencyName = await resolvePartnerName(agencyId)
-      const impact = asRecord(campaign.impact_metrics)
+      const impact = parseJsonObject(campaign.impact_metrics)
       rows.push({
         name: asString(campaign.title) || 'Campaign',
         scheduleVii: asString(campaign.schedule_vii) || null,
@@ -552,8 +568,8 @@ async function buildBoardAnnexureDraft(userRow: any, companyId: number) {
   }
 }
 
-function buildNgoCompliancePack(userRow: any) {
-  const profile = asRecord(userRow.profile_data)
+function buildNgoCompliancePack(userRow: OrganizationRow) {
+  const profile = parseJsonObject(userRow.profile_data)
   const liveTags = new Set(getCaComplianceTags(profile, userRow.verification_status))
   const expirySummary = summarizeDocumentExpiries(profile)
   const tags = CA_COMPLIANCE_TAG_KEYS.map((key) => {
@@ -602,15 +618,15 @@ function buildNgoCompliancePack(userRow: any) {
 }
 
 async function buildImplementingAgencyReport(args: {
-  userRow: any
+  userRow: OrganizationRow
   organizationName: string
-  campaign?: any
-  project?: any
+  campaign?: CampaignRow
+  project?: CsrProjectDetail
   period: ImpactReportPeriod
   periodStart?: string | null
   periodEnd?: string | null
 }) {
-  const profile = asRecord(args.userRow.profile_data)
+  const profile = parseJsonObject(args.userRow.profile_data)
   const liveTags = getCaComplianceTags(profile, args.userRow.verification_status)
   const registrationHints = liveTags.map((key) => `${CA_COMPLIANCE_TAG_LABELS[key]} recorded on GRAM`)
   const bounds = defaultPeriodBounds(args.period)
@@ -621,7 +637,7 @@ async function buildImplementingAgencyReport(args: {
 
   if (args.project) {
     const project = args.project
-    const campaign = asRecord(project.campaigns)
+    const campaign = parseJsonObject(project.campaigns)
     const impact = pickLatestImpact(project)
     const companyName = await resolvePartnerName(project.company_user_id)
     const entityTitle =
@@ -636,8 +652,8 @@ async function buildImplementingAgencyReport(args: {
         entityTypeLabel: 'CSR Project',
         registrationHints,
         location:
-          asString(project.region || project.location) || readCampaignLocation(campaign) || null,
-        scheduleVii: asString(project.schedule_vii || campaign.schedule_vii) || null,
+          asString(project.region) || readCampaignLocation(campaign) || null,
+        scheduleVii: asString(campaign.schedule_vii) || null,
         periodLabel: periodLabel(args.period, periodStart, periodEnd),
         budgetInr: asNumber(project.budget_inr ?? campaign.budget_inr),
         fundsReceived: confirmedFunds(project),
@@ -657,7 +673,7 @@ async function buildImplementingAgencyReport(args: {
   const campaign = args.campaign
   if (!campaign) throw new Error('Select a project or lead campaign for the implementing agency report')
   const companyName = await resolvePartnerName(campaign.company_id)
-  const impact = asRecord(campaign.impact_metrics)
+  const impact = parseJsonObject(campaign.impact_metrics)
   const entityTitle = asString(campaign.title) || 'Untitled campaign'
 
   return {
@@ -755,14 +771,14 @@ export async function assembleGeneratedDocument(
       )
       const beneficiaries = projects.reduce(
         (sum, project) => sum + asNumber(pickLatestImpact(project)?.beneficiaries),
-        asNumber(asRecord(campaign.impact_metrics).beneficiaries)
+        asNumber(parseJsonObject(campaign.impact_metrics).beneficiaries)
       )
       const progressValues = projects
         .map((project) => asNumber(pickLatestImpact(project)?.progress_percentage))
         .filter((value) => value > 0)
       const progressPercentage = progressValues.length
         ? Math.round(progressValues.reduce((a, b) => a + b, 0) / progressValues.length)
-        : asNumber(asRecord(campaign.impact_metrics).progress_percentage)
+        : asNumber(parseJsonObject(campaign.impact_metrics).progress_percentage)
 
       return buildImpactFromCampaign({
         campaign,
@@ -772,7 +788,7 @@ export async function assembleGeneratedDocument(
         period,
         periodStart: request.periodStart,
         periodEnd: request.periodEnd,
-        fundsUtilized: fundsUtilized || asNumber(asRecord(campaign.impact_metrics).funds_utilized),
+        fundsUtilized: fundsUtilized || asNumber(parseJsonObject(campaign.impact_metrics).funds_utilized),
         beneficiaries,
         progressPercentage,
         gaps: projects.length ? [] : ['No linked CSR projects yet — metrics may be incomplete'],
@@ -825,7 +841,7 @@ export async function assembleGeneratedDocument(
           entityTypeLabel: 'CSR Project',
           funderName: organizationName,
           implementerName,
-          budgetInr: asNumber(project.budget_inr ?? project.campaigns?.budget_inr),
+          budgetInr: asNumber(project.campaigns?.budget_inr),
           fundsUtilized: asNumber(impact?.funds_utilized),
           fundsConfirmed: confirmedFunds(project),
           status: asString(project.project_status),
@@ -843,7 +859,7 @@ export async function assembleGeneratedDocument(
       )
       const fundsUtilized = projects.reduce(
         (sum, project) => sum + asNumber(pickLatestImpact(project)?.funds_utilized),
-        asNumber(asRecord(campaign.impact_metrics).funds_utilized)
+        asNumber(parseJsonObject(campaign.impact_metrics).funds_utilized)
       )
       const fundsConfirmed = projects.reduce((sum, project) => sum + confirmedFunds(project), 0)
       const lineItems = projects.flatMap((project) => paymentLineItems(project))
@@ -875,7 +891,7 @@ export async function assembleGeneratedDocument(
           entityTypeLabel: 'CSR Project',
           funderName,
           implementerName: organizationName,
-          budgetInr: asNumber(project.budget_inr ?? project.campaigns?.budget_inr),
+          budgetInr: asNumber(project.campaigns?.budget_inr),
           fundsUtilized: asNumber(impact?.funds_utilized),
           fundsConfirmed: confirmedFunds(project),
           status: asString(project.project_status),
@@ -889,7 +905,7 @@ export async function assembleGeneratedDocument(
         const ngoProjects = projects.filter((project) => Number(project.ngo_user_id) === user.id)
         const fundsUtilized = ngoProjects.reduce(
           (sum, project) => sum + asNumber(pickLatestImpact(project)?.funds_utilized),
-          asNumber(asRecord(campaign.impact_metrics).funds_utilized)
+          asNumber(parseJsonObject(campaign.impact_metrics).funds_utilized)
         )
         const fundsConfirmed = ngoProjects.reduce((sum, project) => sum + confirmedFunds(project), 0)
         return buildUtilization({

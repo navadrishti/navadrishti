@@ -4,24 +4,19 @@ import { assertAdminUser } from '@/lib/server-auth';
 import {
   getAdminModeration,
   type AdminModerationState,
-} from '@/lib/auth';
+} from '@/lib/auth';
+import { parseJsonObject, getErrorMessage } from '@/lib/utils';
 
 const allowedUserTypes = new Set(['individual', 'ngo', 'company', 'admin']);
 const allowedVerificationStatuses = new Set(['unverified', 'pending', 'verified', 'suspended']);
 const USER_SELECT =
   'id, name, email, phone, user_type, verification_status, account_status, locked_until, city, state_province, profile_image, profile_data, created_at, updated_at';
 
-function asProfile(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
-
 function withModeration(
   profileData: unknown,
   patch: AdminModerationState | null
 ): Record<string, unknown> {
-  const next = { ...asProfile(profileData) };
+  const next = { ...parseJsonObject(profileData) };
   if (!patch) {
     delete next.admin_moderation;
     return next;
@@ -241,7 +236,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       // When the admin explicitly downgrades to unverified, clear CA badge and
       // reverification flag from profile_data so the user sees the correct state.
       if (nextVerification === 'unverified') {
-        const currentProfile = asProfile(existingUser.profile_data);
+        const currentProfile = parseJsonObject(existingUser.profile_data);
         const cleaned = { ...currentProfile };
         delete cleaned.ca_badge_number;
         delete cleaned.reverification_pending;
@@ -285,9 +280,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
 
     return NextResponse.json({ success: true, data, previous: existingUser });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Admin user update error:', error);
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) || 'Internal server error' }, { status: 500 });
   }
 }
 
@@ -324,9 +319,9 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
       message: 'Account deleted.',
       deleted: existingUser,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Admin user delete error:', error);
-    const message = String(error?.message || 'Internal server error');
+    const message = String(getErrorMessage(error) || 'Internal server error');
     const status = message.toLowerCase().includes('foreign key') || message.includes('23503') ? 409 : 500;
     return NextResponse.json(
       {

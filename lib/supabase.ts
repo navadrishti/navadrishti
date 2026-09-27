@@ -6,7 +6,6 @@ export const supabaseConfig = {
   publishableKey: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
 }
 
-// Create Supabase client for client-side usage
 export const createClient = () => {
   return createSupabaseClient(
     supabaseConfig.url,

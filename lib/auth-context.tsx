@@ -4,6 +4,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef, Re
 import { toast } from 'sonner';
 import { getDocumentExpiryAlertCopy } from './auth';
 import { isPlatformLoginRequiredPath, PRODUCT_NAME } from './access-control';
+import { getErrorMessage } from '@/lib/utils';
 
 const DOCUMENT_EXPIRY_ALERT_DURATION_MS = 18000;
 const documentExpiryAlertKey = (userId: number) => `navadrishti:document-expiry-alert:${userId}`;
@@ -280,7 +281,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, [hydrateUserFromServer, persistAuthSnapshot]);
 
-  // Load user from localStorage on initial render
   useEffect(() => {
     syncAuthFromStorage();
   }, []);
@@ -290,7 +290,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
     notifyDocumentExpiryForUser(user);
   }, [loading, user]);
 
-  // Verify token and fetch current user
   useEffect(() => {
     const verifyTokenAsync = async () => {
       if (!token || isAuthRevoked()) return;
@@ -317,7 +316,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
         if (response.ok) {
           const data = await response.json();
           setUser(data.user);
-          // Update localStorage with fresh user data
           persistAuthSnapshot(cleanToken, data.user);
         } else if (isInvalidAuthResponse(response.status)) {
           setToken(null);
@@ -363,7 +361,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
         return;
       }
       
-      // Save token and user to state and localStorage
       clearAuthRevoked();
       setToken(data.token);
       persistAuthSnapshot(data.token, null);
@@ -371,8 +368,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       await hydrateUserFromServer(data.token, data.user);
       
       toast.success(`Welcome back, ${data.user.name}!`);
-    } catch (error: any) {
-      const errorMessage = error.message || 'An error occurred during login';
+    } catch (error) {
+      const errorMessage = getErrorMessage(error) || 'An error occurred during login';
       setError(errorMessage);
       toast.error(errorMessage);
     } finally {
@@ -405,7 +402,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
         throw handledError;
       }
       
-      // Save token and user to state and localStorage
       clearAuthRevoked();
       setToken(data.token);
       persistAuthSnapshot(data.token, null);
@@ -413,13 +409,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
       await hydrateUserFromServer(data.token, data.user);
       
       toast.success(`Welcome to ${PRODUCT_NAME}, ${data.user.name}!`);
-    } catch (error: any) {
-      if (error?.handled) {
+    } catch (error) {
+      if ((error as { handled?: boolean } | null)?.handled) {
         throw error;
       }
 
-      const errorMessage = error?.message?.trim()
-        ? error.message
+      const errorMessage = getErrorMessage(error)?.trim()
+        ? getErrorMessage(error)
         : 'Unable to create account right now. Please try again.';
       setError(errorMessage);
       toast.error(errorMessage);
@@ -462,12 +458,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     window.location.replace(redirectTo);
   };
 
-  // Clear error
   const clearError = () => {
     setError(null);
   };
 
-  // Update user data
   const updateUser = (userData: Partial<User>) => {
     if (user) {
       const updatedUser = { ...user, ...userData };

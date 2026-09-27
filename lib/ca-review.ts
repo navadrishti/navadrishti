@@ -22,10 +22,14 @@ import {
   reverificationDocumentLabels,
 } from '@/lib/reverification'
 import type { CAFieldComparison, CAFieldComparisonSource, CAQueueType, CAReviewDocument } from '@/lib/ca-review-types'
+import { parseJsonObject } from '@/lib/utils'
 
 const TYPE_CONFIG: Record<
   CAQueueType,
-  { table: string; profileKey: 'individual' | 'company' | 'ngo' }
+  {
+    table: 'individual_verifications' | 'company_verifications' | 'ngo_verifications'
+    profileKey: 'individual' | 'company' | 'ngo'
+  }
 > = {
   individuals: { table: 'individual_verifications', profileKey: 'individual' },
   companies: { table: 'company_verifications', profileKey: 'company' },
@@ -34,13 +38,9 @@ const TYPE_CONFIG: Record<
 
 const MAX_OCR_DOCS = 12
 
-function asRecord(value: unknown): Record<string, any> {
-  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, any>) : {}
-}
-
 function unwrapUser(value: unknown) {
-  if (Array.isArray(value)) return asRecord(value[0])
-  return asRecord(value)
+  if (Array.isArray(value)) return parseJsonObject(value[0])
+  return parseJsonObject(value)
 }
 
 function compactId(value: string) {
@@ -238,7 +238,6 @@ function buildCrossDocumentComparisons(
   })
 }
 
-
 function fileNameFromUrl(url: string, fallback: string) {
   try {
     const path = new URL(url).pathname
@@ -350,7 +349,7 @@ function applyNgoExpiryOverlay(
   persistedOcrExpiries?: Record<string, unknown>
 ): Record<string, any> {
   const merged = {
-    ...asRecord(persistedOcrExpiries),
+    ...parseJsonObject(persistedOcrExpiries),
     ...ngoOcrExpiries(documents),
   }
   const next = {
@@ -369,12 +368,12 @@ function applyNgoExpiryOverlay(
 }
 
 function extractDocuments(profileData: Record<string, any>, profileKey: string, prefix: string): CAReviewDocument[] {
-  const verificationDocuments = asRecord(profileData.verification_documents)
-  const typeBlock = asRecord(verificationDocuments[profileKey])
-  const docs = documentsFromMap(asRecord(typeBlock.documents), prefix)
+  const verificationDocuments = parseJsonObject(profileData.verification_documents)
+  const typeBlock = parseJsonObject(verificationDocuments[profileKey])
+  const docs = documentsFromMap(parseJsonObject(typeBlock.documents), prefix)
 
   if (profileKey === 'ngo') {
-    const compliance = asRecord(profileData.compliance_documents)
+    const compliance = parseJsonObject(profileData.compliance_documents)
     const extra = documentsFromMap(
       {
         twelve_a: compliance.twelve_a,
@@ -389,8 +388,8 @@ function extractDocuments(profileData: Record<string, any>, profileKey: string, 
     }
 
     return overlayDocuments(docs, [
-      ...documentsFromMap(asRecord(typeBlock.reverification_documents), `${prefix}-reverify`),
-      ...documentsFromMap(asRecord(compliance.pending_reverification), `${prefix}-pending-compliance`),
+      ...documentsFromMap(parseJsonObject(typeBlock.reverification_documents), `${prefix}-reverify`),
+      ...documentsFromMap(parseJsonObject(compliance.pending_reverification), `${prefix}-pending-compliance`),
     ])
   }
 
@@ -399,10 +398,10 @@ function extractDocuments(profileData: Record<string, any>, profileKey: string, 
 
 function mapQueueItem(type: CAQueueType, row: any): Record<string, any> {
   const user = unwrapUser(row.users)
-  const profileData = asRecord(user.profile_data)
+  const profileData = parseJsonObject(user.profile_data)
   const profileKey = TYPE_CONFIG[type].profileKey
-  const typeBlock = asRecord(asRecord(profileData.verification_documents)[profileKey])
-  const entered = asRecord(typeBlock.entered_fields)
+  const typeBlock = parseJsonObject(parseJsonObject(profileData.verification_documents)[profileKey])
+  const entered = parseJsonObject(typeBlock.entered_fields)
   const documents = extractDocuments(profileData, profileKey, `${type}-${row.id}`)
 
   const submittedAt = typeBlock.submitted_at || row.updated_at || row.created_at
@@ -463,7 +462,7 @@ function mapQueueItem(type: CAQueueType, row: any): Record<string, any> {
           }
 
   if (type === 'ngos') {
-    return applyNgoExpiryOverlay(mapped, documents, asRecord(typeBlock.ocr_expiries))
+    return applyNgoExpiryOverlay(mapped, documents, parseJsonObject(typeBlock.ocr_expiries))
   }
 
   return {
@@ -538,7 +537,7 @@ export async function listCAQueue(type: CAQueueType, status: string) {
         console.error('CA queue query failed for NGO reverifications:', verifiedError)
       } else {
         const pending = (verifiedRows || [])
-          .map((row: any) => mapQueueItem(type, row))
+          .map((row) => mapQueueItem(type, row))
           .filter((item: ReturnType<typeof mapQueueItem>) =>
             Boolean((item as { reverification_pending?: boolean }).reverification_pending)
           )
@@ -570,11 +569,11 @@ async function ocrDocument(doc: CAReviewDocument): Promise<CAReviewDocument> {
 
 async function applyOcr(type: CAQueueType, row: any, item: ReturnType<typeof mapQueueItem>) {
   const user = unwrapUser(row.users)
-  const profileData = asRecord(user.profile_data)
+  const profileData = parseJsonObject(user.profile_data)
   const profileKey = TYPE_CONFIG[type].profileKey
-  const verificationDocuments = asRecord(profileData.verification_documents)
-  const typeBlock = asRecord(verificationDocuments[profileKey])
-  const cache = asRecord(typeBlock.ocr_cache)
+  const verificationDocuments = parseJsonObject(profileData.verification_documents)
+  const typeBlock = parseJsonObject(verificationDocuments[profileKey])
+  const cache = parseJsonObject(typeBlock.ocr_cache)
 
   const documents = item.documents.slice(0, MAX_OCR_DOCS)
   const nextDocs: CAReviewDocument[] = []
@@ -584,7 +583,7 @@ async function applyOcr(type: CAQueueType, row: any, item: ReturnType<typeof map
 
   for (const doc of documents) {
     const cacheKey = `${doc.file_url}::gemini-verbatim-v5`
-    const cached = asRecord(cache[cacheKey])
+    const cached = parseJsonObject(cache[cacheKey])
     if (Array.isArray(cached.fields) && cached.fields.length > 0) {
       nextDocs.push({
         ...doc,
@@ -614,9 +613,9 @@ async function applyOcr(type: CAQueueType, row: any, item: ReturnType<typeof map
   }
 
   const ocrExpiries = type === 'ngos' ? ngoOcrExpiries(nextDocs) : {}
-  const nextOcrExpiries = { ...asRecord(typeBlock.ocr_expiries), ...ocrExpiries }
+  const nextOcrExpiries = { ...parseJsonObject(typeBlock.ocr_expiries), ...ocrExpiries }
   const expiriesChanged =
-    type === 'ngos' && JSON.stringify(asRecord(typeBlock.ocr_expiries)) !== JSON.stringify(nextOcrExpiries)
+    type === 'ngos' && JSON.stringify(parseJsonObject(typeBlock.ocr_expiries)) !== JSON.stringify(nextOcrExpiries)
   const nextTypeBlock = {
     ...typeBlock,
     ocr_cache: cache,
@@ -655,7 +654,7 @@ async function applyOcr(type: CAQueueType, row: any, item: ReturnType<typeof map
   }
 
   if (type !== 'ngos') return withDocs
-  return applyNgoExpiryOverlay(withDocs, nextDocs, asRecord(nextTypeBlock.ocr_expiries))
+  return applyNgoExpiryOverlay(withDocs, nextDocs, parseJsonObject(nextTypeBlock.ocr_expiries))
 }
 
 export async function getCAReview(type: CAQueueType, id: number) {
@@ -729,12 +728,12 @@ export async function applyCAVerificationAction(options: {
     throw new Error('User not found')
   }
 
-  const profileData = asRecord(user.profile_data)
+  const profileData = parseJsonObject(user.profile_data)
   const isReverification = type === 'ngos' && Boolean(profileData.reverification_pending)
   if (String(user.verification_status || '').toLowerCase() === 'verified' && !isReverification) {
     throw new Error('This record is already verified. Tags and decisions cannot be changed.')
   }
-  const rowRecord = asRecord(row)
+  const rowRecord = parseJsonObject(row)
   const stakeholderName =
     (type === 'companies'
       ? String(rowRecord.company_name || user.name || '').trim()
@@ -801,11 +800,11 @@ export async function applyCAVerificationAction(options: {
     }
   }
 
-  const verificationDocuments = asRecord(profileData.verification_documents)
-  const typeBlock = asRecord(verificationDocuments[profileKey])
-  const ocrExpiries = asRecord(typeBlock.ocr_expiries)
+  const verificationDocuments = parseJsonObject(profileData.verification_documents)
+  const typeBlock = parseJsonObject(verificationDocuments[profileKey])
+  const ocrExpiries = parseJsonObject(typeBlock.ocr_expiries)
   const entered = {
-    ...asRecord(typeBlock.entered_fields),
+    ...parseJsonObject(typeBlock.entered_fields),
     ...(ocrExpiries.twelve_a ? { twelve_a_expiry: ocrExpiries.twelve_a } : {}),
     ...(ocrExpiries.eighty_g ? { eighty_g_expiry: ocrExpiries.eighty_g } : {}),
     ...(ocrExpiries.csr1 ? { csr1_expiry: ocrExpiries.csr1 } : {}),
@@ -828,7 +827,7 @@ export async function applyCAVerificationAction(options: {
   }
 
   if (action === 'approve' && type === 'ngos') {
-    const docs = asRecord(typeBlock.documents)
+    const docs = parseJsonObject(typeBlock.documents)
     nextProfileData = {
       ...nextProfileData,
       fcra_expiry_date: entered.fcra_expiry || nextProfileData.fcra_expiry_date || null,

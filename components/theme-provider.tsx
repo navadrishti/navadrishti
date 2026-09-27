@@ -1,7 +1,6 @@
 'use client'
 
-import * as React from 'react'
-import { useEffect, useRef, useState, createContext, useContext } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { usePathname } from 'next/navigation'
 import {
   CONSOLE_TAB_SESSION_ROUTES,
@@ -192,7 +191,7 @@ const initialState: ThemeProviderState = {
 const ThemeProviderContext = createContext<ThemeProviderState>(initialState)
 
 interface ThemeProviderProps {
-  children: React.ReactNode
+  children: ReactNode
   defaultTheme?: Theme
 }
 
@@ -207,10 +206,8 @@ export function ThemeProvider({
   useConsoleBackForwardSessionGuard()
 
   useEffect(() => {
-    // Initialize with Udaan theme
     document.body.classList.add('udaan-theme')
     
-    // Apply theme class to root html element
     const root = window.document.documentElement
     root.classList.remove('light', 'dark')
     

@@ -6,6 +6,7 @@ import {
   verifyPlatformCAPassword,
 } from '@/lib/platform-ca-auth';
 import { setPlatformCaTokenCookie } from '@/lib/server-auth';
+import { getErrorMessage } from '@/lib/utils';
 
 export async function POST(request: NextRequest) {
   try {
@@ -42,8 +43,8 @@ export async function POST(request: NextRequest) {
     setPlatformCaTokenCookie(response, token, 12 * 60 * 60);
 
     return response;
-  } catch (error: any) {
+  } catch (error) {
     console.error('CA change-password error:', error);
-    return NextResponse.json({ error: error?.message || 'Password update failed' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) || 'Password update failed' }, { status: 500 });
   }
 }

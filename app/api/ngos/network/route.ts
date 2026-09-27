@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import jwt from 'jsonwebtoken';
 import { supabase } from '@/lib/db';
 import {
-  JWT_SECRET,
+  getTokenClaims,
   PHONE_VERIFICATION_ENABLED,
   backfillNgoComplianceProfileData,
   formatGeographicCoverageForSearch,
@@ -31,12 +30,7 @@ import {
   verifyNgoNetworkDonation,
 } from '@/lib/razorpay-route';
 import Razorpay from 'razorpay';
-
-interface PaymentJWTPayload {
-  id: number;
-  user_type: string;
-  name?: string;
-}
+import { parseJsonObject, getErrorMessage } from '@/lib/utils';
 
 function isFieldOfficerAccount(
   row: { name?: string | null },
@@ -57,23 +51,8 @@ function isFieldOfficerAccount(
   return false;
 }
 
-function parseProfileData(value: unknown): Record<string, unknown> {
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
-  }
-  if (typeof value === 'string') {
-    try {
-      const parsed = JSON.parse(value);
-      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-    } catch {
-      return {};
-    }
-  }
-  return {};
-}
-
 function getEffectiveNgoProfileData(value: unknown): Record<string, unknown> {
-  return backfillNgoComplianceProfileData(parseProfileData(value)).profileData;
+  return backfillNgoComplianceProfileData(parseJsonObject(value)).profileData;
 }
 
 function getNgoSize(profileData: Record<string, unknown>) {
@@ -212,12 +191,10 @@ export async function GET(request: NextRequest) {
     } | null = null;
 
     if (recommendMode) {
-      const authHeader = request.headers.get('authorization');
-      const token = authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
-      if (token) {
+      const claims = getTokenClaims(request);
+      if (claims) {
         try {
-          const decoded = jwt.verify(token, JWT_SECRET) as PaymentJWTPayload;
-          const viewerId = Number(decoded.id || 0);
+          const viewerId = Number(claims.id || 0);
           if (viewerId > 0) {
             const { data: viewerRow } = await supabase
               .from('users')
@@ -234,7 +211,7 @@ export async function GET(request: NextRequest) {
                 pincode: viewerRow.pincode ?? null,
                 country: viewerRow.country ?? null,
                 industry: viewerRow.industry ?? null,
-                profile_data: parseProfileData(viewerRow.profile_data),
+                profile_data: parseJsonObject(viewerRow.profile_data),
               };
             }
           }
@@ -284,8 +261,8 @@ export async function GET(request: NextRequest) {
       return Response.json({ success: false, error: 'Failed to fetch NGO network' }, { status: 500 });
     }
 
-    const rows = (data ?? []).filter((row: any) => {
-      const profileData = parseProfileData(row.profile_data);
+    const rows = (data ?? []).filter((row) => {
+      const profileData = parseJsonObject(row.profile_data);
       const ngoVerification = Array.isArray(row.ngo_verifications)
         ? row.ngo_verifications[0]
         : row.ngo_verifications;
@@ -296,7 +273,7 @@ export async function GET(request: NextRequest) {
       return true;
     });
 
-    const ngoIds = rows.map((row: any) => row.id);
+    const ngoIds = rows.map((row) => row.id);
     const projectCountByNgoId: Record<number, { completed: number; ongoing: number; active: number }> = {};
     const platformProjectsByNgoId: Record<number, Array<{ title: string; description: string }>> = {};
 
@@ -332,7 +309,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    let ngos = rows.map((row: any) => {
+    let ngos = rows.map((row) => {
       const profileData = getEffectiveNgoProfileData(row.profile_data);
       const ngoVerification = Array.isArray(row.ngo_verifications)
         ? row.ngo_verifications[0]
@@ -477,7 +454,7 @@ export async function GET(request: NextRequest) {
       sectors: CSR_SCHEDULE_VII_CATEGORIES,
       total: payload.length,
     });
-  } catch (err: any) {
+  } catch (err) {
     console.error('NGO network error:', err);
     return Response.json({ success: false, error: 'Internal server error' }, { status: 500 });
   }
@@ -485,13 +462,10 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const decoded = getTokenClaims(request);
+    if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
-
-    const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET) as PaymentJWTPayload;
 
     if (!canContributeViaPlatform(decoded.user_type)) {
       return NextResponse.json({ error: 'Only companies and individuals can pay NGOs from the network' }, { status: 403 });
@@ -573,9 +547,9 @@ export async function POST(request: NextRequest) {
             source: 'ngo_network',
           },
         });
-      } catch (verifyError: any) {
+      } catch (verifyError) {
         return NextResponse.json(
-          { error: verifyError?.message || 'Failed to verify payment' },
+          { error: getErrorMessage(verifyError) || 'Failed to verify payment' },
           { status: 400 }
         );
       }

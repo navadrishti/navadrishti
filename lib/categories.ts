@@ -21,24 +21,7 @@ export const SERVICE_REQUEST_TYPES = [
   'Infrastructure Project'
 ] as string[];
 
-export const SERVICE_OFFER_TYPES = [
-  'Funding Capacity',
-  'Material Supply',
-  'Skill / Expertise',
-  'Execution Capability'
-] as string[];
-
-// Backward-compatible aliases used by existing code paths.
 export const SERVICE_REQUEST_CATEGORIES = SERVICE_REQUEST_TYPES;
-export const SERVICE_OFFER_CATEGORIES = SERVICE_OFFER_TYPES;
-
-// Helper functions to get values with "All Categories" option for filtering.
-export const getServiceRequestCategoriesWithAll = () => ['All Categories', ...CSR_SCHEDULE_VII_CATEGORIES];
-export const getServiceOfferCategoriesWithAll = () => ['All Categories', ...SERVICE_OFFER_TYPES];
-
-export const getScheduleVIICategoriesWithAll = () => ['All Categories', ...CSR_SCHEDULE_VII_CATEGORIES];
-export const getServiceRequestTypesWithAll = () => ['All Categories', ...SERVICE_REQUEST_TYPES];
-export const getServiceOfferTypesWithAll = () => ['All Categories', ...SERVICE_OFFER_TYPES];
 
 export const COMPANY_CSR_IMPLEMENTATION_MODELS = [
   { value: 'direct', label: 'Direct implementation by company' },
@@ -63,14 +46,6 @@ export function isValidCompanyCsrImplementationModel(value: string): value is Co
 
 export function isValidCompanyCsrGovernanceMechanism(value: string): value is CompanyCsrGovernanceMechanism {
   return COMPANY_CSR_GOVERNANCE_MECHANISMS.some((entry) => entry.value === value);
-}
-
-export function getCompanyCsrImplementationModelLabel(value: string): string {
-  return COMPANY_CSR_IMPLEMENTATION_MODELS.find((entry) => entry.value === value)?.label || value;
-}
-
-export function getCompanyCsrGovernanceMechanismLabel(value: string): string {
-  return COMPANY_CSR_GOVERNANCE_MECHANISMS.find((entry) => entry.value === value)?.label || value;
 }
 
 export function normalizeCompanyFocusAreasScheduleVii(value: unknown): string[] {

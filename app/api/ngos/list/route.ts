@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
+import { parseJsonObject } from '@/lib/utils';
 import {
   getCaComplianceTagExpiry,
   ngoIsCsrEligible,
@@ -38,8 +39,8 @@ export async function GET(request: NextRequest) {
     if (error) throw error;
 
     const rows = (ngos ?? [])
-      .filter((ngo: any) => {
-        const profile = ngo.profile_data && typeof ngo.profile_data === 'object' ? ngo.profile_data : {}
+      .filter((ngo) => {
+        const profile = parseJsonObject(ngo.profile_data)
         const isDemo =
           profile.is_demo === true ||
           String(ngo.name || '').toLowerCase().includes('demo') ||
@@ -52,8 +53,8 @@ export async function GET(request: NextRequest) {
         }
         return ngoIsCsrEligible(ngo.verification_status, profile)
       })
-      .map((ngo: any) => {
-      const profile = ngo.profile_data && typeof ngo.profile_data === 'object' ? ngo.profile_data : {}
+      .map((ngo) => {
+      const profile = parseJsonObject(ngo.profile_data)
       return {
         id: ngo.id,
         name: ngo.name,

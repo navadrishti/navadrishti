@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { AuthCardBackRow } from '@/components/header';
 import { ProductCopyright } from '@/components/product-brand';
 import { PRODUCT_NAME } from '@/lib/access-control';
+import { getErrorMessage } from '@/lib/utils';
 
 export default function GovernmentAdminLoginPage() {
   const router = useRouter();
@@ -92,8 +93,8 @@ export default function GovernmentAdminLoginPage() {
       } else {
         router.push('/government-admin');
       }
-    } catch (err: any) {
-      const message = err?.message || 'Network error. Please try again.';
+    } catch (err) {
+      const message = getErrorMessage(err) || 'Network error. Please try again.';
       setError(message);
       toast.error(message);
     } finally {

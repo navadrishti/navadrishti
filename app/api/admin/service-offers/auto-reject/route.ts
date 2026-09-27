@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { autoRejectExpiredServiceOffers } from '@/lib/admin-offer-automation';
 
 // Auto-reject service offers that have been pending for more than 5 days
-export async function POST(request: NextRequest) {
+export async function POST() {
   try {
     const result = await autoRejectExpiredServiceOffers();
 

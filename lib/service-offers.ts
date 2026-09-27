@@ -3,6 +3,7 @@ import {
   isDailyRentalEngagementMeta,
 } from '@/lib/service-request-allocation'
 import { CSR_SCHEDULE_VII_CATEGORIES } from '@/lib/categories'
+import { parseJsonObject } from '@/lib/utils';
 
 export type OfferType = 'financial' | 'material' | 'service' | 'infrastructure'
 export type TransactionType = 'volunteer' | 'donate' | 'rent' | 'sell'
@@ -155,7 +156,7 @@ export function resolveCapabilityRentalRate(input: {
   offer_details?: Record<string, unknown> | null
 }): number {
   const details =
-    input.offer_details && typeof input.offer_details === 'object' ? input.offer_details : {}
+    parseJsonObject(input.offer_details)
   const rate = Number(input.unit_rate ?? details.unit_rate ?? input.price_amount ?? 0)
   return Number.isFinite(rate) && rate > 0 ? rate : 0
 }
@@ -176,20 +177,6 @@ export function dedupeSelectedNeedSummaries(
   }
 
   return deduped
-}
-
-export const CAPABILITY_KIND_BY_OFFER_TYPE: Record<OfferType, CapabilityKind> = {
-  financial: 'financial',
-  service: 'skill',
-  material: 'item',
-  infrastructure: 'asset'
-}
-
-export const CATEGORY_BY_OFFER_TYPE: Record<OfferType, string> = {
-  financial: 'Funding Capacity',
-  material: 'Material Supply',
-  service: 'Skill / Expertise',
-  infrastructure: 'Execution Capability'
 }
 
 export const isTransactionAllowedForOfferType = (offerType: OfferType, transactionType: TransactionType) => {
@@ -290,7 +277,7 @@ export function isCapabilityOfferAvailableForListing(
   if (['inactive', 'completed', 'cancelled', 'paused'].includes(status)) return false
   if (offer.is_expired ?? isOfferExpired(offer)) return false
   if (isCapabilityOfferInUse(offer)) return false
-  const details = offer.offer_details && typeof offer.offer_details === 'object' ? offer.offer_details : {}
+  const details = parseJsonObject(offer.offer_details)
   if (details.csr_rental_lock && typeof details.csr_rental_lock === 'object') {
     const lock = details.csr_rental_lock as Record<string, unknown>
     if (lock.paid_at) return false

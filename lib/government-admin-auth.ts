@@ -93,17 +93,6 @@ export async function getGovernmentAdminFromRequest(request: NextRequest): Promi
   return data as GovernmentAdminAccount & { password_hash?: string };
 }
 
-export async function getGovernmentBodyById(bodyId: number) {
-  const { data, error } = await supabase
-    .from('government_bodies')
-    .select('*')
-    .eq('id', bodyId)
-    .single();
-
-  if (error || !data) return null;
-  return data as GovernmentBody;
-}
-
 export async function listGovernmentBodies() {
   const { data, error } = await supabase
     .from('government_bodies')

@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
+import { getErrorMessage } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
-// Get all announcements
 export async function GET() {
   try {
     const { data: announcements, error } = await supabase
@@ -17,16 +17,15 @@ export async function GET() {
       success: true,
       announcements: announcements || []
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error fetching announcements:', error);
     return NextResponse.json(
-      { success: false, error: error.message },
+      { success: false, error: getErrorMessage(error) },
       { status: 500 }
     );
   }
 }
 
-// Add new announcement
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -39,7 +38,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate a unique ID
     const id = `${type}-${Date.now()}`;
 
     const { error } = await supabase
@@ -57,16 +55,15 @@ export async function POST(request: NextRequest) {
       success: true,
       message: 'Announcement added successfully'
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error adding announcement:', error);
     return NextResponse.json(
-      { success: false, error: error.message },
+      { success: false, error: getErrorMessage(error) },
       { status: 500 }
     );
   }
 }
 
-// Delete announcement
 export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -90,10 +87,10 @@ export async function DELETE(request: NextRequest) {
       success: true,
       message: 'Announcement deleted successfully'
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error deleting announcement:', error);
     return NextResponse.json(
-      { success: false, error: error.message },
+      { success: false, error: getErrorMessage(error) },
       { status: 500 }
     );
   }

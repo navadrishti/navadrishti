@@ -6,6 +6,7 @@ import {
   extractReverificationSummary,
   rejectReverification,
 } from '@/lib/reverification';
+import { getErrorMessage } from '@/lib/utils';
 
 export async function GET(
   request: NextRequest,
@@ -37,12 +38,12 @@ export async function GET(
       pending: Boolean(summary),
       reverification: summary,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Admin reverification detail error:', error);
-    if (error?.message === 'Admin authentication required') {
+    if (getErrorMessage(error) === 'Admin authentication required') {
       return NextResponse.json({ error: 'Admin authentication required' }, { status: 401 });
     }
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) || 'Internal server error' }, { status: 500 });
   }
 }
 
@@ -86,12 +87,12 @@ export async function POST(
         updated_at: updatedUser.updated_at,
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Admin reverification action error:', error);
-    if (error?.message === 'Admin authentication required') {
+    if (getErrorMessage(error) === 'Admin authentication required') {
       return NextResponse.json({ error: 'Admin authentication required' }, { status: 401 });
     }
-    const status = error?.message?.includes('No pending reverification') ? 400 : 500;
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status });
+    const status = getErrorMessage(error)?.includes('No pending reverification') ? 400 : 500;
+    return NextResponse.json({ error: getErrorMessage(error) || 'Internal server error' }, { status });
   }
 }

@@ -85,8 +85,8 @@ export async function POST(
 
     if (Array.isArray(media) && media.length > 0) {
       const mediaRows = media
-        .filter((item: any) => item?.media_type && item?.media_url)
-        .map((item: any) => ({
+        .filter((item) => item?.media_type && item?.media_url)
+        .map((item) => ({
           evidence_id: evidence.id,
           media_type: item.media_type,
           media_url: item.media_url,
@@ -103,8 +103,8 @@ export async function POST(
 
     if (Array.isArray(documents) && documents.length > 0) {
       const documentRows = documents
-        .filter((item: any) => item?.document_url && item?.file_name)
-        .map((item: any) => ({
+        .filter((item) => item?.document_url && item?.file_name)
+        .map((item) => ({
           evidence_id: evidence.id,
           document_url: item.document_url,
           file_name: item.file_name,

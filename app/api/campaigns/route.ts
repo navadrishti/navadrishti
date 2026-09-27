@@ -85,10 +85,10 @@ export async function GET(request: NextRequest) {
       const leadNgo = selectedLeadNgoId > 0 ? userMetaById[selectedLeadNgoId] : null;
       return {
         ...row,
-        lead_ngo_user_id: selectedLeadNgoId > 0 ? selectedLeadNgoId : row.lead_ngo_user_id || null,
         company_name: company?.name || null,
         company_verification_status: company?.verification_status || null,
         company_verified: company?.verification_status === 'verified',
+        selected_lead_ngo_name: leadNgo?.name || null,
         selected_lead_ngo_verification_status: leadNgo?.verification_status || null,
         selected_lead_ngo_verified: leadNgo?.verification_status === 'verified',
       };

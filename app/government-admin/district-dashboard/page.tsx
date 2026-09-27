@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { AlertCircle, CheckCircle, Clock, MapPin, Users, TrendingUp } from 'lucide-react';
+import { AlertCircle, CheckCircle, Clock, Flag, MapPin, Users, TrendingUp } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { getErrorMessage } from '@/lib/utils';
 
 type MilestoneWithEvidence = {
   id: string;
@@ -80,8 +81,8 @@ export default function DistrictAnalyticsDashboard() {
       if (data.projects?.[0]) {
         setSelectedProject(data.projects[0]);
       }
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load analytics');
+    } catch (err) {
+      setError(getErrorMessage(err) || 'Failed to load analytics');
     } finally {
       setLoading(false);
     }
@@ -306,7 +307,7 @@ export default function DistrictAnalyticsDashboard() {
                 <div>
                   <p className="text-sm font-semibold text-slate-900">Milestones ({selectedProject.milestones?.length || 0})</p>
                   <div className="mt-3 space-y-2">
-                    {selectedProject.milestones?.map((milestone, idx) => (
+                    {selectedProject.milestones?.map((milestone) => (
                       <div key={milestone.id} className="flex items-start gap-3 rounded-lg border border-slate-200 p-3">
                         <div className="mt-1 flex-shrink-0">
                           {milestone.is_fulfilled ? (
@@ -333,7 +334,7 @@ export default function DistrictAnalyticsDashboard() {
                               <span className="text-red-600">✕ {milestone.rejectedCount}</span>
                             )}
                             {milestone.flaggedCount !== undefined && (
-                              <span className={getFlagColor(milestone.flaggedCount)}>🚩 {milestone.flaggedCount}</span>
+                              <span className={`inline-flex items-center gap-1 ${getFlagColor(milestone.flaggedCount)}`}><Flag className="h-3 w-3" />{milestone.flaggedCount}</span>
                             )}
                           </div>
                         </div>

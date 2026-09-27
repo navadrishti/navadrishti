@@ -9,6 +9,8 @@ import {
   updateCampaignDb,
   UpdateSelectedCampaignSchema 
 } from "@/lib/csr-agent/campaign";
+import { parseLeadNgoInvites } from "@/lib/campaign-volunteer-attendance";
+import { getErrorMessage, parseJsonObject } from "@/lib/utils";
 
 function safeSignatureMatch(expected: string, received: string): boolean {
   const expectedBuffer = Buffer.from(String(expected || ''), 'utf8');
@@ -130,8 +132,8 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ error: 'Unsupported action' }, { status: 400 });
-  } catch (error: any) {
-    const message = error?.message || 'Internal Server Error';
+  } catch (error) {
+    const message = getErrorMessage(error) || 'Internal Server Error';
     const status =
       message.toLowerCase().includes('not found') ? 404 :
       message.toLowerCase().includes('invalid') ? 400 :
@@ -167,19 +169,13 @@ export async function PUT(req: Request) {
       const { assertNgoCsr1CoversWork } = await import("@/lib/server-auth");
       const { data: existing } = await supabase
         .from("campaigns")
-        .select("end_date, impact_metrics")
+        .select("end_date, impact_metrics, lead_ngo_user_id")
         .eq("id", campaign_id)
         .eq("company_id", company_id)
         .maybeSingle();
-      const impact =
-        existing?.impact_metrics && typeof existing.impact_metrics === "object"
-          ? existing.impact_metrics
-          : {};
-      const leadNgoId = Number(impact.selected_lead_ngo_id || 0);
-      const invites = Array.isArray(impact.lead_ngo_invites) ? impact.lead_ngo_invites : [];
-      const pendingInviteIds = invites
-        .map((invite: any) => Number(invite?.ngo_id || invite?.ngoId || 0))
-        .filter((id: number) => Number.isFinite(id) && id > 0);
+      const impact = parseJsonObject(existing?.impact_metrics);
+      const leadNgoId = Number(existing?.lead_ngo_user_id || 0);
+      const pendingInviteIds = parseLeadNgoInvites(impact.lead_ngo_invites).map((invite) => invite.ngo_id);
 
       if (leadNgoId > 0) {
         const coverageGate = await assertNgoCsr1CoversWork(leadNgoId, campaign.end_date);
@@ -187,7 +183,7 @@ export async function PUT(req: Request) {
           return NextResponse.json({ error: coverageGate.error }, { status: 403 });
         }
       } else if (pendingInviteIds.length > 0) {
-        for (const ngoId of [...new Set(pendingInviteIds as number[])]) {
+        for (const ngoId of [...new Set(pendingInviteIds)]) {
           const coverageGate = await assertNgoCsr1CoversWork(ngoId, campaign.end_date);
           if (!coverageGate.ok) {
             return NextResponse.json(
@@ -207,10 +203,9 @@ export async function PUT(req: Request) {
     const result = await updateCampaignDb(campaign_id, company_id, campaign);
     return NextResponse.json(result);
 
-  } catch (error: any) {
-    const message = error?.message || "Internal Server Error";
+  } catch (error) {
+    const message = getErrorMessage(error) || "Internal Server Error";
 
-    // Map business logic and validation errors to correct HTTP codes
     const status =
         message.toLowerCase().includes("not found") ? 404 :
         message.toLowerCase().includes("active") ? 403 : // Guard check fail

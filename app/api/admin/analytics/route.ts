@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { verifyToken } from '@/lib/auth';
+import { getAdminUser } from '@/lib/server-auth';
 
 function toDateKey(value: unknown): string {
   if (!value) return 'unknown';
@@ -11,21 +11,8 @@ function toDateKey(value: unknown): string {
 
 export async function GET(request: NextRequest) {
   try {
-    // Check for admin token authentication
-    const adminToken = request.cookies.get('admin-token')?.value;
-    
-    if (!adminToken) {
+    if (!getAdminUser(request)) {
       return NextResponse.json({ error: 'Admin authentication required' }, { status: 401 });
-    }
-
-    // Verify admin token
-    try {
-      const decoded = verifyToken(adminToken);
-      if (!decoded || decoded.id !== -1) {
-        return NextResponse.json({ error: 'Invalid admin token' }, { status: 401 });
-      }
-    } catch (error) {
-      return NextResponse.json({ error: 'Invalid admin token' }, { status: 401 });
     }
 
     const url = new URL(request.url);
@@ -33,7 +20,6 @@ export async function GET(request: NextRequest) {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - parseInt(period));
 
-    // Get comprehensive analytics data
     const [serviceOfferStatsResult, performanceStatsResult] = await Promise.all([
       supabase
         .from('service_offers')
@@ -43,7 +29,7 @@ export async function GET(request: NextRequest) {
           created_at,
           admin_reviewed_at,
           submitted_for_review_at,
-          category
+          offer_type
         `)
         .gte('created_at', startDate.toISOString()),
 
@@ -58,7 +44,7 @@ export async function GET(request: NextRequest) {
 
     const serviceOfferStats = serviceOfferStatsResult.data || [];
     const performanceStats = performanceStatsResult.data || [];
-    const reviewStats = performanceStats.reduce((acc: Record<string, any>, review: any) => {
+    const reviewStats = performanceStats.reduce((acc: Record<string, any>, review) => {
       const dateKey = toDateKey(review.reviewed_at || review.review_date || review.created_at);
       if (!acc[dateKey]) {
         acc[dateKey] = {
@@ -93,13 +79,11 @@ export async function GET(request: NextRequest) {
 
     const emailStats: any[] = [];
 
-    // Calculate key metrics
     const totalServiceOffers = serviceOfferStats.length;
     const pendingOffers = serviceOfferStats.filter(so => so.admin_status === 'pending').length;
     const approvedOffers = serviceOfferStats.filter(so => so.admin_status === 'approved').length;
     const rejectedOffers = serviceOfferStats.filter(so => so.admin_status === 'rejected').length;
 
-    // Calculate review time performance
     const reviewTimes = performanceStats.map(review => {
       if (review.service_offer?.submitted_for_review_at && review.reviewed_at) {
         const submitted = new Date(review.service_offer.submitted_for_review_at);
@@ -126,13 +110,13 @@ export async function GET(request: NextRequest) {
 
     // Email delivery metrics
     const totalEmails = emailStats.length;
-    const deliveredEmails = emailStats.filter((e: any) => e.delivery_status === 'delivered').length;
-    const failedEmails = emailStats.filter((e: any) => e.delivery_status === 'failed').length;
+    const deliveredEmails = emailStats.filter((e) => e.delivery_status === 'delivered').length;
+    const failedEmails = emailStats.filter((e) => e.delivery_status === 'failed').length;
     const emailDeliveryRate = totalEmails > 0 ? (deliveredEmails / totalEmails) * 100 : 0;
 
     // Category breakdown
     const categoryStats = serviceOfferStats.reduce((acc, offer) => {
-      const category = offer.category || 'Unknown';
+      const category = offer.offer_type || 'Unknown';
       if (!acc[category]) {
         acc[category] = { total: 0, pending: 0, approved: 0, rejected: 0 };
       }
@@ -143,7 +127,7 @@ export async function GET(request: NextRequest) {
 
     // Daily trends for charts
     const dailyTrends = Object.values(reviewStats)
-      .map((stat: any) => ({
+      .map((stat) => ({
         date: stat.date,
         total_reviewed: stat.total_reviewed || 0,
         approved: stat.approved_count || 0,
@@ -152,7 +136,7 @@ export async function GET(request: NextRequest) {
           ? stat._review_times.reduce((sum: number, time: number) => sum + time, 0) / stat._review_times.length
           : 0
       }))
-      .sort((a: any, b: any) => String(a.date).localeCompare(String(b.date)));
+      .sort((a, b) => String(a.date).localeCompare(String(b.date)));
 
     // Priority breakdown
     const priorityStats = performanceStats.reduce((acc, review) => {

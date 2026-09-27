@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { getEvidenceApproverContext } from '@/lib/server-auth';
 import {
   assertNgoLiveCsr1,
   CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE,
+  getEvidenceApproverContext,
 } from '@/lib/server-auth';
 
 export async function POST(
@@ -123,7 +123,7 @@ export async function POST(
         .eq('project_id', project.id);
 
       const totalMilestones = allMilestones?.length ?? 0;
-      const completedMilestones = (allMilestones ?? []).filter((m: any) => m.status === 'completed').length;
+      const completedMilestones = (allMilestones ?? []).filter((m) => m.status === 'completed').length;
       const progressPercentage = totalMilestones > 0
         ? Math.round((completedMilestones / totalMilestones) * 100)
         : 0;
@@ -134,8 +134,8 @@ export async function POST(
         .eq('project_id', project.id);
 
       const fundsUtilized = (allPayments ?? [])
-        .filter((payment: any) => payment.payment_status === 'confirmed')
-        .reduce((sum: number, payment: any) => sum + Number(payment.amount || 0), 0);
+        .filter((payment) => payment.payment_status === 'confirmed')
+        .reduce((sum: number, payment) => sum + Number(payment.amount || 0), 0);
 
       await supabase
         .from('csr_projects')

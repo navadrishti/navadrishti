@@ -188,7 +188,50 @@ export function useOtpSender(setFormErrors: Dispatch<SetStateAction<FormErrors>>
     }
   };
 
-  const handleVerifyEmailOtp = async (emailInput: string, otpInput: string) => {
+  const verifyEmailOtpOnServer = async (email: string, otp: string): Promise<Error | null> => {
+    const response = await fetch('/api/auth/verify-email-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, otp })
+    });
+    if (response.ok) return null;
+    const data = await response.json().catch(() => null);
+    return new Error(data?.error || 'Invalid email OTP');
+  };
+
+  const verifyEmailOtpInBrowser = async (email: string, otp: string): Promise<Error | null> => {
+    const supabase = createClient();
+    const otpTypes: Array<'email' | 'signup'> = ['email', 'signup'];
+    let verificationError: Error | null = null;
+
+    for (const otpType of otpTypes) {
+      const { error } = await supabase.auth.verifyOtp({
+        email,
+        token: otp,
+        type: otpType
+      });
+
+      if (!error) return null;
+
+      verificationError = error;
+
+      const normalizedMessage = (error.message || '').toLowerCase();
+      const shouldTryFallback =
+        otpType === 'email' &&
+        (normalizedMessage.includes('invalid') ||
+          normalizedMessage.includes('expired') ||
+          normalizedMessage.includes('token') ||
+          normalizedMessage.includes('otp') ||
+          normalizedMessage.includes('email link'));
+
+      if (!shouldTryFallback) break;
+    }
+
+    return verificationError;
+  };
+
+  // persist: signed-in users only; the server checks the OTP and marks the email verified.
+  const handleVerifyEmailOtp = async (emailInput: string, otpInput: string, options: { persist?: boolean } = {}) => {
     const email = emailInput.trim();
     const otp = otpInput.trim();
 
@@ -209,37 +252,9 @@ export function useOtpSender(setFormErrors: Dispatch<SetStateAction<FormErrors>>
 
     try {
       setOtpVerifying(prev => ({ ...prev, email: true }));
-      const supabase = createClient();
-      const otpTypes: Array<'email' | 'signup'> = ['email', 'signup'];
-      let verificationError: Error | null = null;
-
-      for (const otpType of otpTypes) {
-        const { error } = await supabase.auth.verifyOtp({
-          email,
-          token: otp,
-          type: otpType
-        });
-
-        if (!error) {
-          verificationError = null;
-          break;
-        }
-
-        verificationError = error;
-
-        const normalizedMessage = (error.message || '').toLowerCase();
-        const shouldTryFallback =
-          otpType === 'email' &&
-          (normalizedMessage.includes('invalid') ||
-            normalizedMessage.includes('expired') ||
-            normalizedMessage.includes('token') ||
-            normalizedMessage.includes('otp') ||
-            normalizedMessage.includes('email link'));
-
-        if (!shouldTryFallback) {
-          break;
-        }
-      }
+      const verificationError = options.persist
+        ? await verifyEmailOtpOnServer(email, otp)
+        : await verifyEmailOtpInBrowser(email, otp);
 
       if (verificationError) {
         const otpErrorMessage = (verificationError.message || 'Invalid email OTP').replace(/\btoken\b/gi, 'OTP');

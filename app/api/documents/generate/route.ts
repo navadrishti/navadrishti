@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth'
 import { assembleGeneratedDocument } from '@/lib/document-generation/assemble'
 import type { DocumentTypeId } from '@/lib/document-generation/types'
+import { getErrorMessage } from '@/lib/utils'
 
 const generateSchema = z.object({
   documentType: z.enum([
@@ -77,8 +78,8 @@ export async function POST(request: NextRequest) {
       entityTitle: 'entityTitle' in result ? result.entityTitle : undefined,
       html: result.html,
     })
-  } catch (error: any) {
-    const message = String(error?.message || 'Failed to generate document')
+  } catch (error) {
+    const message = String(getErrorMessage(error) || 'Failed to generate document')
     const status =
       /required|select|not found|not owned|not assigned|only/i.test(message) ? 400 : 500
     if (status >= 500) {

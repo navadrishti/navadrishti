@@ -26,7 +26,7 @@ Removed from product: `users.verified`, `users.identity_verified`
 - `platform_ca_accounts` — platform KYC reviewers (formerly `navadrishti_ca_accounts`)
 - `company_ca_identities` / `company_ca_action_log` — **company evidence CA** (CSR milestone review; distinct realm)
 
-### C) Platform ops (not social feed)
+### C) Platform ops
 - `platform_announcements` — admin announcements / changelog only
 
 **Removed:** `posts`, `post_comments`, `post_reactions`, `post_interactions`, `hashtags`, `activity_feed`, `user_connections`
@@ -43,7 +43,7 @@ Removed from product: `users.verified`, `users.identity_verified`
 - **Planning:** `campaigns` — drafts; `lead_ngo_user_id` is a real column; `milestones` / `impact_metrics` jsonb are **draft-only**
 - **Execution (source of truth after project exists):** `csr_projects` → `csr_project_milestones` → evidence / reviews / `csr_payment_confirmations` / `csr_impact_metrics`
 - Field stack: `field_devices`, `field_sync_receipts`, `evidence_validation_results`, `project_user_assignments`, `csr_audit_log`, `csr_reference_points`
-- Marketplace package lead: `service_request_projects.lead_ngo_user_id` (same naming as `campaigns.lead_ngo_user_id`; campaign JSON may still mirror `selected_lead_ngo_id`)
+- Marketplace package lead: `service_request_projects.lead_ngo_user_id` (same naming as `campaigns.lead_ngo_user_id`)
 
 ### F) Payments / support / webhooks
 - Marketplace: `razorpay_payment_orders`, `razorpay_payments`, `razorpay_refunds`, `provider_webhook_events`
@@ -59,8 +59,6 @@ Removed from product: `users.verified`, `users.identity_verified`
 ## Deprecated mirrors (still kept)
 - `service_requests.estimated_budget` ↔ `target_amount` (dual-read via allocation helpers)
 - `users.email_verified` / `phone_verified` ↔ `*_verified_at`
-- Campaign JSON may still mirror `impact_metrics.selected_lead_ngo_id` beside `campaigns.lead_ngo_user_id`
-
 ## Pass 3 removed (do not reintroduce on service_requests)
 - `volunteer_limit` → use `volunteers_needed`
 - `priority` → use `urgency_level`

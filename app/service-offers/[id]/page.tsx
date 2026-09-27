@@ -3,12 +3,12 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, MapPin, Users, Clock, Target, Calendar, User, Building, MessageSquare, CheckCircle, XCircle, Loader2, DollarSign, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, User, XCircle, Loader2, AlertTriangle } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
 import { getGramAvatarFallbackStyle } from '@/lib/gram-avatar'
 import { VerifiedAccountName } from '@/components/verification-badge'
-import { formatPrice } from '@/lib/utils'
+import { formatPrice, parseJsonObject } from '@/lib/utils'
 import { DetailField, DetailSection, displayValue, parseStringArray, parseImages } from '@/components/detail-fields'
 import { formatDetailDate, formatStatusLabel } from '@/lib/format-date'
 import { Header } from '@/components/header'
@@ -21,19 +21,14 @@ import {
   getCapabilityNeedRequestTypes,
   isCapabilityRentalTransaction,
   isOfferType,
-  resolveCapabilityRentalRate,
   type OfferType,
 } from '@/lib/service-offers'
 import { isNeedOpenForListing } from '@/lib/service-request-allocation'
-import { SkeletonHeader, SkeletonAvatarText, SkeletonTextLines, SkeletonBigBox } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
-import { Input } from '@/components/ui/input'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { openRazorpayCheckout } from '@/lib/razorpay-checkout'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -180,7 +175,7 @@ function labelForBillingCycle(value?: string | null) {
 }
 
 function CapabilityOfferDetailsSection({ offer }: { offer: CapabilityOfferDetailRecord }) {
-  const details = offer.offer_details && typeof offer.offer_details === 'object' ? offer.offer_details : {}
+  const details = parseJsonObject(offer.offer_details)
   const offerType = isOfferType(offer.offer_type) ? offer.offer_type : 'service'
   const transactionType = String(offer.transaction_type || '').toLowerCase()
   const requiresPricing = isCapabilityRentalTransaction(transactionType)
@@ -380,8 +375,6 @@ export default function ServiceOfferDetailPage() {
   const router = useRouter()
   const { user, token } = useAuth()
   const { toast } = useToast()
-  const [isHydrated, setIsHydrated] = useState(false)
-  
   const [offer, setOffer] = useState<ServiceOffer | null>(null)
   const [userApplication, setUserApplication] = useState<ClientApplication | null>(null)
   const [loading, setLoading] = useState(true)
@@ -393,7 +386,6 @@ export default function ServiceOfferDetailPage() {
 
   const offerId = params.id as string
   const isAuthenticated = !!(user && token)
-  const effectiveUserType = isHydrated ? user?.user_type : undefined
   const canApplyToOffer = !!user && user.id !== offer?.creator_id && user.user_type === 'ngo'
   const canShowRespondTab = !isAuthenticated || canApplyToOffer
   const selectedNeedSummaries = useMemo(
@@ -407,10 +399,6 @@ export default function ServiceOfferDetailPage() {
     }, 0)
   }, [selectedNeedSummaries])
   const isOfferExpired = !!offer?.valid_until && new Date(String(offer.valid_until)).getTime() < Date.now()
-
-  useEffect(() => {
-    setIsHydrated(true)
-  }, [])
 
   useEffect(() => {
     if (offerId) {
@@ -605,7 +593,6 @@ export default function ServiceOfferDetailPage() {
         const error = await response.json()
         const errorMsg = error.error || 'Failed to submit application'
         
-        // Handle verification requirement specifically
         if (error.requiresVerification || response.status === 403) {
           const verificationMessage = error.message || 'Please complete account verification before hiring services.'
           toast({

@@ -9,6 +9,7 @@ import {
   buildNgoDocumentExpiries,
 } from '@/lib/auth';
 import { applyCaBadgeToProfile } from '@/lib/platform-ca-auth';
+import { parseJsonObject } from '@/lib/utils';
 
 type UserType = 'individual' | 'ngo' | 'company';
 
@@ -39,10 +40,6 @@ export const reverificationDocumentLabels: Record<string, string> = {
   csr1: 'CSR-1 Certificate',
 };
 
-function asRecord(value: unknown): Record<string, any> {
-  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, any>) : {};
-}
-
 function getVerificationTypeKey(userType: string): string | null {
   if (userType === 'individual' || userType === 'ngo' || userType === 'company') {
     return verificationDocKeyByUserType[userType];
@@ -58,7 +55,7 @@ export function extractReverificationSummary(user: {
   verification_status?: string | null;
   profile_data?: unknown;
 }) {
-  const profileData = asRecord(user.profile_data);
+  const profileData = parseJsonObject(user.profile_data);
   if (!profileData.reverification_pending) {
     return null;
   }
@@ -68,12 +65,12 @@ export function extractReverificationSummary(user: {
     return null;
   }
 
-  const verificationDocuments = asRecord(profileData.verification_documents);
-  const typeBlock = asRecord(verificationDocuments[typeKey]);
-  const currentDocuments = asRecord(typeBlock.documents);
-  const pendingDocuments = asRecord(typeBlock.reverification_documents);
-  const complianceDocuments = asRecord(profileData.compliance_documents);
-  const pendingComplianceDocuments = asRecord(complianceDocuments.pending_reverification);
+  const verificationDocuments = parseJsonObject(profileData.verification_documents);
+  const typeBlock = parseJsonObject(verificationDocuments[typeKey]);
+  const currentDocuments = parseJsonObject(typeBlock.documents);
+  const pendingDocuments = parseJsonObject(typeBlock.reverification_documents);
+  const complianceDocuments = parseJsonObject(profileData.compliance_documents);
+  const pendingComplianceDocuments = parseJsonObject(complianceDocuments.pending_reverification);
 
   return {
     user_id: user.id,
@@ -138,23 +135,23 @@ export async function approveReverification(
   complianceTags?: unknown
 ) {
   const { user, summary } = await loadReverificationUser(userId);
-  const profileData = asRecord(user.profile_data);
+  const profileData = parseJsonObject(user.profile_data);
   const typeKey = getVerificationTypeKey(String(user.user_type || ''));
   if (!typeKey) {
     throw new Error('Unsupported user type for reverification');
   }
 
-  const verificationDocuments = asRecord(profileData.verification_documents);
-  const typeBlock = asRecord(verificationDocuments[typeKey]);
-  const pendingDocuments = asRecord(typeBlock.reverification_documents);
+  const verificationDocuments = parseJsonObject(profileData.verification_documents);
+  const typeBlock = parseJsonObject(verificationDocuments[typeKey]);
+  const pendingDocuments = parseJsonObject(typeBlock.reverification_documents);
 
   if (Object.keys(pendingDocuments).length === 0 && Object.keys(summary.pending_compliance_documents).length === 0) {
     throw new Error('No reverification documents found');
   }
 
-  let complianceDocuments = asRecord(profileData.compliance_documents);
+  let complianceDocuments = parseJsonObject(profileData.compliance_documents);
   if (user.user_type === 'ngo') {
-    const pendingCompliance = asRecord(complianceDocuments.pending_reverification);
+    const pendingCompliance = parseJsonObject(complianceDocuments.pending_reverification);
     if (Object.keys(pendingCompliance).length > 0) {
       complianceDocuments = {
         ...complianceDocuments,
@@ -166,7 +163,7 @@ export async function approveReverification(
     delete complianceDocuments.pending_reverification;
   }
 
-  const pendingNumbers = asRecord(typeBlock.reverification_compliance_numbers);
+  const pendingNumbers = parseJsonObject(typeBlock.reverification_compliance_numbers);
   let nextProfileData: Record<string, any> = {
     ...profileData,
     reverification_pending: false,
@@ -175,7 +172,7 @@ export async function approveReverification(
       ...verificationDocuments,
       [typeKey]: buildClearedTypeBlock(typeBlock, {
         documents: {
-          ...asRecord(typeBlock.documents),
+          ...parseJsonObject(typeBlock.documents),
           ...pendingDocuments,
         },
         status: 'verified',
@@ -195,16 +192,16 @@ export async function approveReverification(
       csr1_registration_number: mergedNumbers.csr1_registration_number,
     };
     nextProfileData = backfillNgoComplianceProfileData(nextProfileData).profileData;
-    const typeBlockAfter = asRecord(asRecord(nextProfileData.verification_documents).ngo);
-    const ocrExpiries = asRecord(typeBlockAfter.ocr_expiries);
+    const typeBlockAfter = parseJsonObject(parseJsonObject(nextProfileData.verification_documents).ngo);
+    const ocrExpiries = parseJsonObject(typeBlockAfter.ocr_expiries);
     const entered = {
-      ...asRecord(typeBlockAfter.entered_fields),
+      ...parseJsonObject(typeBlockAfter.entered_fields),
       ...(ocrExpiries.twelve_a ? { twelve_a_expiry: ocrExpiries.twelve_a } : {}),
       ...(ocrExpiries.eighty_g ? { eighty_g_expiry: ocrExpiries.eighty_g } : {}),
       ...(ocrExpiries.csr1 ? { csr1_expiry: ocrExpiries.csr1 } : {}),
       ...(ocrExpiries.fcra ? { fcra_expiry: ocrExpiries.fcra } : {}),
     };
-    const mergedDocs = asRecord(typeBlockAfter.documents);
+    const mergedDocs = parseJsonObject(typeBlockAfter.documents);
     nextProfileData = {
       ...nextProfileData,
       fcra_expiry_date: entered.fcra_expiry || nextProfileData.fcra_expiry_date || null,
@@ -220,7 +217,7 @@ export async function approveReverification(
       document_expiry_unverified_at: null,
       document_expiry_unverified_docs: null,
       verification_documents: {
-        ...asRecord(nextProfileData.verification_documents),
+        ...parseJsonObject(nextProfileData.verification_documents),
         ngo: {
           ...typeBlockAfter,
           entered_fields: entered,
@@ -257,16 +254,16 @@ export async function approveReverification(
 
 export async function rejectReverification(userId: number, reason = '', reviewedBy = 'admin') {
   const { user } = await loadReverificationUser(userId);
-  const profileData = asRecord(user.profile_data);
+  const profileData = parseJsonObject(user.profile_data);
   const typeKey = getVerificationTypeKey(String(user.user_type || ''));
   if (!typeKey) {
     throw new Error('Unsupported user type for reverification');
   }
 
-  const verificationDocuments = asRecord(profileData.verification_documents);
-  const typeBlock = asRecord(verificationDocuments[typeKey]);
+  const verificationDocuments = parseJsonObject(profileData.verification_documents);
+  const typeBlock = parseJsonObject(verificationDocuments[typeKey]);
 
-  let complianceDocuments = asRecord(profileData.compliance_documents);
+  let complianceDocuments = parseJsonObject(profileData.compliance_documents);
   if (user.user_type === 'ngo') {
     delete complianceDocuments.pending_reverification;
   }

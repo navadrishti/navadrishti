@@ -3,26 +3,14 @@ import { supabase, ensureCampaignVolunteerAssignment } from '@/lib/db'
 import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth'
 import { getCampaignLeadLifecycle } from '@/lib/format-date'
 import { readCampaignCategory, readCampaignLocation } from '@/lib/campaign-schema'
+
+import { parseJsonObject } from '@/lib/utils'
 import {
   filterCampaignVolunteerAssignments,
   getVolunteerApplicationForUser,
   isCampaignLeadNgo,
   isCampaignVolunteerApplicant,
 } from '@/lib/campaign-volunteer-attendance'
-
-function safeJson(value: unknown): Record<string, any> {
-  if (!value) return {}
-  if (typeof value === 'object') return value as Record<string, any>
-  if (typeof value === 'string') {
-    try {
-      const parsed = JSON.parse(value)
-      return parsed && typeof parsed === 'object' ? parsed : {}
-    } catch {
-      return {}
-    }
-  }
-  return {}
-}
 
 export async function GET(request: NextRequest) {
   try {
@@ -31,13 +19,13 @@ export async function GET(request: NextRequest) {
 
     const { data: campaigns, error } = await supabase
       .from('campaigns')
-      .select('id, title, description, category, location, schedule_vii, status, start_date, end_date, impact_metrics, company_id')
+      .select('id, title, description, category, location, schedule_vii, status, start_date, end_date, impact_metrics, lead_ngo_user_id, company_id')
       .order('created_at', { ascending: false })
 
     if (error) throw error
 
     const volunteeredCampaigns = (campaigns || []).filter((campaign) =>
-      isCampaignVolunteerApplicant(campaign.impact_metrics, user.id)
+      isCampaignVolunteerApplicant(campaign, user.id)
     )
 
     const companyIds = [...new Set(volunteeredCampaigns.map((row) => Number(row.company_id || 0)).filter((id) => id > 0))]
@@ -62,7 +50,7 @@ export async function GET(request: NextRequest) {
 
     for (const campaign of volunteeredCampaigns) {
       const application = getVolunteerApplicationForUser(campaign.impact_metrics, user.id)
-      if (!application || isCampaignLeadNgo(campaign.impact_metrics, user.id)) continue
+      if (!application || isCampaignLeadNgo(campaign, user.id)) continue
 
       let assignment = assignmentsByCampaignId.get(String(campaign.id))
       if (!assignment) {
@@ -85,7 +73,7 @@ export async function GET(request: NextRequest) {
         endDate: campaign.end_date,
         campaignStatus: campaign.status,
       })
-      const assignmentMeta = safeJson(assignment?.meta)
+      const assignmentMeta = parseJsonObject(assignment?.meta)
 
       payload.push({
         id: campaign.id,

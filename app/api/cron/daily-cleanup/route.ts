@@ -3,12 +3,8 @@ import { supabase } from '@/lib/db';
 import { emailService } from '@/lib/email';
 import { processCsrCapabilityDailyCompliance, markCsrProjectCompleted, syncAllCsrCapabilityRentalsDelhivery } from '@/lib/csr-agent/campaign';
 import { getDocumentExpiries, dropExpiredCaComplianceTags } from '@/lib/auth';
-
-function asRecord(value: unknown): Record<string, any> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, any>)
-    : {};
-}
+import { backfillServiceOfferEmbeddings } from '@/lib/embeddings';
+import { parseJsonObject, getErrorMessage } from '@/lib/utils';
 
 async function processNgoDocumentExpiryJobs(now = new Date()) {
   const stats = {
@@ -32,12 +28,12 @@ async function processNgoDocumentExpiryJobs(now = new Date()) {
 
   for (const user of users || []) {
     try {
-      const profileData = asRecord(user.profile_data);
+      const profileData = parseJsonObject(user.profile_data);
       if (profileData.reverification_pending) continue;
 
       stats.scanned += 1;
       const dropped = dropExpiredCaComplianceTags(profileData);
-      const rawExpiries = asRecord(profileData.document_expiries);
+      const rawExpiries = parseJsonObject(profileData.document_expiries);
       const nextExpiries = getDocumentExpiries(profileData);
       const stripLegacyBankStatement = Object.prototype.hasOwnProperty.call(
         rawExpiries,
@@ -93,6 +89,7 @@ async function processNgoDocumentExpiryJobs(now = new Date()) {
  * 2. Expire projects and their needs
  * 3. CSR capability daily compliance / Delhivery sync
  * 4. Drop expired optional CA compliance tags (12A / 80G / CSR-1 / FCRA). Never unverify.
+ * 5. Embed active service offers that have no embedding yet
  */
 export async function GET(request: NextRequest) {
   try {
@@ -106,8 +103,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-
-    // ========== TASK 1: AUTO-REJECT EXPIRED SERVICE OFFERS ==========
+    // Auto-reject pending clients on expired service offers.
     
     const fiveDaysAgo = new Date();
     fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
@@ -116,7 +112,7 @@ export async function GET(request: NextRequest) {
       .from('service_offers')
       .select(`
         *,
-        organization:creator_id (
+        organization:users!creator_id (
           id,
           name,
           email
@@ -151,12 +147,11 @@ export async function GET(request: NextRequest) {
           rejectedOffers.push(offer);
           rejectedCount++;
 
-          // Send email notification
           if (offer.organization?.email) {
             try {
               await emailService.sendEmail({
                 to: offer.organization.email,
-                subject: '⏰ Service Offer Auto-Rejected - Review Deadline Exceeded',
+                subject: 'Service Offer Auto-Rejected - Review Deadline Exceeded',
                 html: `
                   <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
                     <h2 style="color: #dc2626;">Service Offer Auto-Rejected</h2>
@@ -168,7 +163,7 @@ export async function GET(request: NextRequest) {
                     <div style="background-color: #fef2f2; padding: 15px; border-left: 4px solid #dc2626; margin: 20px 0;">
                       <h3 style="color: #dc2626; margin: 0 0 10px 0;">Auto-Rejection Details</h3>
                       <p style="margin: 5px 0;"><strong>Offer:</strong> ${offer.title}</p>
-                      <p style="margin: 5px 0;"><strong>Submitted:</strong> ${new Date(offer.submitted_for_review_at).toLocaleDateString()}</p>
+                      <p style="margin: 5px 0;"><strong>Submitted:</strong> ${offer.submitted_for_review_at ? new Date(offer.submitted_for_review_at).toLocaleDateString() : 'N/A'}</p>
                       <p style="margin: 5px 0;"><strong>Auto-Rejected:</strong> ${new Date().toLocaleDateString()}</p>
                       <p style="margin: 5px 0;"><strong>Reason:</strong> 5-day review deadline exceeded</p>
                     </div>
@@ -201,7 +196,7 @@ export async function GET(request: NextRequest) {
     } else {
     }
 
-    // ========== TASK 1B: EXPIRE CAPABILITY OFFERS PAST VALID_UNTIL ==========
+    // Expire capability offers past valid_until.
 
     const nowIso = new Date().toISOString();
     const { data: validityExpiredOffers, error: validityExpiredError } = await supabase
@@ -232,7 +227,7 @@ export async function GET(request: NextRequest) {
     } else {
     }
 
-    // ========== TASK 2: EXPIRE PROJECTS AND THEIR NEEDS ==========
+    // Expire projects and their needs.
     try {
       const nowIso = new Date().toISOString();
       const { data: expiredProjects, error: expiredProjectsError } = await supabase
@@ -282,7 +277,7 @@ export async function GET(request: NextRequest) {
       console.error('Error in project expiry task:', expireErr);
     }
 
-    // ========== TASK 4: CSR CAPABILITY RENTAL SLAs, FINES, REMINDERS ==========
+    // CSR capability rentals: SLAs, fines, reminders.
     let csrComplianceStats = { refunds: 0, fines: 0, reminders: 0, suspended: 0 };
     let csrDelhiverySyncStats = { synced: 0, retried: 0 };
     try {
@@ -318,7 +313,7 @@ export async function GET(request: NextRequest) {
       console.error('Error in CSR capability compliance task:', csrComplianceErr);
     }
 
-    // ========== TASK 5: DROP EXPIRED OPTIONAL CA COMPLIANCE TAGS ==========
+    // Drop expired optional CA compliance tags.
     let documentExpiryStats = { scanned: 0, reminded: 0, tags_dropped: 0, errors: 0 };
     try {
       documentExpiryStats = await processNgoDocumentExpiryJobs();
@@ -326,7 +321,13 @@ export async function GET(request: NextRequest) {
       console.error('Error in NGO document expiry task:', documentExpiryErr);
     }
 
-    // ========== FINAL SUMMARY ==========
+    // Embed active offers that were missed when they were saved.
+    let offerEmbeddingStats = { embedded: 0, failed: 0 };
+    try {
+      offerEmbeddingStats = await backfillServiceOfferEmbeddings();
+    } catch (offerEmbeddingErr) {
+      console.error('Error in offer embedding backfill:', offerEmbeddingErr);
+    }
 
     return NextResponse.json({
       success: true,
@@ -344,14 +345,15 @@ export async function GET(request: NextRequest) {
         documentExpiry: documentExpiryStats,
         csrDelhiverySync: csrDelhiverySyncStats,
         csrCapabilityCompliance: csrComplianceStats,
+        offerEmbeddings: offerEmbeddingStats,
       }
     });
 
-  } catch (error: any) {
+  } catch (error) {
     console.error('Daily cleanup cron job error:', error);
     return NextResponse.json({ 
       error: 'Daily cleanup cron job failed',
-      details: error?.message || 'Unknown error',
+      details: getErrorMessage(error) || 'Unknown error',
       timestamp: new Date().toISOString()
     }, { status: 500 });
   }

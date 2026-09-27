@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Menu, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { ConsoleFooter } from '@/components/product-brand';
+import { ConsoleFooter, ProductBrand } from '@/components/product-brand';
 import {
   Sheet,
   SheetClose,
@@ -15,7 +15,6 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import { cn, finalizeConsoleLogout, hasConsoleTabSession, clearConsoleTabSession } from '@/lib/utils';
-import { ProductBrand } from '@/components/product-brand';
 
 const navItems = [
   { label: 'Dashboard', href: '/ca' },

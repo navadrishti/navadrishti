@@ -1,3 +1,5 @@
+import { parseJsonObject } from '@/lib/utils'
+
 type CampaignLike = Record<string, unknown> | null | undefined
 
 export function readCampaignCategory(row: CampaignLike): string {
@@ -26,7 +28,7 @@ export function resolveCampaignLocationInput(body: Record<string, unknown>): str
   return String(body.location || body.region || '').trim()
 }
 
-export function buildCampaignWritePayload(body: Record<string, unknown>, companyId: number) {
+export function buildCampaignWritePayload(body: Record<string, any>, companyId: number) {
   const category = resolveCampaignCategoryInput(body)
   const location = resolveCampaignLocationInput(body)
 
@@ -68,15 +70,12 @@ export function getVolunteerApplicationCapacity(
   userType: string,
   actingUser?: {
     ngo_volunteer_capacity?: number | null
-    profile_data?: Record<string, unknown> | null
+    profile_data?: unknown
   } | null
 ): number {
   if (userType !== 'ngo') return 1
 
-  const profile =
-    actingUser?.profile_data && typeof actingUser.profile_data === 'object'
-      ? actingUser.profile_data
-      : {}
+  const profile = parseJsonObject(actingUser?.profile_data)
 
   const capacity = Number(
     actingUser?.ngo_volunteer_capacity ??

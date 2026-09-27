@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import jwt from 'jsonwebtoken';
-import { JWT_SECRET } from '@/lib/auth';
-
-interface JWTPayload {
-  id: number;
-}
+import { getTokenClaims } from '@/lib/auth';
+import { parseJsonObject } from '@/lib/utils';
 
 function parseSelectedNeeds(meta: Record<string, any>) {
   const rawNeeds = meta.selected_needs;
@@ -28,7 +24,7 @@ function parseSelectedNeeds(meta: Record<string, any>) {
 function buildSelectedNeedSummary(meta: Record<string, any>) {
   const selectedNeeds = parseSelectedNeeds(meta);
   if (selectedNeeds.length > 0) {
-    return selectedNeeds.slice(0, 3).map((need: any) => ({
+    return selectedNeeds.slice(0, 3).map((need) => ({
       id: Number(need.id),
       title: String(need.title || 'Need'),
       estimated_budget: need.estimated_budget != null ? Number(need.estimated_budget) : null,
@@ -39,7 +35,7 @@ function buildSelectedNeedSummary(meta: Record<string, any>) {
   }
 
   const selectedNeedIds = Array.isArray(meta.selected_need_ids)
-    ? meta.selected_need_ids.map((item: any) => Number(item)).filter((id: number) => Number.isFinite(id) && id > 0)
+    ? meta.selected_need_ids.map((item) => Number(item)).filter((id: number) => Number.isFinite(id) && id > 0)
     : [];
 
   return selectedNeedIds.slice(0, 3).map((id: number) => ({
@@ -54,14 +50,11 @@ function buildSelectedNeedSummary(meta: Record<string, any>) {
 
 export async function GET(request: NextRequest) {
   try {
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const claims = getTokenClaims(request);
+    if (!claims) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
-
-    const token = authHeader.substring(7);
-    const payload = jwt.verify(token, JWT_SECRET) as JWTPayload;
-    const ownerId = payload.id;
+    const ownerId = claims.id;
 
     const { data: offers, error: offersError } = await supabase
       .from('service_offers')
@@ -73,12 +66,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch owner offers' }, { status: 500 });
     }
 
-    const offerIds = (offers || []).map((offer: any) => offer.id);
+    const offerIds = (offers || []).map((offer) => offer.id);
     if (offerIds.length === 0) {
       return NextResponse.json({ success: true, data: [] });
     }
 
-    const offerTitleMap = new Map<number, string>((offers || []).map((offer: any) => [offer.id, offer.title]));
+    const offerTitleMap = new Map<number, string>((offers || []).map((offer) => [offer.id, offer.title]));
 
     const { data: requests, error: requestsError } = await supabase
       .from('service_clients')
@@ -97,8 +90,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch requests' }, { status: 500 });
     }
 
-    const normalizedRequests = (requests || []).map((request: any) => {
-      const meta = request?.response_meta && typeof request.response_meta === 'object' ? request.response_meta : {};
+    const normalizedRequests = (requests || []).map((request) => {
+      const meta = parseJsonObject(request.response_meta);
       const isAssigned = typeof meta.isAssigned === 'boolean' ? meta.isAssigned : request.status === 'accepted';
       const selectedNeedSummary = buildSelectedNeedSummary(meta);
 

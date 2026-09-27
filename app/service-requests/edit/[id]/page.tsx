@@ -2,85 +2,26 @@
 
 import React, { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import { ArrowLeft, Loader2 } from 'lucide-react'
 
 import { Header } from '@/components/header'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
-import { CSR_SCHEDULE_VII_CATEGORIES, SERVICE_REQUEST_CATEGORIES } from '@/lib/categories'
+import { SERVICE_REQUEST_CATEGORIES } from '@/lib/categories'
+import { parseJsonObject } from '@/lib/utils'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { StyledSelect } from '@/components/ui/styled-select'
 import { Textarea } from '@/components/ui/textarea'
-
-type RequestProject = {
-  id: string
-  title: string
-  description?: string | null
-  location: string
-  exact_address?: string | null
-  timeline?: string | null
-  category?: string | null
-}
-
-type NeedDraft = {
-  title: string
-  description: string
-  images: string
-  request_type: string
-  category: string
-  location: string
-  urgency: string
-  timeline: string
-  budget: string
-  estimated_budget: string
-  beneficiary_count: string
-  impact_description: string
-  contactInfo: string
-  target_amount: string
-  target_quantity: string
-  current_amount: string
-  current_quantity: string
-  material_items: string
-  skill_role: string
-  skill_duration: string
-  infrastructure_scope: string
-}
 
 type UploadProgressState = {
   active: boolean
   current: number
   total: number
 }
-
-const createEmptyNeed = (): NeedDraft => ({
-  title: '',
-  description: '',
-  images: '',
-  request_type: '',
-  category: '',
-  location: '',
-  urgency: 'medium',
-  timeline: '',
-  budget: 'Not specified',
-  estimated_budget: '',
-  beneficiary_count: '',
-  impact_description: '',
-  contactInfo: 'email',
-  target_amount: '',
-  target_quantity: '',
-  current_amount: '',
-  current_quantity: '',
-  material_items: '',
-  skill_role: '',
-  skill_duration: '',
-  infrastructure_scope: ''
-})
 
 const timelinePattern = /^(?:\d+\s*(?:day|days|week|weeks|month|months|year|years)|\d{4}-\d{2}-\d{2})$/i
 
@@ -95,13 +36,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
 
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
-  const [loadingProjects, setLoadingProjects] = useState(false)
-  const [projectMode] = useState<'existing' | 'new'>('existing')
-  const [projectAvailableForCsr, setProjectAvailableForCsr] = useState(true)
-  const [projects, setProjects] = useState<RequestProject[]>([])
-  const [additionalNeeds, setAdditionalNeeds] = useState<NeedDraft[]>([])
   const [mainUploadProgress, setMainUploadProgress] = useState<UploadProgressState | null>(null)
-  const [additionalUploadProgress, setAdditionalUploadProgress] = useState<Record<number, UploadProgressState>>({})
   const [formData, setFormData] = useState({
     projectId: '',
     project_title: '',
@@ -135,39 +70,6 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
   })
 
   useEffect(() => {
-    const loadProjects = async () => {
-      if (!user?.id) return
-
-      setLoadingProjects(true)
-      try {
-        const token = localStorage.getItem('token')
-        const response = await fetch(`/api/service-request-projects?ngoId=${user.id}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        })
-        const data = await response.json()
-        if (response.ok && data.success) {
-          setProjects(Array.isArray(data.data) ? data.data : [])
-        }
-      } catch {
-        setProjects([])
-      } finally {
-        setLoadingProjects(false)
-      }
-    }
-
-    loadProjects()
-
-    const refreshInterval = setInterval(loadProjects, 30000)
-    const onFocus = () => loadProjects()
-    window.addEventListener('focus', onFocus)
-
-    return () => {
-      clearInterval(refreshInterval)
-      window.removeEventListener('focus', onFocus)
-    }
-  }, [user?.id])
-
-  useEffect(() => {
     if (!user) {
       router.push('/login')
       return
@@ -196,20 +98,10 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
         }
 
         const req = data.data
-        let requirements: any = {}
-        try {
-          requirements = typeof req.requirements === 'string' ? JSON.parse(req.requirements) : req.requirements || {}
-        } catch {
-          requirements = {}
-        }
+        const requirements = parseJsonObject(req.requirements)
 
         const requestProject = req.project || requirements?.project?.project || null
         const projectCategory = req.category || requirements?.project_category || requestProject?.category || ''
-
-        if (requestProject?.id) {
-          // keep projectMode as 'existing' — edit page does not allow creating a new project
-          // projectMode remains fixed to 'existing'
-        }
 
         setFormData({
           projectId: requestProject?.id || '',
@@ -242,56 +134,6 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
           skill_duration: requirements?.category_details?.skill_duration || '',
           infrastructure_scope: requirements?.category_details?.infrastructure_scope || ''
         })
-
-        if (requestProject?.id) {
-          try {
-            const projectToken = localStorage.getItem('token')
-            const relatedResponse = await fetch(`/api/service-requests?projectId=${requestProject.id}`, {
-              headers: { Authorization: `Bearer ${projectToken}` }
-            })
-            const relatedData = await relatedResponse.json()
-            if (relatedResponse.ok && relatedData.success && Array.isArray(relatedData.data)) {
-              const additional = relatedData.data
-                .filter((item: any) => String(item.id) !== String(resolvedParams.id))
-                .map((item: any) => {
-                  let relatedRequirements: any = {}
-                  try {
-                    relatedRequirements = typeof item.requirements === 'string' ? JSON.parse(item.requirements) : item.requirements || {}
-                  } catch {
-                    relatedRequirements = {}
-                  }
-
-                  return {
-                    title: item.title || '',
-                    description: item.description || '',
-                    images: Array.isArray(item.images) ? item.images.join('\n') : String(item.images || relatedRequirements?.images || item.image_url || ''),
-                    request_type: relatedRequirements.request_type || item.category || '',
-                    category: item.category || '',
-                    location: item.location || requestProject.exact_address || requestProject.location || '',
-                    urgency: item.urgency_level || 'medium',
-                    timeline: relatedRequirements.timeline || item.timeline || '',
-                    budget: relatedRequirements.budget || 'Not specified',
-                    estimated_budget: relatedRequirements.estimated_budget || '',
-                    beneficiary_count: String(relatedRequirements.beneficiary_count || 1),
-                    impact_description: relatedRequirements.impact_description || '',
-                    contactInfo: relatedRequirements.contactInfo || 'email',
-                    target_amount: item.target_amount != null ? String(item.target_amount) : '',
-                    target_quantity: item.target_quantity != null ? String(item.target_quantity) : '',
-                    current_amount: item.current_amount != null ? String(item.current_amount) : '',
-                    current_quantity: item.current_quantity != null ? String(item.current_quantity) : '',
-                    material_items: relatedRequirements?.category_details?.material_items || '',
-                    skill_role: relatedRequirements?.category_details?.skill_role || '',
-                    skill_duration: relatedRequirements?.category_details?.skill_duration || '',
-                    infrastructure_scope: relatedRequirements?.category_details?.infrastructure_scope || ''
-                  }
-                })
-
-              setAdditionalNeeds(additional)
-            }
-          } catch {
-            setAdditionalNeeds([])
-          }
-        }
       } catch {
         toast({ title: 'Error', description: 'Failed to fetch need details', variant: 'destructive' })
         router.push('/service-requests')
@@ -305,28 +147,6 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
 
   const handleInput = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
-  }
-
-  // project selection is not editable on the edit-need page; keep existing project assignment only
-
-  const activeProjectLocation = projectMode === 'existing'
-    ? projects.find((project) => project.id === formData.projectId)?.exact_address || projects.find((project) => project.id === formData.projectId)?.location || formData.project_location
-    : formData.project_location
-
-  const activeProjectSummary = projectMode === 'existing'
-    ? projects.find((project) => project.id === formData.projectId)
-    : {
-        id: formData.projectId || 'new-project',
-        title: formData.project_title,
-        description: formData.project_description,
-        location: formData.project_location,
-        timeline: formData.project_timeline
-      }
-
-  const totalNeeds = 1 + additionalNeeds.length
-
-  const updateAdditionalNeed = (index: number, field: keyof NeedDraft, value: string) => {
-    setAdditionalNeeds((prev) => prev.map((need, needIndex) => (needIndex === index ? { ...need, [field]: value } : need)))
   }
 
   const parseImageUrls = (value: string) => {
@@ -406,95 +226,10 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
     }
   }
 
-  const handleAdditionalNeedUpload = async (index: number, files: FileList | null) => {
-    const total = files?.length || 0
-    if (total > 0) {
-      setAdditionalUploadProgress((prev) => ({
-        ...prev,
-        [index]: { active: true, current: 0, total }
-      }))
-    }
-
-    const result = await handleUpload(files, (current, totalCount) => {
-      setAdditionalUploadProgress((prev) => ({
-        ...prev,
-        [index]: { active: true, current, total: totalCount }
-      }))
-    })
-
-    if (total > 0) {
-      setAdditionalUploadProgress((prev) => ({
-        ...prev,
-        [index]: { active: false, current: total, total }
-      }))
-    }
-
-    if (result.urls.length > 0) {
-      setAdditionalNeeds((prev) => prev.map((need, needIndex) => needIndex === index ? { ...need, images: appendImageUrls(need.images, result.urls) } : need))
-    }
-    if (result.failures.length > 0) {
-      toast({ title: 'Partial Upload Failure', description: `${result.failures.length} image(s) could not be uploaded for Additional need ${index + 1}.`, variant: 'destructive' })
-    }
-  }
-
-  const addAdditionalNeed = () => {
-    setAdditionalNeeds((prev) => [...prev, createEmptyNeed()])
-  }
-
-  const removeAdditionalNeed = (index: number) => {
-    setAdditionalNeeds((prev) => prev.filter((_, needIndex) => needIndex !== index))
-  }
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     const isBlank = (value: unknown) => !String(value ?? '').trim()
-
-    const validateNeed = (need: NeedDraft, label: string): string | null => {
-      if (isBlank(need.title)) return `${label}: need title is required.`
-      if (String(need.title).trim().length < 3) return `${label}: need title must be at least 3 characters.`
-
-      if (isBlank(need.description)) return `${label}: need description is required.`
-      if (String(need.description).trim().length < 20) return `${label}: need description must be at least 20 characters.`
-
-      if (isBlank(need.request_type)) return `${label}: need type is required.`
-      if (!SERVICE_REQUEST_CATEGORIES.includes(need.request_type)) return `${label}: select a valid need type.`
-
-
-      if (isBlank(need.budget)) return `${label}: budget range is required.`
-      if (!['Under INR 25,000', 'INR 25,000 - INR 1,00,000', 'INR 1,00,000 - INR 5,00,000', 'INR 5,00,000+', 'Not specified'].includes(need.budget)) {
-        return `${label}: select a valid budget range.`
-      }
-
-      // beneficiary_count and timeline inherited from project; do not validate here
-
-      if (isBlank(need.impact_description)) return `${label}: impact description is required.`
-      if (String(need.impact_description).trim().length < 20) return `${label}: impact description must be at least 20 characters.`
-
-      if (isBlank(need.contactInfo)) return `${label}: contact information is required.`
-      if (String(need.contactInfo).trim().length < 10) return `${label}: contact information must include enough detail to reach you.`
-
-      if (need.request_type === 'Material Need') {
-        if (isBlank(need.material_items)) return `${label}: material items are required.`
-        if (String(need.material_items).trim().length < 3) return `${label}: material items must be more specific.`
-      }
-
-      if (need.request_type === 'Skill / Service Need') {
-        if (isBlank(need.skill_role)) return `${label}: role needed is required.`
-        if (String(need.skill_role).trim().length < 3) return `${label}: role needed must be more specific.`
-        if (isBlank(need.skill_duration)) return `${label}: duration is required.`
-        if (String(need.skill_duration).trim().length < 2) return `${label}: duration must be more specific.`
-        if (isBlank(need.target_quantity)) return `${label}: people count is required.`
-        if (!isValidPositiveInteger(need.target_quantity)) return `${label}: people count must be a positive whole number.`
-      }
-
-      if (need.request_type === 'Infrastructure Project') {
-        if (isBlank(need.infrastructure_scope)) return `${label}: infrastructure scope is required.`
-        if (String(need.infrastructure_scope).trim().length < 10) return `${label}: infrastructure scope must be more specific.`
-      }
-
-      return null
-    }
 
     if ([formData.title, formData.description, formData.request_type, formData.budget, formData.impact_description, formData.contactInfo].some(isBlank)) {
       toast({ title: 'Validation Error', description: 'Every main need field must be filled.', variant: 'destructive' })
@@ -526,13 +261,6 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
       return
     }
 
-    // Project creation/validation is not allowed from the edit need page.
-    // Edit page only validates need-level fields.
-
-    // projectMode is fixed to 'existing' on edit page; assume formData.projectId is already set.
-
-    // additionalNeeds are not created from the edit need page
-
     setSubmitting(true)
 
     const details = {
@@ -542,32 +270,8 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
       infrastructure_scope: formData.infrastructure_scope
     }
 
-    // On edit page we don't create new projects; projectPayload is null
-    const projectPayload = null
-
     try {
       const token = localStorage.getItem('token')
-
-      let activeProjectId = formData.projectId
-      if (projectMode === 'new') {
-        const projectResponse = await fetch('/api/service-request-projects', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`
-          },
-          body: JSON.stringify(projectPayload)
-        })
-
-        const projectData = await projectResponse.json()
-        if (!projectResponse.ok || !projectData.success || !projectData.data?.id) {
-          toast({ title: 'Error', description: projectData.error || 'Failed to create project context', variant: 'destructive' })
-          setSubmitting(false)
-          return
-        }
-
-        activeProjectId = projectData.data.id
-      }
 
       const response = await fetch(`/api/service-requests/${resolvedParams.id}`, {
         method: 'PUT',
@@ -580,20 +284,19 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
           images: parseImageUrls(formData.images),
           category: formData.project_category,
           project_category: formData.project_category,
-          projectId: activeProjectId || undefined,
-          project: projectPayload,
+          projectId: formData.projectId || undefined,
           estimated_budget: formData.budget,
           details
         })
       })
 
       const data = await response.json()
-        if (data.success) {
-          toast({ title: 'Success', description: 'Need updated successfully' })
-          router.push('/service-requests?view=my-requests')
-        } else {
-          toast({ title: 'Error', description: data.error || 'Failed to update need', variant: 'destructive' })
-        }
+      if (data.success) {
+        toast({ title: 'Success', description: 'Need updated successfully' })
+        router.push('/service-requests?view=my-requests')
+      } else {
+        toast({ title: 'Error', description: data.error || 'Failed to update need', variant: 'destructive' })
+      }
     } catch {
       toast({ title: 'Error', description: 'Failed to update need', variant: 'destructive' })
     } finally {
@@ -765,8 +468,6 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
                     </div>
                   </div>
                 )}
-
-                
 
                 <div className="flex flex-col gap-3 pt-4 sm:flex-row">
                   <Button type="submit" disabled={submitting} className="w-full flex-1">

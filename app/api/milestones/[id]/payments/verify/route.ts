@@ -2,26 +2,18 @@ import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
 import { supabase } from '@/lib/db';
-import { getEvidenceApproverContext } from '@/lib/server-auth';
 import {
   assertNgoLiveCsr1,
   CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE,
+  getEvidenceApproverContext,
 } from '@/lib/server-auth';
+import { parseAmountToInr, getErrorMessage } from '@/lib/utils';
 
 function safeSignatureMatch(expected: string, received: string): boolean {
   const expectedBuffer = Buffer.from(String(expected || ''), 'utf8');
   const receivedBuffer = Buffer.from(String(received || ''), 'utf8');
   if (expectedBuffer.length !== receivedBuffer.length) return false;
   return crypto.timingSafeEqual(expectedBuffer, receivedBuffer);
-}
-
-function parseAmountToInr(value: unknown): number {
-  if (value === null || value === undefined) return 0;
-  const text = String(value).trim();
-  if (!text) return 0;
-  const numericText = text.replace(/[^\d.-]/g, '');
-  const parsed = Number(numericText);
-  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
 }
 
 export async function POST(
@@ -196,7 +188,7 @@ export async function POST(
       .eq('project_id', project.id);
 
     const totalMilestones = allMilestones?.length ?? 0;
-    const completedMilestones = (allMilestones ?? []).filter((m: any) => m.status === 'completed').length;
+    const completedMilestones = (allMilestones ?? []).filter((m) => m.status === 'completed').length;
     const progressPercentage =
       totalMilestones > 0 ? Math.round((completedMilestones / totalMilestones) * 100) : 0;
 
@@ -206,8 +198,8 @@ export async function POST(
       .eq('project_id', project.id);
 
     const fundsUtilized = (allPayments ?? [])
-      .filter((payment: any) => payment.payment_status === 'confirmed')
-      .reduce((sum: number, payment: any) => sum + Number(payment.amount || 0), 0);
+      .filter((payment) => payment.payment_status === 'confirmed')
+      .reduce((sum: number, payment) => sum + Number(payment.amount || 0), 0);
 
     await supabase
       .from('csr_projects')
@@ -244,7 +236,7 @@ export async function POST(
         totalPaidInr: paidInr,
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     if (
       error instanceof Error &&
       [
@@ -255,12 +247,12 @@ export async function POST(
         'Company CA identity not found',
         'Company CA identity is not active',
         'Company CA is not authorized for this company project',
-      ].includes(error.message)
+      ].includes(getErrorMessage(error))
     ) {
-      return NextResponse.json({ error: error.message }, { status: 401 });
+      return NextResponse.json({ error: getErrorMessage(error) }, { status: 401 });
     }
 
     console.error('Milestone payment verify error:', error);
-    return NextResponse.json({ error: error?.message || 'Failed to verify milestone payment' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) || 'Failed to verify milestone payment' }, { status: 500 });
   }
 }

@@ -119,7 +119,6 @@ export function getPermissionErrorMessage(permission: keyof AccessPermissions, u
   }
 
   const isVerified = user.verification_status === 'verified';
-  const isEmailVerified = user.email_verified || false;
 
   switch (permission) {
     case 'canCreateServiceRequests':
@@ -266,7 +265,6 @@ export const PRODUCT_NAME = 'GRAM';
 export const COMPANY_LEGAL_NAME = 'Navadrishti LLP';
 export const PRODUCT_LOGO_SRC = '/photos/Gram.svg';
 export const PRODUCT_LOGO_ICON_SRC = '/photos/Gram.svg';
-export const PRODUCT_LOGO_ALT = `${PRODUCT_NAME} logo`;
 /** Apply on logo + name lockups to block select/drag. */
 export const PRODUCT_BRAND_CLASSNAME = 'product-brand select-none';
 export const PRODUCT_POWERED_BY = 'Powered by Navadrishti';
@@ -371,11 +369,7 @@ export function isAllowedPwaOrigin(origin: string | null): boolean {
   return getPwaAllowedOrigins().includes(origin.replace(/\/$/, ''));
 }
 
-/**
- * Paused / not-shipping surfaces (government admin).
- * Social feed routes were removed in the 2026 schema streamline.
- * Full product surfaces (CSR, services, evidence verification, AI agents) are always on.
- */
+/** Surfaces that are paused and redirect to `/` (see also `proxy.ts`). */
 const BLOCKED_ROUTE_PREFIXES = [
   '/government-admin',
 ] as const;

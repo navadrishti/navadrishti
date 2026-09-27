@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { assertAdminUser } from '@/lib/server-auth';
 import { listPendingReverifications } from '@/lib/reverification';
+import { getErrorMessage } from '@/lib/utils';
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,11 +16,11 @@ export async function GET(request: NextRequest) {
       count: reverifications.length,
       reverifications,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Admin reverifications list error:', error);
-    if (error?.message === 'Admin authentication required') {
+    if (getErrorMessage(error) === 'Admin authentication required') {
       return NextResponse.json({ error: 'Admin authentication required' }, { status: 401 });
     }
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) || 'Internal server error' }, { status: 500 });
   }
 }

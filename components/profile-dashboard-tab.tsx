@@ -1,36 +1,28 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { Camera, Loader2, RefreshCw } from 'lucide-react'
-// User icon removed from heading
+import { Camera } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { getGramAvatarFallbackStyle } from '@/lib/gram-avatar'
 import { useOtpSender } from '@/hooks/use-otp-sender'
-import { PHONE_VERIFICATION_ENABLED, getCoverImageUrl, summarizeDocumentExpiries, visibleCaBadgeNumber } from '@/lib/auth'
-import { formatDisplayDate, formatStatusLabel } from '@/lib/format-date'
+import { formatDisplayDate } from '@/lib/format-date'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Skeleton } from '@/components/ui/skeleton'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { NgoComplianceBadges, VerificationBadge } from '@/components/verification-badge'
 import { ProfileCoverMedia } from '@/components/profile-card'
 import { MultiSelectDropdown } from '@/components/ui/multi-select-dropdown'
-import { useToast } from '@/hooks/use-toast'
-import { openRazorpayCheckout } from '@/lib/razorpay-checkout'
 import {
   CSR_SCHEDULE_VII_CATEGORIES,
   COMPANY_CSR_GOVERNANCE_MECHANISMS,
@@ -39,367 +31,29 @@ import {
   normalizeCompanyGovernanceMechanism,
   normalizeCompanyImplementationModel,
 } from '@/lib/categories'
-import {
-  calculatePlatformCheckoutPricing,
-  formatInr,
-  normalizeIfsc,
-  sanitizePayoutAccountInput,
-  validateNgoPayoutAccount,
-  type NgoPayoutAccount,
-  type NgoRazorpayLinkStatus,
-} from '@/lib/utils'
 import { shouldShowPayoutAccountPanel } from '@/lib/access-control'
 import {
   EMPTY_EXECUTION_CAPACITY,
   EMPTY_GEOGRAPHIC_COVERAGE_AREA,
   INDIAN_STATES_AND_UTS,
+  PHONE_VERIFICATION_ENABLED,
   buildNgoLocationDisplay,
   getComplianceDocumentUrl,
+  getCoverImageUrl,
   normalizeExecutionCapacity,
   normalizeGeographicCoverage,
   normalizePincode,
+  summarizeDocumentExpiries,
   validateNgoHeadquartersLocation,
   validateCompanyHeadquartersLocation,
+  visibleCaBadgeNumber,
   type ComplianceDocuments,
   type NgoExecutionCapacity,
   type NgoGeographicCoverageArea,
 } from '@/lib/auth'
+import { PayoutAccountPanel } from '@/components/payout-account-panel'
 
 type FormErrors = Record<string, string>
-
-type PayoutAccountResponse = {
-  payoutAccount: NgoPayoutAccount | null
-  canConnect?: boolean
-  bankDetailsSummary: string | null
-  linkStatus: NgoRazorpayLinkStatus
-  linkedAccountId: string | null
-  linkError: string | null
-  linkUpdatedAt: string | null
-  hasPayoutDetails: boolean
-  acceptsPayments?: boolean
-  networkListingEligible?: boolean
-  routeReady: boolean
-  payoutStatusMessage: string | null
-}
-
-const EMPTY_PAYOUT: NgoPayoutAccount = {
-  account_holder_name: '',
-  bank_name: '',
-  branch: '',
-  account_number: '',
-  ifsc: '',
-  account_type: 'current',
-}
-
-function isPayoutConnected(status: NgoRazorpayLinkStatus): boolean {
-  return status === 'active'
-}
-
-function payoutLinkStatusLabel(status: NgoRazorpayLinkStatus): string {
-  return isPayoutConnected(status) ? 'Connected' : 'Disconnected'
-}
-
-function payoutLinkStatusVariant(status: NgoRazorpayLinkStatus): 'default' | 'secondary' | 'destructive' | 'outline' {
-  return isPayoutConnected(status) ? 'default' : 'secondary'
-}
-
-function payoutPanelDescription(userType: 'ngo' | 'individual' | 'company'): string {
-  if (userType === 'ngo') {
-    return 'Connect Razorpay to receive donations and to list capabilities that settle to your account. NGO Network listing only requires verification.'
-  }
-  if (userType === 'individual') {
-    return 'You must connect Razorpay before listing capabilities so you can receive merchant payouts. You do not need this to donate to NGOs.'
-  }
-  return 'You must connect Razorpay before listing capabilities so you can receive merchant payouts. You do not need this to pay NGOs.'
-}
-
-function payoutDisconnectedHelper(userType: 'ngo' | 'individual' | 'company'): string {
-  if (userType === 'ngo') {
-    return 'Connect account to receive donations and list capabilities'
-  }
-  if (userType === 'individual') {
-    return 'Connect account to list capabilities and receive payouts'
-  }
-  return 'Connect account to list capabilities and receive merchant payouts'
-}
-
-function PayoutAccountPanel({ userType }: { userType: 'ngo' | 'individual' | 'company' }) {
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [connecting, setConnecting] = useState(false)
-  const [form, setForm] = useState<NgoPayoutAccount>(EMPTY_PAYOUT)
-  const [status, setStatus] = useState<PayoutAccountResponse | null>(null)
-
-  const loadStatus = useCallback(async () => {
-    const token = localStorage.getItem('token')
-    if (!token) return
-
-    setLoading(true)
-    try {
-      const response = await fetch('/api/profile/update?scope=payout', {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      const data = (await response.json()) as PayoutAccountResponse & { error?: string }
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to load payout account details.')
-      }
-
-      setStatus(data)
-      setForm({
-        ...EMPTY_PAYOUT,
-        ...(data.payoutAccount || {}),
-        account_number: '',
-      })
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to load payout account.')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    void loadStatus()
-  }, [loadStatus])
-
-  const handleFieldChange = (field: keyof NgoPayoutAccount, value: string) => {
-    const nextValue = field === 'ifsc' ? normalizeIfsc(value) : value
-    setForm((prev) => ({ ...prev, [field]: nextValue }))
-  }
-
-  const handleSave = async () => {
-    const sanitized = sanitizePayoutAccountInput(form)
-    const allowMissingAccountNumber = !sanitized.account_number && Boolean(status?.hasPayoutDetails)
-    let validationError = validateNgoPayoutAccount(sanitized)
-
-    if (validationError && allowMissingAccountNumber) {
-      if (sanitized.account_holder_name.length < 3) {
-        validationError = 'Account holder name must be at least 3 characters.'
-      } else if (sanitized.bank_name.length < 2) {
-        validationError = 'Bank name is required.'
-      } else if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(sanitized.ifsc)) {
-        validationError = 'Enter a valid IFSC code (e.g. HDFC0001234).'
-      } else {
-        validationError = null
-      }
-    }
-
-    if (validationError) {
-      toast.error(validationError)
-      return
-    }
-
-    const token = localStorage.getItem('token')
-    if (!token) {
-      toast.error('Please sign in again.')
-      return
-    }
-
-    setSaving(true)
-    try {
-      const response = await fetch('/api/profile/update', {
-        method: 'PATCH',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ scope: 'payout', action: 'save', payoutAccount: sanitized }),
-      })
-      const data = await response.json()
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to save payout account.')
-      }
-
-      toast.success(data.message || 'Payout bank details saved.')
-      setStatus(data)
-      setForm({
-        ...EMPTY_PAYOUT,
-        ...(data.payoutAccount || {}),
-        account_number: '',
-      })
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to save payout account.')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleConnect = async () => {
-    const token = localStorage.getItem('token')
-    if (!token) {
-      toast.error('Please sign in again.')
-      return
-    }
-
-    setConnecting(true)
-    try {
-      const response = await fetch('/api/profile/update', {
-        method: 'PATCH',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ scope: 'payout', action: 'connect' }),
-      })
-      const data = await response.json()
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to connect payout account.')
-      }
-
-      toast.success(data.message || 'Payout account connected.')
-      setStatus(data)
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to connect payout account.')
-      await loadStatus()
-    } finally {
-      setConnecting(false)
-    }
-  }
-
-  if (loading) {
-    return (
-      <div className="flex items-center gap-2 rounded-lg border p-4 text-sm text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        Loading payout account details...
-      </div>
-    )
-  }
-
-  const linkStatus = status?.linkStatus || 'not_started'
-  const connected = isPayoutConnected(linkStatus)
-  const showReconnect = linkStatus === 'needs_reconnect' || linkStatus === 'failed' || linkStatus === 'not_started' || linkStatus === 'pending'
-  const canConnect = Boolean(status?.canConnect)
-  const maskedSavedAccount = status?.payoutAccount?.account_number
-
-  return (
-    <div className="space-y-4 rounded-lg border p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h4 className="text-sm font-semibold">Payout Bank Account</h4>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {payoutPanelDescription(userType)}
-          </p>
-        </div>
-        <Badge variant={payoutLinkStatusVariant(linkStatus)}>{payoutLinkStatusLabel(linkStatus)}</Badge>
-      </div>
-
-      {!connected ? (
-        <p className="text-xs text-muted-foreground">{payoutDisconnectedHelper(userType)}</p>
-      ) : null}
-
-      {status?.linkError ? (
-        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-700">
-          {status.linkError}
-        </div>
-      ) : null}
-
-      {linkStatus === 'needs_reconnect' ? (
-        <p className="text-xs text-muted-foreground">
-          Bank details changed. Save the form and reconnect so Razorpay can verify the updated account.
-        </p>
-      ) : null}
-
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        <div>
-          <Label htmlFor="payoutAccountHolder">Account holder name</Label>
-          <Input
-            id="payoutAccountHolder"
-            value={form.account_holder_name}
-            onChange={(event) => handleFieldChange('account_holder_name', event.target.value)}
-            placeholder="As per bank records"
-          />
-        </div>
-        <div>
-          <Label htmlFor="payoutBankName">Bank name</Label>
-          <Input
-            id="payoutBankName"
-            value={form.bank_name}
-            onChange={(event) => handleFieldChange('bank_name', event.target.value)}
-            placeholder="e.g. State Bank of India"
-          />
-        </div>
-        <div>
-          <Label htmlFor="payoutBranch">Branch (optional)</Label>
-          <Input
-            id="payoutBranch"
-            value={form.branch || ''}
-            onChange={(event) => handleFieldChange('branch', event.target.value)}
-            placeholder="Branch name"
-          />
-        </div>
-        <div>
-          <Label htmlFor="payoutAccountType">Account type</Label>
-          <Select value={form.account_type} onValueChange={(value) => handleFieldChange('account_type', value)}>
-            <SelectTrigger id="payoutAccountType">
-              <SelectValue placeholder="Select account type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="current">Current</SelectItem>
-              <SelectItem value="savings">Savings</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div>
-          <Label htmlFor="payoutAccountNumber">Account number</Label>
-          <Input
-            id="payoutAccountNumber"
-            value={form.account_number}
-            onChange={(event) => handleFieldChange('account_number', event.target.value)}
-            placeholder={maskedSavedAccount ? `Saved: ${maskedSavedAccount}` : 'Enter account number'}
-            inputMode="numeric"
-          />
-          {maskedSavedAccount ? (
-            <p className="mt-1 text-xs text-muted-foreground">
-              Current saved account ends with {maskedSavedAccount.replace(/\*/g, '')}. Enter the full number again to change it.
-            </p>
-          ) : null}
-        </div>
-        <div>
-          <Label htmlFor="payoutIfsc">IFSC code</Label>
-          <Input
-            id="payoutIfsc"
-            value={form.ifsc}
-            onChange={(event) => handleFieldChange('ifsc', event.target.value)}
-            placeholder="e.g. SBIN0001234"
-          />
-        </div>
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        <Button type="button" onClick={handleSave} disabled={saving || connecting}>
-          {saving ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Saving...
-            </>
-          ) : (
-            'Save payout details'
-          )}
-        </Button>
-        <Button
-          type="button"
-          variant={showReconnect ? 'default' : 'outline'}
-          onClick={handleConnect}
-          disabled={connecting || saving || !canConnect}
-        >
-          {connecting ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Connecting...
-            </>
-          ) : (
-            <>
-              <RefreshCw className="mr-2 h-4 w-4" />
-              {showReconnect ? 'Connect payout account' : 'Refresh Razorpay status'}
-            </>
-          )}
-        </Button>
-      </div>
-      {!canConnect ? (
-        <p className="text-xs text-muted-foreground">Save payout details first, then connect to Razorpay.</p>
-      ) : null}
-    </div>
-  )
-}
 
 export function ProfileDashboardTab() {
   const { user, updateUser, refreshUser } = useAuth()
@@ -696,10 +350,7 @@ export function ProfileDashboardTab() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          userId: user?.id,
-          profileImageUrl: imageUrl,
-        }),
+        body: JSON.stringify({ profileImageUrl: imageUrl }),
       })
 
       if (!saveResponse.ok) {
@@ -725,12 +376,10 @@ export function ProfileDashboardTab() {
     const saveResponse = await fetch('/api/profile/update', {
       method: 'POST',
       headers: {
+        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        userId: user?.id,
-        coverImageUrl: imageUrl,
-      }),
+      body: JSON.stringify({ coverImageUrl: imageUrl }),
     })
 
     if (!saveResponse.ok) {
@@ -840,7 +489,6 @@ export function ProfileDashboardTab() {
       setLoading(true)
 
       const profileData: Record<string, any> = {
-        userId: user.id,
         name: editableName,
         email: editableEmail,
         phone,
@@ -854,16 +502,6 @@ export function ProfileDashboardTab() {
         profile_data: {
           bio,
         },
-      }
-
-      if (emailChanged && emailVerifiedForCurrentValue) {
-        profileData.email_verified = true
-        profileData.email_verified_at = new Date().toISOString()
-      }
-
-      if (phoneChanged && phoneVerifiedForCurrentValue) {
-        profileData.phone_verified = true
-        profileData.phone_verified_at = new Date().toISOString()
       }
 
       if (user.user_type === 'individual' && age) {
@@ -1632,21 +1270,6 @@ export function ProfileDashboardTab() {
                               if (!verified) return
 
                               const verifiedAt = new Date().toISOString()
-                              const response = await fetch('/api/profile/update', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                  userId: user?.id,
-                                  phone_verified: true,
-                                  phone_verified_at: verifiedAt,
-                                }),
-                              })
-
-                              if (!response.ok) {
-                                toast.error('Phone OTP verified but failed to persist status. Please refresh and try again.')
-                                return
-                              }
-
                               updateUser({ phone: phone || user?.phone, phone_verified: true, phone_verified_at: verifiedAt })
                               setVerifiedPhoneValue(normalizePhone(phone || user?.phone || ''))
                               toast.success('Phone verified successfully.')
@@ -1703,25 +1326,10 @@ export function ProfileDashboardTab() {
                             variant="outline"
                             className="w-full max-w-full whitespace-normal break-words sm:w-auto"
                             onClick={async () => {
-                              const verified = await handleVerifyEmailOtp(editableEmail || user?.email || '', otpInput.email)
+                              const verified = await handleVerifyEmailOtp(editableEmail || user?.email || '', otpInput.email, { persist: true })
                               if (!verified) return
 
                               const verifiedAt = new Date().toISOString()
-                              const response = await fetch('/api/profile/update', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                  userId: user?.id,
-                                  email_verified: true,
-                                  email_verified_at: verifiedAt,
-                                }),
-                              })
-
-                              if (!response.ok) {
-                                toast.error('Email OTP verified but failed to persist status. Please refresh and try again.')
-                                return
-                              }
-
                               updateUser({ email: editableEmail || user?.email, email_verified: true, email_verified_at: verifiedAt })
                               setVerifiedEmailValue(normalizeEmail(editableEmail || user?.email || ''))
                               toast.success('Email verified successfully.')
@@ -1830,416 +1438,6 @@ export function ProfileDashboardTab() {
 
       </div>
     </div>
-  )
-}
-
-const PAYMENT_SOURCE_BADGE_CLASS: Record<string, string> = {
-  ngo_network: 'bg-violet-50 text-violet-700 hover:bg-violet-50',
-  service_request: 'bg-emerald-50 text-emerald-700 hover:bg-emerald-50',
-  service_offer: 'bg-gram-sage text-udaan-blue hover:bg-gram-sage',
-  engagement_settlement: 'bg-amber-50 text-amber-700 hover:bg-amber-50',
-  company_ca: 'bg-slate-100 text-slate-700 hover:bg-slate-100',
-  razorpay: 'bg-slate-100 text-slate-700 hover:bg-slate-100',
-}
-
-function formatPaymentInr(value: number) {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0,
-  }).format(value)
-}
-
-function formatPaymentDate(value: string | null) {
-  if (!value) return '—'
-  return new Date(value).toLocaleString('en-IN', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
-export function PaymentHistoryPanel({
-  role,
-  title,
-  description,
-  emptyMessage,
-}: {
-  role: 'sent' | 'received'
-  title: string
-  description: string
-  emptyMessage: string
-}) {
-  const [loading, setLoading] = useState(true)
-  const [payments, setPayments] = useState<
-    Array<{
-      id: number | string
-      razorpay_payment_id: string
-      amount_inr: number
-      payment_status: string
-      paid_at: string | null
-      service_request_title: string
-      source: string
-      source_label: string
-      counterparty_name: string
-    }>
-  >([])
-  const [fines, setFines] = useState<
-    Array<{
-      campaign_id: string
-      campaign_title?: string | null
-      service_offer_id: number
-      material_total_worth_inr?: number
-      base_amount_inr?: number
-      pending_total_inr: number
-      accrued_fine_inr?: number
-      due_cleared_by?: string | null
-      status: string
-      reason?: string | null
-    }>
-  >([])
-
-  useEffect(() => {
-    const load = async () => {
-      try {
-        setLoading(true)
-        const token = localStorage.getItem('token')
-        if (!token) {
-          setPayments([])
-          return
-        }
-
-        const response = await fetch(`/api/users?view=payment-history&role=${role}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        const payload = await response.json()
-        setPayments(response.ok && payload.success ? payload.data || [] : [])
-        setFines(response.ok && payload.success && role === 'sent' ? payload.fines || [] : [])
-      } catch {
-        setPayments([])
-        setFines([])
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    void load()
-  }, [role])
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {role === 'sent' && fines.length > 0 ? (
-          <div className="mb-6 space-y-3">
-            <p className="text-sm font-medium text-red-700">Outstanding CSR capability penalties</p>
-            {fines.map((fine) => (
-              <div key={`${fine.campaign_id}-${fine.service_offer_id}`} className="rounded-lg border border-red-200 bg-red-50/70 p-4">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <p className="font-medium text-slate-900">{fine.campaign_title || 'CSR campaign'}</p>
-                    <p className="text-sm text-muted-foreground">Offer #{fine.service_offer_id}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{fine.reason || 'Material return / dispatch penalty'}</p>
-                    {fine.due_cleared_by ? (
-                      <p className="mt-1 text-xs text-red-700">Clear by {formatPaymentDate(fine.due_cleared_by)} or account may be suspended</p>
-                    ) : null}
-                  </div>
-                  <div className="text-left sm:text-right">
-                    <p className="text-lg font-semibold text-red-700">{formatPaymentInr(Number(fine.pending_total_inr || 0))}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Material worth {formatPaymentInr(Number(fine.material_total_worth_inr || fine.base_amount_inr || 0))}
-                      {Number(fine.accrued_fine_inr || 0) > 0 ? ` · incl. ${formatPaymentInr(Number(fine.accrued_fine_inr))} fine` : ''}
-                    </p>
-                    <Badge variant="outline" className="mt-2">{formatStatusLabel(fine.status)}</Badge>
-                  </div>
-                </div>
-              </div>
-            ))}
-            <p className="text-xs text-muted-foreground">Unpaid penalties accrue 2% daily on the pending balance. After 10 days overdue, company accounts are suspended.</p>
-          </div>
-        ) : null}
-        {loading ? (
-          <div className="space-y-3">
-            <Skeleton className="h-16 w-full" />
-            <Skeleton className="h-16 w-full" />
-          </div>
-        ) : payments.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{emptyMessage}</p>
-        ) : (
-          <div className="space-y-3">
-            {payments.map((payment) => (
-              <div key={payment.id} className="rounded-lg border p-4">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <p className="font-medium text-slate-900">{payment.service_request_title}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {role === 'sent' ? 'Paid to' : 'Received from'} {payment.counterparty_name}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">{formatPaymentDate(payment.paid_at)}</p>
-                    {payment.razorpay_payment_id ? (
-                      <p className="mt-1 text-[11px] text-muted-foreground">Ref: {payment.razorpay_payment_id}</p>
-                    ) : null}
-                  </div>
-                  <div className="flex flex-col items-start gap-2 sm:items-end">
-                    <p className="text-lg font-semibold text-emerald-700">{formatPaymentInr(payment.amount_inr)}</p>
-                    <div className="flex flex-wrap gap-2">
-                      <Badge variant="outline">{formatStatusLabel(payment.payment_status)}</Badge>
-                      <Badge className={PAYMENT_SOURCE_BADGE_CLASS[payment.source] || PAYMENT_SOURCE_BADGE_CLASS.razorpay}>
-                        {payment.source_label || 'Razorpay payment'}
-                      </Badge>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
-type PlatformPaymentSummaryProps = {
-  baseAmountInr: number
-  className?: string
-  paymentKind?: string | null
-}
-
-export function PlatformPaymentSummary({ baseAmountInr, className = '', paymentKind }: PlatformPaymentSummaryProps) {
-  const pricing = calculatePlatformCheckoutPricing(baseAmountInr, { paymentKind })
-
-  if (pricing.baseAmountInr <= 0) {
-    return null
-  }
-
-  return (
-    <div className={`rounded-md border bg-slate-50 p-3 text-sm ${className}`.trim()}>
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-muted-foreground">NGO receives</span>
-        <span className="font-medium tabular-nums">{formatInr(pricing.baseAmountInr)}</span>
-      </div>
-      <div className="mt-1 flex items-center justify-between gap-3">
-        <span className="text-muted-foreground">Platform fee ({pricing.platformFeePercent}%)</span>
-        <span className="tabular-nums">{formatInr(pricing.platformFeeInr)}</span>
-      </div>
-      {pricing.gstOnPlatformFeeInr > 0 ? (
-        <div className="mt-1 flex items-center justify-between gap-3">
-          <span className="text-muted-foreground">GST on platform fee ({pricing.gstRatePercent}%)</span>
-          <span className="tabular-nums">{formatInr(pricing.gstOnPlatformFeeInr)}</span>
-        </div>
-      ) : null}
-      <div className="mt-2 flex items-center justify-between gap-3 border-t pt-2 font-medium">
-        <span>Total you pay</span>
-        <span className="tabular-nums">{formatInr(pricing.totalChargeInr)}</span>
-      </div>
-    </div>
-  )
-}
-
-export function getTotalChargeLabel(baseAmountInr: number, paymentKind?: string | null): string {
-  if (!(Number(baseAmountInr) > 0)) return formatInr(0)
-  const pricing = calculatePlatformCheckoutPricing(baseAmountInr, { paymentKind })
-  return formatInr(pricing.totalChargeInr)
-}
-
-export type NgoPayTarget = {
-  id: number
-  name: string
-  email?: string | null
-}
-
-function parseNgoPayAmountToInr(value: string) {
-  const normalized = value.replace(/,/g, '').trim()
-  const amount = Number(normalized)
-  return Number.isFinite(amount) ? amount : 0
-}
-
-export function NgoPayDialog({
-  ngo,
-  open,
-  onOpenChange,
-}: {
-  ngo: NgoPayTarget | null
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}) {
-  const { user } = useAuth()
-  const { toast: notify } = useToast()
-  const [paymentAmount, setPaymentAmount] = useState('')
-  const [paying, setPaying] = useState(false)
-
-  const close = () => {
-    onOpenChange(false)
-    setPaymentAmount('')
-  }
-
-  const handlePay = async () => {
-    if (!ngo || !user) return
-
-    const token = localStorage.getItem('token')
-    if (!token) {
-      notify({
-        title: 'Sign in required',
-        description: 'Log in as a company or individual to pay NGOs.',
-        variant: 'destructive',
-      })
-      return
-    }
-
-    const requestedInr = parseNgoPayAmountToInr(paymentAmount)
-    if (requestedInr <= 0) {
-      notify({
-        title: 'Invalid amount',
-        description: 'Enter a valid contribution amount in INR.',
-        variant: 'destructive',
-      })
-      return
-    }
-
-    setPaying(true)
-    try {
-      const orderRes = await fetch('/api/ngos/network', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ action: 'create-order', ngoId: ngo.id, amount: requestedInr }),
-      })
-
-      const orderPayload = await orderRes.json()
-      if (!orderRes.ok || !orderPayload?.success) {
-        notify({
-          title: 'Unable to start payment',
-          description: orderPayload?.error || 'Failed to create payment order',
-          variant: 'destructive',
-        })
-        return
-      }
-
-      const orderData = orderPayload.data
-      const activeNgo = ngo
-
-      await openRazorpayCheckout({
-        keyId: orderData.keyId,
-        orderId: orderData.orderId,
-        amountInr: Number(orderData.totalCharge || orderData.amount),
-        currency: orderData.currency,
-        description: `Support for ${activeNgo.name}`,
-        prefill: {
-          name: user.name || '',
-          email: user.email || '',
-        },
-        onBeforeOpen: () => {
-          onOpenChange(false)
-        },
-        onDismiss: () => {
-          close()
-        },
-        onSuccess: async (response) => {
-          const verifyRes = await fetch('/api/ngos/network', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({
-              action: 'verify',
-              ngoId: activeNgo.id,
-              ...response,
-            }),
-          })
-
-          const verifyPayload = await verifyRes.json()
-          if (!verifyRes.ok || !verifyPayload?.success) {
-            notify({
-              title: 'Payment verification failed',
-              description: verifyPayload?.error || 'Please contact support with your payment reference.',
-              variant: 'destructive',
-            })
-            return
-          }
-
-          notify({
-            title: 'Payment successful',
-            description: verifyPayload?.data?.message || `Your support for ${activeNgo.name} was recorded.`,
-          })
-          close()
-        },
-        onFailure: (error) => {
-          notify({
-            title: 'Payment failed',
-            description: error.description || error.reason || 'Payment could not be completed.',
-            variant: 'destructive',
-          })
-        },
-      })
-    } catch (error) {
-      notify({
-        title: 'Payment failed',
-        description: error instanceof Error ? error.message : 'Could not open checkout.',
-        variant: 'destructive',
-      })
-    } finally {
-      setPaying(false)
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={(next) => (next ? onOpenChange(true) : close())}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Pay {ngo?.name || 'NGO'}</DialogTitle>
-          <DialogDescription>
-            Send direct support. You can also contact the NGO at{' '}
-            {ngo?.email ? (
-              <a href={`mailto:${ngo.email}`} className="font-medium text-emerald-700 hover:underline">
-                {ngo.email}
-              </a>
-            ) : (
-              'their profile email'
-            )}{' '}
-            before or after paying.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-2 py-2">
-          <Label htmlFor="ngo-payment-amount">NGO support amount (INR)</Label>
-          <Input
-            id="ngo-payment-amount"
-            inputMode="decimal"
-            placeholder="e.g. 1000"
-            value={paymentAmount}
-            onChange={(event) => setPaymentAmount(event.target.value)}
-            disabled={paying}
-          />
-          <PlatformPaymentSummary baseAmountInr={parseNgoPayAmountToInr(paymentAmount)} />
-        </div>
-
-        <DialogFooter className="gap-2 sm:gap-0">
-          <Button type="button" variant="outline" onClick={close} disabled={paying}>
-            Cancel
-          </Button>
-          <Button type="button" onClick={handlePay} disabled={paying || parseNgoPayAmountToInr(paymentAmount) <= 0}>
-            {paying ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Processing...
-              </>
-            ) : parseNgoPayAmountToInr(paymentAmount) <= 0 ? (
-              'Enter amount to pay'
-            ) : (
-              `Pay ${getTotalChargeLabel(parseNgoPayAmountToInr(paymentAmount))}`
-            )}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   )
 }
 

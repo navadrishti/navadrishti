@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db, supabase } from '@/lib/db';
-import { comparePassword, verifyToken } from '@/lib/auth';
-import { clearAuthTokenCookie } from '@/lib/server-auth';
+import { comparePassword } from '@/lib/auth';
+import { clearAuthTokenCookie, findAuthUser } from '@/lib/server-auth';
 
 // Validation schema
 const deleteAccountSchema = z.object({
@@ -13,73 +13,62 @@ const deleteAccountSchema = z.object({
   )
 });
 
-// Helper function to delete all user-related data
-async function deleteUserData(userId: number, userEmail: string) {
+async function deleteUserData(userId: number) {
   try {
     
-    // Delete user addresses
     await supabase
       .from('user_addresses')
       .delete()
       .eq('user_id', userId);
     
-    // Delete service requests created by user (NGOs)
     const serviceRequests = await supabase
       .from('service_requests')
       .select('id')
       .eq('ngo_id', userId);
     
     if (serviceRequests.data && serviceRequests.data.length > 0) {
-      const requestIds = serviceRequests.data.map((req: any) => req.id);
+      const requestIds = serviceRequests.data.map((req) => req.id);
       
-      // Delete volunteers for these requests
       await supabase
         .from('service_request_applications')
         .delete()
         .in('service_request_id', requestIds);
       
-      // Delete the service requests
       await supabase
         .from('service_requests')
         .delete()
         .eq('ngo_id', userId);
     }
     
-    // Delete service offers created by user (NGOs)
     const serviceOffers = await supabase
       .from('service_offers')
       .select('id')
       .eq('creator_id', userId);
     
     if (serviceOffers.data && serviceOffers.data.length > 0) {
-      const offerIds = serviceOffers.data.map((offer: any) => offer.id);
+      const offerIds = serviceOffers.data.map((offer) => offer.id);
       
-      // Delete clients for these offers
       await supabase
         .from('service_clients')
         .delete()
         .in('service_offer_id', offerIds);
       
-      // Delete the service offers
       await supabase
         .from('service_offers')
         .delete()
         .eq('creator_id', userId);
     }
     
-    // Delete volunteer applications by user
     await supabase
       .from('service_request_applications')
       .delete()
       .eq('applicant_user_id', userId);
     
-    // Delete service client applications by user
     await supabase
       .from('service_clients')
       .delete()
       .eq('client_id', userId);
     
-    // Delete verification records
     await supabase
       .from('individual_verifications')
       .delete()
@@ -103,16 +92,9 @@ async function deleteUserData(userId: number, userEmail: string) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    // Get authenticated user
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-    }
-
-    const token = authHeader.substring(7);
-    const payload = verifyToken(token);
+    const payload = findAuthUser(req);
     if (!payload) {
-      return NextResponse.json({ error: 'Invalid token' }, { status: 401 });
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
     const userId = payload.id;
@@ -126,9 +108,8 @@ export async function DELETE(req: NextRequest) {
       }, { status: 400 });
     }
     
-    const { password, confirmation } = validationResult.data;
+    const { password } = validationResult.data;
     
-    // Find the user
     const user = await db.users.findById(userId);
     
     if (!user) {
@@ -137,7 +118,6 @@ export async function DELETE(req: NextRequest) {
       }, { status: 404 });
     }
     
-    // Verify current password
     const isPasswordValid = await comparePassword(password, user.password);
     
     if (!isPasswordValid) {
@@ -146,10 +126,8 @@ export async function DELETE(req: NextRequest) {
       }, { status: 400 });
     }
     
-    // Delete all user-related data first
-    await deleteUserData(userId, user.email);
+    await deleteUserData(userId);
     
-    // Finally, delete the user account
     const { error: deleteError } = await supabase
       .from('users')
       .delete()
@@ -171,7 +149,7 @@ export async function DELETE(req: NextRequest) {
 
     return response;
     
-  } catch (error: any) {
+  } catch (error) {
     console.error('Delete account error:', error);
     return NextResponse.json({ 
       error: 'An error occurred while deleting your account' 

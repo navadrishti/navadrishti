@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { Header } from "@/components/header"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { StyledSelect } from "@/components/ui/styled-select"
 import { Skeleton, SkeletonCampaignCard } from "@/components/ui/skeleton"
@@ -18,6 +18,7 @@ import { isCampaignLeadNgo } from "@/lib/campaign-volunteer-attendance"
 import { AGENT_NAMES, AGENT_ROUTES } from "@/lib/ai-agent-sessions"
 import { VerifiedAccountName } from "@/components/verification-badge"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { parseJsonObject } from '@/lib/utils';
 
 const compactControlClass = "h-9 text-sm"
 
@@ -109,6 +110,8 @@ interface CampaignApiItem {
   company_name?: string | null
   company_verification_status?: string | null
   company_verified?: boolean
+  lead_ngo_user_id?: number | null
+  selected_lead_ngo_name?: string | null
   selected_lead_ngo_verification_status?: string | null
   selected_lead_ngo_verified?: boolean
   budget_inr?: number | null
@@ -157,12 +160,12 @@ export default function CSRCampaignsPage() {
   const isCompanyOwner = (campaignCompanyId?: number | null) => isCompany && Number(campaignCompanyId || 0) === currentUserId
 
   const hydrateCampaignStats = (item: CampaignApiItem) => {
-    const metrics = item.impact_metrics && typeof item.impact_metrics === 'object' ? item.impact_metrics : {}
+    const metrics = parseJsonObject(item.impact_metrics)
     const applications = Array.isArray(metrics.volunteer_applications) ? metrics.volunteer_applications : []
     const volunteerCount = sumVolunteerApplicationCount(applications)
     const volunteerLimit = Number(metrics.volunteer_requirement || metrics.volunteer_limit || 0) || undefined
     const appliedByCurrentUser = currentUserId > 0
-      ? applications.some((application: any) => Number(application?.user_id || 0) === currentUserId)
+      ? applications.some((application) => Number(application?.user_id || 0) === currentUserId)
       : false
 
     const companyName = String(item.company_name || '').trim()
@@ -178,7 +181,7 @@ export default function CSRCampaignsPage() {
       volunteers: volunteerLimit ? `${volunteerLimit} needed` : 'Not set',
       status: item.status || 'draft',
       description: item.description || 'No campaign description provided yet.',
-      leadNgo: metrics.selected_lead_ngo_name || (metrics.selected_lead_ngo_id ? `NGO #${metrics.selected_lead_ngo_id}` : undefined),
+      leadNgo: item.selected_lead_ngo_name || (item.lead_ngo_user_id ? `NGO #${item.lead_ngo_user_id}` : undefined),
       leadNgoVerified:
         Boolean(item.selected_lead_ngo_verified) ||
         String(item.selected_lead_ngo_verification_status || '').toLowerCase() === 'verified',
@@ -192,7 +195,7 @@ export default function CSRCampaignsPage() {
       companyInitials: getInitials(companyName || 'Company'),
       start_date: item.start_date || null,
       end_date: item.end_date || null,
-      selectedLeadNgoId: Number(metrics.selected_lead_ngo_id || 0) || null,
+      selectedLeadNgoId: Number(item.lead_ngo_user_id || 0) || null,
       leadNgoAccepted: Boolean(metrics.lead_ngo_accepted),
     }
   }
@@ -493,10 +496,7 @@ export default function CSRCampaignsPage() {
                 const isOwner = isCompanyOwner(campaign.companyId)
                 const isLeadNgoForCampaign =
                   currentUserId > 0 &&
-                  isCampaignLeadNgo(
-                    { selected_lead_ngo_id: campaign.selectedLeadNgoId },
-                    currentUserId
-                  )
+                  isCampaignLeadNgo({ lead_ngo_user_id: campaign.selectedLeadNgoId }, currentUserId)
                 const volunteerState =
                   canShowVolunteerAction && user && !isLeadNgoForCampaign
                     ? getVolunteerButtonState({

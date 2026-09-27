@@ -1,23 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { verifyToken } from '@/lib/auth';
-
-const isAdminRequest = (request: NextRequest) => {
-  const adminToken = request.cookies.get('admin-token')?.value;
-  if (!adminToken) return null;
-
-  try {
-    const decoded = verifyToken(adminToken);
-    if (!decoded || decoded.id !== -1) return null;
-    return decoded;
-  } catch {
-    return null;
-  }
-};
+import { getAdminUser } from '@/lib/server-auth';
+import { getErrorMessage } from '@/lib/utils';
 
 export async function GET(request: NextRequest) {
   try {
-    const admin = isAdminRequest(request);
+    const admin = getAdminUser(request);
     if (!admin) {
       return NextResponse.json({ error: 'Admin authentication required' }, { status: 401 });
     }
@@ -54,8 +42,8 @@ export async function GET(request: NextRequest) {
     if (error) throw error;
 
     return NextResponse.json({ success: true, tickets: data || [] });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Admin support tickets fetch error:', error);
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) || 'Internal server error' }, { status: 500 });
   }
 }

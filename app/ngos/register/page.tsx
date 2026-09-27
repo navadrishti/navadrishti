@@ -68,7 +68,6 @@ export default function NGORegister() {
 
     setFormData(prev => ({ ...prev, [name]: value }))
     
-    // Clear error for this field when user starts typing
     if (formErrors[name]) {
       setFormErrors(prev => {
         const newErrors = { ...prev }
@@ -236,10 +235,8 @@ export default function NGORegister() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    // Clear previous errors
     clearError()
     
-    // Validate form
     if (!validateForm()) {
       return
     }
@@ -301,7 +298,6 @@ export default function NGORegister() {
         country: formData.country,
       }
 
-      // Prepare user data for signup
       const userData = {
         email: formData.email,
         password: formData.password,
@@ -333,7 +329,6 @@ export default function NGORegister() {
         }
       }
       
-      // Call signup function from auth context
       await signup(userData)
 
       toast.success('NGO account created successfully!');
@@ -932,7 +927,6 @@ export default function NGORegister() {
                 </div>
               </div>
             </div>
-            
 
             <div className="flex flex-col space-y-4">
               <Button type="submit" className="w-full" disabled={isSubmitting || !otpVerified.email}>

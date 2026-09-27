@@ -6,7 +6,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useOtpSender } from '@/hooks/use-otp-sender';
 import { PHONE_VERIFICATION_ENABLED, summarizeDocumentExpiries, visibleCaBadgeNumber } from '@/lib/auth';
 import { formatDisplayDate } from '@/lib/format-date';
-import { smoothNavigate } from '@/lib/utils';
+import { smoothNavigate, getErrorMessage, parseJsonObject } from '@/lib/utils';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
 import { VerificationBadge } from '@/components/verification-badge';
-import { ArrowLeft, AlertTriangle, CheckCircle, FileText, Shield } from 'lucide-react';
+import { ArrowLeft, AlertTriangle, CheckCircle, FileText } from 'lucide-react';
 
 type VerificationCategory = 'individual' | 'ngo' | 'company';
 type Step = 1 | 2;
@@ -132,7 +132,8 @@ export default function VerificationPage() {
     otpVerified,
     handleSendEmailOtp,
     handleVerifyEmailOtp,
-    handleSendPhoneOtp
+    handleSendPhoneOtp,
+    handleVerifyPhoneOtp
   } = useOtpSender(setFormErrors);
   const baseEmailVerified = authSnapshot?.email_verified ?? user?.email_verified ?? false;
   const isEmailVerified = mounted ? Boolean(baseEmailVerified || otpVerified.email) : false;
@@ -235,9 +236,7 @@ export default function VerificationPage() {
       return;
     }
 
-    const profileData = (user.profile_data && typeof user.profile_data === 'object')
-      ? user.profile_data
-      : {};
+    const profileData = parseJsonObject(user.profile_data);
     const documentExpiries =
       profileData.document_expiries && typeof profileData.document_expiries === 'object'
         ? (profileData.document_expiries as Record<string, { valid_until?: string; number?: string }>)
@@ -366,33 +365,6 @@ export default function VerificationPage() {
     }
 
     router.back();
-  };
-
-  const persistEmailVerification = async () => {
-    if (!user?.id) return false;
-    const verifiedAt = new Date().toISOString();
-
-    const response = await fetch('/api/profile/update', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        userId: user.id,
-        email_verified: true,
-        email_verified_at: verifiedAt
-      })
-    });
-
-    if (!response.ok) {
-      return false;
-    }
-
-    setAuthSnapshot((prev) => ({
-      ...(prev || {}),
-      email_verified: true
-    }));
-    return true;
   };
 
   const validateStepOne = () => {
@@ -610,8 +582,8 @@ export default function VerificationPage() {
       }
 
       setSuccess('Verification details submitted successfully. Documents uploaded as per your verification type. CA review typically takes 24–48 hours — please check back after that period to see if your verified badge has been issued.');
-    } catch (submissionError: any) {
-      setError(submissionError?.message || 'Failed to submit verification details. Please try again.');
+    } catch (submissionError) {
+      setError(getErrorMessage(submissionError) || 'Failed to submit verification details. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -884,9 +856,9 @@ export default function VerificationPage() {
                           variant="outline"
                           size="sm"
                           onClick={async () => {
-                            const ok = await handleVerifyEmailOtp(formData.email, otpInput.email);
+                            const ok = await handleVerifyEmailOtp(formData.email, otpInput.email, { persist: true });
                             if (ok) {
-                              await persistEmailVerification();
+                              setAuthSnapshot((prev) => ({ ...(prev || {}), email_verified: true }));
                               setError(null);
                             }
                           }}
@@ -926,19 +898,35 @@ export default function VerificationPage() {
                     </Button>
                     {formErrors.phone && <p className="text-sm text-red-500">{formErrors.phone}</p>}
                     {otpSent.phone && (
-                      <Input
-                        value={otpInput.phone}
-                        onChange={(e) => setOtpInput((prev) => ({ ...prev, phone: e.target.value }))}
-                        placeholder="Enter OTP"
-                      />
+                      <div className="space-y-2">
+                        <Input
+                          value={otpInput.phone}
+                          onChange={(e) => setOtpInput((prev) => ({ ...prev, phone: e.target.value }))}
+                          placeholder="Enter OTP"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={async () => {
+                            const ok = await handleVerifyPhoneOtp(formData.contactNumber, otpInput.phone);
+                            if (ok) {
+                              setAuthSnapshot((prev) => ({ ...(prev || {}), phone_verified: true }));
+                              setError(null);
+                            }
+                          }}
+                          disabled={otpVerifying.phone}
+                        >
+                          {otpVerifying.phone ? 'Verifying...' : 'Verify OTP'}
+                        </Button>
+                        {formErrors.phoneOtp && <p className="text-sm text-red-500">{formErrors.phoneOtp}</p>}
+                      </div>
                     )}
                   </div>
                 )}
               </div>
               ) : null}
             </div>
-
-            {/* Message removed as requested */}
 
             {formData.category === 'individual' && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

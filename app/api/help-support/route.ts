@@ -1,10 +1,10 @@
 import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
-import jwt from 'jsonwebtoken';
 import { cloudinary } from '@/lib/cloudinary';
 import { sendEmail } from '@/lib/email';
 import { db } from '@/lib/db';
-import { JWT_SECRET } from '@/lib/auth';
+import { getTokenClaims } from '@/lib/auth';
+import { getErrorMessage } from '@/lib/utils';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -22,13 +22,6 @@ const ALLOWED_MIME_TYPES = new Set([
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
-type JWTPayload = {
-  id: number;
-  user_type: string;
-  name?: string;
-  email?: string;
-};
-
 const escapeHtml = (value: string) =>
   value
     .replace(/&/g, '&amp;')
@@ -43,13 +36,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Support upload service is not configured' }, { status: 503 });
     }
 
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const decoded = getTokenClaims(request);
+    if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
-    const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
     const user = await db.users.findById(decoded.id);
 
     if (!user) {
@@ -176,8 +167,8 @@ export async function POST(request: NextRequest) {
         emailSent,
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Support ticket submission error:', error);
-    return NextResponse.json({ error: error?.message || 'Failed to submit support ticket' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) || 'Failed to submit support ticket' }, { status: 500 });
   }
 }

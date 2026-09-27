@@ -27,7 +27,6 @@ export async function GET(request: NextRequest) {
     const url = new URL(request.url);
     const query = url.searchParams.get('query');
 
-    // Get available CA IDs for succession assignment
     if (query === 'available-ca-ids') {
       try {
         const options = await getCompanyCaIdSuccessionOptions(user.id);
@@ -79,7 +78,6 @@ export async function POST(request: NextRequest) {
 
     const { name, email, password, permissions, status, ca_id, auto_generate_ca_id } = parsed.data;
 
-    // Determine the CA ID to use
     let assignedCaId: string;
     if (auto_generate_ca_id) {
       assignedCaId = await generateUniqueCompanyCaId(user.id);

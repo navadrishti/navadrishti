@@ -1,33 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { verifyCompanyCA } from '@/lib/company-ca'
+import { listCompanyOwnedAssignmentIds } from '@/lib/company-ca'
+import { getCompanyCAFromRequest } from '@/lib/server-auth'
 import Razorpay from 'razorpay'
 import { supabase } from '@/lib/db'
+import { getErrorMessage } from '@/lib/utils'
 import {
   buildPricingResponse,
   createPlatformPricedOrder,
   isRazorpayRouteEnabled,
 } from '@/lib/razorpay-route'
 
-function parseAmountToInr(value: unknown): number {
-  if (value === null || value === undefined) return 0
-  const text = String(value).trim()
-  if (!text) return 0
-  const numericText = text.replace(/[^\d.-]/g, '')
-  const parsed = Number(numericText)
-  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0
-}
-
 export async function POST(request: NextRequest) {
   try {
-    let token = null
-    const auth = request.headers.get('authorization')
-    if (auth && auth.startsWith('Bearer ')) token = auth.substring(7)
-    else token = request.cookies.get('evidence-verification-token')?.value || request.cookies.get('ca-token')?.value || null
-
-    if (!token) return NextResponse.json({ error: 'Company CA auth required' }, { status: 401 })
-
-    const verify = await verifyCompanyCA(token)
-    if (!verify || !verify.success) return NextResponse.json({ error: 'Invalid company CA token' }, { status: 403 })
+    let companyUserId: number
+    try {
+      companyUserId = (await getCompanyCAFromRequest(request)).identity.company_user_id
+    } catch {
+      return NextResponse.json({ error: 'Company CA authentication required' }, { status: 401 })
+    }
 
     const body = await request.json()
     const attendanceEntryId = body?.attendanceEntryId ? String(body.attendanceEntryId).trim() : null
@@ -41,29 +31,41 @@ export async function POST(request: NextRequest) {
 
     let baseAmountInr = 0
     let serviceRequestId: number | null = null
-    let meta: any = {}
+    let meta: Record<string, string[]> = {}
 
     if (attendanceEntryId) attendanceEntryIds.push(attendanceEntryId)
     if (contributionId) contributionIds.push(contributionId)
 
     if (attendanceEntryIds.length > 0) {
-      const { data: entries } = await supabase.from('service_attendance_entries').select('*').in('id', attendanceEntryIds)
+      const ownedAssignmentIds = await listCompanyOwnedAssignmentIds(companyUserId)
+      const { data: entries } = ownedAssignmentIds.length > 0
+        ? await supabase
+            .from('service_attendance_entries')
+            .select('*')
+            .in('id', attendanceEntryIds)
+            .in('assignment_id', ownedAssignmentIds)
+        : { data: [] }
       if (!entries || entries.length === 0) return NextResponse.json({ error: 'Attendance entries not found' }, { status: 404 })
-      const payableEntries = entries.filter((e: any) => String(e.payment_status || 'pending').toLowerCase() !== 'paid')
+      const payableEntries = entries.filter((e) => String(e.payment_status || 'pending').toLowerCase() !== 'paid')
       if (payableEntries.length === 0) return NextResponse.json({ success: true, data: { paymentRequired: false, message: 'Already paid' } })
-      baseAmountInr = payableEntries.reduce((s: number, e: any) => s + Number(e.amount_due || 0), 0)
-      serviceRequestId = entries[0].service_request_id || null
-      meta = { attendanceEntryIds }
+      baseAmountInr = payableEntries.reduce((s: number, e) => s + Number(e.amount_due || 0), 0)
+      const requestEntry = payableEntries.find((e) => e.target_type === 'service_request')
+      serviceRequestId = requestEntry ? Number(requestEntry.target_id) || null : null
+      meta = { attendanceEntryIds: payableEntries.map((e) => String(e.id)) }
     }
 
     if (contributionIds.length > 0) {
-      const { data: contribs } = await supabase.from('service_request_contributions').select('*').in('id', contributionIds)
+      const { data: contribs } = await supabase
+        .from('service_request_contributions')
+        .select('*')
+        .in('id', contributionIds)
+        .eq('contributor_id', companyUserId)
       if (!contribs || contribs.length === 0) return NextResponse.json({ error: 'Contributions not found' }, { status: 404 })
-      const alreadyPaidC = contribs.filter((c: any) => c.status === 'paid')
-      if (alreadyPaidC.length === contribs.length) return NextResponse.json({ success: true, data: { paymentRequired: false, message: 'Already paid' } })
-      baseAmountInr += contribs.reduce((s: number, c: any) => s + Number(c.amount || 0), 0)
-      serviceRequestId = serviceRequestId || contribs[0].service_request_id || null
-      meta = { ...meta, contributionIds }
+      const unpaidContribs = contribs.filter((c) => c.status !== 'paid')
+      if (unpaidContribs.length === 0) return NextResponse.json({ success: true, data: { paymentRequired: false, message: 'Already paid' } })
+      baseAmountInr += unpaidContribs.reduce((s: number, c) => s + Number(c.amount || 0), 0)
+      serviceRequestId = serviceRequestId || unpaidContribs[0].service_request_id || null
+      meta = { ...meta, contributionIds: unpaidContribs.map((c) => String(c.id)) }
     }
 
     if (baseAmountInr <= 0) return NextResponse.json({ success: true, data: { paymentRequired: false, amountInr: 0 } })
@@ -85,7 +87,7 @@ export async function POST(request: NextRequest) {
     if (!keyId || !keySecret) return NextResponse.json({ error: 'Razorpay is not configured' }, { status: 500 })
 
     const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret })
-    const receipt = `ca_pay_${verify.company_ca.company_user_id}_${serviceRequestId || 'na'}_${Date.now()}`
+    const receipt = `ca_pay_${companyUserId}_${serviceRequestId || 'na'}_${Date.now()}`
     const { order, pricing, orderNotes } = await createPlatformPricedOrder({
       razorpay,
       baseAmountInr,
@@ -95,19 +97,19 @@ export async function POST(request: NextRequest) {
       beneficiaryName,
       notes: {
         source: 'company_ca_payment',
-        paid_by_company_user_id: String(verify.company_ca.company_user_id),
+        paid_by_company_user_id: String(companyUserId),
         service_request_id: serviceRequestId ? String(serviceRequestId) : undefined,
         ...meta,
       },
     })
 
     const nowIso = new Date().toISOString()
-    await supabase.from('razorpay_payment_orders').upsert({
+    const { error: orderError } = await supabase.from('razorpay_payment_orders').upsert({
       service_request_id: serviceRequestId,
       contribution_id: contributionId || null,
       application_id: null,
-      payer_user_id: null,
-      ngo_user_id: beneficiaryUserId > 0 ? beneficiaryUserId : verify.company_ca.company_user_id,
+      payer_user_id: companyUserId,
+      ngo_user_id: beneficiaryUserId > 0 ? beneficiaryUserId : companyUserId,
       razorpay_order_id: String(order.id),
       receipt,
       amount_inr: Number(pricing.totalChargeInr.toFixed(2)),
@@ -117,6 +119,10 @@ export async function POST(request: NextRequest) {
       order_notes: orderNotes,
       updated_at: nowIso
     }, { onConflict: 'razorpay_order_id' })
+    if (orderError) {
+      console.error('Failed to record CA payment order:', orderError)
+      return NextResponse.json({ error: 'Could not record this payment order. Please try again later.' }, { status: 500 })
+    }
 
     return NextResponse.json({
       success: true,
@@ -129,8 +135,8 @@ export async function POST(request: NextRequest) {
         routeEnabled: isRazorpayRouteEnabled(),
       },
     })
-  } catch (error: any) {
+  } catch (error) {
     console.error('CA create-order error:', error)
-    return NextResponse.json({ error: error?.message || 'Failed to create order' }, { status: 500 })
+    return NextResponse.json({ error: getErrorMessage(error) || 'Failed to create order' }, { status: 500 })
   }
 }

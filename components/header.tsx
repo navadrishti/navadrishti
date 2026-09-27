@@ -8,12 +8,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { getGramAvatarFallbackStyle } from "@/lib/gram-avatar"
-import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "@/components/ui/command"
+import { Command, CommandGroup, CommandItem, CommandList } from "@/components/ui/command"
 import { Badge } from "@/components/ui/badge"
 import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription, SheetClose } from "@/components/ui/sheet"
-import { Award, Bell, ChevronRight, Menu, Search, ShoppingBag, X, GraduationCap, Briefcase, Building, LogIn, MessageSquare, ArrowLeft } from "lucide-react"
+import { ChevronRight, Menu, Search, X, ArrowLeft } from "lucide-react"
 import { VerificationBadge, VerifiedAccountName } from "@/components/verification-badge"
-import { visibleCaBadgeNumber } from "@/lib/auth"
 import { cn } from "@/lib/utils"
 import {
   getLaunchHeaderNavItems,
@@ -344,7 +343,6 @@ export function Header({ className = '' }: { className?: string } = {}) {
     return (names[0].charAt(0) + names[names.length - 1].charAt(0)).toUpperCase()
   }
   
-  // Determine where to redirect based on user type
   const getDashboardLink = () => {
     if (!user) return '/'
     
@@ -360,7 +358,6 @@ export function Header({ className = '' }: { className?: string } = {}) {
     }
   }
   
-  const isIndividual = user?.user_type === 'individual'
   const profileTriggerLabel = user?.name || 'Profile'
 
   const serviceRequestDescription = () => {

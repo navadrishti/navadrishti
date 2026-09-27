@@ -515,7 +515,6 @@ export {
   SkeletonListItem,
   SkeletonTableRow,
   SkeletonForm,
-  // New flexible patterns
   SkeletonAvatarText,
   SkeletonAvatarSingle,
   SkeletonTextLines,

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import jwt from 'jsonwebtoken'
 import { supabase, ensureCampaignVolunteerAssignment } from '@/lib/db'
-import { JWT_SECRET } from '@/lib/auth'
+import { getTokenClaims } from '@/lib/auth'
 import { isCampaignStarted, isVolunteerRegistrationPastDeadline } from '@/lib/format-date'
 import {
   getVolunteerApplicationCapacity,
@@ -10,26 +9,7 @@ import {
 } from '@/lib/campaign-schema'
 import { isCampaignLeadNgo } from '@/lib/campaign-volunteer-attendance'
 
-interface JWTPayload {
-  id: number
-  user_type: string
-  email?: string
-  name?: string
-}
-
-function safeJson(value: unknown): Record<string, any> {
-  if (!value) return {}
-  if (typeof value === 'object') return value as Record<string, any>
-  if (typeof value === 'string') {
-    try {
-      const parsed = JSON.parse(value)
-      return parsed && typeof parsed === 'object' ? parsed : {}
-    } catch {
-      return {}
-    }
-  }
-  return {}
-}
+import { parseJsonObject, getErrorMessage } from '@/lib/utils'
 
 async function loadCampaign(campaignId: string) {
   const { data, error } = await supabase
@@ -47,13 +27,10 @@ async function loadCampaign(campaignId: string) {
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const authHeader = request.headers.get('authorization')
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const decoded = getTokenClaims(request)
+    if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
     }
-
-    const token = authHeader.substring(7)
-    const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload
     const allowed = decoded.user_type === 'ngo' || decoded.user_type === 'individual'
     if (!allowed) {
       return NextResponse.json({ error: 'Only NGO or individual volunteers can apply' }, { status: 403 })
@@ -61,7 +38,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const { id } = await params
     const campaign = await loadCampaign(id)
-    const impact = safeJson(campaign.impact_metrics)
+    const impact = parseJsonObject(campaign.impact_metrics)
 
     if (isCampaignLeadNgo(campaign, decoded.id)) {
       return NextResponse.json(
@@ -75,7 +52,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const volunteerApplications = Array.isArray(impact.volunteer_applications) ? impact.volunteer_applications : []
 
-    const existing = volunteerApplications.find((entry: any) => Number(entry?.user_id || 0) === Number(decoded.id))
+    const existing = volunteerApplications.find((entry) => Number(entry?.user_id || 0) === Number(decoded.id))
     if (existing) {
       return NextResponse.json({ success: true, data: { campaign_id: id, applied: true, existing } })
     }
@@ -108,9 +85,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const myEnd = campaign.end_date ? new Date(String(campaign.end_date)) : null
       for (const other of otherCampaigns) {
         try {
-          const otherImpact = safeJson(other.impact_metrics)
+          const otherImpact = parseJsonObject(other.impact_metrics)
           const otherApps = Array.isArray(otherImpact.volunteer_applications) ? otherImpact.volunteer_applications : []
-          const appliedThere = otherApps.some((a: any) => Number(a?.user_id || 0) === Number(decoded.id))
+          const appliedThere = otherApps.some((a) => Number(a?.user_id || 0) === Number(decoded.id))
           if (!appliedThere) continue
 
           const otherStart = other.start_date ? new Date(String(other.start_date)) : null
@@ -205,8 +182,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     return NextResponse.json({ success: true, data: { campaign: data, applied: true, capacity, volunteerCount } })
-  } catch (error: any) {
+  } catch (error) {
     console.error('Campaign volunteer application error:', error)
-    return NextResponse.json({ error: error?.message || 'Failed to apply for campaign' }, { status: 500 })
+    return NextResponse.json({ error: getErrorMessage(error) || 'Failed to apply for campaign' }, { status: 500 })
   }
 }

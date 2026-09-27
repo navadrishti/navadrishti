@@ -1,12 +1,12 @@
 # API Reference
 
-## 🔗 Base URL
+## Base URL
 ```
 Development: http://localhost:3000/api
 Production: https://your-domain.com/api
 ```
 
-## 🔐 Authentication
+## Authentication
 
 ### JWT Token Authentication
 Most endpoints require authentication via Bearer token:
@@ -27,7 +27,7 @@ Cookies: {
 }
 ```
 
-## 📝 Response Format
+## Response Format
 
 ### Success Response
 ```json
@@ -47,7 +47,7 @@ Cookies: {
 }
 ```
 
-## 🔑 Authentication Endpoints
+## Authentication Endpoints
 
 ### POST /api/auth/signup
 Register a new user account.
@@ -126,7 +126,7 @@ Get the currently authenticated user profile from the token.
 }
 ```
 
-## 👥 User Management
+## User Management
 
 ### PUT /api/profile/update
 Update current user profile.
@@ -172,83 +172,17 @@ Legacy profile update endpoint retained for compatibility.
 }
 ```
 
-## 📱 Social Feed
+## Platform newsletter
 
-### GET /api/posts
-Fetch social feed posts.
+### GET /api/platform-newsletter
+Public activity stream for the home page (joins, verifications, published needs/offers/campaigns). Not a social post API.
 
 **Query Parameters:**
-- `page` (number): Page number (default: 1)
-- `limit` (number): Posts per page (default: 10)
-- `user_id` (number): Filter by user ID
-- `hashtag` (string): Filter by hashtag
+- `limit` (number): Max items (server-capped)
 
-**Response:**
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": 1,
-      "content": "Post content here",
-      "media_url": "https://example.com/image.jpg",
-      "hashtags": ["#community", "#help"],
-      "author": {
-        "id": 1,
-        "name": "John Doe",
-        "profile_image": "https://example.com/avatar.jpg",
-        "user_type": "individual",
-        "verified": true
-      },
-      "stats": {
-        "likes": 25,
-        "comments": 5,
-        "shares": 2,
-        "views": 150
-      },
-      "user_interaction": {
-        "has_liked": false,
-        "has_shared": false
-      },
-      "created_at": "2024-01-01T00:00:00Z"
-    }
-  ],
-  "pagination": {
-    "current_page": 1,
-    "total_pages": 10,
-    "total_count": 95
-  }
-}
-```
+**Response:** JSON array of newsletter items (`kind`, actor fields, `title`, `summary`, timestamps).
 
-### POST /api/posts
-Create a new post.
-
-**Headers:** Authorization required
-
-**Request Body:**
-```json
-{
-  "content": "Post content with #hashtags",
-  "media_url": "https://cloudinary.com/image.jpg",
-  "media_type": "image", // "image", "video", null
-  "visibility": "public" // "public", "followers", "private"
-}
-```
-
-### POST /api/posts/{postId}/interact
-Interact with a post (like, share, view).
-
-**Headers:** Authorization required
-
-**Request Body:**
-```json
-{
-  "action": "like" // "like", "share", "view"
-}
-```
-
-## 🎯 Service Offers
+## Service Offers
 
 ### GET /api/service-offers
 Fetch service offers.
@@ -372,7 +306,7 @@ Apply for a service offer (hire the provider).
 - Applicant must be `verified`
 - Users cannot apply to their own offer
 
-## 🙋 Service Requests
+## Service Requests
 
 ### GET /api/service-requests
 Fetch service requests (volunteer opportunities).
@@ -421,7 +355,7 @@ Volunteer for a service request.
 }
 ```
 
-## 👤 Profiles & Activity
+## Profiles & Activity
 
 ### GET /api/profile/{userId}
 Fetch a public profile summary for a user.
@@ -447,25 +381,7 @@ Fetch a public profile summary for a user.
 }
 ```
 
-### GET /api/dashboard/stats
-Fetch role-specific dashboard metrics.
-
-**Headers:** Authorization required
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "acceptedServiceRequests": 8,
-    "acceptedServiceOffers": 3,
-    "serviceRequestsPending": 4,
-    "serviceOffersCompleted": 6
-  }
-}
-```
-
-## 👑 Admin Endpoints
+## Admin Endpoints
 
 ### GET /api/admin/service-offers
 Get all service offers for admin review.
@@ -504,7 +420,7 @@ Review and approve/reject service offer.
 }
 ```
 
-## 📊 Analytics
+## Analytics
 
 ### GET /api/activity-feed
 Fetch user activity feed.
@@ -569,9 +485,9 @@ Fetch recent platform-wide activities (last 24 hours).
 - Returns activities from last 24 hours
 - Includes service requests, service offers, posts, users, and verifications
 
-## 🤖 Navadrishti AI Suite
+## Navadrishti AI Suite
 
-User-facing names: **Atlas** (NGO), **Catalyst** (Company), **Pulse** (embedded matching). See `lib/ai-suite.ts`.
+User-facing names: **Atlas** (NGO), **Catalyst** (Company), **Pulse** (embedded matching). See `lib/ai-agent-sessions.ts`.
 
 ### POST /api/ai-agent/progress
 Persist or load Atlas/Catalyst session state.
@@ -597,10 +513,7 @@ Archive or delete a session. **Query:** `agent=ngo|csr`
 | POST | `/api/csr-agent/get-recommendations` | **Pulse** capability matches for campaign |
 | POST | `/api/csr-agent/publish-campaign` | Publish after lead NGO accepted |
 | POST | `/api/csr-agent/lead-ngo-invites` | Lead NGO invite sync |
-| POST | `/api/csr-agent/save-campaign` | Save draft |
 | POST | `/api/csr-agent/update-campaign` | Update draft |
-| POST | `/api/csr-agent/search-capabilities` | Search offers |
-| POST | `/api/csr-agent/check-ngo-service` | NGO service check |
 
 ### Pulse — matching
 
@@ -631,7 +544,7 @@ Archive or delete a session. **Query:** `agent=ngo|csr`
 }
 ```
 
-## 🚫 Error Codes
+## Error Codes
 
 | Code | Status | Description |
 |------|--------|-----------|
@@ -642,7 +555,7 @@ Archive or delete a session. **Query:** `agent=ngo|csr`
 | `RATE_LIMIT_EXCEEDED` | 429 | Too many requests |
 | `SERVER_ERROR` | 500 | Internal server error |
 
-## 📋 Rate Limits
+## Rate Limits
 
 - **Authentication**: 10 requests per minute
 - **API Requests**: 100 requests per minute per user

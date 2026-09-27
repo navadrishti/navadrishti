@@ -1,25 +1,10 @@
 import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
-import jwt from 'jsonwebtoken';
 import Razorpay from 'razorpay';
 import { db, supabase } from '@/lib/db';
-import { JWT_SECRET } from '@/lib/auth';
+import { getTokenClaims } from '@/lib/auth';
+import { parseAmountToInr, getErrorMessage, parseJsonObject } from '@/lib/utils';
 import { validateCapturedPaymentAmounts } from '@/lib/razorpay-route';
-
-interface JWTPayload {
-  id: number;
-  user_type: string;
-  name?: string;
-}
-
-function parseAmountToInr(value: unknown): number {
-  if (value === null || value === undefined) return 0;
-  const text = String(value).trim();
-  if (!text) return 0;
-  const numericText = text.replace(/[^\d.-]/g, '');
-  const parsed = Number(numericText);
-  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
-}
 
 function safeSignatureMatch(expected: string, received: string): boolean {
   const expectedBuffer = Buffer.from(String(expected || ''), 'utf8');
@@ -33,13 +18,10 @@ export async function POST(
   { params }: { params: Promise<{ id: string; clientId: string }> }
 ) {
   try {
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const decoded = getTokenClaims(request);
+    if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
-
-    const token = authHeader.substring(7);
-    const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
 
     const { id, clientId } = await params;
     const offerId = Number(id);
@@ -77,7 +59,7 @@ export async function POST(
       return NextResponse.json({ error: 'Payment can only be verified after acceptance' }, { status: 400 });
     }
 
-    const linkedServiceRequestId = Number(application.service_request_id || application.response_meta?.service_request_id || 0);
+    const linkedServiceRequestId = Number(application.service_request_id || parseJsonObject(application.response_meta).service_request_id || 0);
     if (!Number.isFinite(linkedServiceRequestId) || linkedServiceRequestId <= 0) {
       return NextResponse.json({ error: 'This application is not linked to a service request' }, { status: 400 });
     }
@@ -238,7 +220,7 @@ export async function POST(
       })
       .eq('id', linkedServiceRequestId);
 
-    const currentMeta = application.response_meta && typeof application.response_meta === 'object' ? application.response_meta : {};
+    const currentMeta = parseJsonObject(application.response_meta);
     await supabase
       .from('service_clients')
       .update({
@@ -263,8 +245,8 @@ export async function POST(
         status: nextRemaining !== null && nextRemaining <= 0 ? 'completed' : 'in_progress'
       }
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error verifying service-offer payment:', error);
-    return NextResponse.json({ error: error?.message || 'Failed to verify payment' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) || 'Failed to verify payment' }, { status: 500 });
   }
 }

@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { CAVerificationReview, caReviewDescription, isCaReviewLocked } from '@/components/ca-verification-review';
+import { getErrorMessage } from '@/lib/utils';
 
 interface Individual {
   id: number;
@@ -150,8 +151,8 @@ export default function CADashboardClient() {
       setIndividuals(payload.individuals || []);
       setCompanies(payload.companies || []);
       setNGOs(payload.ngos || []);
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load data');
+    } catch (err) {
+      setError(getErrorMessage(err) || 'Failed to load data');
     } finally {
       setLoading(false);
     }
@@ -237,7 +238,6 @@ export default function CADashboardClient() {
       const data = await response.json().catch(() => ({}));
       if (response.ok) {
         alert(data.message || `${selectedItem.name || selectedItem.company_name || selectedItem.ngo_name} ${action === 'approve' ? 'approved' : 'rejected'}`);
-        // Remove from the list
         if (selectedType === 'individuals') {
           setIndividuals(individuals.filter(ind => ind.id !== selectedItem.id));
         } else if (selectedType === 'companies') {

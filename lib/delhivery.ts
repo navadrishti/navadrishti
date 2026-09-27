@@ -1,3 +1,5 @@
+import { getErrorMessage } from '@/lib/utils';
+
 type DelhiveryEvent = {
   status: string;
   timestamp: string | null;
@@ -20,10 +22,6 @@ const DEFAULT_DELHIVERY_TIMEOUT_MS = 10000;
 
 function normalizeBaseUrl(url: string): string {
   return url.replace(/\/+$/, '');
-}
-
-export function isDelhiveryConfigured(): boolean {
-  return Boolean(process.env.DELHIVERY_API_TOKEN);
 }
 
 function getDelhiveryConfig() {
@@ -73,7 +71,28 @@ function firstString(values: unknown[]): string | null {
   return null;
 }
 
-function normalizeEvent(scan: Record<string, any>): DelhiveryEvent | null {
+function readPath(value: unknown, ...path: Array<string | number>): unknown {
+  let current = value;
+  for (const key of path) {
+    if (!current || typeof current !== 'object') return undefined;
+    current = (current as Record<string | number, unknown>)[key];
+  }
+  return current;
+}
+
+function findShipment(payload: unknown): unknown {
+  const shipmentData = readPath(payload, 'ShipmentData');
+  const firstShipmentData: unknown = Array.isArray(shipmentData) ? shipmentData[0] : null;
+  return (
+    readPath(firstShipmentData, 'Shipment') ||
+    readPath(payload, 'Shipment') ||
+    readPath(payload, 'shipment') ||
+    readPath(payload, 'data', 'shipment') ||
+    null
+  );
+}
+
+function normalizeEvent(scan: Record<string, unknown>): DelhiveryEvent | null {
   const status = firstString([
     scan.ScanType,
     scan.status,
@@ -123,19 +142,18 @@ function normalizeEvent(scan: Record<string, any>): DelhiveryEvent | null {
   };
 }
 
-function extractCandidateScans(payload: any): any[] {
-  const shipmentData = Array.isArray(payload?.ShipmentData) ? payload.ShipmentData[0] : null;
-  const shipment = shipmentData?.Shipment || payload?.Shipment || payload?.shipment || payload?.data?.shipment || null;
+function extractCandidateScans(payload: unknown): Record<string, unknown>[] {
+  const shipment = findShipment(payload);
 
   const candidates = [
-    shipment?.Scans,
-    shipment?.scans,
-    shipment?.ScanDetail,
-    payload?.Scans,
-    payload?.scans,
-    payload?.tracking_data,
-    payload?.data?.tracking_data,
-    payload?.data?.Scans
+    readPath(shipment, 'Scans'),
+    readPath(shipment, 'scans'),
+    readPath(shipment, 'ScanDetail'),
+    readPath(payload, 'Scans'),
+    readPath(payload, 'scans'),
+    readPath(payload, 'tracking_data'),
+    readPath(payload, 'data', 'tracking_data'),
+    readPath(payload, 'data', 'Scans')
   ];
 
   for (const candidate of candidates) {
@@ -155,33 +173,31 @@ function sortEventsDesc(events: DelhiveryEvent[]): DelhiveryEvent[] {
   });
 }
 
-function extractCurrentStatus(payload: any, events: DelhiveryEvent[]): string | null {
-  const shipmentData = Array.isArray(payload?.ShipmentData) ? payload.ShipmentData[0] : null;
-  const shipment = shipmentData?.Shipment || payload?.Shipment || payload?.shipment || payload?.data?.shipment || null;
+function extractCurrentStatus(payload: unknown, events: DelhiveryEvent[]): string | null {
+  const shipment = findShipment(payload);
 
   return firstString([
-    shipment?.Status?.Status,
-    shipment?.CurrentStatus,
-    shipment?.status,
-    shipment?.status_type,
-    payload?.Status,
-    payload?.status,
-    payload?.current_status,
+    readPath(shipment, 'Status', 'Status'),
+    readPath(shipment, 'CurrentStatus'),
+    readPath(shipment, 'status'),
+    readPath(shipment, 'status_type'),
+    readPath(payload, 'Status'),
+    readPath(payload, 'status'),
+    readPath(payload, 'current_status'),
     events[0]?.status
   ]);
 }
 
-function extractTrackingId(payload: any, fallbackTrackingId: string): string {
-  const shipmentData = Array.isArray(payload?.ShipmentData) ? payload.ShipmentData[0] : null;
-  const shipment = shipmentData?.Shipment || payload?.Shipment || payload?.shipment || payload?.data?.shipment || null;
+function extractTrackingId(payload: unknown, fallbackTrackingId: string): string {
+  const shipment = findShipment(payload);
 
   return (
     firstString([
-      shipment?.AWB,
-      shipment?.Waybill,
-      payload?.waybill,
-      payload?.awb,
-      payload?.tracking_id
+      readPath(shipment, 'AWB'),
+      readPath(shipment, 'Waybill'),
+      readPath(payload, 'waybill'),
+      readPath(payload, 'awb'),
+      readPath(payload, 'tracking_id')
     ]) || fallbackTrackingId
   );
 }
@@ -216,10 +232,6 @@ export type DelhiveryShipmentResult = {
   remark: string | null;
   raw: unknown;
 };
-
-export function isDelhiveryBookingConfigured(): boolean {
-  return Boolean(process.env.DELHIVERY_API_TOKEN && process.env.DELHIVERY_PICKUP_LOCATION_NAME);
-}
 
 export function sanitizeDelhiveryText(value: string): string {
   return String(value || '')
@@ -304,18 +316,18 @@ export async function createDelhiveryShipment(
       body: requestBody,
       signal: controller.signal,
     });
-  } catch (error: any) {
+  } catch (error) {
     clearTimeout(timeout);
     throw new Error(
-      error?.name === 'AbortError'
+      error instanceof Error && error.name === 'AbortError'
         ? `Delhivery booking timed out after ${timeoutMs}ms`
-        : error?.message || 'Delhivery booking request failed'
+        : getErrorMessage(error) || 'Delhivery booking request failed'
     );
   }
   clearTimeout(timeout);
 
   const rawText = await response.text();
-  let raw: any;
+  let raw: unknown;
   try {
     raw = JSON.parse(rawText);
   } catch {
@@ -323,29 +335,29 @@ export async function createDelhiveryShipment(
   }
 
   if (!response.ok) {
-    throw new Error(String(raw?.rmk || raw?.message || rawText || `HTTP ${response.status}`));
+    throw new Error(String(readPath(raw, 'rmk') || readPath(raw, 'message') || rawText || `HTTP ${response.status}`));
   }
 
-  const packages = Array.isArray(raw?.packages) ? raw.packages : [];
-  const firstPackage = packages[0] && typeof packages[0] === 'object' ? packages[0] : {};
+  const packages = readPath(raw, 'packages');
+  const firstPackage: unknown = Array.isArray(packages) ? packages[0] : undefined;
   const waybill = firstString([
-    firstPackage?.waybill,
-    firstPackage?.Waybill,
-    raw?.waybill,
-    raw?.awb,
+    readPath(firstPackage, 'waybill'),
+    readPath(firstPackage, 'Waybill'),
+    readPath(raw, 'waybill'),
+    readPath(raw, 'awb'),
   ]);
-  const success = Boolean(raw?.success) && Boolean(waybill);
+  const success = Boolean(readPath(raw, 'success')) && Boolean(waybill);
 
   if (!success) {
-    throw new Error(String(raw?.rmk || raw?.error || 'Delhivery did not return a waybill'));
+    throw new Error(String(readPath(raw, 'rmk') || readPath(raw, 'error') || 'Delhivery did not return a waybill'));
   }
 
   return {
     success: true,
     waybill: waybill || null,
     orderId: input.orderId,
-    status: firstString([firstPackage?.status, raw?.status]) || 'booked',
-    remark: firstString([raw?.rmk, raw?.remark]),
+    status: firstString([readPath(firstPackage, 'status'), readPath(raw, 'status')]) || 'booked',
+    remark: firstString([readPath(raw, 'rmk'), readPath(raw, 'remark')]),
     raw,
   };
 }
@@ -372,11 +384,11 @@ async function fetchTrackingPayload(trackingId: string): Promise<unknown> {
         cache: 'no-store',
         signal: controller.signal,
       });
-    } catch (error: any) {
+    } catch (error) {
       clearTimeout(timeout);
-      lastError = error?.name === 'AbortError'
+      lastError = error instanceof Error && error.name === 'AbortError'
         ? `Delhivery tracking timed out after ${timeoutMs}ms`
-        : (error?.message || 'Delhivery request failed');
+        : (getErrorMessage(error) || 'Delhivery request failed');
       continue;
     }
     clearTimeout(timeout);
@@ -411,19 +423,19 @@ export async function getDelhiveryTrackingSnapshot(trackingIdInput: string): Pro
 
   const payload = await fetchTrackingPayload(trackingId);
 
-  const rawScans = extractCandidateScans(payload as any);
+  const rawScans = extractCandidateScans(payload);
   const events = sortEventsDesc(
     rawScans
-      .map((scan: any) => normalizeEvent(scan))
+      .map((scan) => normalizeEvent(scan))
       .filter((event: DelhiveryEvent | null): event is DelhiveryEvent => Boolean(event))
   );
 
-  const currentStatus = extractCurrentStatus(payload as any, events);
+  const currentStatus = extractCurrentStatus(payload, events);
   const lastEvent = events[0] || null;
 
   return {
     provider: 'delhivery',
-    trackingId: extractTrackingId(payload as any, trackingId),
+    trackingId: extractTrackingId(payload, trackingId),
     currentStatus,
     lastEventAt: lastEvent?.timestamp || null,
     lastLocation: lastEvent?.location || null,

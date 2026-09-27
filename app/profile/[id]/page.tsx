@@ -27,7 +27,8 @@ import {
 } from "@/components/verification-badge"
 import { ProfileCoverMedia } from "@/components/profile-card"
 import { DocumentFileViewer } from "@/components/ca-verification-review"
-import { NgoPayDialog } from "@/components/profile-dashboard-tab"
+import { NgoPayDialog } from "@/components/ngo-pay-dialog"
+import { getErrorMessage } from "@/lib/utils"
 
 const COMPLIANCE_DOC_ORDER = ["twelve_a", "eighty_g", "csr1", "fcra"] as const
 const COMPLIANCE_DOC_LABELS: Record<(typeof COMPLIANCE_DOC_ORDER)[number], string> = {
@@ -242,9 +243,9 @@ export default function ImpactProfilePage() {
         }
 
         setProfile(profileData.profile)
-      } catch (err: any) {
+      } catch (err) {
         console.error("Profile fetch error:", err)
-        setError(err.message || "Failed to load profile")
+        setError(getErrorMessage(err) || "Failed to load profile")
       } finally {
         setLoading(false)
         fetchingRef.current = false

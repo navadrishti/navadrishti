@@ -1,10 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { getAuthUserFromRequest } from '@/lib/server-auth';
-import { isCARequest } from '@/lib/server-auth';
-import { getCompanyCAFromRequest } from '@/lib/server-auth';
+import { getAuthUserFromRequest, isCARequest, getCompanyCAFromRequest } from '@/lib/server-auth';
+import type { Tables } from '@/lib/database.types';
 
-async function canAccessProject(request: NextRequest, project: any): Promise<boolean> {
+type EvidenceRow = Tables<'csr_milestone_evidence'>;
+type ReviewRow = Tables<'csr_milestone_reviews'>;
+type PaymentRow = Tables<'csr_payment_confirmations'>;
+type MediaRow = Tables<'csr_milestone_evidence_media'>;
+type DocumentRow = Tables<'csr_milestone_evidence_documents'>;
+type EvidenceWithUploads = EvidenceRow & { media: MediaRow[]; documents: DocumentRow[] };
+
+async function canAccessProject(
+  request: NextRequest,
+  project: Pick<Tables<'csr_projects'>, 'company_user_id' | 'ngo_user_id'>
+): Promise<boolean> {
   if (isCARequest(request)) {
     return true;
   }
@@ -68,7 +77,7 @@ export async function GET(
       return NextResponse.json({ error: 'Failed to load project timeline' }, { status: 500 });
     }
 
-    const milestoneIds = (milestones ?? []).map((item: any) => item.id);
+    const milestoneIds = (milestones ?? []).map((item) => item.id);
 
     const [evidenceResult, reviewResult, paymentResult] = await Promise.all([
       milestoneIds.length > 0
@@ -77,21 +86,21 @@ export async function GET(
             .select('*')
             .in('milestone_id', milestoneIds)
             .order('created_at', { ascending: false })
-        : Promise.resolve({ data: [], error: null } as any),
+        : Promise.resolve({ data: [] as EvidenceRow[], error: null }),
       milestoneIds.length > 0
         ? supabase
             .from('csr_milestone_reviews')
             .select('*')
             .in('milestone_id', milestoneIds)
             .order('created_at', { ascending: false })
-        : Promise.resolve({ data: [], error: null } as any),
+        : Promise.resolve({ data: [] as ReviewRow[], error: null }),
       milestoneIds.length > 0
         ? supabase
             .from('csr_payment_confirmations')
             .select('*')
             .in('milestone_id', milestoneIds)
             .order('created_at', { ascending: false })
-        : Promise.resolve({ data: [], error: null } as any)
+        : Promise.resolve({ data: [] as PaymentRow[], error: null })
     ]);
 
     if (evidenceResult.error || reviewResult.error || paymentResult.error) {
@@ -104,7 +113,7 @@ export async function GET(
     }
 
     const evidenceRows = evidenceResult.data ?? [];
-    const evidenceIds = evidenceRows.map((item: any) => item.id);
+    const evidenceIds = evidenceRows.map((item) => item.id);
 
     const [mediaResult, documentsResult] = await Promise.all([
       evidenceIds.length > 0
@@ -113,14 +122,14 @@ export async function GET(
             .select('*')
             .in('evidence_id', evidenceIds)
             .order('created_at', { ascending: true })
-        : Promise.resolve({ data: [], error: null } as any),
+        : Promise.resolve({ data: [] as MediaRow[], error: null }),
       evidenceIds.length > 0
         ? supabase
             .from('csr_milestone_evidence_documents')
             .select('*')
             .in('evidence_id', evidenceIds)
             .order('created_at', { ascending: true })
-        : Promise.resolve({ data: [], error: null } as any)
+        : Promise.resolve({ data: [] as DocumentRow[], error: null })
     ]);
 
     if (mediaResult.error || documentsResult.error) {
@@ -131,7 +140,7 @@ export async function GET(
       return NextResponse.json({ error: 'Failed to load evidence uploads' }, { status: 500 });
     }
 
-    const reviewsByMilestone = (reviewResult.data ?? []).reduce((acc: Record<string, any[]>, row: any) => {
+    const reviewsByMilestone = (reviewResult.data ?? []).reduce((acc: Record<string, ReviewRow[]>, row) => {
       if (!acc[row.milestone_id]) {
         acc[row.milestone_id] = [];
       }
@@ -139,7 +148,7 @@ export async function GET(
       return acc;
     }, {});
 
-    const paymentsByMilestone = (paymentResult.data ?? []).reduce((acc: Record<string, any[]>, row: any) => {
+    const paymentsByMilestone = (paymentResult.data ?? []).reduce((acc: Record<string, PaymentRow[]>, row) => {
       if (!acc[row.milestone_id]) {
         acc[row.milestone_id] = [];
       }
@@ -147,7 +156,7 @@ export async function GET(
       return acc;
     }, {});
 
-    const mediaByEvidence = (mediaResult.data ?? []).reduce((acc: Record<string, any[]>, row: any) => {
+    const mediaByEvidence = (mediaResult.data ?? []).reduce((acc: Record<string, MediaRow[]>, row) => {
       if (!acc[row.evidence_id]) {
         acc[row.evidence_id] = [];
       }
@@ -155,7 +164,7 @@ export async function GET(
       return acc;
     }, {});
 
-    const documentsByEvidence = (documentsResult.data ?? []).reduce((acc: Record<string, any[]>, row: any) => {
+    const documentsByEvidence = (documentsResult.data ?? []).reduce((acc: Record<string, DocumentRow[]>, row) => {
       if (!acc[row.evidence_id]) {
         acc[row.evidence_id] = [];
       }
@@ -163,7 +172,7 @@ export async function GET(
       return acc;
     }, {});
 
-    const evidenceByMilestone = evidenceRows.reduce((acc: Record<string, any[]>, row: any) => {
+    const evidenceByMilestone = evidenceRows.reduce((acc: Record<string, EvidenceWithUploads[]>, row) => {
       if (!acc[row.milestone_id]) {
         acc[row.milestone_id] = [];
       }
@@ -175,7 +184,7 @@ export async function GET(
       return acc;
     }, {});
 
-    const timeline = (milestones ?? []).map((milestone: any) => {
+    const timeline = (milestones ?? []).map((milestone) => {
       const evidence = evidenceByMilestone[milestone.id] ?? [];
       const reviews = reviewsByMilestone[milestone.id] ?? [];
       const payments = paymentsByMilestone[milestone.id] ?? [];
@@ -194,17 +203,17 @@ export async function GET(
     });
 
     const today = new Date();
-    const nextMilestone = (milestones ?? []).find((milestone: any) => {
+    const nextMilestone = (milestones ?? []).find((milestone) => {
       if (!milestone.due_date) {
         return milestone.status !== 'completed';
       }
 
       return milestone.status !== 'completed' && new Date(milestone.due_date) >= today;
-    }) ?? (milestones ?? []).find((milestone: any) => milestone.status !== 'completed') ?? null;
+    }) ?? (milestones ?? []).find((milestone) => milestone.status !== 'completed') ?? null;
 
     const confirmedFunds = (paymentResult.data ?? [])
-      .filter((payment: any) => payment.payment_status === 'confirmed')
-      .reduce((sum: number, payment: any) => sum + Number(payment.amount || 0), 0);
+      .filter((payment) => payment.payment_status === 'confirmed')
+      .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
 
     return NextResponse.json({
       success: true,
@@ -212,7 +221,7 @@ export async function GET(
         project,
         summary: {
           total_milestones: milestones?.length ?? 0,
-          completed_milestones: (milestones ?? []).filter((item: any) => item.status === 'completed').length,
+          completed_milestones: (milestones ?? []).filter((item) => item.status === 'completed').length,
           confirmed_funds: confirmedFunds,
           next_milestone: nextMilestone
         },

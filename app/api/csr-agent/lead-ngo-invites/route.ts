@@ -6,26 +6,26 @@ import {
   CSR_WORK_END_DATE_REQUIRED_MESSAGE,
 } from '@/lib/auth'
 import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth'
+import { parseLeadNgoInvites, type LeadNgoInvite } from '@/lib/campaign-volunteer-attendance'
+import { parseJsonObject } from '@/lib/utils'
 
-type LeadInviteRow = {
-  ngo_id: number
-  name: string
-  email: string
-  status: string
-  invited_at?: string
-}
-
-function normalizeInvites(raw: unknown): LeadInviteRow[] {
-  if (!Array.isArray(raw)) return []
-  return raw
-    .map((item) => ({
-      ngo_id: Number((item as any)?.ngo_id || (item as any)?.ngoId || 0),
-      name: String((item as any)?.name || ''),
-      email: String((item as any)?.email || ''),
-      status: String((item as any)?.status || 'invited').toLowerCase(),
-      invited_at: (item as any)?.invited_at || (item as any)?.invitedAt || undefined,
-    }))
-    .filter((item) => item.ngo_id > 0)
+function summarizeLeadInviteState(campaign: {
+  id: string
+  impact_metrics?: Record<string, any> | null
+  lead_ngo_user_id?: number | null
+}) {
+  const impact = parseJsonObject(campaign.impact_metrics)
+  const invites = parseLeadNgoInvites(impact.lead_ngo_invites)
+  const leadNgoId = Number(campaign.lead_ngo_user_id || 0) || null
+  const leadInvite = leadNgoId ? invites.find((invite) => invite.ngo_id === leadNgoId) : undefined
+  return {
+    draftCampaignId: campaign.id,
+    leadNgoAccepted: Boolean(impact.lead_ngo_accepted),
+    selectedLeadNgoId: leadNgoId,
+    selectedLeadNgoName: leadInvite?.name || null,
+    selectedLeadNgoEmail: leadInvite?.email || null,
+    invites,
+  }
 }
 
 function readProjectEndDate(projectData: Record<string, any>, campaign?: any): string | null {
@@ -46,7 +46,7 @@ function buildDraftPayload(
   sessionId: string,
   projectData: Record<string, string>,
   volunteerRequirement: string,
-  invites: LeadInviteRow[],
+  invites: LeadNgoInvite[],
 ) {
   const title = String(projectData.campaignName || 'CSR Campaign Draft').trim() || 'CSR Campaign Draft'
   const category = String(projectData.category || 'Community development').trim()
@@ -76,7 +76,7 @@ function buildDraftPayload(
 async function findDraftBySession(sessionId: string, companyId: number) {
   const { data, error } = await supabase
     .from('campaigns')
-    .select('id, status, impact_metrics, start_date, end_date')
+    .select('id, status, impact_metrics, start_date, end_date, lead_ngo_user_id')
     .eq('company_id', companyId)
     .eq('status', 'draft')
     .eq('impact_metrics->>csr_agent_session_id', sessionId)
@@ -98,7 +98,7 @@ export async function GET(request: NextRequest) {
     if (draftCampaignId) {
       const { data, error } = await supabase
         .from('campaigns')
-        .select('id, status, impact_metrics, start_date, end_date')
+        .select('id, status, impact_metrics, start_date, end_date, lead_ngo_user_id')
         .eq('id', draftCampaignId)
         .eq('company_id', user.id)
         .maybeSingle()
@@ -122,21 +122,7 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    const impact = campaign.impact_metrics && typeof campaign.impact_metrics === 'object'
-      ? campaign.impact_metrics
-      : {}
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        draftCampaignId: campaign.id,
-        leadNgoAccepted: Boolean(impact.lead_ngo_accepted),
-        selectedLeadNgoId: Number(impact.selected_lead_ngo_id || 0) || null,
-        selectedLeadNgoName: impact.selected_lead_ngo_name || null,
-        selectedLeadNgoEmail: impact.selected_lead_ngo_email || null,
-        invites: normalizeInvites(impact.lead_ngo_invites),
-      },
-    })
+    return NextResponse.json({ success: true, data: summarizeLeadInviteState(campaign) })
   } catch (error) {
     console.error('CSR agent lead invite fetch error:', error)
     return NextResponse.json({ error: 'Failed to fetch lead NGO invite status' }, { status: 500 })
@@ -169,7 +155,7 @@ export async function POST(request: NextRequest) {
     if (draftCampaignId) {
       const { data, error } = await supabase
         .from('campaigns')
-        .select('id, status, impact_metrics, start_date, end_date')
+        .select('id, status, impact_metrics, start_date, end_date, lead_ngo_user_id')
         .eq('id', draftCampaignId)
         .eq('company_id', user.id)
         .maybeSingle()
@@ -206,11 +192,8 @@ export async function POST(request: NextRequest) {
       }
 
       // Extending the campaign end must keep every already-invited NGO covered.
-      const existingImpact =
-        campaign?.impact_metrics && typeof campaign.impact_metrics === 'object'
-          ? campaign.impact_metrics
-          : {}
-      const existingInviteIds = normalizeInvites(existingImpact.lead_ngo_invites)
+      const existingImpact = parseJsonObject(campaign?.impact_metrics)
+      const existingInviteIds = parseLeadNgoInvites(existingImpact.lead_ngo_invites)
         .map((invite) => invite.ngo_id)
         .filter((id) => id !== ngoId)
       if (existingInviteIds.length > 0) {
@@ -238,15 +221,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const impact = campaign?.impact_metrics && typeof campaign.impact_metrics === 'object'
-      ? campaign.impact_metrics
-      : {}
+    const impact = parseJsonObject(campaign?.impact_metrics)
 
-    if (impact.lead_ngo_accepted || Number(impact.selected_lead_ngo_id || 0) > 0) {
+    if (impact.lead_ngo_accepted || Number(campaign?.lead_ngo_user_id || 0) > 0) {
       return NextResponse.json({ error: 'A lead NGO has already accepted for this campaign draft.' }, { status: 409 })
     }
 
-    let invites = normalizeInvites(impact.lead_ngo_invites)
+    let invites = parseLeadNgoInvites(impact.lead_ngo_invites)
 
     if (action === 'revoke') {
       invites = invites.filter((invite) => invite.ngo_id !== ngoId)
@@ -274,7 +255,7 @@ export async function POST(request: NextRequest) {
       const { data: inserted, error: insertError } = await supabase
         .from('campaigns')
         .insert(payload)
-        .select('id, status, impact_metrics, start_date, end_date')
+        .select('id, status, impact_metrics, start_date, end_date, lead_ngo_user_id')
         .single()
 
       if (insertError) throw insertError
@@ -297,28 +278,14 @@ export async function POST(request: NextRequest) {
         })
         .eq('id', campaign.id)
         .eq('company_id', user.id)
-        .select('id, status, impact_metrics, start_date, end_date')
+        .select('id, status, impact_metrics, start_date, end_date, lead_ngo_user_id')
         .single()
 
       if (updateError) throw updateError
       campaign = updated
     }
 
-    const nextImpact = campaign.impact_metrics && typeof campaign.impact_metrics === 'object'
-      ? campaign.impact_metrics
-      : {}
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        draftCampaignId: campaign.id,
-        leadNgoAccepted: Boolean(nextImpact.lead_ngo_accepted),
-        selectedLeadNgoId: Number(nextImpact.selected_lead_ngo_id || 0) || null,
-        selectedLeadNgoName: nextImpact.selected_lead_ngo_name || null,
-        selectedLeadNgoEmail: nextImpact.selected_lead_ngo_email || null,
-        invites: normalizeInvites(nextImpact.lead_ngo_invites),
-      },
-    })
+    return NextResponse.json({ success: true, data: summarizeLeadInviteState(campaign) })
   } catch (error) {
     console.error('CSR agent lead invite error:', error)
     return NextResponse.json({ error: 'Failed to update lead NGO invites' }, { status: 500 })

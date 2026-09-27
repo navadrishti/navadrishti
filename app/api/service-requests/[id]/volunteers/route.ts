@@ -1,18 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, supabase } from '@/lib/db';
+import { db } from '@/lib/db';
 import { canIndividualApplyToNeed } from '@/lib/infrastructure-assignment-lock';
 import { getNgoNeedFulfillmentMode } from '@/lib/service-request-allocation';
-import jwt from 'jsonwebtoken';
-import { JWT_SECRET } from '@/lib/auth';
+import { getTokenClaims } from '@/lib/auth';
 import { resolveEffectiveVerificationStatus } from '@/lib/server-auth';
-
-// Interface for JWT payload
-interface JWTPayload {
-  id: number;
-  user_type: string;
-  email: string;
-  name: string;
-}
 
 // GET - Fetch volunteers for a service request
 export async function GET(
@@ -23,7 +14,6 @@ export async function GET(
     const { id } = await params;
     const requestId = parseInt(id);
     
-    // Check if this is a public request to check user application status
     const url = new URL(request.url);
     const userId = url.searchParams.get('userId');
     
@@ -33,14 +23,10 @@ export async function GET(
       return NextResponse.json(userApplication ? [userApplication] : []);
     }
     
-    // Get JWT token from Authorization header for NGO requests
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const decoded = getTokenClaims(request);
+    if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
-
-    const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
     const { id: ngoUserId, user_type: userType } = decoded;
 
     // Only NGOs can view volunteers for their requests
@@ -48,7 +34,6 @@ export async function GET(
       return NextResponse.json({ error: 'Only NGOs can view applicants' }, { status: 403 });
     }
 
-    // First, verify that this request belongs to the authenticated NGO
     const request_data = await db.serviceRequests.getById(requestId);
 
     if (!request_data) {
@@ -59,7 +44,6 @@ export async function GET(
       return NextResponse.json({ error: 'You can only view applicants for your own requests' }, { status: 403 });
     }
 
-    // Fetch volunteers for this request using Supabase helper
     const volunteers = await db.serviceRequestApplications.getByRequestId(requestId);
 
     return NextResponse.json({
@@ -84,33 +68,22 @@ export async function POST(
   try {
     const { id } = await params;
     const body = await request.json();
-    let { volunteer_id, message, fulfillment_amount, fulfillment_quantity } = body;
+    const { message, fulfillment_amount, fulfillment_quantity } = body;
 
-    // If an Authorization token is provided, prefer the authenticated user id
-    const authHeader = request.headers.get('authorization');
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      try {
-        const token = authHeader.split(' ')[1];
-        const decoded = jwt.verify(token, JWT_SECRET) as JWTPayload;
-        // If volunteer_id is provided and differs from token id, reject to avoid impersonation
-        if (volunteer_id && Number(volunteer_id) !== Number(decoded.id)) {
-          return NextResponse.json({ error: 'Volunteer id mismatch with authenticated user' }, { status: 403 });
-        }
-        volunteer_id = Number(decoded.id);
-      } catch (err) {
-        // Ignore token errors here; we'll validate volunteer_id below
-      }
+    const claims = getTokenClaims(request);
+    if (!claims) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
-    // Validate required fields: volunteer id always required. Message is optional.
-    if (!volunteer_id) {
-      return NextResponse.json({ error: 'Volunteer ID is required' }, { status: 400 });
+    const applicantId = Number(claims.id);
+    if (!applicantId) {
+      return NextResponse.json({ error: 'Invalid token: missing user ID' }, { status: 401 });
     }
 
     const requestId = parseInt(id);
 
     // Only individuals can volunteer for service requests
-    const user = await db.users.findById(Number(volunteer_id));
+    const user = await db.users.findById(applicantId);
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
@@ -122,7 +95,7 @@ export async function POST(
       }, { status: 403 });
     }
 
-    const effectiveVerificationStatus = await resolveEffectiveVerificationStatus(Number(volunteer_id), user.user_type);
+    const effectiveVerificationStatus = await resolveEffectiveVerificationStatus(applicantId, user.user_type);
     if (effectiveVerificationStatus !== 'verified') {
       return NextResponse.json({ 
         error: 'Account verification required', 
@@ -131,8 +104,7 @@ export async function POST(
       }, { status: 403 });
     }
 
-    // Check if the volunteer has already applied using Supabase helper
-    const existingApplication = await db.serviceRequestApplications.findExisting(requestId, volunteer_id);
+    const existingApplication = await db.serviceRequestApplications.findExisting(requestId, applicantId);
 
     if (existingApplication) {
       return NextResponse.json(
@@ -146,7 +118,7 @@ export async function POST(
       return NextResponse.json({ error: 'Service request not found' }, { status: 404 });
     }
 
-    const applyCheck = await canIndividualApplyToNeed(Number(volunteer_id), requestData);
+    const applyCheck = await canIndividualApplyToNeed(applicantId, requestData);
     if (!applyCheck.allowed) {
       return NextResponse.json({ error: applyCheck.reason }, { status: 409 });
     }
@@ -167,11 +139,9 @@ export async function POST(
       }
     }
 
-    const volunteerProfile = await db.users.findById(volunteer_id);
-
     const volunteerData = {
       service_request_id: requestId,
-      applicant_user_id: volunteer_id,
+      applicant_user_id: applicantId,
       application_message: message || '',
       status: 'pending',
       fulfillment_amount: fulfillment_amount != null ? Number(fulfillment_amount) : null,
@@ -180,12 +150,12 @@ export async function POST(
         fulfillment_mode: fulfillmentMode,
         daily_rate_inr: fulfillmentMode === 'skill_service' ? Number(fulfillment_amount || 0) : null,
         volunteer_snapshot: {
-          id: volunteerProfile?.id || volunteer_id,
-          name: volunteerProfile?.name || null,
-          email: volunteerProfile?.email || null,
-          phone: volunteerProfile?.phone || null,
-          profile_image: volunteerProfile?.profile_image || null,
-          verification_status: volunteerProfile?.verification_status || null,
+          id: user.id,
+          name: user.name || null,
+          email: user.email || null,
+          phone: user.phone || null,
+          profile_image: user.profile_image || null,
+          verification_status: user.verification_status || null,
           created_at: new Date().toISOString()
         }
       }

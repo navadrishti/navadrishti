@@ -20,7 +20,6 @@ export default async function CADashboardPage() {
     redirect('/ca/login');
   }
 
-  // Check if password change is mandatory
   const { data: account, error } = await supabase
     .from(PLATFORM_CA_ACCOUNTS_TABLE)
     .select('must_change_password')

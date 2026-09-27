@@ -1,24 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { verifyToken } from '@/lib/auth';
+import { getAdminUser } from '@/lib/server-auth';
 import { getDelhiveryTrackingSnapshot } from '@/lib/delhivery';
-
-const isAdminRequest = (request: NextRequest) => {
-  const adminToken = request.cookies.get('admin-token')?.value;
-  if (!adminToken) return null;
-
-  try {
-    const decoded = verifyToken(adminToken);
-    if (!decoded || decoded.id !== -1) return null;
-    return decoded;
-  } catch {
-    return null;
-  }
-};
+import { getErrorMessage } from '@/lib/utils';
 
 export async function POST(request: NextRequest) {
   try {
-    const admin = isAdminRequest(request);
+    const admin = getAdminUser(request);
     if (!admin) {
       return NextResponse.json({ error: 'Admin authentication required' }, { status: 401 });
     }
@@ -43,8 +31,8 @@ export async function POST(request: NextRequest) {
         events: snapshot.events
       }
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Admin Delhivery tracking error:', error);
-    return NextResponse.json({ error: error?.message || 'Failed to fetch Delhivery tracking' }, { status: 500 });
+    return NextResponse.json({ error: getErrorMessage(error) || 'Failed to fetch Delhivery tracking' }, { status: 500 });
   }
 }

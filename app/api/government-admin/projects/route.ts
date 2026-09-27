@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { assertGovernmentAdmin } from '@/lib/government-admin-auth';
 import { supabase } from '@/lib/db';
+import { getErrorMessage } from '@/lib/utils';
 
 function normalizeText(value: unknown) {
   return String(value ?? '').trim();
@@ -18,8 +19,8 @@ export async function GET(request: NextRequest) {
     if (error) throw error;
 
     return NextResponse.json({ success: true, projects: data || [] });
-  } catch (error: any) {
-    return NextResponse.json({ error: error?.message || 'Failed to load projects' }, { status: 500 });
+  } catch (error) {
+    return NextResponse.json({ error: getErrorMessage(error) || 'Failed to load projects' }, { status: 500 });
   }
 }
 
@@ -87,7 +88,7 @@ export async function POST(request: NextRequest) {
         government_project_milestones: milestones || [],
       },
     });
-  } catch (error: any) {
-    return NextResponse.json({ error: error?.message || 'Failed to create project' }, { status: 500 });
+  } catch (error) {
+    return NextResponse.json({ error: getErrorMessage(error) || 'Failed to create project' }, { status: 500 });
   }
 }

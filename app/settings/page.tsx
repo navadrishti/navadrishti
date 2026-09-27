@@ -140,12 +140,10 @@ export default function SettingsPage() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   
-  // Loading and error states
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState('');
   
-  // Delete account dialog state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState('');
@@ -160,14 +158,15 @@ export default function SettingsPage() {
       return;
     }
 
-    router.push('/dashboard');
+    if (user?.user_type === 'ngo') router.push('/ngos/dashboard');
+    else if (user?.user_type === 'company') router.push('/companies/dashboard');
+    else if (user?.user_type === 'individual') router.push('/individuals/dashboard');
+    else router.push('/');
   };
 
-  // Handle password change
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Clear previous states
     setPasswordError('');
     setPasswordSuccess('');
     
@@ -206,7 +205,6 @@ export default function SettingsPage() {
       
       if (response.ok) {
         setPasswordSuccess('Password changed successfully!');
-        // Clear form
         setCurrentPassword('');
         setNewPassword('');
         setConfirmPassword('');
@@ -220,7 +218,6 @@ export default function SettingsPage() {
     }
   };
 
-  // Handle account deletion
   const handleDeleteAccount = async (password: string, confirmation: string) => {
     setDeleteError('');
     setDeleteLoading(true);
@@ -244,10 +241,8 @@ export default function SettingsPage() {
         // Close dialog
         setDeleteDialogOpen(false);
         
-        // Log out user
         logout();
         
-        // Show success message and redirect
         alert('Your account has been successfully deleted. We are sorry to see you go!');
         router.push('/');
       } else {

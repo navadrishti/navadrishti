@@ -1,21 +1,16 @@
 import crypto from 'crypto'
 import Razorpay from 'razorpay'
 import { db, supabase } from '@/lib/db'
-import { formatAttendanceSummary } from '@/lib/service-request-allocation'
+import { formatAttendanceSummary } from '@/lib/service-request-allocation'
+import { parseJsonObject } from '@/lib/utils'
 import {
   buildPricingResponse,
   createPlatformPricedOrder,
   isRazorpayRouteEnabled,
 } from '@/lib/razorpay-route'
 
-function safeJson(value: unknown): Record<string, any> {
-  if (!value) return {}
-  if (typeof value === 'object') return value as Record<string, any>
-  return {}
-}
-
 export function getAssignmentOutstandingAmount(assignment: Record<string, any>) {
-  const meta = safeJson(assignment.meta)
+  const meta = parseJsonObject(assignment.meta)
   const summary = formatAttendanceSummary(meta)
   const outstanding = Math.max(0, summary.totalDue - summary.paidTotal)
   return {
@@ -38,7 +33,7 @@ export async function finalizeEngagementSettlement(assignment: Record<string, an
   razorpayPaymentId?: string | null
 }) {
   const nowIso = new Date().toISOString()
-  const meta = safeJson(assignment.meta)
+  const meta = parseJsonObject(assignment.meta)
   const summary = formatAttendanceSummary(meta)
 
   const { data: entries } = await supabase
@@ -89,7 +84,7 @@ export async function finalizeEngagementSettlement(assignment: Record<string, an
       .eq('id', assignment.application_id)
       .maybeSingle()
 
-    const volunteerMeta = safeJson(volunteerRow?.response_meta)
+    const volunteerMeta = parseJsonObject(volunteerRow?.response_meta)
     await db.serviceRequestApplications.update(Number(assignment.application_id), {
       status: 'completed',
       ngo_confirmed_at: nowIso,
@@ -111,7 +106,7 @@ export async function finalizeEngagementSettlement(assignment: Record<string, an
       .eq('id', assignment.application_id)
       .maybeSingle()
 
-    const clientMeta = safeJson(clientRow?.response_meta)
+    const clientMeta = parseJsonObject(clientRow?.response_meta)
     await supabase
       .from('service_clients')
       .update({

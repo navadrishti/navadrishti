@@ -5,13 +5,7 @@ import { comparePassword, getCaBadgeNumber, hashPassword, JWT_SECRET } from '@/l
 import { supabase } from '@/lib/db';
 
 export const PLATFORM_CA_COOKIE = 'navadrishti-ca-token';
-/**
- * Platform KYC CA accounts table (renamed from navadrishti_ca_accounts).
- * Apply reference/migrations/2026_schema_streamline.sql before relying on this name in staging.
- */
 export const PLATFORM_CA_ACCOUNTS_TABLE = 'platform_ca_accounts';
-/** @deprecated Legacy name — only for cutover diagnostics */
-export const PLATFORM_CA_ACCOUNTS_TABLE_LEGACY = 'navadrishti_ca_accounts';
 const CA_BADGE_SALT_PREFIX = 'navadrishti-ca-badge';
 
 export function issueCaBadgeNumber(userId: number, profileData?: unknown): string {
@@ -128,16 +122,6 @@ export async function getPlatformCAFromRequest(
   return data as PlatformCAAccount & { password_hash?: string };
 }
 
-export async function listPlatformCAAccounts() {
-  const { data, error } = await supabase
-    .from(PLATFORM_CA_ACCOUNTS_TABLE)
-    .select('*')
-    .order('created_at', { ascending: false });
-
-  if (error) throw error;
-  return (data || []) as PlatformCAAccount[];
-}
-
 export async function createPlatformCAAccount(input: {
   ca_id: string;
   username: string;
@@ -208,12 +192,4 @@ export async function verifyPlatformCAPassword(accountId: number, password: stri
 
   if (error || !data?.password_hash) return false;
   return comparePassword(password, data.password_hash);
-}
-
-export async function assertPlatformCA(request: NextRequest) {
-  const ca = await getPlatformCAFromRequest(request);
-  if (!ca) {
-    throw new Error('CA authentication required');
-  }
-  return ca;
 }
