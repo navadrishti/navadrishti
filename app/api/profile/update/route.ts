@@ -10,6 +10,7 @@ import {
   savePayoutAccount,
 } from '@/lib/profile-update/payout';
 import { buildProfileUpdate } from '@/lib/profile-update/profile-fields';
+import { validateNameAndEmail } from '@/lib/profile-update/identity';
 import { normalizeProfileForm, saveProfileForm, updateProfileSchema } from '@/lib/profile-update/profile-form';
 
 export async function GET(request: NextRequest) {
@@ -97,7 +98,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const updateData = buildProfileUpdate(body, currentUser);
+    const identity = await validateNameAndEmail(body, userId, currentUser.email);
+    if (!identity.ok) {
+      return NextResponse.json({ error: identity.error }, { status: identity.status });
+    }
+
+    const updateData = buildProfileUpdate({ ...body, name: identity.name, email: identity.email }, currentUser);
 
     if (Object.keys(updateData).length === 0) {
       return NextResponse.json(

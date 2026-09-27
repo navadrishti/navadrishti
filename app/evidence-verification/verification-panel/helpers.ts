@@ -2,6 +2,7 @@ import type {
   CsrProjectSummary,
   MilestonePaymentItem,
   PendingEvidenceItem,
+  PendingPaymentGroup,
   PendingPaymentItem,
   ProjectTimeline,
 } from './types';
@@ -59,14 +60,42 @@ export function buildPendingPaymentItems(
   });
 }
 
-export function groupByRequest(items: PendingPaymentItem[]) {
-  const map: Record<string, PendingPaymentItem[]> = {};
-  items.forEach((it) => {
-    const req = String(it.service_request_id || it.request_id || it.service_request || 'unknown');
-    if (!map[req]) map[req] = [];
-    map[req].push(it);
+const TARGET_LABELS: Record<string, string> = {
+  service_request: 'Request',
+  service_offer: 'Offer',
+  csr_project: 'CSR Project',
+  campaign: 'Campaign',
+};
+
+export function isAttendanceEntry(item: PendingPaymentItem) {
+  return Boolean(item.attendance_date);
+}
+
+function paymentTarget(item: PendingPaymentItem) {
+  if (isAttendanceEntry(item)) {
+    return { type: item.target_type || '', id: item.target_id ? String(item.target_id) : '' };
+  }
+  return { type: 'service_request', id: item.service_request_id ? String(item.service_request_id) : '' };
+}
+
+export function groupPendingPayments(items: PendingPaymentItem[]): PendingPaymentGroup[] {
+  const groups = new Map<string, PendingPaymentGroup>();
+  items.forEach((item) => {
+    const target = paymentTarget(item);
+    const key = target.id ? `${target.type}:${target.id}` : 'unlinked';
+    let group = groups.get(key);
+    if (!group) {
+      group = {
+        key,
+        title: target.id ? `${TARGET_LABELS[target.type] || 'Item'} #${target.id}` : 'Unlinked payments',
+        requestId: target.type === 'service_request' && target.id ? target.id : null,
+        items: [],
+      };
+      groups.set(key, group);
+    }
+    group.items.push(item);
   });
-  return map;
+  return [...groups.values()];
 }
 
 export function pendingItemAmount(item: PendingPaymentItem) {

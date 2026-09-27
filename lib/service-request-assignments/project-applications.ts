@@ -18,6 +18,8 @@ import {
   isFullyVerifiedCompany,
 } from '@/lib/service-request-assignments/shared'
 
+const PENDING_LEAD_INVITE_STATUSES = ['pending', 'invited', 'pending_acceptance', 'awaiting_acceptance', 'offered']
+
 export async function submitProjectApplication(request: NextRequest) {
   try {
     const decoded = getTokenClaims(request)
@@ -29,7 +31,7 @@ export async function submitProjectApplication(request: NextRequest) {
     const body = await request.json()
     const action = String(body.action || '').trim()
 
-    if (!['apply-project', 'invite-lead-ngo'].includes(action)) {
+    if (!['apply-project', 'invite-lead-ngo', 'revoke-lead-ngo'].includes(action)) {
       return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
     }
 
@@ -188,6 +190,30 @@ export async function submitProjectApplication(request: NextRequest) {
           message: 'Project-level CSR application submitted to NGO.'
         }
       })
+    }
+
+    if (action === 'revoke-lead-ngo') {
+      const ngoId = Number(body.ngoId || 0)
+      if (!Number.isFinite(ngoId) || ngoId <= 0) {
+        return NextResponse.json({ error: 'Valid ngoId is required' }, { status: 400 })
+      }
+
+      const { data: removed, error: removeError } = await supabase
+        .from('service_request_contributions')
+        .delete()
+        .eq('contribution_type', LEAD_NGO_INVITE_CONTRIBUTION_TYPE)
+        .eq('meta->>project_id', projectId)
+        .eq('meta->>inviting_company_id', String(userId))
+        .eq('contributor_id', ngoId)
+        .in('status', PENDING_LEAD_INVITE_STATUSES)
+        .select('id')
+
+      if (removeError) throw removeError
+      if (!removed || removed.length === 0) {
+        return NextResponse.json({ error: 'This invite has already been answered and can no longer be removed.' }, { status: 409 })
+      }
+
+      return NextResponse.json({ success: true, data: { projectId, message: 'Lead NGO invite removed.' } })
     }
 
     if (activeNeeds.length === 0 && action === 'invite-lead-ngo') {

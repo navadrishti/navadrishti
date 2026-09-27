@@ -10,7 +10,7 @@ import { getGramAvatarFallbackStyle } from '@/lib/gram-avatar';
 import { resolveProjectCsrCoverageEndDate } from '@/lib/auth';
 import { getStatusBadgeClass } from '@/components/dashboard-status';
 import type { CSRTrackingAssignment } from '@/components/csr-tracking-project-details';
-import { formatLeadNgoInviteStatusLabel, getInitials } from './format';
+import { formatLeadNgoInviteStatusLabel, getInitials, isRemovableLeadInviteStatus } from './format';
 import type { LeadNgoInvite, NgoDirectoryItem } from './types';
 
 interface LeadNgoInvitePanelProps {
@@ -22,6 +22,7 @@ interface LeadNgoInvitePanelProps {
   allVerified: boolean;
   invitingProjectId: string | null;
   onInvite: (projectId: string, ngoIds: number[]) => void;
+  onRevokeInvite: (projectId: string, ngoId: number) => void;
 }
 
 export function LeadNgoInvitePanel({
@@ -33,6 +34,7 @@ export function LeadNgoInvitePanel({
   allVerified,
   invitingProjectId,
   onInvite,
+  onRevokeInvite,
 }: LeadNgoInvitePanelProps) {
   const term = String(searchValue || '').toLowerCase().trim();
   const inviteEntries: Array<[number, LeadNgoInvite]> = (assignment.lead_ngo_invites || [])
@@ -83,6 +85,8 @@ export function LeadNgoInvitePanel({
     const inviteRecord = inviteByNgoId.get(ngo.id);
     const inviteStatus = String(inviteRecord?.status || '').toLowerCase();
     const alreadyInvited = !!inviteRecord;
+    const canRemove = alreadyInvited && isRemovableLeadInviteStatus(inviteStatus) && !inviteRecord?.selected_as_lead;
+    const busy = invitingProjectId === assignment.project_id;
 
     return (
       <div key={`${assignment.project_id}-${ngo.id}`} className="flex items-center justify-between gap-3 rounded-md border bg-white p-3 hover:bg-gram-soft transition-colors">
@@ -118,16 +122,27 @@ export function LeadNgoInvitePanel({
             <Badge variant="outline" className={getStatusBadgeClass(inviteStatus)}>
               {formatLeadNgoInviteStatusLabel(inviteStatus)}
             </Badge>
-          ) : (
+          ) : null}
+          {canRemove ? (
             <Button
               size="sm"
               variant="outline"
-              disabled={!allVerified || invitingProjectId === assignment.project_id}
+              className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+              disabled={busy}
+              onClick={() => onRevokeInvite(assignment.project_id, ngo.id)}
+            >
+              {busy ? 'Updating...' : 'Remove'}
+            </Button>
+          ) : !alreadyInvited ? (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!allVerified || busy}
               onClick={() => onInvite(assignment.project_id, [ngo.id])}
             >
-              {invitingProjectId === assignment.project_id ? 'Inviting...' : 'Invite'}
+              {busy ? 'Inviting...' : 'Invite'}
             </Button>
-          )}
+          ) : null}
         </div>
       </div>
     );

@@ -152,7 +152,10 @@ export async function POST(request: NextRequest) {
     if (!sessionId) {
       return NextResponse.json({ error: 'sessionId is required' }, { status: 400 })
     }
-    if (!Number.isFinite(ngoId) || ngoId <= 0) {
+    if (!['invite', 'revoke', 'save_draft'].includes(action)) {
+      return NextResponse.json({ error: 'Unsupported action' }, { status: 400 })
+    }
+    if (action !== 'save_draft' && (!Number.isFinite(ngoId) || ngoId <= 0)) {
       return NextResponse.json({ error: 'Valid ngoId is required' }, { status: 400 })
     }
 
@@ -171,7 +174,11 @@ export async function POST(request: NextRequest) {
       if (campaign?.id) draftCampaignId = String(campaign.id)
     }
 
-    if (action !== 'revoke') {
+    if (action === 'save_draft' && campaign) {
+      return NextResponse.json({ success: true, data: summarizeLeadInviteState(campaign) })
+    }
+
+    if (action === 'invite') {
       const campaignEnd = readProjectEndDate(projectData, campaign)
       if (!campaignEnd) {
         return NextResponse.json({ error: CSR_WORK_END_DATE_REQUIRED_MESSAGE }, { status: 400 })
@@ -236,20 +243,17 @@ export async function POST(request: NextRequest) {
 
     if (action === 'revoke') {
       invites = invites.filter((invite) => invite.ngo_id !== ngoId)
-    } else {
-      const existing = invites.find((invite) => invite.ngo_id === ngoId)
-      if (!existing) {
-        invites = [
-          ...invites,
-          {
-            ngo_id: ngoId,
-            name: ngoName,
-            email: ngoEmail,
-            status: 'invited',
-            invited_at: new Date().toISOString(),
-          },
-        ]
-      }
+    } else if (action === 'invite') {
+      invites = [
+        ...invites.filter((invite) => invite.ngo_id !== ngoId),
+        {
+          ngo_id: ngoId,
+          name: ngoName,
+          email: ngoEmail,
+          status: 'invited',
+          invited_at: new Date().toISOString(),
+        },
+      ]
     }
 
     const startDate = readProjectStartDate(projectData)

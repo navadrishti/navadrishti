@@ -36,10 +36,13 @@ export type ProjectTimeline = {
 
 export type PendingPaymentItem = Partial<Tables<'service_attendance_entries'> & Tables<'service_request_contributions'>> & {
   id: string;
-  request_id?: string | number | null;
-  service_request?: string | number | null;
-  title?: string | null;
-  service_request_title?: string | null;
+};
+
+export type PendingPaymentGroup = {
+  key: string;
+  title: string;
+  requestId: string | null;
+  items: PendingPaymentItem[];
 };
 
 export type VolunteerAttendanceData = {

@@ -90,7 +90,7 @@ export async function respondToLeadNgoInvitation(ctx: AssignmentsPutContext) {
     auto_selected_by: decision === 'accepted' ? 'ngo_acceptance' : null
   }
 
-  const { error: updateInviteError } = await supabase
+  const { data: updatedInvite, error: updateInviteError } = await supabase
     .from('service_request_contributions')
     .update({
       status: decision,
@@ -98,10 +98,37 @@ export async function respondToLeadNgoInvitation(ctx: AssignmentsPutContext) {
       updated_at: new Date().toISOString()
     })
     .eq('id', inviteId)
+    .in('status', actionableInviteStatuses)
+    .select('id')
+    .maybeSingle()
 
   if (updateInviteError) throw updateInviteError
+  if (!updatedInvite) {
+    return NextResponse.json({ error: 'This invitation is no longer actionable.' }, { status: 409 })
+  }
 
   if (decision === 'accepted') {
+    const { data: claimedProject, error: updateProjectError } = await supabase
+      .from('service_request_projects')
+      .update({ ...buildProjectLeadNgoPatch(userId), assignment_status: 'lead_selected', updated_at: new Date().toISOString() })
+      .eq('id', projectId)
+      .or(`lead_ngo_user_id.is.null,lead_ngo_user_id.eq.${Number(userId)}`)
+      .select('id')
+      .maybeSingle()
+
+    if (updateProjectError) throw updateProjectError
+    if (!claimedProject) {
+      await supabase
+        .from('service_request_contributions')
+        .update({
+          status: EXPIRED_STATUS,
+          meta: { ...nextMeta, selected_as_lead: false, selected_at: null, auto_selected_by: null },
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', inviteId)
+      return NextResponse.json({ error: 'A lead NGO is already accepted for this project invite.' }, { status: 409 })
+    }
+
     const { error: expireOtherInvitesError } = await supabase
       .from('service_request_contributions')
       .update({ status: EXPIRED_STATUS, updated_at: new Date().toISOString() })
@@ -112,13 +139,6 @@ export async function respondToLeadNgoInvitation(ctx: AssignmentsPutContext) {
       .in('status', ['pending', 'invited', 'pending_acceptance', 'awaiting_acceptance', 'offered', 'assigned'])
 
     if (expireOtherInvitesError) throw expireOtherInvitesError
-
-    const { error: updateProjectError } = await supabase
-      .from('service_request_projects')
-      .update({ ...buildProjectLeadNgoPatch(userId), assignment_status: 'lead_selected', updated_at: new Date().toISOString() })
-      .eq('id', projectId)
-
-    if (updateProjectError) throw updateProjectError
   }
 
   return NextResponse.json({ success: true, data: { inviteId, decision } })

@@ -45,6 +45,7 @@ export function CsrProjectsTab({
         allVerified={allVerified}
         invitingProjectId={actions.invitingProjectId}
         onInvite={actions.inviteLeadNgos}
+        onRevokeInvite={actions.revokeLeadNgoInvite}
       />
 
       <PublishedCampaignsSection
