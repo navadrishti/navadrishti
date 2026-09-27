@@ -1,157 +1,24 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
-import Link from "next/link"
+import { useEffect, useState } from "react"
 import { Header } from "@/components/header"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { StyledSelect } from "@/components/ui/styled-select"
-import { Skeleton, SkeletonCampaignCard } from "@/components/ui/skeleton"
-import { Search, Sparkles, ArrowRight, CheckCircle2, Pencil, Trash2, MapPin, MoreVertical } from "lucide-react"
+import { SkeletonCampaignCard } from "@/components/ui/skeleton"
 import { useAuth } from "@/lib/auth-context"
-import { getGramAvatarFallbackStyle } from "@/lib/gram-avatar"
-import { CSR_SCHEDULE_VII_CATEGORIES } from "@/lib/categories"
-import { formatDisplayDate, isCampaignStarted, isVolunteerRegistrationPastDeadline, formatStatusLabel } from "@/lib/format-date"
-import { getVolunteerButtonState, sumVolunteerApplicationCount } from "@/lib/campaign-schema"
+import { isCampaignStarted, isVolunteerRegistrationPastDeadline } from "@/lib/format-date"
+import { getVolunteerButtonState } from "@/lib/campaign-schema"
 import { isCampaignLeadNgo } from "@/lib/campaign-volunteer-attendance"
-import { AGENT_NAMES, AGENT_ROUTES } from "@/lib/ai-agent-sessions"
-import { VerifiedAccountName } from "@/components/verification-badge"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { parseJsonObject } from '@/lib/utils';
-
-const compactControlClass = "h-9 text-sm"
-
-const BUDGET_OPTIONS = [
-  { value: "all", label: "Any budget" },
-  { value: "under_1l", label: "Under ₹1L" },
-  { value: "1l_10l", label: "₹1L – ₹10L" },
-  { value: "10l_50l", label: "₹10L – ₹50L" },
-  { value: "50l_plus", label: "₹50L+" },
-]
-
-const VOLUNTEER_SLOT_OPTIONS = [
-  { value: "all", label: "Any volunteer slots" },
-  { value: "open", label: "Slots open" },
-  { value: "full", label: "No open slots" },
-]
-
-const matchesBudgetBand = (budgetInr: number | null | undefined, band: string) => {
-  if (band === "all") return true
-  const amount = Number(budgetInr || 0)
-  if (!Number.isFinite(amount) || amount <= 0) return false
-  if (band === "under_1l") return amount < 100_000
-  if (band === "1l_10l") return amount >= 100_000 && amount < 1_000_000
-  if (band === "10l_50l") return amount >= 1_000_000 && amount < 5_000_000
-  if (band === "50l_plus") return amount >= 5_000_000
-  return true
-}
-
-const getInitials = (name: string) => {
-  const parts = name.trim().split(/\s+/).filter(Boolean)
-  if (parts.length === 0) return 'CO'
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
-  return `${parts[0][0] || ''}${parts[parts.length - 1][0] || ''}`.toUpperCase()
-}
-
-const formatCampaignDuration = (item: CampaignApiItem) => {
-  const start = formatDisplayDate(item.start_date)
-  const end = formatDisplayDate(item.end_date)
-  if (start && end) {
-    return `${start} to ${end}`
-  }
-  if (start) return `From ${start}`
-  if (end) return `Until ${end}`
-
-  const duration = item.impact_metrics?.duration
-  if (typeof duration === 'string' && duration.trim()) {
-    return duration.trim()
-  }
-
-  return 'Not set'
-}
-
-interface Campaign {
-  id: string
-  title: string
-  company: string
-  companyVerified?: boolean
-  category: string
-  location: string
-  duration: string
-  volunteers: string
-  status: string
-  description: string
-  leadNgo?: string
-  leadNgoVerified?: boolean
-  volunteerRequirement?: string
-  invitedOffers?: number
-  volunteerCount?: number
-  volunteerLimit?: number
-  budgetInr?: number | null
-  appliedByCurrentUser?: boolean
-  companyId?: number | null
-  companyInitials?: string
-  selectedLeadNgoId?: number | null
-  leadNgoAccepted?: boolean
-  start_date?: string | null
-  end_date?: string | null
-}
-
-interface CampaignApiItem {
-  id: string
-  title: string | null
-  description: string | null
-  category: string | null
-  location: string | null
-  schedule_vii: string | null
-  status: string | null
-  company_id: number | null
-  company_name?: string | null
-  company_verification_status?: string | null
-  company_verified?: boolean
-  lead_ngo_user_id?: number | null
-  selected_lead_ngo_name?: string | null
-  selected_lead_ngo_verification_status?: string | null
-  selected_lead_ngo_verified?: boolean
-  budget_inr?: number | null
-  created_at: string
-  start_date?: string | null
-  end_date?: string | null
-  impact_metrics?: Record<string, unknown> | null
-}
-
-function CSRCampaignCtaSkeleton() {
-  return (
-    <div className="mb-8 p-8 bg-white rounded-md border border-gram-border shadow-sm relative overflow-hidden">
-      <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
-        <div className="text-center md:text-left">
-          <Skeleton className="h-8 w-72 mb-3" />
-          <Skeleton className="h-5 w-full max-w-md" />
-        </div>
-        <Skeleton className="h-[58px] w-[210px] rounded-lg" />
-      </div>
-    </div>
-  )
-}
-
-function CSRCampaignCardSkeleton() {
-  return <SkeletonCampaignCard />
-}
+import type { Campaign } from "./types"
+import { useCampaigns } from "./use-campaigns"
+import { useCampaignFilters } from "./use-campaign-filters"
+import { CatalystCta, CatalystCtaSkeleton } from "./catalyst-cta"
+import { CampaignFilters } from "./campaign-filters"
+import { CampaignCard } from "./campaign-card"
 
 export default function CSRCampaignsPage() {
   const { user } = useAuth()
   const allVerified = Boolean(user?.email_verified && user?.phone_verified && user?.verification_status === 'verified')
-  const [searchQuery, setSearchQuery] = useState("")
-  const [locationFilter, setLocationFilter] = useState("")
-  const [selectedCategory, setSelectedCategory] = useState("all")
-  const [selectedBudget, setSelectedBudget] = useState("all")
-  const [selectedVolunteerSlots, setSelectedVolunteerSlots] = useState("all")
-  const [campaigns, setCampaigns] = useState<Campaign[]>([])
-  const [loading, setLoading] = useState(true)
   const [isHydrated, setIsHydrated] = useState(false)
-  const [deletingCampaignId, setDeletingCampaignId] = useState<string | null>(null)
-  const [applyingCampaignId, setApplyingCampaignId] = useState<string | null>(null)
 
   const effectiveUserType = isHydrated ? user?.user_type : undefined
   const isCompany = effectiveUserType === 'company'
@@ -159,195 +26,45 @@ export default function CSRCampaignsPage() {
   const currentUserId = Number(user?.id || 0)
   const isCompanyOwner = (campaignCompanyId?: number | null) => isCompany && Number(campaignCompanyId || 0) === currentUserId
 
-  const hydrateCampaignStats = (item: CampaignApiItem) => {
-    const metrics = parseJsonObject(item.impact_metrics)
-    const applications = Array.isArray(metrics.volunteer_applications) ? metrics.volunteer_applications : []
-    const volunteerCount = sumVolunteerApplicationCount(applications)
-    const volunteerLimit = Number(metrics.volunteer_requirement || metrics.volunteer_limit || 0) || undefined
-    const appliedByCurrentUser = currentUserId > 0
-      ? applications.some((application) => Number(application?.user_id || 0) === currentUserId)
-      : false
-
-    const companyName = String(item.company_name || '').trim()
-
-    return {
-      id: item.id,
-      title: item.title || item.category || 'Untitled campaign',
-      company: companyName || 'Company',
-      companyVerified: Boolean(item.company_verified) || String(item.company_verification_status || '').toLowerCase() === 'verified',
-      category: item.schedule_vii || item.category || 'Uncategorized',
-      location: item.location || '',
-      duration: formatCampaignDuration(item),
-      volunteers: volunteerLimit ? `${volunteerLimit} needed` : 'Not set',
-      status: item.status || 'draft',
-      description: item.description || 'No campaign description provided yet.',
-      leadNgo: item.selected_lead_ngo_name || (item.lead_ngo_user_id ? `NGO #${item.lead_ngo_user_id}` : undefined),
-      leadNgoVerified:
-        Boolean(item.selected_lead_ngo_verified) ||
-        String(item.selected_lead_ngo_verification_status || '').toLowerCase() === 'verified',
-      volunteerRequirement: metrics.volunteer_requirement,
-      invitedOffers: Array.isArray(metrics.invited_offer_ids) ? metrics.invited_offer_ids.length : 0,
-      volunteerCount,
-      volunteerLimit,
-      budgetInr: Number(item.budget_inr || 0) > 0 ? Number(item.budget_inr) : null,
-      appliedByCurrentUser,
-      companyId: item.company_id,
-      companyInitials: getInitials(companyName || 'Company'),
-      start_date: item.start_date || null,
-      end_date: item.end_date || null,
-      selectedLeadNgoId: Number(item.lead_ngo_user_id || 0) || null,
-      leadNgoAccepted: Boolean(metrics.lead_ngo_accepted),
-    }
-  }
-
-  const loadCampaigns = async () => {
-    setLoading(true)
-
-    try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
-      const response = await fetch('/api/campaigns', {
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined
-      })
-      const payload = await response.json()
-
-      if (!response.ok || !payload?.success) {
-        setCampaigns([])
-        return
-      }
-
-      const rows = Array.isArray(payload.data) ? (payload.data as CampaignApiItem[]) : []
-      setCampaigns(rows.map(hydrateCampaignStats))
-    } catch (error) {
-      console.error('Failed to load campaigns:', error)
-      setCampaigns([])
-    } finally {
-      setLoading(false)
-    }
-  }
+  const {
+    campaigns,
+    loading,
+    deletingCampaignId,
+    applyingCampaignId,
+    volunteerForCampaign,
+    deleteCampaign,
+  } = useCampaigns(currentUserId, user?.user_type)
+  const filters = useCampaignFilters()
 
   useEffect(() => {
     setIsHydrated(true)
   }, [])
 
-  useEffect(() => {
-    void loadCampaigns()
-  }, [user?.id, user?.user_type])
-
-  const handleVolunteer = async (campaignId: string) => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
-    if (!token) return
-
-    try {
-      setApplyingCampaignId(campaignId)
-      const response = await fetch(`/api/campaigns/${campaignId}/volunteer`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` }
-      })
-      const payload = await response.json().catch(() => null)
-      if (!response.ok || !payload?.success) {
-        throw new Error(payload?.error || 'Failed to volunteer')
-      }
-      await loadCampaigns()
-    } catch (error) {
-      console.error('Failed to volunteer for campaign:', error)
-    } finally {
-      setApplyingCampaignId(null)
-    }
-  }
-
-  const handleDeleteCampaign = async (campaignId: string) => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
-    if (!token) return
-    if (!confirm('Delete this CSR campaign?')) return
-
-    try {
-      setDeletingCampaignId(campaignId)
-      const response = await fetch(`/api/campaigns/${campaignId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
-      })
-      const payload = await response.json().catch(() => null)
-      if (!response.ok || !payload?.success) {
-        throw new Error(payload?.error || 'Failed to delete campaign')
-      }
-      await loadCampaigns()
-    } catch (error) {
-      console.error('Failed to delete campaign:', error)
-    } finally {
-      setDeletingCampaignId(null)
-    }
-  }
-
-  const categories = useMemo(() => ['all', ...CSR_SCHEDULE_VII_CATEGORIES], [])
-
-  const hasActiveFilters = useMemo(
-    () =>
-      Boolean(searchQuery.trim())
-      || Boolean(locationFilter.trim())
-      || selectedCategory !== 'all'
-      || selectedBudget !== 'all'
-      || selectedVolunteerSlots !== 'all',
-    [searchQuery, locationFilter, selectedCategory, selectedBudget, selectedVolunteerSlots]
-  )
-
-  const filteredCampaigns = campaigns.filter(campaign => {
-    const query = searchQuery.trim().toLowerCase()
-    const locationTerm = locationFilter.trim().toLowerCase()
-    const matchesSearch = !query
-      || campaign.title.toLowerCase().includes(query)
-      || campaign.company.toLowerCase().includes(query)
-      || campaign.description.toLowerCase().includes(query)
-    const matchesLocation = !locationTerm || campaign.location.toLowerCase().includes(locationTerm)
-    const matchesCategory = selectedCategory === 'all' || campaign.category === selectedCategory
-    const matchesBudget = matchesBudgetBand(campaign.budgetInr, selectedBudget)
-    const limit = Number(campaign.volunteerLimit || 0)
-    const count = Number(campaign.volunteerCount || 0)
-    const hasOpenSlots = limit > 0 && count < limit
-    const matchesVolunteerSlots =
-      selectedVolunteerSlots === 'all'
-      || (selectedVolunteerSlots === 'open' && hasOpenSlots)
-      || (selectedVolunteerSlots === 'full' && !hasOpenSlots)
-    const isUpcoming = !isCampaignStarted(campaign.start_date)
+  const filteredCampaigns = campaigns.filter((campaign) => {
     const isDraftHiddenFromPublic = String(campaign.status || '').toLowerCase() === 'draft' && !isCompanyOwner(campaign.companyId)
-    return matchesSearch && matchesLocation && matchesCategory && matchesBudget && matchesVolunteerSlots && isUpcoming && !isDraftHiddenFromPublic
+    return filters.matchesFilters(campaign) && !isDraftHiddenFromPublic
   })
 
-  const clearFilters = () => {
-    setSearchQuery('')
-    setLocationFilter('')
-    setSelectedCategory('all')
-    setSelectedBudget('all')
-    setSelectedVolunteerSlots('all')
-  }
+  const volunteerStateFor = (campaign: Campaign) => {
+    const isLeadNgoForCampaign =
+      currentUserId > 0 &&
+      isCampaignLeadNgo({ lead_ngo_user_id: campaign.selectedLeadNgoId }, currentUserId)
+    if (!canShowVolunteerAction || !user || isLeadNgoForCampaign) return null
 
-  const getStatusColor = (status: string) => {
-    switch (String(status || '').toLowerCase()) {
-      case 'published':
-      case 'active':
-      case 'open':
-      case 'ongoing':
-        return 'text-[#4F6B5C]'
-      case 'draft':
-      case 'pending':
-        return 'text-[#8A6F45]'
-      case 'completed':
-      case 'closed':
-        return 'text-gram-muted'
-      case 'cancelled':
-      case 'rejected':
-        return 'text-[#8C5555]'
-      default:
-        return 'text-udaan-blue'
-    }
+    return getVolunteerButtonState({
+      status: campaign.status,
+      startDate: campaign.start_date,
+      leadNgoAccepted: campaign.leadNgoAccepted,
+      volunteerCount: campaign.volunteerCount,
+      volunteerLimit: campaign.volunteerLimit,
+      userType: effectiveUserType,
+      allVerified,
+      applied: Boolean(campaign.appliedByCurrentUser),
+      applying: applyingCampaignId === campaign.id,
+      isVolunteerRegistrationPastDeadline,
+      isCampaignStarted,
+    })
   }
-
-  const categoryOptions = useMemo(
-    () => categories.map((category) => ({
-      value: category,
-      label: category === 'all' ? 'All Categories' : category
-    })),
-    [categories]
-  )
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -360,312 +77,30 @@ export default function CSRCampaignsPage() {
           </div>
         </div>
 
-        {loading ? (
-          isCompany && <CSRCampaignCtaSkeleton />
-        ) : isCompany && (
-          <div className="mb-8 relative overflow-hidden rounded-md border border-gram-border bg-white p-8 shadow-sm">
-            <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
-              <div className="text-center md:text-left">
-                  <h2 className="text-2xl font-bold text-black mb-3">
-                  Launch New CSR Campaign?
-                </h2>
-                <p className="text-gray-700 text-base max-w-md font-medium">
-                  Create structured campaign plans through {AGENT_NAMES.catalyst}. Manual campaign creation is disabled.
-                </p>
-              </div>
-              <Link href={AGENT_ROUTES.catalyst}>
-                  <button className="flex h-auto items-center rounded-md border border-gram-border bg-white px-8 py-4 text-base font-medium text-black shadow-sm transition-all duration-300 hover:bg-gram-page">
-                  <Sparkles size={20} className="mr-3" />
-                  Use {AGENT_NAMES.catalyst}
-                  <ArrowRight size={16} className="ml-3" />
-                </button>
-              </Link>
-            </div>
-          </div>
-        )}
+        {isCompany ? (loading ? <CatalystCtaSkeleton /> : <CatalystCta />) : null}
 
-        <section className="mb-6 rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
-          <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-            Filters
-          </div>
-
-          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-              <Input
-                placeholder="Search campaigns or company..."
-                className={`${compactControlClass} pl-8`}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-
-            <div className="relative">
-              <MapPin className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-              <Input
-                value={locationFilter}
-                onChange={(e) => setLocationFilter(e.target.value)}
-                placeholder="State or city"
-                className={`${compactControlClass} pl-8`}
-              />
-            </div>
-
-            <StyledSelect
-              value={selectedCategory}
-              options={categoryOptions}
-              placeholder="All Categories"
-              onValueChange={setSelectedCategory}
-              className={compactControlClass}
-            />
-
-            <StyledSelect
-              value={selectedBudget}
-              options={BUDGET_OPTIONS}
-              placeholder="Any budget"
-              onValueChange={setSelectedBudget}
-              className={compactControlClass}
-            />
-
-            <StyledSelect
-              value={selectedVolunteerSlots}
-              options={VOLUNTEER_SLOT_OPTIONS}
-              placeholder="Any volunteer slots"
-              onValueChange={setSelectedVolunteerSlots}
-              className={compactControlClass}
-            />
-          </div>
-
-          <div className="mt-3 flex flex-col gap-2 border-t border-slate-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-xs text-slate-500">
-              {loading
-                ? 'Loading campaigns...'
-                : `${filteredCampaigns.length} campaign${filteredCampaigns.length === 1 ? '' : 's'} match your filters`}
-            </p>
-            {hasActiveFilters ? (
-              <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-slate-600" onClick={clearFilters}>
-                Clear filters
-              </Button>
-            ) : null}
-          </div>
-        </section>
+        <CampaignFilters filters={filters} loading={loading} resultCount={filteredCampaigns.length} />
 
         <div className="min-h-[400px]">
           {loading ? (
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {Array.from({ length: 6 }).map((_, i) => (
-                <CSRCampaignCardSkeleton key={i} />
+                <SkeletonCampaignCard key={i} />
               ))}
             </div>
           ) : filteredCampaigns.length > 0 ? (
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {filteredCampaigns.map(campaign => {
-                const volunteersLabel =
-                  campaign.volunteerLimit != null
-                    ? `${campaign.volunteerCount ?? 0}/${campaign.volunteerLimit}`
-                    : campaign.volunteerCount != null
-                      ? String(campaign.volunteerCount)
-                      : 'Not set'
-                const budgetLabel =
-                  campaign.budgetInr != null && Number.isFinite(Number(campaign.budgetInr))
-                    ? `₹${Number(campaign.budgetInr).toLocaleString('en-IN')}`
-                    : 'Not set'
-                const detailFields = [
-                  { label: 'Location', value: campaign.location || 'Not set', wide: true },
-                  { label: 'Duration', value: campaign.duration || 'Not set', wide: false },
-                  {
-                    label: 'Starts',
-                    value: formatDisplayDate(campaign.start_date) || 'Not set',
-                    wide: false,
-                  },
-                  {
-                    label: 'Ends',
-                    value: formatDisplayDate(campaign.end_date) || 'Not set',
-                    wide: false,
-                  },
-                  { label: 'Budget', value: budgetLabel, wide: false },
-                  { label: 'Volunteers', value: volunteersLabel, wide: false },
-                  ...(campaign.leadNgo
-                    ? [{
-                        label: 'Lead NGO',
-                        value: campaign.leadNgo,
-                        verified: Boolean(campaign.leadNgoVerified),
-                        wide: true,
-                      }]
-                    : []),
-                ]
-                const isOwner = isCompanyOwner(campaign.companyId)
-                const isLeadNgoForCampaign =
-                  currentUserId > 0 &&
-                  isCampaignLeadNgo({ lead_ngo_user_id: campaign.selectedLeadNgoId }, currentUserId)
-                const volunteerState =
-                  canShowVolunteerAction && user && !isLeadNgoForCampaign
-                    ? getVolunteerButtonState({
-                        status: campaign.status,
-                        startDate: campaign.start_date,
-                        leadNgoAccepted: campaign.leadNgoAccepted,
-                        volunteerCount: campaign.volunteerCount,
-                        volunteerLimit: campaign.volunteerLimit,
-                        userType: effectiveUserType,
-                        allVerified,
-                        applied: Boolean(campaign.appliedByCurrentUser),
-                        applying: applyingCampaignId === campaign.id,
-                        isVolunteerRegistrationPastDeadline,
-                        isCampaignStarted,
-                      })
-                    : null
-
-                return (
-                  <Card
-                    key={campaign.id}
-                    className="h-full w-full max-w-[360px] overflow-hidden rounded-md border border-gram-border bg-white shadow-none"
-                  >
-                    <CardContent className="flex h-full flex-col gap-2 px-3 pb-3 pt-2.5">
-                      <div className="flex min-w-0 items-baseline justify-between gap-2">
-                        <span
-                          className={`shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] ${getStatusColor(campaign.status)}`}
-                          title={formatStatusLabel(campaign.status)}
-                        >
-                          {formatStatusLabel(campaign.status)}
-                        </span>
-                        <span className="min-w-0 truncate text-xs text-gram-muted" title={campaign.category}>
-                          {campaign.category}
-                        </span>
-                      </div>
-
-                      <div className="min-w-0 space-y-1">
-                        <Link href={`/csr-campaigns/${campaign.id}`} className="block min-w-0">
-                          <CardTitle
-                            className="cursor-pointer truncate text-[17px] font-semibold leading-snug text-gram-ink"
-                            title={campaign.title}
-                          >
-                            {campaign.title}
-                          </CardTitle>
-                        </Link>
-                        <p className="min-w-0 truncate text-[13px] leading-5 text-gram-muted" title={campaign.description}>
-                          {campaign.description}
-                        </p>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-x-3 gap-y-2 border-t border-gram-border pt-2">
-                        {detailFields.map((field) => (
-                          <div
-                            key={field.label}
-                            className={`min-w-0 space-y-0.5 ${field.wide ? 'col-span-2' : ''}`}
-                          >
-                            <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-gram-muted">
-                              {field.label}
-                            </p>
-                            {field.verified != null ? (
-                              <VerifiedAccountName
-                                name={field.value}
-                                verified={Boolean(field.verified)}
-                                size="xs"
-                                nameClassName="truncate text-[13px] font-medium text-gram-ink"
-                                className="max-w-full"
-                              />
-                            ) : (
-                              <p className="truncate text-[13px] font-medium text-gram-ink" title={field.value}>
-                                {field.value}
-                              </p>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-
-                      <div className="mt-auto flex min-w-0 items-center gap-2 border-t border-gram-border pt-2">
-                        <Link
-                          href={campaign.companyId ? `/profile/${campaign.companyId}` : '#'}
-                          className="flex min-w-0 flex-1 items-center gap-2"
-                        >
-                          <div
-                            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-medium"
-                            style={getGramAvatarFallbackStyle(campaign.company || 'Company')}
-                          >
-                            {campaign.companyInitials || 'CO'}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <VerifiedAccountName
-                              name={campaign.company}
-                              verified={Boolean(campaign.companyVerified)}
-                              size="sm"
-                              nameClassName="text-sm font-medium text-gram-ink"
-                            />
-                            <p className="truncate text-xs text-gram-muted">Company</p>
-                          </div>
-                        </Link>
-
-                        <Link
-                          href={`/csr-campaigns/${campaign.id}`}
-                          className="inline-flex shrink-0 items-center rounded-md border border-udaan-blue bg-udaan-blue px-2.5 py-1 text-sm font-medium text-white hover:bg-udaan-blue hover:text-white"
-                        >
-                          View campaign
-                        </Link>
-
-                        {isOwner ? (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 shrink-0 text-gram-muted hover:bg-transparent hover:text-gram-muted active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0"
-                                aria-label="Campaign actions"
-                              >
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem asChild>
-                                <Link href={`/companies/csr-agent?campaign_id=${campaign.id}`} className="cursor-pointer">
-                                  <Pencil className="mr-2 h-4 w-4" />
-                                  Edit
-                                </Link>
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                disabled={deletingCampaignId === campaign.id}
-                                className="text-red-700 focus:text-red-700"
-                                onSelect={(e) => {
-                                  e.preventDefault()
-                                  if (deletingCampaignId !== campaign.id) handleDeleteCampaign(campaign.id)
-                                }}
-                              >
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                {deletingCampaignId === campaign.id ? 'Deleting...' : 'Delete'}
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        ) : null}
-                      </div>
-
-                      {volunteerState ? (
-                        <div className="flex justify-end">
-                          {volunteerState.label === 'Applied' ? (
-                            <Button
-                              disabled
-                              variant="ghost"
-                              className="h-6 p-0 text-xs font-medium text-[#4F6B5C] shadow-none hover:bg-transparent hover:text-[#4F6B5C]"
-                            >
-                              <CheckCircle2 size={14} className="mr-1" />
-                              Applied
-                            </Button>
-                          ) : (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              onClick={() => handleVolunteer(campaign.id)}
-                              disabled={!volunteerState.canApply}
-                              className="h-6 p-0 text-xs font-medium text-gram-ink shadow-none hover:bg-transparent hover:text-gram-ink"
-                            >
-                              <ArrowRight size={14} className="mr-1" />
-                              {volunteerState.label}
-                            </Button>
-                          )}
-                        </div>
-                      ) : null}
-                    </CardContent>
-                  </Card>
-                )
-              })}
+              {filteredCampaigns.map((campaign) => (
+                <CampaignCard
+                  key={campaign.id}
+                  campaign={campaign}
+                  isOwner={isCompanyOwner(campaign.companyId)}
+                  isDeleting={deletingCampaignId === campaign.id}
+                  volunteerState={volunteerStateFor(campaign)}
+                  onVolunteer={volunteerForCampaign}
+                  onDelete={deleteCampaign}
+                />
+              ))}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center p-8 text-center">
@@ -673,7 +108,7 @@ export default function CSRCampaignsPage() {
               <p className="mb-4 text-muted-foreground">No campaigns match your current search or filters.</p>
               <Button
                 variant="outline"
-                onClick={clearFilters}
+                onClick={filters.clearFilters}
               >
                 Clear Filters
               </Button>

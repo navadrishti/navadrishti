@@ -1,399 +1,55 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, ChevronDown } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { Header } from '@/components/header';
-import { DetailField, displayValue } from '@/components/detail-fields';
-import { formatDetailDate, formatStatusLabel } from '@/lib/format-date';
-import { formatProjectExactAddress } from '@/lib/service-request-allocation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useAuth } from '@/lib/auth-context';
-import { useToast } from '@/hooks/use-toast';
-import { getGramAvatarFallbackStyle } from '@/lib/gram-avatar';
 import { ngoIsCsrEligible, ngoIsCsrEligibleForProject } from '@/lib/auth';
-import { VerifiedAccountName } from '@/components/verification-badge';
-
-type NeedItem = {
-  id: number;
-  title: string;
-  description?: string;
-  images?: string[];
-  image_url?: string | null;
-  status: string;
-  request_type?: string;
-  category?: string;
-  location?: string;
-  timeline?: string;
-  ngo_id?: number;
-};
-
-type ProjectDetailPayload = {
-  project: {
-    id: string;
-    ngo_id: number;
-    title: string;
-    description?: string;
-    location?: string;
-    exact_address?: string;
-    timeline?: string;
-    status?: string;
-    valid_until?: string | null;
-    expected_beneficiaries?: number | null;
-    category?: string | null;
-    budget_inr?: number | null;
-    impact_description?: string | null;
-    contact_info?: string | null;
-    volunteers_needed?: number | null;
-    csr_project_available_for_csr?: boolean | null;
-      ngo?: {
-      id: number;
-      name: string;
-      email?: string;
-      location?: string;
-      city?: string;
-      state_province?: string;
-      country?: string;
-      phone?: string;
-      ngo_volunteer_capacity?: number;
-      industry?: string;
-      pincode?: string;
-      verification_status?: string;
-      profile_data?: Record<string, unknown>;
-    };
-  };
-  needs: NeedItem[];
-  need_breakdown: {
-    ongoing: NeedItem[];
-    fulfilled: NeedItem[];
-    removed: NeedItem[];
-  };
-  company_applications: Array<{
-    company_id: number;
-    status: string;
-    needs: Array<{ id: number; status: string }>;
-  }>;
-  lead_ngo_invites: Array<{
-    id: string;
-    status: string;
-    reference_text?: string;
-    note?: string;
-    meta?: Record<string, unknown>;
-    ngo?: { id: number; name: string; email?: string };
-  }>;
-  csr_project_eligible_for_company_apply: boolean;
-  csr_project_ineligible_reason?: string;
-};
-
-const statusBadgeClass = (status: string) => {
-  const normalized = String(status || '').toLowerCase();
-  if (normalized === 'completed') return 'border-[#D5E2DA] bg-[#F1F6F3] text-[#4F6B5C]';
-  if (normalized === 'in_progress' || normalized === 'active') return 'border-[#D9E0E4] bg-[#F0F3F4] text-udaan-blue';
-  if (normalized === 'pending' || normalized === 'accepted') return 'border-[#E9DFCC] bg-[#F8F4EC] text-[#8A6F45]';
-  if (normalized === 'cancelled' || normalized === 'rejected') return 'border-[#E8D8D8] bg-[#F8F1F1] text-[#8C5555]';
-  return 'border-gram-border bg-gram-page text-gram-muted';
-};
-
-const getInitials = (name?: string) => {
-  if (!name) return 'NG';
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return 'NG';
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
-};
-
-type ProjectRecord = {
-  title: string
-  description?: string | null
-  exact_address?: string | null
-  location?: string | null
-  timeline?: string | null
-  expected_beneficiaries?: number | null
-  valid_until?: string | null
-  category?: string | null
-  budget_inr?: number | null
-  impact_description?: string | null
-  contact_info?: string | null
-  volunteers_needed?: number | null
-  csr_project_available_for_csr?: boolean | null
-}
-
-function ProjectDetailFields({ project }: { project: ProjectRecord }) {
-  const exactAddress = formatProjectExactAddress(project.exact_address || project.location)
-
-  return (
-    <div className="space-y-6">
-      <section className="space-y-6">
-        <h3 className="text-sm font-medium text-gray-500">Project Details</h3>
-
-        <div>
-          <p className="text-sm text-gray-500">Project Title</p>
-          <p className="text-sm font-medium text-slate-800">{project.title}</p>
-        </div>
-
-        <div className="grid grid-cols-1 gap-x-12 gap-y-6 md:grid-cols-2">
-          <DetailField label="Project Category" value={displayValue(project.category)} />
-          <DetailField label="Project Exact Address" value={exactAddress} />
-        </div>
-
-        <section className="space-y-3">
-          <h4 className="text-sm font-medium text-gray-500">Project Description</h4>
-          <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">
-            {displayValue(project.description)}
-          </p>
-        </section>
-
-        {project.impact_description ? (
-          <section className="space-y-3">
-            <h4 className="text-sm font-medium text-gray-500">Expected Impact</h4>
-            <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">
-              {project.impact_description}
-            </p>
-          </section>
-        ) : null}
-
-        <div className="grid grid-cols-1 gap-x-12 gap-y-6 md:grid-cols-2">
-          <DetailField label="Project Timeline" value={displayValue(project.timeline)} />
-          <DetailField
-            label="Expected Beneficiaries"
-            value={
-              project.expected_beneficiaries != null && project.expected_beneficiaries > 0
-                ? Number(project.expected_beneficiaries).toLocaleString('en-IN')
-                : 'Not set'
-            }
-          />
-          <DetailField label="Project Valid Until" value={formatDetailDate(project.valid_until)} />
-          <DetailField
-            label="Budget (INR)"
-            value={
-              project.budget_inr != null && Number(project.budget_inr) > 0
-                ? `₹${Number(project.budget_inr).toLocaleString('en-IN')}`
-                : 'Not set'
-            }
-          />
-          <DetailField
-            label="Volunteers Needed"
-            value={
-              project.volunteers_needed != null && Number(project.volunteers_needed) > 0
-                ? String(project.volunteers_needed)
-                : 'Not set'
-            }
-          />
-          <DetailField label="Contact" value={displayValue(project.contact_info)} />
-        </div>
-      </section>
-    </div>
-  )
-}
+import { resolveProject, resolveProjectCategory, summarizeNgo } from './helpers';
+import type { NeedGroupKey } from './types';
+import { useProjectDetail } from './use-project-detail';
+import { ProjectLoadingSkeleton } from './project-loading-skeleton';
+import { ProjectDetailFields } from './project-detail-fields';
+import { LinkedNeedsSection } from './linked-needs-section';
+import { RequestingOrganizationSection } from './requesting-organization-section';
+import { ApplicationSection } from './application-section';
 
 export default function ServiceRequestProjectDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const { user, token } = useAuth();
-  const { toast } = useToast();
-
   const projectId = params.id as string;
+  const {
+    user,
+    allVerified,
+    loading,
+    payload,
+    applyLoading,
+    currentCompanyApplication,
+    applyForFullProject,
+  } = useProjectDetail(projectId);
 
   const [isHydrated, setIsHydrated] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [payload, setPayload] = useState<ProjectDetailPayload | null>(null);
-  const [applyLoading, setApplyLoading] = useState(false);
-  const [expandedNeedGroups, setExpandedNeedGroups] = useState<Record<'ongoing' | 'fulfilled' | 'removed', boolean>>({
+  const [expandedNeedGroups, setExpandedNeedGroups] = useState<Record<NeedGroupKey, boolean>>({
     ongoing: false,
     fulfilled: false,
     removed: false
   });
-  const allVerified = Boolean(user?.email_verified && user?.phone_verified && user?.verification_status === 'verified');
-
-  const fetchProjectDetail = async (options?: { silent?: boolean }) => {
-    if (!projectId) return;
-    const silent = Boolean(options?.silent);
-
-    try {
-      if (!silent) {
-        setLoading(true);
-      }
-      const headers: HeadersInit = {};
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
-      }
-      const response = await fetch(`/api/service-request-assignments?mode=project-detail&projectId=${encodeURIComponent(projectId)}`, {
-        headers
-      });
-
-      const data = await response.json();
-      if (!response.ok || !data?.success) {
-        if (!silent) {
-          toast({ title: 'Error', description: data?.error || 'Failed to load project', variant: 'destructive' });
-        }
-        return;
-      }
-
-      setPayload(data.data);
-    } catch (error) {
-      if (!silent) {
-        toast({ title: 'Error', description: 'Failed to load project', variant: 'destructive' });
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
 
   useEffect(() => {
     setIsHydrated(true);
   }, []);
 
-  useEffect(() => {
-    if (!projectId) return;
-    fetchProjectDetail();
-  }, [user?.id, token, projectId]);
-
-  useEffect(() => {
-    if (!token || !projectId) return;
-
-    const interval = window.setInterval(() => {
-      void fetchProjectDetail({ silent: true });
-    }, 20000);
-
-    return () => window.clearInterval(interval);
-  }, [user?.id, token, projectId]);
-
-  const currentCompanyApplication = useMemo(() => {
-    if (!payload || user?.user_type !== 'company') return null;
-    return payload.company_applications.find((item) => Number(item.company_id) === Number(user.id)) || null;
-  }, [payload, user?.id, user?.user_type]);
-
-  const applyForFullProject = async () => {
-    if (!token || !payload) return;
-    if (!allVerified) {
-      toast({ title: 'Verification required', description: 'Company must be fully verified before CSR application.', variant: 'destructive' });
-      return;
-    }
-    setApplyLoading(true);
-
-    try {
-      const response = await fetch('/api/service-request-assignments', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          action: 'apply-project',
-          projectId,
-        })
-      });
-
-      const data = await response.json();
-      if (!response.ok || !data?.success) {
-        toast({ title: 'Application failed', description: data?.error || 'Could not apply', variant: 'destructive' });
-        return;
-      }
-
-      toast({ title: 'Application submitted', description: data?.data?.message || 'Sent to NGO for review.' });
-      fetchProjectDetail();
-    } catch {
-      toast({ title: 'Application failed', description: 'Could not apply', variant: 'destructive' });
-    } finally {
-      setApplyLoading(false);
-    }
-  };
-
-  const renderProjectLoadingSkeleton = () => (
-    <div className="min-h-screen bg-background">
-      <Header />
-      <div className="mx-auto max-w-7xl px-4 py-8">
-        <div className="mb-6">
-          <Skeleton className="h-9 w-24 rounded-md" />
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          <div className="lg:col-span-12">
-            <Card>
-              <CardContent className="pt-6 space-y-4">
-                <div className="grid w-full grid-cols-3 gap-2">
-                  <Skeleton className="h-10 rounded-md" />
-                  <Skeleton className="h-10 rounded-md" />
-                  <Skeleton className="h-10 rounded-md" />
-                </div>
-                <div className="space-y-3">
-                  <Skeleton className="h-5 w-48 rounded-md" />
-                  <Skeleton className="h-4 w-full rounded-md" />
-                  <Skeleton className="h-4 w-11/12 rounded-md" />
-                  <Skeleton className="h-4 w-9/12 rounded-md" />
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    <Skeleton className="h-12 rounded-md" />
-                    <Skeleton className="h-12 rounded-md" />
-                    <Skeleton className="h-12 rounded-md" />
-                  </div>
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    {Array.from({ length: 4 }).map((_, i) => (
-                      <div key={i} className="rounded-md border border-slate-200 p-4 space-y-2">
-                        <Skeleton className="h-3 w-24 rounded-md" />
-                        <Skeleton className="h-5 w-4/5 rounded-md" />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  if (!isHydrated) {
-    return renderProjectLoadingSkeleton();
+  if (!isHydrated || loading || !payload) {
+    return <ProjectLoadingSkeleton />;
   }
 
-  if (loading || !payload) {
-    return renderProjectLoadingSkeleton();
-  }
-
-  const primaryNeed = payload.needs[0] || null;
-  const projectData: ProjectDetailPayload['project'] = payload.project || {
-    id: projectId,
-    ngo_id: Number(primaryNeed?.ngo_id || 0),
-    title: primaryNeed?.title || 'Project',
-    description: primaryNeed?.description || '',
-    location: primaryNeed?.location || 'Location not set',
-    exact_address: primaryNeed?.location || 'Location not set',
-    timeline: primaryNeed?.timeline || '',
-    status: 'active',
-    ngo: undefined
-  };
-
-  const canShowApplicationTab = user?.user_type === 'company';
-  const canCompanyApply = user?.user_type === 'company' && payload.csr_project_eligible_for_company_apply;
-  const canCompanyManageCsr = user?.user_type === 'company' && allVerified;
-  const ngo = projectData.ngo;
-  const ngoProfileData: Record<string, unknown> = ngo?.profile_data || {};
-  const ngoLocation = ngo?.city && ngo?.state_province
-    ? `${ngo.city}, ${ngo.state_province}${ngo.country ? `, ${ngo.country}` : ''}`
-    : ngo?.location || projectData.exact_address || projectData.location || 'Location not set';
-  const ngoPhone = ngo?.phone || 'Phone not set';
-  const ngoSize = String(
-    (typeof ngo?.ngo_volunteer_capacity === 'number' && ngo?.ngo_volunteer_capacity >= 0)
-      ? `${ngo.ngo_volunteer_capacity} people`
-      : (typeof ngoProfileData?.ngo_volunteer_capacity === 'number' && ngoProfileData?.ngo_volunteer_capacity >= 0)
-        ? `${ngoProfileData.ngo_volunteer_capacity} people`
-        : 'NGO size not set'
-  );
-  const ngoSector = String(ngoProfileData.sector || ngo?.industry || 'Sector not set');
-  const ngoFounded = String(ngoProfileData.founded || ngoProfileData.founded_year || 'Founded year not set');
-  const ngoPincode = ngo?.pincode || 'Pincode not set';
-  const ngoProfileImage = String(ngoProfileData.profile_image || ngoProfileData.logo_url || '').trim();
-  const projectCategory = projectData.category
-    || payload.needs.map((need) => String(need.category || '').trim()).find(Boolean)
-    || 'Not set';
-  const csrProjectAvailable = projectData.csr_project_available_for_csr;
+  const projectData = resolveProject(payload, projectId);
+  const isCompanyUser = user?.user_type === 'company';
+  const hasLinkedNeeds = (payload.needs?.length || 0) > 0;
   const isProjectOwner =
     user?.user_type === 'ngo' &&
     Number(user?.id) === Number(payload?.project?.ngo_id || payload?.project?.ngo?.id);
@@ -408,6 +64,9 @@ export default function ServiceRequestProjectDetailPage() {
         timeline: projectData.timeline,
       }
     );
+
+  const toggleNeedGroup = (key: NeedGroupKey) =>
+    setExpandedNeedGroups((prev) => ({ ...prev, [key]: !prev[key] }));
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-background">
@@ -432,11 +91,11 @@ export default function ServiceRequestProjectDetailPage() {
                 <Tabs defaultValue="details" className="w-full">
                   <TabsList className="flex w-full gap-2 overflow-x-auto pb-1">
                     <TabsTrigger value="details" className="shrink-0 whitespace-nowrap">Project Details</TabsTrigger>
-                    {(payload.needs?.length || 0) > 0 ? (
+                    {hasLinkedNeeds ? (
                       <TabsTrigger value="needs" className="shrink-0 whitespace-nowrap">Legacy Linked Needs</TabsTrigger>
                     ) : null}
                     <TabsTrigger value="requester" className="shrink-0 whitespace-nowrap">Requesting Organization</TabsTrigger>
-                    {canShowApplicationTab ? <TabsTrigger value="application" className="shrink-0 whitespace-nowrap">Application</TabsTrigger> : null}
+                    {isCompanyUser ? <TabsTrigger value="application" className="shrink-0 whitespace-nowrap">Application</TabsTrigger> : null}
                   </TabsList>
 
                   <TabsContent value="details" className="mt-4 space-y-4">
@@ -449,235 +108,45 @@ export default function ServiceRequestProjectDetailPage() {
                         timeline: projectData.timeline,
                         expected_beneficiaries: projectData.expected_beneficiaries,
                         valid_until: projectData.valid_until,
-                        category: projectCategory,
+                        category: resolveProjectCategory(projectData, payload.needs),
                         budget_inr: projectData.budget_inr ?? null,
                         impact_description: projectData.impact_description ?? null,
                         contact_info: projectData.contact_info ?? null,
                         volunteers_needed: projectData.volunteers_needed ?? null,
-                        csr_project_available_for_csr: csrProjectAvailable,
+                        csr_project_available_for_csr: projectData.csr_project_available_for_csr,
                       }}
                     />
                   </TabsContent>
 
-                  {(payload.needs?.length || 0) > 0 ? (
-                  <TabsContent value="needs" className="mt-4 space-y-4">
-                    <p className="text-sm text-muted-foreground">
-                      These needs were linked before projects became standalone CSR packages. New projects do not include child needs.
-                    </p>
-                    {[
-                      { key: 'ongoing', title: 'Ongoing Needs', items: payload.need_breakdown.ongoing },
-                      { key: 'fulfilled', title: 'Fulfilled Needs', items: payload.need_breakdown.fulfilled },
-                      { key: 'removed', title: 'Removed Needs', items: payload.need_breakdown.removed }
-                    ].map((group) => {
-                      const groupKey = group.key as 'ongoing' | 'fulfilled' | 'removed';
-                      const sortedItems = [...group.items].sort((a, b) => Number(b.id) - Number(a.id));
-                      const isExpanded = expandedNeedGroups[groupKey];
-                      const visibleItems = isExpanded ? sortedItems : sortedItems.slice(0, 5);
-                      const remainingCount = Math.max(0, sortedItems.length - visibleItems.length);
-
-                      return (
-                      <div key={group.key} className="space-y-2">
-                        <p className="text-sm font-semibold text-slate-900">{group.title} ({group.items.length})</p>
-                        {group.items.length === 0 ? (
-                          <p className="text-xs text-slate-500">No needs in this section.</p>
-                        ) : (
-                          <div className="space-y-2">
-                            {visibleItems.map((need) => {
-                              const needImage = Array.isArray(need.images) && need.images.length > 0
-                                ? need.images[0]
-                                : need.image_url || ''
-
-                              return (
-                                <div key={need.id} className="rounded-md border border-slate-200 bg-white p-3">
-                                  <div className="flex items-start gap-3">
-                                    <div className="h-14 w-14 flex-shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-100">
-                                      {needImage ? (
-                                        <img src={needImage} alt={need.title} className="h-full w-full object-cover" loading="lazy" />
-                                      ) : (
-                                        <div className="flex h-full w-full items-center justify-center text-[10px] font-medium text-slate-500">
-                                          No Image
-                                        </div>
-                                      )}
-                                    </div>
-
-                                    <div className="min-w-0 flex-1 space-y-2">
-                                      <div className="flex items-start justify-between gap-2">
-                                        <p className="line-clamp-1 text-sm font-semibold text-slate-950">{need.title}</p>
-                                        <Badge className={statusBadgeClass(need.status)}>{formatStatusLabel(need.status)}</Badge>
-                                      </div>
-
-                                      <p className="line-clamp-1 text-xs text-slate-600">{need.description || 'No description provided.'}</p>
-
-                                      <div className="flex items-center justify-between gap-2">
-                                        <div className="min-w-0 rounded-md border border-slate-200 bg-slate-50 px-2 py-1">
-                                          <p className="truncate text-xs font-medium text-slate-800">{need.request_type || need.category || 'Need'}</p>
-                                        </div>
-                                        <Link href={`/service-requests/${need.id}`}>
-                                          <Button variant="outline" size="sm" className="h-7 rounded-md border-slate-300 px-3 text-xs font-medium text-slate-700">
-                                            View
-                                          </Button>
-                                        </Link>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              )
-                            })}
-
-                            {sortedItems.length > 5 ? (
-                              <div className="pt-1">
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  className="h-8 px-2 text-xs text-slate-700 hover:text-slate-900"
-                                  onClick={() =>
-                                    setExpandedNeedGroups((prev) => ({
-                                      ...prev,
-                                      [groupKey]: !prev[groupKey]
-                                    }))
-                                  }
-                                >
-                                  <span>{isExpanded ? 'Show recent 5' : `Show all (${sortedItems.length})`}</span>
-                                  <ChevronDown className={`ml-1 h-4 w-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                                  {!isExpanded && remainingCount > 0 ? <span className="ml-1 text-[11px] text-slate-500">+{remainingCount}</span> : null}
-                                </Button>
-                              </div>
-                            ) : null}
-                          </div>
-                        )}
-                      </div>
-                      );
-                    })}
-                  </TabsContent>
+                  {hasLinkedNeeds ? (
+                    <TabsContent value="needs" className="mt-4 space-y-4">
+                      <LinkedNeedsSection
+                        needBreakdown={payload.need_breakdown}
+                        expandedGroups={expandedNeedGroups}
+                        onToggleGroup={toggleNeedGroup}
+                      />
+                    </TabsContent>
                   ) : null}
 
                   <TabsContent value="requester" className="mt-4 space-y-5">
-                    <div className="flex items-start gap-4 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
-                      <div className="h-16 w-16 shrink-0 rounded-md bg-gray-100 flex items-center justify-center overflow-hidden">
-                        {ngoProfileImage ? (
-                          <img src={ngoProfileImage} alt={ngo?.name || 'NGO'} className="h-full w-full object-cover" />
-                        ) : (
-                          <div
-                            className="flex h-full w-full items-center justify-center"
-                            style={getGramAvatarFallbackStyle(ngo?.name || 'NGO')}
-                          >
-                            <span className="text-lg font-semibold">{getInitials(ngo?.name || 'NGO')}</span>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="min-w-0">
-                        <VerifiedAccountName
-                          name={ngo?.name || 'NGO'}
-                          status={ngo?.verification_status}
-                          size="md"
-                          nameClassName="text-lg font-semibold leading-tight"
-                        />
-                        <p className="mt-1 text-sm text-gray-500 break-all">{ngo?.email || 'Email not set'}</p>
-                        <div className="mt-2">
-                          <Badge className={statusBadgeClass(projectData.status || 'active')}>
-                            {formatStatusLabel(projectData.status || 'active')}
-                          </Badge>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                      <div className="rounded-lg border border-slate-200 p-4">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Location</p>
-                        <p className="mt-1 text-sm font-medium text-slate-800">{ngoLocation}</p>
-                      </div>
-                      <div className="rounded-lg border border-slate-200 p-4">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Phone</p>
-                        <p className="mt-1 text-sm font-medium text-slate-800">{ngoPhone}</p>
-                      </div>
-                      <div className="rounded-lg border border-slate-200 p-4">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">NGO Size</p>
-                        <p className="mt-1 text-sm font-medium text-slate-800">{ngoSize}</p>
-                      </div>
-                      <div className="rounded-lg border border-slate-200 p-4">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Sector</p>
-                        <p className="mt-1 text-sm font-medium text-slate-800">{ngoSector}</p>
-                      </div>
-                      <div className="rounded-lg border border-slate-200 p-4">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Founded Year</p>
-                        <p className="mt-1 text-sm font-medium text-slate-800">{ngoFounded}</p>
-                      </div>
-                      <div className="rounded-lg border border-slate-200 p-4">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Pincode</p>
-                        <p className="mt-1 text-sm font-medium text-slate-800">{ngoPincode}</p>
-                      </div>
-                    </div>
+                    <RequestingOrganizationSection
+                      ngo={summarizeNgo(projectData)}
+                      projectStatus={projectData.status || 'active'}
+                    />
                   </TabsContent>
 
-                  {canShowApplicationTab ? (
-                  <TabsContent value="application" className="mt-4">
-                    {!user || user.user_type !== 'company' ? (
-                      <Alert>
-                        <AlertDescription>
-                          Everyone can view this project. Only companies can apply and manage CSR invite flow.
-                        </AlertDescription>
-                      </Alert>
-                    ) : !allVerified ? (
-                      <div className="space-y-4">
-                        <Alert>
-                          <AlertDescription>
-                            Company must have verified email, phone, and verification status before CSR apply/invite actions.
-                          </AlertDescription>
-                        </Alert>
-                        <Button asChild variant="outline" className="w-full">
-                          <Link href="/verification">Complete Verification</Link>
-                        </Button>
-                      </div>
-                    ) : currentCompanyApplication ? (
-                      <div className="space-y-4">
-                        <Alert>
-                          <AlertDescription>
-                            Your company has already applied for this project.
-                          </AlertDescription>
-                        </Alert>
-
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium">Status:</span>
-                            <Badge className={statusBadgeClass(currentCompanyApplication.status)}>
-                              {formatStatusLabel(currentCompanyApplication.status)}
-                            </Badge>
-                          </div>
-                        </div>
-
-                        <Button asChild variant="outline" className="w-full" disabled={!canCompanyManageCsr}>
-                          <Link href="/companies/dashboard?tab=csr-projects">Open CSR Dashboard</Link>
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="space-y-4">
-                        {!payload.csr_project_eligible_for_company_apply ? (
-                          <Alert>
-                            <AlertDescription>{payload.csr_project_ineligible_reason || 'Project is not eligible for CSR full-project apply.'}</AlertDescription>
-                          </Alert>
-                        ) : (
-                          <Alert>
-                            <AlertDescription>
-                              Apply once for full-project responsibility. Lead NGO invite and selection happens in Company Dashboard after NGO approval.
-                            </AlertDescription>
-                          </Alert>
-                        )}
-
-                        <Button
-                          onClick={applyForFullProject}
-                          className="w-full"
-                          disabled={!canCompanyApply || !allVerified || applyLoading}
-                        >
-                          {applyLoading ? 'Applying...' : 'Apply for Takeover'}
-                        </Button>
-
-                        <Button asChild variant="outline" className="w-full" disabled={!canCompanyManageCsr}>
-                          <Link href="/companies/dashboard?tab=csr-projects">Open CSR Dashboard</Link>
-                        </Button>
-                      </div>
-                    )}
-                  </TabsContent>
+                  {isCompanyUser ? (
+                    <TabsContent value="application" className="mt-4">
+                      <ApplicationSection
+                        isCompanyUser={isCompanyUser}
+                        allVerified={allVerified}
+                        currentApplication={currentCompanyApplication}
+                        eligibleForApply={payload.csr_project_eligible_for_company_apply}
+                        ineligibleReason={payload.csr_project_ineligible_reason}
+                        applyLoading={applyLoading}
+                        onApply={applyForFullProject}
+                      />
+                    </TabsContent>
                   ) : null}
                 </Tabs>
               </CardContent>
