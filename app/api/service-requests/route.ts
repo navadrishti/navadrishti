@@ -1,268 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, supabase } from '@/lib/db';
-import {
-  isNeedOpenForListing,
-  isServiceRequestExpired,
-  resolveFundingTargetInr,
-  formatProjectExactAddress,
-  parseProjectExactAddress,
-  projectAddressToLocationSummary,
-  serializeProjectExactAddress,
-  validateProjectExactAddress,
-} from '@/lib/service-request-allocation';
-import { getTokenClaims, CSR_ELIGIBILITY_REQUIRED_MESSAGE, CSR_OWN_PROJECT_TIMELINE_MESSAGE } from '@/lib/auth';
-import { ngoUserIsCsrEligible, ngoUserIsCsrEligibleForProject, resolveEffectiveVerificationStatus } from '@/lib/server-auth';
-import { CSR_SCHEDULE_VII_CATEGORIES, SERVICE_REQUEST_TYPES } from '@/lib/categories';
-import { isHiddenNgoNetworkPaymentChannel } from '@/lib/razorpay-route';
-import { getRequestUrgencyLevel, parseJsonObject } from '@/lib/utils';
-import type { Tables } from '@/lib/database.types';
+import { db } from '@/lib/db';
+import { getTokenClaims } from '@/lib/auth';
+import { resolveEffectiveVerificationStatus } from '@/lib/server-auth';
+import { listServiceRequests } from '@/lib/service-requests/list-query';
+import { createNeed } from '@/lib/service-requests/create-need';
 
-type ListingRequester = Pick<Tables<'users'>, 'id' | 'name' | 'email' | 'user_type'> & {
-  verification_status?: Tables<'users'>['verification_status'];
-};
-
-type ListingSource = Tables<'service_requests'> & {
-  requester?: ListingRequester;
-  project?: Tables<'service_request_projects'> | null;
-  volunteer_application?: unknown;
-  volunteers_count?: number;
-};
-
-type ListingProject = {
-  id: string;
-  title: string;
-  location: string;
-  timeline: string;
-  category: string;
-};
-
-// Listing rows are enriched with parsed requirements, a flattened project summary and derived scores.
-type ListingRequest = Omit<ListingSource, 'project' | 'estimated_budget'> & {
-  project: ListingProject | null | undefined;
-  estimated_budget: string;
-  ngo_name?: string;
-  images: string[];
-  request_type: string;
-  category: string;
-  beneficiary_count: number;
-  impact_description: string;
-  trust_badge_weight: number;
-  verified: boolean;
-  impact_score: number;
-  proof_strength: number;
-  completion_rate: number;
-};
-
-type ListingFilters = {
-  category?: string;
-  ngo_id?: number;
-  project_id?: string;
-};
-
-function parseImageArray(value: unknown): string[] {
-  if (!value) return [];
-
-  if (Array.isArray(value)) {
-    return value.map((item) => String(item || '').trim()).filter(Boolean);
-  }
-
-  if (typeof value === 'string') {
-    const text = value.trim();
-    if (!text) return [];
-
-    try {
-      const parsed = JSON.parse(text);
-      if (Array.isArray(parsed)) {
-        return parsed.map((item) => String(item || '').trim()).filter(Boolean);
-      }
-    } catch {
-      // Fall through to plain text handling.
-    }
-
-    return text.split(/[\n,]/).map((item) => item.trim()).filter(Boolean);
-  }
-
-  return [];
-}
-
-function isCompanyAssignedNeed(request: { project_context?: unknown; requirements?: unknown }): boolean {
-  const projectContext = parseJsonObject(request?.project_context);
-  const requirements = parseJsonObject(request?.requirements);
-
-  const assignmentFromContext = parseJsonObject(projectContext?.csr_assignment);
-  const assignmentFromRequirements = parseJsonObject(requirements?.csr_assignment);
-
-  const assignedCompanyId = Number(
-    assignmentFromContext?.assigned_company_id ??
-    projectContext?.assigned_company_id ??
-    assignmentFromRequirements?.assigned_company_id
-  );
-
-  const assignmentMode = String(assignmentFromContext?.mode || '').toLowerCase();
-  const handoffFlag = Boolean(
-    assignmentFromContext?.mode ||
-    assignmentFromContext?.assigned_at ||
-    projectContext?.handoff_to_company
-  );
-
-  return (Number.isFinite(assignedCompanyId) && assignedCompanyId > 0) || handoffFlag || assignmentMode === 'company_project_handoff';
-}
-
-function computeImpactScore(request: {
-  beneficiary_count?: unknown;
-  urgency_level?: unknown;
-  requester?: { verification_status?: string | null } | null;
-}): number {
-  const urgencyWeight: Record<string, number> = {
-    low: 10,
-    medium: 20,
-    high: 30,
-    critical: 40
-  };
-
-  const beneficiaryCount = Number(request.beneficiary_count || 0);
-  const beneficiaryScore = Math.min(40, Math.floor(beneficiaryCount / 10) * 4);
-  const urgencyScore = urgencyWeight[String(request.urgency_level || 'medium')] || 20;
-  const verificationScore = request.requester?.verification_status === 'verified' ? 20 : 10;
-
-  return Math.max(0, Math.min(100, beneficiaryScore + urgencyScore + verificationScore));
-}
-
-function computeProofStrength(request: { images?: unknown }): number {
-  let score = 0;
-  const images = Array.isArray(request.images) ? request.images : [];
-
-  if (images.length > 0) score += Math.min(30, images.length * 10);
-
-  return Math.max(0, Math.min(100, score));
-}
-
-function parseAmount(value: unknown): number | null {
-  if (value === null || value === undefined) return null;
-  const text = String(value).trim();
-  if (!text) return null;
-  const parsed = Number(text.replace(/[^\d.-]/g, ''));
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function parseTimelineToDeadlineMs(timeline: unknown, baseMs: number): number | null {
-  const text = String(timeline || '').trim();
-  if (!text || /^(anytime|not specified|none|n\/a)$/i.test(text)) return null;
-
-  const directDate = new Date(text);
-  if (!Number.isNaN(directDate.getTime())) {
-    return directDate.getTime();
-  }
-
-  const relativeMatch = text.match(/(\d+)\s*(day|days|week|weeks|month|months|year|years)/i);
-  if (!relativeMatch) return null;
-
-  const amount = Number(relativeMatch[1]);
-  if (!Number.isFinite(amount) || amount <= 0) return null;
-
-  const unit = relativeMatch[2].toLowerCase();
-  const multiplierMap: Record<string, number> = {
-    day: 24 * 60 * 60 * 1000,
-    days: 24 * 60 * 60 * 1000,
-    week: 7 * 24 * 60 * 60 * 1000,
-    weeks: 7 * 24 * 60 * 60 * 1000,
-    month: 30 * 24 * 60 * 60 * 1000,
-    months: 30 * 24 * 60 * 60 * 1000,
-    year: 365 * 24 * 60 * 60 * 1000,
-    years: 365 * 24 * 60 * 60 * 1000
-  };
-
-  return baseMs + (amount * (multiplierMap[unit] || multiplierMap.day));
-}
-
-function deriveAutoUrgency(timeline: unknown, createdAtMs: number): 'low' | 'medium' | 'high' | 'critical' {
-  const deadlineMs = parseTimelineToDeadlineMs(timeline, createdAtMs);
-  if (!deadlineMs) return 'medium';
-
-  const totalDurationMs = deadlineMs - createdAtMs;
-  if (totalDurationMs <= 0) return 'critical';
-
-  const remainingMs = deadlineMs - Date.now();
-  if (remainingMs <= 0) return 'critical';
-
-  const remainingRatio = remainingMs / totalDurationMs;
-  if (remainingRatio <= 0.15) return 'critical';
-  if (remainingRatio <= 0.35) return 'high';
-  if (remainingRatio <= 0.65) return 'medium';
-  return 'low';
-}
-
-/** Same deadline resolution the listing card uses for live urgency badges. */
-function resolveListingDeadline(item: ListingRequest): string | null {
-  const requirements = parseJsonObject(item?.requirements);
-  const projectContext: Record<string, unknown> | null = item?.project || requirements?.project?.project || null;
-  const candidates = [
-    projectContext?.valid_until,
-    item?.deadline,
-    item?.timeline,
-    requirements?.timeline,
-  ];
-
-  for (const value of candidates) {
-    const text = String(value || '').trim();
-    if (text) return text;
-  }
-
-  return null;
-}
-
-function getListingUrgency(item: ListingRequest): 'low' | 'medium' | 'high' | 'critical' {
-  return getRequestUrgencyLevel({
-    createdAt: item?.created_at,
-    deadline: resolveListingDeadline(item),
-    fallback: item?.urgency_level || 'medium',
-  });
-}
-
-function buildProgressFields(body: Record<string, unknown>, existing?: Record<string, unknown> | null) {
-  const resolvedTarget = resolveFundingTargetInr({
-    funding_target_inr: body.funding_target_inr ?? existing?.funding_target_inr,
-    target_amount: body.target_amount ?? existing?.target_amount,
-    estimated_budget: body.estimated_budget ?? existing?.estimated_budget,
-    budget: body.budget ?? existing?.budget,
-  });
-  const targetAmount = resolvedTarget > 0 ? resolvedTarget : null;
-  const targetQuantity = parseAmount(body.target_quantity ?? body.quantity ?? body.volunteers_needed ?? body.beneficiary_count ?? existing?.target_quantity ?? existing?.quantity ?? existing?.volunteers_needed ?? existing?.beneficiary_count);
-  const currentAmount = parseAmount(body.current_amount ?? existing?.current_amount) ?? 0;
-  const currentQuantity = parseAmount(body.current_quantity ?? existing?.current_quantity) ?? 0;
-
-  return {
-    target_amount: targetAmount,
-    current_amount: currentAmount,
-    target_quantity: targetQuantity,
-    current_quantity: currentQuantity,
-    remaining_amount: targetAmount != null ? Math.max(targetAmount - currentAmount, 0) : null,
-    remaining_quantity: targetQuantity != null ? Math.max(targetQuantity - currentQuantity, 0) : null
-  };
-}
-
-function mapRequestTypeToOfferType(requestType: string): string | null {
-  if (requestType === 'Financial Need') return 'financial';
-  if (requestType === 'Material Need') return 'material';
-  if (requestType === 'Skill / Service Need') return 'service';
-  if (requestType === 'Infrastructure Project') return 'infrastructure';
-  return null;
-}
-
-// GET - Fetch service requests (public endpoint - no auth required for viewing)
+// Public listing; only the personal views require a token.
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const category = searchParams.get('category');
-    const search = searchParams.get('search');
-    const location = searchParams.get('location');
-    const requestType = searchParams.get('request_type');
-    const urgency = searchParams.get('urgency');
-    const projectId = searchParams.get('projectId');
     const rawView = searchParams.get('view');
     const view = rawView === 'volunteering' ? 'my-responses' : rawView;
 
-    // For my-requests view, authenticate user
     let authenticatedUserId: number | null = null;
     if (view === 'my-requests' || view === 'my-responses') {
       const claims = getTokenClaims(request);
@@ -278,302 +27,18 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Use Supabase database helpers
-    const filters: ListingFilters = {};
-    if (category && category !== 'All Categories') {
-      filters.category = category;
-    }
-    if (view === 'my-requests' && authenticatedUserId) {
-      filters.ngo_id = authenticatedUserId;
-    }
-    if (projectId) {
-      filters.project_id = projectId;
-    }
-    
-    let serviceRequests: ListingSource[];
-    if (view === 'my-responses' && authenticatedUserId) {
-      // For volunteering view, get service requests where user has applied
-      const volunteerApplications = await db.serviceRequestApplications.getByVolunteerId(authenticatedUserId);
-      const requestIds = volunteerApplications.map(app => app.service_request_id);
-      
-      if (requestIds.length === 0) {
-        serviceRequests = [];
-      } else {
-        let query = supabase
-          .from('service_requests')
-          .select('*')
-          .in('id', requestIds);
-        
-        if (category && category !== 'All Categories') {
-          query = query.eq('category', category);
-        }
-        
-        const { data, error } = await query;
-        
-        if (error) throw error;
-        serviceRequests = data || [];
-        
-        if (serviceRequests.length > 0) {
-          const requesterIds = [...new Set(serviceRequests.map((item) => item.ngo_id))];
-          const projectIds = [...new Set(serviceRequests.map((item) => item.project_id).filter((id): id is string => Boolean(id)))];
-          const { data: users } = await supabase
-            .from('users')
-            .select('id, name, email, user_type')
-            .in('id', requesterIds);
-          const { data: projects } = projectIds.length > 0
-            ? await supabase
-                .from('service_request_projects')
-                .select('*')
-                .in('id', projectIds)
-            : { data: [] as Tables<'service_request_projects'>[] };
-          
-          serviceRequests = serviceRequests.map((request) => {
-            const requester = users?.find((user) => user.id === request.ngo_id);
-            const project = projects?.find((item) => item.id === request.project_id) || null;
-            const volunteerApp = volunteerApplications.find(app => app.service_request_id === request.id);
-            
-            return {
-              ...request,
-              requester,
-              project,
-              volunteer_application: volunteerApp,
-            };
-          });
-        }
-      }
-    } else {
-      serviceRequests = await db.serviceRequests.getAll(filters);
-    }
-
-  const requestsToProcess = (Array.isArray(serviceRequests) ? serviceRequests : []).filter(
-    (request) => !isHiddenNgoNetworkPaymentChannel(request)
-  );
-  const processedRequests = requestsToProcess.map((request): ListingRequest => {
-      const requirementsObj = parseJsonObject(request.requirements);
-      const projectContextObj = parseJsonObject(request.project_context);
-      const requirementImages = parseImageArray(requirementsObj.images);
-      const images = requirementImages.length > 0
-        ? requirementImages
-        : parseImageArray(request.image_url);
-      
-      const category: string = requirementsObj.project_category || requirementsObj?.project?.category || request.category || 'Uncategorized';
-      const beneficiaryCount = request.beneficiary_count != null ? Number(request.beneficiary_count) : Number(requirementsObj.beneficiary_count || 0);
-
-      let project: ListingProject | null | undefined;
-      if (request.project) {
-        project = {
-          id: String(request.project.id || ''),
-          title: String(request.project.title || projectContextObj?.project_title || 'Project'),
-          location: String(request.project.location || request.project.exact_address || projectContextObj?.project_location || ''),
-          timeline: String(request.project.timeline || projectContextObj?.project_timeline || ''),
-          category: String(projectContextObj?.project_category || category || '')
-        };
-      } else if (projectContextObj && projectContextObj.project) {
-        project = {
-          id: String(projectContextObj.project.id || ''),
-          title: String(projectContextObj.project_title || projectContextObj.project.title || ''),
-          location: String(projectContextObj.project_location || projectContextObj.project.exact_address || ''),
-          timeline: String(projectContextObj.project_timeline || projectContextObj.project.timeline || ''),
-          category: String(projectContextObj.project_category || projectContextObj.project.category || '')
-        };
-      } else {
-        project = request.project;
-      }
-      
-      let description = request.description;
-      let requirements = request.requirements;
-      let deadline = request.deadline;
-
-      // Handle old concatenated description format
-      if (description && (description.includes('Budget:') || description.includes('Requirements:'))) {
-        // Split by newlines and extract parts
-        const lines = description.split('\n');
-        description = lines[0]; // Just the actual description
-        
-        // Extract additional info from the concatenated format
-        const fullText = lines.join('\n');
-        const budgetMatch = fullText.match(/Budget:\s*([^\n]*)/);
-        const contactMatch = fullText.match(/Contact:\s*([^\n]*)/);
-        const timelineMatch = fullText.match(/Timeline:\s*([^\n]*)/);
-        
-        try {
-          const existingRequirements = requirements ? JSON.parse(String(requirements)) : {};
-          requirements = JSON.stringify({
-            ...existingRequirements,
-            budget: budgetMatch ? budgetMatch[1].trim() : null,
-            contactInfo: contactMatch ? contactMatch[1].trim() : null,
-            timeline: timelineMatch ? timelineMatch[1].trim() : null
-          });
-          
-          if (timelineMatch && timelineMatch[1].trim()) {
-            deadline = timelineMatch[1].trim();
-          }
-        } catch (e) {
-          console.error('Error parsing old format data:', e);
-        }
-      }
-      
-      // Handle fake deadline - clear timestamp-style deadlines
-      const deadlineStr = String(deadline || '');
-      if (deadlineStr && (deadlineStr.includes('T') && deadlineStr.includes('Z'))) {
-        deadline = null;
-      }
-      
-      return {
-        ...request,
-        ...(request.requester ? { ngo_name: request.requester.name } : {}),
-        images,
-        request_type: request.request_type || requirementsObj.request_type || (SERVICE_REQUEST_TYPES.includes(request.category) ? request.category : 'Skill / Service Need'),
-        category,
-        estimated_budget: request.estimated_budget != null ? String(request.estimated_budget) : (requirementsObj.estimated_budget || requirementsObj.budget || 'Not specified'),
-        beneficiary_count: beneficiaryCount,
-        impact_description: request.impact_description || requirementsObj.impact_description || '',
-        trust_badge_weight: request.requester?.verification_status === 'verified' ? 1.0 : 0.6,
-        verified: String(request.requester?.verification_status || '').toLowerCase() === 'verified',
-        impact_score: computeImpactScore({ ...request, beneficiary_count: beneficiaryCount }),
-        proof_strength: computeProofStrength({ images }),
-        completion_rate: request.status === 'completed' ? 100 : 0,
-        project,
-        description,
-        requirements,
-        deadline,
-      };
+    const data = await listServiceRequests({
+      view,
+      userId: authenticatedUserId,
+      category: searchParams.get('category'),
+      projectId: searchParams.get('projectId'),
+      search: searchParams.get('search'),
+      location: searchParams.get('location'),
+      requestType: searchParams.get('request_type'),
+      urgency: searchParams.get('urgency'),
     });
 
-    let finalRequests = processedRequests;
-
-    const isProjectLocked = (item: { project_context?: unknown }) => {
-      const projectContext = parseJsonObject(item?.project_context);
-      const assignment = parseJsonObject(projectContext?.csr_assignment);
-      return projectContext?.csr_project_available_for_csr === false || assignment?.mode === 'company_project_handoff' || Number(assignment?.assigned_company_id || 0) > 0;
-    };
-
-    if (view === 'my-requests' && authenticatedUserId) {
-      const baseFiltered = processedRequests.filter((item) => !isCompanyAssignedNeed(item) && !isProjectLocked(item));
-      const filteredIds = baseFiltered
-        .map((item) => Number(item.id))
-        .filter((id: number) => Number.isFinite(id) && id > 0);
-
-      if (filteredIds.length > 0) {
-        const { data: assignedContributions } = await supabase
-          .from('service_request_contributions')
-          .select('service_request_id, status, contribution_type')
-          .in('service_request_id', filteredIds)
-          .eq('contribution_type', 'company_project_csr')
-          .in('status', ['accepted', 'in_progress', 'completed']);
-
-        const assignedNeedIds = new Set(
-          (assignedContributions || [])
-            .map((item) => Number(item.service_request_id))
-            .filter((id: number) => Number.isFinite(id) && id > 0)
-        );
-
-        finalRequests = baseFiltered.filter((item) => !assignedNeedIds.has(Number(item.id)));
-      } else {
-        finalRequests = baseFiltered;
-      }
-    }
-
-    if (view === 'all') {
-      const browsableRequests = processedRequests.filter(
-        (item) =>
-          !isCompanyAssignedNeed(item) &&
-          !isProjectLocked(item) &&
-          !isServiceRequestExpired(item)
-      )
-
-      const requestsWithVolunteerCount = await Promise.all(
-        browsableRequests.map(async (request) => {
-          try {
-            const { data: acceptedVolunteers, error: countError } = await supabase
-              .from('service_request_applications')
-              .select('id')
-              .eq('service_request_id', request.id)
-              .in('status', ['accepted', 'active', 'completed']);
-
-            if (countError) {
-              console.error('Supabase error counting volunteers for request', request.id, countError);
-            }
-
-            const acceptedCount = Array.isArray(acceptedVolunteers) ? acceptedVolunteers.length : 0;
-            const volunteerLimit = request.volunteers_needed || 1;
-            const isFull = acceptedCount >= volunteerLimit;
-
-            return {
-              ...request,
-              accepted_volunteers_count: acceptedCount,
-              is_full: isFull
-            };
-          } catch (error) {
-            console.error('Error counting volunteers for request', request?.id, error);
-            return {
-              ...request,
-              accepted_volunteers_count: 0,
-              is_full: false
-            };
-          }
-        })
-      );
-
-      finalRequests = requestsWithVolunteerCount.filter(
-        (request) => !request.is_full && isNeedOpenForListing(request)
-      );
-    }
-
-    const searchTerm = String(search || '').trim().toLowerCase();
-    const locationTerm = String(location || '').trim().toLowerCase();
-    const requestTypeFilter = String(requestType || '').trim();
-    const urgencyFilter = String(urgency || '').trim().toLowerCase();
-
-    if (searchTerm || locationTerm || requestTypeFilter || urgencyFilter) {
-      finalRequests = finalRequests.filter((item) => {
-        if (requestTypeFilter && requestTypeFilter !== 'all' && requestTypeFilter !== 'All Types') {
-          if (String(item.request_type || '').trim() !== requestTypeFilter) return false;
-        }
-
-        if (urgencyFilter && urgencyFilter !== 'all') {
-          if (getListingUrgency(item) !== urgencyFilter) return false;
-        }
-
-        if (locationTerm) {
-          const locationHaystack = [
-            item.location,
-            item.project?.location,
-          ]
-            .map((value) => String(value || '').toLowerCase())
-            .join(' ');
-          if (!locationHaystack.includes(locationTerm)) return false;
-        }
-
-        if (searchTerm) {
-          const searchHaystack = [
-            item.title,
-            item.description,
-            item.category,
-            item.request_type,
-            item.ngo_name,
-            item.requester?.name,
-            item.location,
-            item.tags,
-          ]
-            .map((value) => {
-              if (Array.isArray(value)) return value.join(' ');
-              return String(value || '');
-            })
-            .join(' ')
-            .toLowerCase();
-          if (!searchHaystack.includes(searchTerm)) return false;
-        }
-
-        return true;
-      });
-    }
-
-    return NextResponse.json({
-      success: true,
-      data: finalRequests
-    });
-
+    return NextResponse.json({ success: true, data });
   } catch (error) {
     console.error('Error fetching service requests:', error);
     return NextResponse.json(
@@ -583,7 +48,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST - Create new service request (NGOs only) or volunteer for request
+// Creates a need (verified NGOs) or registers the caller as a volunteer for one.
 export async function POST(request: NextRequest) {
   try {
     const decoded = getTokenClaims(request);
@@ -597,275 +62,32 @@ export async function POST(request: NextRequest) {
     const { action } = body;
 
     if (!action || action === 'create') {
-
-      // Only verified NGOs can create service requests
       if (userType !== 'ngo') {
-        return NextResponse.json({ 
+        return NextResponse.json({
           error: 'Only verified NGOs can create service requests'
         }, { status: 403 });
       }
-      
+
       const effectiveVerificationStatus = await resolveEffectiveVerificationStatus(userId, userType);
       if (effectiveVerificationStatus !== 'verified') {
-        return NextResponse.json({ 
+        return NextResponse.json({
           error: 'You need to complete verification before creating service requests.',
           requiresVerification: true
         }, { status: 403 });
       }
 
-      const { 
-        title, 
-        description, 
-        category,
-        project_category,
-        request_type,
-        location,
-        timeline,
-        budget,
-        contactInfo,
-        estimated_budget,
-        beneficiary_count,
-        impact_description,
-        projectId,
-        project,
-        target_amount,
-        target_quantity,
-        current_amount,
-        current_quantity,
-        project_context,
-        details
-      } = body;
-
-      const missingRequiredFields = [title, description, location, timeline, budget, contactInfo, impact_description].some((value) => !String(value ?? '').trim());
-      if (missingRequiredFields || !request_type || !(project_category || category)) {
-        return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+      const result = await createNeed(userId, body);
+      if (!result.ok) {
+        return NextResponse.json({ error: result.error }, { status: result.status });
       }
 
-      if (!beneficiary_count || Number(beneficiary_count) <= 0) {
-        return NextResponse.json(
-          { error: 'beneficiary_count must be greater than 0 (How many benefit?)' },
-          { status: 400 }
-        );
-      }
-
-      const normalizedRequestType = request_type;
-      const normalizedProjectCategory = project_category || category;
-
-      if (!SERVICE_REQUEST_TYPES.includes(normalizedRequestType)) {
-        return NextResponse.json(
-          { error: 'Invalid request_type. Use one of Financial Need, Material Need, Skill / Service Need, Infrastructure Project.' },
-          { status: 400 }
-        );
-      }
-
-      if (!CSR_SCHEDULE_VII_CATEGORIES.includes(normalizedProjectCategory)) {
-        return NextResponse.json(
-          { error: 'Invalid project_category. Select a valid Schedule VII category.' },
-          { status: 400 }
-        );
-      }
-
-      let resolvedProjectId: string | null = projectId || null;
-      let resolvedProjectLocation = String(location || '').trim();
-      const projectPayload = project && typeof project === 'object' ? project : null;
-
-      // Needs are standalone for NGO self-serve creates. Do not attach to projects
-      // or create nested projects from this endpoint (use /api/service-request-projects).
-      // Admins may still pass projectId to relink historical records.
-      if (userType === 'ngo' && (resolvedProjectId || projectPayload)) {
-        return NextResponse.json({
-          error: 'Needs are standalone. Create CSR projects via Post a Project; do not attach projectId when posting a need.'
-        }, { status: 400 });
-      }
-
-      if (projectPayload && !resolvedProjectId) {
-        const projectTitle = String(projectPayload.title || '').trim();
-        const projectDescription = String(projectPayload.description || '').trim();
-        const projectTimeline = String(projectPayload.timeline || timeline || '').trim();
-        const addressInput = projectPayload.address && typeof projectPayload.address === 'object'
-          ? projectPayload.address
-          : projectPayload.exact_address || projectPayload.location || location || '';
-        const parsedProjectAddress = parseProjectExactAddress(addressInput);
-        const projectAddressError = validateProjectExactAddress(parsedProjectAddress);
-        if (projectAddressError) {
-          return NextResponse.json({ error: projectAddressError }, { status: 400 });
-        }
-        const serializedProjectAddress = serializeProjectExactAddress(parsedProjectAddress);
-        const projectLocationSummary = projectAddressToLocationSummary(parsedProjectAddress);
-
-        if ([projectTitle, projectDescription, projectTimeline].some((value) => !value)) {
-          return NextResponse.json({ error: 'Project title, description, and timeline are required' }, { status: 400 });
-        }
-
-          const rawExpected = projectPayload.expected_beneficiaries ?? null;
-          const parsedExpected = rawExpected != null ? Number(rawExpected) : (Number(beneficiary_count) || null);
-          const expectedBeneficiaries = parsedExpected != null && Number.isFinite(parsedExpected) && parsedExpected > 0 ? parsedExpected : null;
-        const validUntil = projectPayload.valid_until ? String(projectPayload.valid_until).trim() : null;
-
-        if (!expectedBeneficiaries) {
-          return NextResponse.json({ error: 'expected_beneficiaries must be provided and greater than 0 for project creation' }, { status: 400 });
-        }
-
-        if (!validUntil || Number.isNaN(new Date(validUntil).getTime())) {
-          return NextResponse.json({ error: 'valid_until must be a valid date string for project creation' }, { status: 400 });
-        }
-
-        const csrEligible = await ngoUserIsCsrEligible(userId);
-        const requestedCsrAvailable = projectPayload.csr_project_available_for_csr !== false;
-        if (requestedCsrAvailable && !csrEligible) {
-          return NextResponse.json({ error: CSR_ELIGIBILITY_REQUIRED_MESSAGE }, { status: 403 });
-        }
-        const csrCoversTimeline = await ngoUserIsCsrEligibleForProject(userId, {
-          valid_until: validUntil,
-          timeline: projectTimeline,
-        });
-        if (requestedCsrAvailable && !csrCoversTimeline) {
-          return NextResponse.json({ error: CSR_OWN_PROJECT_TIMELINE_MESSAGE }, { status: 403 });
-        }
-
-        const createdProject = await db.requestProjects.create({
-          ngo_id: userId,
-          title: projectTitle,
-          description: projectDescription,
-          location: projectLocationSummary,
-          exact_address: serializedProjectAddress,
-          timeline: projectTimeline || null,
-          expected_beneficiaries: expectedBeneficiaries,
-          valid_until: validUntil ? new Date(validUntil).toISOString() : null,
-          csr_project_available_for_csr: csrEligible && requestedCsrAvailable && csrCoversTimeline,
-          status: 'active'
-        });
-
-        resolvedProjectId = createdProject.id;
-        resolvedProjectLocation = formatProjectExactAddress(serializedProjectAddress);
-      }
-
-      let projectRecord: Tables<'service_request_projects'> | null = null
-      if (resolvedProjectId) {
-        projectRecord = await db.requestProjects.getById(String(resolvedProjectId));
-        if (projectRecord && projectRecord.ngo_id !== userId) {
-          return NextResponse.json({ error: 'Project ownership mismatch' }, { status: 403 });
-        }
-
-        resolvedProjectLocation = String(projectRecord?.exact_address || projectRecord?.location || resolvedProjectLocation || '').trim();
-      }
-
-      const projectContext = {
-        ...(parseJsonObject(project_context) || {}),
-        project_category: normalizedProjectCategory,
-        project: resolvedProjectId
-          ? { id: resolvedProjectId, exact_address: resolvedProjectLocation, category: normalizedProjectCategory }
-          : projectPayload || null
-      };
-
-      const trimmedTimeline = typeof timeline === 'string' ? timeline.trim() : '';
-      if (trimmedTimeline.toLowerCase() === 'anytime') {
-        return NextResponse.json({ error: 'Timeline cannot be "Anytime"; provide an actual duration or a date.' }, { status: 400 });
-      }
-      const storedTimeline = trimmedTimeline || null;
-      const timelineLabel = trimmedTimeline || 'Not specified';
-
-      const mappedUrgency = deriveAutoUrgency(timeline, Date.now());
-
-      const selectedRecommendedOfferIds: number[] = Array.isArray(details?.recommended_offer_ids)
-        ? details.recommended_offer_ids
-            .map((value: unknown) => Number(value))
-            .filter((value: number) => Number.isFinite(value) && value > 0)
-        : [];
-
-      const expectedOfferType = mapRequestTypeToOfferType(normalizedRequestType);
-
-      if (expectedOfferType) {
-        const { data: matchingOffers, error: matchingOffersError } = await supabase
-          .from('service_offers')
-          .select('id')
-          .eq('offer_type', expectedOfferType)
-          .eq('status', 'active')
-          .limit(60);
-
-        if (matchingOffersError) throw matchingOffersError;
-
-        const offers = Array.isArray(matchingOffers) ? matchingOffers : [];
-
-        if (selectedRecommendedOfferIds.length > 0) {
-          const selectedOffers = offers.filter((offer) => selectedRecommendedOfferIds.includes(Number(offer.id)));
-
-          if (selectedOffers.length !== selectedRecommendedOfferIds.length) {
-            return NextResponse.json({ error: 'One or more selected capability offers are invalid for this need.' }, { status: 400 });
-          }
-        }
-      }
-
-      const images = parseImageArray(body.images);
-      const fundingTargetInr = normalizedRequestType === 'Financial Need'
-        ? resolveFundingTargetInr({
-            target_amount,
-            estimated_budget,
-            budget,
-          })
-        : 0;
-
-      const requirementsData = {
-        request_type: normalizedRequestType,
-        estimated_budget: estimated_budget || budget || 'Not specified',
-        beneficiary_count: Number(beneficiary_count ?? (projectRecord?.expected_beneficiaries ?? 0)),
-        impact_description: String(impact_description || '').trim(),
-        budget: budget || estimated_budget || 'Not specified',
-        contactInfo: contactInfo || 'Not specified',
-        timeline: timelineLabel,
-        project: projectContext,
-        category_details: details || {},
-        images,
-        ...(fundingTargetInr > 0
-          ? {
-              funding_target_inr: fundingTargetInr,
-            }
-          : {}),
-      };
-
-      const progressFields = buildProgressFields({
-        target_amount,
-        target_quantity,
-        current_amount,
-        current_quantity,
-        estimated_budget,
-        budget,
-        beneficiary_count,
-        volunteers_needed: body.volunteers_needed,
-        quantity: body.quantity
+      return NextResponse.json({
+        success: true,
+        data: { id: result.id, message: 'Service request created successfully' }
       });
+    }
 
-      const requestData = {
-        ngo_id: userId,
-        title: title,
-        description: description,
-        category: normalizedProjectCategory,
-        location: resolvedProjectLocation || location,
-        urgency_level: mappedUrgency,
-        volunteers_needed: 1, // default volunteers_needed
-        tags: JSON.stringify([]), // empty tags array
-        requirements: JSON.stringify(requirementsData),
-        image_url: images[0] || null,
-        status: 'active',
-        // Direct schema columns
-        request_type: normalizedRequestType,
-        estimated_budget: parseFloat(String(estimated_budget || budget || '')) || null,
-        beneficiary_count: Number(beneficiary_count ?? (projectRecord?.expected_beneficiaries ?? 0)),
-        impact_description: String(impact_description || '').trim(),
-        timeline: storedTimeline,
-        contact_info: contactInfo || null,
-        project_id: resolvedProjectId,
-        project_context: projectContext,
-        ...progressFields
-      };
-
-      const result = await db.serviceRequests.create(requestData);
-
-        return NextResponse.json({
-          success: true,
-          data: { id: result.id, message: 'Service request created successfully' }
-        });    } else if (action === 'volunteer') {
-      // Only individuals and companies can volunteer
+    if (action === 'volunteer') {
       if (userType === 'ngo') {
         return NextResponse.json({ error: 'NGOs cannot volunteer for their own requests' }, { status: 403 });
       }
@@ -882,7 +104,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Already volunteering for this request' }, { status: 400 });
       }
 
-      const volunteerData = {
+      await db.serviceRequestApplications.create({
         service_request_id: serviceRequestId,
         applicant_user_id: userId,
         volunteer_type: userType,
@@ -890,9 +112,7 @@ export async function POST(request: NextRequest) {
         status: 'pending',
         applied_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
-      };
-
-      await db.serviceRequestApplications.create(volunteerData);
+      });
 
       return NextResponse.json({
         success: true,
@@ -901,7 +121,6 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
-
   } catch (error) {
     console.error('Error processing service request:', error);
     return NextResponse.json(
