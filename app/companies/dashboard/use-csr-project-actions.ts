@@ -64,6 +64,40 @@ export function useCsrProjectActions(data: CompanyDashboardData, allVerified: bo
     }
   };
 
+  const revokeLeadNgoInvite = async (projectId: string, ngoId: number) => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      toast({ title: 'Error', description: 'Please login again', variant: 'destructive' });
+      return;
+    }
+
+    try {
+      setInvitingProjectId(projectId);
+      const response = await fetch('/api/service-request-assignments', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ action: 'revoke-lead-ngo', projectId, ngoId })
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.success) {
+        toast({ title: 'Could not remove invite', description: payload?.error || 'Please try again.', variant: 'destructive' });
+        data.fetchCSRTrackingAssignments();
+        return;
+      }
+
+      toast({ title: 'Invite removed', description: payload?.data?.message || 'Lead NGO invite removed.' });
+      data.fetchCSRTrackingAssignments();
+    } catch {
+      toast({ title: 'Could not remove invite', description: 'Please try again.', variant: 'destructive' });
+    } finally {
+      setInvitingProjectId(null);
+    }
+  };
+
   const applyToProjectOpportunity = async (projectId: string) => {
     if (!allVerified) {
       toast({
@@ -125,6 +159,7 @@ export function useCsrProjectActions(data: CompanyDashboardData, allVerified: bo
     setInviteSearchByProject,
     invitingProjectId,
     inviteLeadNgos,
+    revokeLeadNgoInvite,
   };
 }
 

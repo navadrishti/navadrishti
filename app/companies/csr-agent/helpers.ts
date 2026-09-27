@@ -15,6 +15,7 @@ import {
   formatDateOnlyFromUtc,
   milestoneQuestions,
   normalizeDateInput,
+  normalizeLeadNgoInvites,
   normalizeSessionPayload,
   parseDateOnly,
   parseMoneyValue,
@@ -320,38 +321,28 @@ export function acceptedLeadNgoFromRemote(data: RemoteInviteState): LeadNgoInvit
   }
 }
 
-export function mergeRemoteLeadInvites(current: LeadNgoInvite[], data: RemoteInviteState): LeadNgoInvite[] {
-  const remoteInvites = Array.isArray(data.invites) ? data.invites : []
-  const next = current.map((invite) => {
-    const remote = remoteInvites.find((row) => Number(row.ngo_id) === invite.ngoId)
-    if (!remote) return invite
-    return { ...invite, status: String(remote.status || invite.status || 'invited').toLowerCase() as LeadNgoInvite['status'] }
-  })
-
-  for (const remote of remoteInvites) {
-    const ngoId = Number(remote.ngo_id)
-    if (!next.some((invite) => invite.ngoId === ngoId)) {
-      next.push({
-        ngoId,
-        name: remote.name,
-        email: remote.email,
-        status: String(remote.status || 'invited').toLowerCase() as LeadNgoInvite['status'],
-      })
-    }
-  }
+export function leadInvitesFromRemote(data: RemoteInviteState): LeadNgoInvite[] {
+  const invites = normalizeLeadNgoInvites(
+    (Array.isArray(data.invites) ? data.invites : []).map((row) => ({
+      ngoId: row.ngo_id,
+      name: row.name,
+      email: row.email,
+      status: row.status,
+    })),
+  )
 
   const accepted = acceptedLeadNgoFromRemote(data)
-  if (!accepted) return next
+  if (!accepted) return invites
 
-  if (!next.some((invite) => invite.ngoId === accepted.ngoId)) {
-    next.push(accepted)
+  if (!invites.some((invite) => invite.ngoId === accepted.ngoId)) {
+    invites.push(accepted)
   }
-  return next.map((invite) => {
-    if (invite.ngoId === Number(data.selectedLeadNgoId)) {
+  return invites.map((invite) => {
+    if (invite.ngoId === accepted.ngoId) {
       return {
         ...invite,
-        name: data.selectedLeadNgoName || invite.name,
-        email: data.selectedLeadNgoEmail || invite.email,
+        name: accepted.name || invite.name,
+        email: accepted.email || invite.email,
         status: 'accepted',
       }
     }
@@ -360,6 +351,10 @@ export function mergeRemoteLeadInvites(current: LeadNgoInvite[], data: RemoteInv
       ? { ...invite, status: 'expired' as const }
       : invite
   })
+}
+
+export function isPendingLeadInvite(invite: LeadNgoInvite) {
+  return !invite.status || invite.status === 'invited' || invite.status === 'pending'
 }
 
 export function describeRentalReservation(offerId: number, rental: CsrCapabilityRentalRecord | null | undefined) {

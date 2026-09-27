@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { fetchScoredNgoDirectory } from "./api"
-import { type RemoteInviteState, acceptedLeadNgoFromRemote, mergeRemoteLeadInvites } from "./helpers"
+import { type RemoteInviteState, acceptedLeadNgoFromRemote, isPendingLeadInvite, leadInvitesFromRemote } from "./helpers"
 import {
   type CSRAgentSession,
   type LeadNgoInvite,
@@ -120,7 +120,7 @@ export function useLeadNgoInvites({
     if (accepted) {
       setConfirmedLeadNgo(accepted)
     }
-    setLeadNgoInvites((current) => mergeRemoteLeadInvites(current, data))
+    setLeadNgoInvites(leadInvitesFromRemote(data))
   }
 
   const syncLeadInviteStatuses = async (overrides?: { draftCampaignId?: string | null; sessionId?: string | null }) => {
@@ -140,18 +140,7 @@ export function useLeadNgoInvites({
     if (!response.ok || !payload?.success) return null
     applyRemoteInviteState(payload.data || {})
     if (payload.data?.leadNgoAccepted) {
-      setTimeout(() => {
-        persistSnapshot({
-          leadNgoInvites: normalizeLeadNgoInvites(
-            (Array.isArray(payload.data?.invites) ? payload.data.invites : []).map((row: { ngo_id: number; name: string; email: string; status: string }) => ({
-              ngoId: row.ngo_id,
-              name: row.name,
-              email: row.email,
-              status: row.status,
-            })),
-          ),
-        })
-      }, 0)
+      setTimeout(() => persistSnapshot({ leadNgoInvites: leadInvitesFromRemote(payload.data) }), 0)
     }
     return payload.data
   }
@@ -169,7 +158,7 @@ export function useLeadNgoInvites({
       return
     }
 
-    const alreadyInvited = leadNgoInvites.some((item) => item.ngoId === ngo.id)
+    const alreadyInvited = leadNgoInvites.some((item) => item.ngoId === ngo.id && isPendingLeadInvite(item))
 
     try {
       const response = await fetch('/api/csr-agent/lead-ngo-invites', {
@@ -219,6 +208,34 @@ export function useLeadNgoInvites({
     }
   }
 
+  const ensureDraftCampaign = async (): Promise<string | null> => {
+    if (draftCampaignId) return draftCampaignId
+    if (!token || !activeSessionId) return null
+
+    const response = await fetch('/api/csr-agent/lead-ngo-invites', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        sessionId: activeSessionId,
+        action: 'save_draft',
+        projectData,
+        volunteerRequirement: projectData.volunteerRequirement || '',
+      }),
+    })
+    const payload = await response.json().catch(() => null)
+    if (!response.ok || !payload?.success || !payload.data?.draftCampaignId) {
+      throw new Error(payload?.error || 'Could not save the campaign draft')
+    }
+
+    applyRemoteInviteState(payload.data)
+    const savedId = String(payload.data.draftCampaignId)
+    setTimeout(() => persistSnapshot({ draftCampaignId: savedId }), 0)
+    return savedId
+  }
+
   useEffect(() => {
     if (!mounted || !userId || !token) return
     if (hasLockedLeadNgo) return
@@ -241,5 +258,6 @@ export function useLeadNgoInvites({
     restoreFromSession,
     syncLeadInviteStatuses,
     handleInviteLeadNgoToggle,
+    ensureDraftCampaign,
   }
 }

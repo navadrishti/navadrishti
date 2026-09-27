@@ -6,6 +6,7 @@ import { InlineCsrCapabilityDelhivery } from "@/components/service-card"
 import { VerifiedAccountName } from "@/components/verification-badge"
 import { AGENT_NAMES } from "@/lib/ai-agent-sessions"
 import type { CsrCapabilityRentalRecord } from "@/lib/service-engagement"
+import { isPendingLeadInvite } from "./helpers"
 import type {
   GeneratedCampaign,
   LeadNgoInvite,
@@ -205,7 +206,7 @@ export function LeadNgoSection({
       </div>
       <div className="mt-3 space-y-2">
         {ngos.length > 0 ? ngos.slice(0, 5).map((ngo) => {
-          const isInvited = invites.some((item) => item.ngoId === ngo.id)
+          const isInvited = invites.some((item) => item.ngoId === ngo.id && isPendingLeadInvite(item))
           return (
             <div key={ngo.id} className="rounded-xl border border-slate-200 bg-white p-3">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -222,15 +223,18 @@ export function LeadNgoSection({
                   <p className="mt-1 text-[11px] font-medium text-blue-700">Match score {ngo.score}</p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2 self-start">
+                  {isInvited && (
+                    <span className="whitespace-nowrap rounded-full bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700">Invited</span>
+                  )}
                   <Button
                     type="button"
                     size="sm"
-                    className="whitespace-nowrap"
+                    className={isInvited ? 'whitespace-nowrap border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700' : 'whitespace-nowrap'}
                     disabled={!actionsEnabled}
-                    variant={isInvited ? 'secondary' : 'outline'}
+                    variant="outline"
                     onClick={() => onToggleInvite(ngo)}
                   >
-                    {isInvited ? 'Invited' : 'Invite'}
+                    {isInvited ? 'Remove' : 'Invite'}
                   </Button>
                 </div>
               </div>
@@ -295,7 +299,7 @@ export function PublishStatusSection({
           <Loader2 className="h-4 w-4 shrink-0 animate-spin text-[#1d4ed8]" />
           {acceptedLead.name} accepted. Generating your campaign draft...
         </div>
-      ) : questionnaireComplete && invites.length > 0 && !acceptedLead ? (
+      ) : questionnaireComplete && invites.some(isPendingLeadInvite) ? (
         <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-slate-700">
           Waiting for a lead NGO to accept the invite from their dashboard.
         </div>

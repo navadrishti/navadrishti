@@ -19,6 +19,9 @@ export const formatLeadNgoInviteStatusLabel = (status: string): string => {
   return formatStatusLabel(status);
 };
 
+export const isRemovableLeadInviteStatus = (status: string): boolean =>
+  ['pending', 'invited', 'pending_acceptance', 'awaiting_acceptance', 'offered'].includes(String(status || '').trim().toLowerCase());
+
 export const getInitials = (name: string): string => {
   if (!name) return 'N';
   const parts = name.trim().split(/\s+/);

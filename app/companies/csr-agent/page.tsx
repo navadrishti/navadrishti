@@ -12,7 +12,7 @@ import {
   scrollAgentMessagesContainer,
 } from "@/lib/ai-agent-sessions"
 import type { CSRAgentSession } from "./session"
-import { getUserInitials, sortSessionsByRecency, upsertSession } from "./helpers"
+import { getUserInitials, isPendingLeadInvite, sortSessionsByRecency, upsertSession } from "./helpers"
 import { useSessionCloudSync } from "./use-session-cloud-sync"
 import { useSessionSnapshot } from "./use-session-snapshot"
 import { useCapabilityRentals } from "./use-capability-rentals"
@@ -156,6 +156,7 @@ function CSRAgentPage() {
     restoreFromSession: restoreLeadNgoState,
     syncLeadInviteStatuses,
     handleInviteLeadNgoToggle,
+    ensureDraftCampaign,
   } = useLeadNgoInvites({
     mounted,
     userId: user?.id,
@@ -184,7 +185,7 @@ function CSRAgentPage() {
   const statusLabelInput = {
     hasDraft: generatedCampaigns.length > 0,
     isQuestionnaireComplete,
-    hasLeadInvites: leadNgoInvites.length > 0,
+    hasLeadInvites: leadNgoInvites.some(isPendingLeadInvite),
     hasAcceptedLead: Boolean(acceptedLeadNgo),
     isGeneratingCampaigns,
     conversationStage,
@@ -231,6 +232,7 @@ function CSRAgentPage() {
     user,
     token,
     campaignId: draftCampaignId || editingCampaignId,
+    ensureCampaignId: async () => draftCampaignId || editingCampaignId || ensureDraftCampaign(),
     actionsEnabled: canUseCampaignActions,
     appendAssistantMessage,
     onOfferInvited: (offerId) => setInvitedOfferIds((current) => [...new Set([...current, offerId])]),

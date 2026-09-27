@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { openRazorpayCheckout } from '@/lib/razorpay-checkout';
 import { getErrorMessage } from '@/lib/utils';
-import type { MilestonePaymentItem, PendingPaymentItem } from './types';
+import { isAttendanceEntry } from './helpers';
+import type { MilestonePaymentItem, PendingPaymentGroup } from './types';
 
 type CheckoutFlow = {
   loadingKey: string;
@@ -82,15 +83,20 @@ export function usePanelPayments({
     }
   };
 
-  const handlePayGroup = async (items: PendingPaymentItem[]) => {
-    if (!items || items.length === 0) return;
+  const handlePayGroup = async (group: PendingPaymentGroup) => {
+    if (group.items.length === 0) return;
+
+    const attendanceEntryIds: string[] = [];
+    const contributionIds: string[] = [];
+    group.items.forEach((item) => {
+      if (!item.id) return;
+      (isAttendanceEntry(item) ? attendanceEntryIds : contributionIds).push(item.id);
+    });
 
     await runCheckout({
-      loadingKey: 'ca-pay-group',
+      loadingKey: `ca-pay-${group.key}`,
       createOrderUrl: '/api/evidence-verification/payments/create-order',
-      createOrderBody: {
-        attendanceEntryIds: items.filter((i) => i?.id && i?.attendance_date).map((i) => i.id),
-      },
+      createOrderBody: { attendanceEntryIds, contributionIds },
       verifyUrl: '/api/evidence-verification/payments/verify',
       description: (order) => `Payment for Request ${order.serviceRequestId || ''}`,
       messages: {
