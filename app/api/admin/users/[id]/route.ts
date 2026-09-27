@@ -4,18 +4,30 @@ import { assertAdminUser } from '@/lib/server-auth';
 import {
   getAdminModeration,
   type AdminModerationState,
-} from '@/lib/auth';
+} from '@/lib/auth';
 import { parseJsonObject, getErrorMessage } from '@/lib/utils';
+import type { Json, TablesUpdate } from '@/lib/database.types';
 
 const allowedUserTypes = new Set(['individual', 'ngo', 'company', 'admin']);
 const allowedVerificationStatuses = new Set(['unverified', 'pending', 'verified', 'suspended']);
 const USER_SELECT =
   'id, name, email, phone, user_type, verification_status, account_status, locked_until, city, state_province, profile_image, profile_data, created_at, updated_at';
 
+async function updateUser(userId: number, updatePayload: TablesUpdate<'users'>) {
+  const { data, error } = await supabase
+    .from('users')
+    .update(updatePayload)
+    .eq('id', userId)
+    .select(USER_SELECT)
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 function withModeration(
   profileData: unknown,
   patch: AdminModerationState | null
-): Record<string, unknown> {
+): Json {
   const next = { ...parseJsonObject(profileData) };
   if (!patch) {
     delete next.admin_moderation;
@@ -60,7 +72,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       const until = new Date();
       until.setUTCDate(until.getUTCDate() + days);
       const reason = String(body?.reason || '').trim() || null;
-      const updatePayload: Record<string, unknown> = {
+      const updatePayload: TablesUpdate<'users'> = {
         locked_until: until.toISOString(),
         account_status: 'suspended',
         profile_data: withModeration(existingUser.profile_data, {
@@ -73,25 +85,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         updated_at: new Date().toISOString(),
       };
 
-      let { data, error } = await supabase
-        .from('users')
-        .update(updatePayload)
-        .eq('id', userId)
-        .select(USER_SELECT)
-        .single();
+      const data = await updateUser(userId, updatePayload);
 
-      if (error && String(error.message || '').toLowerCase().includes('account_status')) {
-        delete updatePayload.account_status;
-        const retry = await supabase
-          .from('users')
-          .update(updatePayload)
-          .eq('id', userId)
-          .select(USER_SELECT)
-          .single();
-        data = retry.data;
-        error = retry.error;
-      }
-      if (error) throw error;
 
       return NextResponse.json({
         success: true,
@@ -102,7 +97,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     if (action === 'unsuspend') {
       const moderation = getAdminModeration(existingUser.profile_data);
-      const updatePayload: Record<string, unknown> = {
+      const updatePayload: TablesUpdate<'users'> = {
         locked_until: null,
         account_status: 'active',
         profile_data: withModeration(existingUser.profile_data, {
@@ -116,32 +111,15 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         updated_at: new Date().toISOString(),
       };
 
-      let { data, error } = await supabase
-        .from('users')
-        .update(updatePayload)
-        .eq('id', userId)
-        .select(USER_SELECT)
-        .single();
+      const data = await updateUser(userId, updatePayload);
 
-      if (error && String(error.message || '').toLowerCase().includes('account_status')) {
-        delete updatePayload.account_status;
-        const retry = await supabase
-          .from('users')
-          .update(updatePayload)
-          .eq('id', userId)
-          .select(USER_SELECT)
-          .single();
-        data = retry.data;
-        error = retry.error;
-      }
-      if (error) throw error;
 
       return NextResponse.json({ success: true, message: 'Account suspension cleared.', data });
     }
 
     if (action === 'ban') {
       const reason = String(body?.reason || '').trim() || null;
-      const updatePayload: Record<string, unknown> = {
+      const updatePayload: TablesUpdate<'users'> = {
         account_status: 'banned',
         locked_until: null,
         profile_data: withModeration(existingUser.profile_data, {
@@ -157,25 +135,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         updated_at: new Date().toISOString(),
       };
 
-      let { data, error } = await supabase
-        .from('users')
-        .update(updatePayload)
-        .eq('id', userId)
-        .select(USER_SELECT)
-        .single();
+      const data = await updateUser(userId, updatePayload);
 
-      if (error && String(error.message || '').toLowerCase().includes('account_status')) {
-        delete updatePayload.account_status;
-        const retry = await supabase
-          .from('users')
-          .update(updatePayload)
-          .eq('id', userId)
-          .select(USER_SELECT)
-          .single();
-        data = retry.data;
-        error = retry.error;
-      }
-      if (error) throw error;
 
       return NextResponse.json({
         success: true,
@@ -185,37 +146,20 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
 
     if (action === 'unban') {
-      const updatePayload: Record<string, unknown> = {
+      const updatePayload: TablesUpdate<'users'> = {
         account_status: 'active',
         locked_until: null,
         profile_data: withModeration(existingUser.profile_data, null),
         updated_at: new Date().toISOString(),
       };
 
-      let { data, error } = await supabase
-        .from('users')
-        .update(updatePayload)
-        .eq('id', userId)
-        .select(USER_SELECT)
-        .single();
+      const data = await updateUser(userId, updatePayload);
 
-      if (error && String(error.message || '').toLowerCase().includes('account_status')) {
-        delete updatePayload.account_status;
-        const retry = await supabase
-          .from('users')
-          .update(updatePayload)
-          .eq('id', userId)
-          .select(USER_SELECT)
-          .single();
-        data = retry.data;
-        error = retry.error;
-      }
-      if (error) throw error;
 
       return NextResponse.json({ success: true, message: 'Permanent ban cleared.', data });
     }
 
-    const updatePayload: Record<string, any> = { updated_at: new Date().toISOString() };
+    const updatePayload: TablesUpdate<'users'> = { updated_at: new Date().toISOString() };
     let nextVerification: string | null = null;
 
     if (body.user_type !== undefined) {

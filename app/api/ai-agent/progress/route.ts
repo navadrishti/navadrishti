@@ -73,6 +73,47 @@ const buildStateFromSession = (agent: AgentKind, session: PersistedSession) => {
   }
 }
 
+type BuiltSessionState = ReturnType<typeof buildStateFromSession>
+
+async function upsertSessionState(
+  agent: AgentKind,
+  sessionId: string,
+  state: BuiltSessionState,
+  uiState: BuiltSessionState["ui_state"],
+  updatedAt: string
+) {
+  const shared = {
+    session_id: sessionId,
+    conversation_stage: state.conversation_stage || undefined,
+    project_data: state.project_data || {},
+    ui_state: uiState,
+    updated_at: updatedAt,
+  }
+
+  if (agent === "csr") {
+    return supabase.from("csr_ai_agent_session_state").upsert(
+      {
+        ...shared,
+        milestone_count: state.milestone_count ?? null,
+        milestone_inputs: state.milestone_inputs || [],
+        service_suggestions: state.service_suggestions || [],
+        generated_campaigns: state.generated_campaigns || [],
+      },
+      { onConflict: "session_id" }
+    )
+  }
+
+  return supabase.from("ngo_ai_agent_session_state").upsert(
+    {
+      ...shared,
+      needs_data: state.needs_data || [],
+      generated_draft: state.generated_draft || null,
+      selected_offer_ids_by_need: state.selected_offer_ids_by_need || {},
+    },
+    { onConflict: "session_id" }
+  )
+}
+
 const keyByAgent: Record<AgentKind, string> = {
   csr: "csr_ai_agent_progress",
   ngo: "ngo_ai_agent_progress",
@@ -272,7 +313,6 @@ export async function POST(request: NextRequest) {
     }
 
     const sessionsTable = agent === "csr" ? "csr_ai_agent_sessions" : "ngo_ai_agent_sessions"
-    const stateTable = agent === "csr" ? "csr_ai_agent_session_state" : "ngo_ai_agent_session_state"
     const messagesTable = agent === "csr" ? "csr_ai_agent_messages" : "ngo_ai_agent_messages"
 
     // Compute server latest timestamp
@@ -326,29 +366,7 @@ export async function POST(request: NextRequest) {
               const state = buildStateFromSession(agent, s)
               const ui_state = state.ui_state || {}
               if (!isValidUUID(origId) && origId) ui_state.legacyId = origId
-              const stateRow = agent === "csr"
-                ? {
-                    session_id: idToUse,
-                    conversation_stage: state.conversation_stage || undefined,
-                    project_data: state.project_data || {},
-                    milestone_count: state.milestone_count ?? null,
-                    milestone_inputs: state.milestone_inputs || [],
-                    service_suggestions: state.service_suggestions || [],
-                    generated_campaigns: state.generated_campaigns || [],
-                    ui_state,
-                    updated_at: legacy.updatedAt || new Date().toISOString(),
-                  }
-                : {
-                    session_id: idToUse,
-                    conversation_stage: state.conversation_stage || undefined,
-                    project_data: state.project_data || {},
-                    needs_data: state.needs_data || [],
-                    generated_draft: state.generated_draft || null,
-                    selected_offer_ids_by_need: state.selected_offer_ids_by_need || {},
-                    ui_state,
-                    updated_at: legacy.updatedAt || new Date().toISOString(),
-                  }
-              await supabase.from(stateTable).upsert(stateRow, { onConflict: 'session_id' })
+              await upsertSessionState(agent, idToUse, state, ui_state, legacy.updatedAt || new Date().toISOString())
             }
 
             const messages = Array.isArray(s.messages) ? s.messages : []
@@ -439,29 +457,13 @@ export async function POST(request: NextRequest) {
       const state = buildStateFromSession(agent, s)
       const ui_state = state.ui_state || {}
       if (!isValidUUID(origId) && origId) ui_state.legacyId = origId
-      const stateRow = agent === "csr"
-        ? {
-            session_id: assignedId,
-            conversation_stage: state.conversation_stage || undefined,
-            project_data: state.project_data || {},
-            milestone_count: state.milestone_count ?? null,
-            milestone_inputs: state.milestone_inputs || [],
-            service_suggestions: state.service_suggestions || [],
-            generated_campaigns: state.generated_campaigns || [],
-            ui_state,
-            updated_at: normalizedPayload.updatedAt || new Date().toISOString(),
-          }
-        : {
-            session_id: assignedId,
-            conversation_stage: state.conversation_stage || undefined,
-            project_data: state.project_data || {},
-            needs_data: state.needs_data || [],
-            generated_draft: state.generated_draft || null,
-            selected_offer_ids_by_need: state.selected_offer_ids_by_need || {},
-            ui_state,
-            updated_at: normalizedPayload.updatedAt || new Date().toISOString(),
-          }
-      const { error: upsertStateErr } = await supabase.from(stateTable).upsert(stateRow, { onConflict: 'session_id' })
+      const { error: upsertStateErr } = await upsertSessionState(
+        agent,
+        assignedId,
+        state,
+        ui_state,
+        normalizedPayload.updatedAt || new Date().toISOString()
+      )
       if (upsertStateErr) console.warn('Failed to upsert session state', upsertStateErr)
     }
 

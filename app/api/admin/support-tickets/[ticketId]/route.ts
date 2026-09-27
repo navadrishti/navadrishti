@@ -4,6 +4,7 @@ import { sendEmail } from '@/lib/email';
 import { getAdminUser } from '@/lib/server-auth';
 import { processAdminRefund } from '@/lib/admin-refund';
 import { parseAmountToInr, getErrorMessage } from '@/lib/utils';
+import type { TablesUpdate } from '@/lib/database.types';
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ ticketId: string }> }) {
   try {
@@ -49,7 +50,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return [notes, replyEntry].filter(Boolean).join('\n\n');
     })();
 
-    const updatePayload: Record<string, any> = {
+    const updatePayload: TablesUpdate<'support_tickets'> = {
       status: nextStatus,
       updated_at: new Date().toISOString(),
       resolved_at: nextStatus === 'resolved' || nextStatus === 'closed' ? new Date().toISOString() : null,

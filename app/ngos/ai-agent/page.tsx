@@ -179,8 +179,8 @@ export default function NGOAIAgentPage() {
     ? 'Draft ready'
     : conversationStage === 'entry'
       ? 'Need or Project?'
-      : conversationStage === 'project'
-        ? projectQuestions[Math.min(projectStep, projectQuestions.length - 1)].question.replace(/\s*\([^)]*\)\s*$/, '').trim()
+    : conversationStage === 'project'
+      ? projectQuestions[Math.min(projectStep, projectQuestions.length - 1)].question.replace(/\s*\([^)]*\)\s*$/, '').trim()
         : conversationStage === 'need'
           ? getCurrentNeedPrompt().replace(/\s*\([^)]*\)\s*$/, '').trim()
           : 'Complete'
@@ -189,7 +189,7 @@ export default function NGOAIAgentPage() {
     ? 'Draft ready'
     : conversationStage === 'entry'
       ? 'Choose Need or Project'
-      : conversationStage === 'project'
+    : conversationStage === 'project'
         ? 'Project details'
         : conversationStage === 'need'
           ? 'Need details'
@@ -484,9 +484,9 @@ export default function NGOAIAgentPage() {
                 content: `${CSR_PROJECT_CREATE_REQUIRED_MESSAGE} You can still post a standalone **Need**, or update CSR-1 compliance from your NGO dashboard. Reply with **Need** to continue.`,
               },
             ])
-            setIsTyping(false)
-            return
-          }
+          setIsTyping(false)
+          return
+        }
           setIntakePath('project')
           setProjectStep(0)
           setConversationStage('project')
@@ -495,9 +495,9 @@ export default function NGOAIAgentPage() {
           return
         }
         setMessages(prev => [...prev, { role: 'assistant', content: 'Please reply with either "Need" or "Project" to continue.' }])
-        setIsTyping(false)
-        return
-      }
+          setIsTyping(false)
+          return
+        }
 
       if (conversationStage === 'project') {
         const question = projectQuestions[Math.min(projectStep, projectQuestions.length - 1)]
@@ -541,7 +541,7 @@ export default function NGOAIAgentPage() {
           ? parseRequestType(userText) || userText
           : question.key === 'category'
             ? parseProjectCategory(userText) || userText
-            : userText
+          : userText
 
         const updatedNeed: NeedIntakeData = {
           ...currentNeed,
@@ -650,7 +650,7 @@ export default function NGOAIAgentPage() {
         if (draft.needs.length === 0) {
           throw new Error('No need data to publish')
         }
-
+        
         const response = await fetch('/api/service-requests', {
           method: 'POST',
           headers: {
@@ -693,7 +693,7 @@ export default function NGOAIAgentPage() {
           router.push(`/service-requests/${needId}`)
         }, 1500)
 
-        setPublishingDraft(false)
+      setPublishingDraft(false)
         return
       }
 
@@ -741,16 +741,16 @@ export default function NGOAIAgentPage() {
   }
 
   const saveEditedMessage = (idx: number, newContent: string) => {
-    const userMsgIndices = messages.map((m, i) => ({ m, i })).filter((x) => x.m.role === 'user').map((x) => x.i)
-    const pos = userMsgIndices.indexOf(idx)
+                                        const userMsgIndices = messages.map((m, i) => ({ m, i })).filter((x) => x.m.role === 'user').map((x) => x.i)
+                                        const pos = userMsgIndices.indexOf(idx)
     const answerPos = Math.max(0, pos - 1)
     const assistantPrompt = getEditedAnswerPrompt(pos, intakePath, needsData[0]?.requestType)
 
-    setMessages((cur) => {
-      const next = cur.slice(0, idx + 1).map((m, i) => (i === idx ? { ...m, content: `${newContent} (edited)` } : m))
-      next.push({ role: 'assistant', content: assistantPrompt })
-      return next
-    })
+                                        setMessages((cur) => {
+                                          const next = cur.slice(0, idx + 1).map((m, i) => (i === idx ? { ...m, content: `${newContent} (edited)` } : m))
+                                          next.push({ role: 'assistant', content: assistantPrompt })
+                                          return next
+                                        })
 
     if (pos === 0) {
       const normalized = newContent.toLowerCase()
@@ -770,33 +770,33 @@ export default function NGOAIAgentPage() {
       }
     } else if (intakePath === 'project' && answerPos < projectQuestions.length) {
       const key = projectQuestions[answerPos].key as keyof ProjectIntakeData
-      setProjectData((prev) => {
-        const next = { ...prev, [key]: newContent }
+                                          setProjectData((prev) => {
+                                            const next = { ...prev, [key]: newContent }
         for (let k = answerPos + 1; k < projectQuestions.length; k++) {
           ;(next as Record<string, unknown>)[projectQuestions[k].key] = ''
-        }
-        return next
-      })
+                                            }
+                                            return next
+                                          })
       if (answerPos + 1 < projectQuestions.length) {
-        setConversationStage('project')
+                                            setConversationStage('project')
         setProjectStep(answerPos + 1)
         setGeneratedDraft(null)
-      } else {
+                                          } else {
         setConversationStage('complete')
-      }
+                                          }
     } else if (intakePath === 'need') {
       setGeneratedDraft(null)
       setConversationStage('need')
       setActiveNeedQuestionIndex(Math.min(answerPos + 1, getNeedQuestions(needsData[0]?.requestType).length - 1))
-    }
+                                        }
 
-    setTimeout(() => {
-      const updatedSession = normalizeSessionFromState()
-      if (updatedSession && mounted && user?.id) {
-        const nextSessions = sessions.map((s) => (s.id === updatedSession.id ? updatedSession : s))
-        persistSessions(nextSessions, updatedSession.id)
-      }
-    }, 0)
+                                        setTimeout(() => {
+                                          const updatedSession = normalizeSessionFromState()
+                                          if (updatedSession && mounted && user?.id) {
+                                            const nextSessions = sessions.map((s) => (s.id === updatedSession.id ? updatedSession : s))
+                                            persistSessions(nextSessions, updatedSession.id)
+                                          }
+                                        }, 0)
   }
 
   if (!mounted) {
@@ -810,7 +810,7 @@ export default function NGOAIAgentPage() {
   }
 
   if (loading) {
-    return (
+                                return (
       <StatusScreen
         title={agentLoadingLabel(AGENT_NAMES.atlas)}
         description="Preparing your workspace..."
@@ -823,7 +823,7 @@ export default function NGOAIAgentPage() {
     return <StatusScreen title="Access Denied" description="This feature is only available for NGO accounts." />
   }
 
-  return (
+                            return (
     <>
       <Header />
       <main className="bg-white md:h-[calc(100dvh-4rem)] md:overflow-hidden">
@@ -892,8 +892,8 @@ export default function NGOAIAgentPage() {
               onClearInvites={clearInvitesForNeed}
               onToggleInvite={toggleInviteOfferForNeed}
               onPublish={() => {
-                void publishDraft()
-              }}
+                            void publishDraft()
+                          }}
             />
           </div>
         </div>

@@ -97,7 +97,7 @@ const APPLICATION_FULFILLMENT_KEYS = [
 
 /** Split application vs fulfillment columns after the pass-2 table split. */
 export function splitApplicationUpdatePayload(payload: Record<string, unknown>): {
-  application: Record<string, unknown>
+  application: TablesUpdate<'service_request_applications'>
   fulfillment: Record<string, unknown>
 } {
   const application: Record<string, unknown> = { ...payload }
@@ -109,7 +109,7 @@ export function splitApplicationUpdatePayload(payload: Record<string, unknown>):
     }
   }
   delete application.volunteer_id
-  return { application, fulfillment }
+  return { application: application as TablesUpdate<'service_request_applications'>, fulfillment }
 }
 
 // The generated Insert type requires ngo_volunteer_capacity, but non-NGO signups never send it.
@@ -664,7 +664,6 @@ export const db = {
   serviceOffers: {
     async getAll(
       filters: {
-        category?: string
         status?: string
         creator_id?: number
         ngo_id?: number
@@ -676,9 +675,6 @@ export const db = {
         ngo:users!creator_id(name, email, user_type, verification_status)
       `);
       
-      if (filters.category) {
-        query = query.eq('category', filters.category);
-      }
       if (filters.status) {
         query = query.eq('status', filters.status);
       }
@@ -956,46 +952,51 @@ export const db = {
           created_at?: string | null
         }
     ) {
-      const payload = normalizeApplicationApplicantFields({
-        ...applicationData,
-        application_message: applicationData.application_message ?? applicationData.message ?? '',
-        responder_type: applicationData.responder_type ?? applicationData.volunteer_type ?? null,
-        applied_at: applicationData.applied_at ?? applicationData.created_at ?? new Date().toISOString(),
-        updated_at: applicationData.updated_at ?? new Date().toISOString()
-      });
+      // applications use applied_at (no created_at column); fulfillment columns live on service_request_fulfillments
+      const {
+        message,
+        volunteer_type,
+        created_at,
+        fulfillment_amount,
+        fulfillment_quantity,
+        impact_statement,
+        estimated_impact_value,
+        assigned_amount,
+        assigned_quantity,
+        fulfilled_amount,
+        fulfilled_quantity,
+        individual_receipt_url,
+        ngo_receipt_url,
+        individual_done_at,
+        ngo_confirmed_at,
+        completion_note,
+        completed_at,
+        ...applicationFields
+      } = normalizeApplicationApplicantFields(applicationData)
 
-      if ('message' in payload) {
-        delete payload.message;
+      const payload: TablesInsert<'service_request_applications'> = {
+        ...applicationFields,
+        application_message: applicationFields.application_message ?? message ?? '',
+        responder_type: applicationFields.responder_type ?? volunteer_type ?? null,
+        applied_at: applicationFields.applied_at ?? created_at ?? new Date().toISOString(),
+        updated_at: applicationFields.updated_at ?? new Date().toISOString(),
       }
 
-      if ('volunteer_type' in payload) {
-        delete payload.volunteer_type;
-      }
-
-      // applications use applied_at (no created_at column)
-      if ('created_at' in payload) {
-        delete payload.created_at;
-      }
-
-      // Fulfillment columns live on service_request_fulfillments (not applications)
       const fulfillmentFields = {
-        fulfillment_amount: payload.fulfillment_amount ?? null,
-        fulfillment_quantity: payload.fulfillment_quantity ?? null,
-        impact_statement: payload.impact_statement ?? null,
-        estimated_impact_value: payload.estimated_impact_value ?? null,
-        assigned_amount: payload.assigned_amount ?? null,
-        assigned_quantity: payload.assigned_quantity ?? null,
-        fulfilled_amount: payload.fulfilled_amount ?? 0,
-        fulfilled_quantity: payload.fulfilled_quantity ?? 0,
-        individual_receipt_url: payload.individual_receipt_url ?? null,
-        ngo_receipt_url: payload.ngo_receipt_url ?? null,
-        individual_done_at: payload.individual_done_at ?? null,
-        ngo_confirmed_at: payload.ngo_confirmed_at ?? null,
-        completion_note: payload.completion_note ?? null,
-        completed_at: payload.completed_at ?? null,
-      }
-      for (const key of Object.keys(fulfillmentFields) as Array<keyof typeof fulfillmentFields>) {
-        delete payload[key]
+        fulfillment_amount: fulfillment_amount ?? null,
+        fulfillment_quantity: fulfillment_quantity ?? null,
+        impact_statement: impact_statement ?? null,
+        estimated_impact_value: estimated_impact_value ?? null,
+        assigned_amount: assigned_amount ?? null,
+        assigned_quantity: assigned_quantity ?? null,
+        fulfilled_amount: fulfilled_amount ?? 0,
+        fulfilled_quantity: fulfilled_quantity ?? 0,
+        individual_receipt_url: individual_receipt_url ?? null,
+        ngo_receipt_url: ngo_receipt_url ?? null,
+        individual_done_at: individual_done_at ?? null,
+        ngo_confirmed_at: ngo_confirmed_at ?? null,
+        completion_note: completion_note ?? null,
+        completed_at: completed_at ?? null,
       }
 
       const { data, error } = await supabase
@@ -1338,7 +1339,7 @@ export async function applyVolunteerAcceptanceAllocation(
   input: { amount?: number; quantity?: number }
 ) {
   const allocation = buildAllocationUpdatePayload(request, input)
-  const updatePayload: Record<string, unknown> = {
+  const updatePayload: TablesUpdate<'service_requests'> = {
     updated_at: new Date().toISOString(),
   }
 

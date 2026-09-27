@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, supabase } from '@/lib/db';
 import { getTokenClaims, getComplianceDocumentUrl, mergeNgoComplianceNumbers, parseSubmittedComplianceNumbers, requireBankStatementDocument, type NgoComplianceNumbers, buildNgoDocumentExpiries, normalizeExpiryDate } from '@/lib/auth';
 import { parseJsonObject, getErrorMessage } from '@/lib/utils';
+import type { TablesUpdate } from '@/lib/database.types';
 function firstDocumentUrl(...values: unknown[]): string {
   for (const value of values) {
     const url = getComplianceDocumentUrl(value);
@@ -332,7 +333,7 @@ async function initiateNGOVerification(
       submittedAt,
     });
 
-    const ngoPayload: Record<string, any> = {
+    const ngoPayload: TablesUpdate<'ngo_verifications'> = {
       ngo_name: organizationName,
       registration_number: registrationNumber,
       registration_type: registrationType,

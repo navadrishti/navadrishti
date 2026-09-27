@@ -3,6 +3,7 @@ import { supabase } from '@/lib/db';
 import { assertAdminUser } from '@/lib/server-auth';
 import { deleteCampaignWithDependencies, formatCampaignDeleteError } from '@/lib/campaign-delete';
 import { parseJsonObject, getErrorMessage } from '@/lib/utils';
+import type { TablesUpdate } from '@/lib/database.types';
 
 function parseJsonField(value: unknown, fallback: unknown) {
   if (value === undefined) return undefined;
@@ -74,7 +75,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return NextResponse.json({ error: 'Campaign not found' }, { status: 404 });
     }
 
-    const updatePayload: Record<string, unknown> = {
+    const updatePayload: TablesUpdate<'campaigns'> = {
       updated_at: new Date().toISOString(),
     };
 

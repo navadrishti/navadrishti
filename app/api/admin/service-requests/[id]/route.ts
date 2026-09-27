@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, supabase } from '@/lib/db';
 import { assertAdminUser } from '@/lib/server-auth';
 import { parseJsonObject, getErrorMessage } from '@/lib/utils';
+import type { TablesUpdate } from '@/lib/database.types';
 
 function toNumberOrNull(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
@@ -71,7 +72,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       nextRequirements.project_category = String(body.category || '').trim();
     }
 
-    const updatePayload: Record<string, any> = {
+    const updatePayload: TablesUpdate<'service_requests'> = {
       updated_at: new Date().toISOString(),
     };
 
