@@ -1,4 +1,4 @@
-import jwt, { JsonWebTokenError, TokenExpiredError, type SignOptions } from 'jsonwebtoken';
+import jwt, { JsonWebTokenError, type JwtPayload, type SignOptions } from 'jsonwebtoken';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const JWT_SECRET = String(process.env.JWT_SECRET || '').trim();
@@ -15,10 +15,109 @@ export interface UserData {
   phone_verified?: boolean;
 }
 
+export type ScopedTokenKind = 'platform_ca' | 'government_admin';
+
+export class AuthError extends Error {
+  readonly status: 401 | 403;
+
+  constructor(message: string, status: 401 | 403 = 401) {
+    super(message);
+    this.name = 'AuthError';
+    this.status = status;
+  }
+}
+
+const ADMIN_SESSION_ID = -1;
+const USER_TYPES = new Set(['individual', 'ngo', 'company']);
+const SURROUNDING_QUOTES = /^(["'])([\s\S]*)\1$/;
+
 function assertJwtSecret() {
   if (!JWT_SECRET) {
     throw new Error('JWT_SECRET is not configured');
   }
+}
+
+function unquote(value: string): string {
+  const match = SURROUNDING_QUOTES.exec(value);
+  return match ? match[2].trim() : value;
+}
+
+function normalizeTokenInput(token: string): string {
+  return unquote(unquote(token.trim()).replace(/^Bearer\s+/i, '').trim());
+}
+
+function decodeSignedToken(token: string): JwtPayload | null {
+  if (!JWT_SECRET || !token) {
+    return null;
+  }
+
+  const cleanToken = normalizeTokenInput(token);
+  if (cleanToken.split('.').length !== 3) {
+    return null;
+  }
+
+  try {
+    const decoded = jwt.verify(cleanToken, JWT_SECRET, { algorithms: ['HS256'] });
+    return typeof decoded === 'string' ? null : decoded;
+  } catch (error) {
+    if (!(error instanceof JsonWebTokenError)) {
+      console.error('Token verification failed:', error);
+    }
+    return null;
+  }
+}
+
+function isUserSessionPayload(decoded: JwtPayload): boolean {
+  if (decoded.kind !== undefined) return false;
+  // Platform CA and government admin tokens issued before the `kind` claim existed.
+  if (decoded.ca_id !== undefined || decoded.role !== undefined) return false;
+  return decoded.user_type === undefined || USER_TYPES.has(decoded.user_type);
+}
+
+export function signScopedToken(
+  kind: ScopedTokenKind,
+  payload: object,
+  expiresIn: SignOptions['expiresIn']
+): string {
+  assertJwtSecret();
+  return jwt.sign({ ...payload, kind }, JWT_SECRET, { expiresIn });
+}
+
+export function verifyScopedToken<T extends object>(token: string, kind: ScopedTokenKind): (T & JwtPayload) | null {
+  const decoded = decodeSignedToken(token);
+  if (!decoded || decoded.kind !== kind) {
+    return null;
+  }
+  return decoded as T & JwtPayload;
+}
+
+export function generateAdminToken(): string {
+  assertJwtSecret();
+  return jwt.sign(
+    {
+      id: ADMIN_SESSION_ID,
+      email: 'admin@system.local',
+      name: 'Administrator',
+      user_type: 'admin'
+    },
+    JWT_SECRET,
+    { expiresIn: (process.env.JWT_EXPIRES_IN || '7d') as SignOptions['expiresIn'] }
+  );
+}
+
+/** Console admin session; typed as UserData for existing admin route handlers. */
+export function verifyAdminToken(token: string): UserData | null {
+  const decoded = decodeSignedToken(token);
+  if (!decoded || decoded.id !== ADMIN_SESSION_ID || decoded.user_type !== 'admin') {
+    return null;
+  }
+
+  return {
+    id: decoded.id,
+    email: decoded.email || '',
+    name: decoded.name || '',
+    user_type: decoded.user_type
+  } as UserData;
 }
 
 export function generateToken(user: UserData): string {
@@ -39,50 +138,17 @@ export function generateToken(user: UserData): string {
 }
 
 export function verifyToken(token: string): UserData | null {
-  try {
-    if (!JWT_SECRET || !token || token.trim() === '') {
-      return null;
-    }
-
-    let cleanToken = token.replace(/[\"'\n\r\t]/g, '').trim();
-
-    if (cleanToken.startsWith('Bearer ')) {
-      cleanToken = cleanToken.substring(7).trim();
-    }
-
-    if (cleanToken.length === 0) {
-      return null;
-    }
-
-    const tokenParts = cleanToken.split('.');
-    if (tokenParts.length !== 3) {
-      return null;
-    }
-
-    const decoded = jwt.verify(cleanToken, JWT_SECRET);
-
-    if (typeof decoded === 'string' || !decoded.id || !decoded.email) {
-      return null;
-    }
-
-    return {
-      id: decoded.id,
-      email: decoded.email,
-      name: decoded.name || '',
-      user_type: decoded.user_type || 'individual'
-    } as UserData;
-  } catch (error) {
-    if (error instanceof TokenExpiredError) {
-      return null;
-    }
-
-    if (error instanceof JsonWebTokenError) {
-      return null;
-    }
-
-    console.error('Token verification failed:', error);
+  const decoded = decodeSignedToken(token);
+  if (!decoded || !decoded.id || !decoded.email || !isUserSessionPayload(decoded)) {
     return null;
   }
+
+  return {
+    id: decoded.id,
+    email: decoded.email,
+    name: decoded.name || '',
+    user_type: decoded.user_type || 'individual'
+  } as UserData;
 }
 
 export type TokenClaims = {
@@ -96,12 +162,10 @@ export type TokenClaims = {
 /** Claims from the request's Bearer token, or null when it is missing, malformed or expired. */
 export function getTokenClaims(request: NextRequest): TokenClaims | null {
   const header = request.headers.get('authorization');
-  if (!header?.startsWith('Bearer ') || !JWT_SECRET) return null;
-  try {
-    return jwt.verify(header.slice(7).trim(), JWT_SECRET) as TokenClaims;
-  } catch {
-    return null;
-  }
+  if (!header?.startsWith('Bearer ')) return null;
+  const decoded = decodeSignedToken(header.slice(7));
+  if (!decoded || !isUserSessionPayload(decoded)) return null;
+  return decoded as TokenClaims;
 }
 
 /** Platform end-user sessions only — never treat console admin JWTs as users. */

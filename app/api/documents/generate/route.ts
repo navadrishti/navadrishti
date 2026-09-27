@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
-import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth'
+import { getAuthUserFromRequest, assertUserType, authErrorResponse } from '@/lib/server-auth'
 import { assembleGeneratedDocument } from '@/lib/document-generation/assemble'
 import type { DocumentTypeId } from '@/lib/document-generation/types'
 import { getErrorMessage } from '@/lib/utils'
@@ -79,6 +79,8 @@ export async function POST(request: NextRequest) {
       html: result.html,
     })
   } catch (error) {
+    const authResponse = authErrorResponse(error)
+    if (authResponse) return authResponse
     const message = String(getErrorMessage(error) || 'Failed to generate document')
     const status =
       /required|select|not found|not owned|not assigned|only/i.test(message) ? 400 : 500

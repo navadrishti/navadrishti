@@ -146,6 +146,10 @@ export const requestProjects = {
     if (linkedRequestsError) throw linkedRequestsError;
 
     for (const request of linkedRequests || []) {
+      await serviceRequests.assertDeletable(request.id);
+    }
+
+    for (const request of linkedRequests || []) {
       await serviceRequests.delete(request.id);
     }
 

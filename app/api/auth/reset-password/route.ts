@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { hashPassword } from '@/lib/auth';
-import { normalizeEmailAddress } from '@/lib/email';
+import { limitAttempts } from '@/lib/rate-limit';
 import {
   cleanupPasswordResetStores,
   deletePasswordResetToken,
@@ -10,7 +10,7 @@ import {
 } from '../forgot-password/route';
 
 const resetPasswordSchema = z.object({
-  email: z.string().email('Invalid email address'),
+  email: z.string().trim().toLowerCase().email('Invalid email address'),
   resetToken: z.string().min(1, 'Reset token is required'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
 });
@@ -27,8 +27,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { resetToken, password } = validationResult.data;
-    const email = normalizeEmailAddress(validationResult.data.email);
+    const { email, resetToken, password } = validationResult.data;
+
+    const limited = limitAttempts(req, 'reset-password', email);
+    if (limited) return limited;
 
     cleanupPasswordResetStores();
 

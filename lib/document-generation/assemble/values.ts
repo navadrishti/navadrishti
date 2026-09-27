@@ -24,15 +24,22 @@ export function periodLabel(period: ImpactReportPeriod, start?: string | null, e
   return 'Custom Period'
 }
 
+const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000
+
+// Shifted so the UTC getters/setters read Asia/Kolkata wall-clock values.
+function istWallClock(date = new Date()): Date {
+  return new Date(date.getTime() + IST_OFFSET_MS)
+}
+
 export function defaultPeriodBounds(period: ImpactReportPeriod): { start: string; end: string } {
-  const end = new Date()
+  const end = istWallClock()
   const start = new Date(end)
   if (period === 'annual') {
-    start.setFullYear(end.getFullYear() - 1)
+    start.setUTCFullYear(end.getUTCFullYear() - 1)
   } else if (period === 'quarterly') {
-    start.setMonth(end.getMonth() - 3)
+    start.setUTCMonth(end.getUTCMonth() - 3)
   } else {
-    start.setMonth(end.getMonth() - 1)
+    start.setUTCMonth(end.getUTCMonth() - 1)
   }
   return {
     start: start.toISOString().slice(0, 10),
@@ -41,9 +48,9 @@ export function defaultPeriodBounds(period: ImpactReportPeriod): { start: string
 }
 
 export function currentFinancialYearLabel(): string {
-  const now = new Date()
-  const year = now.getFullYear()
-  const month = now.getMonth()
+  const now = istWallClock()
+  const year = now.getUTCFullYear()
+  const month = now.getUTCMonth()
   // Indian FY: Apr–Mar
   if (month >= 3) return `FY ${year}-${String(year + 1).slice(-2)}`
   return `FY ${year - 1}-${String(year).slice(-2)}`

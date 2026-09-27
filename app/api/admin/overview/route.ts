@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { assertAdminUser } from '@/lib/server-auth';
+import { assertAdminUser, authErrorResponse } from '@/lib/server-auth';
 import { autoRejectExpiredServiceOffers } from '@/lib/admin-offer-automation';
 import { getErrorMessage } from '@/lib/utils';
 
@@ -150,6 +150,8 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
     console.error('Admin overview fetch error:', error);
     return NextResponse.json({ error: getErrorMessage(error) || 'Internal server error' }, { status: 500 });
   }

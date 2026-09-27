@@ -146,6 +146,39 @@ export async function reviewProjectApplication(ctx: AssignmentsPutContext) {
         }, { status: 409 })
       }
     }
+
+    // Capacity check against project volunteers_needed (standalone) or legacy child needs.
+    try {
+      const volunteersNeeded = Number(projectForReview?.volunteers_needed || 0)
+      let totalVolunteersNeeded = volunteersNeeded
+
+      if (needIds.length > 0) {
+        const { data: volunteerRows, error: volunteerRowsError } = await supabase
+          .from('service_requests')
+          .select('volunteers_needed')
+          .eq('project_id', projectId)
+          .not('status', 'in', '(completed,cancelled)')
+
+        if (volunteerRowsError) throw volunteerRowsError
+        const fromNeeds = (volunteerRows || []).reduce((acc: number, r) => acc + (Number(r.volunteers_needed || 0)), 0)
+        if (fromNeeds > 0) totalVolunteersNeeded = fromNeeds
+      }
+
+      const { data: ngoUser, error: ngoUserError } = await supabase
+        .from('users')
+        .select('id, ngo_volunteer_capacity')
+        .eq('id', userId)
+        .single()
+
+      if (!ngoUserError && ngoUser && Number.isFinite(Number(ngoUser.ngo_volunteer_capacity))) {
+        const capacity = Number(ngoUser.ngo_volunteer_capacity || 0)
+        if (capacity > 0 && totalVolunteersNeeded > capacity) {
+          return NextResponse.json({ error: `NGO volunteer capacity (${capacity}) is less than required volunteers (${totalVolunteersNeeded}). Please review before accepting.` }, { status: 409 })
+        }
+      }
+    } catch (e) {
+      console.warn('Capacity check failed:', e)
+    }
   }
 
   if (hasMetaApp || pendingApps.length > 0) {
@@ -215,39 +248,6 @@ export async function reviewProjectApplication(ctx: AssignmentsPutContext) {
   }
 
   if (decision === 'accepted') {
-    // Capacity check against project volunteers_needed (standalone) or legacy child needs.
-    try {
-      const volunteersNeeded = Number(projectForReview?.volunteers_needed || 0)
-      let totalVolunteersNeeded = volunteersNeeded
-
-      if (needIds.length > 0) {
-        const { data: volunteerRows, error: volunteerRowsError } = await supabase
-          .from('service_requests')
-          .select('volunteers_needed')
-          .eq('project_id', projectId)
-          .not('status', 'in', '(completed,cancelled)')
-
-        if (volunteerRowsError) throw volunteerRowsError
-        const fromNeeds = (volunteerRows || []).reduce((acc: number, r) => acc + (Number(r.volunteers_needed || 0)), 0)
-        if (fromNeeds > 0) totalVolunteersNeeded = fromNeeds
-      }
-
-      const { data: ngoUser, error: ngoUserError } = await supabase
-        .from('users')
-        .select('id, ngo_volunteer_capacity')
-        .eq('id', userId)
-        .single()
-
-      if (!ngoUserError && ngoUser && Number.isFinite(Number(ngoUser.ngo_volunteer_capacity))) {
-        const capacity = Number(ngoUser.ngo_volunteer_capacity || 0)
-        if (capacity > 0 && totalVolunteersNeeded > capacity) {
-          return NextResponse.json({ error: `NGO volunteer capacity (${capacity}) is less than required volunteers (${totalVolunteersNeeded}). Please review before accepting.` }, { status: 409 })
-        }
-      }
-    } catch (e) {
-      console.warn('Capacity check failed:', e)
-    }
-
     if (needIds.length > 0) {
       const { error: expireOtherApplicationsError } = await supabase
         .from('service_request_contributions')

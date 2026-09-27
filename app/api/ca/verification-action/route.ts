@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { applyCAVerificationAction, requireCA } from '@/lib/ca-review';
+import { applyCAVerificationAction, caErrorResponse, requireCA } from '@/lib/ca-review';
 import type { CAQueueType } from '@/lib/ca-review-types';
 
 const allowedTypes: CAQueueType[] = ['individuals', 'companies', 'ngos'];
@@ -7,7 +7,10 @@ const allowedTypes: CAQueueType[] = ['individuals', 'companies', 'ngos'];
 export async function POST(request: NextRequest) {
   try {
     const ca = requireCA(request);
-    const body = await request.json();
+    const body = await request.json().catch(() => null);
+    if (!body || typeof body !== 'object') {
+      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+    }
     const { entity_type, entity_id, action, reason, compliance_tags } = body;
 
     if (!allowedTypes.includes(entity_type)) {
@@ -19,7 +22,7 @@ export async function POST(request: NextRequest) {
     }
 
     const id = Number(entity_id);
-    if (!Number.isFinite(id) || id <= 0) {
+    if (!Number.isInteger(id) || id <= 0) {
       return NextResponse.json({ error: 'Invalid entity id' }, { status: 400 });
     }
 
@@ -42,9 +45,8 @@ export async function POST(request: NextRequest) {
       data,
     });
   } catch (error) {
-    if (error instanceof Error && error.message === 'CA authentication required') {
-      return NextResponse.json({ error: 'CA authentication required' }, { status: 401 });
-    }
+    const handled = caErrorResponse(error);
+    if (handled) return handled;
     console.error('Verification action error:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to process verification' },

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { assertGovernmentAdmin } from '@/lib/government-admin-auth';
+import { authErrorResponse } from '@/lib/server-auth';
 import { supabase } from '@/lib/db';
 import { getErrorMessage } from '@/lib/utils';
 
@@ -112,6 +113,8 @@ export async function GET(request: NextRequest) {
       summary,
     });
   } catch (error) {
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
     console.error('District analytics error:', error);
     return NextResponse.json(
       { error: getErrorMessage(error) || 'Failed to load district analytics' },

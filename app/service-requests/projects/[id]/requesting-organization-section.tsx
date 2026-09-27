@@ -37,7 +37,7 @@ export function RequestingOrganizationSection({ ngo, projectStatus }: { ngo: Ngo
             size="md"
             nameClassName="text-lg font-semibold leading-tight"
           />
-          <p className="mt-1 text-sm text-gray-500 break-all">{ngo.email}</p>
+          {ngo.email && <p className="mt-1 text-sm text-gray-500 break-all">{ngo.email}</p>}
           <div className="mt-2">
             <Badge className={statusBadgeClass(projectStatus)}>
               {formatStatusLabel(projectStatus)}
@@ -48,7 +48,7 @@ export function RequestingOrganizationSection({ ngo, projectStatus }: { ngo: Ngo
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <InfoTile label="Location" value={ngo.location} />
-        <InfoTile label="Phone" value={ngo.phone} />
+        {ngo.phone && <InfoTile label="Phone" value={ngo.phone} />}
         <InfoTile label="NGO Size" value={ngo.size} />
         <InfoTile label="Sector" value={ngo.sector} />
         <InfoTile label="Founded Year" value={ngo.founded} />

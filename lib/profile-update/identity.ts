@@ -7,7 +7,7 @@ const nameSchema = z
   .min(1, 'Name is required')
   .max(100, 'Name must be less than 100 characters');
 
-const emailSchema = z.string().trim().email('Invalid email address');
+const emailSchema = z.string().trim().toLowerCase().email('Invalid email address');
 
 type IdentityInput = { name?: unknown; email?: unknown };
 
@@ -34,7 +34,7 @@ export async function validateNameAndEmail(
     if (!parsed.success) return { ok: false, status: 400, error: parsed.error.issues[0].message };
     email = parsed.data;
 
-    if (email.toLowerCase() !== String(currentEmail || '').trim().toLowerCase()) {
+    if (email !== String(currentEmail || '').trim().toLowerCase()) {
       const existing = await db.users.findByEmail(email);
       if (existing && existing.id !== userId) {
         return { ok: false, status: 409, error: 'An account with this email already exists' };

@@ -4,9 +4,10 @@ import { db, supabase } from '@/lib/db';
 import { comparePassword, generateToken, type UserData } from '@/lib/auth';
 import { ensureCompanyCaIdAssigned } from '@/lib/company-ca';
 import { setEvidenceVerificationTokenCookie } from '@/lib/server-auth';
+import { limitAttempts } from '@/lib/rate-limit';
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  email: z.string().trim().toLowerCase().email(),
   password: z.string().min(1)
 });
 
@@ -20,6 +21,9 @@ export async function POST(request: NextRequest) {
     }
 
     const { email, password } = parsed.data;
+
+    const limited = limitAttempts(request, 'evidence-verification-login', email);
+    if (limited) return limited;
 
     const user = await db.users.findByEmail(email);
     if (!user) {

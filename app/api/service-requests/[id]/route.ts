@@ -9,6 +9,7 @@ import { getTokenClaims, CSR_ELIGIBILITY_REQUIRED_MESSAGE, CSR_OWN_PROJECT_TIMEL
 import { ngoUserIsCsrEligible, ngoUserIsCsrEligibleForProject } from '@/lib/server-auth';
 import { CSR_SCHEDULE_VII_CATEGORIES, SERVICE_REQUEST_TYPES } from '@/lib/categories';
 import { isHiddenNgoNetworkPaymentChannel } from '@/lib/razorpay-route';
+import { ServiceRequestDeleteBlockedError } from '@/lib/service-requests/errors';
 import { parseAmountToInr, parseJsonObject } from '@/lib/utils';
 
 function parseImageArray(value: unknown): string[] {
@@ -497,6 +498,9 @@ export async function DELETE(
     });
 
   } catch (error) {
+    if (error instanceof ServiceRequestDeleteBlockedError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     console.error('Error deleting service request:', error);
     return NextResponse.json(
       { error: 'Failed to delete service request' },

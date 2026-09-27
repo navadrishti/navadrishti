@@ -1,7 +1,7 @@
 import Razorpay from "razorpay";
 import { supabase } from "@/lib/db";
 import { createPlatformPricedOrder } from "@/lib/razorpay-route";
-import { parseJsonObject } from "@/lib/utils";
+import { parseJsonObject, validateCapturedPaymentAmounts } from "@/lib/utils";
 import {
   addDaysIso,
   buildAssignmentMeta,
@@ -16,7 +16,13 @@ import {
   type CsrCapabilityRentalRecord,
 } from "@/lib/service-engagement";
 import { autoBookCsrCapabilityDelhivery } from "./delhivery-booking";
-import { getCsrCapabilityRentals, loadCompanyCampaign, saveCampaignRentals } from "./rental-store";
+import {
+  getCsrCapabilityRentals,
+  loadCompanyCampaign,
+  saveCampaignImpactIfUnchanged,
+  saveCampaignRentals,
+  updateCsrCapabilityRentalStatus,
+} from "./rental-store";
 
 export async function ensureCsrCapabilityRentalDraft(input: {
   campaignId: string;
@@ -115,6 +121,51 @@ export async function createCsrCapabilityRentalOrder(input: {
   };
 }
 
+async function assertCsrRentalPaymentCaptured(
+  rental: CsrCapabilityRentalRecord,
+  razorpayOrderId: string,
+  razorpayPaymentId: string
+) {
+  if (!rental.razorpay_order_id || rental.razorpay_order_id !== razorpayOrderId) {
+    throw new Error("Payment order does not match this rental");
+  }
+
+  const keyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+  if (!keyId || !keySecret) throw new Error("Razorpay is not configured");
+
+  const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret });
+  const [providerPayment, providerOrder] = await Promise.all([
+    razorpay.payments.fetch(razorpayPaymentId),
+    razorpay.orders.fetch(razorpayOrderId),
+  ]);
+
+  if (!providerPayment || providerPayment.id !== razorpayPaymentId) {
+    throw new Error("Unable to fetch payment from provider");
+  }
+  if (providerPayment.order_id !== razorpayOrderId || providerOrder?.id !== razorpayOrderId) {
+    throw new Error("Order and payment mismatch");
+  }
+
+  const providerStatus = String(providerPayment.status || "").toLowerCase();
+  if (providerStatus !== "captured") {
+    throw new Error(`Payment not captured yet (status: ${providerStatus || "unknown"})`);
+  }
+  if (String(providerPayment.currency || "").toUpperCase() !== "INR") {
+    throw new Error("Only INR payments are supported");
+  }
+
+  const amountCheck = validateCapturedPaymentAmounts({
+    orderNotes: parseJsonObject(providerOrder.notes),
+    orderAmountPaise: providerOrder.amount,
+    paidInr: Number((Number(providerPayment.amount || 0) / 100).toFixed(2)),
+  });
+  if (!amountCheck.ok) throw new Error(amountCheck.error);
+  if (Math.abs(amountCheck.baseAmountInr - rental.rental_amount_inr) > 0.01) {
+    throw new Error("Paid amount does not match the rental amount");
+  }
+}
+
 export async function attachCsrCapabilityAfterPayment(input: {
   campaignId: string;
   companyId: number;
@@ -135,8 +186,44 @@ export async function attachCsrCapabilityAfterPayment(input: {
   if (!rental) throw new Error("CSR capability rental record not found");
   if (rental.payment_status === "paid") return rental;
 
+  await assertCsrRentalPaymentCaptured(rental, input.razorpayOrderId, input.razorpayPaymentId);
+
   const paidAt = new Date().toISOString();
   const leadNgoId = Number(campaign.lead_ngo_user_id || 0) || null;
+
+  const impact = parseJsonObject(campaign.impact_metrics);
+  const invited = Array.isArray(impact.invited_offer_ids) ? impact.invited_offer_ids.map(Number) : [];
+  const invitedOfferIds = invited.includes(input.offerId) ? invited : [...invited, input.offerId];
+
+  const paidRental: CsrCapabilityRentalRecord = {
+    ...rental,
+    status: "attached",
+    payment_status: "paid",
+    paid_at: paidAt,
+    razorpay_order_id: input.razorpayOrderId,
+    razorpay_payment_id: input.razorpayPaymentId,
+    outbound_dispatch_due_at: addDaysIso(paidAt, CSR_OUTBOUND_DISPATCH_DAYS),
+    logistics_provider: shouldUseDelhiveryForCsrCapabilityRental(rental) ? "delhivery" : null,
+    lead_ngo_user_id: leadNgoId,
+  };
+
+  const claimedAt = await saveCampaignImpactIfUnchanged({
+    campaignId: input.campaignId,
+    companyId: input.companyId,
+    previousUpdatedAt: campaign.updated_at ?? null,
+    impactMetrics: {
+      ...impact,
+      invited_offer_ids: invitedOfferIds,
+      csr_capability_rentals: upsertCsrCapabilityRental(rentals, paidRental),
+    },
+  });
+  if (!claimedAt) {
+    const latest = (await getCsrCapabilityRentals(input.campaignId, input.companyId)).find((row) => row.id === id);
+    if (latest?.payment_status === "paid" && latest.razorpay_payment_id === input.razorpayPaymentId) {
+      return latest;
+    }
+    throw new Error("CSR capability rental was updated concurrently. Refresh and try again.");
+  }
 
   const { data: clientRow, error: clientError } = await supabase
     .from("service_clients")
@@ -162,6 +249,12 @@ export async function attachCsrCapabilityAfterPayment(input: {
     .single();
 
   if (clientError || !clientRow) {
+    await saveCampaignImpactIfUnchanged({
+      campaignId: input.campaignId,
+      companyId: input.companyId,
+      previousUpdatedAt: claimedAt,
+      impactMetrics: impact,
+    }).catch(() => null);
     throw new Error(clientError?.message || "Failed to attach capability after payment");
   }
 
@@ -227,37 +320,17 @@ export async function attachCsrCapabilityAfterPayment(input: {
     })
     .eq("id", input.offerId);
 
-  const impact = parseJsonObject(campaign.impact_metrics);
-  const invited = Array.isArray(impact.invited_offer_ids) ? impact.invited_offer_ids.map(Number) : [];
-  const invitedOfferIds = invited.includes(input.offerId) ? invited : [...invited, input.offerId];
+  const attachedRental = await updateCsrCapabilityRentalStatus({
+    campaignId: input.campaignId,
+    offerId: input.offerId,
+    companyId: input.companyId,
+    patch: {
+      service_client_id: Number(clientRow.id),
+      assignment_id: assignment?.id ? String(assignment.id) : null,
+    },
+  });
 
-  const paidRental: CsrCapabilityRentalRecord = {
-    ...rental,
-    status: "attached",
-    payment_status: "paid",
-    paid_at: paidAt,
-    razorpay_order_id: input.razorpayOrderId,
-    razorpay_payment_id: input.razorpayPaymentId,
-    outbound_dispatch_due_at: addDaysIso(paidAt, CSR_OUTBOUND_DISPATCH_DAYS),
-    logistics_provider: shouldUseDelhiveryForCsrCapabilityRental(rental) ? "delhivery" : null,
-    service_client_id: Number(clientRow.id),
-    assignment_id: assignment?.id ? String(assignment.id) : null,
-    lead_ngo_user_id: leadNgoId,
-  };
-
-  await supabase
-    .from("campaigns")
-    .update({
-      impact_metrics: {
-        ...impact,
-        invited_offer_ids: invitedOfferIds,
-        csr_capability_rentals: upsertCsrCapabilityRental(rentals, paidRental),
-      },
-    })
-    .eq("id", input.campaignId)
-    .eq("company_id", input.companyId);
-
-  if (shouldUseDelhiveryForCsrCapabilityRental(paidRental)) {
+  if (shouldUseDelhiveryForCsrCapabilityRental(attachedRental)) {
     return autoBookCsrCapabilityDelhivery({
       campaignId: input.campaignId,
       offerId: input.offerId,
@@ -267,15 +340,22 @@ export async function attachCsrCapabilityAfterPayment(input: {
     });
   }
 
-  return paidRental;
+  return attachedRental;
 }
 
-export async function verifyPaidCsrOffersForPublish(campaignId: string, companyId: number) {
+function normalizeOfferIds(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  return value.map(Number).filter((id) => Number.isInteger(id) && id > 0);
+}
+
+export async function verifyPaidCsrOffersForPublish(
+  campaignId: string,
+  companyId: number,
+  requestedOfferIds: unknown = []
+) {
   const campaign = await loadCompanyCampaign(campaignId, companyId);
   const impact = parseJsonObject(campaign.impact_metrics);
-  const invitedIds = Array.isArray(impact.invited_offer_ids)
-    ? impact.invited_offer_ids.map(Number).filter((id) => id > 0)
-    : [];
+  const invitedIds = [...new Set([...normalizeOfferIds(impact.invited_offer_ids), ...normalizeOfferIds(requestedOfferIds)])];
   const rentals = parseCsrCapabilityRentals(campaign.impact_metrics);
   const unpaid = invitedIds.filter((offerId) => {
     const rental = rentals.find((row) => Number(row.service_offer_id) === offerId);
@@ -286,4 +366,5 @@ export async function verifyPaidCsrOffersForPublish(campaignId: string, companyI
       `Pay and reserve all invited capabilities before publishing. Unpaid offer IDs: ${unpaid.join(", ")}`
     );
   }
+  return invitedIds;
 }

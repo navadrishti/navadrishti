@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
-import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth'
+import { getAuthUserFromRequest, assertUserType, authErrorResponse } from '@/lib/server-auth'
 import { getCampaignLeadLifecycle } from '@/lib/format-date'
 import { readCampaignCategory, readCampaignLocation } from '@/lib/campaign-schema'
 import {
@@ -80,6 +80,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: payload })
   } catch (error) {
+    const authResponse = authErrorResponse(error)
+    if (authResponse) return authResponse
     console.error('Campaign lead assignments error:', error)
     return NextResponse.json({ error: 'Failed to fetch campaign lead assignments' }, { status: 500 })
   }
@@ -141,6 +143,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ error: 'Unsupported action' }, { status: 400 })
   } catch (error) {
+    const authResponse = authErrorResponse(error)
+    if (authResponse) return authResponse
     console.error('CSR capability rental delivery error:', error)
     const message = getErrorMessage(error) || 'Failed to update CSR capability delivery'
     const status = message.toLowerCase().includes('permission') ? 403 : 500

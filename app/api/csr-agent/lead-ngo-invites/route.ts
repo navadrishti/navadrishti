@@ -5,7 +5,7 @@ import {
   normalizeExpiryDate,
   CSR_WORK_END_DATE_REQUIRED_MESSAGE,
 } from '@/lib/auth'
-import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth'
+import { findAuthUser } from '@/lib/server-auth'
 import { parseLeadNgoInvites, type LeadNgoInvite } from '@/lib/campaign-volunteer-attendance'
 import { parseJsonObject } from '@/lib/utils'
 import type { Tables } from '@/lib/database.types'
@@ -91,10 +91,21 @@ async function findDraftBySession(sessionId: string, companyId: number) {
   return data
 }
 
+function authorizeCompany(request: NextRequest) {
+  const user = findAuthUser(request)
+  if (!user) {
+    return { user: null, error: NextResponse.json({ error: 'Authentication required' }, { status: 401 }) }
+  }
+  if (user.user_type !== 'company') {
+    return { user: null, error: NextResponse.json({ error: 'Only companies can manage lead NGO invites' }, { status: 403 }) }
+  }
+  return { user, error: null }
+}
+
 export async function GET(request: NextRequest) {
   try {
-    const user = getAuthUserFromRequest(request)
-    assertUserType(user, ['company'])
+    const { user, error: authError } = authorizeCompany(request)
+    if (!user) return authError
 
     const sessionId = String(new URL(request.url).searchParams.get('sessionId') || '').trim()
     const draftCampaignId = String(new URL(request.url).searchParams.get('draftCampaignId') || '').trim()
@@ -106,6 +117,7 @@ export async function GET(request: NextRequest) {
         .select('id, status, impact_metrics, start_date, end_date, lead_ngo_user_id')
         .eq('id', draftCampaignId)
         .eq('company_id', user.id)
+        .eq('status', 'draft')
         .maybeSingle()
       if (error) throw error
       campaign = data
@@ -136,8 +148,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const user = getAuthUserFromRequest(request)
-    assertUserType(user, ['company'])
+    const { user, error: authError } = authorizeCompany(request)
+    if (!user) return authError
 
     const body = await request.json()
     const sessionId = String(body?.sessionId || '').trim()
@@ -166,8 +178,12 @@ export async function POST(request: NextRequest) {
         .select('id, status, impact_metrics, start_date, end_date, lead_ngo_user_id')
         .eq('id', draftCampaignId)
         .eq('company_id', user.id)
+        .eq('status', 'draft')
         .maybeSingle()
       if (error) throw error
+      if (!data) {
+        return NextResponse.json({ error: 'Draft campaign not found' }, { status: 404 })
+      }
       campaign = data
     } else {
       campaign = await findDraftBySession(sessionId, user.id)

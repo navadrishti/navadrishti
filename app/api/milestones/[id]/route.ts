@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { getEvidenceApproverContext } from '@/lib/server-auth';
+import { getEvidenceApproverContext, type EvidenceApproverContext } from '@/lib/server-auth';
+import { getErrorMessage } from '@/lib/utils';
 
 export async function GET(
   request: NextRequest,
@@ -8,6 +9,13 @@ export async function GET(
 ) {
   try {
     const { id: milestoneId } = await params;
+
+    let approver: EvidenceApproverContext;
+    try {
+      approver = await getEvidenceApproverContext(request);
+    } catch (error) {
+      return NextResponse.json({ error: getErrorMessage(error) || 'CA authentication required' }, { status: 401 });
+    }
 
     const { data: milestone, error: milestoneError } = await supabase
       .from('csr_project_milestones')
@@ -29,7 +37,9 @@ export async function GET(
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
     }
 
-    await getEvidenceApproverContext(request, project.company_user_id);
+    if (approver.companyUserId !== null && approver.companyUserId !== project.company_user_id) {
+      return NextResponse.json({ error: 'Company CA is not authorized for this company project' }, { status: 403 });
+    }
 
     const { data: evidenceRows, error: evidenceError } = await supabase
       .from('csr_milestone_evidence')
@@ -58,21 +68,6 @@ export async function GET(
 
     return NextResponse.json({ success: true, data: { ...milestone, evidence } });
   } catch (error) {
-    if (
-      error instanceof Error &&
-      [
-        'CA authentication required',
-        'Invalid CA token',
-        'Company CA authentication required',
-        'Invalid company CA token',
-        'Company CA identity not found',
-        'Company CA identity is not active',
-        'Company CA is not authorized for this company project'
-      ].includes(error.message)
-    ) {
-      return NextResponse.json({ error: error.message }, { status: 401 });
-    }
-
     console.error('Milestone fetch error:', error);
     return NextResponse.json({ error: 'Failed to load milestone' }, { status: 500 });
   }

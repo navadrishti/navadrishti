@@ -6,10 +6,21 @@ const SERVER_OWNED_PROFILE_KEYS = [
   'ca_badge_number',
   'ca_verified_at',
   'ca_verified_by',
+  'ca_compliance_tags',
   'allotted_compliance_tags',
+  'admin_moderation',
   'reverification_pending',
   'verification_documents',
+  'compliance_documents',
+  'twelve_a_number',
+  'eighty_g_number',
+  'csr1_registration_number',
+  'fcra_number',
+  'fcra_expiry_date',
   'document_expiries',
+  'document_expiry_unverified_at',
+  'document_expiry_unverified_docs',
+  'volunteering_history',
   'payout_account',
   'payout_details_on_file',
   'payout_listing',
@@ -24,6 +35,12 @@ const SERVER_OWNED_PROFILE_KEYS = [
   'razorpay_link_error',
   'razorpay_link_updated_at',
 ];
+
+export function stripServerOwnedProfileKeys<T extends Record<string, unknown>>(profileData: T): T {
+  const next = { ...profileData };
+  for (const key of SERVER_OWNED_PROFILE_KEYS) delete next[key];
+  return next;
+}
 
 export type ProfileUpdateBody = {
   name?: string;
@@ -64,8 +81,7 @@ function mergeProfileData(body: ProfileUpdateBody, currentUser: CurrentProfileRo
   let nextProfileData: Record<string, Json | undefined> | undefined;
   if (profile_data && typeof profile_data === 'object') {
     const currentProfileData = parseJsonObject(currentUser?.profile_data);
-    const incomingProfileData = { ...profile_data };
-    for (const key of SERVER_OWNED_PROFILE_KEYS) delete incomingProfileData[key];
+    const incomingProfileData = stripServerOwnedProfileKeys(profile_data);
     if (currentUser?.user_type === 'ngo') {
       delete incomingProfileData.past_projects;
     }

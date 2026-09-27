@@ -58,8 +58,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const safeCategory = typeof category === 'string' && category.trim() ? category.trim() : 'general';
-    const safeDocumentKey = typeof documentKey === 'string' && documentKey.trim() ? documentKey.trim() : 'document';
+    const toPathSegment = (value: FormDataEntryValue | null, fallback: string) => {
+      const cleaned = typeof value === 'string' ? value.trim().replace(/[^A-Za-z0-9_-]/g, '') : '';
+      return cleaned || fallback;
+    };
+    const safeCategory = toPathSegment(category, 'general');
+    const safeDocumentKey = toPathSegment(documentKey, 'document');
 
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
@@ -118,7 +122,7 @@ export async function POST(request: NextRequest) {
         ? cloudinaryError.http_code
         : 500;
 
-    const userSafeError = errorMessage.toLowerCase().includes('api key') || errorMessage.toLowerCase().includes('api secret')
+    const userSafeError = /api[ _](key|secret)/i.test(errorMessage)
       ? 'Verification upload service authentication failed'
       : errorMessage;
 

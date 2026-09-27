@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { assertAdminUser } from '@/lib/server-auth';
+import { assertAdminUser, authErrorResponse } from '@/lib/server-auth';
 import {
   createGovernmentAdminAccount,
   createGovernmentBody,
@@ -36,6 +36,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, bodies, accounts: data || [] });
   } catch (error) {
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
     console.error('List government admin accounts error:', error);
     return NextResponse.json({ error: getErrorMessage(error) || 'Failed to load government admin accounts' }, { status: 500 });
   }
@@ -134,6 +136,8 @@ export async function POST(request: NextRequest) {
       password: passwordValue,
     });
   } catch (error) {
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
     console.error('Create government admin account error:', error);
     return NextResponse.json({ error: getErrorMessage(error) || 'Failed to create government admin account' }, { status: 500 });
   }
@@ -165,6 +169,8 @@ export async function PUT(request: NextRequest) {
       message: `Government admin account ${action}d successfully`,
     });
   } catch (error) {
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
     console.error('Update government admin account error:', error);
     return NextResponse.json(
       { error: getErrorMessage(error) || 'Failed to update government admin account' },
@@ -197,6 +203,8 @@ export async function DELETE(request: NextRequest) {
       message: 'Government admin account permanently deleted',
     });
   } catch (error) {
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
     console.error('Delete government admin account error:', error);
     return NextResponse.json(
       { error: getErrorMessage(error) || 'Failed to delete government admin account' },

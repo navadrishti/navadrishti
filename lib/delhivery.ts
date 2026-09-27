@@ -92,8 +92,14 @@ function findShipment(payload: unknown): unknown {
   );
 }
 
-function normalizeEvent(scan: Record<string, unknown>): DelhiveryEvent | null {
+function normalizeEvent(rawScan: Record<string, unknown>): DelhiveryEvent | null {
+  const scanDetail = rawScan.ScanDetail;
+  const scan = scanDetail && typeof scanDetail === 'object' && !Array.isArray(scanDetail)
+    ? scanDetail as Record<string, unknown>
+    : rawScan;
+
   const status = firstString([
+    scan.Scan,
     scan.ScanType,
     scan.status,
     scan.Status,
@@ -106,6 +112,7 @@ function normalizeEvent(scan: Record<string, unknown>): DelhiveryEvent | null {
   const timestamp = parseDate(
     firstString([
       scan.ScanDateTime,
+      scan.StatusDateTime,
       scan.scan_time,
       scan.timestamp,
       scan.updated_at,
@@ -116,6 +123,7 @@ function normalizeEvent(scan: Record<string, unknown>): DelhiveryEvent | null {
 
   const location = firstString([
     scan.ScanLocation,
+    scan.ScannedLocation,
     scan.location,
     scan.city,
     scan.Location,

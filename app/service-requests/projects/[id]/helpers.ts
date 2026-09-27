@@ -61,15 +61,15 @@ export function summarizeNgo(project: ProjectDetail) {
 
   return {
     name: ngo?.name || 'NGO',
-    email: ngo?.email || 'Email not set',
+    email: ngo?.email || null,
     verificationStatus: ngo?.verification_status,
     location,
-    phone: ngo?.phone || 'Phone not set',
+    phone: ngo?.phone || null,
     size,
     sector: String(profileData.sector || ngo?.industry || 'Sector not set'),
     founded: String(profileData.founded || profileData.founded_year || 'Founded year not set'),
     pincode: ngo?.pincode || 'Pincode not set',
-    profileImage: String(profileData.profile_image || profileData.logo_url || '').trim(),
+    profileImage: String(profileData.profile_image || profileData.logo_url || ngo?.profile_image || '').trim(),
   };
 }
 

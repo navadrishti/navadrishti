@@ -160,8 +160,8 @@ export function useLeadNgoInvites({
 
     const alreadyInvited = leadNgoInvites.some((item) => item.ngoId === ngo.id && isPendingLeadInvite(item))
 
-    try {
-      const response = await fetch('/api/csr-agent/lead-ngo-invites', {
+    const postInviteAction = (targetDraftId: string | null) =>
+      fetch('/api/csr-agent/lead-ngo-invites', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -169,7 +169,7 @@ export function useLeadNgoInvites({
         },
         body: JSON.stringify({
           sessionId: activeSessionId,
-          draftCampaignId,
+          draftCampaignId: targetDraftId,
           action: alreadyInvited ? 'revoke' : 'invite',
           ngoId: ngo.id,
           ngoName: ngo.name,
@@ -178,6 +178,12 @@ export function useLeadNgoInvites({
           volunteerRequirement: projectData.volunteerRequirement || '',
         }),
       })
+
+    try {
+      let response = await postInviteAction(draftCampaignId)
+      if (response.status === 404 && draftCampaignId) {
+        response = await postInviteAction(null)
+      }
 
       const payload = await response.json().catch(() => null)
       if (!response.ok || !payload?.success) {

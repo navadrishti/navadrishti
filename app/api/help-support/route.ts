@@ -5,7 +5,6 @@ import { cloudinary } from '@/lib/cloudinary';
 import { sendEmail } from '@/lib/email';
 import { db } from '@/lib/db';
 import { getTokenClaims } from '@/lib/auth';
-import { getErrorMessage } from '@/lib/utils';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -170,6 +169,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Support ticket submission error:', error);
-    return NextResponse.json({ error: getErrorMessage(error) || 'Failed to submit support ticket' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to submit support ticket' }, { status: 500 });
   }
 }

@@ -22,10 +22,16 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   const user = findAuthUser(request, { allowCookie: true });
-  if (!user || user.user_type !== "company") {
+  if (!user) {
     return NextResponse.json<CampaignResponse>(
       { success: false, error: "Company login required" },
       { status: 401 }
+    );
+  }
+  if (user.user_type !== "company") {
+    return NextResponse.json<CampaignResponse>(
+      { success: false, error: "Only companies can generate campaigns" },
+      { status: 403 }
     );
   }
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { supabase } from '@/lib/db';
-import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth';
+import { getAuthUserFromRequest, assertUserType, authErrorResponse } from '@/lib/server-auth';
 import { resetCompanyCaPassword } from '@/lib/company-ca';
 
 const statusUpdateSchema = z.object({
@@ -94,13 +94,8 @@ export async function PATCH(
 
     return NextResponse.json({ success: true, data: updated });
   } catch (error) {
-    if (error instanceof Error && error.message === 'Authentication required') {
-      return NextResponse.json({ error: error.message }, { status: 401 });
-    }
-
-    if (error instanceof Error && error.message === 'Insufficient permissions') {
-      return NextResponse.json({ error: error.message }, { status: 403 });
-    }
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
 
     console.error('Company CA account update error:', error);
     return NextResponse.json({ error: 'Failed to update Company CA account' }, { status: 500 });
@@ -160,13 +155,8 @@ export async function DELETE(
 
     return NextResponse.json({ success: true, message: 'Company CA account permanently deleted' });
   } catch (error) {
-    if (error instanceof Error && error.message === 'Authentication required') {
-      return NextResponse.json({ error: error.message }, { status: 401 });
-    }
-
-    if (error instanceof Error && error.message === 'Insufficient permissions') {
-      return NextResponse.json({ error: error.message }, { status: 403 });
-    }
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
 
     console.error('Company CA account delete error:', error);
     return NextResponse.json({ error: 'Failed to delete Company CA account' }, { status: 500 });

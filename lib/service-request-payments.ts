@@ -12,6 +12,18 @@ export function isServiceRequestContributionOrder(orderNotes: unknown): boolean 
   return Boolean(notes.service_request_id) && CONTRIBUTION_PAYMENT_KINDS.has(String(notes.payment_kind || ''))
 }
 
+function requestFundingTargetInr(
+  serviceRequest: { target_amount?: unknown; estimated_budget?: unknown },
+  requirements: Record<string, unknown>
+): number {
+  return resolveFundingTargetInr({
+    funding_target_inr: requirements.funding_target_inr,
+    target_amount: serviceRequest.target_amount,
+    estimated_budget: requirements.estimated_budget ?? serviceRequest.estimated_budget,
+    budget: requirements.budget,
+  })
+}
+
 export type ContributionCreditResult = {
   credited: boolean
   raisedInr: number
@@ -45,12 +57,7 @@ export async function creditServiceRequestContribution(input: {
 
   const requirements = parseJsonObject(serviceRequest.requirements)
   const isGeneralNeed = isGeneralNgoNetworkNeed(requirements)
-  const targetInr = resolveFundingTargetInr({
-    funding_target_inr: requirements.funding_target_inr,
-    target_amount: serviceRequest.target_amount,
-    estimated_budget: requirements.estimated_budget ?? serviceRequest.estimated_budget,
-    budget: requirements.budget,
-  })
+  const targetInr = requestFundingTargetInr(serviceRequest, requirements)
   const currentInr = parseAmountToInr(serviceRequest.current_amount)
 
   if (!order) {
@@ -99,13 +106,30 @@ export async function creditServiceRequestContribution(input: {
   return { credited: true, raisedInr, targetInr, status }
 }
 
+/**
+ * Share of a refund that was actually credited to the request. Contributions
+ * only add the base amount, so the platform fee and GST are left out here too.
+ */
+export function resolveRefundDebitInr(input: { refundInr: number; paidInr: number; orderNotes: unknown }): number {
+  const notes = parseJsonObject(input.orderNotes)
+  const refundInr = parseAmountToInr(input.refundInr)
+  const paidInr = parseAmountToInr(input.paidInr)
+  const totalInr = parseAmountToInr(notes.total_charge_inr) || paidInr
+  const baseInr = Math.min(parseAmountToInr(notes.base_amount_inr) || totalInr, totalInr)
+
+  if (totalInr <= 0) return refundInr
+  if (refundInr >= (paidInr || totalInr)) return Number(baseInr.toFixed(2))
+  return Math.round((refundInr * baseInr * 100) / totalInr) / 100
+}
+
 /** Takes a processed refund off the request's running total. */
 export async function debitServiceRequestRefund(serviceRequestId: number, refundInr: number) {
   const serviceRequest = await db.serviceRequests.getById(serviceRequestId)
   if (!serviceRequest) return null
 
+  const requirements = parseJsonObject(serviceRequest.requirements)
   const raisedInr = Number(Math.max(0, parseAmountToInr(serviceRequest.current_amount) - refundInr).toFixed(2))
-  const targetInr = parseAmountToInr(serviceRequest.target_amount)
+  const targetInr = requestFundingTargetInr(serviceRequest, requirements)
 
   let status: string | null = serviceRequest.status ?? null
   if (status === 'completed' && targetInr > 0 && raisedInr < targetInr) status = raisedInr > 0 ? 'in_progress' : 'active'

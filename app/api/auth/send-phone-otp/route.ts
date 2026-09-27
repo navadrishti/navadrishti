@@ -12,6 +12,7 @@ type PhoneOtpRecord = {
   otp: string
   expiresAt: number
   lastSentAt: number
+  attempts: number
 }
 
 const phoneOtpStore = new Map<string, PhoneOtpRecord>()
@@ -62,7 +63,8 @@ export const POST = withAuth(async (req) => {
       phone,
       otp,
       expiresAt: Date.now() + PHONE_OTP_TTL_MS,
-      lastSentAt: Date.now()
+      lastSentAt: Date.now(),
+      attempts: 0
     })
 
     return NextResponse.json({

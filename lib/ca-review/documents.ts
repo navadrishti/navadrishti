@@ -14,7 +14,12 @@ function fileNameFromUrl(url: string, fallback: string) {
 }
 
 function isImageUrl(url: string) {
-  return /\.(png|jpe?g|webp|gif)$/i.test(url) || url.includes('/image/upload')
+  const path = url.split(/[?#]/)[0]
+  return /\.(png|jpe?g|webp|gif)$/i.test(path) || path.includes('/image/upload')
+}
+
+export function isPendingUpload(doc: CAReviewDocument) {
+  return doc.id.includes('-reverify-') || doc.id.includes('-pending-compliance-')
 }
 
 function documentLabel(key: string) {

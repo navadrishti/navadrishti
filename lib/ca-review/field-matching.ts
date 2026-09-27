@@ -1,7 +1,7 @@
 export type FieldKind = 'name' | 'date' | 'address' | 'id'
 
 export function compactId(value: string) {
-  return value.replace(/[\s-]/g, '').toUpperCase()
+  return value.replace(/[\s\-/._]/g, '').toUpperCase()
 }
 
 function collapseText(value: string) {

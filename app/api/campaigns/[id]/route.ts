@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
-import { getAuthUserFromRequest, assertUserType, findAuthUser } from '@/lib/server-auth'
+import { getAuthUserFromRequest, assertUserType, authErrorResponse, findAuthUser } from '@/lib/server-auth'
 import { deleteCampaignWithDependencies, formatCampaignDeleteError } from '@/lib/campaign-delete'
 import { getCampaignLeadNgoId, parseLeadNgoInvites } from '@/lib/campaign-volunteer-attendance'
 import { parseJsonObject } from '@/lib/utils'
@@ -103,6 +103,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
     return NextResponse.json({ success: true })
   } catch (error) {
+    const authResponse = authErrorResponse(error)
+    if (authResponse) return authResponse
     console.error('Campaign delete error:', error)
     const message = formatCampaignDeleteError(error)
     const status = (error as { code?: string } | null)?.code === '23503' ? 409 : 500

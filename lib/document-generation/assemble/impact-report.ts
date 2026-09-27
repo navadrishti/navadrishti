@@ -8,7 +8,7 @@ import {
   loadProjectsForCampaign,
   resolvePartnerName,
 } from './loaders'
-import { pickLatestImpact } from './project-data'
+import { pickLatestImpact, sumLatestImpact } from './project-data'
 import { buildImpactFromCampaign, buildImpactFromProject } from './report-builders'
 import type { PeriodDocumentContext } from './types'
 import { asNumber } from './values'
@@ -19,20 +19,15 @@ async function assembleCompanyImpactReport({ user, request, organizationName, pe
   const projects = await loadProjectsForCampaign(campaign.id)
   const leadNgoId = getCampaignLeadNgoId(campaign)
   const partnerName = await resolvePartnerName(leadNgoId || projects[0]?.ngo_user_id)
-  const fundsUtilized = projects.reduce(
-    (sum, project) => sum + asNumber(pickLatestImpact(project)?.funds_utilized),
-    0
-  )
-  const beneficiaries = projects.reduce(
-    (sum, project) => sum + asNumber(pickLatestImpact(project)?.beneficiaries),
-    asNumber(parseJsonObject(campaign.impact_metrics).beneficiaries)
-  )
+  const campaignImpact = parseJsonObject(campaign.impact_metrics)
+  const fundsUtilized = sumLatestImpact(projects, 'funds_utilized', campaignImpact.funds_utilized)
+  const beneficiaries = sumLatestImpact(projects, 'beneficiaries', campaignImpact.beneficiaries)
   const progressValues = projects
     .map((project) => asNumber(pickLatestImpact(project)?.progress_percentage))
     .filter((value) => value > 0)
   const progressPercentage = progressValues.length
     ? Math.round(progressValues.reduce((a, b) => a + b, 0) / progressValues.length)
-    : asNumber(parseJsonObject(campaign.impact_metrics).progress_percentage)
+    : asNumber(campaignImpact.progress_percentage)
 
   return buildImpactFromCampaign({
     campaign,
@@ -42,7 +37,7 @@ async function assembleCompanyImpactReport({ user, request, organizationName, pe
     period,
     periodStart: request.periodStart,
     periodEnd: request.periodEnd,
-    fundsUtilized: fundsUtilized || asNumber(parseJsonObject(campaign.impact_metrics).funds_utilized),
+    fundsUtilized,
     beneficiaries,
     progressPercentage,
     gaps: projects.length ? [] : ['No linked CSR projects yet — metrics may be incomplete'],

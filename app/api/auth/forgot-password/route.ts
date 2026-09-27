@@ -3,8 +3,10 @@ import { z } from 'zod';
 import crypto from 'crypto';
 import { db } from '@/lib/db';
 import { normalizeEmailAddress, prepareEmailOtpSession, verifyEmailOtpWithSupabase } from '@/lib/email';
+import { limitAttempts, rateLimit, rateLimitedResponse } from '@/lib/rate-limit';
 
 const PASSWORD_RESET_TOKEN_TTL_MS = 15 * 60 * 1000;
+const RESET_OTP_RESEND_LIMIT = { limit: 1, windowMs: 60 * 1000 };
 
 type PasswordResetTokenRecord = {
   email: string;
@@ -15,11 +17,11 @@ type PasswordResetTokenRecord = {
 const passwordResetTokens = new Map<string, PasswordResetTokenRecord>();
 
 const sendOtpSchema = z.object({
-  email: z.string().email('Invalid email address'),
+  email: z.string().trim().toLowerCase().email('Invalid email address'),
 });
 
 const verifyOtpSchema = z.object({
-  email: z.string().email('Invalid email address'),
+  email: z.string().trim().toLowerCase().email('Invalid email address'),
   otp: z.string().min(4, 'OTP is required'),
 });
 
@@ -64,21 +66,24 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const email = normalizeEmailAddress(validationResult.data.email);
+      const { email } = validationResult.data;
       const otp = validationResult.data.otp.trim();
 
+      const limited = limitAttempts(req, 'forgot-password-otp', email);
+      if (limited) return limited;
+
       cleanupExpiredResetTokens();
-
-      const user = await db.users.findByEmail(email);
-
-      if (!user) {
-        return NextResponse.json({ error: 'Account not found' }, { status: 404 });
-      }
 
       const verification = await verifyEmailOtpWithSupabase(email, otp);
 
       if (!verification.ok) {
         return NextResponse.json({ error: verification.error }, { status: 400 });
+      }
+
+      const user = await db.users.findByEmail(email);
+
+      if (!user) {
+        return NextResponse.json({ error: 'Account not found' }, { status: 404 });
       }
 
       const resetToken = createPasswordResetToken(email, user.id);
@@ -101,12 +106,25 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const email = normalizeEmailAddress(validationResult.data.email);
+    const { email } = validationResult.data;
+
+    const limited = limitAttempts(req, 'forgot-password', email);
+    if (limited) return limited;
+
+    // Throttled by address before the account lookup so a 429 says nothing about whether the account exists.
+    const resend = rateLimit(`forgot-password-resend:${email}`, RESET_OTP_RESEND_LIMIT);
+    if (!resend.allowed) {
+      return rateLimitedResponse(
+        resend.retryAfterSeconds,
+        `Please wait ${resend.retryAfterSeconds}s before requesting another email OTP`
+      );
+    }
+
     const user = await db.users.findByEmail(email);
 
     if (user) {
       const prepared = await prepareEmailOtpSession(email);
-      if (!prepared.ok) {
+      if (!prepared.ok && prepared.status !== 429) {
         return NextResponse.json({ error: prepared.error }, { status: prepared.status });
       }
     }

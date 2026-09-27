@@ -8,7 +8,7 @@ import {
   UpdateSelectedCampaignSchema
 } from "@/lib/csr-agent/campaign";
 import { parseLeadNgoInvites } from "@/lib/campaign-volunteer-attendance";
-import { assertUserType, getAuthUserFromRequest } from "@/lib/server-auth";
+import { assertUserType, authErrorResponse, getAuthUserFromRequest } from "@/lib/server-auth";
 import { getErrorMessage, parseJsonObject } from "@/lib/utils";
 
 function safeSignatureMatch(expected: string, received: string): boolean {
@@ -18,20 +18,20 @@ function safeSignatureMatch(expected: string, received: string): boolean {
   return crypto.timingSafeEqual(expectedBuffer, receivedBuffer);
 }
 
-function authenticatedCompanyId(req: NextRequest): number | null {
+function authenticatedCompanyId(req: NextRequest): number | NextResponse {
   try {
     const user = getAuthUserFromRequest(req);
     assertUserType(user, ['company']);
     return Number(user.id);
-  } catch {
-    return null;
+  } catch (error) {
+    return authErrorResponse(error) ?? NextResponse.json({ error: 'Company authentication required' }, { status: 401 });
   }
 }
 
 export async function POST(req: NextRequest) {
   const companyId = authenticatedCompanyId(req);
-  if (!companyId) {
-    return NextResponse.json({ error: 'Company authentication required' }, { status: 401 });
+  if (companyId instanceof NextResponse) {
+    return companyId;
   }
 
   try {
@@ -83,10 +83,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unsupported action' }, { status: 400 });
   } catch (error) {
     const message = getErrorMessage(error) || 'Internal Server Error';
+    const lower = message.toLowerCase();
     const status =
-      message.toLowerCase().includes('not found') ? 404 :
-      message.toLowerCase().includes('lead ngo') ? 409 :
-      message.toLowerCase().includes('invalid') ? 400 :
+      lower.includes('not found') ? 404 :
+      lower.includes('lead ngo') || lower.includes('not captured') || lower.includes('concurrently') ? 409 :
+      /invalid|does not match|mismatch|only inr|unable to fetch payment/.test(lower) ? 400 :
       500;
     return NextResponse.json({ error: message }, { status });
   }
@@ -94,8 +95,8 @@ export async function POST(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   const authCompanyId = authenticatedCompanyId(req);
-  if (!authCompanyId) {
-    return NextResponse.json({ error: 'Company authentication required' }, { status: 401 });
+  if (authCompanyId instanceof NextResponse) {
+    return authCompanyId;
   }
 
   try {

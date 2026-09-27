@@ -97,10 +97,11 @@ export async function GET(request: NextRequest) {
     const authHeader = request.headers.get('authorization') || '';
     const providedSecret = authHeader.replace(/^Bearer\s+/i, '').trim();
 
-    if (process.env.NODE_ENV === 'production' || cronSecret) {
-      if (!cronSecret || providedSecret !== cronSecret) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-      }
+    const authorized = cronSecret
+      ? providedSecret === cronSecret
+      : process.env.NODE_ENV === 'development';
+    if (!authorized) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Auto-reject pending clients on expired service offers.

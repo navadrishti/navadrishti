@@ -350,11 +350,14 @@ export function buildPricingResponse(pricing: PlatformCheckoutPricing) {
 
 export function validateCapturedPaymentAmounts(params: {
   orderNotes?: Record<string, unknown> | null
+  orderAmountPaise?: unknown
   paidInr: number
 }): { ok: true; paidInr: number; baseAmountInr: number } | { ok: false; error: string } {
   const notes = params.orderNotes || {}
   const paidInr = parseAmountToInr(params.paidInr)
-  const expectedTotalInr = parseAmountToInr(notes.total_charge_inr)
+  const expectedTotalInr =
+    parseAmountToInr(notes.total_charge_inr) ||
+    Number((parseAmountToInr(params.orderAmountPaise) / 100).toFixed(2))
   if (expectedTotalInr > 0 && Math.abs(paidInr - expectedTotalInr) > 0.01) {
     return { ok: false, error: 'Paid amount does not match checkout total' }
   }

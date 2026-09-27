@@ -44,7 +44,7 @@ export async function settleCompanyCaPayment(input: {
 }): Promise<CompanyCaSettlementResult> {
   const { data: orderRow } = await supabase
     .from('razorpay_payment_orders')
-    .select('id, payer_user_id, service_request_id, contribution_id, order_notes')
+    .select('id, payer_user_id, service_request_id, contribution_id, amount_paise, order_notes')
     .eq('razorpay_order_id', input.razorpayOrderId)
     .maybeSingle()
   if (!orderRow) return { ok: false, status: 404, error: 'Order not found' }
@@ -55,7 +55,11 @@ export async function settleCompanyCaPayment(input: {
     return { ok: false, status: 403, error: 'This order belongs to a different company' }
   }
 
-  const amountCheck = validateCapturedPaymentAmounts({ orderNotes: notes, paidInr: input.paidInr })
+  const amountCheck = validateCapturedPaymentAmounts({
+    orderNotes: notes,
+    orderAmountPaise: orderRow.amount_paise,
+    paidInr: input.paidInr,
+  })
   if (!amountCheck.ok) return { ok: false, status: 400, error: amountCheck.error }
 
   const nowIso = new Date().toISOString()

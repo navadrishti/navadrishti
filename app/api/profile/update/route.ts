@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { isPlatformUserSession } from '@/lib/auth';
-import { assertUserType, getAuthUserFromRequest, findAuthUser } from '@/lib/server-auth';
+import { assertUserType, authErrorResponse, getAuthUserFromRequest, findAuthUser } from '@/lib/server-auth';
 import {
   buildPayoutStatus,
   connectPayoutAccount,
@@ -27,9 +27,10 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, ...response });
   } catch (error) {
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
     const message = error instanceof Error ? error.message : 'Failed to load payout account.';
-    const status = message.includes('Authentication') || message.includes('permissions') ? 401 : 400;
-    return NextResponse.json({ error: message }, { status });
+    return NextResponse.json({ error: message }, { status: 400 });
   }
 }
 
@@ -59,8 +60,9 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ error: 'Unsupported payout action' }, { status: 400 });
   } catch (error) {
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
     const message = error instanceof Error ? error.message : 'Failed to update payout account.';
-    const status = message.includes('Authentication') || message.includes('permissions') ? 401 : 400;
 
     try {
       if (connectAttempt) {
@@ -70,7 +72,7 @@ export async function PATCH(request: NextRequest) {
       // Ignore secondary persistence errors.
     }
 
-    return NextResponse.json({ error: message }, { status });
+    return NextResponse.json({ error: message }, { status: 400 });
   }
 }
 

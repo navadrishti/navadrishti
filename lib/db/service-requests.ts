@@ -1,8 +1,33 @@
 import 'server-only'
 import { buildAllocationUpdatePayload } from '@/lib/service-request-allocation'
+import { ServiceRequestDeleteBlockedError } from '@/lib/service-requests/errors'
 import { parseJsonObject } from '@/lib/utils'
 import type { Json, Tables, TablesInsert, TablesUpdate } from '@/lib/database.types'
 import { supabase } from './client'
+
+async function mustSucceed(query: PromiseLike<{ error: unknown }>) {
+  const { error } = await query
+  if (error) throw error
+}
+
+async function linkedPaymentOrders(requestId: number, applicationIds: number[], contributionIds: string[]) {
+  const lookups = [
+    supabase.from('razorpay_payment_orders').select('id, order_status').eq('service_request_id', requestId),
+  ]
+  if (applicationIds.length > 0) {
+    lookups.push(supabase.from('razorpay_payment_orders').select('id, order_status').in('application_id', applicationIds))
+  }
+  if (contributionIds.length > 0) {
+    lookups.push(supabase.from('razorpay_payment_orders').select('id, order_status').in('contribution_id', contributionIds))
+  }
+
+  const orders = new Map<string, string>()
+  for (const { data, error } of await Promise.all(lookups)) {
+    if (error) throw error
+    for (const order of data || []) orders.set(order.id, order.order_status)
+  }
+  return orders
+}
 
 async function fetchParentProject(projectId: string) {
   const { data } = await supabase
@@ -26,6 +51,52 @@ function withProjectSnapshot(projectContext: Json | undefined, projectRow: Paren
       valid_until: projectRow.valid_until || existingCtx.project?.valid_until || null
     }
   };
+}
+
+async function loadDeletableRecords(requestId: number) {
+  const { data: applications, error: applicationsError } = await supabase
+    .from('service_request_applications')
+    .select('id')
+    .eq('service_request_id', requestId);
+  if (applicationsError) throw applicationsError;
+
+  const { data: contributions, error: contributionsError } = await supabase
+    .from('service_request_contributions')
+    .select('id, status')
+    .eq('service_request_id', requestId);
+  if (contributionsError) throw contributionsError;
+
+  if ((contributions || []).some((row) => String(row.status || '').toLowerCase() === 'paid')) {
+    throw new ServiceRequestDeleteBlockedError();
+  }
+
+  const { data: refunds, error: refundsError } = await supabase
+    .from('razorpay_refunds')
+    .select('id')
+    .eq('service_request_id', requestId)
+    .limit(1);
+  if (refundsError) throw refundsError;
+  if (refunds && refunds.length > 0) throw new ServiceRequestDeleteBlockedError();
+
+  const orders = await linkedPaymentOrders(
+    requestId,
+    (applications || []).map((row) => row.id),
+    (contributions || []).map((row) => row.id)
+  );
+  if ([...orders.values()].includes('paid')) throw new ServiceRequestDeleteBlockedError();
+
+  const orderIds = [...orders.keys()];
+  if (orderIds.length > 0) {
+    const { data: payments, error: paymentsError } = await supabase
+      .from('razorpay_payments')
+      .select('id')
+      .in('order_id', orderIds)
+      .limit(1);
+    if (paymentsError) throw paymentsError;
+    if (payments && payments.length > 0) throw new ServiceRequestDeleteBlockedError();
+  }
+
+  return { orderIds };
 }
 
 export const serviceRequests = {
@@ -259,16 +330,53 @@ export const serviceRequests = {
     return data;
   },
 
+  async assertDeletable(id: string | number) {
+    await loadDeletableRecords(Number(id));
+  },
+
   async delete(id: string | number, requesterId?: number) {
-    await supabase
-      .from('service_request_applications')
-      .delete()
-      .eq('service_request_id', Number(id));
+    const requestId = Number(id);
+
+    if (requesterId) {
+      const { data: owned, error: ownerError } = await supabase
+        .from('service_requests')
+        .select('id')
+        .eq('id', requestId)
+        .eq('ngo_id', requesterId)
+        .maybeSingle();
+
+      if (ownerError) throw ownerError;
+      if (!owned) throw new Error('Service request not found');
+    }
+
+    const { orderIds } = await loadDeletableRecords(requestId);
+
+
+    const { data: shipments, error: shipmentsError } = await supabase
+      .from('service_request_shipments')
+      .select('id')
+      .eq('service_request_id', requestId);
+    if (shipmentsError) throw shipmentsError;
+
+    const shipmentIds = (shipments || []).map((row) => row.id);
+    if (shipmentIds.length > 0) {
+      await mustSucceed(supabase.from('shipment_tracking_events').delete().in('shipment_id', shipmentIds));
+      await mustSucceed(supabase.from('service_request_shipments').delete().in('id', shipmentIds));
+    }
+    if (orderIds.length > 0) {
+      await mustSucceed(supabase.from('razorpay_payment_orders').delete().in('id', orderIds));
+    }
+    await mustSucceed(supabase.from('service_request_fulfillments').delete().eq('service_request_id', requestId));
+    await mustSucceed(supabase.from('service_request_contributions').delete().eq('service_request_id', requestId));
+    await mustSucceed(supabase.from('service_request_applications').delete().eq('service_request_id', requestId));
+    await mustSucceed(
+      supabase.from('service_clients').update({ service_request_id: null }).eq('service_request_id', requestId)
+    );
 
     let query = supabase
       .from('service_requests')
       .delete()
-      .eq('id', Number(id));
+      .eq('id', requestId);
 
     if (requesterId) {
       query = query.eq('ngo_id', requesterId);

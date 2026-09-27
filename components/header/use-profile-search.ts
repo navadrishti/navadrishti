@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation"
 export interface ProfileSearchResult {
   id: number;
   name: string;
-  email: string;
   user_type: 'individual' | 'ngo' | 'company';
   profile_image?: string;
   verification_status?: string;

@@ -16,17 +16,21 @@ import {
   type ComplianceDocumentKey,
   listDocumentExpiryPublicItems,
   backfillNgoDocumentExpiries,
+  isPlatformUserSession,
 } from '@/lib/auth';
 import { applyCaBadgeToProfile } from '@/lib/platform-ca-auth';
 import { isCompanyCAUser } from '@/lib/company-ca';
 import { isNgoRazorpayPayoutActive } from '@/lib/razorpay-route';
+import { findAuthUser, getAdminUser } from '@/lib/server-auth';
 import { getErrorMessage } from '@/lib/utils';
 
 interface RouteParams {
   params: Promise<{ userId: string }>
 }
 
-export async function GET(_request: NextRequest, { params }: RouteParams) {
+const PUBLIC_PROFILE_DATA_KEYS = ['bio', 'ca_badge_number', 'cover_image', 'website'];
+
+export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { userId } = await params;
     const parsedUserId = Number.parseInt(userId, 10);
@@ -37,6 +41,10 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
         error: 'Profile not found'
       }, { status: 404 });
     }
+
+    const viewer = findAuthUser(request, { allowCookie: true });
+    const canViewPrivate =
+      Boolean(getAdminUser(request)) || (isPlatformUserSession(viewer) && Number(viewer.id) === parsedUserId);
 
     if (await isCompanyCAUser(parsedUserId)) {
       return Response.json({
@@ -81,7 +89,7 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
     if (userResult.user_type === 'individual') {
       const { data: verification } = await supabase
         .from('individual_verifications')
-        .select('verification_status, aadhaar_verified, pan_verified, verification_date, aadhaar_number, pan_number, aadhaar_verified_at, pan_verified_at')
+        .select('verification_status, aadhaar_verified, pan_verified, verification_date, aadhaar_verified_at, pan_verified_at')
         .eq('user_id', parsedUserId)
         .single();
       
@@ -193,9 +201,17 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
       }
     }
 
+    const showContact = canViewPrivate || userResult.user_type === 'ngo' || userResult.user_type === 'company';
+    const visibleProfileData = canViewPrivate
+      ? nextProfileData
+      : Object.fromEntries(
+          PUBLIC_PROFILE_DATA_KEYS.filter((key) => nextProfileData[key] !== undefined).map((key) => [key, nextProfileData[key]])
+        );
+
     const formattedProfile: Record<string, unknown> = {
       ...userResult,
-      phone: userResult.phone || null,
+      email: showContact ? userResult.email : null,
+      phone: showContact ? userResult.phone || null : null,
       address: (userResult.location && !isFakeLocation(userResult.location)) ? userResult.location : null,
       bio:
         typeof profileData.bio === 'string' && profileData.bio.trim()
@@ -217,7 +233,7 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
             }
           )
         : [],
-      profile_data: nextProfileData,
+      profile_data: visibleProfileData,
       verification_status: verificationStatus,
       verification_details: verificationDetails,
       ca_badge_number: caBadgeNumber,

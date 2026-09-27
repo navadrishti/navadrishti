@@ -7,15 +7,19 @@ import { approveReverification, rejectReverification } from '@/lib/reverificatio
 import type { CAQueueType } from '@/lib/ca-review-types'
 import { parseJsonObject } from '@/lib/utils'
 import type { Json, TablesUpdate } from '@/lib/database.types'
+import { CAReviewError } from './errors'
 import { notifyUser } from './notifications'
 import { TYPE_CONFIG } from './queue-config'
 
 type VerificationActionRow = {
   id: number
   user_id: number
+  verification_status: string | null
   company_name?: string
   ngo_name?: string
 }
+
+const AWAITING_REVIEW_STATUSES = new Set(['pending', 'unverified'])
 
 async function applyReverificationDecision(options: {
   userId: number
@@ -67,10 +71,10 @@ export async function applyCAVerificationAction(options: {
 
   const rowSelect =
     type === 'companies'
-      ? 'id, user_id, company_name'
+      ? 'id, user_id, verification_status, company_name'
       : type === 'ngos'
-        ? 'id, user_id, ngo_name'
-        : 'id, user_id'
+        ? 'id, user_id, verification_status, ngo_name'
+        : 'id, user_id, verification_status'
 
   const { data: rowData, error: fetchError } = await supabase
     .from(table)
@@ -79,7 +83,7 @@ export async function applyCAVerificationAction(options: {
     .single()
 
   if (fetchError || !rowData) {
-    throw new Error('Verification record not found')
+    throw new CAReviewError('Verification record not found', 404)
   }
 
   const row = rowData as unknown as VerificationActionRow
@@ -91,13 +95,25 @@ export async function applyCAVerificationAction(options: {
     .single()
 
   if (userError || !user) {
-    throw new Error('User not found')
+    throw new CAReviewError('User not found', 404)
   }
 
   const profileData = parseJsonObject(user.profile_data)
-  const isReverification = type === 'ngos' && Boolean(profileData.reverification_pending)
-  if (String(user.verification_status || '').toLowerCase() === 'verified' && !isReverification) {
-    throw new Error('This record is already verified. Tags and decisions cannot be changed.')
+  const currentUserStatus = String(user.verification_status || '').toLowerCase()
+  const rowStatus = String(row.verification_status || 'unverified').trim().toLowerCase()
+  const isVerified = currentUserStatus === 'verified'
+  const isReverification =
+    type === 'ngos' && isVerified && rowStatus === 'verified' && Boolean(profileData.reverification_pending)
+  if (!isReverification) {
+    if (isVerified || rowStatus === 'verified') {
+      throw new CAReviewError('This record is already verified. Tags and decisions cannot be changed.', 409)
+    }
+    if (currentUserStatus === 'suspended') {
+      throw new CAReviewError('This account is suspended by an admin and cannot be reviewed.', 409)
+    }
+    if (!AWAITING_REVIEW_STATUSES.has(rowStatus)) {
+      throw new CAReviewError(`This record is ${rowStatus}. It can be reviewed again after the user resubmits.`, 409)
+    }
   }
   const rowRecord = parseJsonObject(row)
   const stakeholderName =

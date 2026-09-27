@@ -10,6 +10,15 @@ export function pickLatestImpact(project: ProjectImpactSource) {
   )
 }
 
+export function sumLatestImpact(
+  projects: ProjectImpactSource[],
+  field: 'funds_utilized' | 'beneficiaries',
+  campaignFallback: unknown
+): number {
+  const total = projects.reduce((sum, project) => sum + asNumber(pickLatestImpact(project)?.[field]), 0)
+  return total > 0 ? total : asNumber(campaignFallback)
+}
+
 export function milestonesFromCampaign(campaign: { milestones?: unknown }) {
   const raw: Array<Record<string, unknown> | null> = Array.isArray(campaign?.milestones) ? campaign.milestones : []
   return raw.map((item) => {

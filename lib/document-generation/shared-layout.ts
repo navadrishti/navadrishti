@@ -37,11 +37,14 @@ export function formatDisplayDate(value?: string | Date | null): string {
     day: '2-digit',
     month: 'long',
     year: 'numeric',
+    timeZone: 'Asia/Kolkata',
   })
 }
 
 export function buildDocumentReference(prefix: string, orgKey: string): string {
-  const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+  const stamp = new Date()
+    .toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
+    .replace(/-/g, '')
   const slug = String(orgKey || 'ORG')
     .toUpperCase()
     .replace(/[^A-Z0-9]+/g, '')

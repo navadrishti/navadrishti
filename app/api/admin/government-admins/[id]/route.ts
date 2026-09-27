@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { assertAdminUser } from '@/lib/server-auth';
+import { assertAdminUser, authErrorResponse } from '@/lib/server-auth';
 import { supabase } from '@/lib/db';
 import { getErrorMessage } from '@/lib/utils';
 
@@ -24,6 +24,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
     console.error('Delete government admin account error:', error);
     return NextResponse.json({ error: getErrorMessage(error) || 'Failed to delete government admin account' }, { status: 500 });
   }

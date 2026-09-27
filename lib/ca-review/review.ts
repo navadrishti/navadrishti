@@ -5,6 +5,7 @@ import { extractVisibleKycFields, isGeminiOcrUnavailable } from '@/lib/gemini-vi
 import type { CAQueueType, CAReviewDocument } from '@/lib/ca-review-types'
 import { parseJsonObject } from '@/lib/utils'
 import { buildCrossDocumentComparisons } from './cross-field-comparisons'
+import { CAReviewError } from './errors'
 import { applyNgoExpiryOverlay, ngoOcrExpiries } from './ngo-compliance'
 import { mapQueueItem } from './queue'
 import {
@@ -40,13 +41,13 @@ async function applyOcr(type: CAQueueType, row: VerificationQueueRow, item: CAQu
   const typeBlock = parseJsonObject(verificationDocuments[profileKey])
   const cache = parseJsonObject(typeBlock.ocr_cache)
 
-  const documents = item.documents.slice(0, MAX_OCR_DOCS)
   const nextDocs: CAReviewDocument[] = []
   let cacheChanged = false
   let serviceDown = false
+  let overLimit = false
   const missingKey = !process.env.GEMINI_API_KEY
 
-  for (const doc of documents) {
+  for (const [index, doc] of item.documents.entries()) {
     const cacheKey = `${doc.file_url}::gemini-verbatim-v5`
     const cached = parseJsonObject(cache[cacheKey])
     if (Array.isArray(cached.fields) && cached.fields.length > 0) {
@@ -60,6 +61,12 @@ async function applyOcr(type: CAQueueType, row: VerificationQueueRow, item: CAQu
 
     if (missingKey || serviceDown) {
       nextDocs.push({ ...doc, ocr_status: 'skipped' })
+      continue
+    }
+
+    if (index >= MAX_OCR_DOCS) {
+      overLimit = true
+      nextDocs.push({ ...doc, ocr_fields: [], ocr_status: 'skipped' })
       continue
     }
 
@@ -108,7 +115,9 @@ async function applyOcr(type: CAQueueType, row: VerificationQueueRow, item: CAQu
       ? 'Document reading is unavailable right now. Open the files and compare them manually.'
       : nextDocs.some((doc) => doc.ocr_status === 'failed')
         ? 'Some documents could not be read. Open them and compare manually.'
-        : ''
+        : overLimit
+          ? `Only the first ${MAX_OCR_DOCS} documents were read automatically. Open the rest and compare manually.`
+          : ''
 
   const withDocs = {
     ...item,
@@ -127,7 +136,7 @@ export async function getCAReview(type: CAQueueType, id: number) {
   const { data, error } = await supabase.from(table).select(selectColumns(type)).eq('id', id).single()
 
   if (error || !data) {
-    throw new Error('Verification record not found')
+    throw new CAReviewError('Verification record not found', 404)
   }
   const row = data as unknown as VerificationQueueRow
   return applyOcr(type, row, mapQueueItem(type, row))

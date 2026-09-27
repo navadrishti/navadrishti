@@ -8,6 +8,7 @@ import {
   creditServiceRequestContribution,
   debitServiceRequestRefund,
   isServiceRequestContributionOrder,
+  resolveRefundDebitInr,
 } from '@/lib/service-request-payments';
 import type { Json } from '@/lib/database.types';
 import { getErrorMessage } from '@/lib/utils';
@@ -224,7 +225,7 @@ export async function POST(request: NextRequest) {
 
       const { data: paymentRow } = await supabase
         .from('razorpay_payments')
-        .select('id, order_id')
+        .select('id, order_id, amount_inr')
         .eq('razorpay_payment_id', razorpayPaymentId)
         .maybeSingle();
 
@@ -235,7 +236,7 @@ export async function POST(request: NextRequest) {
 
       const { data: orderRow } = await supabase
         .from('razorpay_payment_orders')
-        .select('service_request_id')
+        .select('service_request_id, order_notes')
         .eq('id', paymentRow.order_id)
         .maybeSingle();
 
@@ -283,7 +284,14 @@ export async function POST(request: NextRequest) {
         .eq('id', paymentRow.id);
 
       if (normalizedRefundStatus === 'processed' && previousRefund?.refund_status !== 'processed') {
-        await debitServiceRequestRefund(Number(orderRow.service_request_id), refundInr);
+        await debitServiceRequestRefund(
+          Number(orderRow.service_request_id),
+          resolveRefundDebitInr({
+            refundInr,
+            paidInr: Number(paymentRow.amount_inr || 0),
+            orderNotes: orderRow.order_notes,
+          })
+        );
       }
 
       await markWebhookStatus(eventRowId, 'processed', null);

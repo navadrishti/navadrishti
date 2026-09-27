@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { db, supabase } from '@/lib/db';
 import { hashPassword, generateToken, validateNgoHeadquartersLocation, validateCompanyHeadquartersLocation, normalizePincode, buildNgoLocationDisplay, normalizePhoneDigits, isPermanentlyBannedAccount } from '@/lib/auth';
 import { setAuthTokenCookie } from '@/lib/server-auth';
+import { stripServerOwnedProfileKeys } from '@/lib/profile-update/profile-fields';
 
 const parseInteger = (value: unknown): number | null => {
   if (value === null || value === undefined) return null;
@@ -46,7 +47,7 @@ const validateProfileRequirements = (userType: 'individual' | 'ngo' | 'company',
 
 // Validation schema for signup
 const signupSchema = z.object({
-  email: z.string().email('Invalid email address'),
+  email: z.string().trim().toLowerCase().email('Invalid email address'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
   name: z.string().min(2, 'Name must be at least 2 characters'),
   user_type: z.enum(['individual', 'ngo', 'company']),
@@ -95,7 +96,7 @@ export async function POST(req: NextRequest) {
     }
     
     const { email, password, name, user_type, phone, city, state_province, pincode, country, location, profile_data, ngo_volunteer_capacity } = validationResult.data;
-    const profile = profile_data || {};
+    const profile = stripServerOwnedProfileKeys(profile_data || {});
 
     if (user_type === 'ngo') {
       const headquarters = (profile.ngo_headquarters && typeof profile.ngo_headquarters === 'object')
