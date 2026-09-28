@@ -68,10 +68,7 @@ function NGODashboardContent() {
   const payoutHref = dashboardProfilePayoutHref('ngo');
 
   useEffect(() => {
-    if (!user?.id || user.user_type !== 'ngo') {
-      setAcceptsPayments(null);
-      return;
-    }
+    if (!user?.id || user.user_type !== 'ngo') return;
 
     const token = localStorage.getItem('token');
     if (!token) return;

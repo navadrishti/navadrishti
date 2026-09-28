@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useEffectEvent, useState } from "react"
 import { useAuth } from '@/lib/auth-context'
 import { isCampaignStarted, isVolunteerRegistrationPastDeadline } from "@/lib/format-date"
 import { getVolunteerButtonState, sumVolunteerApplicationCount } from "@/lib/campaign-schema"
@@ -39,9 +39,11 @@ export function useCampaignDetail(campaignId: string) {
     }
   }
 
+  const loadCampaignForViewer = useEffectEvent(loadCampaign)
+
   useEffect(() => {
     if (!campaignId || authLoading) return
-    void loadCampaign()
+    void loadCampaignForViewer()
   }, [campaignId, currentUserId, authLoading])
 
   const impact = campaign?.impact_metrics

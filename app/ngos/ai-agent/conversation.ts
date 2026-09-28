@@ -9,8 +9,6 @@ import {
   getNeedQuestions,
 } from "./intake"
 
-export type CloudSaveStatus = 'idle' | 'saving' | 'saved' | 'offline' | 'error'
-
 export type EditingMessageContext = {
   label: string
   options: string[]
@@ -109,17 +107,4 @@ export const getEditedAnswerPrompt = (
   }
 
   return 'Edited. Please continue from here.'
-}
-
-export const describeCloudSaveStatus = (status: CloudSaveStatus, lastSavedAt: string | null) => {
-  if (status === 'saving') return 'Saving to cloud...'
-  if (status === 'offline') return 'Offline. Will sync when back online.'
-  if (status === 'error') return 'Cloud sync failed. Retrying...'
-  if (status === 'saved') {
-    if (!lastSavedAt) return 'Saved to cloud'
-    const deltaMs = Date.now() - new Date(lastSavedAt).getTime()
-    const seconds = Math.max(1, Math.floor(deltaMs / 1000))
-    return seconds < 60 ? `Saved ${seconds}s ago` : 'Saved to cloud'
-  }
-  return ''
 }

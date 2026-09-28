@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useEffectEvent, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -121,8 +121,10 @@ export default function ReviewDetailPage() {
     });
   };
 
+  const fetchReviewDetailsForMilestone = useEffectEvent(fetchReviewDetails);
+
   useEffect(() => {
-    void fetchReviewDetails();
+    void fetchReviewDetailsForMilestone();
   }, [milestoneId]);
 
   const header = (

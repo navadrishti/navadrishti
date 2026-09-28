@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useEffectEvent, useMemo, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useToast } from '@/hooks/use-toast';
 import type { ProjectDetailPayload } from './types';
@@ -46,25 +46,29 @@ export function useProjectDetail(projectId: string) {
     }
   };
 
+  const loadProjectDetail = useEffectEvent(fetchProjectDetail);
+
   useEffect(() => {
     if (!projectId) return;
-    fetchProjectDetail();
+    loadProjectDetail();
   }, [user?.id, token, projectId]);
 
   useEffect(() => {
     if (!token || !projectId) return;
 
     const interval = window.setInterval(() => {
-      void fetchProjectDetail({ silent: true });
+      void loadProjectDetail({ silent: true });
     }, 20000);
 
     return () => window.clearInterval(interval);
   }, [user?.id, token, projectId]);
 
+  const userId = user?.id;
+  const userType = user?.user_type;
   const currentCompanyApplication = useMemo(() => {
-    if (!payload || user?.user_type !== 'company') return null;
-    return payload.company_applications.find((item) => Number(item.company_id) === Number(user.id)) || null;
-  }, [payload, user?.id, user?.user_type]);
+    if (!payload || userType !== 'company') return null;
+    return payload.company_applications.find((item) => Number(item.company_id) === Number(userId)) || null;
+  }, [payload, userId, userType]);
 
   const applyForFullProject = async () => {
     if (!token || !payload) return;

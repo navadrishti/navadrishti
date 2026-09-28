@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useIsClient } from "@/hooks/use-is-client"
 import { Header } from "@/components/header"
 import { useAuth } from "@/lib/auth-context"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -25,15 +26,11 @@ function clamp(value: number, min: number, max: number) {
 
 export default function CompanyCSRHealthPage() {
   const { user } = useAuth()
-  const [isHydrated, setIsHydrated] = useState(false)
+  const isHydrated = useIsClient()
   const [projects, setProjects] = useState<CSRProject[]>([])
   const [loading, setLoading] = useState(true)
 
   const effectiveUserType = isHydrated ? user?.user_type : undefined
-
-  useEffect(() => {
-    setIsHydrated(true)
-  }, [])
 
   useEffect(() => {
     const fetchProjects = async () => {

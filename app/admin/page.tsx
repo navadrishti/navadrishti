@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useEffectEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { DashboardBodyLayout, DashboardQuickSidebar } from '@/components/dashboard-quick-sidebar';
 import { Card, CardContent } from '@/components/ui/card';
@@ -135,11 +135,14 @@ export default function AdminPage() {
     }
   };
 
+  const verifyAdminOnMount = useEffectEvent(verifyAdmin);
+  const loadDashboardOnMount = useEffectEvent(loadDashboard);
+
   useEffect(() => {
     const boot = async () => {
-      const ok = await verifyAdmin();
+      const ok = await verifyAdminOnMount();
       if (ok) {
-        await loadDashboard();
+        await loadDashboardOnMount();
       } else {
         setLoading(false);
       }

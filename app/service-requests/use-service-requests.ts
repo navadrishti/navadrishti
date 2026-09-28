@@ -1,6 +1,8 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useEffectEvent, useMemo } from 'react'
+import { useIsClient } from '@/hooks/use-is-client'
+import { useNow } from '@/hooks/use-now'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
@@ -11,7 +13,7 @@ export function useServiceRequests() {
   const { user, loading: authLoading } = useAuth()
   const { toast } = useToast()
   const searchParams = useSearchParams()
-  const [mounted, setMounted] = useState(false)
+  const mounted = useIsClient()
   const [listingKind, setListingKind] = useState<ListingKind>('needs')
   const [searchTerm, setSearchTerm] = useState('')
   const [locationFilter, setLocationFilter] = useState('')
@@ -26,11 +28,7 @@ export function useServiceRequests() {
   const [error, setError] = useState('')
   const [deleting, setDeleting] = useState<number | null>(null)
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null)
-  const [currentTime, setCurrentTime] = useState(0)
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
+  const currentTime = useNow()
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -43,16 +41,16 @@ export function useServiceRequests() {
   const authReady = mounted && !authLoading
   const isNGO = authReady && user?.user_type === 'ngo'
 
-  useEffect(() => {
-    const tab = String(searchParams.get('tab') || searchParams.get('view') || '').toLowerCase()
-    if (tab === 'projects' || tab === 'project') {
+  const tabParam = String(searchParams.get('tab') || searchParams.get('view') || '').toLowerCase()
+  const [syncedTabParam, setSyncedTabParam] = useState<string | null>(null)
+  if (syncedTabParam !== tabParam) {
+    setSyncedTabParam(tabParam)
+    if (tabParam === 'projects' || tabParam === 'project') {
       setListingKind('projects')
-      return
-    }
-    if (tab === 'needs' || tab === 'need' || tab === 'my-requests') {
+    } else if (tabParam === 'needs' || tabParam === 'need' || tabParam === 'my-requests') {
       setListingKind('needs')
     }
-  }, [searchParams])
+  }
 
   const hasActiveFilters = useMemo(() => {
     const shared =
@@ -62,15 +60,6 @@ export function useServiceRequests() {
     if (listingKind === 'projects') return shared
     return shared || selectedNeedType !== 'all' || selectedUrgency !== 'all'
   }, [debouncedSearch, debouncedLocation, selectedCategory, selectedNeedType, selectedUrgency, listingKind])
-
-  useEffect(() => {
-    setCurrentTime(Date.now())
-    const timer = setInterval(() => {
-      setCurrentTime(Date.now())
-    }, 60_000)
-
-    return () => clearInterval(timer)
-  }, [])
 
   const deleteRequest = async (id: number) => {
     if (!user || !confirm('Delete this need? This cannot be undone.')) return
@@ -182,13 +171,16 @@ export function useServiceRequests() {
     }
   }
 
-  useEffect(() => {
-    if (!authReady) return
+  const loadListing = useEffectEvent(() => {
     if (listingKind === 'projects') {
       fetchProjects()
       return
     }
     fetchNeeds()
+  })
+
+  useEffect(() => {
+    if (authReady) loadListing()
   }, [
     listingKind,
     selectedCategory,

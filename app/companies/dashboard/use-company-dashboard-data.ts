@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useEffectEvent, useState } from 'react';
 import { createClient as createSupabaseClient } from '@/lib/supabase';
 import type { OfferRequestItem } from '@/lib/offer-requests';
 import type { CapabilityOfferSummary } from '@/lib/service-offers';
@@ -189,17 +189,29 @@ export function useCompanyDashboardData({
     void fetchPublishedCsrCampaigns();
   };
 
+  const handleChange = useEffectEvent((table: (typeof REALTIME_TABLES)[number]) => {
+    if (table === 'service_request_projects') fetchProjectOpportunities();
+    else if (table === 'service_engagement_assignments') fetchCSRTrackingAssignments();
+    else if (table === 'campaigns') fetchPublishedCsrCampaigns();
+  });
+
+  const loadDashboard = useEffectEvent(() =>
+    Promise.all([
+      fetchServiceOffers(),
+      fetchOfferRequests(),
+      fetchProjectOpportunities(),
+      fetchCSRTrackingAssignments(),
+      fetchPublishedCsrCampaigns(),
+      fetchNgoDirectory(),
+      refreshCompanyCaAccounts()
+    ])
+  );
+
   useEffect(() => {
     if (!userId) return;
 
     const realtime = createSupabaseClient();
     const channel = realtime.channel('realtime-dashboard');
-
-    const handleChange = (table: (typeof REALTIME_TABLES)[number]) => {
-      if (table === 'service_request_projects') fetchProjectOpportunities();
-      else if (table === 'service_engagement_assignments') fetchCSRTrackingAssignments();
-      else if (table === 'campaigns') fetchPublishedCsrCampaigns();
-    };
 
     REALTIME_TABLES.forEach((table) => {
       channel.on('postgres_changes', { event: '*', schema: 'public', table }, () => handleChange(table));
@@ -218,16 +230,7 @@ export function useCompanyDashboardData({
 
   useEffect(() => {
     if (!userId) return;
-
-    void Promise.all([
-      fetchServiceOffers(),
-      fetchOfferRequests(),
-      fetchProjectOpportunities(),
-      fetchCSRTrackingAssignments(),
-      fetchPublishedCsrCampaigns(),
-      fetchNgoDirectory(),
-      refreshCompanyCaAccounts()
-    ]);
+    void loadDashboard();
   }, [userId, highlightedRequestId]);
 
   return {

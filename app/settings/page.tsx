@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useIsClient } from '@/hooks/use-is-client'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Header } from '@/components/header'
@@ -135,7 +136,7 @@ function DeleteAccountDialog({ open, onOpenChange, onConfirm, loading, error }: 
 export default function SettingsPage() {
   const { user, token, logout } = useAuth();
   const router = useRouter();
-  const [mounted, setMounted] = useState(false);
+  const mounted = useIsClient();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -147,10 +148,6 @@ export default function SettingsPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState('');
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const handleBack = () => {
     if (window.history.length > 1) {

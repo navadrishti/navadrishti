@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useEffectEvent, useCallback, useRef, ReactNode } from 'react';
 import { toast } from 'sonner';
 import { getDocumentExpiryAlertCopy } from './auth';
 import { isPlatformLoginRequiredPath, PRODUCT_NAME } from './access-control';
@@ -281,8 +281,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, [hydrateUserFromServer, persistAuthSnapshot]);
 
+  const syncAuthOnMount = useEffectEvent(syncAuthFromStorage);
+
   useEffect(() => {
-    syncAuthFromStorage();
+    syncAuthOnMount();
   }, []);
 
   useEffect(() => {

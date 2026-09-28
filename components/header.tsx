@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useIsClient } from "@/hooks/use-is-client"
 import { useAuth } from "@/lib/auth-context"
 import { DesktopSidebar } from "./header/desktop-sidebar"
 import { MobileHeader } from "./header/mobile-header"
@@ -12,12 +12,7 @@ export { AuthBackButton, AuthCardBackRow } from "./header/auth-back-button"
 export function Header({ className = '' }: { className?: string } = {}) {
   const { user, loading, logout } = useAuth()
   const search = useProfileSearch()
-  const [mounted, setMounted] = useState(false)
-
-  // User-dependent content waits for mount to avoid a hydration mismatch.
-  useEffect(() => {
-    setMounted(true)
-  }, [])
+  const mounted = useIsClient()
 
   const handleLogout = async () => {
     await logout()

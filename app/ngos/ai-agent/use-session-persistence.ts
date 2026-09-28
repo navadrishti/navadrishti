@@ -1,5 +1,5 @@
 import type React from "react"
-import { useEffect, useRef } from "react"
+import { useEffect, useEffectEvent, useRef } from "react"
 import {
   type NGOAIAgentSession,
   INITIAL_ASSISTANT_MESSAGE,
@@ -74,10 +74,9 @@ export function useSessionPersistence({ intake, offers, sync, mounted, userId, t
     }
   }
 
-  useEffect(() => {
-    if (!activeSessionId || sessions.length === 0) return
-    const active = sessions.find((s) => s.id === activeSessionId)
-    if (!active) return
+  const applyActiveSession = useEffectEvent(() => {
+    const active = activeSessionId ? sessions.find((s) => s.id === activeSessionId) : undefined
+    if (!active) return false
 
     isApplyingSessionRef.current = true
     setMessages(active.messages || [{ role: 'assistant', content: INITIAL_ASSISTANT_MESSAGE }])
@@ -92,14 +91,18 @@ export function useSessionPersistence({ intake, offers, sync, mounted, userId, t
     setGeneratedDraft(active.generatedDraft || null)
     setSelectedOfferIdsByNeed(active.selectedOfferIdsByNeed || {})
     setPublishedProjectId(active.publishedProjectId || null)
+    return true
+  })
 
+  useEffect(() => {
+    if (!applyActiveSession()) return
     const timer = setTimeout(() => {
       isApplyingSessionRef.current = false
     }, 0)
     return () => clearTimeout(timer)
   }, [activeSessionId, sessions.length])
 
-  useEffect(() => {
+  const saveActiveSession = useEffectEvent(() => {
     if (!mounted || !userId || isApplyingSessionRef.current || isHydratingFromServerRef.current) return
 
     const nextSession = normalizeSessionFromState()
@@ -110,11 +113,19 @@ export function useSessionPersistence({ intake, offers, sync, mounted, userId, t
       : [nextSession, ...sessions]
 
     persistSessions(nextSessions, nextSession.id)
-  }, [mounted, userId, activeSessionId, messages, projectData, needsData, needCount, projectStep, activeNeedIndex, activeNeedQuestionIndex, conversationStage, generatedDraft, selectedOfferIdsByNeed, publishedProjectId])
+  })
 
   useEffect(() => {
+    saveActiveSession()
+  }, [mounted, userId, activeSessionId, messages, projectData, needsData, needCount, projectStep, activeNeedIndex, activeNeedQuestionIndex, conversationStage, generatedDraft, selectedOfferIdsByNeed, publishedProjectId])
+
+  const persistSessionList = useEffectEvent(() => {
     if (!mounted || !userId || sessions.length === 0) return
     persistSessions(sessions, activeSessionId)
+  })
+
+  useEffect(() => {
+    persistSessionList()
   }, [mounted, userId, sessions])
 
   const createNewSession = () => {

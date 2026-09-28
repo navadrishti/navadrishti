@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState, Suspense } from 'react';
+import { useState, Suspense } from 'react';
+import { useIsClient } from '@/hooks/use-is-client';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import ProtectedRoute from '@/components/protected-route';
@@ -29,7 +30,7 @@ function CompanyDashboardContent() {
   const { connected: payoutConnected } = usePayoutConnection(Boolean(user));
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [mounted, setMounted] = useState(false);
+  const mounted = useIsClient();
   const activeTab = resolveCompanyDashboardTab(searchParams.get('tab') || 'profile');
   const highlightedRequestId = Number(searchParams.get('requestId') || '');
   const [capabilityOffersTab, setCapabilityOffersTab] = useState<CapabilityOffersSubTab>('your-capabilities');
@@ -49,10 +50,6 @@ function CompanyDashboardContent() {
   });
   const offerRequestActions = useOfferRequestActions(data.setOfferRequests);
   const csrProjectActions = useCsrProjectActions(data, allVerified);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const sidebarItems = COMPANY_DASHBOARD_SIDEBAR_ITEMS;
 

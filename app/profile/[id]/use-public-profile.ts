@@ -9,6 +9,12 @@ export function usePublicProfile(id: string) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [viewingDoc, setViewingDoc] = useState<ViewingDocument | null>(null)
+  const [viewingDocProfileId, setViewingDocProfileId] = useState(id)
+
+  if (viewingDocProfileId !== id) {
+    setViewingDocProfileId(id)
+    setViewingDoc(null)
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -40,10 +46,7 @@ export function usePublicProfile(id: string) {
       }
     }
 
-    if (id) {
-      setViewingDoc(null)
-      fetchProfileData()
-    }
+    if (id) fetchProfileData()
 
     return () => {
       cancelled = true

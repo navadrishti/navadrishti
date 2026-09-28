@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useEffectEvent } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -48,8 +48,10 @@ export default function VerificationDetailsPage({ type }: VerificationDetailsPag
     }
   };
 
+  const fetchItemsForType = useEffectEvent(fetchItems);
+
   useEffect(() => {
-    fetchItems();
+    fetchItemsForType();
   }, [type]);
 
   const openReview = async (item: VerificationDetail) => {

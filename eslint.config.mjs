@@ -33,13 +33,11 @@ export default defineConfig([
           ignoreRestSiblings: true,
         },
       ],
-      // Existing effects and memoization predate the React Compiler rules; fixing
-      // them changes render/effect timing, so they are surfaced but not blocking.
-      'react-hooks/set-state-in-effect': 'warn',
-      'react-hooks/immutability': 'warn',
-      'react-hooks/purity': 'warn',
-      'react-hooks/refs': 'warn',
-      'react-hooks/preserve-manual-memoization': 'warn',
+      // Flags any effect that calls an async loader which sets state, even when every
+      // setState happens after an await. Mount flags, clocks and prop-driven resets use
+      // useIsClient, useNow and render-time adjustments instead of effects.
+      'react-hooks/set-state-in-effect': 'off',
+      'react-hooks/exhaustive-deps': 'error',
     },
   },
   {

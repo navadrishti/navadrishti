@@ -1,4 +1,4 @@
-import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
+import { useEffect, useEffectEvent, useState, type Dispatch, type SetStateAction } from 'react';
 import { toast as sonnerToast } from 'sonner';
 import { getErrorMessage } from '@/lib/utils';
 import type {
@@ -150,11 +150,13 @@ export function useSupportPanelState({
     }
   };
 
+  const fetchTicketsForFilters = useEffectEvent(fetchTickets);
+
   useEffect(() => {
     if (!active) return;
     const delay = supportQuery.trim() ? 300 : 0;
     const timer = window.setTimeout(() => {
-      fetchTickets(
+      fetchTicketsForFilters(
         supportStatusFilter === 'all' ? undefined : supportStatusFilter,
         supportQuery.trim() || undefined
       );

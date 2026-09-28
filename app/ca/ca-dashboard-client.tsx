@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useEffectEvent, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -154,8 +154,10 @@ export default function CADashboardClient() {
     }
   };
 
+  const fetchDataForFilter = useEffectEvent(fetchData);
+
   useEffect(() => {
-    fetchData();
+    fetchDataForFilter();
   }, [filterStatus]);
 
   const q = searchQuery.toLowerCase();

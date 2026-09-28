@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useIsClient } from '@/hooks/use-is-client';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
@@ -32,16 +33,12 @@ export default function ServiceRequestProjectDetailPage() {
     applyForFullProject,
   } = useProjectDetail(projectId);
 
-  const [isHydrated, setIsHydrated] = useState(false);
+  const isHydrated = useIsClient();
   const [expandedNeedGroups, setExpandedNeedGroups] = useState<Record<NeedGroupKey, boolean>>({
     ongoing: false,
     fulfilled: false,
     removed: false
   });
-
-  useEffect(() => {
-    setIsHydrated(true);
-  }, []);
 
   if (!isHydrated || loading || !payload) {
     return <ProjectLoadingSkeleton />;
