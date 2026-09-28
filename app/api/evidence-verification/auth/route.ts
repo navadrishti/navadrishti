@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
 
     const { email, password } = parsed.data;
 
-    const limited = limitAttempts(request, 'evidence-verification-login', email);
+    const limited = await limitAttempts(request, 'evidence-verification-login', email);
     if (limited) return limited;
 
     const user = await db.users.findByEmail(email);

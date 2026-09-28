@@ -3,7 +3,7 @@ import 'server-only'
 import { supabase } from '@/lib/db'
 import { allotCaComplianceTags, buildNgoDocumentExpiries } from '@/lib/auth'
 import { applyCaBadgeToProfile, type PlatformCATokenPayload } from '@/lib/platform-ca-auth'
-import { approveReverification, rejectReverification } from '@/lib/reverification'
+import { approveReverification, rejectReverification, ReverificationConflictError } from '@/lib/reverification'
 import type { CAQueueType } from '@/lib/ca-review-types'
 import { parseJsonObject } from '@/lib/utils'
 import type { Json, TablesUpdate } from '@/lib/database.types'
@@ -15,11 +15,29 @@ type VerificationActionRow = {
   id: number
   user_id: number
   verification_status: string | null
+  verification_date: string | null
+  updated_at: string | null
+  aadhaar_verified?: boolean | null
+  pan_verified?: boolean | null
+  aadhaar_verified_at?: string | null
+  pan_verified_at?: string | null
   company_name?: string
   ngo_name?: string
 }
 
 const AWAITING_REVIEW_STATUSES = new Set(['pending', 'unverified'])
+const ALREADY_DECIDED_MESSAGE = 'This record was already decided by another reviewer'
+
+async function claimReverification<T>(decide: () => Promise<T>) {
+  try {
+    return await decide()
+  } catch (error) {
+    if (error instanceof ReverificationConflictError) {
+      throw new CAReviewError(ALREADY_DECIDED_MESSAGE, 409)
+    }
+    throw error
+  }
+}
 
 async function applyReverificationDecision(options: {
   userId: number
@@ -32,7 +50,7 @@ async function applyReverificationDecision(options: {
   const { userId, action, reason, compliance_tags, reviewer, stakeholderName } = options
 
   if (action === 'reject') {
-    await rejectReverification(userId, reason || '', reviewer)
+    await claimReverification(() => rejectReverification(userId, reason || '', reviewer))
     await notifyUser(
       userId,
       'Reverification rejected',
@@ -44,7 +62,7 @@ async function applyReverificationDecision(options: {
     }
   }
 
-  const approved = await approveReverification(userId, reviewer, compliance_tags)
+  const approved = await claimReverification(() => approveReverification(userId, reviewer, compliance_tags))
   await notifyUser(
     userId,
     'Reverification approved',
@@ -71,10 +89,10 @@ export async function applyCAVerificationAction(options: {
 
   const rowSelect =
     type === 'companies'
-      ? 'id, user_id, verification_status, company_name'
+      ? 'id, user_id, verification_status, verification_date, updated_at, company_name'
       : type === 'ngos'
-        ? 'id, user_id, verification_status, ngo_name'
-        : 'id, user_id, verification_status'
+        ? 'id, user_id, verification_status, verification_date, updated_at, ngo_name'
+        : 'id, user_id, verification_status, verification_date, updated_at, aadhaar_verified, pan_verified, aadhaar_verified_at, pan_verified_at'
 
   const { data: rowData, error: fetchError } = await supabase
     .from(table)
@@ -144,7 +162,8 @@ export async function applyCAVerificationAction(options: {
     ...(action === 'approve' ? { verification_date: reviewedAt } : {}),
   }
 
-  const { error: verificationError } =
+  const rowStatusOperator = row.verification_status == null ? 'is' : 'eq'
+  const { data: claimedRows, error: verificationError } =
     action === 'approve' && type === 'individuals'
       ? await supabase
           .from('individual_verifications')
@@ -156,17 +175,17 @@ export async function applyCAVerificationAction(options: {
             pan_verified_at: reviewedAt,
           })
           .eq('id', id)
-      : await supabase.from(table).update(verificationUpdate).eq('id', id)
-  if (verificationError) {
-    if (nextStatus === 'rejected') {
-      const { error: fallbackError } = await supabase
-        .from(table)
-        .update({ verification_status: 'unverified', updated_at: reviewedAt })
-        .eq('id', id)
-      if (fallbackError) throw verificationError
-    } else {
-      throw verificationError
-    }
+          .filter('verification_status', rowStatusOperator, row.verification_status ?? null)
+          .select('id')
+      : await supabase
+          .from(table)
+          .update(verificationUpdate)
+          .eq('id', id)
+          .filter('verification_status', rowStatusOperator, row.verification_status ?? null)
+          .select('id')
+  if (verificationError) throw verificationError
+  if (!claimedRows?.length) {
+    throw new CAReviewError(ALREADY_DECIDED_MESSAGE, 409)
   }
 
   const verificationDocuments = parseJsonObject(profileData.verification_documents)
@@ -233,8 +252,36 @@ export async function applyCAVerificationAction(options: {
     userUpdate.verification_level = 'advanced'
   }
 
-  const { error: userUpdateError } = await supabase.from('users').update(userUpdate).eq('id', row.user_id)
-  if (userUpdateError) throw userUpdateError
+  const { data: updatedUsers, error: userUpdateError } = await supabase
+    .from('users')
+    .update(userUpdate)
+    .eq('id', row.user_id)
+    .filter('verification_status', user.verification_status == null ? 'is' : 'eq', user.verification_status ?? null)
+    .select('id')
+  if (userUpdateError || !updatedUsers?.length) {
+    const restore = {
+      verification_status: row.verification_status ?? null,
+      verification_date: row.verification_date ?? null,
+      updated_at: row.updated_at ?? reviewedAt,
+    }
+    if (action === 'approve' && type === 'individuals') {
+      await supabase
+        .from('individual_verifications')
+        .update({
+          ...restore,
+          aadhaar_verified: row.aadhaar_verified ?? false,
+          pan_verified: row.pan_verified ?? false,
+          aadhaar_verified_at: row.aadhaar_verified_at ?? null,
+          pan_verified_at: row.pan_verified_at ?? null,
+        })
+        .eq('id', id)
+        .eq('verification_status', nextStatus)
+    } else {
+      await supabase.from(table).update(restore).eq('id', id).eq('verification_status', nextStatus)
+    }
+    if (userUpdateError) throw userUpdateError
+    throw new CAReviewError('This account changed during review. Reload and try again.', 409)
+  }
 
   const message =
     action === 'approve' && caBadgeNumber

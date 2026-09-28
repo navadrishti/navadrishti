@@ -24,7 +24,10 @@ const mocks = vi.hoisted(() => ({
 vi.mock('server-only', () => ({}))
 vi.mock('next/headers', () => ({ cookies: async () => ({ delete: mocks.deleteCookie }) }))
 vi.mock('@/lib/db', () => ({
-  supabase: { from: (table: string) => mocks.from(table) },
+  supabase: {
+    from: (table: string) => mocks.from(table),
+    rpc: async (fn: string) => ({ data: null, error: { code: 'PGRST202', message: `Could not find the function public.${fn}` } }),
+  },
   db: {
     users: {
       findByEmail: async (email: string) =>
@@ -72,6 +75,7 @@ beforeEach(() => {
   mocks.deleteCookie.mockReset()
   mocks.isCompanyCAUser.mockReset().mockResolvedValue(false)
   resetRateLimits()
+  vi.spyOn(console, 'warn').mockImplementation(() => {})
   useDb()
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })

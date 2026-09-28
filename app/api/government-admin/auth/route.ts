@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
     const identifier = String(username).trim();
     const passwordValue = String(password);
 
-    const limited = limitAttempts(request, 'government-admin-login', identifier);
+    const limited = await limitAttempts(request, 'government-admin-login', identifier);
     if (limited) return limited;
 
     let account = null;

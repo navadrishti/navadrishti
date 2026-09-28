@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
+import { findAuthUser } from '@/lib/server-auth';
 import { parseJsonObject } from '@/lib/utils';
 import {
   getCaComplianceTagExpiry,
@@ -17,6 +18,7 @@ const tokenize = (value: string) =>
 
 export async function GET(request: NextRequest) {
   try {
+    const signedIn = Boolean(findAuthUser(request, { allowCookie: true }));
     const { searchParams } = new URL(request.url);
     const q = String(searchParams.get('q') || '').replace(/[,.():*%\\"_]/g, ' ').replace(/\s+/g, ' ').trim();
     const limit = Math.min(Math.max(Number(searchParams.get('limit') || 30) || 30, 1), 250);
@@ -31,7 +33,8 @@ export async function GET(request: NextRequest) {
     if (q) {
       // lightweight server-side filter to reduce rows
       const qStr = `%${q}%`
-      query = query.or(`name.ilike.${qStr},email.ilike.${qStr},city.ilike.${qStr},state_province.ilike.${qStr}`)
+      const emailFilter = signedIn ? `,email.ilike.${qStr}` : ''
+      query = query.or(`name.ilike.${qStr}${emailFilter},city.ilike.${qStr},state_province.ilike.${qStr}`)
     }
 
     const { data: ngos, error } = await query.limit(250).order('name', { ascending: true });
@@ -58,7 +61,7 @@ export async function GET(request: NextRequest) {
       return {
         id: ngo.id,
         name: ngo.name,
-        email: ngo.email,
+        email: signedIn ? ngo.email : null,
         city: ngo.city || profile.city || '',
         state: ngo.state_province || profile.state_province || '',
         focus_areas: profile.focus_areas || profile.cause_areas || '',

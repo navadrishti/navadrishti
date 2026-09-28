@@ -23,7 +23,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('server-only', () => ({}))
 vi.mock('@/lib/db', () => ({
-  supabase: { from: (table: string) => mocks.from(table) },
+  supabase: {
+    from: (table: string) => mocks.from(table),
+    rpc: async (fn: string) => ({ data: null, error: { code: 'PGRST202', message: `Could not find the function public.${fn}` } }),
+  },
   db: {
     users: {
       findByEmail: async (email: string) => mocks.users.find((row) => row.email === email.trim().toLowerCase()) ?? null,
@@ -47,6 +50,7 @@ beforeEach(() => {
   mocks.users = []
   mocks.ensureCompanyCaIdAssigned.mockReset().mockResolvedValue('CAID-40-001')
   resetRateLimits()
+  vi.spyOn(console, 'warn').mockImplementation(() => {})
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 

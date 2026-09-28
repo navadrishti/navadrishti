@@ -89,7 +89,7 @@ describe('public profile route', () => {
 
   it('hides private data from other signed-in users', async () => {
     const { body } = await fetchProfile({ authorization: `Bearer ${token({ id: 8 })}` })
-    expect(body.profile.email).toBeNull()
+    expect(body.profile).toMatchObject({ email: null, phone: null })
     expect(body.profile.profile_data).toEqual({ bio: 'Teacher' })
   })
 
@@ -106,10 +106,27 @@ describe('public profile route', () => {
     expect(body.profile.profile_data).toHaveProperty('admin_moderation')
   })
 
-  it('keeps organisation contact details public', async () => {
-    const { body } = await fetchProfile({}, { ...individualRow, id: 9, user_type: 'ngo', email: 'hello@seva.org' })
+  it.each(['ngo', 'company'])('hides %s contact details from anonymous viewers', async (userType) => {
+    const { body } = await fetchProfile({}, { ...individualRow, id: 9, user_type: userType, email: 'hello@seva.org' })
+    expect(body.profile).toMatchObject({ email: null, phone: null })
+    expect(JSON.stringify(body)).not.toMatch(/hello@seva\.org|9876543210/)
+  })
+
+  it.each([
+    ['ngo', { authorization: `Bearer ${token({ id: 8 })}` }],
+    ['company', { cookie: `token=${token({ id: 8, user_type: 'company' })}` }],
+  ])('shows %s contact details to other signed-in users', async (userType, headers) => {
+    const { body } = await fetchProfile(headers, { ...individualRow, id: 9, user_type: userType, email: 'hello@seva.org' })
     expect(body.profile).toMatchObject({ email: 'hello@seva.org', phone: '9876543210' })
     expect(body.profile.profile_data).toEqual({ bio: 'Teacher' })
+  })
+
+  it('does not accept an invalid token as a signed-in viewer', async () => {
+    const { body } = await fetchProfile(
+      { authorization: 'Bearer not-a-token' },
+      { ...individualRow, id: 9, user_type: 'ngo', email: 'hello@seva.org' }
+    )
+    expect(body.profile.email).toBeNull()
   })
 })
 
@@ -161,7 +178,42 @@ describe('ngo list route', () => {
     await listNgos(new NextRequest(`http://localhost/api/ngos/list?q=${encodeURIComponent('x%,verification_status.eq.verified')}`))
     const orFilter = fake.calls[0].filters.find(([name]) => name === 'or')
     const term = '%x verification status eq verified%'
-    expect(orFilter?.[1]).toBe(`name.ilike.${term},email.ilike.${term},city.ilike.${term},state_province.ilike.${term}`)
+    expect(orFilter?.[1]).toBe(`name.ilike.${term},city.ilike.${term},state_province.ilike.${term}`)
+  })
+
+  it('only searches and returns emails for signed-in users', async () => {
+    const ngo = {
+      id: 3,
+      name: 'Seva Trust',
+      email: 'seva@example.org',
+      city: 'Pune',
+      state_province: 'Maharashtra',
+      verification_status: 'verified',
+      profile_data: {},
+    }
+    vi.doMock('@/lib/auth', async (importOriginal) => ({
+      ...(await importOriginal<typeof import('@/lib/auth')>()),
+      ngoIsCsrEligible: () => true,
+    }))
+    vi.resetModules()
+    const { GET } = await import('@/app/api/ngos/list/route')
+
+    const anonymous = useDb({ 'users.select': [{ data: [ngo] }] })
+    const anonymousBody = await (await GET(new NextRequest('http://localhost/api/ngos/list?q=seva'))).json()
+    expect(anonymous.calls[0].filters.find(([name]) => name === 'or')?.[1]).not.toContain('email')
+    expect(anonymousBody.data[0].email).toBeNull()
+
+    const signedIn = useDb({ 'users.select': [{ data: [ngo] }] })
+    const signedInBody = await (
+      await GET(
+        new NextRequest('http://localhost/api/ngos/list?q=seva', {
+          headers: { authorization: `Bearer ${token({ id: 9, user_type: 'company' })}` },
+        })
+      )
+    ).json()
+    expect(signedIn.calls[0].filters.find(([name]) => name === 'or')?.[1]).toContain('email.ilike.%seva%')
+    expect(signedInBody.data[0].email).toBe('seva@example.org')
+    vi.doUnmock('@/lib/auth')
   })
 })
 

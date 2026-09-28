@@ -3,13 +3,19 @@ import { applyCAVerificationAction } from '@/lib/ca-review/verification-action'
 import type { PlatformCATokenPayload } from '@/lib/platform-ca-auth'
 import { createSupabaseFake, type FakeResult } from './service-supabase-fake'
 
-const mocks = vi.hoisted(() => ({ from: vi.fn(), approve: vi.fn(), reject: vi.fn() }))
+const mocks = vi.hoisted(() => ({
+  from: vi.fn(),
+  approve: vi.fn(),
+  reject: vi.fn(),
+  ConflictError: class ReverificationConflictError extends Error {},
+}))
 
 vi.mock('server-only', () => ({}))
 vi.mock('@/lib/db', () => ({ supabase: { from: mocks.from }, db: {} }))
 vi.mock('@/lib/reverification', () => ({
   approveReverification: mocks.approve,
   rejectReverification: mocks.reject,
+  ReverificationConflictError: mocks.ConflictError,
 }))
 
 type Payload = Record<string, any>
@@ -33,6 +39,8 @@ function setup(options: {
   return useDb({
     [`${options.table}.select`]: [{ data: { id: 4, user_id: 9, verification_status: 'pending', ...options.row } }],
     'users.select': [{ data: { id: 9, name: 'Ramesh Kumar', profile_data: {}, verification_status: 'pending', ...options.user } }],
+    [`${options.table}.update`]: [{ data: [{ id: 4 }] }],
+    'users.update': [{ data: [{ id: 9 }] }],
     ...options.extra,
   })
 }
@@ -63,9 +71,13 @@ describe('applyCAVerificationAction lookups', () => {
   })
 
   it.each([
-    ['individuals', 'individual_verifications', 'id, user_id, verification_status'],
-    ['companies', 'company_verifications', 'id, user_id, verification_status, company_name'],
-    ['ngos', 'ngo_verifications', 'id, user_id, verification_status, ngo_name'],
+    [
+      'individuals',
+      'individual_verifications',
+      'id, user_id, verification_status, verification_date, updated_at, aadhaar_verified, pan_verified, aadhaar_verified_at, pan_verified_at',
+    ],
+    ['companies', 'company_verifications', 'id, user_id, verification_status, verification_date, updated_at, company_name'],
+    ['ngos', 'ngo_verifications', 'id, user_id, verification_status, verification_date, updated_at, ngo_name'],
   ] as const)('selects the %s row by id', async (type, table, columns) => {
     const fake = setup({ table })
     await applyCAVerificationAction({ type, id: 4, action: 'reject', reason: 'x', ca })
@@ -208,14 +220,96 @@ describe('applyCAVerificationAction approve', () => {
     expect(fake.writes('users')).toHaveLength(0)
   })
 
-  it('throws when the user update fails', async () => {
+  it('restores every field the approval changed when the user update fails', async () => {
     const fake = setup({
       table: 'individual_verifications',
+      row: {
+        verification_date: null,
+        updated_at: '2026-01-01T00:00:00Z',
+        aadhaar_verified: true,
+        pan_verified: false,
+        aadhaar_verified_at: '2025-12-01T00:00:00Z',
+        pan_verified_at: null,
+      },
       extra: { 'users.update': [{ error: { message: 'denied' } }] },
     })
     await expect(applyCAVerificationAction({ type: 'individuals', id: 4, action: 'approve', ca })).rejects.toEqual({
       message: 'denied',
     })
+    const revert = fake.writes('individual_verifications')[1]
+    expect(revert.payload).toEqual({
+      verification_status: 'pending',
+      verification_date: null,
+      updated_at: '2026-01-01T00:00:00Z',
+      aadhaar_verified: true,
+      pan_verified: false,
+      aadhaar_verified_at: '2025-12-01T00:00:00Z',
+      pan_verified_at: null,
+    })
+    expect(revert.filters).toEqual([['eq', 'id', 4], ['eq', 'verification_status', 'verified']])
+    expect(fake.writes('user_notifications', 'insert')).toHaveLength(0)
+  })
+})
+
+describe('applyCAVerificationAction concurrent decisions', () => {
+  it('claims the row only while its status is unchanged', async () => {
+    const fake = setup({ table: 'company_verifications' })
+    await applyCAVerificationAction({ type: 'companies', id: 4, action: 'approve', ca })
+    expect(fake.writes('company_verifications')[0].filters).toEqual([
+      ['eq', 'id', 4],
+      ['filter', 'verification_status', 'eq', 'pending'],
+      ['select', 'id'],
+    ])
+    expect(fake.writes('users')[0].filters).toEqual([
+      ['eq', 'id', 9],
+      ['filter', 'verification_status', 'eq', 'pending'],
+      ['select', 'id'],
+    ])
+  })
+
+  it('claims a row without a status with an is-null check', async () => {
+    const fake = setup({
+      table: 'ngo_verifications',
+      row: { verification_status: null },
+      user: { verification_status: null },
+    })
+    await applyCAVerificationAction({ type: 'ngos', id: 4, action: 'reject', reason: 'x', ca })
+    expect(fake.writes('ngo_verifications')[0].filters).toContainEqual(['filter', 'verification_status', 'is', null])
+    expect(fake.writes('users')[0].filters).toContainEqual(['filter', 'verification_status', 'is', null])
+  })
+
+  it.each(['approve', 'reject'] as const)(
+    'refuses to %s a record another reviewer already claimed',
+    async (action) => {
+      const fake = setup({
+        table: 'individual_verifications',
+        extra: { 'individual_verifications.update': [{ data: [] }] },
+      })
+      await expect(
+        applyCAVerificationAction({ type: 'individuals', id: 4, action, reason: 'x', ca })
+      ).rejects.toMatchObject(caError('This record was already decided by another reviewer', 409))
+      expect(fake.writes('individual_verifications')).toHaveLength(1)
+      expect(fake.writes('users')).toHaveLength(0)
+      expect(fake.writes('user_notifications', 'insert')).toHaveLength(0)
+    }
+  )
+
+  it('reverts the claim when the account changed during review', async () => {
+    const fake = setup({
+      table: 'company_verifications',
+      row: { verification_date: null, updated_at: '2026-01-01T00:00:00Z' },
+      extra: { 'users.update': [{ data: [] }] },
+    })
+    await expect(
+      applyCAVerificationAction({ type: 'companies', id: 4, action: 'reject', reason: 'x', ca })
+    ).rejects.toMatchObject(caError('This account changed during review. Reload and try again.', 409))
+    const revert = fake.writes('company_verifications')[1]
+    expect(revert.payload).toEqual({
+      verification_status: 'pending',
+      verification_date: null,
+      updated_at: '2026-01-01T00:00:00Z',
+    })
+    expect(revert.filters).toContainEqual(['eq', 'verification_status', 'rejected'])
     expect(fake.writes('user_notifications', 'insert')).toHaveLength(0)
   })
 })
@@ -318,27 +412,16 @@ describe('applyCAVerificationAction reject', () => {
     expect(payloadOf(fake, 'users').profile_data.verification_documents.individual.rejection_reason).toBe('')
   })
 
-  it('falls back to unverified when the rejected status cannot be stored', async () => {
+  it('throws without reopening the record when the rejection cannot be stored', async () => {
     const fake = setup({
       table: 'ngo_verifications',
-      extra: { 'ngo_verifications.update': [{ error: { message: 'check constraint' } }] },
-    })
-    const result = await applyCAVerificationAction({ type: 'ngos', id: 4, action: 'reject', reason: 'x', ca })
-    expect(payloadOf(fake, 'ngo_verifications', 'update', 1)).toEqual({
-      verification_status: 'unverified',
-      updated_at: expect.any(String),
-    })
-    expect(result).toMatchObject({ status: 'rejected' })
-  })
-
-  it('throws the original error when the fallback also fails', async () => {
-    setup({
-      table: 'ngo_verifications',
-      extra: { 'ngo_verifications.update': [{ error: { message: 'first' } }, { error: { message: 'second' } }] },
+      extra: { 'ngo_verifications.update': [{ error: { message: 'denied' } }] },
     })
     await expect(
       applyCAVerificationAction({ type: 'ngos', id: 4, action: 'reject', reason: 'x', ca })
-    ).rejects.toEqual({ message: 'first' })
+    ).rejects.toEqual({ message: 'denied' })
+    expect(fake.writes('ngo_verifications')).toHaveLength(1)
+    expect(fake.writes('users')).toHaveLength(0)
   })
 
   it.each([
@@ -384,6 +467,26 @@ describe('applyCAVerificationAction reverification', () => {
       title: 'Reverification rejected',
       message: 'Your updated certificates were not accepted. Old 80G You stay CA-verified.',
     })
+  })
+
+  it.each([
+    ['approve', mocks.approve],
+    ['reject', mocks.reject],
+  ] as const)('refuses to %s a reverification another reviewer already decided', async (action, decide) => {
+    const fake = setup({ table: 'ngo_verifications', row: verifiedRow, user: verifiedNgo })
+    decide.mockRejectedValueOnce(new mocks.ConflictError('taken'))
+    await expect(
+      applyCAVerificationAction({ type: 'ngos', id: 4, action, reason: 'x', ca })
+    ).rejects.toMatchObject(caError('This record was already decided by another reviewer', 409))
+    expect(fake.writes('user_notifications', 'insert')).toHaveLength(0)
+  })
+
+  it('passes other reverification failures through', async () => {
+    setup({ table: 'ngo_verifications', row: verifiedRow, user: verifiedNgo })
+    mocks.approve.mockRejectedValueOnce(new Error('No reverification documents found'))
+    await expect(applyCAVerificationAction({ type: 'ngos', id: 4, action: 'approve', ca })).rejects.toThrow(
+      'No reverification documents found'
+    )
   })
 
   it('reviews a downgraded NGO as a fresh submission', async () => {

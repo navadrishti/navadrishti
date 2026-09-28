@@ -56,7 +56,6 @@ const PUBLIC_ROUTES = new Set([
   'government-admin/auth',
   'government-admin/logout',
   'health',
-  'ngos/list',
   'platform-newsletter',
   'pwa/[...path]',
   'search/profiles',

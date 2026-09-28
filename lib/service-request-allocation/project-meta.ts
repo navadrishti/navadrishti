@@ -102,19 +102,24 @@ type RedactableProject = {
 // Same profile_data keys app/api/profile/[userId] shows to viewers without private access.
 const PUBLIC_NGO_PROFILE_KEYS = ['bio', 'ca_badge_number', 'cover_image', 'website']
 
-function redactNgoContact(ngo: unknown) {
+function redactNgo(ngo: unknown, keepContact: boolean) {
   if (!ngo || typeof ngo !== 'object') return ngo
-  const { email: _email, phone: _phone, profile_data: profileData, ...safe } = ngo as Record<string, unknown>
+  const { email, phone, profile_data: profileData, ...safe } = ngo as Record<string, unknown>
   const profile = parseJsonObject(profileData)
   return {
     ...safe,
+    ...(keepContact ? { email, phone } : {}),
     profile_data: Object.fromEntries(
       PUBLIC_NGO_PROFILE_KEYS.filter((key) => profile[key] !== undefined).map((key) => [key, profile[key]])
     ),
   }
 }
 
-export function redactProjectSensitiveFields<T extends RedactableProject>(project: T | null | undefined) {
+// NGO email/phone may be kept for signed-in viewers, matching app/api/profile/[userId].
+export function redactProjectSensitiveFields<T extends RedactableProject>(
+  project: T | null | undefined,
+  options: { keepNgoContact?: boolean } = {}
+) {
   if (!project) return project
   const {
     contact_info: _contact,
@@ -124,7 +129,7 @@ export function redactProjectSensitiveFields<T extends RedactableProject>(projec
   } = project
   return {
     ...safe,
-    ...('ngo' in project ? { ngo: redactNgoContact(project.ngo) } : {}),
+    ...('ngo' in project ? { ngo: redactNgo(project.ngo, Boolean(options.keepNgoContact)) } : {}),
     contact_info: null,
     pending_company_applications: [],
   }

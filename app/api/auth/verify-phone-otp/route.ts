@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
 import { withAuth } from '@/lib/auth'
 import { supabase } from '@/lib/db'
+import { attemptOneTimeCode } from '@/lib/one-time-codes'
 import { limitAttempts } from '@/lib/rate-limit'
-import { phoneOtpStore } from '../send-phone-otp/route'
 
 const PHONE_OTP_MAX_ATTEMPTS = 5
 
@@ -25,30 +25,31 @@ export const POST = withAuth(async (req) => {
 
     const storeKey = `${user.id}:${phone}`
 
-    const limited = limitAttempts(req, 'verify-phone-otp', storeKey)
+    const limited = await limitAttempts(req, 'verify-phone-otp', storeKey)
     if (limited) return limited
 
-    const record = phoneOtpStore.get(storeKey)
+    const { status } = await attemptOneTimeCode({
+      purpose: 'phone_otp',
+      subject: storeKey,
+      code: otp,
+      maxAttempts: PHONE_OTP_MAX_ATTEMPTS,
+    })
 
-    if (!record) {
+    if (status === 'missing') {
       return NextResponse.json({ error: 'Please request a phone OTP first' }, { status: 400 })
     }
 
-    if (record.expiresAt <= Date.now()) {
-      phoneOtpStore.delete(storeKey)
+    if (status === 'expired') {
       return NextResponse.json({ error: 'Phone OTP has expired. Please request a new one.' }, { status: 400 })
     }
 
-    if (record.otp !== otp) {
-      record.attempts += 1
-      if (record.attempts >= PHONE_OTP_MAX_ATTEMPTS) {
-        phoneOtpStore.delete(storeKey)
-        return NextResponse.json({ error: 'Too many incorrect attempts. Please request a new phone OTP.' }, { status: 429 })
-      }
-      return NextResponse.json({ error: 'Invalid phone OTP' }, { status: 400 })
+    if (status === 'locked') {
+      return NextResponse.json({ error: 'Too many incorrect attempts. Please request a new phone OTP.' }, { status: 429 })
     }
 
-    phoneOtpStore.delete(storeKey)
+    if (status !== 'ok') {
+      return NextResponse.json({ error: 'Invalid phone OTP' }, { status: 400 })
+    }
 
     const { error } = await supabase
       .from('users')

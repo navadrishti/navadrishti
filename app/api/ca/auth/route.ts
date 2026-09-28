@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'username and password required' }, { status: 400 });
     }
 
-    const limited = limitAttempts(request, 'ca-login', username);
+    const limited = await limitAttempts(request, 'ca-login', username);
     if (limited) return limited;
 
     // Look up CA account by username (no CA ID required)

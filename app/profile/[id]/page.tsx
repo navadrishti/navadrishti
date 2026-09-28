@@ -18,7 +18,7 @@ import { usePublicProfile } from "./use-public-profile"
 export default function ImpactProfilePage() {
   const params = useParams<{ id: string }>()
   const id = String(params?.id || "")
-  const { user } = useAuth()
+  const { user, loading: authLoading } = useAuth()
   const { profile, loading, error, viewingDoc, setViewingDoc } = usePublicProfile(id)
   const [payDialogOpen, setPayDialogOpen] = useState(false)
 
@@ -44,6 +44,12 @@ export default function ImpactProfilePage() {
     acceptsPayments &&
     (user?.user_type !== "company" || hasCsr1)
   const showPayActions = isNgo && !isNgoViewer
+  const showContactLoginHint =
+    !authLoading &&
+    !user &&
+    (isNgo || profile?.user_type === "company") &&
+    !profile?.email &&
+    !profile?.phone
 
   let payAction: PayActionState | null = null
   if (showPayActions) {
@@ -71,6 +77,7 @@ export default function ImpactProfilePage() {
           allVerified={allVerified}
           isNgo={isNgo}
           payAction={payAction}
+          showContactLoginHint={showContactLoginHint}
           onPay={() => setPayDialogOpen(true)}
         />
 
@@ -91,12 +98,8 @@ export default function ImpactProfilePage() {
               <div className="space-y-8">
                 <div className="grid gap-4 md:grid-cols-2">
                   <InfoRow label="User type" value={formatUserType(profile.user_type)} />
-                  {profile.email ? (
-                    <>
-                      <InfoRow label="Contact email" value={profile.email} />
-                      <InfoRow label="Contact phone" value={profile.phone || undefined} />
-                    </>
-                  ) : null}
+                  {profile.email ? <InfoRow label="Contact email" value={profile.email} /> : null}
+                  {profile.phone ? <InfoRow label="Contact phone" value={profile.phone} /> : null}
                   <InfoRow label="Member since" value={formatMonthYear(profile.created_at)} />
                   <InfoRow label="Location" value={profile.city || profile.location || undefined} />
                   <VerificationStatusRow

@@ -188,6 +188,19 @@ describe('project meta', () => {
     expect(redacted?.ngo).toEqual({ id: 1, name: 'Seva', city: 'Pune', profile_data: expected })
   })
 
+  it('keeps NGO email and phone on request but still strips private profile data', () => {
+    const redacted = redactProjectSensitiveFields(
+      {
+        title: 'Library',
+        contact_info: '999',
+        ngo: { id: 1, email: 'seva@example.org', phone: '999', profile_data: { bio: 'Hi', payout_account: {} } },
+      },
+      { keepNgoContact: true }
+    )
+    expect(redacted?.ngo).toEqual({ id: 1, email: 'seva@example.org', phone: '999', profile_data: { bio: 'Hi' } })
+    expect(redacted?.contact_info).toBeNull()
+  })
+
   it('leaves a missing NGO alone', () => {
     expect(redactProjectSensitiveFields({ title: 'x', ngo: null })?.ngo).toBeNull()
   })
