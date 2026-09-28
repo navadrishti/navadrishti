@@ -495,7 +495,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       } else {
         toast.error('Failed to refresh user data');
       }
-    } catch (error) {
+    } catch {
       toast.error('Failed to refresh user data');
     }
   };

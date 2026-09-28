@@ -101,7 +101,7 @@ export function useSessionCloudSync({ mounted, userId, token, activeSessionId, s
     } finally {
       isServerSyncInFlightRef.current = false
     }
-  }, [token, userId])
+  }, [token, userId, setSessions, setActiveSessionId])
 
   const persistSessions = (nextSessions: CSRAgentSession[], nextActiveId?: string) => {
     setSessions(nextSessions)

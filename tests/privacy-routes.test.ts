@@ -6,7 +6,7 @@ import { GET as getProfile } from '@/app/api/profile/[userId]/route'
 import { GET as searchProfiles } from '@/app/api/search/profiles/route'
 import { GET as listNgos } from '@/app/api/ngos/list/route'
 import { GET as pwaGet, POST as pwaPost } from '@/app/api/pwa/[...path]/route'
-import { createSupabaseFake, type FakeResult } from './service-supabase-fake'
+import { createSupabaseFake, type FakeResult } from './support/supabase-fake'
 
 const mocks = vi.hoisted(() => ({ from: vi.fn() }))
 
@@ -82,7 +82,7 @@ describe('public profile route', () => {
     expect(body.profile.profile_data).toEqual({ bio: 'Teacher' })
     expect(body.profile.verification_details).not.toHaveProperty('aadhaar_number')
     expect(body.profile.verification_details).not.toHaveProperty('pan_number')
-    const verificationSelect = fake.calls.find((call) => call.table === 'individual_verifications')?.filters[0]
+    const verificationSelect = fake.queries.find((call) => call.table === 'individual_verifications')?.filters[0]
     expect(String(verificationSelect?.[1])).not.toMatch(/aadhaar_number|pan_number/)
     expect(JSON.stringify(body)).not.toMatch(/123456789012|aadhaar\.pdf|suspended_until/)
   })
@@ -149,7 +149,7 @@ describe('profile search route', () => {
     const body = await response.json()
     expect(body.profiles).toHaveLength(50)
     expect(body.profiles[0]).not.toHaveProperty('email')
-    const selects = fake.calls.filter((call) => call.table === 'users')
+    const selects = fake.queries.filter((call) => call.table === 'users')
     for (const call of selects) {
       expect(String(call.filters[0][1])).not.toContain('email')
       expect(call.filters.find(([name]) => name === 'limit')?.[1]).toBe(600)
@@ -159,7 +159,7 @@ describe('profile search route', () => {
   it('strips PostgREST filter syntax from the query', async () => {
     const fake = useDb()
     await searchProfiles(new NextRequest(`http://localhost/api/search/profiles?q=${encodeURIComponent('a%,id.gt.(0):*_"\\')}`))
-    const patterns = fake.calls.flatMap((call) =>
+    const patterns = fake.queries.flatMap((call) =>
       call.filters.filter(([name]) => name === 'ilike' || name === 'not').map((filter) => String(filter[filter.length - 1]))
     )
     expect(patterns).toEqual(['a id gt 0%', '%a id gt 0%', 'a id gt 0%'])
@@ -176,7 +176,7 @@ describe('ngo list route', () => {
   it('cannot inject extra conditions into the or() filter', async () => {
     const fake = useDb({ 'users.select': [{ data: [] }] })
     await listNgos(new NextRequest(`http://localhost/api/ngos/list?q=${encodeURIComponent('x%,verification_status.eq.verified')}`))
-    const orFilter = fake.calls[0].filters.find(([name]) => name === 'or')
+    const orFilter = fake.queries[0].filters.find(([name]) => name === 'or')
     const term = '%x verification status eq verified%'
     expect(orFilter?.[1]).toBe(`name.ilike.${term},city.ilike.${term},state_province.ilike.${term}`)
   })
@@ -200,7 +200,7 @@ describe('ngo list route', () => {
 
     const anonymous = useDb({ 'users.select': [{ data: [ngo] }] })
     const anonymousBody = await (await GET(new NextRequest('http://localhost/api/ngos/list?q=seva'))).json()
-    expect(anonymous.calls[0].filters.find(([name]) => name === 'or')?.[1]).not.toContain('email')
+    expect(anonymous.queries[0].filters.find(([name]) => name === 'or')?.[1]).not.toContain('email')
     expect(anonymousBody.data[0].email).toBeNull()
 
     const signedIn = useDb({ 'users.select': [{ data: [ngo] }] })
@@ -211,7 +211,7 @@ describe('ngo list route', () => {
         })
       )
     ).json()
-    expect(signedIn.calls[0].filters.find(([name]) => name === 'or')?.[1]).toContain('email.ilike.%seva%')
+    expect(signedIn.queries[0].filters.find(([name]) => name === 'or')?.[1]).toContain('email.ilike.%seva%')
     expect(signedInBody.data[0].email).toBe('seva@example.org')
     vi.doUnmock('@/lib/auth')
   })

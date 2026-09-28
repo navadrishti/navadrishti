@@ -63,8 +63,10 @@ function useProductionClientGuards() {
     const noop = () => {}
 
     for (const method of mutedMethods) {
+      /* eslint-disable no-console -- swapping console methods for no-ops, not logging */
       originalConsole[method] = (console[method] as (...args: unknown[]) => void).bind(console)
       console[method] = noop as (...args: unknown[]) => void
+      /* eslint-enable no-console */
     }
 
     const onKeyDown = (event: KeyboardEvent) => {
@@ -106,6 +108,7 @@ function useProductionClientGuards() {
 
       for (const method of mutedMethods) {
         if (originalConsole[method]) {
+          // eslint-disable-next-line no-console -- restoring the methods muted above
           console[method] = originalConsole[method]!
         }
       }

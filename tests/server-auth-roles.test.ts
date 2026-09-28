@@ -22,22 +22,12 @@ import {
   setPlatformCaTokenCookie,
 } from '@/lib/server-auth'
 import { requireCA } from '@/lib/ca-review'
-
-const fake = vi.hoisted(() => ({
-  results: {} as Record<string, Array<{ data: unknown; error: unknown }>>,
-}))
+import { supabaseFake } from './support/supabase-fake'
 
 vi.mock('server-only', () => ({}))
-vi.mock('@/lib/db', () => {
-  const from = (table: string) => {
-    const next = () => Promise.resolve(fake.results[table]?.shift() ?? { data: null, error: null })
-    const builder: Record<string, unknown> = { single: next, maybeSingle: next }
-    for (const method of ['select', 'eq', 'in', 'not', 'is', 'order', 'limit', 'update', 'insert']) {
-      builder[method] = () => builder
-    }
-    return builder
-  }
-  return { supabase: { from }, db: {} }
+vi.mock('@/lib/db', async () => {
+  const { supabaseFake } = await import('./support/supabase-fake')
+  return { supabase: supabaseFake.client, db: {} }
 })
 
 const secret = 'test-secret'
@@ -57,12 +47,8 @@ function buildRequest(options: { header?: string; cookies?: Record<string, strin
   return new NextRequest('http://localhost/api/test', { headers })
 }
 
-function queue(table: string, ...rows: Array<{ data: unknown; error?: unknown }>) {
-  fake.results[table] = rows.map((row) => ({ error: null, ...row }))
-}
-
 beforeEach(() => {
-  fake.results = {}
+  supabaseFake.reset()
 })
 
 describe('getAuthUserFromRequest', () => {
@@ -206,14 +192,14 @@ describe('getCompanyCAFromRequest', () => {
   }
 
   it('returns user and identity for an active company CA', async () => {
-    queue('company_ca_identities', { data: identity })
+    supabaseFake.queue('company_ca_identities', { data: identity })
     const context = await getCompanyCAFromRequest(buildRequest({ cookies: { 'evidence-verification-token': userToken } }))
     expect(context.user).toMatchObject({ id: 12 })
     expect(context.identity).toMatchObject({ id: 'ident-1', company_user_id: 40, ca_id: 'CAID-40-001' })
   })
 
   it('prefers the cookie over the header', async () => {
-    queue('company_ca_identities', { data: identity })
+    supabaseFake.queue('company_ca_identities', { data: identity })
     const other = jwt.sign({ id: 99, email: 'o@x.io', user_type: 'company' }, secret)
     const context = await getCompanyCAFromRequest(
       buildRequest({ header: `Bearer ${other}`, cookies: { 'company-ca-token': userToken } })
@@ -222,7 +208,7 @@ describe('getCompanyCAFromRequest', () => {
   })
 
   it('accepts a bearer token when no cookie is set', async () => {
-    queue('company_ca_identities', { data: identity })
+    supabaseFake.queue('company_ca_identities', { data: identity })
     await expect(getCompanyCAFromRequest(buildRequest({ header: `Bearer ${userToken}` }))).resolves.toMatchObject({
       user: { id: 12 },
     })
@@ -243,14 +229,14 @@ describe('getCompanyCAFromRequest', () => {
   })
 
   it('rejects users without a company CA identity', async () => {
-    queue('company_ca_identities', { data: null, error: { message: 'no rows' } })
+    supabaseFake.queue('company_ca_identities', { data: null, error: { message: 'no rows' } })
     await expect(getCompanyCAFromRequest(buildRequest({ header: `Bearer ${userToken}` }))).rejects.toThrow(
       'Company CA identity not found'
     )
   })
 
   it('rejects inactive identities', async () => {
-    queue('company_ca_identities', { data: { ...identity, status: 'revoked' } })
+    supabaseFake.queue('company_ca_identities', { data: { ...identity, status: 'revoked' } })
     await expect(getCompanyCAFromRequest(buildRequest({ header: `Bearer ${userToken}` }))).rejects.toThrow(
       'Company CA identity is not active'
     )
@@ -264,7 +250,7 @@ describe('getEvidenceApproverContext', () => {
   })
 
   it('rejects a company CA from another company', async () => {
-    queue('company_ca_identities', {
+    supabaseFake.queue('company_ca_identities', {
       data: { id: 'i', user_id: 12, company_user_id: 40, ca_id: 'X', status: 'active', permissions: {} },
     })
     const request = buildRequest({ cookies: { 'evidence-verification-token': userToken } })
@@ -272,7 +258,7 @@ describe('getEvidenceApproverContext', () => {
   })
 
   it('does not treat a regular user bearer token as platform_ca', async () => {
-    queue('company_ca_identities', { data: null, error: { message: 'no rows' } })
+    supabaseFake.queue('company_ca_identities', { data: null, error: { message: 'no rows' } })
     await expect(getEvidenceApproverContext(buildRequest({ header: `Bearer ${userToken}` }), 41)).rejects.toThrow()
   })
 })
@@ -385,26 +371,26 @@ describe('session cookies', () => {
 
 describe('resolveEffectiveVerificationStatus', () => {
   it.each(['unverified', 'suspended', 'pending'])('returns an admin %s override without checking the type table', async (status) => {
-    queue('users', { data: { verification_status: status.toUpperCase() } })
-    queue('ngo_verifications', { data: { verification_status: 'verified' } })
+    supabaseFake.queue('users', { data: { verification_status: status.toUpperCase() } })
+    supabaseFake.queue('ngo_verifications', { data: { verification_status: 'verified' } })
     await expect(resolveEffectiveVerificationStatus(1, 'ngo')).resolves.toBe(status)
   })
 
   it('trusts verified on the users row', async () => {
-    queue('users', { data: { verification_status: 'verified' } })
+    supabaseFake.queue('users', { data: { verification_status: 'verified' } })
     await expect(resolveEffectiveVerificationStatus(1, 'company')).resolves.toBe('verified')
   })
 
   it('falls back to the type-specific table', async () => {
-    queue('users', { data: { verification_status: null } })
-    queue('company_verifications', { data: { verification_status: 'pending' } })
+    supabaseFake.queue('users', { data: { verification_status: null } })
+    supabaseFake.queue('company_verifications', { data: { verification_status: 'pending' } })
     await expect(resolveEffectiveVerificationStatus(1, 'company')).resolves.toBe('pending')
   })
 
   it('returns unverified for unknown user types or missing rows', async () => {
-    queue('users', { data: null })
+    supabaseFake.queue('users', { data: null })
     await expect(resolveEffectiveVerificationStatus(1, 'admin')).resolves.toBe('unverified')
-    queue('users', { data: null })
+    supabaseFake.queue('users', { data: null })
     await expect(resolveEffectiveVerificationStatus(1, 'individual')).resolves.toBe('unverified')
   })
 })
@@ -422,12 +408,12 @@ describe('assertNgoCsr1CoversProject', () => {
   })
 
   it('passes when CSR-1 outlasts the project', async () => {
-    queue('users', liveNgo('2099-12-31'))
+    supabaseFake.queue('users', liveNgo('2099-12-31'))
     await expect(assertNgoCsr1CoversProject(7, { valid_until: '2098-01-01' })).resolves.toEqual({ ok: true })
   })
 
   it('fails when CSR-1 expires before the project ends', async () => {
-    queue('users', liveNgo('2098-01-01'))
+    supabaseFake.queue('users', liveNgo('2098-01-01'))
     await expect(assertNgoCsr1CoversProject(7, { valid_until: '2099-01-01' })).resolves.toEqual({
       ok: false,
       error: CSR_TIMELINE_COVERAGE_REQUIRED_MESSAGE,
@@ -435,7 +421,7 @@ describe('assertNgoCsr1CoversProject', () => {
   })
 
   it('fails for non-NGO or missing users', async () => {
-    queue('users', { data: { user_type: 'company', verification_status: 'verified', profile_data: {} } })
+    supabaseFake.queue('users', { data: { user_type: 'company', verification_status: 'verified', profile_data: {} } })
     await expect(assertNgoCsr1CoversProject(7, { valid_until: '2098-01-01' })).resolves.toEqual({
       ok: false,
       error: CSR_ELIGIBILITY_REQUIRED_MESSAGE,
@@ -444,7 +430,7 @@ describe('assertNgoCsr1CoversProject', () => {
   })
 
   it('fails when the NGO is not verified', async () => {
-    queue('users', { data: { ...liveNgo('2099-12-31').data, verification_status: 'pending' } })
+    supabaseFake.queue('users', { data: { ...liveNgo('2099-12-31').data, verification_status: 'pending' } })
     await expect(assertNgoCsr1CoversProject(7, { valid_until: '2098-01-01' })).resolves.toEqual({
       ok: false,
       error: CSR_ELIGIBILITY_REQUIRED_MESSAGE,

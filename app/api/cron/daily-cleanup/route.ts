@@ -210,7 +210,6 @@ export async function GET(request: NextRequest) {
       .lt('valid_until', nowIso)
       .limit(1000);
 
-    let deactivatedOfferCount = 0;
     if (validityExpiredError) {
       console.error('Error fetching validity-expired capability offers:', validityExpiredError);
     } else if (validityExpiredOffers && validityExpiredOffers.length > 0) {
@@ -222,10 +221,7 @@ export async function GET(request: NextRequest) {
 
         if (deactivateError) {
           console.error(`Error deactivating offer ${offer.id}:`, deactivateError);
-          continue;
         }
-
-        deactivatedOfferCount++;
       }
     } else {
     }
@@ -243,8 +239,6 @@ export async function GET(request: NextRequest) {
       if (expiredProjectsError) {
         console.error('Error fetching expired projects:', expiredProjectsError);
       } else if (expiredProjects && expiredProjects.length > 0) {
-        let expiredProjectCount = 0;
-
         for (const proj of expiredProjects) {
           try {
             const { error: updateProjErr } = await supabase
@@ -267,8 +261,6 @@ export async function GET(request: NextRequest) {
             if (updateNeedsErr) {
               console.error(`Error expiring needs for project ${proj.id}:`, updateNeedsErr);
             }
-
-            expiredProjectCount++;
           } catch (procErr) {
             console.error('Error processing project expiry:', procErr);
           }

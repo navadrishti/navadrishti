@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { db, supabase } from '@/lib/db';
 import { withAuth, type AuthenticatedRequest, backfillNgoComplianceProfileData, backfillNgoDocumentExpiries, summarizeDocumentExpiries, ngoIsCsrEligible, getCaComplianceTags, getAccountAccessBlockReason } from '@/lib/auth';
 import { applyCaBadgeToProfile } from '@/lib/platform-ca-auth';
-import { parseJsonObject } from '@/lib/utils';
+import { parseJsonObject, type JsonRecord } from '@/lib/utils';
 
 async function handler(req: AuthenticatedRequest) {
   try {
@@ -79,7 +79,7 @@ async function handler(req: AuthenticatedRequest) {
       }
     }
 
-    let profileData: Record<string, any> = parseJsonObject(freshUserData.profile_data);
+    let profileData: JsonRecord = parseJsonObject(freshUserData.profile_data);
 
     if (freshUserData.user_type === 'ngo') {
       const backfill = backfillNgoComplianceProfileData(profileData);

@@ -8,17 +8,17 @@ import {
 } from '@/lib/db/service-requests'
 import { ServiceRequestDeleteBlockedError } from '@/lib/service-requests/errors'
 import type { Tables } from '@/lib/database.types'
-import { callsOf, compact, createDbFake, eqsOf, unknownColumns, type DbQuery, type DbResult } from './db-supabase-fake'
+import { callsOf, compact, createSupabaseFake, eqsOf, unknownColumns, type FakeQuery, type FakeResult } from './support/supabase-fake'
 
 const mocks = vi.hoisted(() => ({ from: vi.fn() }))
 
 vi.mock('server-only', () => ({}))
 vi.mock('@/lib/db/client', () => ({ supabase: { from: mocks.from } }))
 
-let fake = createDbFake()
+let fake = createSupabaseFake()
 
-function useDb(responder: Record<string, DbResult[]> | ((query: DbQuery) => DbResult | undefined) = {}) {
-  fake = createDbFake(responder)
+function useDb(responder: Record<string, FakeResult[]> | ((query: FakeQuery) => FakeResult | undefined) = {}) {
+  fake = createSupabaseFake(responder)
   mocks.from.mockImplementation(fake.from)
   return fake
 }
@@ -313,7 +313,7 @@ describe('serviceRequests writes', () => {
           'razorpay_payments.select': [{ data: [{ id: 'p1' }] }],
         },
       ],
-    ])('refuses to delete a need with %s', async (_label, responses: Record<string, DbResult[]>) => {
+    ])('refuses to delete a need with %s', async (_label, responses: Record<string, FakeResult[]>) => {
       useDb(responses)
       const error = await serviceRequests.delete(4).catch((caught: unknown) => caught)
       expect(error).toBeInstanceOf(ServiceRequestDeleteBlockedError)

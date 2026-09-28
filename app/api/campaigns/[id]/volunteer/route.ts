@@ -103,7 +103,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
               return NextResponse.json({ error: 'You are already registered for another campaign during this period' }, { status: 400 })
             }
           }
-        } catch (e) {
+        } catch {
           // ignore malformed entries
         }
       }

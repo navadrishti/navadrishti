@@ -10,7 +10,7 @@ import { GET as review } from '@/app/api/ca/review/route'
 import { POST as verificationAction } from '@/app/api/ca/verification-action/route'
 import { CAReviewError } from '@/lib/ca-review/errors'
 import { verifyPlatformCAToken } from '@/lib/platform-ca-auth'
-import { createSupabaseFake, type FakeResult } from './service-supabase-fake'
+import { createSupabaseFake, type FakeResult } from './support/supabase-fake'
 
 const mocks = vi.hoisted(() => ({
   from: vi.fn(),
@@ -85,7 +85,7 @@ describe('POST /api/ca/auth', () => {
       status: 400,
       body: { error: 'username and password required' },
     })
-    expect(fake.calls).toHaveLength(0)
+    expect(fake.queries).toHaveLength(0)
     expect(mocks.verifyPassword).not.toHaveBeenCalled()
   })
 
@@ -93,7 +93,7 @@ describe('POST /api/ca/auth', () => {
     const fake = useDb({ 'platform_ca_accounts.select': [{ error: { message: 'no rows' } }] })
     const result = await read(await login(request('/api/ca/auth', { body: { username: 'ca3', password: 'secret' } })))
     expect(result).toEqual({ status: 401, body: { error: 'Invalid username or password' } })
-    expect(fake.calls[0].filters).toEqual([
+    expect(fake.queries[0].filters).toEqual([
       ['select', '*'],
       ['eq', 'username', 'ca3'],
       ['eq', 'active', true],

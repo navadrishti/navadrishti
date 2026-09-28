@@ -7,17 +7,17 @@ import {
 } from '@/lib/db/ai-agent'
 import { supportTicketMessages, supportTickets } from '@/lib/db/support-tickets'
 import { individualVerifications, verificationDocuments } from '@/lib/db/verification'
-import { callsOf, compact, createDbFake, eqsOf, unknownColumns, type DbQuery, type DbResult } from './db-supabase-fake'
+import { callsOf, compact, createSupabaseFake, eqsOf, unknownColumns, type FakeQuery, type FakeResult } from './support/supabase-fake'
 
 const mocks = vi.hoisted(() => ({ from: vi.fn() }))
 
 vi.mock('server-only', () => ({}))
 vi.mock('@/lib/db/client', () => ({ supabase: { from: mocks.from } }))
 
-let fake = createDbFake()
+let fake = createSupabaseFake()
 
-function useDb(responder: Record<string, DbResult[]> | ((query: DbQuery) => DbResult | undefined) = {}) {
-  fake = createDbFake(responder)
+function useDb(responder: Record<string, FakeResult[]> | ((query: FakeQuery) => FakeResult | undefined) = {}) {
+  fake = createSupabaseFake(responder)
   mocks.from.mockImplementation(fake.from)
   return fake
 }
@@ -33,7 +33,7 @@ afterEach(() => {
 describe('unknownColumns', () => {
   it('flags columns, embeds and payload keys missing from the schema', async () => {
     type Filterable = { eq(column: string, value: unknown): PromiseLike<unknown> }
-    const probe = createDbFake()
+    const probe = createSupabaseFake()
     const from = probe.from as unknown as (table: string) => {
       select(columns: string): Filterable
       update(payload: unknown): Filterable

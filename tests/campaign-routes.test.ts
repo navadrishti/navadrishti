@@ -1,13 +1,14 @@
 import { NextRequest } from 'next/server'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { eqValue, hasCall, jsonRequest, supabaseFake, tokenFor, type FakeQuery } from './campaign-supabase-fake'
+import { jsonRequest, tokenFor } from './support/requests'
+import { eqValue, hasCall, supabaseFake, type FakeQuery } from './support/supabase-fake'
 import { POST as acceptLead } from '@/app/api/campaigns/accept-lead/route'
 import { DELETE as deleteCampaign, GET as getCampaign } from '@/app/api/campaigns/[id]/route'
 import { POST as volunteer } from '@/app/api/campaigns/[id]/volunteer/route'
 import { ngoUserIsCsrEligible } from '@/lib/server-auth'
 
 vi.mock('@/lib/db', async () => {
-  const { supabaseFake: fake } = await import('./campaign-supabase-fake')
+  const { supabaseFake: fake } = await import('./support/supabase-fake')
   return { supabase: fake.client, ensureCampaignVolunteerAssignment: async () => undefined }
 })
 

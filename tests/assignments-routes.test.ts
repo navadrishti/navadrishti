@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { GET as listEngagements } from '@/app/api/service-assignments/route'
 import { GET, POST, PUT } from '@/app/api/service-request-assignments/route'
-import { jsonRequest, tokenFor } from './campaign-supabase-fake'
-import { callsOf, createDbFake, eqsOf, unknownColumns, type DbQuery, type DbResult } from './db-supabase-fake'
+import { jsonRequest, tokenFor } from './support/requests'
+import { callsOf, createSupabaseFake, eqsOf, unknownColumns, type FakeQuery, type FakeResult } from './support/supabase-fake'
 
 const mocks = vi.hoisted(() => {
   const handler = (name: string) => vi.fn(async () => NextResponse.json({ handler: name }))
@@ -37,10 +37,10 @@ vi.mock('@/lib/service-request-assignments/review-project-application', () => ({
   reviewProjectApplication: mocks.reviewProjectApplication,
 }))
 
-let fake = createDbFake()
+let fake = createSupabaseFake()
 
-function useDb(responder: (query: DbQuery) => DbResult | undefined = () => undefined) {
-  fake = createDbFake(responder)
+function useDb(responder: (query: FakeQuery) => FakeResult | undefined = () => undefined) {
+  fake = createSupabaseFake(responder)
   mocks.from.mockImplementation(fake.from)
   return fake
 }

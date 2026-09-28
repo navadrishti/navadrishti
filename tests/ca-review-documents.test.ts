@@ -4,7 +4,7 @@ import { applyNgoExpiryOverlay, ngoOcrExpiries } from '@/lib/ca-review/ngo-compl
 import { notifyUser } from '@/lib/ca-review/notifications'
 import { selectColumns, TYPE_CONFIG, unwrapUser, type CAQueueItem } from '@/lib/ca-review/queue-config'
 import type { CAReviewDocument } from '@/lib/ca-review-types'
-import { createSupabaseFake, type FakeResult } from './service-supabase-fake'
+import { createSupabaseFake, type FakeResult } from './support/supabase-fake'
 
 const mocks = vi.hoisted(() => ({ from: vi.fn() }))
 

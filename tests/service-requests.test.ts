@@ -8,7 +8,7 @@ import {
   type ListingSource,
 } from '@/lib/service-requests/list-shape'
 import { parseAmount, parseImageArray } from '@/lib/service-requests/parsing'
-import { createSupabaseFake, type FakeResult } from './service-supabase-fake'
+import { createSupabaseFake, type FakeResult } from './support/supabase-fake'
 
 const mocks = vi.hoisted(() => ({ from: vi.fn(), create: vi.fn(), getAll: vi.fn() }))
 
@@ -268,7 +268,7 @@ describe('createNeed', () => {
     const fake = useDb({ 'service_offers.select': [{ data: [{ id: 5 }] }] })
     const result = await createNeed(12, { ...body, details: { recommended_offer_ids: [5, 6] } })
     expect(result).toMatchObject({ ok: false, error: expect.stringMatching(/capability offers are invalid/) })
-    expect(fake.calls[0].filters).toContainEqual(['eq', 'offer_type', 'material'])
+    expect(fake.queries[0].filters).toContainEqual(['eq', 'offer_type', 'material'])
   })
 
   it('creates a material need with derived progress fields', async () => {

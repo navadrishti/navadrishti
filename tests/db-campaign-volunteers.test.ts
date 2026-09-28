@@ -6,17 +6,17 @@ import {
   listCompanyCampaignVolunteerAttendance,
   processCompletedCampaignVolunteerOutcomes,
 } from '@/lib/db/campaign-volunteers'
-import { callsOf, createDbFake, eqsOf, unknownColumns, type DbQuery, type DbResult } from './db-supabase-fake'
+import { callsOf, createSupabaseFake, eqsOf, unknownColumns, type FakeQuery, type FakeResult } from './support/supabase-fake'
 
 const mocks = vi.hoisted(() => ({ from: vi.fn() }))
 
 vi.mock('server-only', () => ({}))
 vi.mock('@/lib/db/client', () => ({ supabase: { from: mocks.from } }))
 
-let fake = createDbFake()
+let fake = createSupabaseFake()
 
-function useDb(responder: Record<string, DbResult[]> | ((query: DbQuery) => DbResult | undefined) = {}) {
-  fake = createDbFake(responder)
+function useDb(responder: Record<string, FakeResult[]> | ((query: FakeQuery) => FakeResult | undefined) = {}) {
+  fake = createSupabaseFake(responder)
   mocks.from.mockImplementation(fake.from)
   return fake
 }

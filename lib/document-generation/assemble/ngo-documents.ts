@@ -11,7 +11,7 @@ import type { ImpactReportPeriod } from '@/lib/document-generation/types'
 import {
   implementingAgencyReportTemplate,
   ngoCompliancePackTemplate,
-} from '@/lib/document-generation/templates/company/csr-compliance-profile.template'
+} from '@/lib/document-generation/templates/company/csr-compliance-profile'
 import { parseJsonObject } from '@/lib/utils'
 import { loadCampaignForLeadNgo, loadProjectForActor, resolvePartnerName } from './loaders'
 import { confirmedFunds, milestonesFromCampaign, milestonesFromProject, pickLatestImpact } from './project-data'

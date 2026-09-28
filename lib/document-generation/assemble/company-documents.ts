@@ -4,7 +4,7 @@ import { readCampaignLocation } from '@/lib/campaign-schema'
 import {
   boardCsrAnnexureDraftTemplate,
   csrComplianceProfileTemplate,
-} from '@/lib/document-generation/templates/company/csr-compliance-profile.template'
+} from '@/lib/document-generation/templates/company/csr-compliance-profile'
 import { csrPolicyDocumentTemplate } from '@/lib/document-generation/templates/company/csr-policy-document.template'
 import { parseJsonObject } from '@/lib/utils'
 import { loadCompanyCampaigns, loadCompanyProjects, resolvePartnerName } from './loaders'

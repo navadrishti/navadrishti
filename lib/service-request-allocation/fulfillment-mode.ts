@@ -1,10 +1,11 @@
+import type { JsonRecord } from '@/lib/utils'
 import { getServiceRequestTarget } from './capacity'
 import type { NgoNeedFulfillmentMode, ServiceRequestInput, ServiceRequestLike } from './types'
 
 export function normalizeServiceRequestRecord(request: unknown) {
   if (!request) return null
   if (Array.isArray(request)) return request[0] || null
-  if (typeof request === 'object') return request as Record<string, any>
+  if (typeof request === 'object') return request as JsonRecord
   return null
 }
 

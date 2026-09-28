@@ -21,6 +21,7 @@ export function DocumentPreview({
       onPointerDown={(event) => event.stopPropagation()}
     >
       {isImage ? (
+        // eslint-disable-next-line @next/next/no-img-element -- verification documents are signed URLs rendered at natural size
         <img
           src={src}
           alt={alt}

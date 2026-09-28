@@ -29,21 +29,6 @@ export function useServiceOffer(offerId: string) {
   const selectedNeedTotal = useMemo(() => sumNeedAmounts(selectedNeedSummaries), [selectedNeedSummaries])
   const isOfferExpired = !!offer?.valid_until && new Date(String(offer.valid_until)).getTime() < Date.now()
 
-  useEffect(() => {
-    if (offerId) {
-      fetchOfferDetails()
-      if (isAuthenticated && user) {
-        checkExistingApplication()
-      }
-    }
-  }, [offerId, isAuthenticated, user])
-
-  useEffect(() => {
-    if (isAuthenticated && user?.user_type === 'ngo' && offer) {
-      fetchNgoNeeds()
-    }
-  }, [offer?.id, offer?.offer_type, isAuthenticated, user?.id, user?.user_type])
-
   const fetchOfferDetails = async () => {
     try {
       const response = await fetch(`/api/service-offers/${offerId}`, { cache: 'no-store' })
@@ -121,6 +106,21 @@ export function useServiceOffer(offerId: string) {
       setLoadingNgoNeeds(false)
     }
   }
+
+  useEffect(() => {
+    if (offerId) {
+      fetchOfferDetails()
+      if (isAuthenticated && user) {
+        checkExistingApplication()
+      }
+    }
+  }, [offerId, isAuthenticated, user])
+
+  useEffect(() => {
+    if (isAuthenticated && user?.user_type === 'ngo' && offer) {
+      fetchNgoNeeds()
+    }
+  }, [offer?.id, offer?.offer_type, isAuthenticated, user?.id, user?.user_type])
 
   const handleApply = async () => {
     if (!isAuthenticated || !user) {

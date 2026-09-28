@@ -77,7 +77,7 @@ export default function EditProjectPage({ params }: { params: Promise<{ id: stri
         } else {
           toast({ title: 'Error', description: 'Failed to load project', variant: 'destructive' })
         }
-      } catch (err) {
+      } catch {
         toast({ title: 'Error', description: 'Failed to load project', variant: 'destructive' })
       } finally {
         setLoading(false)

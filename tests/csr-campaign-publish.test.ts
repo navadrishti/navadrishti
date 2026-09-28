@@ -2,11 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { POST } from '@/app/api/csr-agent/publish-campaign/route'
 import { UpdateSelectedCampaignSchema, getCampaignStatus, updateCampaignDb } from '@/lib/csr-agent/campaign/drafts'
 import { assertNgoCsr1CoversWork } from '@/lib/server-auth'
-import { eqValue, jsonRequest, supabaseFake, tokenFor, type FakeQuery } from './campaign-supabase-fake'
-import { rental, type Row } from './csr-campaign-fixtures'
+import { jsonRequest, tokenFor } from './support/requests'
+import { eqValue, supabaseFake, type FakeQuery } from './support/supabase-fake'
+import { rental, type Row } from './support/csr-campaign-fixtures'
 
 vi.mock('@/lib/db', async () => {
-  const { supabaseFake: fake } = await import('./campaign-supabase-fake')
+  const { supabaseFake: fake } = await import('./support/supabase-fake')
   return { supabase: fake.client }
 })
 

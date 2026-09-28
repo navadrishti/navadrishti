@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import Image from 'next/image'
 import { cn } from '@/lib/utils'
 
 const VERIFIED_BADGE_SRC = '/photos/verified-badge.png'
@@ -108,7 +109,7 @@ export function VerificationBadge({
         gap: showText || showNumber ? '4px' : '0',
       }}
     >
-      <img
+      <Image
         src={VERIFIED_BADGE_SRC}
         alt=""
         width={currentSize.iconSize}
@@ -216,7 +217,7 @@ export function ComplianceBadge({
       title={text}
       aria-label={text}
     >
-      <img
+      <Image
         src={meta.src}
         alt=""
         width={iconSize}

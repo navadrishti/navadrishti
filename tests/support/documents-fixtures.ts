@@ -1,5 +1,5 @@
 import { expect } from 'vitest'
-import { eqValue, hasCall, type FakeQuery, type FakeResult } from './campaign-supabase-fake'
+import { eqValue, hasCall, type FakeQuery, type FakeResult } from './supabase-fake'
 
 type Row = Record<string, unknown>
 

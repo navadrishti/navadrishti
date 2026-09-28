@@ -357,7 +357,7 @@ function CSRAgentPage() {
     if (generatedCampaigns.length > 0 && conversationStage !== "complete") {
       setConversationStage("complete")
     }
-  }, [isQuestionnaireComplete, generatedCampaigns.length, conversationStage])
+  }, [isQuestionnaireComplete, generatedCampaigns.length, conversationStage, setConversationStage])
 
   if (!mounted || loading) {
     return (

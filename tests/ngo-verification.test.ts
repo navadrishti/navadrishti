@@ -11,7 +11,7 @@ import {
   reverifyNgoVerification,
   type NgoVerificationSubmission,
 } from '@/lib/ngo-verification/submission'
-import { createSupabaseFake, type FakeResult } from './service-supabase-fake'
+import { createSupabaseFake, type FakeResult } from './support/supabase-fake'
 
 const mocks = vi.hoisted(() => ({ from: vi.fn(), syncActorDocuments: vi.fn() }))
 
@@ -156,7 +156,7 @@ describe('initiateNgoVerification', () => {
     const fake = useDb({ 'users.select': [{ data: { profile_data: {} } }] })
     const response = await initiateNgoVerification(4, { ...submission, complianceNumbers: { twelve_a_number: '12A-1' } })
     expect(response.status).toBe(400)
-    expect(fake.calls.filter((call) => call.op !== 'select')).toHaveLength(0)
+    expect(fake.queries.filter((call) => call.op !== 'select')).toHaveLength(0)
   })
 
   it('creates a pending verification and syncs documents', async () => {

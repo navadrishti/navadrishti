@@ -17,6 +17,7 @@ export function ProviderTab({ offer, isOfferExpired }: ProviderTabProps) {
       <div className="flex items-start gap-4 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
         <div className="h-16 w-16 shrink-0 rounded-md bg-gray-100 flex items-center justify-center overflow-hidden">
           {offer.provider_profile_image ? (
+            // eslint-disable-next-line @next/next/no-img-element -- profile photos are user-uploaded URLs from arbitrary hosts
             <img
               src={offer.provider_profile_image}
               alt={providerName}

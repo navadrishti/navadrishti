@@ -5,7 +5,7 @@ import {
   utilizationCertificateTemplate,
   type ImpactReportData,
   type UtilizationCertificateData,
-} from '@/lib/document-generation/templates/company/csr-compliance-profile.template'
+} from '@/lib/document-generation/templates/company/csr-compliance-profile'
 import { parseJsonObject } from '@/lib/utils'
 import { milestonesFromCampaign, milestonesFromProject, pickLatestImpact } from './project-data'
 import type { CampaignRow, CsrProjectDetail } from './types'

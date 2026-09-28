@@ -7,10 +7,10 @@ import {
   ngoCompliancePackTemplate,
   utilizationCertificateTemplate,
   type ImpactReportData,
-} from '@/lib/document-generation/templates/company/csr-compliance-profile.template'
+} from '@/lib/document-generation/templates/company/csr-compliance-profile'
 import { csrPolicyDocumentTemplate } from '@/lib/document-generation/templates/company/csr-policy-document.template'
 import { DOCUMENT_DISCLAIMER, escapeHtml, wrapDocumentHtml } from '@/lib/document-generation/shared-layout'
-import { expectCleanOutput, fieldValue } from './documents-fixtures'
+import { expectCleanOutput, fieldValue } from './support/documents-fixtures'
 
 beforeAll(() => {
   vi.useFakeTimers({ toFake: ['Date'] })

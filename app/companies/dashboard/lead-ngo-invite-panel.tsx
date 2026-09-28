@@ -177,7 +177,7 @@ export function LeadNgoInvitePanel({
               {matchedNgos.length > 0 ? (
                 <div className="max-h-64 space-y-2 overflow-auto">{matchedNgos.map(renderNgoRow)}</div>
               ) : (
-                <p className="text-xs text-slate-500">No NGOs found for "{searchValue}"</p>
+                <p className="text-xs text-slate-500">No NGOs found for &quot;{searchValue}&quot;</p>
               )}
             </div>
           ) : null}

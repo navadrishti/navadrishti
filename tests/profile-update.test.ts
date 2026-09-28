@@ -9,32 +9,19 @@ import {
 import { normalizeProfileForm, saveProfileForm, updateProfileSchema } from '@/lib/profile-update/profile-form'
 import { extractReverificationSummary } from '@/lib/reverification'
 import { ngoIsCsrEligible } from '@/lib/auth'
+import { supabaseFake } from './support/supabase-fake'
 
-const fake = vi.hoisted(() => ({
-  findByEmail: vi.fn(),
-  results: [] as Array<{ data: unknown; error: unknown }>,
-  updates: [] as unknown[],
-}))
+const fake = vi.hoisted(() => ({ findByEmail: vi.fn() }))
 
 vi.mock('server-only', () => ({}))
-vi.mock('@/lib/db', () => {
-  const builder: Record<string, unknown> = {}
-  const next = () => Promise.resolve(fake.results.shift() ?? { data: null, error: null })
-  for (const method of ['select', 'eq', 'in', 'order', 'limit']) builder[method] = () => builder
-  builder.update = (payload: unknown) => {
-    fake.updates.push(payload)
-    return builder
-  }
-  builder.single = next
-  builder.maybeSingle = next
-  builder.then = (resolve: (value: unknown) => unknown) => next().then(resolve)
-  return { supabase: { from: () => builder }, db: { users: { findByEmail: fake.findByEmail } } }
+vi.mock('@/lib/db', async () => {
+  const { supabaseFake } = await import('./support/supabase-fake')
+  return { supabase: supabaseFake.client, db: { users: { findByEmail: fake.findByEmail } } }
 })
 
 beforeEach(() => {
   fake.findByEmail.mockReset()
-  fake.results = []
-  fake.updates = []
+  supabaseFake.reset()
 })
 
 type CurrentRow = Parameters<typeof buildProfileUpdate>[1]
@@ -280,12 +267,13 @@ describe('profile form', () => {
   })
 
   it('reports fetch failures', async () => {
-    fake.results.push({ data: null, error: { message: 'nope' } })
+    supabaseFake.queue('users', { data: null, error: { message: 'nope' } })
     await expect(saveProfileForm(1, { name: 'A' })).resolves.toEqual({ status: 'fetch_failed' })
   })
 
   it('merges profile fields and resets phone verification on change', async () => {
-    fake.results.push(
+    supabaseFake.queue(
+      'users',
       { data: { phone: '111', profile_data: { skills: 'old', other: 1 } }, error: null },
       { data: [{ id: 1, profile_data: { skills: 'new', interests: 'art' } }], error: null }
     )
@@ -294,7 +282,7 @@ describe('profile form', () => {
       status: 'ok',
       user: { id: 1, profile_data: { skills: 'new', interests: 'art' }, skills: 'new', interests: 'art' },
     })
-    expect(fake.updates[0]).toMatchObject({
+    expect(supabaseFake.writes('users')[0].payload).toMatchObject({
       phone: '222',
       profile_image: 'https://x/p.png',
       phone_verified: false,
@@ -307,7 +295,7 @@ describe('profile form', () => {
     [{ data: null, error: { message: 'x' } }, 'update_failed'],
     [{ data: [], error: null }, 'not_found'],
   ])('maps update result %j to %s', async (updateResult, status) => {
-    fake.results.push({ data: { phone: null, profile_data: {} }, error: null }, updateResult)
+    supabaseFake.queue('users', { data: { phone: null, profile_data: {} }, error: null }, updateResult)
     await expect(saveProfileForm(1, { name: 'A' })).resolves.toMatchObject({ status })
   })
 })

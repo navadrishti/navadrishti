@@ -33,7 +33,7 @@ export function VerifiedSummaryCard({
         <CardHeader>
           <CardTitle className="flex min-w-0 items-center gap-x-3">
             <CheckCircle className="h-5 w-5 shrink-0 text-green-600" />
-            <span>You're all set</span>
+            <span>You&apos;re all set</span>
           </CardTitle>
           <CardDescription>
             {caBadgeNumber ? (

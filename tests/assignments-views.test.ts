@@ -8,7 +8,7 @@ import {
   COMPANY_PROJECT_CONTRIBUTION_TYPE,
   LEAD_NGO_INVITE_CONTRIBUTION_TYPE,
 } from '@/lib/service-request-assignments/shared'
-import { callsOf, createDbFake, eqsOf, unknownColumns, type DbQuery, type DbResult } from './db-supabase-fake'
+import { callsOf, createSupabaseFake, eqsOf, unknownColumns, type FakeQuery, type FakeResult } from './support/supabase-fake'
 
 const mocks = vi.hoisted(() => ({ from: vi.fn(), eligible: vi.fn() }))
 
@@ -19,10 +19,10 @@ vi.mock('@/lib/auth', async (importOriginal) => ({
   ngoIsCsrEligibleForProject: mocks.eligible,
 }))
 
-let fake = createDbFake()
+let fake = createSupabaseFake()
 
-function useDb(responder: (query: DbQuery) => DbResult | undefined) {
-  fake = createDbFake(responder)
+function useDb(responder: (query: FakeQuery) => FakeResult | undefined) {
+  fake = createSupabaseFake(responder)
   mocks.from.mockImplementation(fake.from)
   return fake
 }

@@ -132,10 +132,6 @@ export default function CADashboardClient() {
   const [rejectionReason, setRejectionReason] = useState('');
   const [complianceTags, setComplianceTags] = useState<string[]>([]);
 
-  useEffect(() => {
-    fetchData();
-  }, [filterStatus]);
-
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -157,6 +153,10 @@ export default function CADashboardClient() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchData();
+  }, [filterStatus]);
 
   const q = searchQuery.toLowerCase();
 

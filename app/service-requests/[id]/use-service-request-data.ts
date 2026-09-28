@@ -17,19 +17,6 @@ export function useServiceRequestData(requestId: string) {
 
   const isAuthenticated = !!(user && token)
 
-  useEffect(() => {
-    if (requestId) {
-      fetchRequestDetails()
-      if (isAuthenticated && user) {
-        if (user.user_type === 'ngo') {
-          fetchApplicants()
-        } else if (user.user_type === 'individual') {
-          checkExistingApplication()
-        }
-      }
-    }
-  }, [requestId, isAuthenticated, user])
-
   const fetchRequestDetails = async () => {
     try {
       const response = await fetch(`/api/service-requests/${requestId}`)
@@ -93,6 +80,19 @@ export function useServiceRequestData(requestId: string) {
       console.error('Error fetching applicants:', error)
     }
   }
+
+  useEffect(() => {
+    if (requestId) {
+      fetchRequestDetails()
+      if (isAuthenticated && user) {
+        if (user.user_type === 'ngo') {
+          fetchApplicants()
+        } else if (user.user_type === 'individual') {
+          checkExistingApplication()
+        }
+      }
+    }
+  }, [requestId, isAuthenticated, user])
 
   return {
     request,

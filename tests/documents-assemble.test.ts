@@ -2,12 +2,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import type { UserData } from '@/lib/auth'
 import { assembleGeneratedDocument } from '@/lib/document-generation/assemble'
 import type { GenerateDocumentRequest } from '@/lib/document-generation/types'
-import { supabaseFake } from './campaign-supabase-fake'
-import { campaign, db, expectCleanOutput, fieldValue, projects, resetDb, respond } from './documents-fixtures'
+import { supabaseFake } from './support/supabase-fake'
+import { campaign, db, expectCleanOutput, fieldValue, projects, resetDb, respond } from './support/documents-fixtures'
 
 vi.mock('server-only', () => ({}))
 vi.mock('@/lib/db', async () => {
-  const { supabaseFake: fake } = await import('./campaign-supabase-fake')
+  const { supabaseFake: fake } = await import('./support/supabase-fake')
   return { supabase: fake.client }
 })
 

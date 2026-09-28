@@ -371,6 +371,7 @@ export default function EditServiceRequestPage({ params }: { params: Promise<{ i
                     <div className="mt-3 flex flex-wrap gap-3">
                       {parseImageUrls(formData.images).map((url) => (
                         <div key={url} className="relative h-20 w-20 overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
+                          {/* eslint-disable-next-line @next/next/no-img-element -- previews freshly uploaded URLs that may not match images.remotePatterns */}
                           <img src={url} alt="uploaded" className="h-full w-full object-cover" />
                           <button
                             type="button"

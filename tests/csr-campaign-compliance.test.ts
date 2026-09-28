@@ -5,8 +5,8 @@ import {
   processCsrCapabilityDailyCompliance,
 } from '@/lib/csr-agent/campaign/compliance'
 import type { CsrCapabilityRentalRecord } from '@/lib/service-engagement'
-import { eqValue, supabaseFake } from './campaign-supabase-fake'
-import { createCampaignStore, rental, type Row } from './csr-campaign-fixtures'
+import { eqValue, supabaseFake } from './support/supabase-fake'
+import { createCampaignStore, rental, type Row } from './support/csr-campaign-fixtures'
 
 const mocks = vi.hoisted(() => ({
   sendEmail: vi.fn(),
@@ -15,7 +15,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/lib/db', async () => {
-  const { supabaseFake: fake } = await import('./campaign-supabase-fake')
+  const { supabaseFake: fake } = await import('./support/supabase-fake')
   return { supabase: fake.client }
 })
 vi.mock('@/lib/email', () => ({ emailService: { sendEmail: mocks.sendEmail } }))
@@ -270,7 +270,7 @@ describe('fetchCompanyCsrCapabilityFines', () => {
       rental({ service_offer_id: 5 })
     )
     const fines = await fetchCompanyCsrCapabilityFines(3)
-    expect(eqValue(supabaseFake.find('campaigns')[0], 'company_id')).toBe(3)
+    expect(eqValue(supabaseFake.find('campaigns', 'select')[0], 'company_id')).toBe(3)
     expect(fines.map((row: Row) => row.service_offer_id)).toEqual([1, 2, 3])
     expect(fines[1]).toMatchObject({ campaign_id: 'c1', campaign_title: 'Water', status: 'overdue', pending_total_inr: 12000 })
   })

@@ -77,36 +77,6 @@ export function ProfileDashboardTab() {
         (resolvedVerificationStatus === 'verified' && documentExpirySummary.has_due_soon))
   )
 
-  useEffect(() => {
-    setMounted(true)
-  }, [])
-
-  useEffect(() => {
-    if (!mounted || !user) return
-    void fetchProfile()
-    void fetchVerificationStatus()
-  }, [mounted, user?.id])
-
-  useEffect(() => {
-    if (normalizeEmail(editableEmail) === normalizeEmail(initialEmailRef.current)) {
-      return
-    }
-
-    resetEmailOtpState()
-    setOtpInput((prev) => ({ ...prev, email: '' }))
-    setVerifiedEmailValue('')
-  }, [editableEmail, resetEmailOtpState])
-
-  useEffect(() => {
-    if (normalizePhone(phone) === normalizePhone(initialPhoneRef.current)) {
-      return
-    }
-
-    resetPhoneOtpState()
-    setOtpInput((prev) => ({ ...prev, phone: '' }))
-    setVerifiedPhoneValue('')
-  }, [phone, resetPhoneOtpState])
-
   const fetchProfile = async () => {
     try {
       setLoading(true)
@@ -163,6 +133,36 @@ export function ProfileDashboardTab() {
       console.error('Error fetching verification status:', error)
     }
   }
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    if (!mounted || !user) return
+    void fetchProfile()
+    void fetchVerificationStatus()
+  }, [mounted, user?.id])
+
+  useEffect(() => {
+    if (normalizeEmail(editableEmail) === normalizeEmail(initialEmailRef.current)) {
+      return
+    }
+
+    resetEmailOtpState()
+    setOtpInput((prev) => ({ ...prev, email: '' }))
+    setVerifiedEmailValue('')
+  }, [editableEmail, resetEmailOtpState])
+
+  useEffect(() => {
+    if (normalizePhone(phone) === normalizePhone(initialPhoneRef.current)) {
+      return
+    }
+
+    resetPhoneOtpState()
+    setOtpInput((prev) => ({ ...prev, phone: '' }))
+    setVerifiedPhoneValue('')
+  }, [phone, resetPhoneOtpState])
 
   const handleSaveProfile = async () => {
     try {
