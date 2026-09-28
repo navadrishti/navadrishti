@@ -18,7 +18,7 @@ export default defineConfig({
           name: 'server',
           environment: 'node',
           include: ['tests/**/*.test.ts'],
-          exclude: ['tests/ui/**'],
+          exclude: ['tests/ui/**', 'tests/e2e/**'],
         },
       },
       {
