@@ -48,6 +48,7 @@ export function SquareImageGallery({
             )}
             aria-label={`View image ${index + 1} for ${alt}`}
           >
+            {/* eslint-disable-next-line @next/next/no-img-element -- listing images are user-supplied URLs from arbitrary hosts */}
             <img src={url} alt={`${alt} thumbnail ${index + 1}`} className="h-full w-full object-cover" />
           </button>
         ))}
@@ -57,6 +58,7 @@ export function SquareImageGallery({
         <DialogContent className="max-w-4xl border-none bg-transparent p-0 shadow-none [&>button]:text-white [&>button]:hover:bg-white/10">
           <div className="relative overflow-hidden rounded-lg bg-black/90">
             <div className="flex min-h-[50vh] items-center justify-center p-4 sm:p-8">
+              {/* eslint-disable-next-line @next/next/no-img-element -- listing images are user-supplied URLs from arbitrary hosts */}
               <img
                 src={validImages[activeIndex]}
                 alt={`${alt} - image ${activeIndex + 1}`}

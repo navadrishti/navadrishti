@@ -194,7 +194,6 @@ export default function CreateServiceRequestPage() {
         if (Number.isFinite(createdId) && createdId > 0 && selectedOfferIds.length > 0) {
           for (const offerId of selectedOfferIds) {
             try {
-              // eslint-disable-next-line no-await-in-loop
               await applyOfferToNeed(offerId, index, createdId)
             } catch (err) {
               console.error('Error applying to offer after create:', err)

@@ -15,8 +15,11 @@ export function getErrorMessage(error: unknown): string {
   return ''
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- jsonb payloads have no fixed shape and callers read nested fields ad hoc
+export type JsonRecord = Record<string, any>
+
 // jsonb columns come back as objects, but older rows stored them as JSON strings.
-export function parseJsonObject(value: unknown): Record<string, any> {
+export function parseJsonObject(value: unknown): JsonRecord {
   if (!value) return {}
   if (typeof value === 'string') {
     try {
@@ -25,7 +28,7 @@ export function parseJsonObject(value: unknown): Record<string, any> {
       return {}
     }
   }
-  return typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, any>) : {}
+  return typeof value === 'object' && !Array.isArray(value) ? (value as JsonRecord) : {}
 }
 
 // Accepts numbers or strings like "₹1,50,000" and never returns a negative amount.
@@ -168,7 +171,7 @@ export async function smoothNavigate(
     }
     
     if (afterNavigate) afterNavigate()
-  } catch (error) {
+  } catch {
     router.push(path)
   }
 }
@@ -321,7 +324,7 @@ export function formatInr(amount: number): string {
 export function buildPricingOrderNotes(
   pricing: PlatformCheckoutPricing,
   extra: Record<string, unknown> = {}
-): Record<string, any> {
+): JsonRecord {
   return {
     ...extra,
     pricing_model: 'fee_on_top',

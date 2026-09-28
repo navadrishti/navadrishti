@@ -16,7 +16,8 @@ import {
   resolveValidityEndDate,
   type CsrCapabilityRentalRecord,
 } from '@/lib/service-engagement'
-import { createSupabaseFake, arg, has, sign, type FakeQuery } from './payments-fakes'
+import { razorpaySignature } from './support/requests'
+import { argOf, createSupabaseFake, eqValue, hasCall, type FakeQuery } from './support/supabase-fake'
 
 const mocks = vi.hoisted(() => ({
   supabase: { from: vi.fn() },
@@ -36,14 +37,10 @@ const LEAD_MISSING = 'Capability offers can be reserved once a lead NGO accepts 
 
 type Row = Record<string, unknown>
 
-function eqValue(query: FakeQuery, column: string) {
-  return query.ops.find((op) => op.method === 'eq' && op.args[0] === column)?.args[1]
-}
-
 function matchesUpdatedAtGuard(query: FakeQuery, campaign: Row) {
   const guard = eqValue(query, 'updated_at')
   if (guard !== undefined) return guard === campaign.updated_at
-  const nullGuard = query.ops.some((op) => op.method === 'is' && op.args[0] === 'updated_at')
+  const nullGuard = hasCall(query, 'is', 'updated_at')
   return !nullGuard || campaign.updated_at == null
 }
 
@@ -51,9 +48,9 @@ function useCampaignDb(initial: Row, offer: Row = { id: 7, creator_id: 40, offer
   const state = { campaign: { ...initial } }
   const fake = createSupabaseFake((query) => {
     if (query.table === 'campaigns') {
-      if (has(query, 'update')) {
+      if (hasCall(query, 'update')) {
         if (!matchesUpdatedAtGuard(query, state.campaign)) return { data: [] }
-        state.campaign = { ...state.campaign, ...(arg(query, 'update') as Row) }
+        state.campaign = { ...state.campaign, ...(argOf(query, 'update') as Row) }
         return { data: [state.campaign] }
       }
       const owned = eqValue(query, 'company_id') === undefined || eqValue(query, 'company_id') === state.campaign.company_id
@@ -208,8 +205,8 @@ describe('update-campaign route', () => {
   })
 
   it.each([
-    ['tampered order id', sign('order_other', 'pay_1', 'rzp_secret')],
-    ['wrong secret', sign('order_rent', 'pay_1', 'nope')],
+    ['tampered order id', razorpaySignature('order_other', 'pay_1', 'rzp_secret')],
+    ['wrong secret', razorpaySignature('order_rent', 'pay_1', 'nope')],
     ['short signature', 'abc'],
   ])('rejects a %s on verify', async (_label, signature) => {
     const { fake } = useCampaignDb(baseCampaign)
@@ -227,7 +224,7 @@ describe('update-campaign route', () => {
 
   it('passes a valid signature through to the rental lookup', async () => {
     useCampaignDb(baseCampaign)
-    const { status, body } = await send(POST, request('POST', verifyBody('order_rent', 'pay_1', sign('order_rent', 'pay_1', 'rzp_secret'))))
+    const { status, body } = await send(POST, request('POST', verifyBody('order_rent', 'pay_1', razorpaySignature('order_rent', 'pay_1', 'rzp_secret'))))
     expect(status).toBe(404)
     expect(body.error).toBe('CSR capability rental record not found')
   })
@@ -235,7 +232,7 @@ describe('update-campaign route', () => {
   it('rejects a validly signed payment for a different order than the rental', async () => {
     const rental = { id: `${CAMPAIGN_ID}:7`, service_offer_id: 7, payment_status: 'pending', rental_amount_inr: 50000, razorpay_order_id: 'order_rent' }
     useCampaignDb({ ...baseCampaign, impact_metrics: { csr_capability_rentals: [rental] } })
-    const cheap = verifyBody('order_cheap', 'pay_cheap', sign('order_cheap', 'pay_cheap', 'rzp_secret'))
+    const cheap = verifyBody('order_cheap', 'pay_cheap', razorpaySignature('order_cheap', 'pay_cheap', 'rzp_secret'))
     const { status, body } = await send(POST, request('POST', cheap))
     expect(status).toBe(400)
     expect(body.error).toBe('Payment order does not match this rental')
@@ -251,7 +248,7 @@ describe('update-campaign route', () => {
       rental_amount_inr: 2000,
       razorpay_order_id: 'order_rent',
     }
-    const validBody = verifyBody('order_rent', 'pay_1', sign('order_rent', 'pay_1', 'rzp_secret'))
+    const validBody = verifyBody('order_rent', 'pay_1', razorpaySignature('order_rent', 'pay_1', 'rzp_secret'))
 
     function useProvider(payment: Row = {}, order: Row = {}) {
       mocks.razorpay.payments.fetch.mockResolvedValue({ id: 'pay_1', order_id: 'order_rent', status: 'captured', currency: 'INR', amount: 210000, ...payment })
@@ -311,7 +308,7 @@ describe('update-campaign route', () => {
       expect(status).toBe(200)
       const [claim] = fake.find('campaigns', 'update')
       expect(eqValue(claim, 'updated_at')).toBe('2026-09-27T10:00:00.000Z')
-      expect(has(claim, 'select')).toBe(true)
+      expect(hasCall(claim, 'select')).toBe(true)
       expect(state.campaign.updated_at).not.toBe('2026-09-27T10:00:00.000Z')
     })
 

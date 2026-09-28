@@ -118,7 +118,7 @@ export function ProfileSearchResults({
           </>
         ) : searchQuery.length >= 1 ? (
           <div className="p-4 text-center">
-            <p className="text-muted-foreground text-sm">No profiles found for "{searchQuery}"</p>
+            <p className="text-muted-foreground text-sm">No profiles found for &quot;{searchQuery}&quot;</p>
             <p className="text-xs text-muted-foreground mt-1">Try searching for names, organizations, or locations</p>
           </div>
         ) : styles.showIdleHint ? (

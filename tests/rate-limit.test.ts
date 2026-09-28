@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { resetAuthStoreFallback } from '@/lib/auth-store'
 import { getClientIp, limitAttempts, rateLimit, rateLimitInMemory, resetRateLimits } from '@/lib/rate-limit'
-import { createAuthStoreFake, missingAuthStoreRpc } from './auth-store-fake'
+import { createAuthStoreFake, missingAuthStoreRpc } from './support/auth-store-fake'
 
 const mocks = vi.hoisted(() => ({ rpc: vi.fn() }))
 

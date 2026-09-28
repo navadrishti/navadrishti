@@ -7,7 +7,7 @@ import {
   safeNoteFromMeta,
   safeProjectIdFromMeta,
 } from '@/lib/service-request-assignments/shared'
-import { createSupabaseFake, type FakeResult } from './service-supabase-fake'
+import { createSupabaseFake, type FakeResult } from './support/supabase-fake'
 
 const mocks = vi.hoisted(() => ({ from: vi.fn(), assertCoverage: vi.fn() }))
 
@@ -113,7 +113,7 @@ describe('reviewProjectApplication', () => {
   it('rejects projects that do not belong to the NGO', async () => {
     const fake = useDb({ 'service_request_projects.select': [{ data: null }] })
     await expect(review(accept)).resolves.toMatchObject({ status: 404, json: { error: 'Project not found under your NGO' } })
-    expect(fake.calls[0].filters).toContainEqual(['eq', 'ngo_id', NGO_ID])
+    expect(fake.queries[0].filters).toContainEqual(['eq', 'ngo_id', NGO_ID])
   })
 
   it('requires CSR-1 coverage before accepting', async () => {

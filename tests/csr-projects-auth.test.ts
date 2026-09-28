@@ -3,7 +3,8 @@ import { NextRequest } from 'next/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { GET as getAudit } from '@/app/api/csr-projects/[id]/audit/route'
 import { GET as getEvidence, POST as postEvidence } from '@/app/api/csr-projects/[id]/evidence/route'
-import { createSupabaseFake, type FakeQuery, type FakeResult } from './payments-fakes'
+import { tokenFor } from './support/requests'
+import { createSupabaseFake, type FakeQuery, type FakeResult } from './support/supabase-fake'
 
 const state = vi.hoisted(() => ({
   dbCalls: [] as string[],
@@ -35,8 +36,6 @@ const routes: Array<[string, 'GET' | 'POST', Handler]> = [
   ['csr-projects/[id]/evidence', 'POST', postEvidence],
 ]
 
-const tokenFor = (id: number, userType: string) =>
-  jwt.sign({ id, email: `user${id}@example.org`, user_type: userType }, 'test-secret')
 const forged = jwt.sign({ id: 12, email: 'ngo@example.org', user_type: 'ngo' }, 'other-secret')
 
 function buildRequest(method: 'GET' | 'POST', token?: string) {
@@ -50,7 +49,7 @@ function buildRequest(method: 'GET' | 'POST', token?: string) {
 const call = (handler: Handler, method: 'GET' | 'POST', token?: string) =>
   handler(buildRequest(method, token), { params: Promise.resolve({ id: 'p1' }) })
 
-function useSupabase(respond: (query: FakeQuery) => FakeResult) {
+function useSupabase(respond: (query: FakeQuery) => FakeResult | undefined) {
   const fake = createSupabaseFake(respond)
   state.supabase = { from: fake.from }
   return fake

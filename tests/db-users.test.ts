@@ -1,16 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { userAddresses, users } from '@/lib/db/users'
-import { callsOf, compact, createDbFake, eqsOf, unknownColumns, type DbResult } from './db-supabase-fake'
+import { callsOf, compact, createSupabaseFake, eqsOf, unknownColumns, type FakeResult } from './support/supabase-fake'
 
 const mocks = vi.hoisted(() => ({ from: vi.fn() }))
 
 vi.mock('server-only', () => ({}))
 vi.mock('@/lib/db/client', () => ({ supabase: { from: mocks.from } }))
 
-let fake = createDbFake()
+let fake = createSupabaseFake()
 
-function useDb(responses: Record<string, DbResult[]> = {}) {
-  fake = createDbFake(responses)
+function useDb(responses: Record<string, FakeResult[]> = {}) {
+  fake = createSupabaseFake(responses)
   mocks.from.mockImplementation(fake.from)
   return fake
 }

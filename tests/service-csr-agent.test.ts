@@ -11,7 +11,7 @@ import {
   tokenize,
   type NetworkNgoCandidate,
 } from '@/lib/csr-agent/recommendation-utils'
-import { createSupabaseFake, type FakeResult } from './service-supabase-fake'
+import { createSupabaseFake, type FakeResult } from './support/supabase-fake'
 
 const mocks = vi.hoisted(() => ({ from: vi.fn(), eligible: vi.fn() }))
 
@@ -85,8 +85,8 @@ describe('findServiceOffers', () => {
     expect(matches.map((match) => match.service_offer_id)).toEqual([1])
     expect(matches[0]).toMatchObject({ capability_name: 'Library books kit', city: 'Pune', price_type: 'free' })
     expect(matches[0].similarity).toBeLessThanOrEqual(0.95)
-    expect(fake.calls[0].filters).toContainEqual(['or', 'price_type.neq.fixed,price_amount.lte.50000'])
-    expect(fake.calls[1].filters).toContainEqual(['in', 'service_offer_id', [1, 2, 4, 5]])
+    expect(fake.queries[0].filters).toContainEqual(['or', 'price_type.neq.fixed,price_amount.lte.50000'])
+    expect(fake.queries[1].filters).toContainEqual(['in', 'service_offer_id', [1, 2, 4, 5]])
   })
 
   it('ranks local in-category offers above distant ones', async () => {

@@ -1,4 +1,4 @@
-import { parseJsonObject } from '@/lib/utils';
+import { parseJsonObject, type JsonRecord } from '@/lib/utils';
 import { toIsoExpiryDate } from './normalize';
 
 export type DocumentExpiryKey =
@@ -274,8 +274,8 @@ function formatExpiryForAlert(validUntil: string) {
 }
 
 /** Loosely typed on purpose: callers read and write arbitrary profile fields on the result. */
-export function backfillNgoDocumentExpiries(profileData: Record<string, any>): {
-  profileData: Record<string, any>;
+export function backfillNgoDocumentExpiries(profileData: JsonRecord): {
+  profileData: JsonRecord;
   changed: boolean;
 } {
   const verificationDocuments = parseJsonObject(profileData.verification_documents);

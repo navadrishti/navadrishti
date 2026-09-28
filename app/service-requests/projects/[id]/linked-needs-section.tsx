@@ -90,6 +90,7 @@ function NeedRow({ need }: { need: NeedItem }) {
       <div className="flex items-start gap-3">
         <div className="h-14 w-14 flex-shrink-0 overflow-hidden rounded-md border border-slate-200 bg-slate-100">
           {needImage ? (
+            // eslint-disable-next-line @next/next/no-img-element -- listing images are user-supplied URLs from arbitrary hosts
             <img src={needImage} alt={need.title} className="h-full w-full object-cover" loading="lazy" />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-[10px] font-medium text-slate-500">

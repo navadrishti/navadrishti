@@ -1,10 +1,10 @@
-import jwt from 'jsonwebtoken'
 import { NextRequest } from 'next/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { POST as settle } from '@/app/api/service-assignments/[id]/settle/route'
 import { POST as verifyOfferPayment } from '@/app/api/service-offers/[id]/clients/[clientId]/payments/verify/route'
 import { finalizeEngagementSettlement } from '@/lib/engagement-settlement'
-import { createSupabaseFake, has, sign, type FakeQuery, type FakeResult } from './payments-fakes'
+import { razorpaySignature, tokenFor } from './support/requests'
+import { createSupabaseFake, hasCall, type FakeQuery, type FakeResult } from './support/supabase-fake'
 
 const mocks = vi.hoisted(() => ({
   supabase: { from: vi.fn() },
@@ -29,10 +29,7 @@ vi.mock('@/lib/engagement-settlement', async (importOriginal) => ({
   finalizeEngagementSettlement: vi.fn(async () => ({ settled: true })),
 }))
 
-const tokenFor = (id: number, userType: string) =>
-  jwt.sign({ id, email: `user${id}@example.org`, user_type: userType }, 'test-secret')
-
-function useSupabase(respond: (query: FakeQuery) => FakeResult) {
+function useSupabase(respond: (query: FakeQuery) => FakeResult | undefined) {
   const fake = createSupabaseFake(respond)
   mocks.supabase.from.mockImplementation(fake.from)
   return fake
@@ -67,7 +64,7 @@ function postJson(url: string, token: string, body: Record<string, unknown>) {
 const verification = {
   razorpay_order_id: 'order_1',
   razorpay_payment_id: 'pay_1',
-  razorpay_signature: sign('order_1', 'pay_1', 'rzp_secret'),
+  razorpay_signature: razorpaySignature('order_1', 'pay_1', 'rzp_secret'),
 }
 
 beforeEach(() => {
@@ -93,7 +90,7 @@ describe('engagement settlement verify', () => {
   function setup(orderNotes: Record<string, unknown> = {}) {
     return useSupabase((query) => {
       if (query.table === 'service_engagement_assignments') return { data: assignment }
-      if (query.table === 'razorpay_payment_orders' && has(query, 'maybeSingle')) return { data: { order_notes: orderNotes } }
+      if (query.table === 'razorpay_payment_orders' && hasCall(query, 'maybeSingle')) return { data: { order_notes: orderNotes } }
       return undefined
     })
   }
@@ -139,10 +136,10 @@ describe('service offer client payment verify', () => {
     mocks.db.serviceOffers.getById.mockResolvedValue({ id: 3, creator_id: 12 })
     mocks.db.serviceRequests.getById.mockResolvedValue({ target_amount: 5000, current_amount: 0 })
     return useSupabase((query) => {
-      if (query.table === 'service_clients' && has(query, 'single')) {
+      if (query.table === 'service_clients' && hasCall(query, 'single')) {
         return { data: { id: 7, status: 'accepted', service_request_id: 20, response_meta: {} } }
       }
-      if (query.table === 'razorpay_payment_orders' && has(query, 'maybeSingle')) {
+      if (query.table === 'razorpay_payment_orders' && hasCall(query, 'maybeSingle')) {
         return { data: { id: 9, service_request_id: 20, payer_user_id: 14, order_notes: {} } }
       }
       return undefined

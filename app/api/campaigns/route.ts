@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { getAuthUserFromRequest, assertUserType, authErrorResponse } from '@/lib/server-auth';
+import { getAuthUserFromRequest, assertUserType, authErrorResponse, findAuthUser } from '@/lib/server-auth';
 import { buildCampaignWritePayload, resolveCampaignCategoryInput, resolveCampaignLocationInput } from '@/lib/campaign-schema';
 import { getCampaignLeadNgoId } from '@/lib/campaign-volunteer-attendance';
 
@@ -25,17 +25,19 @@ export async function GET(request: NextRequest) {
       query = query.ilike('location', `%${region}%`);
     }
 
+    const viewer = findAuthUser(request, { allowCookie: true });
+    const ownCampaigns =
+      Boolean(companyId) && viewer?.user_type === 'company' && Number(viewer.id) === Number(companyId);
+
     if (companyId) {
-      // Company fetching their own campaigns — show all statuses (including drafts).
       query = query.eq('company_id', Number(companyId));
-    } else {
-      // Public discovery — hide drafts only.
-      // campaign_status_enum does not include cancelled / rejected / closed.
+    }
+    if (!ownCampaigns) {
       query = query.neq('status', 'draft');
     }
 
     if (search) {
-      const term = `%${search.trim()}%`;
+      const term = `%${search.replace(/["\\]/g, ' ').trim()}%`;
       query = query.or(`title.ilike."${term}",description.ilike."${term}",category.ilike."${term}",location.ilike."${term}",schedule_vii.ilike."${term}"`);
     }
 

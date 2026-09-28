@@ -61,6 +61,7 @@ export function ProfileMediaEditor({ images, userName }: ProfileMediaEditorProps
         <div className="-mt-12 relative">
           <div className="h-24 w-24 overflow-hidden rounded-full border-4 border-white bg-white shadow-sm">
             {profileImageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element -- profile photos are user-uploaded URLs from arbitrary hosts
               <img src={profileImageUrl} alt="Profile" className="h-full w-full object-cover" />
             ) : (
               <div

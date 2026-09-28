@@ -19,6 +19,7 @@ export function RequestingOrganizationSection({ ngo, projectStatus }: { ngo: Ngo
       <div className="flex items-start gap-4 rounded-lg border border-slate-200 bg-slate-50/60 p-4">
         <div className="h-16 w-16 shrink-0 rounded-md bg-gray-100 flex items-center justify-center overflow-hidden">
           {ngo.profileImage ? (
+            // eslint-disable-next-line @next/next/no-img-element -- profile photos are user-uploaded URLs from arbitrary hosts
             <img src={ngo.profileImage} alt={ngo.name} className="h-full w-full object-cover" />
           ) : (
             <div

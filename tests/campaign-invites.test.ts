@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { eqValue, hasCall, jsonRequest, supabaseFake, tokenFor, type FakeQuery } from './campaign-supabase-fake'
+import { jsonRequest, tokenFor } from './support/requests'
+import { eqValue, hasCall, supabaseFake, type FakeQuery } from './support/supabase-fake'
 import { GET, POST } from '@/app/api/csr-agent/lead-ngo-invites/route'
 import { assertCsr1CoversRequiredThrough } from '@/lib/auth'
 
 vi.mock('@/lib/db', async () => {
-  const { supabaseFake: fake } = await import('./campaign-supabase-fake')
+  const { supabaseFake: fake } = await import('./support/supabase-fake')
   return { supabase: fake.client }
 })
 
@@ -138,7 +139,7 @@ describe('POST /api/csr-agent/lead-ngo-invites', () => {
   it('looks up the session draft scoped to the company and draft status', async () => {
     drafts = [draft()]
     await post({ action: 'invite', ngoId: 5 })
-    const [lookup] = supabaseFake.find('campaigns')
+    const [lookup] = supabaseFake.find('campaigns', 'select')
     expect(eqValue(lookup, 'company_id')).toBe(10)
     expect(eqValue(lookup, 'status')).toBe('draft')
   })
@@ -162,7 +163,7 @@ describe('POST /api/csr-agent/lead-ngo-invites', () => {
   it('checks CSR-1 coverage for already invited NGOs', async () => {
     drafts = [draft({ impact_metrics: { csr_agent_session_id: 's1', lead_ngo_invites: [{ ngo_id: 6 }] } })]
     await post({ action: 'invite', ngoId: 5 })
-    const lookup = supabaseFake.find('users').find((query) => hasCall(query, 'in'))
+    const lookup = supabaseFake.find('users', 'select').find((query) => hasCall(query, 'in'))
     expect(lookup?.calls).toContainEqual(['in', 'id', [6]])
   })
 
@@ -192,7 +193,7 @@ describe('POST /api/csr-agent/lead-ngo-invites', () => {
     const response = await post({ action, ngoId: 6, draftCampaignId: 'other' })
     expect(response.status).toBe(404)
     expect(await response.json()).toEqual({ error: 'Draft campaign not found' })
-    const [lookup] = supabaseFake.find('campaigns')
+    const [lookup] = supabaseFake.find('campaigns', 'select')
     expect(eqValue(lookup, 'id')).toBe('other')
     expect(eqValue(lookup, 'company_id')).toBe(10)
     expect(supabaseFake.queries.filter((query) => query.op !== 'select')).toEqual([])
@@ -208,7 +209,7 @@ describe('POST /api/csr-agent/lead-ngo-invites', () => {
     drafts = [draft({ status: 'active', impact_metrics: { lead_ngo_invites: [{ ngo_id: 6 }] } })]
     const response = await post({ action: 'revoke', ngoId: 6, draftCampaignId: 'c1' })
     expect(response.status).toBe(404)
-    expect(eqValue(supabaseFake.find('campaigns')[0], 'status')).toBe('draft')
+    expect(eqValue(supabaseFake.find('campaigns', 'select')[0], 'status')).toBe('draft')
     expect(supabaseFake.queries.filter((query) => query.op !== 'select')).toEqual([])
   })
 
@@ -281,7 +282,7 @@ describe('GET /api/csr-agent/lead-ngo-invites', () => {
     drafts = [draft({ status: 'active', impact_metrics: { lead_ngo_invites: [{ ngo_id: 6 }] } })]
     const response = await GET(jsonRequest(`${INVITES_URL}?draftCampaignId=c1`, { token: company }))
     expect((await response.json()).data).toMatchObject({ draftCampaignId: null, invites: [] })
-    expect(eqValue(supabaseFake.find('campaigns')[0], 'status')).toBe('draft')
+    expect(eqValue(supabaseFake.find('campaigns', 'select')[0], 'status')).toBe('draft')
   })
 
   it('rejects non-company users with 403', async () => {

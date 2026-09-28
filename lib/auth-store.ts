@@ -16,7 +16,7 @@ export function switchToMemoryIfMissing(error: unknown) {
   if (!isMissingStoreError(error)) return false;
   if (!storeMissing) {
     console.warn(
-      'Auth throttle store is not deployed (apply supabase/migrations/*_auth_throttle_store.sql); ' +
+      'Auth throttle store is not deployed (apply the auth_throttle_store migration); ' +
         'rate limits and one-time codes fall back to per-instance memory.'
     );
   }

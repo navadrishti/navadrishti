@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { autoRejectExpiredServiceOffers } from '@/lib/admin-offer-automation'
 import { canIndividualApplyToNeed, getActiveInfrastructureVolunteerApplication } from '@/lib/infrastructure-assignment-lock'
-import { createSupabaseFake, type FakeResult } from './service-supabase-fake'
+import { createSupabaseFake, type FakeResult } from './support/supabase-fake'
 
 const mocks = vi.hoisted(() => ({ from: vi.fn(), sendEmail: vi.fn() }))
 
@@ -52,8 +52,8 @@ describe('autoRejectExpiredServiceOffers', () => {
         { id: 3, title: 'Tutors', organization: null },
       ],
     })
-    expect(fake.calls[0].filters).toContainEqual(['eq', 'admin_status', 'pending'])
-    expect(fake.calls[0].filters).toContainEqual(['lt', 'submitted_for_review_at', '2026-06-05T00:00:00.000Z'])
+    expect(fake.queries[0].filters).toContainEqual(['eq', 'admin_status', 'pending'])
+    expect(fake.queries[0].filters).toContainEqual(['lt', 'submitted_for_review_at', '2026-06-05T00:00:00.000Z'])
     expect(fake.writes('service_offers')[0].payload).toMatchObject({ admin_status: 'rejected' })
     expect(mocks.sendEmail).toHaveBeenCalledTimes(1)
     expect(mocks.sendEmail.mock.calls[0][0]).toMatchObject({ to: 'asha@example.org' })
@@ -90,8 +90,8 @@ describe('infrastructure assignment lock', () => {
   it('finds the open infrastructure assignment', async () => {
     const fake = useDb({ 'service_request_applications.select': [{ data: applications }] })
     await expect(getActiveInfrastructureVolunteerApplication(7)).resolves.toMatchObject({ id: 3 })
-    expect(fake.calls[0].filters).toContainEqual(['eq', 'applicant_user_id', 7])
-    expect(fake.calls[0].filters).toContainEqual(['in', 'status', ['accepted', 'active']])
+    expect(fake.queries[0].filters).toContainEqual(['eq', 'applicant_user_id', 7])
+    expect(fake.queries[0].filters).toContainEqual(['in', 'status', ['accepted', 'active']])
   })
 
   it('returns null when no infrastructure work is open', async () => {

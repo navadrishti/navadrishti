@@ -42,30 +42,11 @@ import {
   type GovernmentAdminAccount,
 } from '@/lib/government-admin-auth'
 import { ensureCompanyCaIdAssigned, generateUniqueCompanyCaId } from '@/lib/company-ca'
+import { callsOf, supabaseFake } from './support/supabase-fake'
 
-const fake = vi.hoisted(() => ({
-  results: {} as Record<string, Array<{ data: unknown; error: unknown }>>,
-  filters: [] as Array<[string, unknown]>,
-}))
-
-vi.mock('@/lib/db', () => {
-  const from = (table: string) => {
-    const next = () => Promise.resolve(fake.results[table]?.shift() ?? { data: null, error: null })
-    const builder: Record<string, unknown> = {
-      single: next,
-      maybeSingle: next,
-      then: (resolve: (value: unknown) => unknown) => next().then(resolve),
-      eq: (column: string, value: unknown) => {
-        fake.filters.push([column, value])
-        return builder
-      },
-    }
-    for (const method of ['select', 'in', 'not', 'is', 'order', 'limit', 'update', 'insert']) {
-      builder[method] = () => builder
-    }
-    return builder
-  }
-  return { supabase: { from }, db: {} }
+vi.mock('@/lib/db', async () => {
+  const { supabaseFake } = await import('./support/supabase-fake')
+  return { supabase: supabaseFake.client, db: {} }
 })
 
 const secret = 'test-secret'
@@ -96,13 +77,8 @@ function requestWith(options: { header?: string; cookie?: string } = {}) {
   return new NextRequest('http://localhost/api/test', { headers })
 }
 
-function queue(table: string, ...rows: Array<{ data: unknown; error?: unknown }>) {
-  fake.results[table] = rows.map((row) => ({ error: null, ...row }))
-}
-
 beforeEach(() => {
-  fake.results = {}
-  fake.filters = []
+  supabaseFake.reset()
 })
 
 afterEach(() => {
@@ -247,24 +223,24 @@ describe('platform CA tokens', () => {
   })
 
   it('loads the active account for a valid token', async () => {
-    queue('platform_ca_accounts', { data: { ...caAccount } })
+    supabaseFake.queue('platform_ca_accounts', { data: { ...caAccount } })
     await expect(
       getPlatformCAFromRequest(requestWith({ header: `Bearer ${generatePlatformCAToken(caAccount)}` }))
     ).resolves.toMatchObject({ id: 3 })
-    expect(fake.filters).toContainEqual(['id', 3])
+    expect(supabaseFake.queries.flatMap((query) => callsOf(query, 'eq'))).toContainEqual(['id', 3])
   })
 
   it('returns null for inactive or missing accounts', async () => {
     const header = `Bearer ${generatePlatformCAToken(caAccount)}`
-    queue('platform_ca_accounts', { data: { ...caAccount, active: false } })
+    supabaseFake.queue('platform_ca_accounts', { data: { ...caAccount, active: false } })
     await expect(getPlatformCAFromRequest(requestWith({ header }))).resolves.toBeNull()
-    queue('platform_ca_accounts', { data: null, error: { message: 'none' } })
+    supabaseFake.queue('platform_ca_accounts', { data: null, error: { message: 'none' } })
     await expect(getPlatformCAFromRequest(requestWith({ header }))).resolves.toBeNull()
     await expect(getPlatformCAFromRequest(requestWith())).resolves.toBeNull()
   })
 
   it('does not look up a CA account from a user token id', async () => {
-    queue('platform_ca_accounts', { data: { ...caAccount } })
+    supabaseFake.queue('platform_ca_accounts', { data: { ...caAccount } })
     const userToken = generateToken({ ...user, id: 3 })
     await expect(getPlatformCAFromRequest(requestWith({ header: `Bearer ${userToken}` }))).resolves.toBeNull()
   })
@@ -298,13 +274,13 @@ describe('government admin tokens', () => {
 
   it('loads active accounts and rejects inactive ones', async () => {
     const cookie = `govt-admin-token=${generateGovernmentAdminToken(govtAccount)}`
-    queue('government_admin_accounts', { data: govtAccount }, { data: { ...govtAccount, active: false } })
+    supabaseFake.queue('government_admin_accounts', { data: govtAccount }, { data: { ...govtAccount, active: false } })
     await expect(getGovernmentAdminFromRequest(requestWith({ cookie }))).resolves.toMatchObject({ id: 8 })
     await expect(getGovernmentAdminFromRequest(requestWith({ cookie }))).resolves.toBeNull()
   })
 
   it('rejects user session tokens', async () => {
-    queue('government_admin_accounts', { data: govtAccount })
+    supabaseFake.queue('government_admin_accounts', { data: govtAccount })
     const header = `Bearer ${generateToken({ ...user, id: 8 })}`
     await expect(getGovernmentAdminFromRequest(requestWith({ header }))).resolves.toBeNull()
   })
@@ -448,17 +424,17 @@ describe('compliance numbers', () => {
 
 describe('company CA ids', () => {
   it('generates the next sequential id for the company', async () => {
-    queue('company_ca_identities', { data: [{ ca_id: 'CAID-40-001' }, { ca_id: 'CAID-40-007' }, { ca_id: 'OTHER' }] })
+    supabaseFake.queue('company_ca_identities', { data: [{ ca_id: 'CAID-40-001' }, { ca_id: 'CAID-40-007' }, { ca_id: 'OTHER' }] })
     await expect(generateUniqueCompanyCaId(40)).resolves.toBe('CAID-40-008')
   })
 
   it('starts at 001', async () => {
-    queue('company_ca_identities', { data: [] })
+    supabaseFake.queue('company_ca_identities', { data: [] })
     await expect(generateUniqueCompanyCaId(40)).resolves.toBe('CAID-40-001')
   })
 
   it('surfaces fetch errors', async () => {
-    queue('company_ca_identities', { data: null, error: { message: 'boom' } })
+    supabaseFake.queue('company_ca_identities', { data: null, error: { message: 'boom' } })
     await expect(generateUniqueCompanyCaId(40)).rejects.toThrow('Failed to fetch existing CA IDs: boom')
   })
 
@@ -467,7 +443,7 @@ describe('company CA ids', () => {
   })
 
   it('assigns and reads back a new CA id', async () => {
-    queue('company_ca_identities', { data: [] }, { data: null }, { data: { ca_id: 'CAID-40-001' } })
+    supabaseFake.queue('company_ca_identities', { data: [] }, { data: null }, { data: { ca_id: 'CAID-40-001' } })
     await expect(ensureCompanyCaIdAssigned('ident', 40, null)).resolves.toBe('CAID-40-001')
   })
 })

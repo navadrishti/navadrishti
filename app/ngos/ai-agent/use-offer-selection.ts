@@ -149,5 +149,5 @@ export function useRelatedOffersLoader(
     }
 
     void loadRelatedOffers()
-  }, [generatedDraft])
+  }, [generatedDraft, setOffersLoading, setRelatedOffersByNeed, setSelectedOfferIdsByNeed, setMessages])
 }

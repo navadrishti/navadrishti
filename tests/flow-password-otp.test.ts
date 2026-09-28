@@ -12,8 +12,8 @@ import { POST as verifyEmailOtp } from '@/app/api/auth/verify-email-otp/route'
 import { resetAuthStoreFallback } from '@/lib/auth-store'
 import { resetOneTimeCodes } from '@/lib/one-time-codes'
 import { resetRateLimits } from '@/lib/rate-limit'
-import { createAuthStoreFake, missingAuthStoreRpc } from './auth-store-fake'
-import { createSupabaseFake, type FakeResult } from './service-supabase-fake'
+import { createAuthStoreFake, missingAuthStoreRpc } from './support/auth-store-fake'
+import { createSupabaseFake, type FakeResult } from './support/supabase-fake'
 
 type UserRow = { id: number; email: string; name: string; password: string }
 type StoreMode = 'database' | 'memory'

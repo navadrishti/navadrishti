@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { listCAQueue, mapQueueItem } from '@/lib/ca-review/queue'
 import type { VerificationQueueRow } from '@/lib/ca-review/queue-config'
 import { getCAReview } from '@/lib/ca-review/review'
-import { createSupabaseFake, type FakeResult } from './service-supabase-fake'
+import { createSupabaseFake, type FakeResult } from './support/supabase-fake'
 
 const mocks = vi.hoisted(() => ({ from: vi.fn(), extract: vi.fn() }))
 
@@ -157,8 +157,8 @@ describe('listCAQueue', () => {
   it('queries the latest 100 rows for the type', async () => {
     const fake = useDb()
     await listCAQueue('companies', 'all')
-    expect(fake.calls[0].table).toBe('company_verifications')
-    expect(fake.calls[0].filters).toEqual([
+    expect(fake.queries[0].table).toBe('company_verifications')
+    expect(fake.queries[0].filters).toEqual([
       ['select', expect.stringContaining('company_name')],
       ['order', 'updated_at', { ascending: false }],
       ['limit', 100],
@@ -171,7 +171,7 @@ describe('listCAQueue', () => {
   ])('filters %s rows', async (status, filter) => {
     const fake = useDb()
     await listCAQueue('individuals', status)
-    expect(fake.calls[0].filters).toContainEqual(filter)
+    expect(fake.queries[0].filters).toContainEqual(filter)
   })
 
   it('drops unverified rows that have nothing to review', async () => {
@@ -218,8 +218,8 @@ describe('listCAQueue', () => {
       [1, false],
       [5, true],
     ])
-    expect(fake.calls[1].filters).toContainEqual(['eq', 'verification_status', 'verified'])
-    expect(fake.calls[1].filters).toContainEqual(['limit', 200])
+    expect(fake.queries[1].filters).toContainEqual(['eq', 'verification_status', 'verified'])
+    expect(fake.queries[1].filters).toContainEqual(['limit', 200])
   })
 
   it('still returns pending NGOs when the reverification lookup fails', async () => {
@@ -232,10 +232,10 @@ describe('listCAQueue', () => {
   it('skips the reverification lookup for other statuses and types', async () => {
     const ngo = useDb()
     await listCAQueue('ngos', 'verified')
-    expect(ngo.calls).toHaveLength(1)
+    expect(ngo.queries).toHaveLength(1)
     const company = useDb()
     await listCAQueue('companies', 'unverified')
-    expect(company.calls).toHaveLength(1)
+    expect(company.queries).toHaveLength(1)
   })
 })
 

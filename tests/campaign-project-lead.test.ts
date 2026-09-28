@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { eqValue, hasCall, jsonRequest, supabaseFake, tokenFor, type FakeQuery } from './campaign-supabase-fake'
+import { jsonRequest, tokenFor } from './support/requests'
+import { eqValue, hasCall, supabaseFake, type FakeQuery } from './support/supabase-fake'
 import { respondToLeadNgoInvitation } from '@/lib/service-request-assignments/lead-ngo'
 import { submitProjectApplication } from '@/lib/service-request-assignments/project-applications'
 import { LEAD_NGO_INVITE_CONTRIBUTION_TYPE } from '@/lib/service-request-assignments/shared'
 
 vi.mock('@/lib/db', async () => {
-  const { supabaseFake: fake } = await import('./campaign-supabase-fake')
+  const { supabaseFake: fake } = await import('./support/supabase-fake')
   return {
     supabase: fake.client,
     buildProjectLeadNgoPatch: (id: number) => ({ lead_ngo_user_id: id > 0 ? id : null }),

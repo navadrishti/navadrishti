@@ -93,7 +93,7 @@ function DeleteAccountDialog({ open, onOpenChange, onConfirm, loading, error }: 
             {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
 
             <div className="space-y-2">
-              <Label htmlFor="confirmation">Type <strong>"DELETE MY ACCOUNT"</strong> to confirm</Label>
+              <Label htmlFor="confirmation">Type <strong>&quot;DELETE MY ACCOUNT&quot;</strong> to confirm</Label>
               <Input
                 id="confirmation"
                 type="text"
@@ -211,7 +211,7 @@ export default function SettingsPage() {
       } else {
         setPasswordError(data.error || 'Failed to change password');
       }
-    } catch (error) {
+    } catch {
       setPasswordError('An error occurred while changing password');
     } finally {
       setPasswordLoading(false);
@@ -248,7 +248,7 @@ export default function SettingsPage() {
       } else {
         setDeleteError(data.error || 'Failed to delete account');
       }
-    } catch (error) {
+    } catch {
       setDeleteError('An error occurred while deleting your account');
     } finally {
       setDeleteLoading(false);

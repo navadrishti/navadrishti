@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { POST } from '@/app/api/documents/generate/route'
-import { jsonRequest, supabaseFake, tokenFor } from './campaign-supabase-fake'
-import { resetDb, respond } from './documents-fixtures'
+import { jsonRequest, tokenFor } from './support/requests'
+import { supabaseFake } from './support/supabase-fake'
+import { resetDb, respond } from './support/documents-fixtures'
 
 vi.mock('server-only', () => ({}))
 vi.mock('@/lib/db', async () => {
-  const { supabaseFake: fake } = await import('./campaign-supabase-fake')
+  const { supabaseFake: fake } = await import('./support/supabase-fake')
   return { supabase: fake.client }
 })
 

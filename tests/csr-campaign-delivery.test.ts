@@ -19,11 +19,11 @@ import {
   updateCsrCapabilityRentalStatus,
 } from '@/lib/csr-agent/campaign/rental-store'
 import type { CsrCapabilityRentalRecord } from '@/lib/service-engagement'
-import { eqValue, supabaseFake } from './campaign-supabase-fake'
-import { createCampaignStore, rental, type Row } from './csr-campaign-fixtures'
+import { eqValue, supabaseFake } from './support/supabase-fake'
+import { createCampaignStore, rental, type Row } from './support/csr-campaign-fixtures'
 
 vi.mock('@/lib/db', async () => {
-  const { supabaseFake: fake } = await import('./campaign-supabase-fake')
+  const { supabaseFake: fake } = await import('./support/supabase-fake')
   return { supabase: fake.client }
 })
 

@@ -24,7 +24,8 @@ import {
   canContributeViaPlatform,
 } from '@/lib/razorpay-route'
 import { POST as webhookPost } from '@/app/api/webhooks/razorpay/route'
-import { createSupabaseFake, arg, sign, type FakeQuery, type FakeResult } from './payments-fakes'
+import { razorpaySignature } from './support/requests'
+import { argOf, createSupabaseFake, type FakeQuery, type FakeResult } from './support/supabase-fake'
 
 const dbMock = vi.hoisted(() => ({
   supabase: { from: vi.fn() },
@@ -33,7 +34,7 @@ const dbMock = vi.hoisted(() => ({
 vi.mock('@/lib/db', () => ({ supabase: dbMock.supabase, db: dbMock.db }))
 vi.mock('razorpay', () => ({ default: vi.fn() }))
 
-function useSupabase(respond?: (query: FakeQuery) => FakeResult) {
+function useSupabase(respond?: (query: FakeQuery) => FakeResult | undefined) {
   const fake = createSupabaseFake(respond)
   dbMock.supabase.from.mockImplementation(fake.from)
   return fake
@@ -269,7 +270,7 @@ describe('NGO network helpers', () => {
     })
     expect(result.contributionInr).toBe(expected)
     expect(client.orders.create.mock.calls[0][0].amount).toBe(result.pricing.totalChargePaise)
-    const row = arg(fake.find('razorpay_payment_orders', 'upsert')[0], 'upsert') as Record<string, unknown>
+    const row = argOf(fake.find('razorpay_payment_orders', 'upsert')[0], 'upsert') as Record<string, unknown>
     expect(row).toMatchObject({ payer_user_id: 3, ngo_user_id: 7, order_status: 'created', amount_paise: result.pricing.totalChargePaise })
   })
 })
@@ -282,8 +283,8 @@ describe('verifyNgoNetworkDonation', () => {
 
   function setup(overrides: { payment?: Record<string, unknown>; order?: Record<string, unknown>; existing?: boolean } = {}) {
     const fake = useSupabase((query) => {
-      if (query.table === 'razorpay_payments' && arg(query, 'select')) return { data: overrides.existing ? { id: 1 } : null }
-      if (query.table === 'razorpay_payment_orders' && arg(query, 'select')) return { data: { id: 55 } }
+      if (query.table === 'razorpay_payments' && argOf(query, 'select')) return { data: overrides.existing ? { id: 1 } : null }
+      if (query.table === 'razorpay_payment_orders' && argOf(query, 'select')) return { data: { id: 55 } }
       return undefined
     })
     const { client, razorpay } = fakeRazorpay()
@@ -301,7 +302,7 @@ describe('verifyNgoNetworkDonation', () => {
     return { fake, client, razorpay }
   }
 
-  function params(razorpay: Razorpay, signature = sign(orderId, paymentId, keySecret)) {
+  function params(razorpay: Razorpay, signature = razorpaySignature(orderId, paymentId, keySecret)) {
     return {
       razorpay,
       keySecret,
@@ -321,15 +322,15 @@ describe('verifyNgoNetworkDonation', () => {
       paidInr: 1059,
       replay: false,
     })
-    const payment = arg(fake.find('razorpay_payments', 'insert')[0], 'insert') as Record<string, unknown>
+    const payment = argOf(fake.find('razorpay_payments', 'insert')[0], 'insert') as Record<string, unknown>
     expect(payment).toMatchObject({ order_id: 55, amount_inr: 1059, amount_paise: 105900, payment_status: 'captured' })
   })
 
   it.each([
-    ['tampered order id', sign('order_other', paymentId, keySecret)],
-    ['tampered payment id', sign(orderId, 'pay_other', keySecret)],
-    ['wrong secret', sign(orderId, paymentId, 'other_secret')],
-    ['truncated signature', sign(orderId, paymentId, keySecret).slice(0, 10)],
+    ['tampered order id', razorpaySignature('order_other', paymentId, keySecret)],
+    ['tampered payment id', razorpaySignature(orderId, 'pay_other', keySecret)],
+    ['wrong secret', razorpaySignature(orderId, paymentId, 'other_secret')],
+    ['truncated signature', razorpaySignature(orderId, paymentId, keySecret).slice(0, 10)],
     ['empty signature', ''],
   ])('rejects a %s before calling Razorpay', async (_label, signature) => {
     const { client, razorpay } = setup()
@@ -567,8 +568,8 @@ describe('Razorpay webhook signature', () => {
     })
     dbMock.db.serviceRequests.getById.mockResolvedValue({ status: 'in_progress', current_amount: 5000, target_amount: 10000, requirements: {} })
     useSupabase((query) => {
-      if (query.table === 'provider_webhook_events' && arg(query, 'insert')) return { data: { id: 'evt_row' } }
-      if (query.table === 'razorpay_payments' && arg(query, 'select')) return { data: { id: 9, order_id: 44, amount_inr: 1059 } }
+      if (query.table === 'provider_webhook_events' && argOf(query, 'insert')) return { data: { id: 'evt_row' } }
+      if (query.table === 'razorpay_payments' && argOf(query, 'select')) return { data: { id: 9, order_id: 44, amount_inr: 1059 } }
       if (query.table === 'razorpay_payment_orders') {
         return { data: { service_request_id: 12, order_notes: { base_amount_inr: 1000, total_charge_inr: 1059 } } }
       }

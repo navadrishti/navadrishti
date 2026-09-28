@@ -51,7 +51,7 @@ export function useEditingCampaign({
     }
 
     void hydrateCampaign()
-  }, [mounted, editingCampaignId])
+  }, [mounted, editingCampaignId, setProjectData, setGeneratedCampaigns, setPublishedCampaignId, setConversationStage])
 
   return { editingCampaignHasLead }
 }

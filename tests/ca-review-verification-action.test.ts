@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { applyCAVerificationAction } from '@/lib/ca-review/verification-action'
 import type { PlatformCATokenPayload } from '@/lib/platform-ca-auth'
-import { createSupabaseFake, type FakeResult } from './service-supabase-fake'
+import type { JsonRecord } from '@/lib/utils'
+import { createSupabaseFake, type FakeResult } from './support/supabase-fake'
 
 const mocks = vi.hoisted(() => ({
   from: vi.fn(),
@@ -17,8 +18,6 @@ vi.mock('@/lib/reverification', () => ({
   rejectReverification: mocks.reject,
   ReverificationConflictError: mocks.ConflictError,
 }))
-
-type Payload = Record<string, any>
 
 const ca: PlatformCATokenPayload = { id: 3, ca_id: 'CA-3', username: 'ca3', display_name: 'CA Three' }
 
@@ -46,7 +45,7 @@ function setup(options: {
 }
 
 function payloadOf(fake: ReturnType<typeof useDb>, table: string, op: 'update' | 'insert' = 'update', index = 0) {
-  return fake.writes(table, op)[index]?.payload as Payload
+  return fake.writes(table, op)[index]?.payload as JsonRecord
 }
 
 beforeEach(() => {
@@ -81,7 +80,7 @@ describe('applyCAVerificationAction lookups', () => {
   ] as const)('selects the %s row by id', async (type, table, columns) => {
     const fake = setup({ table })
     await applyCAVerificationAction({ type, id: 4, action: 'reject', reason: 'x', ca })
-    expect(fake.calls[0]).toMatchObject({ table, filters: [['select', columns], ['eq', 'id', 4]] })
+    expect(fake.queries[0]).toMatchObject({ table, filters: [['select', columns], ['eq', 'id', 4]] })
   })
 })
 
@@ -95,7 +94,7 @@ describe('applyCAVerificationAction on decided records', () => {
     await expect(applyCAVerificationAction({ type, id: 4, action: 'reject', reason: 'x', ca })).rejects.toMatchObject(
       caError('This record is already verified. Tags and decisions cannot be changed.', 409)
     )
-    expect(fake.calls.filter((call) => call.op !== 'select')).toHaveLength(0)
+    expect(fake.queries.filter((call) => call.op !== 'select')).toHaveLength(0)
   })
 
   it.each([
@@ -113,7 +112,7 @@ describe('applyCAVerificationAction on decided records', () => {
     await expect(applyCAVerificationAction({ type: 'individuals', id: 4, action: 'approve', ca })).rejects.toMatchObject(
       caError(message, 409)
     )
-    expect(fake.calls.filter((call) => call.op !== 'select')).toHaveLength(0)
+    expect(fake.queries.filter((call) => call.op !== 'select')).toHaveLength(0)
   })
 
   it.each([
@@ -137,7 +136,7 @@ describe('applyCAVerificationAction on decided records', () => {
       caError('This record is already verified. Tags and decisions cannot be changed.', 409)
     )
     expect(mocks.approve).not.toHaveBeenCalled()
-    expect(fake.calls.filter((call) => call.op !== 'select')).toHaveLength(0)
+    expect(fake.queries.filter((call) => call.op !== 'select')).toHaveLength(0)
   })
 })
 
@@ -334,7 +333,7 @@ describe('applyCAVerificationAction NGO compliance tags', () => {
   async function approveNgo(compliance_tags?: unknown) {
     const fake = setup({ table: 'ngo_verifications', row: { ngo_name: 'Seva Trust' }, user: { profile_data: ngoProfile } })
     const result = await applyCAVerificationAction({ type: 'ngos', id: 4, action: 'approve', compliance_tags, ca })
-    return { fake, result, profile: payloadOf(fake, 'users').profile_data as Payload }
+    return { fake, result, profile: payloadOf(fake, 'users').profile_data as JsonRecord }
   }
 
   it.each([

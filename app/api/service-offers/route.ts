@@ -23,6 +23,19 @@ type OfferUsageCounts = {
   usage: CapabilityOfferUsageRecord[]
 }
 
+type OfferListExtras = {
+  category?: string | null
+  expires_at?: string | null
+  location?: string | null
+  ngo_name?: string | null
+  provider_name?: string | null
+  provider_type?: string
+  applications_count?: number
+  pending_applications?: number
+  isAssigned?: boolean
+  usage_records?: CapabilityOfferUsageRecord[]
+}
+
 // GET - List service offers with type, category, location and search filters
 export async function GET(request: NextRequest) {
   try {
@@ -102,7 +115,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch service offers' }, { status: 500 })
     }
 
-    let filteredOffers = (offers || []).map((offer) => toOfferResponse(offer))
+    let filteredOffers = (offers || []).map((offer) => toOfferResponse<typeof offer & OfferListExtras>(offer))
 
     // Public marketplace: only list capabilities from merchants with Razorpay connected.
     if (view === 'all' || !view) {
@@ -256,7 +269,7 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({ success: true, data: filteredOffers })
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'Failed to fetch service offers' }, { status: 500 })
   }
 }

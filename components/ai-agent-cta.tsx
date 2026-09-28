@@ -1,5 +1,6 @@
 "use client"
 
+import Image from "next/image"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
@@ -10,9 +11,11 @@ import { PRODUCT_LOGO_SRC } from "@/lib/access-control"
 
 function LogoOrIcon({ className }: { className?: string }) {
   return (
-    <img
+    <Image
       src={PRODUCT_LOGO_SRC}
       alt="GRAM"
+      width={36}
+      height={36}
       className={`${className ?? ""} object-contain`}
     />
   )

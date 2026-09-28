@@ -60,7 +60,7 @@ export function useProjectSuggestions({
     return () => {
       cancelled = true
     }
-  }, [projectData.campaignName, projectData.category, projectData.city, projectData.state, hasLockedLeadNgo])
+  }, [projectData.campaignName, projectData.category, projectData.city, projectData.state, hasLockedLeadNgo, setSelectedProjectSuggestionId])
 
   const handleSelectProjectSuggestion = (project: ProjectSuggestion) => {
     setSelectedProjectSuggestionId(project.id)

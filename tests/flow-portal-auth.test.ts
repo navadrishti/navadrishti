@@ -11,7 +11,7 @@ import { POST as evidenceLogin } from '@/app/api/evidence-verification/auth/rout
 import { POST as evidenceChangePassword } from '@/app/api/evidence-verification/change-password/route'
 import { POST as evidenceLogout } from '@/app/api/evidence-verification/logout/route'
 import { resetRateLimits } from '@/lib/rate-limit'
-import { createSupabaseFake, type FakeResult } from './service-supabase-fake'
+import { createSupabaseFake, type FakeResult } from './support/supabase-fake'
 
 type UserRow = { id: number; email: string; name: string; user_type: string; password: string; verification_status: string }
 
@@ -180,7 +180,7 @@ describe('platform CA login', () => {
     expect(cookie).toMatchObject({ httpOnly: true, maxAge: 12 * 60 * 60 })
     expect(verifyPlatformCAToken(cookie!.value)).toMatchObject({ id: 3, ca_id: 'CA-3' })
     expect(verifyToken(cookie!.value)).toBeNull()
-    expect(fake.calls[0].filters).toEqual(
+    expect(fake.queries[0].filters).toEqual(
       expect.arrayContaining([['eq', 'username', 'ca3'], ['eq', 'active', true]])
     )
     expect(fake.writes('platform_ca_accounts')[0].payload).toHaveProperty('last_login_at')
@@ -211,10 +211,10 @@ describe('platform CA login', () => {
     const attempt = (username: string) =>
       caLogin(post('/api/ca/auth', { username, password: 'nope' }, { 'x-real-ip': '203.0.113.5' }))
     for (let i = 0; i < 10; i++) expect((await attempt('ca3')).status).toBe(401)
-    const lookups = fake.calls.length
+    const lookups = fake.queries.length
     const blocked = await attempt('CA3')
     expect(blocked.status).toBe(429)
-    expect(fake.calls).toHaveLength(lookups)
+    expect(fake.queries).toHaveLength(lookups)
     expect((await attempt('ca4')).status).toBe(401)
   })
 })
@@ -268,11 +268,11 @@ describe('government admin login', () => {
     const attempt = (username: string) =>
       govtLogin(post('/api/government-admin/auth', { username, password: 'nope' }, { 'x-real-ip': '203.0.113.3' }))
     for (let i = 0; i < 10; i++) expect((await attempt('gov8')).status).toBe(401)
-    const lookups = fake.calls.length
+    const lookups = fake.queries.length
     const blocked = await attempt(' GOV8 ')
     expect(blocked.status).toBe(429)
     expect(Number(blocked.headers.get('Retry-After'))).toBeGreaterThan(15 * 60 - 5)
-    expect(fake.calls).toHaveLength(lookups)
+    expect(fake.queries).toHaveLength(lookups)
     expect((await attempt('gov9')).status).toBe(401)
   })
 })
@@ -318,7 +318,7 @@ describe('evidence verification login', () => {
     const wrong = await evidenceLogin(post('/api/evidence-verification/auth', { email: 'ca@acme.com', password: 'nope' }))
     expect(unknown.status).toBe(401)
     expect(await unknown.json()).toEqual(await wrong.json())
-    expect(fake.calls).toHaveLength(0)
+    expect(fake.queries).toHaveLength(0)
   })
 
   it('throttles repeated attempts per IP and email', async () => {

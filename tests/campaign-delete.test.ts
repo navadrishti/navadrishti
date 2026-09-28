@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { supabaseFake, type FakeQuery } from './campaign-supabase-fake'
+import { supabaseFake, type FakeQuery } from './support/supabase-fake'
 import { deleteCampaignWithDependencies, formatCampaignDeleteError } from '@/lib/campaign-delete'
 
 vi.mock('@/lib/db', async () => {
-  const { supabaseFake: fake } = await import('./campaign-supabase-fake')
+  const { supabaseFake: fake } = await import('./support/supabase-fake')
   return { supabase: fake.client }
 })
 

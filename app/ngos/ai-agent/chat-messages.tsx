@@ -2,6 +2,7 @@
 
 import type React from "react"
 import { useMemo, useState } from "react"
+import Image from "next/image"
 import { Loader2, MoreVertical } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -30,7 +31,7 @@ function AssistantAvatar() {
   return (
     <div className="flex-shrink-0">
       <div className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm">
-        <img src={PRODUCT_LOGO_SRC} alt="GRAM" className="h-7 w-7 object-contain" />
+        <Image src={PRODUCT_LOGO_SRC} alt="GRAM" width={28} height={28} className="h-7 w-7 object-contain" />
       </div>
     </div>
   )
@@ -136,6 +137,7 @@ export function ChatMessageList({
             {message.role === 'user' && (
               <div className="flex-shrink-0">
                 {userAvatar ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- profile photos are user-uploaded URLs from arbitrary hosts
                   <img
                     src={userAvatar}
                     alt={userName || 'User'}

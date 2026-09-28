@@ -15,7 +15,8 @@ import {
   isDailyRentalAssignment,
   verifyRazorpaySignature,
 } from '@/lib/engagement-settlement'
-import { createSupabaseFake, arg, has, sign, type FakeQuery, type FakeResult } from './payments-fakes'
+import { razorpaySignature } from './support/requests'
+import { argOf, createSupabaseFake, hasCall, type FakeQuery, type FakeResult } from './support/supabase-fake'
 
 const mocks = vi.hoisted(() => ({
   supabase: { from: vi.fn() },
@@ -44,7 +45,7 @@ vi.mock('razorpay', () => ({
 
 const razorpay = mocks.razorpay as unknown as Razorpay
 
-function useSupabase(respond?: (query: FakeQuery) => FakeResult) {
+function useSupabase(respond?: (query: FakeQuery) => FakeResult | undefined) {
   const fake = createSupabaseFake(respond)
   mocks.supabase.from.mockImplementation(fake.from)
   return fake
@@ -84,10 +85,10 @@ describe('settleCompanyCaPayment', () => {
 
   function setup(order: Record<string, unknown> | null) {
     return useSupabase((query) => {
-      if (query.table === 'razorpay_payment_orders' && has(query, 'select')) return { data: order }
-      if (query.table === 'service_request_contributions' && has(query, 'update')) return { data: [{ id: 'c1', amount: 200 }] }
+      if (query.table === 'razorpay_payment_orders' && hasCall(query, 'select')) return { data: order }
+      if (query.table === 'service_request_contributions' && hasCall(query, 'update')) return { data: [{ id: 'c1', amount: 200 }] }
       if (query.table === 'service_attendance_entries') return { data: [{ id: 5, amount_due: 300.1 }, { id: 6, amount_due: 499.9 }] }
-      if (query.table === 'service_requests' && has(query, 'select')) return { data: { current_amount: 100, target_amount: 1500 } }
+      if (query.table === 'service_requests' && hasCall(query, 'select')) return { data: { current_amount: 100, target_amount: 1500 } }
       return undefined
     })
   }
@@ -122,20 +123,20 @@ describe('settleCompanyCaPayment', () => {
     expect(result).toEqual({ ok: true, paidInr: 1059, creditedInr: 1000 })
 
     const orderUpdate = fake.find('razorpay_payment_orders', 'update')[0]
-    expect(arg(orderUpdate, 'update')).toMatchObject({ order_status: 'paid' })
+    expect(argOf(orderUpdate, 'update')).toMatchObject({ order_status: 'paid' })
 
-    const payment = arg(fake.find('razorpay_payments', 'upsert')[0], 'upsert') as Record<string, unknown>
+    const payment = argOf(fake.find('razorpay_payments', 'upsert')[0], 'upsert') as Record<string, unknown>
     expect(payment).toMatchObject({ amount_inr: 1059, amount_paise: 105900, razorpay_signature: 'sig', payment_status: 'captured' })
     expect(payment.provider_payload).toMatchObject({ attendance_entry_ids: ['5', '6'], contribution_ids: ['c1'] })
 
     const entries = fake.find('service_attendance_entries')[0]
-    expect(arg(entries, 'in', 1)).toEqual(['5', '6'])
-    expect(entries.ops).toContainEqual({ method: 'neq', args: ['payment_status', 'paid'] })
+    expect(argOf(entries, 'in', 1)).toEqual(['5', '6'])
+    expect(entries.calls).toContainEqual(['neq', 'payment_status', 'paid'])
 
-    const aggregate = arg(fake.find('service_request_contributions', 'insert')[0], 'insert') as Record<string, unknown>
+    const aggregate = argOf(fake.find('service_request_contributions', 'insert')[0], 'insert') as Record<string, unknown>
     expect(aggregate).toMatchObject({ service_request_id: 12, contributor_id: 3, amount: 800, contribution_type: 'attendance_payment' })
 
-    const totals = fake.find('service_requests', 'update').map((query) => arg(query, 'update'))
+    const totals = fake.find('service_requests', 'update').map((query) => argOf(query, 'update'))
     expect(totals).toEqual([
       expect.objectContaining({ current_amount: 300, remaining_amount: 1200 }),
       expect.objectContaining({ current_amount: 900, remaining_amount: 600 }),
@@ -145,13 +146,13 @@ describe('settleCompanyCaPayment', () => {
   it('reads the order amount alongside the notes', async () => {
     const fake = setup({ ...order, amount_paise: 105900 })
     await settleCompanyCaPayment(input)
-    expect(arg(fake.find('razorpay_payment_orders', 'select')[0], 'select')).toContain('amount_paise')
+    expect(argOf(fake.find('razorpay_payment_orders', 'select')[0], 'select')).toContain('amount_paise')
   })
 
   it('omits the signature for webhook settlements', async () => {
     const fake = setup(order)
     await settleCompanyCaPayment({ ...input, razorpaySignature: null })
-    expect(arg(fake.find('razorpay_payments', 'upsert')[0], 'upsert')).not.toHaveProperty('razorpay_signature')
+    expect(argOf(fake.find('razorpay_payments', 'upsert')[0], 'upsert')).not.toHaveProperty('razorpay_signature')
   })
 })
 
@@ -302,8 +303,8 @@ describe('admin refunds', () => {
     mocks.db.serviceRequests.getById.mockResolvedValue(options.request === undefined ? financialRequest : options.request)
     mocks.razorpay.payments.refund.mockResolvedValue({ id: 'rfnd_1', status: 'processed' })
     return useSupabase((query) => {
-      if (query.table === 'razorpay_payments' && has(query, 'select')) return { data: options.payment === undefined ? paymentRow : options.payment }
-      if (query.table === 'razorpay_refunds' && has(query, 'select')) return { data: options.existingRefund ?? null }
+      if (query.table === 'razorpay_payments' && hasCall(query, 'select')) return { data: options.payment === undefined ? paymentRow : options.payment }
+      if (query.table === 'razorpay_refunds' && hasCall(query, 'select')) return { data: options.existingRefund ?? null }
       return undefined
     })
   }
@@ -371,7 +372,7 @@ describe('admin refunds', () => {
     mocks.razorpay.payments.refund.mockResolvedValue({ id: 'rfnd_2', status: 'created' })
     const result = await refund({ requestedRefundInr: 200.5 })
     expect(mocks.razorpay.payments.refund).toHaveBeenCalledWith('pay_1', expect.objectContaining({ amount: 20050 }))
-    expect(arg(fake.find('razorpay_payments', 'update')[0], 'update')).toMatchObject({ payment_status: 'partially_refunded' })
+    expect(argOf(fake.find('razorpay_payments', 'update')[0], 'update')).toMatchObject({ payment_status: 'partially_refunded' })
     expect(result).toMatchObject({ refund_status: 'pending', fundsRaisedInr: 1000 })
     expect(mocks.db.serviceRequests.update).not.toHaveBeenCalled()
 
@@ -382,8 +383,8 @@ describe('admin refunds', () => {
   it('records a processed full refund and debits the request', async () => {
     const fake = setup()
     const result = await refund({ refundReason: 'duplicate' })
-    expect(arg(fake.find('razorpay_payments', 'update')[0], 'update')).toMatchObject({ payment_status: 'refunded' })
-    expect(arg(fake.find('razorpay_refunds', 'insert')[0], 'insert')).toMatchObject({
+    expect(argOf(fake.find('razorpay_payments', 'update')[0], 'update')).toMatchObject({ payment_status: 'refunded' })
+    expect(argOf(fake.find('razorpay_refunds', 'insert')[0], 'insert')).toMatchObject({
       payment_id: 9,
       amount_inr: 1059,
       amount_paise: 105900,
@@ -438,14 +439,14 @@ describe('engagement settlement', () => {
     })
 
     it('accepts a valid HMAC', () => {
-      expect(verifyRazorpaySignature('order_1', 'pay_1', sign('order_1', 'pay_1', 'rzp_secret'))).toBe(true)
+      expect(verifyRazorpaySignature('order_1', 'pay_1', razorpaySignature('order_1', 'pay_1', 'rzp_secret'))).toBe(true)
     })
 
     it.each([
-      ['tampered order', sign('order_2', 'pay_1', 'rzp_secret')],
-      ['tampered payment', sign('order_1', 'pay_2', 'rzp_secret')],
-      ['wrong secret', sign('order_1', 'pay_1', 'other')],
-      ['uppercased', sign('order_1', 'pay_1', 'rzp_secret').toUpperCase()],
+      ['tampered order', razorpaySignature('order_2', 'pay_1', 'rzp_secret')],
+      ['tampered payment', razorpaySignature('order_1', 'pay_2', 'rzp_secret')],
+      ['wrong secret', razorpaySignature('order_1', 'pay_1', 'other')],
+      ['uppercased', razorpaySignature('order_1', 'pay_1', 'rzp_secret').toUpperCase()],
       ['short', 'deadbeef'],
       ['empty', ''],
     ])('rejects a %s signature', (_label, signature) => {
@@ -454,13 +455,13 @@ describe('engagement settlement', () => {
 
     it('compares with timingSafeEqual', () => {
       const spy = vi.spyOn(crypto, 'timingSafeEqual')
-      verifyRazorpaySignature('order_1', 'pay_1', sign('order_1', 'pay_1', 'other'))
+      verifyRazorpaySignature('order_1', 'pay_1', razorpaySignature('order_1', 'pay_1', 'other'))
       expect(spy).toHaveBeenCalledTimes(1)
     })
 
     it('fails closed without a secret', () => {
       vi.stubEnv('RAZORPAY_KEY_SECRET', '')
-      expect(verifyRazorpaySignature('order_1', 'pay_1', sign('order_1', 'pay_1', ''))).toBe(false)
+      expect(verifyRazorpaySignature('order_1', 'pay_1', razorpaySignature('order_1', 'pay_1', ''))).toBe(false)
     })
   })
 
@@ -486,9 +487,9 @@ describe('engagement settlement', () => {
     expect(result).toMatchObject({ paymentRequired: false, outstanding: 0 })
     const entryUpdates = fake.find('service_attendance_entries', 'update')
     expect(entryUpdates).toHaveLength(1)
-    expect(arg(entryUpdates[0], 'update')).toMatchObject({ payment_status: 'waived' })
-    expect(arg(fake.find('service_engagement_assignments', 'update')[0], 'update')).toMatchObject({ status: 'completed' })
-    expect(arg(fake.find('service_clients', 'update')[0], 'update')).toMatchObject({ status: 'completed' })
+    expect(argOf(entryUpdates[0], 'update')).toMatchObject({ payment_status: 'waived' })
+    expect(argOf(fake.find('service_engagement_assignments', 'update')[0], 'update')).toMatchObject({ status: 'completed' })
+    expect(argOf(fake.find('service_clients', 'update')[0], 'update')).toMatchObject({ status: 'completed' })
   })
 
   it('requires Razorpay keys for an outstanding balance', async () => {
@@ -506,7 +507,7 @@ describe('engagement settlement', () => {
     expect(body.amount).toBe(63000)
     expect(String(body.receipt)).toMatch(/^assign_asg_1_\d+$/)
     expect(body.notes).toMatchObject({ assignment_id: 'asg_1', payment_kind: 'engagement_settlement', payer_user_id: '3', beneficiary_user_id: '8' })
-    const row = arg(fake.find('razorpay_payment_orders', 'upsert')[0], 'upsert') as Record<string, unknown>
+    const row = argOf(fake.find('razorpay_payment_orders', 'upsert')[0], 'upsert') as Record<string, unknown>
     expect(row).toMatchObject({ service_request_id: 12, application_id: null, ngo_user_id: 8, amount_inr: 630, amount_paise: 63000 })
   })
 })

@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { hasCall, supabaseFake } from './campaign-supabase-fake'
+import { hasCall, supabaseFake } from './support/supabase-fake'
 import { fetchNewsletterLookups, fetchNewsletterSources, type NewsletterSources } from '@/lib/platform-newsletter/sources'
 
 vi.mock('@/lib/db', async () => {
-  const { supabaseFake: fake } = await import('./campaign-supabase-fake')
+  const { supabaseFake: fake } = await import('./support/supabase-fake')
   return {
     supabase: fake.client,
     getProjectLeadNgoId: (project: { lead_ngo_user_id?: number } | null) => Number(project?.lead_ngo_user_id || 0),
@@ -18,7 +18,7 @@ beforeEach(() => {
 describe('fetchNewsletterSources', () => {
   it('excludes drafts from every campaign feed', async () => {
     await fetchNewsletterSources(30)
-    const campaignQueries = supabaseFake.find('campaigns')
+    const campaignQueries = supabaseFake.find('campaigns', 'select')
     expect(campaignQueries).toHaveLength(3)
     const [recent, finished, lead] = campaignQueries
     expect(hasCall(recent, 'neq', 'status', 'draft')).toBe(true)
@@ -54,7 +54,7 @@ describe('fetchNewsletterLookups', () => {
       campaigns: [{ company_id: 10, lead_ngo_user_id: 5 }],
       assignedProjects: [{ assigned_company_user_id: 11, ngo_id: 12, lead_ngo_user_id: 13 }],
     } as unknown as NewsletterSources)
-    const [users] = supabaseFake.find('users')
+    const [users] = supabaseFake.find('users', 'select')
     expect(users.calls).toContainEqual(['in', 'id', [10, 5, 11, 12, 13]])
     expect(lookups.usersById[10]).toMatchObject({ name: 'Acme' })
   })

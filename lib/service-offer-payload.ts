@@ -232,15 +232,36 @@ export function buildOfferCapabilityRow(offer: { id: number; offer_type: string;
   }
 }
 
+type OfferResponseSource = {
+  creator_id?: number | null
+  ngo_id?: number | null
+  offer_type?: string | null
+  category?: string | null
+  transaction_type?: string | null
+  price_type?: string | null
+  price_amount?: number | null
+  offer_details?: unknown
+  requirements?: unknown
+  impact_area?: unknown
+  unit_rate?: number | null
+  billing_cycle?: string | null
+  payment_mode?: string | null
+  rate_currency?: string | null
+  coverage_area?: string | null
+  valid_until?: unknown
+  expires_at?: unknown
+  ngo?: { verification_status?: string | null } | null
+}
+
 // Shapes a service_offers row for the UI, filling the older flat fields
 // (amount, item, skill, scope...) that cards and detail pages still read.
-export function toOfferResponse(offer: any, capabilities?: unknown[]) {
+export function toOfferResponse<T extends OfferResponseSource>(offer: T, capabilities?: unknown[]) {
   const details = parseJsonObject(offer.offer_details)
   const mergedDetails = Object.keys(details).length > 0 ? details : parseJsonObject(offer.requirements)
 
   const offerType: OfferType = isOfferType(offer.offer_type)
     ? offer.offer_type
-    : LEGACY_CATEGORY_TO_OFFER_TYPE[offer.category] || 'service'
+    : LEGACY_CATEGORY_TO_OFFER_TYPE[offer.category ?? ''] || 'service'
 
   const transactionType = normalizeCapabilityTransactionType(
     offerType,

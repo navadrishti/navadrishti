@@ -15,15 +15,15 @@ import {
   type NewsletterSources,
 } from '@/lib/platform-newsletter/sources'
 import { issueCaBadgeNumber } from '@/lib/platform-ca-auth'
-import { callsOf, createDbFake, unknownColumns, type DbQuery, type DbResult } from './db-supabase-fake'
+import { callsOf, createSupabaseFake, unknownColumns, type FakeQuery, type FakeResult } from './support/supabase-fake'
 
 const mocks = vi.hoisted(() => ({ from: vi.fn() }))
 
 vi.mock('server-only', () => ({}))
 vi.mock('@/lib/db/client', () => ({ supabase: { from: mocks.from } }))
 
-function useDb(responder: (query: DbQuery) => DbResult | undefined) {
-  const fake = createDbFake(responder)
+function useDb(responder: (query: FakeQuery) => FakeResult | undefined) {
+  const fake = createSupabaseFake(responder)
   mocks.from.mockImplementation(fake.from)
   return fake
 }

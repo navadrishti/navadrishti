@@ -33,10 +33,6 @@ export default function VerificationDetailsPage({ type }: VerificationDetailsPag
   const [rejectionReason, setRejectionReason] = useState('');
   const [complianceTags, setComplianceTags] = useState<string[]>([]);
 
-  useEffect(() => {
-    fetchItems();
-  }, [type]);
-
   const fetchItems = async () => {
     try {
       setLoading(true);
@@ -51,6 +47,10 @@ export default function VerificationDetailsPage({ type }: VerificationDetailsPag
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchItems();
+  }, [type]);
 
   const openReview = async (item: VerificationDetail) => {
     setSelectedItem(item);

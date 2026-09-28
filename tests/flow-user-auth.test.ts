@@ -8,7 +8,7 @@ import { POST as changePassword } from '@/app/api/auth/change-password/route'
 import { DELETE as deleteAccount } from '@/app/api/auth/delete-account/route'
 import { GET as me } from '@/app/api/auth/me/route'
 import { resetRateLimits } from '@/lib/rate-limit'
-import { createSupabaseFake, type FakeResult } from './service-supabase-fake'
+import { createSupabaseFake, type FakeResult } from './support/supabase-fake'
 
 type UserRow = Record<string, unknown> & { id: number; email: string; password: string }
 
@@ -455,7 +455,7 @@ describe('delete account', () => {
     const response = await remove({ password: 'not-it', confirmation: 'DELETE MY ACCOUNT' })
     expect(response.status).toBe(400)
     expect(await response.json()).toEqual({ error: 'Incorrect password' })
-    expect(fake.calls).toHaveLength(0)
+    expect(fake.queries).toHaveLength(0)
     expect(mocks.findById).not.toHaveBeenCalled()
   })
 

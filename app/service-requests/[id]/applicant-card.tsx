@@ -52,6 +52,7 @@ export function ApplicantCard({ applicant, isFinancialNeed, isMaterialNeed, revi
             }
           >
             {applicant.volunteer?.profile_image ? (
+              // eslint-disable-next-line @next/next/no-img-element -- profile photos are user-uploaded URLs from arbitrary hosts
               <img src={applicant.volunteer.profile_image} alt={applicant.volunteer?.name} className="h-full w-full object-cover" />
             ) : (
               <span className="text-sm font-semibold">{getInitials(applicant.volunteer?.name || applicant.volunteer?.ngo_name || 'A')}</span>

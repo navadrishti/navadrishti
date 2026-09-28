@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import {
@@ -51,10 +52,12 @@ export function ProductBrand({
   const styles = sizeStyles[size];
   const content = (
     <>
-      <img
+      <Image
         src={PRODUCT_LOGO_SRC}
         alt=""
         aria-hidden="true"
+        width={40}
+        height={40}
         draggable={false}
         className={cn(styles.icon, 'shrink-0 object-contain')}
       />
@@ -117,10 +120,12 @@ export function ProductCopyright({
       )}
     >
       <span>© {new Date().getFullYear()}</span>
-      <img
+      <Image
         src={PRODUCT_LOGO_SRC}
         alt=""
         aria-hidden="true"
+        width={16}
+        height={16}
         draggable={false}
         className="h-4 w-4 shrink-0 object-contain"
       />

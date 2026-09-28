@@ -6,7 +6,7 @@ import { POST as createOrder } from '@/app/api/milestones/[id]/payments/create-o
 import { POST as verifyPayment } from '@/app/api/milestones/[id]/payments/verify/route'
 import { POST as recordPayment } from '@/app/api/milestones/[id]/payment/route'
 import { POST as reviewMilestone } from '@/app/api/milestones/[id]/review/route'
-import { createSupabaseFake, type FakeQuery, type FakeResult } from './payments-fakes'
+import { createSupabaseFake, type FakeQuery, type FakeResult } from './support/supabase-fake'
 
 const state = vi.hoisted(() => ({
   dbCalls: [] as string[],
@@ -55,7 +55,7 @@ function buildRequest(method: 'GET' | 'POST', token?: string) {
 const call = (handler: Handler, method: 'GET' | 'POST', token?: string) =>
   handler(buildRequest(method, token), { params: Promise.resolve({ id: 'm1' }) })
 
-function useSupabase(respond: (query: FakeQuery) => FakeResult) {
+function useSupabase(respond: (query: FakeQuery) => FakeResult | undefined) {
   const fake = createSupabaseFake(respond)
   state.supabase = { from: fake.from }
   return fake

@@ -52,6 +52,7 @@ export function ImagesField({ form }: { form: ServiceOfferForm }) {
           <div className="grid grid-cols-4 gap-2">
             {imageUrls.map((url) => (
               <div key={url} className="w-full h-20 rounded overflow-hidden border border-gray-200 bg-gray-50">
+                {/* eslint-disable-next-line @next/next/no-img-element -- previews freshly uploaded URLs that may not match images.remotePatterns */}
                 <img src={url} alt="uploaded" className="w-full h-full object-cover" />
               </div>
             ))}

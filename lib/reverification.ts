@@ -283,7 +283,7 @@ export async function rejectReverification(userId: number, reason = '', reviewed
   const verificationDocuments = parseJsonObject(profileData.verification_documents);
   const typeBlock = parseJsonObject(verificationDocuments[typeKey]);
 
-  let complianceDocuments = parseJsonObject(profileData.compliance_documents);
+  const complianceDocuments = parseJsonObject(profileData.compliance_documents);
   if (user.user_type === 'ngo') {
     delete complianceDocuments.pending_reverification;
   }

@@ -40,7 +40,7 @@ export async function GET(
       provider_type: providerType,
       provider_profile_image: providerProfileImage,
     })
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'Failed to fetch service offer' }, { status: 500 })
   }
 }
@@ -119,7 +119,7 @@ export async function PUT(
       success: true,
       data: { message: 'Service offer updated successfully' }
     })
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'Failed to update service offer' }, { status: 500 })
   }
 }
@@ -155,7 +155,7 @@ export async function DELETE(
       success: true,
       message: 'Service offer deleted successfully'
     })
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'Failed to delete service offer' }, { status: 500 })
   }
 }
