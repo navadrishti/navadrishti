@@ -42,6 +42,7 @@
   "exclude": [
     "node_modules",
     "**/*.d.ts",
-    "reference"
+    "reference",
+    "supabase/functions"
   ]
 }
