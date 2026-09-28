@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useIsClient } from '@/hooks/use-is-client'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Building, XCircle, AlertTriangle } from 'lucide-react'
@@ -28,7 +28,7 @@ export default function ServiceRequestDetailPage() {
   const params = useParams()
   const router = useRouter()
   const { user, token } = useAuth()
-  const [isHydrated, setIsHydrated] = useState(false)
+  const isHydrated = useIsClient()
 
   const requestId = params.id as string
   const {
@@ -48,10 +48,6 @@ export default function ServiceRequestDetailPage() {
   const canShowVolunteerTab = !isHydrated || (effectiveUserType !== 'company' && effectiveUserType !== 'ngo')
   const isNgoOwner = effectiveUserType === 'ngo' && request?.ngo_id === user?.id
   const canVolunteer = effectiveUserType === 'individual'
-
-  useEffect(() => {
-    setIsHydrated(true)
-  }, [])
 
   const parsedRequirements = parseRequirements(request?.requirements)
   const infoRequestType = String(parsedRequirements?.request_type || request?.category || 'Not specified')

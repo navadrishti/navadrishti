@@ -11,7 +11,7 @@
 "use client"
 
 import { usePathname } from 'next/navigation';
-import { ReactNode, useEffect, useState, useRef } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 
 interface PageTransitionProps {
   children: ReactNode;
@@ -20,13 +20,17 @@ interface PageTransitionProps {
 // Navigation Progress Bar Component (integrated)
 function NavigationProgress() {
   const pathname = usePathname();
-  const [isNavigating, setIsNavigating] = useState(false);
+  const [isNavigating, setIsNavigating] = useState(true);
   const [progress, setProgress] = useState(0);
+  const [trackedPath, setTrackedPath] = useState(pathname);
 
-  useEffect(() => {
+  if (trackedPath !== pathname) {
+    setTrackedPath(pathname);
     setIsNavigating(true);
     setProgress(0);
+  }
 
+  useEffect(() => {
     // Smooth continuous progress
     const startTime = Date.now();
     const duration = 1200;
@@ -74,29 +78,18 @@ function NavigationProgress() {
 export function PageTransition({ children }: PageTransitionProps) {
   const pathname = usePathname();
   const [displayPath, setDisplayPath] = useState(pathname);
-  const [transitionStage, setTransitionStage] = useState<'entering' | 'visible' | 'exiting'>('visible');
-  const exitingRef = useRef(false);
+  const [settledStage, setTransitionStage] = useState<'entering' | 'visible'>('visible');
+  const transitionStage = pathname !== displayPath ? 'exiting' : settledStage;
   
   useEffect(() => {
     // Detect if user prefers reduced motion
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     
-    if (pathname !== displayPath) {
-      // Start exit animation
-      exitingRef.current = true;
-      setTransitionStage('exiting');
-      
+    if (transitionStage === 'exiting') {
       // Wait for exit animation to complete
       const exitTimer = setTimeout(() => {
         setDisplayPath(pathname);
         setTransitionStage('entering');
-        exitingRef.current = false;
-        
-        const enterTimer = setTimeout(() => {
-          setTransitionStage('visible');
-        }, prefersReducedMotion ? 0 : 50);
-        
-        return () => clearTimeout(enterTimer);
       }, prefersReducedMotion ? 0 : 200);
       
       return () => clearTimeout(exitTimer);
@@ -108,7 +101,7 @@ export function PageTransition({ children }: PageTransitionProps) {
       
       return () => clearTimeout(timer);
     }
-  }, [pathname, displayPath, transitionStage]);
+  }, [pathname, transitionStage]);
   
   const getTransitionClass = () => {
     switch (transitionStage) {

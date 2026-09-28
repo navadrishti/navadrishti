@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useEffectEvent, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
+import { useNow } from '@/hooks/use-now'
 import { useToast } from '@/hooks/use-toast'
 import { getCapabilityNeedRequestTypes, isCapabilityRentalTransaction } from '@/lib/service-offers'
 import { isNeedOpenForListing } from '@/lib/service-request-allocation'
@@ -27,7 +28,8 @@ export function useServiceOffer(offerId: string) {
     [ngoNeeds, selectedNeedIds]
   )
   const selectedNeedTotal = useMemo(() => sumNeedAmounts(selectedNeedSummaries), [selectedNeedSummaries])
-  const isOfferExpired = !!offer?.valid_until && new Date(String(offer.valid_until)).getTime() < Date.now()
+  const nowMs = useNow()
+  const isOfferExpired = !!offer?.valid_until && new Date(String(offer.valid_until)).getTime() < nowMs
 
   const fetchOfferDetails = async () => {
     try {
@@ -107,19 +109,25 @@ export function useServiceOffer(offerId: string) {
     }
   }
 
-  useEffect(() => {
-    if (offerId) {
-      fetchOfferDetails()
-      if (isAuthenticated && user) {
-        checkExistingApplication()
-      }
+  const loadOffer = useEffectEvent(() => {
+    fetchOfferDetails()
+    if (isAuthenticated && user) {
+      checkExistingApplication()
     }
-  }, [offerId, isAuthenticated, user])
+  })
 
   useEffect(() => {
+    if (offerId) loadOffer()
+  }, [offerId, isAuthenticated, user])
+
+  const loadNgoNeeds = useEffectEvent(() => {
     if (isAuthenticated && user?.user_type === 'ngo' && offer) {
       fetchNgoNeeds()
     }
+  })
+
+  useEffect(() => {
+    loadNgoNeeds()
   }, [offer?.id, offer?.offer_type, isAuthenticated, user?.id, user?.user_type])
 
   const handleApply = async () => {

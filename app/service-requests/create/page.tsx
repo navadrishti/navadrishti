@@ -22,37 +22,33 @@ import type { AIGeneratedDraft, NeedDraft } from './types'
 import { useNeedImageUpload } from './use-need-image-upload'
 import { useNeedRecommendations } from './use-need-recommendations'
 
+function readAiDraftNeeds(): NeedDraft[] | null {
+  if (typeof window === 'undefined') return null
+  const rawDraft = localStorage.getItem(AI_DRAFT_STORAGE_KEY)
+  if (!rawDraft) return null
+
+  try {
+    const draft = JSON.parse(rawDraft) as AIGeneratedDraft
+    if (draft?.source !== 'ngo-ai-agent') return null
+    // Project-only drafts are ignored; this page only creates standalone needs.
+    const generatedNeeds = needsFromDraft(draft)
+    return generatedNeeds.length > 0 ? generatedNeeds : null
+  } catch {
+    return null
+  }
+}
+
 export default function CreateServiceRequestPage() {
   const router = useRouter()
   const { user } = useAuth()
   const { toast } = useToast()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [needs, setNeeds] = useState<NeedDraft[]>([createEmptyNeed()])
+  const [needs, setNeeds] = useState<NeedDraft[]>(() => readAiDraftNeeds() ?? [createEmptyNeed()])
   const [selectedOffersByNeed, setSelectedOffersByNeed] = useState<Record<number, number[]>>({})
 
   useEffect(() => {
-    const rawDraft = localStorage.getItem(AI_DRAFT_STORAGE_KEY)
-    if (!rawDraft) {
-      return
-    }
-
-    try {
-      const draft = JSON.parse(rawDraft) as AIGeneratedDraft
-      if (draft?.source !== 'ngo-ai-agent') {
-        return
-      }
-
-      // Project-only drafts are ignored; this page only creates standalone needs.
-      const generatedNeeds = needsFromDraft(draft)
-      if (generatedNeeds.length > 0) {
-        setNeeds(generatedNeeds)
-      }
-    } catch {
-      // Ignore malformed local draft payload.
-    } finally {
-      localStorage.removeItem(AI_DRAFT_STORAGE_KEY)
-    }
+    localStorage.removeItem(AI_DRAFT_STORAGE_KEY)
   }, [])
 
   const { serviceOffers, offersLoading, serverRecommendations, refreshNeedRecommendations } = useNeedRecommendations(needs)

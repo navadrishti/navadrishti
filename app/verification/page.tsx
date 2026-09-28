@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useIsClient } from '@/hooks/use-is-client';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { useOtpSender } from '@/hooks/use-otp-sender';
@@ -37,7 +38,7 @@ export default function VerificationPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [mounted, setMounted] = useState(false);
+  const mounted = useIsClient();
   const [reverifyMode, setReverifyMode] = useState(false);
   const [formErrors, setFormErrors] = useState<FormErrors>({});
   const [otpInput, setOtpInput] = useState({ email: '', phone: '' });
@@ -60,21 +61,13 @@ export default function VerificationPage() {
       )
     : false;
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
   const [formData, setFormData] = useState<VerificationFormData>(initialFormData);
   const [didSyncUserDefaults, setDidSyncUserDefaults] = useState(false);
 
-  useEffect(() => {
-    if (!mounted || !user || didSyncUserDefaults) {
-      return;
-    }
-
-    setFormData((prev) => ({ ...prev, ...getUserFormDefaults(user) }));
+  if (mounted && user && !didSyncUserDefaults) {
     setDidSyncUserDefaults(true);
-  }, [mounted, user, didSyncUserDefaults]);
+    setFormData((prev) => ({ ...prev, ...getUserFormDefaults(user) }));
+  }
 
   useEffect(() => {
     if (!mounted || authLoading) {

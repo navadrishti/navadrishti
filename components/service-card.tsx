@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useIsClient } from '@/hooks/use-is-client'
 import { getRequestUrgencyLevel } from '@/lib/utils'
 import { ListingCard } from './service-card/listing-card'
 import {
@@ -53,11 +53,7 @@ export function ServiceCard({
   isOwner,
 }: ServiceCardProps) {
   // Live urgency depends on the current time, so it is only computed after hydration.
-  const [isHydrated, setIsHydrated] = useState(false)
-
-  useEffect(() => {
-    setIsHydrated(true)
-  }, [])
+  const isHydrated = useIsClient()
 
   const sharedProps = {
     id,

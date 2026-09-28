@@ -17,6 +17,7 @@ import { AdminPortalMain, AdminPortalShell } from '@/components/evidence-verific
 import { Menu, RefreshCw, X } from 'lucide-react';
 import { cn, hasConsoleTabSession, clearConsoleTabSession } from '@/lib/utils';
 import { ProductBrand } from '@/components/product-brand';
+import { useNavigationMenu } from '@/hooks/use-navigation-menu';
 
 export { AdminPortalMain, AdminPortalShell };
 
@@ -38,12 +39,7 @@ export function AdminConsoleHeader({
   onRefresh,
   onSupport,
 }: AdminConsoleHeaderProps) {
-  const pathname = usePathname();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  useEffect(() => {
-    setMobileMenuOpen(false);
-  }, [pathname]);
+  const [mobileMenuOpen, setMobileMenuOpen] = useNavigationMenu();
 
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('nd-mobile-menu-state', { detail: { open: mobileMenuOpen } }));
@@ -194,10 +190,7 @@ export default function AdminLayoutClient({ children }: { children: ReactNode })
   const [ready, setReady] = useState(isPublicRoute);
 
   useEffect(() => {
-    if (isPublicRoute) {
-      setReady(true);
-      return;
-    }
+    if (isPublicRoute) return;
 
     let cancelled = false;
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react"
 import { fetchScoredNgoDirectory } from "./api"
 import { type RemoteInviteState, acceptedLeadNgoFromRemote, isPendingLeadInvite, leadInvitesFromRemote } from "./helpers"
 import {
@@ -71,9 +71,7 @@ export function useLeadNgoInvites({
     ],
   )
 
-  useEffect(() => {
-    if (!mounted || !userId || !token) return
-    if (hasLockedLeadNgo) return
+  const refreshNgoDirectory = useEffectEvent(async (authToken: string, isCancelled: () => boolean) => {
     if (!projectData.campaignName?.trim() || !projectData.category?.trim() || !projectData.endDate?.trim()) {
       setNgoDirectory([])
       lastNgoSuggestionKeyRef.current = null
@@ -82,24 +80,27 @@ export function useLeadNgoInvites({
 
     if (lastNgoSuggestionKeyRef.current === ngoSuggestionKey && ngoDirectory.length > 0) return
 
-    let cancelled = false
-    const loadNgoDirectory = async () => {
-      setIsFetchingNgoDirectory(true)
-      try {
-        const mapped = await fetchScoredNgoDirectory(token, projectData)
-        if (!cancelled) {
-          setNgoDirectory(mapped)
-          lastNgoSuggestionKeyRef.current = ngoSuggestionKey
-        }
-      } catch (e) {
-        console.error('Failed to load scored NGO directory', e)
-        if (!cancelled) setNgoDirectory([])
-      } finally {
-        if (!cancelled) setIsFetchingNgoDirectory(false)
+    setIsFetchingNgoDirectory(true)
+    try {
+      const mapped = await fetchScoredNgoDirectory(authToken, projectData)
+      if (!isCancelled()) {
+        setNgoDirectory(mapped)
+        lastNgoSuggestionKeyRef.current = ngoSuggestionKey
       }
+    } catch (e) {
+      console.error('Failed to load scored NGO directory', e)
+      if (!isCancelled()) setNgoDirectory([])
+    } finally {
+      if (!isCancelled()) setIsFetchingNgoDirectory(false)
     }
+  })
 
-    void loadNgoDirectory()
+  useEffect(() => {
+    if (!mounted || !userId || !token) return
+    if (hasLockedLeadNgo) return
+
+    let cancelled = false
+    void refreshNgoDirectory(token, () => cancelled)
     return () => {
       cancelled = true
     }
@@ -242,14 +243,16 @@ export function useLeadNgoInvites({
     return savedId
   }
 
+  const syncInviteStatuses = useEffectEvent(() => syncLeadInviteStatuses())
+
   useEffect(() => {
     if (!mounted || !userId || !token) return
     if (hasLockedLeadNgo) return
     if (!draftCampaignId && leadNgoInvites.length === 0) return
 
-    void syncLeadInviteStatuses()
+    void syncInviteStatuses()
     const interval = setInterval(() => {
-      void syncLeadInviteStatuses()
+      void syncInviteStatuses()
     }, 5000)
 
     return () => clearInterval(interval)

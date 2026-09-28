@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useEffectEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { CompanyCAContext } from '../types';
 import type {
@@ -99,8 +99,10 @@ export function useVerificationPanel() {
     }
   };
 
+  const loadPanelOnMount = useEffectEvent(() => loadPanel());
+
   useEffect(() => {
-    void loadPanel();
+    void loadPanelOnMount();
   }, []);
 
   return {

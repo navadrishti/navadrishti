@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect, useMemo, Suspense } from 'react'
+import { useIsClient } from '@/hooks/use-is-client'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Header } from '@/components/header'
@@ -99,7 +100,7 @@ function ServiceOffersPageContent() {
   const searchParams = useSearchParams();
   const { toast } = useToast();
 
-  const [mounted, setMounted] = useState(false);
+  const mounted = useIsClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState('all');
   const [selectedImpact, setSelectedImpact] = useState('all');
@@ -127,10 +128,6 @@ function ServiceOffersPageContent() {
       || selectedTransaction !== 'all',
     [debouncedSearch, debouncedLocation, selectedType, selectedImpact, selectedTransaction]
   );
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -193,6 +190,8 @@ function ServiceOffersPageContent() {
     }
   };
 
+  const userId = user?.id;
+
   const fetchServiceOffers = useCallback(async () => {
     try {
       setLoading(true);
@@ -214,8 +213,8 @@ function ServiceOffersPageContent() {
       if (debouncedLocation) {
         params.append('location', debouncedLocation);
       }
-      if (user?.id) {
-        params.append('userId', user.id.toString());
+      if (userId) {
+        params.append('userId', userId.toString());
       }
       params.append('view', 'all');
 
@@ -232,7 +231,7 @@ function ServiceOffersPageContent() {
     } finally {
       setLoading(false);
     }
-  }, [selectedType, selectedImpact, selectedTransaction, debouncedSearch, debouncedLocation, user?.id]);
+  }, [selectedType, selectedImpact, selectedTransaction, debouncedSearch, debouncedLocation, userId]);
 
   useEffect(() => {
     fetchServiceOffers();

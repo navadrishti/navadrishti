@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react"
+import { useEffect, useEffectEvent, useRef } from "react"
 import { readStoredSessionPayload, sessionPayloadScore, withFreshSessionFirst } from "./helpers"
 import { type CSRAgentSession, buildEmptySession, normalizeSessionPayload } from "./session"
 
@@ -22,6 +22,19 @@ export function useSessionHydration({
   markPayloadPersisted,
 }: SessionHydrationOptions) {
   const isHydratingFromServerRef = useRef(false)
+
+  const showSessions = useEffectEvent((nextSessions: CSRAgentSession[], nextActiveId: string) => {
+    setSessions(nextSessions)
+    setActiveSessionId(nextActiveId)
+  })
+
+  const restoreSessions = useEffectEvent((nextSessions: CSRAgentSession[], nextActiveId: string) => {
+    showSessions(nextSessions, nextActiveId)
+    const active = nextSessions.find((s) => s.id === nextActiveId) || nextSessions[0]
+    if (active) applySession(active, nextSessions, false)
+  })
+
+  const markRestoredPayloadPersisted = useEffectEvent(markPayloadPersisted)
 
   useEffect(() => {
     if (!mounted || !userId) return
@@ -63,15 +76,12 @@ export function useSessionHydration({
               ? { sessions: localPayload.sessions, activeSessionId: localPayload.activeSessionId || localPayload.sessions[0].id }
               : { sessions: serverPayload.sessions, activeSessionId: serverPayload.activeSessionId || serverPayload.sessions[0].id }
             const payload = shouldStartFreshOnReturn ? withFreshSessionFirst(sourcePayload) : sourcePayload
-            setSessions(payload.sessions)
-            setActiveSessionId(payload.activeSessionId)
-            const active = payload.sessions.find((s) => s.id === payload.activeSessionId) || payload.sessions[0]
-            if (active) applySession(active, payload.sessions, false)
+            restoreSessions(payload.sessions, payload.activeSessionId)
             if (!shouldStartFreshOnReturn) {
               try {
                 localStorage.setItem(storageKey, JSON.stringify(payload))
               } catch {}
-              markPayloadPersisted(JSON.stringify(payload))
+              markRestoredPayloadPersisted(JSON.stringify(payload))
             }
             return
           }
@@ -83,16 +93,12 @@ export function useSessionHydration({
             activeSessionId: localPayload.activeSessionId || localPayload.sessions[0].id,
           }
           const payload = shouldStartFreshOnReturn ? withFreshSessionFirst(sourcePayload) : sourcePayload
-          setSessions(payload.sessions)
-          setActiveSessionId(payload.activeSessionId)
-          const active = payload.sessions.find((s) => s.id === payload.activeSessionId) || payload.sessions[0]
-          if (active) applySession(active, payload.sessions, false)
+          restoreSessions(payload.sessions, payload.activeSessionId)
           return
         }
 
         const initial = buildEmptySession()
-        setSessions([initial])
-        setActiveSessionId(initial.id)
+        showSessions([initial], initial.id)
       } finally {
         isHydratingFromServerRef.current = false
       }

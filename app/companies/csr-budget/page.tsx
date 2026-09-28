@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
+import { useIsClient } from "@/hooks/use-is-client"
 import { useAuth } from "@/lib/auth-context"
 import { Header } from "@/components/header"
 import { Button } from "@/components/ui/button"
@@ -21,7 +22,7 @@ interface BudgetCategory {
 
 export default function CSRBudgetPage() {
   const { user } = useAuth()
-  const [isHydrated, setIsHydrated] = useState(false)
+  const isHydrated = useIsClient()
   const [totalBudget, setTotalBudget] = useState(1000000)
   const [categories, setCategories] = useState<BudgetCategory[]>([
     { id: '1', name: 'Education', amount: 400000, percentage: 40, color: '#FF6B35' },
@@ -68,10 +69,6 @@ export default function CSRBudgetPage() {
     new Intl.NumberFormat("en-IN", {
       maximumFractionDigits: 0,
     }).format(amount)
-
-  useEffect(() => {
-    setIsHydrated(true)
-  }, [])
 
   return (
     <>

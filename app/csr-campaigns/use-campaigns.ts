@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useEffectEvent, useState } from "react"
 import { toCampaign } from "./helpers"
 import type { Campaign, CampaignApiItem } from "./types"
 
@@ -35,8 +35,10 @@ export function useCampaigns(currentUserId: number, userType?: string) {
     }
   }
 
+  const loadCampaignsForViewer = useEffectEvent(loadCampaigns)
+
   useEffect(() => {
-    void loadCampaigns()
+    void loadCampaignsForViewer()
   }, [currentUserId, userType])
 
   const volunteerForCampaign = async (campaignId: string) => {

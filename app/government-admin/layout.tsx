@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/sheet';
 import { ProductBrand } from '@/components/product-brand';
 import { cn, finalizeConsoleLogout, hasConsoleTabSession, clearConsoleTabSession } from '@/lib/utils';
+import { useNavigationMenu } from '@/hooks/use-navigation-menu';
 import {
   getLaunchBlockedRedirectPath,
   isLaunchBlockedPath,
@@ -33,12 +34,12 @@ export default function GovernmentAdminLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [ready, setReady] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useNavigationMenu();
   const launchBlocked = isLaunchBlockedPath(pathname || '/government-admin');
   const isPublicRoute =
     pathname === '/government-admin/login' ||
     pathname === '/government-admin/change-password';
+  const [ready, setReady] = useState(isPublicRoute || launchBlocked);
 
   useEffect(() => {
     if (!launchBlocked) return;
@@ -46,10 +47,7 @@ export default function GovernmentAdminLayout({
   }, [launchBlocked, pathname, router]);
 
   useEffect(() => {
-    if (launchBlocked || isPublicRoute) {
-      setReady(true);
-      return;
-    }
+    if (launchBlocked || isPublicRoute) return;
 
     let cancelled = false;
 
@@ -84,10 +82,6 @@ export default function GovernmentAdminLayout({
       cancelled = true;
     };
   }, [isPublicRoute, launchBlocked, router]);
-
-  useEffect(() => {
-    setMobileMenuOpen(false);
-  }, [pathname]);
 
   const handleLogout = async () => {
     await finalizeConsoleLogout({

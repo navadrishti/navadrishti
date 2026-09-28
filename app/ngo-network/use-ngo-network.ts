@@ -5,7 +5,7 @@ import type { NetworkNgo } from "./types"
 
 export function useNgoNetwork() {
   const [ngos, setNgos] = useState<NetworkNgo[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loadedQuery, setLoadedQuery] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [location, setLocation] = useState("")
   const [selectedSector, setSelectedSector] = useState("all")
@@ -23,18 +23,19 @@ export function useNgoNetwork() {
     return () => clearTimeout(timer)
   }, [search, location])
 
-  useEffect(() => {
-    const params = new URLSearchParams()
-    if (debouncedSearch) params.set("search", debouncedSearch)
-    if (debouncedLocation) params.set("location", debouncedLocation)
-    if (selectedSector !== "all") params.set("sector", selectedSector)
-    if (selectedCompliance !== "all") params.set("compliance", selectedCompliance)
-    if (selectedRegistration !== "all") params.set("registration_type", selectedRegistration)
-    params.set("verified_only", verifiedOnly ? "true" : "false")
+  const params = new URLSearchParams()
+  if (debouncedSearch) params.set("search", debouncedSearch)
+  if (debouncedLocation) params.set("location", debouncedLocation)
+  if (selectedSector !== "all") params.set("sector", selectedSector)
+  if (selectedCompliance !== "all") params.set("compliance", selectedCompliance)
+  if (selectedRegistration !== "all") params.set("registration_type", selectedRegistration)
+  params.set("verified_only", verifiedOnly ? "true" : "false")
+  const query = params.toString()
+  const loading = loadedQuery !== query
 
+  useEffect(() => {
     let cancelled = false
-    setLoading(true)
-    fetch(`/api/ngos/network?${params.toString()}`)
+    fetch(`/api/ngos/network?${query}`)
       .then((response) => response.json())
       .then((data) => {
         if (cancelled) return
@@ -44,13 +45,13 @@ export function useNgoNetwork() {
         if (!cancelled) setNgos([])
       })
       .finally(() => {
-        if (!cancelled) setLoading(false)
+        if (!cancelled) setLoadedQuery(query)
       })
 
     return () => {
       cancelled = true
     }
-  }, [debouncedSearch, debouncedLocation, selectedSector, selectedCompliance, selectedRegistration, verifiedOnly])
+  }, [query])
 
   const hasActiveFilters = Boolean(
     debouncedSearch ||

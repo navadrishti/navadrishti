@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useEffectEvent, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
@@ -81,17 +81,18 @@ export function useServiceRequestData(requestId: string) {
     }
   }
 
-  useEffect(() => {
-    if (requestId) {
-      fetchRequestDetails()
-      if (isAuthenticated && user) {
-        if (user.user_type === 'ngo') {
-          fetchApplicants()
-        } else if (user.user_type === 'individual') {
-          checkExistingApplication()
-        }
-      }
+  const loadForViewer = useEffectEvent(() => {
+    fetchRequestDetails()
+    if (!isAuthenticated || !user) return
+    if (user.user_type === 'ngo') {
+      fetchApplicants()
+    } else if (user.user_type === 'individual') {
+      checkExistingApplication()
     }
+  })
+
+  useEffect(() => {
+    if (requestId) loadForViewer()
   }, [requestId, isAuthenticated, user])
 
   return {

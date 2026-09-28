@@ -1,10 +1,11 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useMemo } from "react"
+import { useIsClient } from "@/hooks/use-is-client"
 import { useAuth } from "@/lib/auth-context"
 import { Header } from "@/components/header"
 import { AGENT_NAMES, agentLoadingLabel } from "@/lib/ai-agent-sessions"
-import { describeCloudSaveStatus } from "./conversation"
+import { describeCloudSaveStatus } from "@/lib/cloud-save-status"
 import { useSessionSync } from "./use-session-sync"
 import { useIntakeState } from "./use-intake-state"
 import { useIntakeProgress } from "./use-intake-progress"
@@ -23,7 +24,7 @@ import { RequestPreview } from "./request-preview"
 
 export default function NGOAIAgentPage() {
   const { user, token, loading } = useAuth()
-  const [mounted, setMounted] = useState(false)
+  const mounted = useIsClient()
   const sync = useSessionSync({ mounted, userId: user?.id, token })
   const { sessions, setActiveSessionId, activeSessionId, cloudSaveStatus, lastCloudSavedAt, persistSessions } = sync
   const intake = useIntakeState()
@@ -56,10 +57,6 @@ export default function NGOAIAgentPage() {
 
   // Effect order matters: scroll, mount, session restore/persist, then the offer loader.
   const { messagesContainerRef, lockMobileChatScroll } = useChatScroll(intake)
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
 
   const { normalizeSessionFromState, createNewSession, deleteSession } = useSessionPersistence({
     intake,

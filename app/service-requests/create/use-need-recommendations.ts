@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useEffectEvent, useState } from 'react'
 import { mapServerToNeedRecommendation } from './recommendations'
 import type { NeedDraft, NeedRecommendation, ServiceOfferLite } from './types'
 
@@ -40,7 +40,7 @@ export function useNeedRecommendations(needs: NeedDraft[]) {
     .join('||')
   const pagesKey = JSON.stringify(recPageByNeed)
 
-  useEffect(() => {
+  const fetchAllRecommendations = useEffectEvent(() => {
     const fetchRecs = async (index: number, need: NeedDraft, page = 0) => {
       try {
         const response = await fetch('/api/service-requests/recommend', {
@@ -77,6 +77,10 @@ export function useNeedRecommendations(needs: NeedDraft[]) {
     needs.forEach((need, index) => {
       void fetchRecs(index, need, recPageByNeed[index] || 0)
     })
+  })
+
+  useEffect(() => {
+    fetchAllRecommendations()
   }, [needsKey, pagesKey])
 
   const refreshNeedRecommendations = (index: number) => {

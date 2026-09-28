@@ -24,10 +24,7 @@ export default function EvidenceVerificationLayout({ children }: { children: Rea
   }, [launchBlocked, pathname, router]);
 
   useEffect(() => {
-    if (launchBlocked || isPublicRoute) {
-      setReady(true);
-      return;
-    }
+    if (launchBlocked || isPublicRoute) return;
 
     let cancelled = false;
 

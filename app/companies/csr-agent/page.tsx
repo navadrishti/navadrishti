@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, Suspense } from "react"
+import { useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, Suspense } from "react"
+import { useIsClient } from "@/hooks/use-is-client"
 import { useAuth } from "@/lib/auth-context"
 import { Loader2 } from "lucide-react"
 import { useSearchParams } from "next/navigation"
@@ -60,7 +61,7 @@ export default function CSRAgentPageRoute() {
 function CSRAgentPage() {
   const { user, token, loading } = useAuth()
   const searchParams = useSearchParams()
-  const [mounted, setMounted] = useState(false)
+  const mounted = useIsClient()
   const [sessions, setSessions] = useState<CSRAgentSession[]>([])
   const [activeSessionId, setActiveSessionId] = useState("")
   const campaign = useCampaignState()
@@ -311,10 +312,6 @@ function CSRAgentPage() {
   })
 
   useEffect(() => {
-    setMounted(true)
-  }, [])
-
-  useEffect(() => {
     scrollToBottom()
   }, [messages])
 
@@ -332,16 +329,20 @@ function CSRAgentPage() {
     markPayloadPersisted,
   })
 
-  useEffect(() => {
+  const saveActiveSession = useEffectEvent(() => {
     if (!mounted || !user?.id || isApplyingSessionRef.current || isHydratingFromServerRef.current) return
 
     const nextSession = normalizeSessionFromState()
     if (!nextSession) return
 
     persistSessions(upsertSession(sessions, nextSession), nextSession.id)
-  }, [mounted, user?.id, sessionSyncKey])
+  })
 
   useEffect(() => {
+    saveActiveSession()
+  }, [mounted, user?.id, sessionSyncKey])
+
+  const finalizeWhenReady = useEffectEvent(() => {
     if (!mounted || !user?.id) return
     if (!isQuestionnaireComplete) return
     if (generatedCampaigns.length > 0 || isGeneratingCampaigns || isTyping) return
@@ -350,6 +351,10 @@ function CSRAgentPage() {
     if (!acceptedLeadNgo) return
     if (isHydratingFromServerRef.current || isApplyingSessionRef.current) return
     void finalizeConversation()
+  })
+
+  useEffect(() => {
+    finalizeWhenReady()
   }, [mounted, user?.id, isQuestionnaireComplete, generatedCampaigns.length, isGeneratingCampaigns, isTyping, conversationStage, generationError, acceptedLeadNgo?.ngoId])
 
   useEffect(() => {

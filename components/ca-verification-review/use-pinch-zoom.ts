@@ -2,16 +2,18 @@ import { useEffect, useRef, useState } from 'react'
 
 export function usePinchZoom(resetKey: string) {
   const [scale, setScale] = useState(1)
+  const [scaleKey, setScaleKey] = useState(resetKey)
   const scaleRef = useRef(1)
   const frameRef = useRef<HTMLDivElement>(null)
+
+  if (scaleKey !== resetKey) {
+    setScaleKey(resetKey)
+    setScale(1)
+  }
 
   useEffect(() => {
     scaleRef.current = scale
   }, [scale])
-
-  useEffect(() => {
-    setScale(1)
-  }, [resetKey])
 
   useEffect(() => {
     const el = frameRef.current

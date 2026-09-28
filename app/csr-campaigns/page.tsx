@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useIsClient } from "@/hooks/use-is-client"
 import { Header } from "@/components/header"
 import { Button } from "@/components/ui/button"
 import { SkeletonCampaignCard } from "@/components/ui/skeleton"
@@ -18,7 +18,7 @@ import { CampaignCard } from "./campaign-card"
 export default function CSRCampaignsPage() {
   const { user } = useAuth()
   const allVerified = Boolean(user?.email_verified && user?.phone_verified && user?.verification_status === 'verified')
-  const [isHydrated, setIsHydrated] = useState(false)
+  const isHydrated = useIsClient()
 
   const effectiveUserType = isHydrated ? user?.user_type : undefined
   const isCompany = effectiveUserType === 'company'
@@ -35,10 +35,6 @@ export default function CSRCampaignsPage() {
     deleteCampaign,
   } = useCampaigns(currentUserId, user?.user_type)
   const filters = useCampaignFilters()
-
-  useEffect(() => {
-    setIsHydrated(true)
-  }, [])
 
   const filteredCampaigns = campaigns.filter((campaign) => {
     const isDraftHiddenFromPublic = String(campaign.status || '').toLowerCase() === 'draft' && !isCompanyOwner(campaign.companyId)

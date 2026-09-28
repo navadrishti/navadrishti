@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useState } from 'react'
+import { useIsClient } from '@/hooks/use-is-client'
 import { toast } from 'sonner'
 import { useAuth } from '@/lib/auth-context'
 import { useOtpSender } from '@/hooks/use-otp-sender'
@@ -31,7 +32,7 @@ const normalizePhone = (value: string) => value.trim().replace(/\s+/g, '')
 
 export function ProfileDashboardTab() {
   const { user, updateUser, refreshUser } = useAuth()
-  const [mounted, setMounted] = useState(false)
+  const mounted = useIsClient()
   const [loading, setLoading] = useState(true)
   const images = useProfileImages(refreshUser)
   const details = useProfileDetails()
@@ -44,15 +45,15 @@ export function ProfileDashboardTab() {
   const [reverificationPending, setReverificationPending] = useState(false)
   const [verifiedEmailValue, setVerifiedEmailValue] = useState('')
   const [verifiedPhoneValue, setVerifiedPhoneValue] = useState('')
-  const initialEmailRef = useRef('')
-  const initialPhoneRef = useRef('')
+  const [savedEmail, setSavedEmail] = useState('')
+  const [savedPhone, setSavedPhone] = useState('')
   const otp = useOtpSender(setFormErrors)
   const { otpVerified, handleVerifyEmailOtp, handleVerifyPhoneOtp, resetEmailOtpState, resetPhoneOtpState } = otp
 
   const currentEmail = normalizeEmail(editableEmail)
   const currentPhone = normalizePhone(phone)
-  const originalEmail = normalizeEmail(initialEmailRef.current)
-  const originalPhone = normalizePhone(initialPhoneRef.current)
+  const originalEmail = normalizeEmail(savedEmail)
+  const originalPhone = normalizePhone(savedPhone)
   const emailChanged = currentEmail !== originalEmail
   const phoneChanged = currentPhone !== originalPhone
 
@@ -99,8 +100,8 @@ export function ProfileDashboardTab() {
       setEditableName(freshUser?.name || '')
       setEditableEmail(freshUser?.email || '')
       setPhone(freshUser?.phone || '')
-      initialEmailRef.current = freshUser?.email || ''
-      initialPhoneRef.current = freshUser?.phone || ''
+      setSavedEmail(freshUser?.email || '')
+      setSavedPhone(freshUser?.phone || '')
       setVerifiedEmailValue(freshUser?.email_verified ? normalizeEmail(freshUser?.email || '') : '')
       setVerifiedPhoneValue(freshUser?.phone_verified ? normalizePhone(freshUser?.phone || '') : '')
       details.applyFetchedProfile(freshUser)
@@ -134,35 +135,35 @@ export function ProfileDashboardTab() {
     }
   }
 
-  useEffect(() => {
-    setMounted(true)
-  }, [])
-
-  useEffect(() => {
-    if (!mounted || !user) return
+  const loadProfile = useEffectEvent(() => {
+    if (!user) return
     void fetchProfile()
     void fetchVerificationStatus()
+  })
+
+  useEffect(() => {
+    if (mounted) loadProfile()
   }, [mounted, user?.id])
 
   useEffect(() => {
-    if (normalizeEmail(editableEmail) === normalizeEmail(initialEmailRef.current)) {
+    if (normalizeEmail(editableEmail) === originalEmail) {
       return
     }
 
     resetEmailOtpState()
     setOtpInput((prev) => ({ ...prev, email: '' }))
     setVerifiedEmailValue('')
-  }, [editableEmail, resetEmailOtpState])
+  }, [editableEmail, originalEmail, resetEmailOtpState])
 
   useEffect(() => {
-    if (normalizePhone(phone) === normalizePhone(initialPhoneRef.current)) {
+    if (normalizePhone(phone) === originalPhone) {
       return
     }
 
     resetPhoneOtpState()
     setOtpInput((prev) => ({ ...prev, phone: '' }))
     setVerifiedPhoneValue('')
-  }, [phone, resetPhoneOtpState])
+  }, [phone, originalPhone, resetPhoneOtpState])
 
   const handleSaveProfile = async () => {
     try {
@@ -223,8 +224,8 @@ export function ProfileDashboardTab() {
         ...(phoneChanged && phoneVerifiedForCurrentValue ? { phone_verified: true } : {}),
       })
 
-      initialEmailRef.current = editableEmail
-      initialPhoneRef.current = phone
+      setSavedEmail(editableEmail)
+      setSavedPhone(phone)
       setVerifiedEmailValue(normalizeEmail(editableEmail))
       setVerifiedPhoneValue(normalizePhone(phone))
       setOtpInput({ email: '', phone: '' })

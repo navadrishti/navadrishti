@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import type { CloudSaveStatus } from "./conversation"
+import type { CloudSaveStatus } from "@/lib/cloud-save-status"
 import {
   type NGOAIAgentSession,
   buildEmptySession,
@@ -25,45 +25,15 @@ export function useSessionSync({ mounted, userId, token }: SessionSyncOptions) {
   const pendingServerPayloadRef = useRef<string | null>(null)
   const serverRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isServerSyncInFlightRef = useRef(false)
+  const syncPendingServerProgressRef = useRef<() => Promise<void>>(async () => {})
 
-  const persistSessions = (nextSessions: NGOAIAgentSession[], nextActiveId?: string) => {
-    setSessions(nextSessions)
-    const storageKey = userId ? `nd_ngo_ai_agent_sessions_${userId}` : undefined
-    if (!storageKey || !userId) return
-    const meaningful = nextSessions.filter(hasMeaningfulNGOSessionContent)
-    if (meaningful.length === 0) {
-      try {
-        localStorage.removeItem(storageKey)
-        localStorage.removeItem(`nd_ngo_ai_agent_pending_${userId}`)
-      } catch {}
-      pendingServerPayloadRef.current = null
-      lastPersistedServerPayloadRef.current = ''
-      setCloudSaveStatus('saved')
-      return
-    }
-    const activeCandidate = nextActiveId || activeSessionId || meaningful[0].id
-    const payload = { sessions: meaningful, activeSessionId: meaningful.some((s) => s.id === activeCandidate) ? activeCandidate : meaningful[0].id }
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(payload))
-    } catch {}
-
-    const payloadForServer = {
-      ...payload,
-      updatedAt: new Date().toISOString(),
-    }
-
-    const serialized = JSON.stringify(payloadForServer)
-    pendingServerPayloadRef.current = serialized
-    try {
-      localStorage.setItem(`nd_ngo_ai_agent_pending_${userId}`, serialized)
-    } catch {}
-
-    if (serverPersistTimerRef.current) clearTimeout(serverPersistTimerRef.current)
-    setCloudSaveStatus(typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'saving')
-    serverPersistTimerRef.current = setTimeout(() => {
-      void syncPendingServerProgress()
-    }, 700)
-  }
+  const scheduleServerRetry = useCallback((delayMs: number) => {
+    if (serverRetryTimerRef.current) return
+    serverRetryTimerRef.current = setTimeout(() => {
+      serverRetryTimerRef.current = null
+      void syncPendingServerProgressRef.current()
+    }, delayMs)
+  }, [])
 
   const syncPendingServerProgress = useCallback(async () => {
     if (!userId) return
@@ -74,12 +44,7 @@ export function useSessionSync({ mounted, userId, token }: SessionSyncOptions) {
 
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
       setCloudSaveStatus('offline')
-      if (!serverRetryTimerRef.current) {
-        serverRetryTimerRef.current = setTimeout(() => {
-          serverRetryTimerRef.current = null
-          void syncPendingServerProgress()
-        }, 2500)
-      }
+      scheduleServerRetry(2500)
       return
     }
 
@@ -136,16 +101,54 @@ export function useSessionSync({ mounted, userId, token }: SessionSyncOptions) {
       throw new Error(`Cloud save failed: ${response.status}`)
     } catch {
       setCloudSaveStatus(typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'error')
-      if (!serverRetryTimerRef.current) {
-        serverRetryTimerRef.current = setTimeout(() => {
-          serverRetryTimerRef.current = null
-          void syncPendingServerProgress()
-        }, 3000)
-      }
+      scheduleServerRetry(3000)
     } finally {
       isServerSyncInFlightRef.current = false
     }
-  }, [token, userId])
+  }, [token, userId, scheduleServerRetry])
+
+  useEffect(() => {
+    syncPendingServerProgressRef.current = syncPendingServerProgress
+  }, [syncPendingServerProgress])
+
+  const persistSessions = (nextSessions: NGOAIAgentSession[], nextActiveId?: string) => {
+    setSessions(nextSessions)
+    const storageKey = userId ? `nd_ngo_ai_agent_sessions_${userId}` : undefined
+    if (!storageKey || !userId) return
+    const meaningful = nextSessions.filter(hasMeaningfulNGOSessionContent)
+    if (meaningful.length === 0) {
+      try {
+        localStorage.removeItem(storageKey)
+        localStorage.removeItem(`nd_ngo_ai_agent_pending_${userId}`)
+      } catch {}
+      pendingServerPayloadRef.current = null
+      lastPersistedServerPayloadRef.current = ''
+      setCloudSaveStatus('saved')
+      return
+    }
+    const activeCandidate = nextActiveId || activeSessionId || meaningful[0].id
+    const payload = { sessions: meaningful, activeSessionId: meaningful.some((s) => s.id === activeCandidate) ? activeCandidate : meaningful[0].id }
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(payload))
+    } catch {}
+
+    const payloadForServer = {
+      ...payload,
+      updatedAt: new Date().toISOString(),
+    }
+
+    const serialized = JSON.stringify(payloadForServer)
+    pendingServerPayloadRef.current = serialized
+    try {
+      localStorage.setItem(`nd_ngo_ai_agent_pending_${userId}`, serialized)
+    } catch {}
+
+    if (serverPersistTimerRef.current) clearTimeout(serverPersistTimerRef.current)
+    setCloudSaveStatus(typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'saving')
+    serverPersistTimerRef.current = setTimeout(() => {
+      void syncPendingServerProgress()
+    }, 700)
+  }
 
   useEffect(() => {
     if (!mounted || !userId) return

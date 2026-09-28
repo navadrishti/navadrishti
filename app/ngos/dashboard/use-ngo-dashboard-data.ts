@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useEffectEvent, useState } from 'react';
 import { createClient as createSupabaseClient } from '@/lib/supabase';
 import type { OfferRequestItem } from '@/lib/offer-requests';
 import type { CapabilityOfferSummary } from '@/lib/service-offers';
@@ -379,6 +379,8 @@ export function useNgoDashboardData(userId: number | undefined) {
     ]);
   };
 
+  const refreshDashboardOnLoad = useEffectEvent(refreshDashboardData);
+
   useEffect(() => {
     if (!userId) return;
 
@@ -402,7 +404,7 @@ export function useNgoDashboardData(userId: number | undefined) {
     const loadData = async () => {
       setLoadingData(true);
       await runAutoUpdate();
-      await refreshDashboardData();
+      await refreshDashboardOnLoad();
       setLoadingData(false);
     };
 
