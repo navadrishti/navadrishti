@@ -45,7 +45,7 @@ export default defineConfig([
   {
     // Test fakes expose non-React helpers named useDb/useSupabase, and Playwright
     // fixtures receive a `use` callback; neither is a React hook.
-    files: ['tests/**/*.ts', 'e2e/**/*.ts'],
+    files: ['tests/**/*.ts'],
     rules: {
       'react-hooks/rules-of-hooks': 'off',
     },
