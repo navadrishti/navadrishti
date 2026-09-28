@@ -18,7 +18,7 @@ export const POST = withAuth(async (req) => {
       return NextResponse.json({ error: 'Email OTP is required' }, { status: 400 })
     }
 
-    const limited = limitAttempts(req, 'verify-email-otp', email)
+    const limited = await limitAttempts(req, 'verify-email-otp', email)
     if (limited) return limited
 
     const result = await verifyEmailOtpWithSupabase(email, otp)

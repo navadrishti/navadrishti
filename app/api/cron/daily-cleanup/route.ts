@@ -5,6 +5,7 @@ import { processCsrCapabilityDailyCompliance, markCsrProjectCompleted, syncAllCs
 import { getDocumentExpiries, dropExpiredCaComplianceTags } from '@/lib/auth';
 import { backfillServiceOfferEmbeddings } from '@/lib/embeddings';
 import { parseJsonObject, getErrorMessage } from '@/lib/utils';
+import { isMissingStoreError } from '@/lib/auth-store';
 
 async function processNgoDocumentExpiryJobs(now = new Date()) {
   const stats = {
@@ -90,6 +91,7 @@ async function processNgoDocumentExpiryJobs(now = new Date()) {
  * 3. CSR capability daily compliance / Delhivery sync
  * 4. Drop expired optional CA compliance tags (12A / 80G / CSR-1 / FCRA). Never unverify.
  * 5. Embed active service offers that have no embedding yet
+ * 6. Purge stale auth rate-limit hits and one-time codes
  */
 export async function GET(request: NextRequest) {
   try {
@@ -330,6 +332,16 @@ export async function GET(request: NextRequest) {
       console.error('Error in offer embedding backfill:', offerEmbeddingErr);
     }
 
+    // Purge old rate-limit hits and used or expired one-time codes.
+    let authThrottleRowsDeleted = 0;
+    try {
+      const { data, error } = await supabase.rpc('auth_throttle_cleanup');
+      if (error && !isMissingStoreError(error)) throw error;
+      authThrottleRowsDeleted = data ?? 0;
+    } catch (authThrottleErr) {
+      console.error('Error in auth throttle cleanup:', authThrottleErr);
+    }
+
     return NextResponse.json({
       success: true,
       message: 'Daily cleanup completed successfully',
@@ -347,6 +359,7 @@ export async function GET(request: NextRequest) {
         csrDelhiverySync: csrDelhiverySyncStats,
         csrCapabilityCompliance: csrComplianceStats,
         offerEmbeddings: offerEmbeddingStats,
+        authThrottleCleanup: { deleted: authThrottleRowsDeleted },
       }
     });
 

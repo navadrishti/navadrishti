@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Admin login is not configured' }, { status: 500 });
     }
 
-    const limited = limitAttempts(request, 'admin-login', String(username));
+    const limited = await limitAttempts(request, 'admin-login', String(username));
     if (limited) return limited;
 
     const usernameMatches = safeEqual(String(username), adminUsername);

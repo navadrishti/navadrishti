@@ -319,7 +319,7 @@ export async function getProjectDetail(ctx: AssignmentsGetContext) {
           )
         : []
       responsePayload.project = {
-        ...redactProjectSensitiveFields(enrichedProject),
+        ...redactProjectSensitiveFields(enrichedProject, { keepNgoContact: true }),
         pending_company_applications: myApps,
       }
       responsePayload.company_applications = (responsePayload.company_applications || []).filter(

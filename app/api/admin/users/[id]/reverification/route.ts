@@ -5,6 +5,7 @@ import {
   approveReverification,
   extractReverificationSummary,
   rejectReverification,
+  ReverificationConflictError,
 } from '@/lib/reverification';
 import { getErrorMessage } from '@/lib/utils';
 
@@ -91,6 +92,9 @@ export async function POST(
     console.error('Admin reverification action error:', error);
     if (getErrorMessage(error) === 'Admin authentication required') {
       return NextResponse.json({ error: 'Admin authentication required' }, { status: 401 });
+    }
+    if (error instanceof ReverificationConflictError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
     }
     const status = getErrorMessage(error)?.includes('No pending reverification') ? 400 : 500;
     return NextResponse.json({ error: getErrorMessage(error) || 'Internal server error' }, { status });

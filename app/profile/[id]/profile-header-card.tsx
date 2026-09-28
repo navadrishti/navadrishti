@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { Calendar, MapPin, Mail, Phone } from "lucide-react"
+import { Calendar, Lock, MapPin, Mail, Phone } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -18,6 +18,7 @@ interface ProfileHeaderCardProps {
   allVerified: boolean
   isNgo: boolean
   payAction: PayActionState | null
+  showContactLoginHint: boolean
   onPay: () => void
 }
 
@@ -55,7 +56,14 @@ function PayActionButton({ state, onPay }: { state: PayActionState; onPay: () =>
   )
 }
 
-export function ProfileHeaderCard({ profile, allVerified, isNgo, payAction, onPay }: ProfileHeaderCardProps) {
+export function ProfileHeaderCard({
+  profile,
+  allVerified,
+  isNgo,
+  payAction,
+  showContactLoginHint,
+  onPay,
+}: ProfileHeaderCardProps) {
   const ngo = profile.ngo_public
   const bio = profile.bio || profile.profile_data?.bio || ""
 
@@ -121,6 +129,15 @@ export function ProfileHeaderCard({ profile, allVerified, isNgo, payAction, onPa
                   >
                     {profile.phone}
                   </a>
+                </p>
+              ) : null}
+
+              {showContactLoginHint ? (
+                <p className="flex items-start gap-1.5 text-sm text-gray-600">
+                  <Lock className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
+                  <Link href="/login" className="hover:text-emerald-700 hover:underline">
+                    Log in to see contact details
+                  </Link>
                 </p>
               ) : null}
 

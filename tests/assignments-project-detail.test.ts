@@ -126,26 +126,34 @@ describe('getProjectDetail', () => {
     },
   }
 
+  const publicNgo = {
+    id: NGO,
+    name: 'Seva',
+    city: 'Pune',
+    verification_status: 'verified',
+    profile_data: {
+      bio: 'Libraries for all',
+      website: 'https://seva.example.org',
+      cover_image: 'https://img/cover.png',
+      ca_badge_number: 'ND-CA-1',
+    },
+  }
+
+  it('hides NGO contact details and private profile data from anonymous viewers', async () => {
+    detailDb({ project: project({ ngo: contactNgo }) })
+    const { json } = await detail()
+    expect(json.data.project.ngo).toEqual(publicNgo)
+    expect(JSON.stringify(json)).not.toMatch(/seva@example\.org|98765|123456789012|pan\.pdf|Meera/)
+  })
+
   it.each([
-    ['anonymous viewers', 0, ''],
     ['other signed-in users', 2, 'ngo'],
     ['applicant companies', COMPANY, 'company'],
-  ])('hides NGO contact details and private profile data from %s', async (_label, userId, userType) => {
+  ])('shows %s the NGO contact details but not private profile data', async (_label, userId, userType) => {
     detailDb({ project: project({ ngo: contactNgo }) })
     const { json } = await detail(userId, userType)
-    expect(json.data.project.ngo).toEqual({
-      id: NGO,
-      name: 'Seva',
-      city: 'Pune',
-      verification_status: 'verified',
-      profile_data: {
-        bio: 'Libraries for all',
-        website: 'https://seva.example.org',
-        cover_image: 'https://img/cover.png',
-        ca_badge_number: 'ND-CA-1',
-      },
-    })
-    expect(JSON.stringify(json)).not.toMatch(/seva@example\.org|98765|123456789012|pan\.pdf|Meera/)
+    expect(json.data.project.ngo).toEqual({ ...publicNgo, email: 'seva@example.org', phone: '+91 98765 43210' })
+    expect(JSON.stringify(json)).not.toMatch(/123456789012|pan\.pdf|Meera/)
   })
 
   it.each([

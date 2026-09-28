@@ -128,14 +128,27 @@ export async function prepareEmailOtpSession(emailInput: string): Promise<
   return { ok: true };
 }
 
+const createPublicAuthClient = () =>
+  createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+
+/** Emails a Supabase OTP to an existing auth user; never creates one. */
+export async function sendEmailOtpWithSupabase(
+  email: string
+): Promise<{ ok: true } | { ok: false; error: { message?: string; code?: string; status?: number } }> {
+  const { error } = await createPublicAuthClient().auth.signInWithOtp({
+    email: normalizeEmailAddress(email),
+    options: { shouldCreateUser: false },
+  });
+  return error ? { ok: false, error } : { ok: true };
+}
+
 export async function verifyEmailOtpWithSupabase(
   email: string,
   token: string
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
-  );
+  const supabase = createPublicAuthClient();
 
   const otpTypes: Array<'email' | 'signup'> = ['email', 'signup'];
   let verificationError: Error | null = null;

@@ -201,7 +201,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       }
     }
 
-    const showContact = canViewPrivate || userResult.user_type === 'ngo' || userResult.user_type === 'company';
+    const isOrganization = userResult.user_type === 'ngo' || userResult.user_type === 'company';
+    const showContact = canViewPrivate || (isOrganization && Boolean(viewer));
     const visibleProfileData = canViewPrivate
       ? nextProfileData
       : Object.fromEntries(

@@ -9,6 +9,68 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      auth_one_time_codes: {
+        Row: {
+          id: number
+          purpose: string
+          subject: string
+          user_id: number | null
+          code_hash: string
+          expires_at: string
+          attempts: number
+          consumed_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: never
+          purpose: string
+          subject: string
+          user_id?: number | null
+          code_hash: string
+          expires_at: string
+          attempts?: number
+          consumed_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: never
+          purpose?: string
+          subject?: string
+          user_id?: number | null
+          code_hash?: string
+          expires_at?: string
+          attempts?: number
+          consumed_at?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "auth_one_time_codes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      auth_rate_limits: {
+        Row: {
+          id: number
+          key: string
+          hit_at: string
+        }
+        Insert: {
+          id?: never
+          key: string
+          hit_at?: string
+        }
+        Update: {
+          id?: never
+          key?: string
+          hit_at?: string
+        }
+        Relationships: []
+      }
       awc_reference_points: {
         Row: {
           id: string
@@ -3771,6 +3833,68 @@ export type Database = {
           p_actor_user_id: number
         }
         Returns: Json
+      }
+      auth_code_attempt: {
+        Args: {
+          p_purpose: string
+          p_subject: string
+          p_code_hash: string
+          p_max_attempts: number
+        }
+        Returns: {
+          status: string
+          attempts: number
+          user_id: number | null
+        }[]
+      }
+      auth_code_consume: {
+        Args: {
+          p_purpose: string
+          p_subject: string
+          p_code_hash: string
+        }
+        Returns: boolean
+      }
+      auth_code_find: {
+        Args: {
+          p_purpose: string
+          p_code_hash: string
+        }
+        Returns: {
+          subject: string
+          user_id: number | null
+          expires_at: string
+        }[]
+      }
+      auth_code_issue: {
+        Args: {
+          p_purpose: string
+          p_subject: string
+          p_code_hash: string
+          p_ttl_seconds: number
+          p_resend_seconds?: number
+          p_user_id?: number | null
+        }
+        Returns: {
+          issued: boolean
+          retry_after_seconds: number
+        }[]
+      }
+      auth_rate_limit_hit: {
+        Args: {
+          p_key: string
+          p_limit: number
+          p_window_seconds: number
+        }
+        Returns: {
+          allowed: boolean
+          remaining: number
+          retry_after_seconds: number
+        }[]
+      }
+      auth_throttle_cleanup: {
+        Args: Record<PropertyKey, never>
+        Returns: number
       }
       match_ngo_service: {
         Args: {

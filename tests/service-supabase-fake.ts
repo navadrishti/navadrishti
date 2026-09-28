@@ -10,7 +10,7 @@ export type FakeCall = {
 
 const FILTER_METHODS = [
   'select', 'eq', 'neq', 'in', 'not', 'is', 'lt', 'lte', 'gt', 'gte',
-  'or', 'order', 'limit', 'range', 'match', 'ilike', 'contains',
+  'or', 'order', 'limit', 'range', 'match', 'ilike', 'contains', 'filter',
 ]
 
 const WRITE_METHODS = ['insert', 'update', 'upsert', 'delete'] as const

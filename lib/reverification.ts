@@ -14,6 +14,13 @@ import type { Json } from '@/lib/database.types';
 
 type UserType = 'individual' | 'ngo' | 'company';
 
+export class ReverificationConflictError extends Error {
+  constructor() {
+    super('This reverification was already decided by another reviewer');
+    this.name = 'ReverificationConflictError';
+  }
+}
+
 const verificationDocKeyByUserType: Record<UserType, string> = {
   individual: 'individual',
   ngo: 'ngo',
@@ -238,19 +245,28 @@ export async function approveReverification(
   });
   nextProfileData = attached.profileData;
 
+  return saveReverificationDecision(userId, nextProfileData as Json);
+}
+
+async function saveReverificationDecision(userId: number, profileData: Json) {
   const { data, error } = await supabase
     .from('users')
     .update({
-      profile_data: nextProfileData as Json,
+      profile_data: profileData,
       verification_status: 'verified',
       updated_at: new Date().toISOString(),
     })
     .eq('id', userId)
+    .eq('verification_status', 'verified')
+    .contains('profile_data', { reverification_pending: true })
     .select('id, name, email, user_type, verification_status, profile_data, updated_at')
-    .single();
+    .maybeSingle();
 
   if (error) {
     throw error;
+  }
+  if (!data) {
+    throw new ReverificationConflictError();
   }
 
   return data;
@@ -287,20 +303,5 @@ export async function rejectReverification(userId: number, reason = '', reviewed
     },
   };
 
-  const { data, error } = await supabase
-    .from('users')
-    .update({
-      profile_data: nextProfileData,
-      verification_status: 'verified',
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', userId)
-    .select('id, name, email, user_type, verification_status, profile_data, updated_at')
-    .single();
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
+  return saveReverificationDecision(userId, nextProfileData);
 }

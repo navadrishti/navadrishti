@@ -18,7 +18,10 @@ export function usePublicProfile(id: string) {
         setLoading(true)
         setError(null)
 
-        const profileRes = await fetch(`/api/profile/${id}`)
+        const token = localStorage.getItem("token")
+        const profileRes = await fetch(`/api/profile/${id}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        })
         const profileData = await profileRes.json()
         if (cancelled) return
 

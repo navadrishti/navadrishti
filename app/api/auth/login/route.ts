@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
     
     const { email, password } = validationResult.data;
 
-    const limited = limitAttempts(req, 'login', email);
+    const limited = await limitAttempts(req, 'login', email);
     if (limited) return limited;
     
     const user = await db.users.findByEmail(email);
