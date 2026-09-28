@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { assertAdminUser } from '@/lib/server-auth';
+import { assertAdminUser, authErrorResponse } from '@/lib/server-auth';
 import { deleteCampaignWithDependencies, formatCampaignDeleteError } from '@/lib/campaign-delete';
 import { parseJsonObject, getErrorMessage } from '@/lib/utils';
+import type { TablesUpdate } from '@/lib/database.types';
 
 function parseJsonField(value: unknown, fallback: unknown) {
   if (value === undefined) return undefined;
@@ -58,6 +59,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     return NextResponse.json({ success: true, data: campaign });
   } catch (error) {
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
     console.error('Admin campaign fetch error:', error);
     return NextResponse.json({ error: getErrorMessage(error) || 'Internal server error' }, { status: 500 });
   }
@@ -74,7 +77,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return NextResponse.json({ error: 'Campaign not found' }, { status: 404 });
     }
 
-    const updatePayload: Record<string, unknown> = {
+    const updatePayload: TablesUpdate<'campaigns'> = {
       updated_at: new Date().toISOString(),
     };
 
@@ -124,6 +127,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     return NextResponse.json({ success: true, data: { ...data, company } });
   } catch (error) {
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
     console.error('Admin campaign update error:', error);
     if (error instanceof SyntaxError) {
       return NextResponse.json({ error: 'Invalid JSON in impact metrics or milestones' }, { status: 400 });
@@ -146,6 +151,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
     return NextResponse.json({ success: true, message: 'Campaign deleted successfully' });
   } catch (error) {
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
     console.error('Admin campaign delete error:', error);
     const message = formatCampaignDeleteError(error);
     const status = (error as { code?: string } | null)?.code === '23503' ? 409 : 500;

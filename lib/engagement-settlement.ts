@@ -1,15 +1,33 @@
 import crypto from 'crypto'
 import Razorpay from 'razorpay'
 import { db, supabase } from '@/lib/db'
-import { formatAttendanceSummary } from '@/lib/service-request-allocation'
+import { formatAttendanceSummary } from '@/lib/service-request-allocation'
 import { parseJsonObject } from '@/lib/utils'
+import type { Json, Tables } from '@/lib/database.types'
 import {
   buildPricingResponse,
   createPlatformPricedOrder,
   isRazorpayRouteEnabled,
 } from '@/lib/razorpay-route'
 
-export function getAssignmentOutstandingAmount(assignment: Record<string, any>) {
+type EngagementAssignment = Pick<
+  Tables<'service_engagement_assignments'>,
+  | 'id'
+  | 'meta'
+  | 'billing_cycle'
+  | 'payment_mode'
+  | 'application_table'
+  | 'application_id'
+  | 'owner_user_id'
+  | 'target_type'
+  | 'target_id'
+>
+
+function readMetaField(meta: Json, key: string): Json | undefined {
+  return meta && typeof meta === 'object' && !Array.isArray(meta) ? meta[key] : undefined
+}
+
+export function getAssignmentOutstandingAmount(assignment: Pick<EngagementAssignment, 'meta'>) {
   const meta = parseJsonObject(assignment.meta)
   const summary = formatAttendanceSummary(meta)
   const outstanding = Math.max(0, summary.totalDue - summary.paidTotal)
@@ -20,13 +38,15 @@ export function getAssignmentOutstandingAmount(assignment: Record<string, any>) 
   }
 }
 
-export function isDailyRentalAssignment(assignment: Record<string, any>) {
-  const billingCycle = String(assignment.billing_cycle || assignment.meta?.billing_cycle || '').toLowerCase()
-  const paymentMode = String(assignment.payment_mode || assignment.meta?.payment_mode || '').toLowerCase()
+export function isDailyRentalAssignment(
+  assignment: Pick<EngagementAssignment, 'meta' | 'billing_cycle' | 'payment_mode'>
+) {
+  const billingCycle = String(assignment.billing_cycle || readMetaField(assignment.meta, 'billing_cycle') || '').toLowerCase()
+  const paymentMode = String(assignment.payment_mode || readMetaField(assignment.meta, 'payment_mode') || '').toLowerCase()
   return billingCycle === 'daily' || paymentMode === 'daily_due'
 }
 
-export async function finalizeEngagementSettlement(assignment: Record<string, any>, input: {
+export async function finalizeEngagementSettlement(assignment: EngagementAssignment, input: {
   settledAmount: number
   settlementMode: 'razorpay' | 'waived'
   razorpayOrderId?: string | null
@@ -81,7 +101,7 @@ export async function finalizeEngagementSettlement(assignment: Record<string, an
     const { data: volunteerRow } = await supabase
       .from('service_request_applications')
       .select('response_meta')
-      .eq('id', assignment.application_id)
+      .eq('id', Number(assignment.application_id))
       .maybeSingle()
 
     const volunteerMeta = parseJsonObject(volunteerRow?.response_meta)
@@ -100,10 +120,11 @@ export async function finalizeEngagementSettlement(assignment: Record<string, an
   }
 
   if (assignment.application_table === 'service_clients' && assignment.application_id) {
+    const clientId = Number(assignment.application_id)
     const { data: clientRow } = await supabase
       .from('service_clients')
       .select('response_meta')
-      .eq('id', assignment.application_id)
+      .eq('id', clientId)
       .maybeSingle()
 
     const clientMeta = parseJsonObject(clientRow?.response_meta)
@@ -122,13 +143,13 @@ export async function finalizeEngagementSettlement(assignment: Record<string, an
         },
         updated_at: nowIso,
       })
-      .eq('id', assignment.application_id)
+      .eq('id', clientId)
   }
 
   return nextMeta
 }
 
-export async function createEngagementSettlementOrder(assignment: Record<string, any>, payerUserId: number) {
+export async function createEngagementSettlementOrder(assignment: EngagementAssignment, payerUserId: number) {
   const { outstanding } = getAssignmentOutstandingAmount(assignment)
   if (outstanding <= 0) {
     const meta = await finalizeEngagementSettlement(assignment, {

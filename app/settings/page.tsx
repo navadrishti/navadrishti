@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useIsClient } from '@/hooks/use-is-client'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Header } from '@/components/header'
@@ -93,7 +94,7 @@ function DeleteAccountDialog({ open, onOpenChange, onConfirm, loading, error }: 
             {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
 
             <div className="space-y-2">
-              <Label htmlFor="confirmation">Type <strong>"DELETE MY ACCOUNT"</strong> to confirm</Label>
+              <Label htmlFor="confirmation">Type <strong>&quot;DELETE MY ACCOUNT&quot;</strong> to confirm</Label>
               <Input
                 id="confirmation"
                 type="text"
@@ -135,7 +136,7 @@ function DeleteAccountDialog({ open, onOpenChange, onConfirm, loading, error }: 
 export default function SettingsPage() {
   const { user, token, logout } = useAuth();
   const router = useRouter();
-  const [mounted, setMounted] = useState(false);
+  const mounted = useIsClient();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -147,10 +148,6 @@ export default function SettingsPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState('');
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const handleBack = () => {
     if (window.history.length > 1) {
@@ -211,7 +208,7 @@ export default function SettingsPage() {
       } else {
         setPasswordError(data.error || 'Failed to change password');
       }
-    } catch (error) {
+    } catch {
       setPasswordError('An error occurred while changing password');
     } finally {
       setPasswordLoading(false);
@@ -248,7 +245,7 @@ export default function SettingsPage() {
       } else {
         setDeleteError(data.error || 'Failed to delete account');
       }
-    } catch (error) {
+    } catch {
       setDeleteError('An error occurred while deleting your account');
     } finally {
       setDeleteLoading(false);

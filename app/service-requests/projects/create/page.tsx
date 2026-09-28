@@ -201,6 +201,8 @@ export default function CreateServiceRequestProjectPage() {
     }
   }
 
+  const addressPreview = formatProjectExactAddress(projectAddress)
+
   return (
     <ProtectedRoute userTypes={['ngo']} requireVerification={true} permission="canCreateServiceRequests">
       <div className="min-h-screen bg-background">
@@ -313,7 +315,7 @@ export default function CreateServiceRequestProjectPage() {
                       </div>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Preview: {formatProjectExactAddress(projectAddress) || 'Complete the address fields'}
+                      Preview: {addressPreview === 'Not set' ? 'Complete the address fields' : addressPreview}
                     </p>
                   </div>
 

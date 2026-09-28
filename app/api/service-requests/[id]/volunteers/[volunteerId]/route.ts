@@ -10,6 +10,7 @@ import {
   shouldCreateSkillServiceAssignment,
 } from '@/lib/service-request-allocation';
 import { parseAmountToInr, getErrorMessage, parseJsonObject } from '@/lib/utils';
+import type { Json, TablesUpdate } from '@/lib/database.types';
 
 // PUT - Update volunteer status
 export async function PUT(
@@ -120,7 +121,7 @@ export async function PUT(
     const existingMeta =
       parseJsonObject(volunteerApplication.response_meta);
 
-    const nextMeta: Record<string, any> = {
+    const nextMeta: Record<string, Json | undefined> = {
       ...existingMeta,
       ngo_decision_comment: status === 'rejected' ? commentText : null,
       ngo_decision_at: new Date().toISOString()
@@ -139,7 +140,7 @@ export async function PUT(
         : [];
     }
 
-    const updatePayload: Record<string, any> = {
+    const updatePayload: TablesUpdate<'service_request_applications'> & TablesUpdate<'service_request_fulfillments'> = {
       status,
       response_meta: nextMeta,
       updated_at: new Date().toISOString()
@@ -197,10 +198,11 @@ export async function PUT(
           fulfillment_mode: fulfillmentMode,
         };
 
+        const { fulfillment_mode: _fulfillmentMode, ...assignmentColumns } = assignmentMeta;
         const { data: assignment } = await supabase
           .from('service_engagement_assignments')
           .insert({
-            ...assignmentMeta,
+            ...assignmentColumns,
             status: 'active',
             meta: assignmentMeta,
           })

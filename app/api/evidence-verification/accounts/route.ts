@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { supabase, db } from '@/lib/db';
-import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth';
+import { getAuthUserFromRequest, assertUserType, authErrorResponse } from '@/lib/server-auth';
 import { hashPassword } from '@/lib/auth';
 import {
   generateUniqueCompanyCaId,
@@ -11,7 +11,7 @@ import {
 
 const createCompanyCASchema = z.object({
   name: z.string().min(2),
-  email: z.string().email(),
+  email: z.string().trim().toLowerCase().email(),
   password: z.string().min(8),
   permissions: z.record(z.any()).optional(),
   status: z.enum(['active', 'inactive']).optional(),
@@ -51,13 +51,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: data ?? [] });
   } catch (error) {
-    if (error instanceof Error && error.message === 'Authentication required') {
-      return NextResponse.json({ error: error.message }, { status: 401 });
-    }
-
-    if (error instanceof Error && error.message === 'Insufficient permissions') {
-      return NextResponse.json({ error: error.message }, { status: 403 });
-    }
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
 
     console.error('Company CA list error:', error);
     return NextResponse.json({ error: 'Failed to fetch company CAs' }, { status: 500 });
@@ -175,13 +170,8 @@ export async function POST(request: NextRequest) {
       }
     }, { status: 201 });
   } catch (error) {
-    if (error instanceof Error && error.message === 'Authentication required') {
-      return NextResponse.json({ error: error.message }, { status: 401 });
-    }
-
-    if (error instanceof Error && error.message === 'Insufficient permissions') {
-      return NextResponse.json({ error: error.message }, { status: 403 });
-    }
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
 
     console.error('Company CA create error:', error);
     return NextResponse.json({ error: 'Failed to create company CA user' }, { status: 500 });

@@ -26,6 +26,17 @@ describe('getTokenClaims', () => {
     expect(getTokenClaims(requestWithAuth(`Bearer ${forged}`))).toBeNull()
     expect(getTokenClaims(requestWithAuth(`Bearer ${expired}`))).toBeNull()
   })
+
+  it.each([
+    ['platform admin', { id: -1, email: 'admin@system.local', user_type: 'admin' }],
+    ['platform CA', { id: 3, ca_id: 'CA-3', kind: 'platform_ca' }],
+    ['legacy platform CA', { id: 3, ca_id: 'CA-3', username: 'ca3' }],
+    ['government admin', { id: 8, role: 'district_officer', kind: 'government_admin' }],
+    ['legacy government admin', { id: 8, email: 'g@gov.in', role: 'district_officer' }],
+  ])('returns null for a %s token', (_label, payload) => {
+    const token = jwt.sign(payload, 'test-secret')
+    expect(getTokenClaims(requestWithAuth(`Bearer ${token}`))).toBeNull()
+  })
 })
 
 describe('normalizeExpiryDate', () => {

@@ -1,0 +1,370 @@
+import Razorpay from "razorpay";
+import { supabase } from "@/lib/db";
+import { createPlatformPricedOrder } from "@/lib/razorpay-route";
+import { parseJsonObject, validateCapturedPaymentAmounts } from "@/lib/utils";
+import {
+  addDaysIso,
+  buildAssignmentMeta,
+  buildCsrDeliveryLocation,
+  CSR_OUTBOUND_DISPATCH_DAYS,
+  parseCsrCapabilityRentals,
+  rentalRecordKey,
+  resolveCsrRentalAmountInr,
+  resolveMaterialTotalWorthInr,
+  shouldUseDelhiveryForCsrCapabilityRental,
+  upsertCsrCapabilityRental,
+  type CsrCapabilityRentalRecord,
+} from "@/lib/service-engagement";
+import { autoBookCsrCapabilityDelhivery } from "./delhivery-booking";
+import {
+  getCsrCapabilityRentals,
+  loadCompanyCampaign,
+  saveCampaignImpactIfUnchanged,
+  saveCampaignRentals,
+  updateCsrCapabilityRentalStatus,
+} from "./rental-store";
+
+export async function ensureCsrCapabilityRentalDraft(input: {
+  campaignId: string;
+  companyId: number;
+  offerId: number;
+}) {
+  const [campaign, offerResult] = await Promise.all([
+    loadCompanyCampaign(input.campaignId, input.companyId),
+    supabase.from("service_offers").select("*").eq("id", input.offerId).single(),
+  ]);
+  const offer = offerResult.data;
+  if (offerResult.error || !offer) throw new Error("Capability offer not found");
+
+  const rentals = parseCsrCapabilityRentals(campaign.impact_metrics);
+  const id = rentalRecordKey(input.campaignId, input.offerId);
+  const existing = rentals.find((row) => row.id === id);
+  if (existing?.payment_status === "paid") return existing;
+
+  const leadNgoId = Number(campaign.lead_ngo_user_id || 0) || null;
+  const draft: CsrCapabilityRentalRecord = {
+    id,
+    campaign_id: input.campaignId,
+    service_offer_id: input.offerId,
+    company_user_id: input.companyId,
+    provider_user_id: Number(offer.creator_id || 0),
+    lead_ngo_user_id: leadNgoId,
+    offer_type: String(offer.offer_type || "material"),
+    material_total_worth_inr: resolveMaterialTotalWorthInr(offer),
+    rental_amount_inr: resolveCsrRentalAmountInr(offer),
+    status: "pending_payment",
+    payment_status: "pending",
+    delivery_location: buildCsrDeliveryLocation(campaign),
+    fine: { base_amount_inr: 0, accrued_fine_inr: 0, pending_total_inr: 0, status: "none" },
+  };
+
+  const nextRentals = upsertCsrCapabilityRental(rentals, existing ? { ...existing, ...draft } : draft);
+  await saveCampaignRentals(input.campaignId, input.companyId, nextRentals);
+  return nextRentals.find((row) => row.id === id)!;
+}
+
+export async function createCsrCapabilityRentalOrder(input: {
+  campaignId: string;
+  companyId: number;
+  offerId: number;
+}) {
+  const campaign = await loadCompanyCampaign(input.campaignId, input.companyId);
+  const impact = parseJsonObject(campaign.impact_metrics);
+  if (!Number(campaign.lead_ngo_user_id || 0) || impact.lead_ngo_accepted === false) {
+    throw new Error("Capability offers can be reserved once a lead NGO accepts the campaign.");
+  }
+
+  const rental = await ensureCsrCapabilityRentalDraft(input);
+  if (rental.payment_status === "paid") {
+    return { paymentRequired: false, rental };
+  }
+
+  const baseAmountInr = rental.rental_amount_inr;
+  if (baseAmountInr <= 0) {
+    throw new Error("This capability does not have a rental rate configured.");
+  }
+
+  const keyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+  if (!keyId || !keySecret) throw new Error("Razorpay is not configured");
+
+  const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret });
+  const { order, pricing } = await createPlatformPricedOrder({
+    razorpay,
+    baseAmountInr,
+    receipt: `csr_cap_${input.offerId}_${Date.now()}`,
+    paymentKind: "csr_capability_rental",
+    beneficiaryUserId: rental.provider_user_id,
+    notes: {
+      campaign_id: input.campaignId,
+      service_offer_id: String(input.offerId),
+      target_type: "csr_capability_rental",
+      payer_user_id: String(input.companyId),
+    },
+  });
+
+  const rentals = await getCsrCapabilityRentals(input.campaignId, input.companyId);
+  const updated = upsertCsrCapabilityRental(rentals, {
+    ...rental,
+    razorpay_order_id: order.id,
+  });
+  await saveCampaignRentals(input.campaignId, input.companyId, updated);
+
+  return {
+    paymentRequired: true,
+    keyId,
+    orderId: order.id,
+    amount: pricing.totalChargeInr,
+    baseAmountInr,
+    pricing,
+    rental: updated.find((row) => row.id === rental.id),
+  };
+}
+
+async function assertCsrRentalPaymentCaptured(
+  rental: CsrCapabilityRentalRecord,
+  razorpayOrderId: string,
+  razorpayPaymentId: string
+) {
+  if (!rental.razorpay_order_id || rental.razorpay_order_id !== razorpayOrderId) {
+    throw new Error("Payment order does not match this rental");
+  }
+
+  const keyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+  if (!keyId || !keySecret) throw new Error("Razorpay is not configured");
+
+  const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret });
+  const [providerPayment, providerOrder] = await Promise.all([
+    razorpay.payments.fetch(razorpayPaymentId),
+    razorpay.orders.fetch(razorpayOrderId),
+  ]);
+
+  if (!providerPayment || providerPayment.id !== razorpayPaymentId) {
+    throw new Error("Unable to fetch payment from provider");
+  }
+  if (providerPayment.order_id !== razorpayOrderId || providerOrder?.id !== razorpayOrderId) {
+    throw new Error("Order and payment mismatch");
+  }
+
+  const providerStatus = String(providerPayment.status || "").toLowerCase();
+  if (providerStatus !== "captured") {
+    throw new Error(`Payment not captured yet (status: ${providerStatus || "unknown"})`);
+  }
+  if (String(providerPayment.currency || "").toUpperCase() !== "INR") {
+    throw new Error("Only INR payments are supported");
+  }
+
+  const amountCheck = validateCapturedPaymentAmounts({
+    orderNotes: parseJsonObject(providerOrder.notes),
+    orderAmountPaise: providerOrder.amount,
+    paidInr: Number((Number(providerPayment.amount || 0) / 100).toFixed(2)),
+  });
+  if (!amountCheck.ok) throw new Error(amountCheck.error);
+  if (Math.abs(amountCheck.baseAmountInr - rental.rental_amount_inr) > 0.01) {
+    throw new Error("Paid amount does not match the rental amount");
+  }
+}
+
+export async function attachCsrCapabilityAfterPayment(input: {
+  campaignId: string;
+  companyId: number;
+  offerId: number;
+  razorpayOrderId: string;
+  razorpayPaymentId: string;
+}) {
+  const [campaign, offerResult] = await Promise.all([
+    loadCompanyCampaign(input.campaignId, input.companyId),
+    supabase.from("service_offers").select("*").eq("id", input.offerId).single(),
+  ]);
+  const offer = offerResult.data;
+  if (!offer) throw new Error("Capability offer not found");
+
+  const rentals = parseCsrCapabilityRentals(campaign.impact_metrics);
+  const id = rentalRecordKey(input.campaignId, input.offerId);
+  const rental = rentals.find((row) => row.id === id);
+  if (!rental) throw new Error("CSR capability rental record not found");
+  if (rental.payment_status === "paid") return rental;
+
+  await assertCsrRentalPaymentCaptured(rental, input.razorpayOrderId, input.razorpayPaymentId);
+
+  const paidAt = new Date().toISOString();
+  const leadNgoId = Number(campaign.lead_ngo_user_id || 0) || null;
+
+  const impact = parseJsonObject(campaign.impact_metrics);
+  const invited = Array.isArray(impact.invited_offer_ids) ? impact.invited_offer_ids.map(Number) : [];
+  const invitedOfferIds = invited.includes(input.offerId) ? invited : [...invited, input.offerId];
+
+  const paidRental: CsrCapabilityRentalRecord = {
+    ...rental,
+    status: "attached",
+    payment_status: "paid",
+    paid_at: paidAt,
+    razorpay_order_id: input.razorpayOrderId,
+    razorpay_payment_id: input.razorpayPaymentId,
+    outbound_dispatch_due_at: addDaysIso(paidAt, CSR_OUTBOUND_DISPATCH_DAYS),
+    logistics_provider: shouldUseDelhiveryForCsrCapabilityRental(rental) ? "delhivery" : null,
+    lead_ngo_user_id: leadNgoId,
+  };
+
+  const claimedAt = await saveCampaignImpactIfUnchanged({
+    campaignId: input.campaignId,
+    companyId: input.companyId,
+    previousUpdatedAt: campaign.updated_at ?? null,
+    impactMetrics: {
+      ...impact,
+      invited_offer_ids: invitedOfferIds,
+      csr_capability_rentals: upsertCsrCapabilityRental(rentals, paidRental),
+    },
+  });
+  if (!claimedAt) {
+    const latest = (await getCsrCapabilityRentals(input.campaignId, input.companyId)).find((row) => row.id === id);
+    if (latest?.payment_status === "paid" && latest.razorpay_payment_id === input.razorpayPaymentId) {
+      return latest;
+    }
+    throw new Error("CSR capability rental was updated concurrently. Refresh and try again.");
+  }
+
+  const { data: clientRow, error: clientError } = await supabase
+    .from("service_clients")
+    .insert({
+      service_offer_id: input.offerId,
+      client_id: leadNgoId || input.companyId,
+      message: `CSR project rental for campaign ${campaign.title || input.campaignId}`,
+      status: "accepted",
+      accepted_at: paidAt,
+      assigned_at: paidAt,
+      response_meta: {
+        flow: "csr_capability_rental",
+        campaign_id: input.campaignId,
+        company_user_id: input.companyId,
+        payment_status: "paid",
+        payment_amount_inr: rental.rental_amount_inr,
+        material_total_worth_inr: rental.material_total_worth_inr,
+        outbound_dispatch_due_at: addDaysIso(paidAt, CSR_OUTBOUND_DISPATCH_DAYS),
+        delivery_location: rental.delivery_location,
+      },
+    })
+    .select("*")
+    .single();
+
+  if (clientError || !clientRow) {
+    await saveCampaignImpactIfUnchanged({
+      campaignId: input.campaignId,
+      companyId: input.companyId,
+      previousUpdatedAt: claimedAt,
+      impactMetrics: impact,
+    }).catch(() => null);
+    throw new Error(clientError?.message || "Failed to attach capability after payment");
+  }
+
+  const assignmentMeta = buildAssignmentMeta({
+    targetType: "csr_project",
+    targetId: input.campaignId,
+    serviceOfferId: input.offerId,
+    csrProjectId: rental.csr_project_id || null,
+    ownerUserId: Number(offer.creator_id || 0),
+    assigneeUserId: leadNgoId || input.companyId,
+    assignedByUserId: input.companyId,
+    billingCycle: "daily",
+    paymentMode: "daily_due",
+    ratePerUnit: rental.rental_amount_inr,
+    amount: rental.rental_amount_inr,
+    currency: "INR",
+    applicationTable: "service_clients",
+    applicationId: clientRow.id,
+  });
+
+  const { data: assignment } = await supabase
+    .from("service_engagement_assignments")
+    .insert({
+      target_type: assignmentMeta.target_type,
+      target_id: assignmentMeta.target_id,
+      application_table: assignmentMeta.application_table,
+      application_id: assignmentMeta.application_id,
+      owner_user_id: offer.creator_id,
+      assignee_user_id: leadNgoId || input.companyId,
+      assigned_by_user_id: input.companyId,
+      status: "active",
+      billing_cycle: assignmentMeta.billing_cycle,
+      payment_mode: assignmentMeta.payment_mode,
+      valid_until: assignmentMeta.valid_until,
+      assigned_at: assignmentMeta.assigned_at,
+      rate_per_unit: assignmentMeta.rate_per_unit,
+      rate_currency: assignmentMeta.currency,
+      meta: {
+        ...assignmentMeta,
+        flow: "csr_capability_rental",
+        campaign_id: input.campaignId,
+        material_total_worth_inr: rental.material_total_worth_inr,
+        outbound_dispatch_due_at: addDaysIso(paidAt, CSR_OUTBOUND_DISPATCH_DAYS),
+        delivery_location: rental.delivery_location,
+      },
+    })
+    .select("id")
+    .single();
+
+  const offerDetails = parseJsonObject(offer.offer_details);
+  await supabase
+    .from("service_offers")
+    .update({
+      status: "inactive",
+      offer_details: {
+        ...offerDetails,
+        csr_rental_lock: {
+          campaign_id: input.campaignId,
+          company_user_id: input.companyId,
+          paid_at: paidAt,
+        },
+      },
+    })
+    .eq("id", input.offerId);
+
+  const attachedRental = await updateCsrCapabilityRentalStatus({
+    campaignId: input.campaignId,
+    offerId: input.offerId,
+    companyId: input.companyId,
+    patch: {
+      service_client_id: Number(clientRow.id),
+      assignment_id: assignment?.id ? String(assignment.id) : null,
+    },
+  });
+
+  if (shouldUseDelhiveryForCsrCapabilityRental(attachedRental)) {
+    return autoBookCsrCapabilityDelhivery({
+      campaignId: input.campaignId,
+      offerId: input.offerId,
+      leg: "outbound",
+      bookedByUserId: Number(rental.provider_user_id || offer.creator_id || 0),
+      companyId: input.companyId,
+    });
+  }
+
+  return attachedRental;
+}
+
+function normalizeOfferIds(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  return value.map(Number).filter((id) => Number.isInteger(id) && id > 0);
+}
+
+export async function verifyPaidCsrOffersForPublish(
+  campaignId: string,
+  companyId: number,
+  requestedOfferIds: unknown = []
+) {
+  const campaign = await loadCompanyCampaign(campaignId, companyId);
+  const impact = parseJsonObject(campaign.impact_metrics);
+  const invitedIds = [...new Set([...normalizeOfferIds(impact.invited_offer_ids), ...normalizeOfferIds(requestedOfferIds)])];
+  const rentals = parseCsrCapabilityRentals(campaign.impact_metrics);
+  const unpaid = invitedIds.filter((offerId) => {
+    const rental = rentals.find((row) => Number(row.service_offer_id) === offerId);
+    return !rental || rental.payment_status !== "paid";
+  });
+  if (unpaid.length > 0) {
+    throw new Error(
+      `Pay and reserve all invited capabilities before publishing. Unpaid offer IDs: ${unpaid.join(", ")}`
+    );
+  }
+  return invitedIds;
+}

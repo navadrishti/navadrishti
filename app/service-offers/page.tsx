@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback, useEffect, useMemo, Suspense } from 'react'
+import { useIsClient } from '@/hooks/use-is-client'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { Header } from '@/components/header'
@@ -14,6 +15,42 @@ import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
 import { IMPACT_AREA_OPTIONS, OFFER_TYPE_OPTIONS } from '@/lib/service-offers'
 import { dashboardProfilePayoutHref, usePayoutConnection } from '@/hooks/use-payout-connection'
+import type { ServiceCardProps } from '@/components/service-card/types'
+
+type ServiceOfferListing = Pick<
+  ServiceCardProps,
+  | 'id'
+  | 'title'
+  | 'description'
+  | 'category'
+  | 'location'
+  | 'images'
+  | 'creator_id'
+  | 'verified'
+  | 'tags'
+  | 'created_at'
+  | 'price_amount'
+  | 'price_type'
+  | 'price_description'
+  | 'transaction_type'
+  | 'offer_type'
+  | 'amount'
+  | 'location_scope'
+  | 'conditions'
+  | 'item'
+  | 'quantity'
+  | 'delivery_scope'
+  | 'skill'
+  | 'capacity'
+  | 'duration'
+  | 'scope'
+  | 'status'
+> & {
+  provider_name?: string | null
+  provider_type?: string | null
+  ngo_name?: string | null
+  ngo?: { name?: string | null; user_type?: string | null } | null
+}
 
 const compactControlClass = 'h-9 text-sm'
 
@@ -63,7 +100,7 @@ function ServiceOffersPageContent() {
   const searchParams = useSearchParams();
   const { toast } = useToast();
 
-  const [mounted, setMounted] = useState(false);
+  const mounted = useIsClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState('all');
   const [selectedImpact, setSelectedImpact] = useState('all');
@@ -72,7 +109,7 @@ function ServiceOffersPageContent() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [debouncedLocation, setDebouncedLocation] = useState('');
 
-  const [serviceOffers, setServiceOffers] = useState<any[]>([]);
+  const [serviceOffers, setServiceOffers] = useState<ServiceOfferListing[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [deleting, setDeleting] = useState<number | null>(null);
@@ -91,10 +128,6 @@ function ServiceOffersPageContent() {
       || selectedTransaction !== 'all',
     [debouncedSearch, debouncedLocation, selectedType, selectedImpact, selectedTransaction]
   );
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -157,6 +190,8 @@ function ServiceOffersPageContent() {
     }
   };
 
+  const userId = user?.id;
+
   const fetchServiceOffers = useCallback(async () => {
     try {
       setLoading(true);
@@ -178,8 +213,8 @@ function ServiceOffersPageContent() {
       if (debouncedLocation) {
         params.append('location', debouncedLocation);
       }
-      if (user?.id) {
-        params.append('userId', user.id.toString());
+      if (userId) {
+        params.append('userId', userId.toString());
       }
       params.append('view', 'all');
 
@@ -196,7 +231,7 @@ function ServiceOffersPageContent() {
     } finally {
       setLoading(false);
     }
-  }, [selectedType, selectedImpact, selectedTransaction, debouncedSearch, debouncedLocation, user?.id]);
+  }, [selectedType, selectedImpact, selectedTransaction, debouncedSearch, debouncedLocation, userId]);
 
   useEffect(() => {
     fetchServiceOffers();
@@ -214,8 +249,8 @@ function ServiceOffersPageContent() {
 
   const filteredOffers = serviceOffers;
 
-  const getOfferProviderName = (offer: any) => offer.provider_name || offer.ngo_name || offer.ngo?.name || 'Unknown Provider';
-  const getOfferProviderType = (offer: any) => offer.provider_type || offer.ngo?.user_type || 'ngo';
+  const getOfferProviderName = (offer: ServiceOfferListing) => offer.provider_name || offer.ngo_name || offer.ngo?.name || 'Unknown Provider';
+  const getOfferProviderType = (offer: ServiceOfferListing) => offer.provider_type || offer.ngo?.user_type || 'ngo';
 
   if (error) {
     return (

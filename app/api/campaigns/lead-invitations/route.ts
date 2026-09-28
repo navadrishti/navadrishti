@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
-import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth'
+import { getAuthUserFromRequest, assertUserType, authErrorResponse } from '@/lib/server-auth'
 import { parseLeadNgoInvites } from '@/lib/campaign-volunteer-attendance'
 import { parseJsonObject } from '@/lib/utils'
+import type { Tables } from '@/lib/database.types'
+
+type CompanySummary = Pick<Tables<'users'>, 'id' | 'name' | 'email' | 'verification_status'>
 
 export async function GET(request: NextRequest) {
   try {
@@ -20,9 +23,9 @@ export async function GET(request: NextRequest) {
     const companyIds = [...new Set((campaigns || []).map((row) => Number(row.company_id || 0)).filter((id) => id > 0))]
     const { data: companies } = companyIds.length > 0
       ? await supabase.from('users').select('id, name, email, verification_status').in('id', companyIds)
-      : { data: [] as any[] }
+      : { data: [] as CompanySummary[] }
 
-    const companiesById = new Map<number, any>((companies || []).map((row) => [Number(row.id), row]))
+    const companiesById = new Map<number, CompanySummary>((companies || []).map((row) => [Number(row.id), row]))
 
     const payload = (campaigns || [])
       .map((campaign) => {
@@ -61,6 +64,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: payload })
   } catch (error) {
+    const authResponse = authErrorResponse(error)
+    if (authResponse) return authResponse
     console.error('Campaign lead invitations error:', error)
     return NextResponse.json({ error: 'Failed to fetch campaign lead invitations' }, { status: 500 })
   }

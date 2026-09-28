@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useEffectEvent, useCallback, useRef, ReactNode } from 'react';
 import { toast } from 'sonner';
 import { getDocumentExpiryAlertCopy } from './auth';
 import { isPlatformLoginRequiredPath, PRODUCT_NAME } from './access-control';
@@ -59,7 +59,7 @@ export interface User {
   user_type: 'individual' | 'ngo' | 'company';
   profile_image?: string;
   cover_image?: string;
-  profile?: Record<string, any>;
+  profile?: Record<string, unknown>;
   // Location fields for nearby functionality
   city?: string;
   state_province?: string;
@@ -79,8 +79,8 @@ export interface User {
   ca_badge_number?: string | null;
   csr_eligible?: boolean;
   ca_compliance_tags?: string[];
-  verification_details?: any;
-  profile_data?: Record<string, any>;
+  verification_details?: unknown;
+  profile_data?: Record<string, unknown>;
   document_expiry_summary?: {
     has_expired: boolean;
     has_due_soon: boolean;
@@ -105,7 +105,7 @@ interface SignupData {
   password: string;
   name: string;
   user_type: 'individual' | 'ngo' | 'company';
-  profile_data?: Record<string, any>;
+  profile_data?: Record<string, unknown>;
 }
 
 interface AuthProviderProps {
@@ -114,7 +114,7 @@ interface AuthProviderProps {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const getFriendlySignupErrorMessage = (data: any, status: number) => {
+const getFriendlySignupErrorMessage = (data: { error?: unknown } | null, status: number): string => {
   const rawError = data?.error;
 
   if (typeof rawError === 'string' && rawError.trim().length > 0) {
@@ -122,12 +122,12 @@ const getFriendlySignupErrorMessage = (data: any, status: number) => {
   }
 
   if (Array.isArray(rawError) && rawError.length > 0) {
-    const firstItem = rawError[0];
+    const firstItem: unknown = rawError[0];
     if (typeof firstItem === 'string') {
       return firstItem;
     }
-    if (firstItem?.message) {
-      return firstItem.message;
+    if (firstItem && typeof firstItem === 'object' && 'message' in firstItem && firstItem.message) {
+      return String(firstItem.message);
     }
   }
 
@@ -281,8 +281,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }, [hydrateUserFromServer, persistAuthSnapshot]);
 
+  const syncAuthOnMount = useEffectEvent(syncAuthFromStorage);
+
   useEffect(() => {
-    syncAuthFromStorage();
+    syncAuthOnMount();
   }, []);
 
   useEffect(() => {
@@ -495,7 +497,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       } else {
         toast.error('Failed to refresh user data');
       }
-    } catch (error) {
+    } catch {
       toast.error('Failed to refresh user data');
     }
   };

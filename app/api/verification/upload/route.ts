@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { v2 as cloudinary } from 'cloudinary';
+import { v2 as cloudinary, type UploadApiOptions, type UploadApiResponse } from 'cloudinary';
 import { findAuthUser } from '@/lib/server-auth';
 
 export const runtime = 'nodejs';
@@ -58,14 +58,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const safeCategory = typeof category === 'string' && category.trim() ? category.trim() : 'general';
-    const safeDocumentKey = typeof documentKey === 'string' && documentKey.trim() ? documentKey.trim() : 'document';
+    const toPathSegment = (value: FormDataEntryValue | null, fallback: string) => {
+      const cleaned = typeof value === 'string' ? value.trim().replace(/[^A-Za-z0-9_-]/g, '') : '';
+      return cleaned || fallback;
+    };
+    const safeCategory = toPathSegment(category, 'general');
+    const safeDocumentKey = toPathSegment(documentKey, 'document');
 
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
     const isImage = file.type.startsWith('image/');
-    const uploadOptions: Record<string, any> = {
+    const uploadOptions: UploadApiOptions = {
       resource_type: isImage ? 'image' : 'raw',
       folder: `verification/${safeCategory}/${user.id}`,
       public_id: `${safeDocumentKey}_${Date.now()}_${crypto.randomUUID()}`,
@@ -80,10 +84,10 @@ export async function POST(request: NextRequest) {
       ];
     }
 
-    const uploadResult = await new Promise<any>((resolve, reject) => {
+    const uploadResult = await new Promise<UploadApiResponse>((resolve, reject) => {
       cloudinary.uploader.upload_stream(uploadOptions, (error, result) => {
-        if (error) {
-          reject(error);
+        if (error || !result) {
+          reject(error ?? new Error('Cloudinary upload returned no result'));
           return;
         }
         resolve(result);
@@ -118,7 +122,7 @@ export async function POST(request: NextRequest) {
         ? cloudinaryError.http_code
         : 500;
 
-    const userSafeError = errorMessage.toLowerCase().includes('api key') || errorMessage.toLowerCase().includes('api secret')
+    const userSafeError = /api[ _](key|secret)/i.test(errorMessage)
       ? 'Verification upload service authentication failed'
       : errorMessage;
 

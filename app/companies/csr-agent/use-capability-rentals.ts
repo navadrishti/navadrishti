@@ -13,7 +13,9 @@ type CapabilityRentalsOptions = {
   user: User | null
   token: string | null
   campaignId: string | null
+  ensureCampaignId: () => Promise<string | null>
   actionsEnabled: boolean
+  leadAccepted: boolean
   appendAssistantMessage: (content: string) => void
   onOfferInvited: (offerId: number) => void
   onPaymentVerified: (offerId: number) => void
@@ -23,7 +25,9 @@ export function useCapabilityRentals({
   user,
   token,
   campaignId,
+  ensureCampaignId,
   actionsEnabled,
+  leadAccepted,
   appendAssistantMessage,
   onOfferInvited,
   onPaymentVerified,
@@ -37,6 +41,10 @@ export function useCapabilityRentals({
       appendAssistantMessage('Please finish campaign details before paying for a capability rental.')
       return
     }
+    if (!leadAccepted) {
+      appendAssistantMessage('Capability offers can be reserved once a lead NGO accepts the campaign.')
+      return
+    }
     if (!user?.id || !token) {
       appendAssistantMessage('Please sign in again to continue.')
       return
@@ -46,14 +54,14 @@ export function useCapabilityRentals({
       return
     }
 
-    const publishCampaignId = campaignId
-    if (!publishCampaignId) {
-      appendAssistantMessage('Save the campaign draft before paying to reserve a capability.')
-      return
-    }
-
     setPayingOfferId(offerId)
     try {
+      const publishCampaignId = await ensureCampaignId()
+      if (!publishCampaignId) {
+        appendAssistantMessage('Please sign in again to continue.')
+        return
+      }
+
       const orderRes = await fetch('/api/csr-agent/update-campaign', {
         method: 'POST',
         headers: {

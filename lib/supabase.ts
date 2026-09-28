@@ -18,8 +18,8 @@ export interface User {
   id: string
   email?: string
   phone?: string
-  user_metadata?: Record<string, any>
-  app_metadata?: Record<string, any>
+  user_metadata?: Record<string, unknown>
+  app_metadata?: Record<string, unknown>
 }
 
 export interface Session {

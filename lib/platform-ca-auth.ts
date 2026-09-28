@@ -1,7 +1,14 @@
 import { createHash } from 'crypto';
-import jwt, { type SignOptions } from 'jsonwebtoken';
+import type { SignOptions } from 'jsonwebtoken';
 import { NextRequest } from 'next/server';
-import { comparePassword, getCaBadgeNumber, hashPassword, JWT_SECRET } from '@/lib/auth';
+import {
+  comparePassword,
+  getCaBadgeNumber,
+  hashPassword,
+  JWT_SECRET,
+  signScopedToken,
+  verifyScopedToken,
+} from '@/lib/auth';
 import { supabase } from '@/lib/db';
 
 export const PLATFORM_CA_COOKIE = 'navadrishti-ca-token';
@@ -21,24 +28,19 @@ export function issueCaBadgeNumber(userId: number, profileData?: unknown): strin
   return `ND-CA-${digest}`;
 }
 
-export function applyCaBadgeToProfile(
-  profileData: Record<string, any>,
+export function applyCaBadgeToProfile<T extends Record<string, unknown>>(
+  profileData: T,
   userId: number,
   meta?: { verifiedAt?: string; verifiedBy?: string }
 ) {
   const existing = getCaBadgeNumber(profileData);
   const badge = existing || issueCaBadgeNumber(userId, profileData);
-  const next: Record<string, any> = {
+  const next = {
     ...profileData,
     ca_badge_number: badge,
+    ...(meta?.verifiedAt && !profileData.ca_verified_at ? { ca_verified_at: meta.verifiedAt } : {}),
+    ...(meta?.verifiedBy ? { ca_verified_by: meta.verifiedBy } : {}),
   };
-
-  if (meta?.verifiedAt && !profileData.ca_verified_at) {
-    next.ca_verified_at = meta.verifiedAt;
-  }
-  if (meta?.verifiedBy) {
-    next.ca_verified_by = meta.verifiedBy;
-  }
 
   return {
     profileData: next,
@@ -75,20 +77,15 @@ export function generatePlatformCAToken(account: PlatformCAAccount): string {
     display_name: account.display_name,
   };
 
-  return jwt.sign(payload, JWT_SECRET, {
-    expiresIn: (process.env.CA_JWT_EXPIRES_IN || '12h') as SignOptions['expiresIn'],
-  });
+  return signScopedToken(
+    'platform_ca',
+    payload,
+    (process.env.CA_JWT_EXPIRES_IN || '12h') as SignOptions['expiresIn']
+  );
 }
 
 export function verifyPlatformCAToken(token: string): PlatformCATokenPayload | null {
-  try {
-    if (!token || !token.trim()) return null;
-    const cleanToken = token.replace(/["'\n\r\t]/g, '').replace(/^Bearer\s+/i, '').trim();
-    if (!cleanToken) return null;
-    return jwt.verify(cleanToken, JWT_SECRET) as PlatformCATokenPayload;
-  } catch {
-    return null;
-  }
+  return verifyScopedToken<PlatformCATokenPayload>(token, 'platform_ca');
 }
 
 export function getPlatformCATokenFromRequest(request: NextRequest): string | null {

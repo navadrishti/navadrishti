@@ -12,6 +12,26 @@ type RouteContext = {
   params: Promise<{ path?: string[] }>
 }
 
+const STRIPPED_REQUEST_HEADERS = [
+  'host',
+  'connection',
+  'content-length',
+  'cookie',
+  'authorization',
+  'proxy-authorization',
+  'x-forwarded-for',
+  'x-forwarded-host',
+  'x-forwarded-proto',
+  'x-forwarded-port',
+  'x-forwarded-user',
+  'x-forwarded-email',
+  'x-forwarded-access-token',
+  'x-real-ip',
+  'x-api-key',
+  'x-auth-token',
+  'x-csrf-token',
+]
+
 function corsHeaders(request: NextRequest): HeadersInit {
   const origin = request.headers.get('origin')
   const headers: Record<string, string> = {
@@ -59,9 +79,7 @@ async function proxyToPwa(request: NextRequest, pathSegments: string[]) {
   target.search = request.nextUrl.search
 
   const headers = new Headers(request.headers)
-  headers.delete('host')
-  headers.delete('connection')
-  headers.delete('content-length')
+  STRIPPED_REQUEST_HEADERS.forEach((name) => headers.delete(name))
 
   const method = request.method.toUpperCase()
   const body =
@@ -82,6 +100,7 @@ async function proxyToPwa(request: NextRequest, pathSegments: string[]) {
   responseHeaders.delete('access-control-allow-credentials')
   responseHeaders.delete('access-control-allow-headers')
   responseHeaders.delete('access-control-allow-methods')
+  responseHeaders.delete('set-cookie')
 
   const response = new NextResponse(upstreamResponse.body, {
     status: upstreamResponse.status,

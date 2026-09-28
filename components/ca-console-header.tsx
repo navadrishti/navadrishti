@@ -17,6 +17,7 @@ import {
 import { ChevronRight, Menu, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ProductBrand } from '@/components/product-brand';
+import { useNavigationMenu } from '@/hooks/use-navigation-menu';
 
 const navItems = [
   { label: 'Dashboard', href: '/evidence-verification' },
@@ -52,7 +53,7 @@ export function CAConsoleHeader({
   onLogout,
 }: CAConsoleHeaderProps) {
   const pathname = usePathname();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useNavigationMenu();
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const profileMenuTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -74,10 +75,6 @@ export function CAConsoleHeader({
       }
     };
   }, []);
-
-  useEffect(() => {
-    setMobileMenuOpen(false);
-  }, [pathname]);
 
   const openProfileMenu = () => {
     if (profileMenuTimeoutRef.current) {

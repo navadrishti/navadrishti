@@ -1,4 +1,7 @@
 import type { CampaignLeadLifecycle } from '@/lib/format-date';
+import type { Tables } from '@/lib/database.types';
+import type { CapabilityOfferSummary } from '@/lib/service-offers';
+import type { CsrCapabilityRentalDeliveryView } from '@/lib/csr-agent/campaign';
 
 export interface CompanyProjectApplication {
   project_id: string;
@@ -97,7 +100,7 @@ export type NgoNeedAssignment = {
   assigned_amount?: number | null;
   fulfillment_quantity?: number | null;
   fulfillment_amount?: number | null;
-  response_meta?: Record<string, any> | null;
+  response_meta?: Record<string, unknown> | null;
   volunteer?: { id?: number; name?: string | null; email?: string | null; user_type?: string | null } | null;
 };
 
@@ -118,4 +121,37 @@ export type NgoNeedDashboardItem = {
   completed_count?: number;
   project?: { title?: string | null; exact_address?: string | null; location?: string | null } | null;
   assignments?: NgoNeedAssignment[];
+};
+
+export type CapabilityOffersSubTab = 'your-capabilities' | 'your-applications' | 'requests';
+export type OfferRequestsSubTab = 'pending' | 'in-progress' | 'history';
+export type NeedsTrackingTab = 'ongoing-needs' | 'history-needs';
+export type CsrProjectsTab = 'invitations' | 'ongoing' | 'completed';
+export type CsrProjectsSectionTab = 'ngo-projects' | 'other-csr';
+
+export type OfferApplication = CapabilityOfferSummary & {
+  provider_name?: string | null;
+  ngo_name?: string | null;
+  verification_status?: string | null;
+  verified?: boolean | null;
+};
+
+export type CsrCapabilityRentalRow = CsrCapabilityRentalDeliveryView;
+
+export type NgoCsrProject = Tables<'csr_projects'> & {
+  milestones_count?: number;
+  completed_milestones_count?: number;
+  latest_impact?: Tables<'csr_impact_metrics'> | null;
+  next_milestone?: Tables<'csr_project_milestones'> | null;
+  deadline_at?: string | null;
+  confirmed_funds?: number;
+};
+
+export type CsrProjectEvidence = {
+  summary?: {
+    total_milestones?: number;
+    completed_milestones?: number;
+    confirmed_funds?: number;
+    next_milestone?: Tables<'csr_project_milestones'> | null;
+  };
 };

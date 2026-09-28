@@ -6,8 +6,9 @@ import {
   assertNgoLiveCsr1,
   CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE,
   getEvidenceApproverContext,
+  type EvidenceApproverContext,
 } from '@/lib/server-auth';
-import { parseAmountToInr, getErrorMessage } from '@/lib/utils';
+import { parseAmountToInr, getErrorMessage, validateCapturedPaymentAmounts } from '@/lib/utils';
 
 function safeSignatureMatch(expected: string, received: string): boolean {
   const expectedBuffer = Buffer.from(String(expected || ''), 'utf8');
@@ -22,6 +23,14 @@ export async function POST(
 ) {
   try {
     const { id: milestoneId } = await params;
+
+    let approver: EvidenceApproverContext;
+    try {
+      approver = await getEvidenceApproverContext(request);
+    } catch (error) {
+      return NextResponse.json({ error: getErrorMessage(error) || 'CA authentication required' }, { status: 401 });
+    }
+
     const keySecret = process.env.RAZORPAY_KEY_SECRET;
     const keyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
     if (!keySecret || !keyId) {
@@ -57,7 +66,9 @@ export async function POST(
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
-    const approver = await getEvidenceApproverContext(request, project.company_user_id);
+    if (approver.companyUserId !== null && approver.companyUserId !== project.company_user_id) {
+      return NextResponse.json({ error: 'Company CA is not authorized for this company project' }, { status: 403 });
+    }
 
     const leadNgoUserId = Number(project.ngo_user_id || 0);
     if (Number.isFinite(leadNgoUserId) && leadNgoUserId > 0) {
@@ -85,15 +96,19 @@ export async function POST(
       return NextResponse.json({ error: 'Payment not captured yet' }, { status: 409 });
     }
 
-    const orderNotes = (providerOrder.notes || {}) as Record<string, any>;
+    const orderNotes: Record<string, string | number | null> = providerOrder.notes || {};
     if (String(orderNotes.milestone_id || '') !== String(milestoneId)) {
       return NextResponse.json({ error: 'Payment is linked to a different milestone' }, { status: 403 });
     }
 
     const paidInr = Number((Number(providerPayment.amount || 0) / 100).toFixed(2));
-    const expectedTotalInr = parseAmountToInr(orderNotes.total_charge_inr);
-    if (expectedTotalInr > 0 && Math.abs(paidInr - expectedTotalInr) > 0.01) {
-      return NextResponse.json({ error: 'Paid amount does not match checkout total' }, { status: 400 });
+    const amountCheck = validateCapturedPaymentAmounts({
+      orderNotes,
+      orderAmountPaise: providerOrder.amount,
+      paidInr,
+    });
+    if (!amountCheck.ok) {
+      return NextResponse.json({ error: amountCheck.error }, { status: 400 });
     }
 
     const baseAmountInr = parseAmountToInr(orderNotes.base_amount_inr) || parseAmountToInr(milestone.amount);
@@ -237,21 +252,6 @@ export async function POST(
       },
     });
   } catch (error) {
-    if (
-      error instanceof Error &&
-      [
-        'CA authentication required',
-        'Invalid CA token',
-        'Company CA authentication required',
-        'Invalid company CA token',
-        'Company CA identity not found',
-        'Company CA identity is not active',
-        'Company CA is not authorized for this company project',
-      ].includes(getErrorMessage(error))
-    ) {
-      return NextResponse.json({ error: getErrorMessage(error) }, { status: 401 });
-    }
-
     console.error('Milestone payment verify error:', error);
     return NextResponse.json({ error: getErrorMessage(error) || 'Failed to verify milestone payment' }, { status: 500 });
   }

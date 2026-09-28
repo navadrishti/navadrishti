@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { cleanupPasswordResetStores, getPasswordResetToken } from '../forgot-password/route';
+import { findOneTimeCode } from '@/lib/one-time-codes';
 
 const verifyTokenSchema = z.object({
   token: z.string().min(1, 'Token is required'),
@@ -17,9 +17,7 @@ export async function POST(req: NextRequest) {
 
     const { token } = validationResult.data;
 
-    cleanupPasswordResetStores();
-
-    const tokenData = getPasswordResetToken(token);
+    const tokenData = await findOneTimeCode('password_reset', token);
 
     if (!tokenData) {
       return NextResponse.json(
@@ -28,13 +26,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (tokenData.expires < Date.now()) {
+    if (tokenData.expiresAt < Date.now()) {
       return NextResponse.json({ error: 'Reset token has expired' }, { status: 400 });
     }
 
     return NextResponse.json({
       message: 'Token is valid',
-      email: tokenData.email,
+      email: tokenData.subject,
       success: true,
     });
   } catch (error: unknown) {

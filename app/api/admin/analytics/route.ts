@@ -2,6 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { getAdminUser } from '@/lib/server-auth';
 
+type ReviewDayBucket = {
+  date: string;
+  total_reviewed: number;
+  approved_count: number;
+  rejected_count: number;
+  avg_review_time_hours: number;
+  _review_times: number[];
+};
+
 function toDateKey(value: unknown): string {
   if (!value) return 'unknown';
   const date = new Date(String(value));
@@ -44,7 +53,7 @@ export async function GET(request: NextRequest) {
 
     const serviceOfferStats = serviceOfferStatsResult.data || [];
     const performanceStats = performanceStatsResult.data || [];
-    const reviewStats = performanceStats.reduce((acc: Record<string, any>, review) => {
+    const reviewStats = performanceStats.reduce((acc: Record<string, ReviewDayBucket>, review) => {
       const dateKey = toDateKey(review.reviewed_at || review.review_date || review.created_at);
       if (!acc[dateKey]) {
         acc[dateKey] = {
@@ -53,7 +62,7 @@ export async function GET(request: NextRequest) {
           approved_count: 0,
           rejected_count: 0,
           avg_review_time_hours: 0,
-          _review_times: [] as number[]
+          _review_times: []
         };
       }
 
@@ -77,7 +86,7 @@ export async function GET(request: NextRequest) {
       return acc;
     }, {});
 
-    const emailStats: any[] = [];
+    const emailStats: { delivery_status?: string | null; notification_type?: string | null }[] = [];
 
     const totalServiceOffers = serviceOfferStats.length;
     const pendingOffers = serviceOfferStats.filter(so => so.admin_status === 'pending').length;
@@ -121,9 +130,10 @@ export async function GET(request: NextRequest) {
         acc[category] = { total: 0, pending: 0, approved: 0, rejected: 0 };
       }
       acc[category].total++;
-      acc[category][offer.admin_status] = (acc[category][offer.admin_status] || 0) + 1;
+      const status = String(offer.admin_status);
+      acc[category][status] = (acc[category][status] || 0) + 1;
       return acc;
-    }, {} as Record<string, any>);
+    }, {} as Record<string, Record<string, number>>);
 
     // Daily trends for charts
     const dailyTrends = Object.values(reviewStats)
@@ -133,7 +143,7 @@ export async function GET(request: NextRequest) {
         approved: stat.approved_count || 0,
         rejected: stat.rejected_count || 0,
         avg_review_time: stat._review_times.length > 0
-          ? stat._review_times.reduce((sum: number, time: number) => sum + time, 0) / stat._review_times.length
+          ? stat._review_times.reduce((sum, time) => sum + time, 0) / stat._review_times.length
           : 0
       }))
       .sort((a, b) => String(a.date).localeCompare(String(b.date)));

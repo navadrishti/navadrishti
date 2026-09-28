@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/db';
-import { emailService } from '@/lib/email';
+import { emailService, escapeHtml } from '@/lib/email';
 
 export async function autoRejectExpiredServiceOffers() {
   const cutoffDate = new Date();
@@ -22,7 +22,7 @@ export async function autoRejectExpiredServiceOffers() {
     throw fetchError;
   }
 
-  const rejectedOffers: any[] = [];
+  const rejectedOffers: NonNullable<typeof expiredOffers> = [];
 
   for (const offer of expiredOffers || []) {
     const { error: updateError } = await supabase
@@ -49,8 +49,8 @@ export async function autoRejectExpiredServiceOffers() {
           html: `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
               <h2 style="color: #0f172a;">Service Offer Status Update</h2>
-              <p>Dear ${offer.organization.name},</p>
-              <p>Your service offer <strong>${offer.title}</strong> was automatically rejected because it remained pending for more than 5 days.</p>
+              <p>Dear ${escapeHtml(offer.organization.name)},</p>
+              <p>Your service offer <strong>${escapeHtml(offer.title)}</strong> was automatically rejected because it remained pending for more than 5 days.</p>
               <p>You can submit a revised offer if the opportunity is still active.</p>
             </div>
           `,

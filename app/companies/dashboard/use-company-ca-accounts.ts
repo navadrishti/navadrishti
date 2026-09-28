@@ -138,7 +138,7 @@ export function useCompanyCaAccounts(userId: number | undefined, isTabActive: bo
       setCompanyCAFeedback({ type: 'success', message: 'CA account created successfully.' });
       setCompanyCAForm({ name: '', email: '', password: '', ca_id: '', auto_generate_ca_id: true });
       await Promise.all([fetchCompanyCAAccounts(), fetchAvailableCompanyCaIds()]);
-    } catch (error) {
+    } catch {
       setCompanyCAFeedback({ type: 'error', message: 'Failed to create CA account.' });
     } finally {
       setCreatingCompanyCA(false);

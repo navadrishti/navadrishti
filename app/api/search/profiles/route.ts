@@ -2,24 +2,31 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { getCompanyCAUserIdSet } from '@/lib/company-ca';
 
+const MAX_LIMIT = 50;
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const query = searchParams.get('q');
-    const limit = parseInt(searchParams.get('limit') || '10');
+    const requestedLimit = parseInt(searchParams.get('limit') || '10');
+    const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), MAX_LIMIT) : 10;
 
-    if (!query || query.trim().length < 1) {
+    const searchTerm = String(query || '')
+      .replace(/[,.():*%\\"_]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+
+    if (!searchTerm) {
       return NextResponse.json({ 
         profiles: [],
         message: 'Query must be at least 1 character long'
       }, { status: 400 });
     }
 
-    const searchTerm = query.trim().toLowerCase();
     const profileSelect = `
         id,
         name,
-        email,
         user_type,
         profile_image,
         verification_status,
@@ -85,7 +92,6 @@ export async function GET(request: NextRequest) {
     const formattedProfiles = sortedProfiles?.slice(0, limit).map(profile => ({
       id: profile.id,
       name: profile.name || 'Unknown User',
-      email: profile.email || '',
       user_type: profile.user_type || 'individual',
       profile_image: profile.profile_image,
       verification_status: profile.verification_status || 'unverified',

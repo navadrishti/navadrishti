@@ -245,7 +245,7 @@ export const findServiceOffers = async (input: InputSchemaType): Promise<Capabil
 
     const now = Date.now()
     const activeOffers = (filteredOffers as ServiceOfferRow[]).filter((offer) => {
-        const expiryValue = (offer as any).valid_until
+        const expiryValue = offer.valid_until
         if (!expiryValue) return true
         const expiryMs = Date.parse(String(expiryValue))
         if (Number.isNaN(expiryMs)) return true

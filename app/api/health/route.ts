@@ -61,7 +61,7 @@ export async function GET() {
       }
     });
 
-  } catch (error) {
+  } catch {
     return NextResponse.json({
       status: 'unhealthy',
       timestamp: new Date().toISOString(),

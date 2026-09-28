@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { type CloudSaveStatus, describeCloudSaveStatus } from "@/lib/cloud-save-status"
 import { type CSRAgentSession, hasMeaningfulSessionContent, normalizeSessionPayload } from "./session"
-
-type CloudSaveStatus = "idle" | "saving" | "saved" | "offline" | "error"
 
 type SessionCloudSyncOptions = {
   mounted: boolean
@@ -20,6 +19,15 @@ export function useSessionCloudSync({ mounted, userId, token, activeSessionId, s
   const pendingServerPayloadRef = useRef<string | null>(null)
   const serverRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isServerSyncInFlightRef = useRef(false)
+  const syncPendingServerProgressRef = useRef<() => Promise<void>>(async () => {})
+
+  const scheduleServerRetry = useCallback((delayMs: number) => {
+    if (serverRetryTimerRef.current) return
+    serverRetryTimerRef.current = setTimeout(() => {
+      serverRetryTimerRef.current = null
+      void syncPendingServerProgressRef.current()
+    }, delayMs)
+  }, [])
 
   const syncPendingServerProgress = useCallback(async () => {
     if (!userId) return
@@ -30,12 +38,7 @@ export function useSessionCloudSync({ mounted, userId, token, activeSessionId, s
 
     if (typeof navigator !== "undefined" && !navigator.onLine) {
       setCloudSaveStatus("offline")
-      if (!serverRetryTimerRef.current) {
-        serverRetryTimerRef.current = setTimeout(() => {
-          serverRetryTimerRef.current = null
-          void syncPendingServerProgress()
-        }, 2500)
-      }
+      scheduleServerRetry(2500)
       return
     }
 
@@ -92,16 +95,15 @@ export function useSessionCloudSync({ mounted, userId, token, activeSessionId, s
       throw new Error(`Cloud save failed: ${response.status}`)
     } catch {
       setCloudSaveStatus(typeof navigator !== "undefined" && !navigator.onLine ? "offline" : "error")
-      if (!serverRetryTimerRef.current) {
-        serverRetryTimerRef.current = setTimeout(() => {
-          serverRetryTimerRef.current = null
-          void syncPendingServerProgress()
-        }, 3000)
-      }
+      scheduleServerRetry(3000)
     } finally {
       isServerSyncInFlightRef.current = false
     }
-  }, [token, userId])
+  }, [token, userId, setSessions, setActiveSessionId, scheduleServerRetry])
+
+  useEffect(() => {
+    syncPendingServerProgressRef.current = syncPendingServerProgress
+  }, [syncPendingServerProgress])
 
   const persistSessions = (nextSessions: CSRAgentSession[], nextActiveId?: string) => {
     setSessions(nextSessions)
@@ -170,18 +172,7 @@ export function useSessionCloudSync({ mounted, userId, token, activeSessionId, s
     }
   }, [mounted, syncPendingServerProgress, userId])
 
-  const cloudSaveText = useMemo(() => {
-    if (cloudSaveStatus === "saving") return "Saving to cloud..."
-    if (cloudSaveStatus === "offline") return "Offline. Will sync when back online."
-    if (cloudSaveStatus === "error") return "Cloud sync failed. Retrying..."
-    if (cloudSaveStatus === "saved") {
-      if (!lastCloudSavedAt) return "Saved to cloud"
-      const deltaMs = Date.now() - new Date(lastCloudSavedAt).getTime()
-      const seconds = Math.max(1, Math.floor(deltaMs / 1000))
-      return seconds < 60 ? `Saved ${seconds}s ago` : "Saved to cloud"
-    }
-    return ""
-  }, [cloudSaveStatus, lastCloudSavedAt])
+  const cloudSaveText = describeCloudSaveStatus(cloudSaveStatus, lastCloudSavedAt)
 
   const markPayloadPersisted = (serialized: string) => {
     lastPersistedServerPayloadRef.current = serialized

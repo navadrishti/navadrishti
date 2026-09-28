@@ -1,13 +1,12 @@
 'use client';
 
-import { useEffect, useState, Suspense } from 'react';
+import { useState, Suspense } from 'react';
+import { useIsClient } from '@/hooks/use-is-client';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { createClient as createSupabaseClient } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
 import ProtectedRoute from '@/components/protected-route';
 import { Header } from '@/components/header';
 import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { ProfileDashboardTab } from '@/components/profile-dashboard-tab';
 import { PaymentHistoryPanel } from '@/components/payment-history-panel';
@@ -15,439 +14,27 @@ import { DashboardBodyLayout, DashboardQuickSidebar } from '@/components/dashboa
 import { DashboardMainSkeleton, DashboardPageSkeleton, DashboardSidebarSkeleton } from '@/components/ui/skeleton';
 import { ImpactReportsPanel } from '@/components/companies/impact-reports-panel';
 import { dashboardProfilePayoutHref, usePayoutConnection } from '@/hooks/use-payout-connection';
-import { useToast } from '@/hooks/use-toast';
-import type { OfferRequestItem } from '@/lib/offer-requests';
-import type { CapabilityOfferSummary } from '@/lib/service-offers';
-import type { CSRTrackingAssignment } from '@/components/csr-tracking-project-details';
 import { CapabilityOffersTab } from './capability-offers-tab';
-import { ProjectOpportunitiesSection } from './project-opportunities-section';
-import { CsrTrackingSection } from './csr-tracking-section';
-import { PublishedCampaignsSection } from './published-campaigns-section';
+import { CsrProjectsTab } from './csr-projects-tab';
 import { CompanyCaTab } from './company-ca-tab';
 import { CaResetPasswordDialog } from './ca-reset-password-dialog';
+import { COMPANY_DASHBOARD_SIDEBAR_ITEMS, companyDashboardTabHref, resolveCompanyDashboardTab } from './dashboard-tabs';
 import { useCompanyCaAccounts } from './use-company-ca-accounts';
-import type {
-  CapabilityOffersSubTab,
-  CompanyProjectOpportunity,
-  NgoDirectoryItem,
-  OfferRequestsSubTab,
-  PublishedCsrCampaign,
-} from './types';
+import { useCompanyDashboardData } from './use-company-dashboard-data';
+import { useCsrProjectActions } from './use-csr-project-actions';
+import { useOfferRequestActions } from './use-offer-request-actions';
+import type { CapabilityOffersSubTab, OfferRequestsSubTab } from './types';
 
 function CompanyDashboardContent() {
   const { user } = useAuth();
   const { connected: payoutConnected } = usePayoutConnection(Boolean(user));
-  const canListCapabilities = payoutConnected === true;
-  const payoutHref = dashboardProfilePayoutHref('company');
-  const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [mounted, setMounted] = useState(false);
-  const requestedTab = searchParams.get('tab') || 'profile';
-  const activeTab = (() => {
-    if (requestedTab === 'service-requests') return 'csr-projects';
-    if (requestedTab === 'services-hired') return 'capability-offers';
-    if (requestedTab === 'csr-budget' || requestedTab === 'csr-health') return 'impact-reports';
-    return requestedTab;
-  })();
-  const [serviceOffers, setServiceOffers] = useState<CapabilityOfferSummary[]>([]);
-  const [offerRequests, setOfferRequests] = useState<OfferRequestItem[]>([]);
-  const [loadingServiceOffers, setLoadingServiceOffers] = useState(false);
-  const [loadingOfferRequests, setLoadingOfferRequests] = useState(false);
-  const [updatingOfferRequestId, setUpdatingOfferRequestId] = useState<number | null>(null);
+  const mounted = useIsClient();
+  const activeTab = resolveCompanyDashboardTab(searchParams.get('tab') || 'profile');
+  const highlightedRequestId = Number(searchParams.get('requestId') || '');
   const [capabilityOffersTab, setCapabilityOffersTab] = useState<CapabilityOffersSubTab>('your-capabilities');
   const [offerRequestsTab, setOfferRequestsTab] = useState<OfferRequestsSubTab>('pending');
-  const [projectOpportunities, setProjectOpportunities] = useState<CompanyProjectOpportunity[]>([]);
-  const [loadingProjectOpportunities, setLoadingProjectOpportunities] = useState(false);
-  const [applyingProjectId, setApplyingProjectId] = useState<string | null>(null);
-  const [projectApplicationNote, setProjectApplicationNote] = useState('');
-  const [csrTrackingAssignments, setCsrTrackingAssignments] = useState<CSRTrackingAssignment[]>([]);
-  const [loadingCSRTrackingAssignments, setLoadingCSRTrackingAssignments] = useState(false);
-  const [publishedCsrCampaigns, setPublishedCsrCampaigns] = useState<PublishedCsrCampaign[]>([]);
-  const [loadingPublishedCsrCampaigns, setLoadingPublishedCsrCampaigns] = useState(false);
-  const [ngoDirectory, setNgoDirectory] = useState<NgoDirectoryItem[]>([]);
-  const [loadingNgoDirectory, setLoadingNgoDirectory] = useState(false);
-  const [inviteSearchByProject, setInviteSearchByProject] = useState<Record<string, string>>({});
-  const [inviteNoteByProject, setInviteNoteByProject] = useState<Record<string, string>>({});
-  const [invitingProjectId, setInvitingProjectId] = useState<string | null>(null);
-  const companyCa = useCompanyCaAccounts(user?.id, activeTab === 'company-ca');
-  const highlightedRequestId = Number(searchParams.get('requestId') || '');
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  const fetchProjectOpportunities = async () => {
-    try {
-      setLoadingProjectOpportunities(true);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setProjectOpportunities([]);
-        return;
-      }
-
-      const query = Number.isFinite(highlightedRequestId)
-        ? `?mode=company-projects&requestId=${highlightedRequestId}`
-        : '?mode=company-projects';
-
-      const response = await fetch(`/api/service-request-assignments${query}`, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
-
-      const payload = await response.json();
-      if (response.ok && payload?.success) {
-        setProjectOpportunities(Array.isArray(payload.data) ? payload.data : []);
-      } else {
-        setProjectOpportunities([]);
-      }
-    } catch (error) {
-      console.error('Failed to fetch project opportunities:', error);
-      setProjectOpportunities([]);
-    } finally {
-      setLoadingProjectOpportunities(false);
-    }
-  };
-
-  const fetchCSRTrackingAssignments = async () => {
-    try {
-      setLoadingCSRTrackingAssignments(true);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setCsrTrackingAssignments([]);
-        return;
-      }
-
-      const response = await fetch('/api/service-request-assignments?mode=csr-tracking', {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
-
-      const payload = await response.json();
-      if (response.ok && payload?.success) {
-        setCsrTrackingAssignments(Array.isArray(payload.data) ? payload.data : []);
-      } else {
-        setCsrTrackingAssignments([]);
-      }
-    } catch (error) {
-      console.error('Failed to fetch CSR tracking assignments:', error);
-      setCsrTrackingAssignments([]);
-    } finally {
-      setLoadingCSRTrackingAssignments(false);
-    }
-  };
-
-  const fetchPublishedCsrCampaigns = async () => {
-    try {
-      setLoadingPublishedCsrCampaigns(true);
-      const token = localStorage.getItem('token');
-      if (!token || !user?.id) {
-        setPublishedCsrCampaigns([]);
-        return;
-      }
-
-      const response = await fetch(`/api/campaigns?company_id=${user.id}`);
-      const payload = await response.json();
-      if (response.ok && payload?.success) {
-        setPublishedCsrCampaigns(Array.isArray(payload.data) ? payload.data : []);
-      } else {
-        setPublishedCsrCampaigns([]);
-      }
-    } catch (error) {
-      console.error('Failed to fetch published CSR campaigns:', error);
-      setPublishedCsrCampaigns([]);
-    } finally {
-      setLoadingPublishedCsrCampaigns(false);
-    }
-  };
-
-  const fetchNgoDirectory = async () => {
-    try {
-      setLoadingNgoDirectory(true);
-      const response = await fetch('/api/ngos/list?limit=250');
-      const payload = await response.json();
-      if (response.ok && payload?.success) {
-        const rows = Array.isArray(payload.data) ? payload.data : Array.isArray(payload.ngos) ? payload.ngos : [];
-        setNgoDirectory(rows);
-      } else {
-        setNgoDirectory([]);
-      }
-    } catch (error) {
-      setNgoDirectory([]);
-    } finally {
-      setLoadingNgoDirectory(false);
-    }
-  };
-
-  const inviteLeadNgosFromDashboard = async (projectId: string, ngoIds: number[]) => {
-    try {
-      const assignment = csrTrackingAssignments.find((row) => row.project_id === projectId);
-      if (Number(assignment?.selected_lead_ngo_id || 0) > 0) {
-        toast({
-          title: 'Lead already assigned',
-          description: 'A lead NGO is already selected for this project.',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      setInvitingProjectId(projectId);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        toast({ title: 'Error', description: 'Please login again', variant: 'destructive' });
-        return;
-      }
-
-      if (ngoIds.length === 0) {
-        toast({ title: 'Select NGO', description: 'Choose at least one NGO to invite.', variant: 'destructive' });
-        return;
-      }
-
-      const response = await fetch('/api/service-request-assignments', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          action: 'invite-lead-ngo',
-          projectId,
-          ngoIds,
-          note: inviteNoteByProject[projectId] || ''
-        })
-      });
-
-      const payload = await response.json();
-      if (!response.ok || !payload?.success) {
-        toast({ title: 'Invite failed', description: payload?.error || 'Could not send invitations', variant: 'destructive' });
-        return;
-      }
-
-      toast({ title: 'Invites sent', description: payload?.data?.message || 'Lead NGO invitations sent.' });
-      setInviteNoteByProject((prev) => ({ ...prev, [projectId]: '' }));
-      fetchCSRTrackingAssignments();
-    } catch (error) {
-      toast({ title: 'Invite failed', description: 'Could not send invitations', variant: 'destructive' });
-    } finally {
-      setInvitingProjectId(null);
-    }
-  };
-
-  const applyToProjectOpportunity = async (projectId: string) => {
-    if (!allVerified) {
-      toast({
-        title: 'Verification required',
-        description: 'Complete email, phone, and document verification before applying for takeover.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    try {
-      setApplyingProjectId(projectId);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        toast({ title: 'Error', description: 'Please login again', variant: 'destructive' });
-        return;
-      }
-
-      const response = await fetch('/api/service-request-assignments', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          action: 'apply-project',
-          projectId,
-          note: projectApplicationNote
-        })
-      });
-
-      const payload = await response.json();
-      if (!response.ok || !payload?.success) {
-        toast({ title: 'Application failed', description: payload?.error || 'Could not apply for project', variant: 'destructive' });
-        return;
-      }
-
-      toast({
-        title: 'Application submitted',
-        description: payload?.data?.message || 'Sent to NGO for review.'
-      });
-
-      setProjectApplicationNote('');
-      fetchProjectOpportunities();
-      fetchCSRTrackingAssignments();
-    } catch (error) {
-      toast({ title: 'Application failed', description: 'Could not apply for project', variant: 'destructive' });
-    } finally {
-      setApplyingProjectId(null);
-    }
-  };
-
-  const fetchServiceOffers = async () => {
-    try {
-      setLoadingServiceOffers(true);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setServiceOffers([]);
-        return;
-      }
-
-      const response = await fetch('/api/service-offers?view=my-offers&include_expired=true&limit=50', {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
-
-      const payload = await response.json();
-      setServiceOffers(payload.success ? (payload.data || []) : []);
-    } catch {
-      setServiceOffers([]);
-    } finally {
-      setLoadingServiceOffers(false);
-    }
-  };
-
-  const fetchOfferRequests = async () => {
-    try {
-      setLoadingOfferRequests(true);
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setOfferRequests([]);
-        return;
-      }
-
-      const response = await fetch('/api/service-offers/requests', {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
-
-      const payload = await response.json();
-      setOfferRequests(payload.success ? (payload.data || []) : []);
-    } catch {
-      setOfferRequests([]);
-    } finally {
-      setLoadingOfferRequests(false);
-    }
-  };
-
-  const handleOfferRequestStatusUpdate = async (requestId: number, newStatus: 'accepted' | 'rejected') => {
-    try {
-      setUpdatingOfferRequestId(requestId);
-      const token = localStorage.getItem('token');
-
-      const response = await fetch(`/api/service-offers/requests/${requestId}`, {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ status: newStatus })
-      });
-
-      const payload = await response.json();
-      if (!payload.success) {
-        toast({
-          title: 'Error',
-          description: payload.error || 'Failed to update request status',
-          variant: 'destructive'
-        });
-        return;
-      }
-
-      setOfferRequests((prev) =>
-        prev.map((request) => {
-          if (request.id === requestId) {
-            return {
-              ...request,
-              status: newStatus,
-              isAssigned: newStatus === 'accepted'
-            };
-          }
-
-          if (
-            newStatus === 'accepted' &&
-            request.service_offer_id === payload.data.service_offer_id &&
-            (request.status === 'pending' || request.status === 'accepted')
-          ) {
-            return {
-              ...request,
-              status: 'rejected',
-              isAssigned: false
-            };
-          }
-
-          return request;
-        })
-      );
-
-      toast({
-        title: 'Success',
-        description: newStatus === 'accepted' ? 'Request accepted and offer assigned' : 'Request rejected'
-      });
-    } catch {
-      toast({
-        title: 'Error',
-        description: 'Failed to update request status',
-        variant: 'destructive'
-      });
-    } finally {
-      setUpdatingOfferRequestId(null);
-    }
-  };
-
-  const refreshDashboardData = async () => {
-    if (!user?.id) return;
-
-    await Promise.all([
-      fetchServiceOffers(),
-      fetchOfferRequests(),
-      fetchProjectOpportunities(),
-      fetchCSRTrackingAssignments(),
-      fetchPublishedCsrCampaigns(),
-      fetchNgoDirectory(),
-      companyCa.fetchCompanyCAAccounts()
-    ]);
-  };
-
-  // Realtime subscriptions (Supabase) — update lists when relevant DB tables change
-  useEffect(() => {
-    if (!user?.id) return;
-
-    const realtime = createSupabaseClient();
-    const channel = realtime.channel('realtime-dashboard');
-
-    const handleChange = (table: string) => {
-      if (table === 'service_request_projects') fetchProjectOpportunities();
-      else if (table === 'service_engagement_assignments') fetchCSRTrackingAssignments();
-      else if (table === 'campaigns') fetchPublishedCsrCampaigns();
-    }
-
-    ['service_request_projects', 'service_engagement_assignments', 'campaigns'].forEach((table) => {
-      channel.on('postgres_changes', { event: '*', schema: 'public', table }, () => handleChange(table));
-    });
-
-    // subscribe
-    void channel.subscribe();
-
-    return () => {
-      try {
-        realtime.removeChannel(channel);
-      } catch (e) {
-        // ignore
-      }
-    };
-  }, [user?.id]);
-
-  useEffect(() => {
-    if (!user?.id) return;
-
-    refreshDashboardData();
-  }, [user?.id, highlightedRequestId]);
 
   const allVerified = Boolean(
     user?.email_verified &&
@@ -455,20 +42,22 @@ function CompanyDashboardContent() {
     user?.verification_status === 'verified'
   );
 
-  const sidebarItems = [
-    { value: 'profile', label: 'Profile' },
-    { value: 'capability-offers', label: 'Capability Offers' },
-    { value: 'csr-projects', label: 'CSR Projects' },
-    { value: 'company-ca', label: 'CA' },
-    { value: 'impact-reports', label: 'Impact Reports' },
-    { value: 'payments', label: 'Payments' },
-  ];
+  const companyCa = useCompanyCaAccounts(user?.id, activeTab === 'company-ca');
+  const data = useCompanyDashboardData({
+    userId: user?.id,
+    highlightedRequestId,
+    refreshCompanyCaAccounts: companyCa.fetchCompanyCAAccounts,
+  });
+  const offerRequestActions = useOfferRequestActions(data.setOfferRequests);
+  const csrProjectActions = useCsrProjectActions(data, allVerified);
+
+  const sidebarItems = COMPANY_DASHBOARD_SIDEBAR_ITEMS;
 
   const navigateToTab = (value: string) => {
     if (value === 'capability-offers') {
       setCapabilityOffersTab('your-capabilities');
     }
-    router.replace(`/companies/dashboard?tab=${value}`, { scroll: false });
+    router.replace(companyDashboardTabHref(value), { scroll: false });
   };
 
   if (!mounted) {
@@ -514,10 +103,10 @@ function CompanyDashboardContent() {
 
             <Card>
               <CardContent className="pt-6">
-                    <Tabs value={activeTab} onValueChange={(value) => {
-                      window.history.replaceState(null, '', `/companies/dashboard?tab=${value}`);
-                      router.replace(`/companies/dashboard?tab=${value}`, { scroll: false });
-                    }} className="w-full">
+                <Tabs value={activeTab} onValueChange={(value) => {
+                  window.history.replaceState(null, '', companyDashboardTabHref(value));
+                  router.replace(companyDashboardTabHref(value), { scroll: false });
+                }} className="w-full">
                   <TabsContent value="profile" className="mt-4 space-y-4">
                     <ProfileDashboardTab />
                   </TabsContent>
@@ -528,53 +117,20 @@ function CompanyDashboardContent() {
                       onSubTabChange={setCapabilityOffersTab}
                       offerRequestsTab={offerRequestsTab}
                       onOfferRequestsTabChange={setOfferRequestsTab}
-                      serviceOffers={serviceOffers}
-                      loadingServiceOffers={loadingServiceOffers}
-                      canListCapabilities={canListCapabilities}
-                      payoutHref={payoutHref}
-                      offerRequests={offerRequests}
-                      loadingOfferRequests={loadingOfferRequests}
-                      updatingOfferRequestId={updatingOfferRequestId}
-                      onOfferRequestStatusUpdate={handleOfferRequestStatusUpdate}
-                      onOfferRequestsUpdated={fetchOfferRequests}
+                      serviceOffers={data.serviceOffers}
+                      loadingServiceOffers={data.loadingServiceOffers}
+                      canListCapabilities={payoutConnected === true}
+                      payoutHref={dashboardProfilePayoutHref('company')}
+                      offerRequests={data.offerRequests}
+                      loadingOfferRequests={data.loadingOfferRequests}
+                      updatingOfferRequestId={offerRequestActions.updatingOfferRequestId}
+                      onOfferRequestStatusUpdate={offerRequestActions.handleOfferRequestStatusUpdate}
+                      onOfferRequestsUpdated={data.fetchOfferRequests}
                     />
                   </TabsContent>
 
                   <TabsContent value="csr-projects" className="mt-4 space-y-4">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <h3 className="font-medium">Active CSR Projects</h3>
-                      <Button variant="outline" size="sm" onClick={() => { void fetchProjectOpportunities(); void fetchCSRTrackingAssignments(); void fetchPublishedCsrCampaigns(); }} className="w-full sm:w-auto">Refresh</Button>
-                    </div>
-
-                    <ProjectOpportunitiesSection
-                      opportunities={projectOpportunities}
-                      loading={loadingProjectOpportunities}
-                      allVerified={allVerified}
-                      applicationNote={projectApplicationNote}
-                      onApplicationNoteChange={setProjectApplicationNote}
-                      applyingProjectId={applyingProjectId}
-                      onApply={applyToProjectOpportunity}
-                      onRefresh={fetchProjectOpportunities}
-                    />
-
-                    <CsrTrackingSection
-                      assignments={csrTrackingAssignments}
-                      loading={loadingCSRTrackingAssignments}
-                      onRefresh={fetchCSRTrackingAssignments}
-                      ngoDirectory={ngoDirectory}
-                      loadingNgoDirectory={loadingNgoDirectory}
-                      inviteSearchByProject={inviteSearchByProject}
-                      setInviteSearchByProject={setInviteSearchByProject}
-                      allVerified={allVerified}
-                      invitingProjectId={invitingProjectId}
-                      onInvite={inviteLeadNgosFromDashboard}
-                    />
-
-                    <PublishedCampaignsSection
-                      campaigns={publishedCsrCampaigns}
-                      loading={loadingPublishedCsrCampaigns}
-                      onRefresh={fetchPublishedCsrCampaigns}
-                    />
+                    <CsrProjectsTab data={data} actions={csrProjectActions} allVerified={allVerified} />
                   </TabsContent>
 
                   <TabsContent value="company-ca" className="mt-4 space-y-4">
@@ -595,9 +151,9 @@ function CompanyDashboardContent() {
                       emptyMessage="No Razorpay payments recorded yet for your company account."
                     />
                   </TabsContent>
-                    </Tabs>
-                  </CardContent>
-                </Card>
+                </Tabs>
+              </CardContent>
+            </Card>
           </div>
         </DashboardBodyLayout>
       </div>

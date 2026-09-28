@@ -30,7 +30,7 @@ export async function getNgoLeadInvitations(ctx: AssignmentsGetContext) {
         .from('service_request_projects')
         .select('id, title, location, exact_address, timeline')
         .in('id', projectIds)
-    : { data: [], error: null as any }
+    : { data: [], error: null }
 
   if (projectsError) throw projectsError
 
@@ -39,12 +39,12 @@ export async function getNgoLeadInvitations(ctx: AssignmentsGetContext) {
         .from('users')
         .select('id, name, email')
         .in('id', companyIds)
-    : { data: [], error: null as any }
+    : { data: [], error: null }
 
   if (companiesError) throw companiesError
 
-  const projectsById = new Map<string, any>((projects || []).map((item) => [String(item.id), item]))
-  const companiesById = new Map<number, any>((companies || []).map((item) => [Number(item.id), item]))
+  const projectsById = new Map((projects || []).map((item) => [String(item.id), item] as const))
+  const companiesById = new Map((companies || []).map((item) => [Number(item.id), item] as const))
 
   const payload = (invites || []).map((invite) => {
     const inviteMeta = parseJsonObject(invite.meta)

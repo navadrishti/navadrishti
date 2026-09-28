@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useEffectEvent } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -14,13 +14,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
-import { CAVerificationReview, caReviewDescription, isCaReviewLocked } from '@/components/ca-verification-review';
+import { CAVerificationReview, caReviewDescription, isCaReviewLocked, type CAReviewItem } from '@/components/ca-verification-review';
 
-interface VerificationDetail {
-  id: number;
+type VerificationDetail = CAReviewItem & {
   user_id: number;
-  [key: string]: any;
-}
+};
 
 interface VerificationDetailsPageProps {
   type: 'individuals' | 'companies' | 'ngos';
@@ -34,10 +32,6 @@ export default function VerificationDetailsPage({ type }: VerificationDetailsPag
   const [reviewLoading, setReviewLoading] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
   const [complianceTags, setComplianceTags] = useState<string[]>([]);
-
-  useEffect(() => {
-    fetchItems();
-  }, [type]);
 
   const fetchItems = async () => {
     try {
@@ -53,6 +47,12 @@ export default function VerificationDetailsPage({ type }: VerificationDetailsPag
       setLoading(false);
     }
   };
+
+  const fetchItemsForType = useEffectEvent(fetchItems);
+
+  useEffect(() => {
+    fetchItemsForType();
+  }, [type]);
 
   const openReview = async (item: VerificationDetail) => {
     setSelectedItem(item);

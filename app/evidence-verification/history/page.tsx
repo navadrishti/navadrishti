@@ -12,6 +12,7 @@ import {
   EvidenceSectionCard,
 } from '@/components/evidence-verification/portal-ui';
 import { finalizeConsoleLogout } from '@/lib/utils';
+import type { CompanyCAContext } from '../types';
 
 type AuditEvent = {
   id: string;
@@ -20,7 +21,7 @@ type AuditEvent = {
   entity_id: string;
   description?: string;
   created_at: string;
-  details?: Record<string, any>;
+  details?: Record<string, unknown>;
 };
 
 function prettifyLabel(value: string) {
@@ -73,7 +74,7 @@ function HistorySkeleton() {
 export default function EvidenceVerificationHistoryPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [context, setContext] = useState<any>(null);
+  const [context, setContext] = useState<CompanyCAContext | null>(null);
   const [projectAuditById, setProjectAuditById] = useState<Record<string, AuditEvent[]>>({});
   const [message, setMessage] = useState('');
   const [selectedEventType, setSelectedEventType] = useState<string>('ALL');
@@ -137,7 +138,7 @@ export default function EvidenceVerificationHistoryPage() {
           const loadedProjects = projectsPayload.data;
 
           const auditEntries = await Promise.all(
-            loadedProjects.map(async (project: any) => {
+            loadedProjects.map(async (project: { id: string }) => {
               const audit = await fetchProjectAudit(project.id);
               return { projectId: project.id, audit };
             })
@@ -216,7 +217,7 @@ export default function EvidenceVerificationHistoryPage() {
     }, 350);
   };
 
-  const scopeLabels = formatVerifierScopeLabels(context);
+  const scopeLabels = formatVerifierScopeLabels(context ?? undefined);
 
   return (
     <EvidencePortalShell>

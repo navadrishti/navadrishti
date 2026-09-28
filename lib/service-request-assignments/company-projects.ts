@@ -45,8 +45,9 @@ export async function getCompanyProjects(ctx: AssignmentsGetContext) {
   const opportunities = []
 
   for (const raw of projects || []) {
-    const project = enrichProjectRecord(raw) as any
-    if (project?.csr_project_available_for_csr === false) continue
+    const project = enrichProjectRecord(raw)
+    if (!project) continue
+    if (project.csr_project_available_for_csr === false) continue
     if (Number(project.assigned_company_user_id || 0) > 0 && String(project.assignment_status || '').toLowerCase() === 'accepted') {
       continue
     }
@@ -64,9 +65,9 @@ export async function getCompanyProjects(ctx: AssignmentsGetContext) {
     const pending = Array.isArray(project.pending_company_applications)
       ? project.pending_company_applications
       : []
-    const myApp = pending.find((item: any) => Number(item.company_id) === Number(userId))
+    const myApp = pending.find((item) => Number(item.company_id) === Number(userId))
     const acceptedElsewhere = pending.some(
-      (item: any) => String(item.status || '').toLowerCase() === 'accepted' && Number(item.company_id) !== Number(userId)
+      (item) => String(item.status || '').toLowerCase() === 'accepted' && Number(item.company_id) !== Number(userId)
     )
     if (acceptedElsewhere) continue
 

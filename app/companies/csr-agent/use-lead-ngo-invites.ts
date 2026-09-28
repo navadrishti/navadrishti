@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react"
 import { fetchScoredNgoDirectory } from "./api"
-import { type RemoteInviteState, acceptedLeadNgoFromRemote, mergeRemoteLeadInvites } from "./helpers"
+import { type RemoteInviteState, acceptedLeadNgoFromRemote, isPendingLeadInvite, leadInvitesFromRemote } from "./helpers"
 import {
   type CSRAgentSession,
   type LeadNgoInvite,
@@ -71,9 +71,7 @@ export function useLeadNgoInvites({
     ],
   )
 
-  useEffect(() => {
-    if (!mounted || !userId || !token) return
-    if (hasLockedLeadNgo) return
+  const refreshNgoDirectory = useEffectEvent(async (authToken: string, isCancelled: () => boolean) => {
     if (!projectData.campaignName?.trim() || !projectData.category?.trim() || !projectData.endDate?.trim()) {
       setNgoDirectory([])
       lastNgoSuggestionKeyRef.current = null
@@ -82,24 +80,27 @@ export function useLeadNgoInvites({
 
     if (lastNgoSuggestionKeyRef.current === ngoSuggestionKey && ngoDirectory.length > 0) return
 
-    let cancelled = false
-    const loadNgoDirectory = async () => {
-      setIsFetchingNgoDirectory(true)
-      try {
-        const mapped = await fetchScoredNgoDirectory(token, projectData)
-        if (!cancelled) {
-          setNgoDirectory(mapped)
-          lastNgoSuggestionKeyRef.current = ngoSuggestionKey
-        }
-      } catch (e) {
-        console.error('Failed to load scored NGO directory', e)
-        if (!cancelled) setNgoDirectory([])
-      } finally {
-        if (!cancelled) setIsFetchingNgoDirectory(false)
+    setIsFetchingNgoDirectory(true)
+    try {
+      const mapped = await fetchScoredNgoDirectory(authToken, projectData)
+      if (!isCancelled()) {
+        setNgoDirectory(mapped)
+        lastNgoSuggestionKeyRef.current = ngoSuggestionKey
       }
+    } catch (e) {
+      console.error('Failed to load scored NGO directory', e)
+      if (!isCancelled()) setNgoDirectory([])
+    } finally {
+      if (!isCancelled()) setIsFetchingNgoDirectory(false)
     }
+  })
 
-    void loadNgoDirectory()
+  useEffect(() => {
+    if (!mounted || !userId || !token) return
+    if (hasLockedLeadNgo) return
+
+    let cancelled = false
+    void refreshNgoDirectory(token, () => cancelled)
     return () => {
       cancelled = true
     }
@@ -120,7 +121,7 @@ export function useLeadNgoInvites({
     if (accepted) {
       setConfirmedLeadNgo(accepted)
     }
-    setLeadNgoInvites((current) => mergeRemoteLeadInvites(current, data))
+    setLeadNgoInvites(leadInvitesFromRemote(data))
   }
 
   const syncLeadInviteStatuses = async (overrides?: { draftCampaignId?: string | null; sessionId?: string | null }) => {
@@ -140,18 +141,7 @@ export function useLeadNgoInvites({
     if (!response.ok || !payload?.success) return null
     applyRemoteInviteState(payload.data || {})
     if (payload.data?.leadNgoAccepted) {
-      setTimeout(() => {
-        persistSnapshot({
-          leadNgoInvites: normalizeLeadNgoInvites(
-            (Array.isArray(payload.data?.invites) ? payload.data.invites : []).map((row: { ngo_id: number; name: string; email: string; status: string }) => ({
-              ngoId: row.ngo_id,
-              name: row.name,
-              email: row.email,
-              status: row.status,
-            })),
-          ),
-        })
-      }, 0)
+      setTimeout(() => persistSnapshot({ leadNgoInvites: leadInvitesFromRemote(payload.data) }), 0)
     }
     return payload.data
   }
@@ -169,10 +159,10 @@ export function useLeadNgoInvites({
       return
     }
 
-    const alreadyInvited = leadNgoInvites.some((item) => item.ngoId === ngo.id)
+    const alreadyInvited = leadNgoInvites.some((item) => item.ngoId === ngo.id && isPendingLeadInvite(item))
 
-    try {
-      const response = await fetch('/api/csr-agent/lead-ngo-invites', {
+    const postInviteAction = (targetDraftId: string | null) =>
+      fetch('/api/csr-agent/lead-ngo-invites', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -180,7 +170,7 @@ export function useLeadNgoInvites({
         },
         body: JSON.stringify({
           sessionId: activeSessionId,
-          draftCampaignId,
+          draftCampaignId: targetDraftId,
           action: alreadyInvited ? 'revoke' : 'invite',
           ngoId: ngo.id,
           ngoName: ngo.name,
@@ -189,6 +179,12 @@ export function useLeadNgoInvites({
           volunteerRequirement: projectData.volunteerRequirement || '',
         }),
       })
+
+    try {
+      let response = await postInviteAction(draftCampaignId)
+      if (response.status === 404 && draftCampaignId) {
+        response = await postInviteAction(null)
+      }
 
       const payload = await response.json().catch(() => null)
       if (!response.ok || !payload?.success) {
@@ -219,14 +215,44 @@ export function useLeadNgoInvites({
     }
   }
 
+  const ensureDraftCampaign = async (): Promise<string | null> => {
+    if (draftCampaignId) return draftCampaignId
+    if (!token || !activeSessionId) return null
+
+    const response = await fetch('/api/csr-agent/lead-ngo-invites', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        sessionId: activeSessionId,
+        action: 'save_draft',
+        projectData,
+        volunteerRequirement: projectData.volunteerRequirement || '',
+      }),
+    })
+    const payload = await response.json().catch(() => null)
+    if (!response.ok || !payload?.success || !payload.data?.draftCampaignId) {
+      throw new Error(payload?.error || 'Could not save the campaign draft')
+    }
+
+    applyRemoteInviteState(payload.data)
+    const savedId = String(payload.data.draftCampaignId)
+    setTimeout(() => persistSnapshot({ draftCampaignId: savedId }), 0)
+    return savedId
+  }
+
+  const syncInviteStatuses = useEffectEvent(() => syncLeadInviteStatuses())
+
   useEffect(() => {
     if (!mounted || !userId || !token) return
     if (hasLockedLeadNgo) return
     if (!draftCampaignId && leadNgoInvites.length === 0) return
 
-    void syncLeadInviteStatuses()
+    void syncInviteStatuses()
     const interval = setInterval(() => {
-      void syncLeadInviteStatuses()
+      void syncInviteStatuses()
     }, 5000)
 
     return () => clearInterval(interval)
@@ -241,5 +267,6 @@ export function useLeadNgoInvites({
     restoreFromSession,
     syncLeadInviteStatuses,
     handleInviteLeadNgoToggle,
+    ensureDraftCampaign,
   }
 }

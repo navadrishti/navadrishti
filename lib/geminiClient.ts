@@ -3,6 +3,13 @@ export interface ChatMessage {
   content: string;
 }
 
+export interface GeminiGenerateResponse {
+  candidates?: Array<{
+    finishReason?: string;
+    content?: { parts?: Array<{ text?: string }> };
+  }>;
+}
+
 export class GeminiError extends Error {
   constructor(public status: number, message: string, public isSafety?: boolean) {
     super(message);
@@ -72,7 +79,7 @@ export async function GeminiChat(messages: ChatMessage[], retryCount = 0): Promi
       throw new GeminiError(res.status, await res.text());
     }
 
-    const data = await res.json();
+    const data: GeminiGenerateResponse = await res.json();
     const candidate = data?.candidates?.[0];
 
     // 6. SAFETY FILTERS
@@ -84,7 +91,7 @@ export async function GeminiChat(messages: ChatMessage[], retryCount = 0): Promi
     // 7. MULTI-PART EXTRACTION
     // Joins all text segments to ensure the full JSON string is captured.
     const output = candidate.content?.parts
-      ?.map((p: any) => p.text)
+      ?.map((p) => p.text)
       .filter(Boolean)
       .join("")
       .trim();

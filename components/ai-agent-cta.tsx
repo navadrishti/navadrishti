@@ -1,8 +1,10 @@
 "use client"
 
+import Image from "next/image"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
+import { useIsClient } from "@/hooks/use-is-client"
 import { X } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
 import { AGENT_CTA } from "@/lib/ai-agent-sessions"
@@ -10,9 +12,11 @@ import { PRODUCT_LOGO_SRC } from "@/lib/access-control"
 
 function LogoOrIcon({ className }: { className?: string }) {
   return (
-    <img
+    <Image
       src={PRODUCT_LOGO_SRC}
       alt="GRAM"
+      width={36}
+      height={36}
       className={`${className ?? ""} object-contain`}
     />
   )
@@ -22,14 +26,10 @@ export function AIAgentCTA() {
   const { user } = useAuth()
   const pathname = usePathname()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
-  const [mounted, setMounted] = useState(false)
+  const mounted = useIsClient()
   const [isMobile, setIsMobile] = useState(false)
   const [showExpanded, setShowExpanded] = useState(false)
-  const [typedPrompt, setTypedPrompt] = useState('')
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
+  const [typedLength, setTypedLength] = useState(0)
 
   useEffect(() => {
     const handleMobileMenuState = (event: Event) => {
@@ -49,28 +49,30 @@ export function AIAgentCTA() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
+  const promptActive = showExpanded && mounted && Boolean(user)
+  const fullPrompt = user?.user_type === 'company'
+    ? 'A new CSR project? Let\'s make it'
+    : 'A new need? Let\'s make it'
+  const typedPrompt = promptActive ? fullPrompt.slice(0, typedLength) : ''
+
+  if (!promptActive && typedLength !== 0) {
+    setTypedLength(0)
+  }
+
   useEffect(() => {
-    if (!showExpanded || !mounted || !user) {
-      setTypedPrompt('')
-      return
-    }
+    if (!promptActive) return
 
-    const prompt = user?.user_type === 'company'
-      ? 'A new CSR project? Let\'s make it'
-      : 'A new need? Let\'s make it'
-
-    setTypedPrompt('')
     let index = 0
     const timer = window.setInterval(() => {
       index += 1
-      setTypedPrompt(prompt.slice(0, index))
-      if (index >= prompt.length) {
+      setTypedLength(index)
+      if (index >= fullPrompt.length) {
         window.clearInterval(timer)
       }
     }, 28)
 
     return () => window.clearInterval(timer)
-  }, [showExpanded, mounted, user?.user_type])
+  }, [promptActive, fullPrompt])
 
   const aiAgentCta = !mounted || !user ? null : (user.user_type === 'company'
     ? AGENT_CTA.company

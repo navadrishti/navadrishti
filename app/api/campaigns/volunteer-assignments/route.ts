@@ -1,16 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase, ensureCampaignVolunteerAssignment } from '@/lib/db'
-import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth'
+import { getAuthUserFromRequest, assertUserType, authErrorResponse } from '@/lib/server-auth'
 import { getCampaignLeadLifecycle } from '@/lib/format-date'
 import { readCampaignCategory, readCampaignLocation } from '@/lib/campaign-schema'
 
 import { parseJsonObject } from '@/lib/utils'
+import type { Tables } from '@/lib/database.types'
 import {
   filterCampaignVolunteerAssignments,
   getVolunteerApplicationForUser,
   isCampaignLeadNgo,
   isCampaignVolunteerApplicant,
 } from '@/lib/campaign-volunteer-attendance'
+
+type CompanySummary = Pick<Tables<'users'>, 'id' | 'name' | 'email' | 'verification_status'>
+type VolunteerAssignment = Pick<Tables<'service_engagement_assignments'>, 'id' | 'meta'>
 
 export async function GET(request: NextRequest) {
   try {
@@ -31,9 +35,9 @@ export async function GET(request: NextRequest) {
     const companyIds = [...new Set(volunteeredCampaigns.map((row) => Number(row.company_id || 0)).filter((id) => id > 0))]
     const { data: companies } = companyIds.length > 0
       ? await supabase.from('users').select('id, name, email, verification_status').in('id', companyIds)
-      : { data: [] as any[] }
+      : { data: [] as CompanySummary[] }
 
-    const companiesById = new Map<number, any>((companies || []).map((row) => [Number(row.id), row]))
+    const companiesById = new Map<number, CompanySummary>((companies || []).map((row) => [Number(row.id), row]))
 
     const { data: assignments } = await supabase
       .from('service_engagement_assignments')
@@ -42,7 +46,7 @@ export async function GET(request: NextRequest) {
 
     const campaignAssignments = filterCampaignVolunteerAssignments(assignments)
 
-    const assignmentsByCampaignId = new Map<string, any>(
+    const assignmentsByCampaignId = new Map<string, VolunteerAssignment>(
       campaignAssignments.map((row) => [String(row.target_id), row])
     )
 
@@ -101,6 +105,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: payload })
   } catch (error) {
+    const authResponse = authErrorResponse(error)
+    if (authResponse) return authResponse
     console.error('Campaign volunteer assignments error:', error)
     return NextResponse.json({ error: 'Failed to fetch campaign volunteer assignments' }, { status: 500 })
   }

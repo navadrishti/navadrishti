@@ -54,10 +54,6 @@ export function PlatformCAManagement() {
   const [resetPassword, setResetPassword] = useState('');
   const [resetConfirmPassword, setResetConfirmPassword] = useState('');
 
-  useEffect(() => {
-    fetchAccounts();
-  }, []);
-
   const fetchAvailableCaIds = async () => {
     try {
       const response = await fetch('/api/admin/ca-credentials?query=unique-ca-ids', { credentials: 'include' });
@@ -80,12 +76,16 @@ export function PlatformCAManagement() {
       if (data.success) {
         setAccounts(Array.isArray(data.data) ? data.data : []);
       }
-    } catch (error) {
+    } catch {
       toast.error('Failed to fetch CA accounts');
     } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchAccounts();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -9,6 +9,7 @@ import { getTokenClaims, CSR_ELIGIBILITY_REQUIRED_MESSAGE, CSR_OWN_PROJECT_TIMEL
 import { ngoUserIsCsrEligible, ngoUserIsCsrEligibleForProject } from '@/lib/server-auth';
 import { CSR_SCHEDULE_VII_CATEGORIES, SERVICE_REQUEST_TYPES } from '@/lib/categories';
 import { isHiddenNgoNetworkPaymentChannel } from '@/lib/razorpay-route';
+import { ServiceRequestDeleteBlockedError } from '@/lib/service-requests/errors';
 import { parseAmountToInr, parseJsonObject } from '@/lib/utils';
 
 function parseImageArray(value: unknown): string[] {
@@ -83,7 +84,7 @@ function deriveAutoUrgency(timeline: unknown, createdAtMs: number): 'low' | 'med
   return 'low';
 }
 
-function buildProgressFields(body: Record<string, any>, existing?: Record<string, any> | null) {
+function buildProgressFields(body: Record<string, unknown>, existing?: Record<string, unknown> | null) {
   const targetAmount = parseAmount(body.target_amount ?? body.estimated_budget ?? body.budget ?? existing?.target_amount ?? existing?.estimated_budget ?? existing?.budget);
   const targetQuantity = parseAmount(body.target_quantity ?? body.quantity ?? body.volunteers_needed ?? body.beneficiary_count ?? existing?.target_quantity ?? existing?.quantity ?? existing?.volunteers_needed ?? existing?.beneficiary_count);
   const currentAmount = parseAmount(body.current_amount ?? existing?.current_amount) ?? 0;
@@ -99,7 +100,7 @@ function buildProgressFields(body: Record<string, any>, existing?: Record<string
   };
 }
 
-function isLockedCsrProject(request: Record<string, any>): boolean {
+function isLockedCsrProject(request: { project_context?: unknown }): boolean {
   const projectContext = parseJsonObject(request?.project_context)
   const assignment = parseJsonObject(projectContext?.csr_assignment)
   return projectContext?.csr_project_available_for_csr === false || assignment?.mode === 'company_project_handoff' || Number(assignment?.assigned_company_id || 0) > 0
@@ -123,32 +124,34 @@ export async function GET(
       }, { status: 404 });
     }
 
-    const serviceRequest: Record<string, any> = { ...found };
-    if (found.requester) {
-      serviceRequest.ngo_name = found.requester.name;
-    }
-
-    const requirements = parseJsonObject(serviceRequest.requirements);
+    const requirements = parseJsonObject(found.requirements);
     const requirementImages = parseImageArray(requirements.images);
-    serviceRequest.images = requirementImages.length > 0
-      ? requirementImages
-      : parseImageArray(serviceRequest.image_url);
-    serviceRequest.request_type = serviceRequest.request_type || requirements.request_type || (SERVICE_REQUEST_TYPES.includes(serviceRequest.category) ? serviceRequest.category : 'Skill / Service Need');
-    serviceRequest.category = requirements.project_category || requirements?.project?.category || serviceRequest.category || 'Uncategorized';
-    serviceRequest.estimated_budget = serviceRequest.estimated_budget != null ? String(serviceRequest.estimated_budget) : (requirements.estimated_budget || requirements.budget || 'Not specified');
-    serviceRequest.beneficiary_count = serviceRequest.beneficiary_count != null ? Number(serviceRequest.beneficiary_count) : Number(requirements.beneficiary_count || 0);
-    serviceRequest.impact_description = serviceRequest.impact_description || requirements.impact_description || '';
+    const resolvedRequestType = found.request_type || requirements.request_type || (SERVICE_REQUEST_TYPES.includes(found.category) ? found.category : 'Skill / Service Need');
+    const estimatedBudget = found.estimated_budget != null ? String(found.estimated_budget) : (requirements.estimated_budget || requirements.budget || 'Not specified');
 
-    const requestType = String(serviceRequest.request_type || requirements.request_type || '');
+    const serviceRequest: Record<string, unknown> = {
+      ...found,
+      ...(found.requester ? { ngo_name: found.requester.name } : {}),
+      images: requirementImages.length > 0
+        ? requirementImages
+        : parseImageArray(found.image_url),
+      request_type: resolvedRequestType,
+      category: requirements.project_category || requirements?.project?.category || found.category || 'Uncategorized',
+      estimated_budget: estimatedBudget,
+      beneficiary_count: found.beneficiary_count != null ? Number(found.beneficiary_count) : Number(requirements.beneficiary_count || 0),
+      impact_description: found.impact_description || requirements.impact_description || '',
+    };
+
+    const requestType = String(resolvedRequestType || requirements.request_type || '');
     if (isFinancialNeedType(requestType)) {
       const targetInr = resolveFundingTargetInr({
         funding_target_inr: requirements.funding_target_inr,
-        target_amount: serviceRequest.target_amount,
-        estimated_budget: requirements.estimated_budget ?? serviceRequest.estimated_budget,
+        target_amount: found.target_amount,
+        estimated_budget: requirements.estimated_budget ?? estimatedBudget,
         budget: requirements.budget,
       });
 
-      const funding = getFundingProgress(targetInr, parseAmountToInr(serviceRequest.current_amount));
+      const funding = getFundingProgress(targetInr, parseAmountToInr(found.current_amount));
       serviceRequest.funding_target_inr = funding.target;
       serviceRequest.funds_raised_inr = funding.raised;
       serviceRequest.funds_remaining_inr = funding.remaining;
@@ -495,6 +498,9 @@ export async function DELETE(
     });
 
   } catch (error) {
+    if (error instanceof ServiceRequestDeleteBlockedError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     console.error('Error deleting service request:', error);
     return NextResponse.json(
       { error: 'Failed to delete service request' },

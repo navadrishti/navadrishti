@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getTokenClaims, CSR_OWN_PROJECT_TIMELINE_MESSAGE, CSR_PROJECT_CREATE_REQUIRED_MESSAGE } from '@/lib/auth'
 import { ngoUserIsCsrEligible, ngoUserIsCsrEligibleForProject } from '@/lib/server-auth'
+import { ServiceRequestDeleteBlockedError } from '@/lib/service-requests/errors'
 import {
   formatProjectExactAddress,
   parseProjectExactAddress,
@@ -11,6 +12,7 @@ import {
   mergeClientProjectDescription,
   stripProjectMetaFromDescription,
 } from '@/lib/service-request-allocation'
+import type { TablesUpdate } from '@/lib/database.types'
 
 export async function PUT(
   request: NextRequest,
@@ -43,7 +45,7 @@ export async function PUT(
       return NextResponse.json({ error: CSR_PROJECT_CREATE_REQUIRED_MESSAGE }, { status: 403 })
     }
 
-    const updates: any = {}
+    const updates: TablesUpdate<'service_request_projects'> = {}
     if (body.title !== undefined) updates.title = String(body.title).trim() || undefined
     if (body.description !== undefined) {
       updates.description = mergeClientProjectDescription(
@@ -194,6 +196,9 @@ export async function DELETE(
     await db.requestProjects.delete(projectId)
     return NextResponse.json({ success: true, message: 'Project deleted successfully' })
   } catch (error) {
+    if (error instanceof ServiceRequestDeleteBlockedError) {
+      return NextResponse.json({ error: error.message }, { status: 409 })
+    }
     console.error('Failed to delete project:', error)
     return NextResponse.json({ error: 'Failed to delete project' }, { status: 500 })
   }

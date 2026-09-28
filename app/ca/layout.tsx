@@ -15,6 +15,7 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import { cn, finalizeConsoleLogout, hasConsoleTabSession, clearConsoleTabSession } from '@/lib/utils';
+import { useNavigationMenu } from '@/hooks/use-navigation-menu';
 
 const navItems = [
   { label: 'Dashboard', href: '/ca' },
@@ -24,22 +25,14 @@ const navItems = [
 export default function CALayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useNavigationMenu();
   const isLoginRoute = pathname === '/ca/login';
   const isChangePasswordRoute = pathname === '/ca/change-password';
   const isPublicRoute = isLoginRoute || isChangePasswordRoute;
-
-  const [ready, setReady] = useState(() => {
-    if (isPublicRoute) return true;
-    if (typeof window === 'undefined') return false;
-    return false;
-  });
+  const [ready, setReady] = useState(isPublicRoute);
 
   useEffect(() => {
-    if (isPublicRoute) {
-      setReady(true);
-      return;
-    }
+    if (isPublicRoute) return;
 
     let cancelled = false;
 
@@ -74,10 +67,6 @@ export default function CALayout({ children }: { children: React.ReactNode }) {
       cancelled = true;
     };
   }, [isPublicRoute, router]);
-
-  useEffect(() => {
-    setMobileMenuOpen(false);
-  }, [pathname]);
 
   const handleLogout = async () => {
     await finalizeConsoleLogout({

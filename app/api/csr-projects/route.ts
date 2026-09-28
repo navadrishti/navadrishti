@@ -87,7 +87,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: projects });
   } catch (error) {
-    if (error instanceof Error && error.message === 'Authentication required') {
+    if (error instanceof Error && ['Authentication required', 'Invalid authentication token'].includes(error.message)) {
       return NextResponse.json({ error: error.message }, { status: 401 });
     }
 

@@ -162,23 +162,10 @@ export function useOtpSender(setFormErrors: Dispatch<SetStateAction<FormErrors>>
         return false;
       }
 
-      const supabase = createClient();
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          shouldCreateUser: false,
-        },
-      });
-
-      if (error) {
-        toast.error(error.message || 'Failed to send email OTP');
-        return false;
-      }
-
       setOtpSent(prev => ({ ...prev, email: true }));
       setOtpVerified(prev => ({ ...prev, email: false }));
       startCooldown('email');
-      toast.success('Email OTP sent successfully');
+      toast.success(forgotData.message || 'If an account with that email exists, we have sent a password reset OTP.');
       return true;
     } catch {
       toast.error('Failed to send email OTP. Please try again.');

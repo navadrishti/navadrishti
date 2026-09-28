@@ -1,6 +1,7 @@
 "use client"
 
 import { ReactNode, useEffect, useState } from 'react'
+import { useIsClient } from '@/hooks/use-is-client'
 import { createPortal } from 'react-dom'
 import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -75,14 +76,10 @@ export function DashboardQuickSidebar({
   triggerLabel = 'Sections',
   children,
 }: DashboardQuickSidebarProps) {
-  const [mounted, setMounted] = useState(false)
+  const mounted = useIsClient()
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false)
   const [atPageBottom, setAtPageBottom] = useState(false)
   const showNav = items.length > 1
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
 
   useEffect(() => {
     const onHeaderMenuState = (event: Event) => {

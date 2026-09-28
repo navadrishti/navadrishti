@@ -137,7 +137,7 @@ export async function POST(
 
     return NextResponse.json({ success: true, data: evidence }, { status: 201 });
   } catch (error) {
-    if (error instanceof Error && error.message === 'Authentication required') {
+    if (error instanceof Error && ['Authentication required', 'Invalid authentication token'].includes(error.message)) {
       return NextResponse.json({ error: error.message }, { status: 401 });
     }
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useEffectEvent, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -16,7 +16,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
-import { CAVerificationReview, caReviewDescription, isCaReviewLocked } from '@/components/ca-verification-review';
+import { CAVerificationReview, caReviewDescription, isCaReviewLocked, type CAReviewItem } from '@/components/ca-verification-review';
 import { getErrorMessage } from '@/lib/utils';
 
 interface Individual {
@@ -125,16 +125,12 @@ export default function CADashboardClient() {
   const [error, setError]             = useState('');
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('unverified');
   const [searchQuery, setSearchQuery]   = useState('');
-  const [selectedItem, setSelectedItem] = useState<any>(null);
+  const [selectedItem, setSelectedItem] = useState<CAReviewItem | null>(null);
   const [selectedType, setSelectedType] = useState<'individuals' | 'companies' | 'ngos' | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
   const [complianceTags, setComplianceTags] = useState<string[]>([]);
-
-  useEffect(() => {
-    fetchData();
-  }, [filterStatus]);
 
   const fetchData = async () => {
     try {
@@ -157,6 +153,12 @@ export default function CADashboardClient() {
       setLoading(false);
     }
   };
+
+  const fetchDataForFilter = useEffectEvent(fetchData);
+
+  useEffect(() => {
+    fetchDataForFilter();
+  }, [filterStatus]);
 
   const q = searchQuery.toLowerCase();
 
@@ -183,7 +185,7 @@ export default function CADashboardClient() {
       ngo.ngo_description.toLowerCase().includes(q)
     ), [ngos, q]);
 
-  const handleItemClick = async (item: any, type: 'individuals' | 'companies' | 'ngos') => {
+  const handleItemClick = async (item: CAReviewItem, type: 'individuals' | 'companies' | 'ngos') => {
     setSelectedItem(item);
     setSelectedType(type);
     setRejectionReason('');

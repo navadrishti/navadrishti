@@ -8,6 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { getGramAvatarFallbackStyle } from '@/lib/gram-avatar';
 import { Button } from '@/components/ui/button';
 import { ProductBrand } from '@/components/product-brand';
+import { useNow } from '@/hooks/use-now';
 
 type NewsletterItem = {
   id: string;
@@ -95,7 +96,7 @@ export default function LandingPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
   const [hasMore, setHasMore] = useState(false);
-  const [nowMs, setNowMs] = useState(0);
+  const nowMs = useNow();
   const loadedCountRef = useRef(PAGE_SIZE);
 
   const loadNewsletter = useCallback(async (options?: { append?: boolean; silent?: boolean; offset?: number; limit?: number }) => {
@@ -159,10 +160,8 @@ export default function LandingPage() {
   }, []);
 
   useEffect(() => {
-    setNowMs(Date.now());
     loadNewsletter({ offset: 0, limit: PAGE_SIZE });
     const interval = window.setInterval(() => {
-      setNowMs(Date.now());
       loadNewsletter({ silent: true, offset: 0, limit: PAGE_SIZE });
     }, 60000);
 

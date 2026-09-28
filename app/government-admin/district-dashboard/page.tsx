@@ -60,10 +60,6 @@ export default function DistrictAnalyticsDashboard() {
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'completed'>('all');
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    loadAnalytics();
-  }, []);
-
   const loadAnalytics = async () => {
     try {
       setLoading(true);
@@ -87,6 +83,10 @@ export default function DistrictAnalyticsDashboard() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadAnalytics();
+  }, []);
 
   const filteredProjects = projects.filter((p) => {
     if (filterStatus === 'completed') return p.milestones?.every((m) => m.is_fulfilled);

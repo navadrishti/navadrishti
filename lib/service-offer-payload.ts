@@ -15,6 +15,7 @@ import {
   type TransactionType,
 } from '@/lib/service-offers'
 import { parseJsonObject } from '@/lib/utils'
+import type { Json } from '@/lib/database.types'
 
 const LEGACY_CATEGORY_TO_OFFER_TYPE: Record<string, OfferType> = {
   'Funding Capacity': 'financial',
@@ -23,42 +24,56 @@ const LEGACY_CATEGORY_TO_OFFER_TYPE: Record<string, OfferType> = {
   'Execution Capability': 'infrastructure',
 }
 
-// Clients send impact areas and tags as CSV or arrays, and older forms post
-// requirements as an object; normalise all of that before validating.
-export function coerceOfferBody(body: Record<string, any>) {
-  if (Array.isArray(body.impact_area)) {
-    body.impact_area = sanitizeTextArray(body.impact_area)
-  } else if (typeof body.impact_area === 'string') {
-    body.impact_area = parseCsvToStringArray(body.impact_area)
-  } else if (body.impact_area && typeof body.impact_area !== 'object') {
-    body.impact_area = [String(body.impact_area)]
-  } else {
-    body.impact_area = []
-  }
-  body.impact_area = normalizeImpactAreas(body.impact_area)
+type JsonRecord = { [key: string]: Json | undefined }
 
-  if (typeof body.tags === 'string') body.tags = parseCsvToStringArray(body.tags)
-  else body.tags = body.tags ? sanitizeTextArray(body.tags) : []
-
-  body.offer_details = parseJsonObject(body.offer_details)
-
-  if (Array.isArray(body.requirements)) {
-    body.requirements = sanitizeTextArray(body.requirements)
-  } else if (body.requirements && typeof body.requirements === 'object') {
-    body.offer_details = { ...body.offer_details, ...body.requirements }
-    body.requirements = null
-  } else if (typeof body.requirements === 'string') {
-    body.requirements = body.requirements.trim() || null
-  } else {
-    body.requirements = null
-  }
-
-  if (!body.state_province && body['state/province']) body.state_province = body['state/province']
-
-  return body
+export type OfferRequestBody = JsonRecord & {
+  impact_area: string[]
+  tags: string[]
+  offer_details: JsonRecord
+  requirements: string[] | string | null
 }
 
-export function validateOfferBody(body: Record<string, any>): string | null {
+function coerceImpactAreas(value: unknown): string[] {
+  if (Array.isArray(value)) return sanitizeTextArray(value)
+  if (typeof value === 'string') return parseCsvToStringArray(value)
+  if (value && typeof value !== 'object') return [String(value)]
+  return []
+}
+
+// Clients send impact areas and tags as CSV or arrays, and older forms post
+// requirements as an object; normalise all of that before validating.
+export function coerceOfferBody(body: JsonRecord): OfferRequestBody {
+  const impactArea = normalizeImpactAreas(coerceImpactAreas(body.impact_area))
+  const tags = typeof body.tags === 'string'
+    ? parseCsvToStringArray(body.tags)
+    : body.tags ? sanitizeTextArray(body.tags) : []
+
+  let offerDetails: JsonRecord = parseJsonObject(body.offer_details)
+  let requirements: string[] | string | null
+  if (Array.isArray(body.requirements)) {
+    requirements = sanitizeTextArray(body.requirements)
+  } else if (body.requirements && typeof body.requirements === 'object') {
+    offerDetails = { ...offerDetails, ...body.requirements }
+    requirements = null
+  } else if (typeof body.requirements === 'string') {
+    requirements = body.requirements.trim() || null
+  } else {
+    requirements = null
+  }
+
+  const coerced: OfferRequestBody = Object.assign(body, {
+    impact_area: impactArea,
+    tags,
+    offer_details: offerDetails,
+    requirements,
+  })
+
+  if (!coerced.state_province && coerced['state/province']) coerced.state_province = coerced['state/province']
+
+  return coerced
+}
+
+export function validateOfferBody(body: OfferRequestBody): string | null {
   if (!body.title || !body.description || !body.offer_type || !body.transaction_type) {
     return 'Missing required fields: title, description, offer_type, transaction_type.'
   }
@@ -70,8 +85,6 @@ export function validateOfferBody(body: Record<string, any>): string | null {
   if (!isTransactionType(body.transaction_type)) {
     return 'transaction_type must be one of: volunteer, donate, rent.'
   }
-
-  body.transaction_type = normalizeCapabilityTransactionType(body.offer_type, body.transaction_type)
 
   if (body.transaction_type === 'sell') {
     return 'Permanent sale is not supported. Use daily rental instead.'
@@ -119,7 +132,7 @@ export function validateOfferBody(body: Record<string, any>): string | null {
   return null
 }
 
-function buildPriceInfo(offerType: OfferType, transactionType: TransactionType, body: Record<string, any>) {
+function buildPriceInfo(offerType: OfferType, transactionType: TransactionType, body: OfferRequestBody) {
   if (offerType === 'financial' || transactionType === 'volunteer' || transactionType === 'donate') {
     return {
       price_type: 'free',
@@ -139,9 +152,9 @@ function buildPriceInfo(offerType: OfferType, transactionType: TransactionType, 
   }
 }
 
-function buildStoredOfferDetails(offerType: OfferType, body: Record<string, any>) {
-  const details: Record<string, any> = body.offer_details
-  const stored: Record<string, any> = {
+function buildStoredOfferDetails(offerType: OfferType, body: OfferRequestBody) {
+  const details = body.offer_details
+  const stored: JsonRecord = {
     ...details,
     billing_cycle: body.billing_cycle ?? details.billing_cycle ?? 'daily',
     unit_rate: resolveCapabilityRentalRate({
@@ -160,7 +173,7 @@ function buildStoredOfferDetails(offerType: OfferType, body: Record<string, any>
 }
 
 // Columns shared by create and update; expects a body that passed validateOfferBody.
-export function buildOfferRow(body: Record<string, any>) {
+export function buildOfferRow(body: OfferRequestBody) {
   const offerType = body.offer_type as OfferType
   const transactionType = normalizeCapabilityTransactionType(offerType, body.transaction_type as TransactionType)
   const isRental = transactionType === 'rent'
@@ -219,15 +232,36 @@ export function buildOfferCapabilityRow(offer: { id: number; offer_type: string;
   }
 }
 
+type OfferResponseSource = {
+  creator_id?: number | null
+  ngo_id?: number | null
+  offer_type?: string | null
+  category?: string | null
+  transaction_type?: string | null
+  price_type?: string | null
+  price_amount?: number | null
+  offer_details?: unknown
+  requirements?: unknown
+  impact_area?: unknown
+  unit_rate?: number | null
+  billing_cycle?: string | null
+  payment_mode?: string | null
+  rate_currency?: string | null
+  coverage_area?: string | null
+  valid_until?: unknown
+  expires_at?: unknown
+  ngo?: { verification_status?: string | null } | null
+}
+
 // Shapes a service_offers row for the UI, filling the older flat fields
 // (amount, item, skill, scope...) that cards and detail pages still read.
-export function toOfferResponse(offer: any, capabilities?: any[]) {
+export function toOfferResponse<T extends OfferResponseSource>(offer: T, capabilities?: unknown[]) {
   const details = parseJsonObject(offer.offer_details)
   const mergedDetails = Object.keys(details).length > 0 ? details : parseJsonObject(offer.requirements)
 
   const offerType: OfferType = isOfferType(offer.offer_type)
     ? offer.offer_type
-    : LEGACY_CATEGORY_TO_OFFER_TYPE[offer.category] || 'service'
+    : LEGACY_CATEGORY_TO_OFFER_TYPE[offer.category ?? ''] || 'service'
 
   const transactionType = normalizeCapabilityTransactionType(
     offerType,

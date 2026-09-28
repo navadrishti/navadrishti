@@ -39,10 +39,6 @@ export default function StateAnalyticsDashboard() {
   const [sortBy, setSortBy] = useState<'progress' | 'projects' | 'evidence' | 'flags'>('progress');
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    loadAnalytics();
-  }, []);
-
   const loadAnalytics = async () => {
     try {
       setLoading(true);
@@ -65,6 +61,10 @@ export default function StateAnalyticsDashboard() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadAnalytics();
+  }, []);
 
   const getSortedDistricts = () => {
     if (!summary?.districts) return [];

@@ -4,7 +4,9 @@ import {
   assertNgoLiveCsr1,
   CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE,
   getEvidenceApproverContext,
+  type EvidenceApproverContext,
 } from '@/lib/server-auth';
+import { getErrorMessage } from '@/lib/utils';
 
 export async function POST(
   request: NextRequest,
@@ -12,6 +14,14 @@ export async function POST(
 ) {
   try {
     const { id: milestoneId } = await params;
+
+    let approver: EvidenceApproverContext;
+    try {
+      approver = await getEvidenceApproverContext(request);
+    } catch (error) {
+      return NextResponse.json({ error: getErrorMessage(error) || 'CA authentication required' }, { status: 401 });
+    }
+
     const body = await request.json();
     const paymentReference = body.payment_reference as string;
     const amount = body.amount;
@@ -45,6 +55,10 @@ export async function POST(
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
     }
 
+    if (approver.companyUserId !== null && approver.companyUserId !== project.company_user_id) {
+      return NextResponse.json({ error: 'Company CA is not authorized for this company project' }, { status: 403 });
+    }
+
     const leadNgoUserId = Number(project.ngo_user_id || 0);
     if (Number.isFinite(leadNgoUserId) && leadNgoUserId > 0) {
       const csrGate = await assertNgoLiveCsr1(leadNgoUserId, CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE);
@@ -53,7 +67,6 @@ export async function POST(
       }
     }
 
-    const approver = await getEvidenceApproverContext(request, project.company_user_id);
     const createdBy = approver.reviewerUserId ?? null;
 
     const statusToPersist = paymentStatus ?? 'pending';
@@ -149,21 +162,6 @@ export async function POST(
 
     return NextResponse.json({ success: true, data }, { status: 201 });
   } catch (error) {
-    if (
-      error instanceof Error &&
-      [
-        'CA authentication required',
-        'Invalid CA token',
-        'Company CA authentication required',
-        'Invalid company CA token',
-        'Company CA identity not found',
-        'Company CA identity is not active',
-        'Company CA is not authorized for this company project'
-      ].includes(error.message)
-    ) {
-      return NextResponse.json({ error: error.message }, { status: 401 });
-    }
-
     console.error('Milestone payment error:', error);
     return NextResponse.json({ error: 'Failed to create payment confirmation' }, { status: 500 });
   }

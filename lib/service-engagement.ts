@@ -271,7 +271,8 @@ export function accrueCsrFine(rental: CsrCapabilityRentalRecord, referenceDate =
   if (!fine || fine.status === 'none' || fine.status === 'cleared') return rental
 
   const lastAccrual = fine.last_accrual_at ? new Date(fine.last_accrual_at) : new Date(fine.created_at || referenceDate)
-  const daysSince = Math.floor((referenceDate.getTime() - lastAccrual.getTime()) / (24 * 60 * 60 * 1000))
+  const dayMs = 24 * 60 * 60 * 1000
+  const daysSince = Math.floor((referenceDate.getTime() - lastAccrual.getTime()) / dayMs)
   if (daysSince < 1) return rental
 
   const pendingBase = Number(fine.pending_total_inr ?? fine.base_amount_inr ?? 0)
@@ -293,7 +294,7 @@ export function accrueCsrFine(rental: CsrCapabilityRentalRecord, referenceDate =
       ...fine,
       accrued_fine_inr: accrued,
       pending_total_inr: pending,
-      last_accrual_at: referenceDate.toISOString(),
+      last_accrual_at: new Date(lastAccrual.getTime() + daysSince * dayMs).toISOString(),
       status: overdue ? 'overdue' : fine.status === 'suspended' ? 'suspended' : 'pending',
     },
   }

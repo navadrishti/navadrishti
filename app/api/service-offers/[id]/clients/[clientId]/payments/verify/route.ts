@@ -124,6 +124,7 @@ export async function POST(
     const paidInr = Number((Number(providerPayment.amount || 0) / 100).toFixed(2));
     const amountCheck = validateCapturedPaymentAmounts({
       orderNotes: (providerOrder.notes || orderRow.data.order_notes || {}) as Record<string, unknown>,
+      orderAmountPaise: providerOrder.amount,
       paidInr,
     });
     if (!amountCheck.ok) {

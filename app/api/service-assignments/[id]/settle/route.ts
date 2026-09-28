@@ -10,6 +10,7 @@ import {
   verifyRazorpaySignature,
 } from '@/lib/engagement-settlement'
 import { validateCapturedPaymentAmounts } from '@/lib/razorpay-route'
+import { parseJsonObject } from '@/lib/utils'
 
 export async function POST(
   request: NextRequest,
@@ -67,7 +68,13 @@ export async function POST(
       }
 
       const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret })
-      const payment = await razorpay.payments.fetch(razorpay_payment_id)
+      const [payment, providerOrder] = await Promise.all([
+        razorpay.payments.fetch(razorpay_payment_id),
+        razorpay.orders.fetch(razorpay_order_id),
+      ])
+      if (payment?.order_id !== razorpay_order_id || providerOrder?.id !== razorpay_order_id) {
+        return NextResponse.json({ error: 'Order and payment mismatch' }, { status: 400 })
+      }
       if (String(payment.status) !== 'captured') {
         return NextResponse.json({ error: 'Payment not captured yet' }, { status: 409 })
       }
@@ -80,7 +87,8 @@ export async function POST(
 
       const paidInr = Number((Number(payment.amount || 0) / 100).toFixed(2))
       const amountCheck = validateCapturedPaymentAmounts({
-        orderNotes: (orderRow?.order_notes || {}) as Record<string, unknown>,
+        orderNotes: parseJsonObject(orderRow?.order_notes || providerOrder.notes),
+        orderAmountPaise: providerOrder.amount,
         paidInr,
       })
       if (!amountCheck.ok) {

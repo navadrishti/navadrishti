@@ -2,53 +2,55 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import crypto from 'crypto';
 import { db } from '@/lib/db';
-import { normalizeEmailAddress, prepareEmailOtpSession, verifyEmailOtpWithSupabase } from '@/lib/email';
+import {
+  normalizeEmailAddress,
+  prepareEmailOtpSession,
+  sendEmailOtpWithSupabase,
+  verifyEmailOtpWithSupabase,
+} from '@/lib/email';
+import { issueOneTimeCode } from '@/lib/one-time-codes';
+import { limitAttempts, rateLimit, rateLimitedResponse } from '@/lib/rate-limit';
 
 const PASSWORD_RESET_TOKEN_TTL_MS = 15 * 60 * 1000;
-
-type PasswordResetTokenRecord = {
-  email: string;
-  userId: number;
-  expires: number;
+const RESET_OTP_RESEND_LIMIT = { limit: 1, windowMs: 60 * 1000 };
+const GENERIC_SEND_RESPONSE = {
+  message: 'If an account with that email exists, we have sent a password reset OTP.',
+  success: true,
 };
 
-const passwordResetTokens = new Map<string, PasswordResetTokenRecord>();
-
 const sendOtpSchema = z.object({
-  email: z.string().email('Invalid email address'),
+  email: z.string().trim().toLowerCase().email('Invalid email address'),
 });
 
 const verifyOtpSchema = z.object({
-  email: z.string().email('Invalid email address'),
+  email: z.string().trim().toLowerCase().email('Invalid email address'),
   otp: z.string().min(4, 'OTP is required'),
 });
 
-const cleanupExpiredResetTokens = () => {
-  const now = Date.now();
-  for (const [token, record] of passwordResetTokens.entries()) {
-    if (record.expires <= now) {
-      passwordResetTokens.delete(token);
+const isUnknownAuthUserError = (error: { message?: string; code?: string }) => {
+  const code = String(error.code || '').toLowerCase();
+  const message = String(error.message || '').toLowerCase();
+  return (
+    code === 'otp_disabled' ||
+    code === 'user_not_found' ||
+    message.includes('signups not allowed') ||
+    message.includes('user not found')
+  );
+};
+
+async function sendPasswordResetOtp(email: string) {
+  try {
+    const prepared = await prepareEmailOtpSession(email);
+    if (!prepared.ok && prepared.status !== 429) return;
+
+    const sent = await sendEmailOtpWithSupabase(email);
+    if (!sent.ok && !isUnknownAuthUserError(sent.error)) {
+      console.error('Forgot password OTP send error:', sent.error);
     }
+  } catch (error) {
+    console.error('Forgot password OTP send error:', error);
   }
-};
-
-const createPasswordResetToken = (email: string, userId: number) => {
-  const resetToken = crypto.randomBytes(32).toString('hex');
-  passwordResetTokens.set(resetToken, {
-    email: normalizeEmailAddress(email),
-    userId,
-    expires: Date.now() + PASSWORD_RESET_TOKEN_TTL_MS,
-  });
-  return resetToken;
-};
-
-export const getPasswordResetToken = (token: string) => passwordResetTokens.get(token);
-
-export const deletePasswordResetToken = (token: string) => {
-  passwordResetTokens.delete(token);
-};
-
-export { cleanupExpiredResetTokens as cleanupPasswordResetStores };
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -64,16 +66,11 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const email = normalizeEmailAddress(validationResult.data.email);
+      const { email } = validationResult.data;
       const otp = validationResult.data.otp.trim();
 
-      cleanupExpiredResetTokens();
-
-      const user = await db.users.findByEmail(email);
-
-      if (!user) {
-        return NextResponse.json({ error: 'Account not found' }, { status: 404 });
-      }
+      const limited = await limitAttempts(req, 'forgot-password-otp', email);
+      if (limited) return limited;
 
       const verification = await verifyEmailOtpWithSupabase(email, otp);
 
@@ -81,7 +78,20 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: verification.error }, { status: 400 });
       }
 
-      const resetToken = createPasswordResetToken(email, user.id);
+      const user = await db.users.findByEmail(email);
+
+      if (!user) {
+        return NextResponse.json({ error: 'Account not found' }, { status: 404 });
+      }
+
+      const resetToken = crypto.randomBytes(32).toString('hex');
+      await issueOneTimeCode({
+        purpose: 'password_reset',
+        subject: normalizeEmailAddress(email),
+        code: resetToken,
+        userId: user.id,
+        ttlMs: PASSWORD_RESET_TOKEN_TTL_MS,
+      });
 
       return NextResponse.json({
         success: true,
@@ -101,20 +111,28 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const email = normalizeEmailAddress(validationResult.data.email);
-    const user = await db.users.findByEmail(email);
+    const { email } = validationResult.data;
 
-    if (user) {
-      const prepared = await prepareEmailOtpSession(email);
-      if (!prepared.ok) {
-        return NextResponse.json({ error: prepared.error }, { status: prepared.status });
-      }
+    const limited = await limitAttempts(req, 'forgot-password', email);
+    if (limited) return limited;
+
+    // Throttled by address before the account lookup so a 429 says nothing about whether the account exists.
+    const resend = await rateLimit(`forgot-password-resend:${email}`, RESET_OTP_RESEND_LIMIT);
+    if (!resend.allowed) {
+      return rateLimitedResponse(
+        resend.retryAfterSeconds,
+        `Please wait ${resend.retryAfterSeconds}s before requesting another email OTP`
+      );
     }
 
-    return NextResponse.json({
-      message: 'If an account with that email exists, we have sent a password reset OTP.',
-      success: true,
-    });
+    const user = await db.users.findByEmail(email);
+
+    // Send failures are only logged: any difference in the response would reveal that the account exists.
+    if (user) {
+      await sendPasswordResetOtp(email);
+    }
+
+    return NextResponse.json(GENERIC_SEND_RESPONSE);
   } catch (error: unknown) {
     console.error('Forgot password error:', error);
     return NextResponse.json(

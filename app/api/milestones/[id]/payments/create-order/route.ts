@@ -5,6 +5,7 @@ import {
   assertNgoLiveCsr1,
   CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE,
   getEvidenceApproverContext,
+  type EvidenceApproverContext,
 } from '@/lib/server-auth';
 import { parseAmountToInr, getErrorMessage } from '@/lib/utils';
 import {
@@ -23,6 +24,13 @@ export async function POST(
 ) {
   try {
     const { id: milestoneId } = await params;
+
+    let approver: EvidenceApproverContext;
+    try {
+      approver = await getEvidenceApproverContext(request);
+    } catch (error) {
+      return NextResponse.json({ error: getErrorMessage(error) || 'CA authentication required' }, { status: 401 });
+    }
 
     const { data: milestone, error: milestoneError } = await supabase
       .from('csr_project_milestones')
@@ -51,7 +59,9 @@ export async function POST(
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
-    await getEvidenceApproverContext(request, project.company_user_id);
+    if (approver.companyUserId !== null && approver.companyUserId !== project.company_user_id) {
+      return NextResponse.json({ error: 'Company CA is not authorized for this company project' }, { status: 403 });
+    }
 
     const { data: existingConfirmed } = await supabase
       .from('csr_payment_confirmations')
@@ -162,21 +172,6 @@ export async function POST(
       },
     });
   } catch (error) {
-    if (
-      error instanceof Error &&
-      [
-        'CA authentication required',
-        'Invalid CA token',
-        'Company CA authentication required',
-        'Invalid company CA token',
-        'Company CA identity not found',
-        'Company CA identity is not active',
-        'Company CA is not authorized for this company project',
-      ].includes(getErrorMessage(error))
-    ) {
-      return NextResponse.json({ error: getErrorMessage(error) }, { status: 401 });
-    }
-
     console.error('Milestone payment create-order error:', error);
     return NextResponse.json({ error: getErrorMessage(error) || 'Failed to create milestone payment order' }, { status: 500 });
   }

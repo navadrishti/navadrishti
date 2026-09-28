@@ -20,6 +20,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Current password and new password required' }, { status: 400 });
     }
 
+    if (String(newPassword).length < 8) {
+      return NextResponse.json({ error: 'New password must be at least 8 characters' }, { status: 400 });
+    }
+
     const isValid = await verifyPlatformCAPassword(account.id, String(currentPassword));
     if (!isValid) {
       return NextResponse.json({ error: 'Current password is incorrect' }, { status: 401 });

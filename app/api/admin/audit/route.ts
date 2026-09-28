@@ -2,6 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { getAdminUser } from '@/lib/server-auth';
 
+type ReviewDayBucket = {
+  review_date: string;
+  total_reviewed: number;
+  approved_count: number;
+  rejected_count: number;
+  pending_count: number;
+  avg_review_time_hours: number;
+  _review_times: number[];
+};
+
 function toDateKey(value: unknown): string {
   if (!value) return 'unknown';
   const date = new Date(String(value));
@@ -68,7 +78,7 @@ export async function GET(request: NextRequest) {
       ? reviewTimes.reduce((sum, time) => sum + time, 0) / reviewTimes.length
       : 0;
 
-    const statsByDate = reviewRows.reduce((acc: Record<string, any>, review) => {
+    const statsByDate = reviewRows.reduce((acc: Record<string, ReviewDayBucket>, review) => {
       const dateKey = toDateKey(review.reviewed_at || review.review_date || review.created_at);
       if (!acc[dateKey]) {
         acc[dateKey] = {
@@ -78,7 +88,7 @@ export async function GET(request: NextRequest) {
           rejected_count: 0,
           pending_count: 0,
           avg_review_time_hours: 0,
-          _review_times: [] as number[]
+          _review_times: []
         };
       }
 
@@ -111,12 +121,12 @@ export async function GET(request: NextRequest) {
         rejected_count: entry.rejected_count,
         pending_count: entry.pending_count,
         avg_review_time_hours: entry._review_times.length > 0
-          ? entry._review_times.reduce((sum: number, time: number) => sum + time, 0) / entry._review_times.length
+          ? entry._review_times.reduce((sum, time) => sum + time, 0) / entry._review_times.length
           : 0
       }))
       .sort((a, b) => String(a.review_date).localeCompare(String(b.review_date)));
 
-    const notifications: any[] = [];
+    const notifications: unknown[] = [];
     const emailStats = {
       total_sent: 0,
       total_delivered: 0,

@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, supabase } from '@/lib/db';
-import { assertAdminUser } from '@/lib/server-auth';
+import { assertAdminUser, authErrorResponse } from '@/lib/server-auth';
+import { ServiceRequestDeleteBlockedError } from '@/lib/service-requests/errors';
 import { parseJsonObject, getErrorMessage } from '@/lib/utils';
+import type { TablesUpdate } from '@/lib/database.types';
 
 function toNumberOrNull(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
@@ -29,6 +31,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     return NextResponse.json({ success: true, data: serviceRequest });
   } catch (error) {
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
     console.error('Admin service request fetch error:', error);
     return NextResponse.json({ error: getErrorMessage(error) || 'Internal server error' }, { status: 500 });
   }
@@ -71,7 +75,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       nextRequirements.project_category = String(body.category || '').trim();
     }
 
-    const updatePayload: Record<string, any> = {
+    const updatePayload: TablesUpdate<'service_requests'> = {
       updated_at: new Date().toISOString(),
     };
 
@@ -117,6 +121,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     return NextResponse.json({ success: true, data });
   } catch (error) {
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
     console.error('Admin service request update error:', error);
     return NextResponse.json({ error: getErrorMessage(error) || 'Internal server error' }, { status: 500 });
   }
@@ -141,6 +147,11 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
     return NextResponse.json({ success: true, message: 'Service request deleted successfully' });
   } catch (error) {
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
+    if (error instanceof ServiceRequestDeleteBlockedError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     console.error('Admin service request delete error:', error);
     return NextResponse.json({ error: getErrorMessage(error) || 'Internal server error' }, { status: 500 });
   }

@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
+import { useIsClient } from '@/hooks/use-is-client'
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { smoothNavigate } from '@/lib/utils';
@@ -37,11 +38,7 @@ export default function ProtectedRoute({
 }: ProtectedRouteProps) {
   const { user, loading } = useAuth();
   const router = useRouter();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const mounted = useIsClient();
 
   useEffect(() => {
     if (!mounted || loading) return;

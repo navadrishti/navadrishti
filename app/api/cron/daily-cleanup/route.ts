@@ -5,6 +5,7 @@ import { processCsrCapabilityDailyCompliance, markCsrProjectCompleted, syncAllCs
 import { getDocumentExpiries, dropExpiredCaComplianceTags } from '@/lib/auth';
 import { backfillServiceOfferEmbeddings } from '@/lib/embeddings';
 import { parseJsonObject, getErrorMessage } from '@/lib/utils';
+import { isMissingStoreError } from '@/lib/auth-store';
 
 async function processNgoDocumentExpiryJobs(now = new Date()) {
   const stats = {
@@ -90,6 +91,7 @@ async function processNgoDocumentExpiryJobs(now = new Date()) {
  * 3. CSR capability daily compliance / Delhivery sync
  * 4. Drop expired optional CA compliance tags (12A / 80G / CSR-1 / FCRA). Never unverify.
  * 5. Embed active service offers that have no embedding yet
+ * 6. Purge stale auth rate-limit hits and one-time codes
  */
 export async function GET(request: NextRequest) {
   try {
@@ -97,10 +99,11 @@ export async function GET(request: NextRequest) {
     const authHeader = request.headers.get('authorization') || '';
     const providedSecret = authHeader.replace(/^Bearer\s+/i, '').trim();
 
-    if (process.env.NODE_ENV === 'production' || cronSecret) {
-      if (!cronSecret || providedSecret !== cronSecret) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-      }
+    const authorized = cronSecret
+      ? providedSecret === cronSecret
+      : process.env.NODE_ENV === 'development';
+    if (!authorized) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Auto-reject pending clients on expired service offers.
@@ -207,7 +210,6 @@ export async function GET(request: NextRequest) {
       .lt('valid_until', nowIso)
       .limit(1000);
 
-    let deactivatedOfferCount = 0;
     if (validityExpiredError) {
       console.error('Error fetching validity-expired capability offers:', validityExpiredError);
     } else if (validityExpiredOffers && validityExpiredOffers.length > 0) {
@@ -219,10 +221,7 @@ export async function GET(request: NextRequest) {
 
         if (deactivateError) {
           console.error(`Error deactivating offer ${offer.id}:`, deactivateError);
-          continue;
         }
-
-        deactivatedOfferCount++;
       }
     } else {
     }
@@ -240,8 +239,6 @@ export async function GET(request: NextRequest) {
       if (expiredProjectsError) {
         console.error('Error fetching expired projects:', expiredProjectsError);
       } else if (expiredProjects && expiredProjects.length > 0) {
-        let expiredProjectCount = 0;
-
         for (const proj of expiredProjects) {
           try {
             const { error: updateProjErr } = await supabase
@@ -264,8 +261,6 @@ export async function GET(request: NextRequest) {
             if (updateNeedsErr) {
               console.error(`Error expiring needs for project ${proj.id}:`, updateNeedsErr);
             }
-
-            expiredProjectCount++;
           } catch (procErr) {
             console.error('Error processing project expiry:', procErr);
           }
@@ -329,6 +324,16 @@ export async function GET(request: NextRequest) {
       console.error('Error in offer embedding backfill:', offerEmbeddingErr);
     }
 
+    // Purge old rate-limit hits and used or expired one-time codes.
+    let authThrottleRowsDeleted = 0;
+    try {
+      const { data, error } = await supabase.rpc('auth_throttle_cleanup');
+      if (error && !isMissingStoreError(error)) throw error;
+      authThrottleRowsDeleted = data ?? 0;
+    } catch (authThrottleErr) {
+      console.error('Error in auth throttle cleanup:', authThrottleErr);
+    }
+
     return NextResponse.json({
       success: true,
       message: 'Daily cleanup completed successfully',
@@ -346,6 +351,7 @@ export async function GET(request: NextRequest) {
         csrDelhiverySync: csrDelhiverySyncStats,
         csrCapabilityCompliance: csrComplianceStats,
         offerEmbeddings: offerEmbeddingStats,
+        authThrottleCleanup: { deleted: authThrottleRowsDeleted },
       }
     });
 

@@ -8,8 +8,41 @@ import {
   creditServiceRequestContribution,
   debitServiceRequestRefund,
   isServiceRequestContributionOrder,
+  resolveRefundDebitInr,
 } from '@/lib/service-request-payments';
+import type { Json } from '@/lib/database.types';
 import { getErrorMessage } from '@/lib/utils';
+
+type RazorpayPaymentEntity = {
+  id?: string;
+  order_id?: string;
+  amount?: number;
+  currency?: string;
+  method?: string | null;
+  created_at?: number;
+  [key: string]: Json | undefined;
+};
+
+type RazorpayRefundEntity = {
+  id?: string;
+  payment_id?: string;
+  amount?: number;
+  status?: string;
+  notes?: { reason?: string };
+  acquirer_data?: { arn?: string };
+  [key: string]: Json | undefined;
+};
+
+type RazorpayWebhookPayload = {
+  id?: string;
+  event?: string;
+  created_at?: number;
+  payload?: {
+    payment?: { entity?: RazorpayPaymentEntity };
+    refund?: { entity?: RazorpayRefundEntity };
+  };
+  [key: string]: Json | undefined;
+};
 
 // Razorpay sends amounts in paise.
 function paiseToInr(value: unknown): number {
@@ -53,7 +86,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid webhook signature' }, { status: 401 });
   }
 
-  let payload: any;
+  let payload: RazorpayWebhookPayload | null;
   try {
     payload = JSON.parse(rawBody);
   } catch {
@@ -192,7 +225,7 @@ export async function POST(request: NextRequest) {
 
       const { data: paymentRow } = await supabase
         .from('razorpay_payments')
-        .select('id, order_id')
+        .select('id, order_id, amount_inr')
         .eq('razorpay_payment_id', razorpayPaymentId)
         .maybeSingle();
 
@@ -203,7 +236,7 @@ export async function POST(request: NextRequest) {
 
       const { data: orderRow } = await supabase
         .from('razorpay_payment_orders')
-        .select('service_request_id')
+        .select('service_request_id, order_notes')
         .eq('id', paymentRow.order_id)
         .maybeSingle();
 
@@ -251,7 +284,14 @@ export async function POST(request: NextRequest) {
         .eq('id', paymentRow.id);
 
       if (normalizedRefundStatus === 'processed' && previousRefund?.refund_status !== 'processed') {
-        await debitServiceRequestRefund(Number(orderRow.service_request_id), refundInr);
+        await debitServiceRequestRefund(
+          Number(orderRow.service_request_id),
+          resolveRefundDebitInr({
+            refundInr,
+            paidInr: Number(paymentRow.amount_inr || 0),
+            orderNotes: orderRow.order_notes,
+          })
+        );
       }
 
       await markWebhookStatus(eventRowId, 'processed', null);

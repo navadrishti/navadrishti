@@ -130,7 +130,8 @@ export async function POST(
       return NextResponse.json({ error: 'Invalid contribution amount' }, { status: 400 });
     }
 
-    const providerNotes = (providerOrder.notes || providerPayment.notes || {}) as Record<string, any>;
+    const providerNotes: Record<string, string | number | null> =
+      providerOrder.notes || providerPayment.notes || {};
     const expectedTotalInr = parseAmountToInr(providerNotes?.total_charge_inr);
     if (expectedTotalInr > 0 && Math.abs(paidInr - expectedTotalInr) > 0.01) {
       return NextResponse.json({ error: 'Paid amount does not match checkout total' }, { status: 400 });

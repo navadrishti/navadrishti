@@ -18,9 +18,10 @@ import {
   serializeProjectExactAddress,
   validateProjectExactAddress,
 } from '@/lib/service-request-allocation';
+import type { Tables } from '@/lib/database.types';
 
-async function withNgoListingFields(projects: any[]) {
-  const enriched = projects.map((project) => enrichProjectRecord(project))
+async function withNgoListingFields(projects: Tables<'service_request_projects'>[]) {
+  const enriched = projects.map((project) => enrichProjectRecord(project)).filter((project) => project != null)
   const ngoIds = Array.from(
     new Set(enriched.map((project) => Number(project?.ngo_id)).filter((id) => Number.isFinite(id) && id > 0))
   )
@@ -43,7 +44,7 @@ async function withNgoListingFields(projects: any[]) {
     const ngo = ngoById.get(Number(project.ngo_id))
     return redactProjectSensitiveFields({
       ...project,
-      ngo_name: ngo?.name || project.ngo_name || 'NGO',
+      ngo_name: ngo?.name || 'NGO',
       ngo_verified: String(ngo?.verification_status || '').toLowerCase() === 'verified',
       ngo_location:
         ngo?.city && ngo?.state_province

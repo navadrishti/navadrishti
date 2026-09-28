@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getTokenClaims, requireBankStatementDocument } from '@/lib/auth';
 import { getErrorMessage, parseJsonObject } from '@/lib/utils';
+import type { TablesUpdate } from '@/lib/database.types';
 
 export async function POST(req: NextRequest) {
   try {
@@ -69,7 +70,7 @@ async function initiateVerification(
 
     const existingVerification = await db.individualVerifications.findByUserId(userId);
 
-    const verificationPayload: Record<string, any> = {
+    const verificationPayload: TablesUpdate<'individual_verifications'> = {
       verification_status: 'pending',
       updated_at: new Date().toISOString(),
       aadhaar_verified: false,

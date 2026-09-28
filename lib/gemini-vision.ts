@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { GeminiError } from '@/lib/geminiClient'
+import { GeminiError, type GeminiGenerateResponse } from '@/lib/geminiClient'
 
 function parseGeminiJson(output: string): Record<string, unknown> {
   const trimmed = output.trim().replace(/^```json\s*/i, '').replace(/```$/i, '').trim()
@@ -83,14 +83,14 @@ export async function GeminiVisionJSON(
       throw new GeminiError(res.status, await res.text())
     }
 
-    const data = await res.json()
+    const data: GeminiGenerateResponse = await res.json()
     const candidate = data?.candidates?.[0]
     if (!candidate || candidate.finishReason === 'SAFETY') {
       throw new GeminiError(res.status || 400, 'Safety block or empty response.', true)
     }
 
     const output = candidate.content?.parts
-      ?.map((p: any) => p.text)
+      ?.map((p) => p.text)
       .filter(Boolean)
       .join('')
       .trim()

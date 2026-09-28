@@ -1,299 +1,26 @@
 'use client'
 
-import { useState, useEffect, use } from 'react'
-import { useRouter } from 'next/navigation'
+import { use } from 'react'
 import { Header } from '@/components/header'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ArrowLeft, Loader2, Users, Mail, Calendar, CheckCircle, XCircle, Clock } from 'lucide-react'
-import { useAuth } from '@/lib/auth-context'
-import { useToast } from '@/hooks/use-toast'
-import { formatStatusLabel } from '@/lib/format-date'
+import { ArrowLeft, Loader2, Users, CheckCircle, Clock } from 'lucide-react'
+import { isDeliverableNeed } from './helpers'
+import type { Volunteer } from './types'
+import { useApplicants } from './use-applicants'
+import { NeedDetailsCard } from './need-details-card'
 import {
-  formatDeliveryTrackingStatus,
-  getNeedRemainingQuantity,
-  getServiceRequestTarget,
-} from '@/lib/service-request-allocation'
-import { VerifiedAccountName } from '@/components/verification-badge'
-import { parseJsonObject } from '@/lib/utils';
-
-interface ServiceRequest {
-  id: number;
-  title: string;
-  description: string;
-  category: string;
-  location: string;
-  urgency_level: string;
-  status: string;
-  created_at: string;
-  beneficiary_count?: number | null;
-  target_quantity?: number | null;
-  remaining_quantity?: number | null;
-  current_quantity?: number | null;
-  estimated_budget?: number | null;
-  target_amount?: number | null;
-}
-
-interface Volunteer {
-  id: number;
-  applicant_user_id: number;
-  volunteer_name: string;
-  volunteer_email: string;
-  volunteer_type: 'individual' | 'company';
-  volunteer_verification_status?: string;
-  message: string;
-  status: 'pending' | 'accepted' | 'rejected' | 'active' | 'completed' | 'cancelled';
-  applied_at: string;
-  start_date?: string;
-  end_date?: string;
-  hours_contributed: number;
-  fulfillment_amount?: number | null;
-  fulfillment_quantity?: number | null;
-  assigned_amount?: number | null;
-  assigned_quantity?: number | null;
-  response_meta?: Record<string, any> | null;
-}
-
-function normalizeVolunteer(raw: any): Volunteer {
-  const volunteer = raw?.volunteer && typeof raw.volunteer === 'object' ? raw.volunteer : {}
-
-  return {
-    id: Number(raw.id),
-    applicant_user_id: Number(raw.applicant_user_id),
-    volunteer_name: String(volunteer.name || raw.volunteer_name || 'Volunteer'),
-    volunteer_email: String(volunteer.email || raw.volunteer_email || ''),
-    volunteer_type: (volunteer.user_type || raw.volunteer_type || 'individual') as Volunteer['volunteer_type'],
-    volunteer_verification_status: String(volunteer.verification_status || raw.volunteer_verification_status || ''),
-    message: String(raw.application_message || raw.message || ''),
-    status: raw.status,
-    applied_at: raw.applied_at || raw.created_at || '',
-    start_date: raw.start_date,
-    end_date: raw.end_date,
-    hours_contributed: Number(raw.hours_contributed || 0),
-    fulfillment_amount: raw.fulfillment_amount,
-    fulfillment_quantity: raw.fulfillment_quantity,
-    assigned_amount: raw.assigned_amount,
-    assigned_quantity: raw.assigned_quantity,
-    response_meta: raw.response_meta,
-  }
-}
-
-function isDeliverableNeed(request: ServiceRequest | null) {
-  const category = String(request?.category || '').toLowerCase()
-  return category.includes('material') || category.includes('deliver')
-}
-
-function formatVolunteerOffer(request: ServiceRequest | null, volunteer: Volunteer) {
-  const target = getServiceRequestTarget(request)
-  if (target.isFinancial) {
-    const amount = Number(volunteer.fulfillment_amount ?? volunteer.assigned_amount ?? 0)
-    return amount > 0 ? `INR ${amount.toLocaleString('en-IN')}` : 'Amount not set'
-  }
-
-  const quantity = Number(volunteer.fulfillment_quantity ?? volunteer.assigned_quantity ?? 0)
-  return quantity > 0 ? `${quantity} units` : 'Quantity not set'
-}
-
-const formatDate = (value?: string | null) => {
-  if (!value) return 'N/A';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'N/A';
-  return date.toLocaleDateString('en-IN', { timeZone: 'UTC' });
-};
+  AcceptedVolunteerCard,
+  ActiveVolunteerCard,
+  CompletedVolunteerCard,
+  EmptyTabCard,
+  PendingVolunteerCard,
+} from './volunteer-card'
 
 export default function ServiceRequestApplicantsPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
-  const router = useRouter();
-  const { user } = useAuth();
-  const { toast } = useToast();
-  const [loading, setLoading] = useState(true);
-  const [request, setRequest] = useState<ServiceRequest | null>(null);
-  const [volunteers, setVolunteers] = useState<Volunteer[]>([]);
-  const [updating, setUpdating] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (!user) {
-      router.push('/login');
-      return;
-    }
-    if (user.user_type !== 'ngo') {
-      toast({
-        title: "Access Denied",
-        description: "Only NGOs can view applicants",
-        variant: "destructive",
-      });
-      router.push('/service-requests');
-      return;
-    }
-  }, [user, router, toast]);
-
-  useEffect(() => {
-    if (!user || !resolvedParams.id) return;
-
-    const fetchData = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        
-        const requestResponse = await fetch(`/api/service-requests/${resolvedParams.id}`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        });
-        const requestData = await requestResponse.json();
-
-        if (requestData.success) {
-          setRequest(requestData.data);
-        } else {
-          toast({
-            title: "Error",
-            description: requestData.error || "Failed to fetch need details",
-            variant: "destructive",
-          });
-          router.push('/service-requests');
-          return;
-        }
-
-        const volunteersResponse = await fetch(`/api/service-requests/${resolvedParams.id}/volunteers`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        });
-        const volunteersData = await volunteersResponse.json();
-
-        if (volunteersData.success) {
-          setVolunteers((volunteersData.data || []).map(normalizeVolunteer));
-        } else {
-          console.error('Failed to fetch volunteers:', volunteersData.error);
-        }
-
-      } catch (error) {
-        console.error('Error fetching data:', error);
-        toast({
-          title: "Error",
-          description: "Failed to fetch data",
-          variant: "destructive",
-        });
-        router.push('/service-requests');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [user, resolvedParams.id, router, toast]);
-
-  const handleVolunteerStatusUpdate = async (volunteer: Volunteer, newStatus: string) => {
-    setUpdating(volunteer.id);
-    try {
-      const token = localStorage.getItem('token');
-      const payload: Record<string, unknown> = { status: newStatus };
-
-      if (newStatus === 'accepted') {
-        const target = getServiceRequestTarget(request);
-        const remaining = getNeedRemainingQuantity(request);
-        if (target.isFinancial) {
-          const offer = Number(volunteer.fulfillment_amount ?? volunteer.assigned_amount ?? 0);
-          payload.allocationAmount = Math.min(offer > 0 ? offer : remaining, remaining);
-        } else {
-          const offer = Number(volunteer.fulfillment_quantity ?? volunteer.assigned_quantity ?? 0);
-          payload.allocationQuantity = Math.min(offer > 0 ? offer : remaining, remaining);
-        }
-      }
-
-      const response = await fetch(`/api/service-requests/${resolvedParams.id}/volunteers/${volunteer.id}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        const [requestResponse, volunteersResponse] = await Promise.all([
-          fetch(`/api/service-requests/${resolvedParams.id}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          fetch(`/api/service-requests/${resolvedParams.id}/volunteers`, {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-        ]);
-
-        const requestData = await requestResponse.json();
-        const volunteersData = await volunteersResponse.json();
-
-        if (requestData.success) {
-          setRequest(requestData.data);
-        }
-        if (volunteersData.success) {
-          setVolunteers((volunteersData.data || []).map(normalizeVolunteer));
-        }
-
-        toast({
-          title: "Success",
-          description: `Volunteer ${newStatus === 'accepted' ? 'accepted' : 
-                                  newStatus === 'rejected' ? 'rejected' : 
-                                  newStatus === 'completed' ? 'marked as completed' :
-                                  newStatus === 'active' ? 'activated' : 'updated'} successfully`,
-        });
-      } else {
-        toast({
-          title: "Error",
-          description: data.error || "Failed to update volunteer status",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
-      console.error('Error updating volunteer status:', error);
-      toast({
-        title: "Error",
-        description: "Failed to update volunteer status",
-        variant: "destructive",
-      });
-    } finally {
-      setUpdating(null);
-    }
-  };
-
-  const getStatusBadge = (status: string) => {
-    const statusColors = {
-      pending: 'bg-yellow-100 text-yellow-800',
-      accepted: 'bg-green-100 text-green-800',
-      rejected: 'bg-red-100 text-red-800',
-      active: 'bg-blue-100 text-blue-800',
-      completed: 'bg-gray-100 text-gray-800',
-      cancelled: 'bg-gray-100 text-gray-800'
-    };
-
-    return (
-      <Badge className={statusColors[status as keyof typeof statusColors] || 'bg-gray-100 text-gray-800'}>
-        {formatStatusLabel(status)}
-      </Badge>
-    );
-  };
-
-  const getUrgencyBadge = (urgency: string) => {
-    const urgencyColors = {
-      low: 'bg-green-100 text-green-800',
-      medium: 'bg-yellow-100 text-yellow-800',
-      high: 'bg-orange-100 text-orange-800',
-      critical: 'bg-red-100 text-red-800'
-    };
-
-    return (
-      <Badge className={urgencyColors[urgency as keyof typeof urgencyColors] || 'bg-gray-100 text-gray-800'}>
-        {urgency.charAt(0).toUpperCase() + urgency.slice(1)}
-      </Badge>
-    );
-  };
-
-  const filterVolunteersByStatus = (status: string) => {
-    return volunteers.filter(v => v.status === status);
-  };
+  const { router, loading, request, volunteers, updating, handleVolunteerStatusUpdate } = useApplicants(resolvedParams.id);
 
   if (loading) {
     return (
@@ -323,26 +50,24 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
     );
   }
 
-  const pendingVolunteers = filterVolunteersByStatus('pending');
-  const acceptedVolunteers = filterVolunteersByStatus('accepted');
-  const activeVolunteers = filterVolunteersByStatus('active');
-  const completedVolunteers = filterVolunteersByStatus('completed');
+  const pendingVolunteers = volunteers.filter((v) => v.status === 'pending');
+  const acceptedVolunteers = volunteers.filter((v) => v.status === 'accepted');
+  const activeVolunteers = volunteers.filter((v) => v.status === 'active');
+  const completedVolunteers = volunteers.filter((v) => v.status === 'completed');
   const deliverableNeed = isDeliverableNeed(request);
-  const needTarget = getServiceRequestTarget(request);
-  const needRemaining = getNeedRemainingQuantity(request);
 
-  const needTargetLabel = needTarget.isFinancial
-    ? (needTarget.amount > 0 ? `INR ${needTarget.amount.toLocaleString('en-IN')}` : 'Open budget')
-    : (needTarget.quantity > 0 ? `${needTarget.quantity} units` : String(request.beneficiary_count || 0));
-
-  const needRemainingLabel = needTarget.isFinancial
-    ? (needTarget.amount > 0 ? `INR ${needRemaining.toLocaleString('en-IN')}` : 'Open')
-    : (needTarget.quantity > 0 ? `${needRemaining} units` : String(needRemaining));
+  const cardProps = (volunteer: Volunteer) => ({
+    request,
+    volunteer,
+    deliverableNeed,
+    busy: updating === volunteer.id,
+    onStatusChange: handleVolunteerStatusUpdate,
+  });
 
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      
+
       <div className="container mx-auto px-4 py-8">
         <div className="mb-6">
           <Button variant="ghost" onClick={() => router.back()} className="px-0 text-udaan-blue hover:text-gram-ink hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0">
@@ -351,43 +76,8 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
           </Button>
         </div>
 
-        {/* Need Details Card */}
-        <Card className="mb-8">
-          <CardHeader>
-            <div className="flex justify-between items-start">
-              <div>
-                <CardTitle className="text-2xl mb-2">{request.title}</CardTitle>
-                <div className="flex gap-2 mb-4">
-                  <Badge variant="secondary">{request.category}</Badge>
-                  {getUrgencyBadge(request.urgency_level)}
-                  {getStatusBadge(request.status)}
-                </div>
-              </div>
-              <div className="text-right text-sm text-gray-500">
-                <p>Created: {formatDate(request.created_at)}</p>
-                <p className="flex items-center gap-1 mt-1">
-                  <Users size={16} />
-                  {volunteers.length} applicant{volunteers.length !== 1 ? 's' : ''}
-                </p>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <p className="text-gray-700 mb-4">{request.description}</p>
-            <div className="grid grid-cols-1 gap-2 text-sm text-gray-600 sm:grid-cols-3">
-              {request.location ? <p>Location: {request.location}</p> : null}
-              <p>Target: {needTargetLabel}</p>
-              <p>Remaining: {needRemainingLabel}</p>
-            </div>
-            {deliverableNeed ? (
-              <p className="mt-3 text-sm text-indigo-700">
-                Deliverable need — fulfillment is tracked via Delhivery after you accept an applicant.
-              </p>
-            ) : null}
-          </CardContent>
-        </Card>
+        <NeedDetailsCard request={request} applicantCount={volunteers.length} deliverableNeed={deliverableNeed} />
 
-        {/* Volunteers Tabs */}
         <Tabs defaultValue="pending" className="space-y-6">
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="pending" className="relative">
@@ -412,303 +102,49 @@ export default function ServiceRequestApplicantsPage({ params }: { params: Promi
             </TabsTrigger>
           </TabsList>
 
-          {/* Pending Volunteers */}
           <TabsContent value="pending">
             <div className="space-y-4">
               {pendingVolunteers.length === 0 ? (
-                <Card>
-                  <CardContent className="pt-6 text-center text-gray-500">
-                    <Clock className="mx-auto mb-2" size={48} />
-                    <p>No pending applications</p>
-                  </CardContent>
-                </Card>
+                <EmptyTabCard icon={Clock} message="No pending applications" />
               ) : (
                 pendingVolunteers.map((volunteer) => (
-                  <Card key={volunteer.id}>
-                    <CardContent className="pt-6">
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <VerifiedAccountName
-                              name={volunteer.volunteer_name}
-                              status={volunteer.volunteer_verification_status}
-                              size="sm"
-                              nameClassName="font-semibold"
-                            />
-                            <Badge variant="outline">
-                              {volunteer.volunteer_type === 'individual' ? 'Individual' : 'Company'}
-                            </Badge>
-                          </div>
-                          <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
-                            <span className="flex items-center gap-1">
-                              <Mail size={14} />
-                              {volunteer.volunteer_email}
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <Calendar size={14} />
-                              Applied {formatDate(volunteer.applied_at)}
-                            </span>
-                            <span className="font-medium text-slate-700">
-                              Offer: {formatVolunteerOffer(request, volunteer)}
-                            </span>
-                          </div>
-                          {volunteer.message && (
-                            <div className="bg-gray-50 p-3 rounded-lg mb-3">
-                              <p className="text-sm text-gray-700">
-                                <strong>Message:</strong> {volunteer.message}
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex gap-2 ml-4">
-                          <Button
-                            size="sm"
-                            onClick={() => handleVolunteerStatusUpdate(volunteer, 'accepted')}
-                            disabled={updating === volunteer.id}
-                            className="bg-green-600 hover:bg-green-700"
-                          >
-                            {updating === volunteer.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <>
-                                <CheckCircle size={16} className="mr-1" />
-                                Accept
-                              </>
-                            )}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleVolunteerStatusUpdate(volunteer, 'rejected')}
-                            disabled={updating === volunteer.id}
-                            className="border-red-200 text-red-600 hover:bg-red-50"
-                          >
-                            {updating === volunteer.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <>
-                                <XCircle size={16} className="mr-1" />
-                                Reject
-                              </>
-                            )}
-                          </Button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
+                  <PendingVolunteerCard key={volunteer.id} {...cardProps(volunteer)} />
                 ))
               )}
             </div>
           </TabsContent>
 
-          {/* Accepted Volunteers */}
           <TabsContent value="accepted">
             <div className="space-y-4">
               {acceptedVolunteers.length === 0 ? (
-                <Card>
-                  <CardContent className="pt-6 text-center text-gray-500">
-                    <CheckCircle className="mx-auto mb-2" size={48} />
-                    <p>No accepted volunteers</p>
-                  </CardContent>
-                </Card>
+                <EmptyTabCard icon={CheckCircle} message="No accepted volunteers" />
               ) : (
                 acceptedVolunteers.map((volunteer) => (
-                  <Card key={volunteer.id}>
-                    <CardContent className="pt-6">
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <VerifiedAccountName
-                              name={volunteer.volunteer_name}
-                              status={volunteer.volunteer_verification_status}
-                              size="sm"
-                              nameClassName="font-semibold"
-                            />
-                            <Badge variant="outline">
-                              {volunteer.volunteer_type === 'individual' ? 'Individual' : 'Company'}
-                            </Badge>
-                            {getStatusBadge(volunteer.status)}
-                          </div>
-                          <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
-                            <span className="flex items-center gap-1">
-                              <Mail size={14} />
-                              {volunteer.volunteer_email}
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <Calendar size={14} />
-                              Accepted {formatDate(volunteer.applied_at)}
-                            </span>
-                            <span className="font-medium text-slate-700">
-                              Assigned: {formatVolunteerOffer(request, volunteer)}
-                            </span>
-                          </div>
-                          {deliverableNeed ? (
-                            <p className="text-sm text-indigo-700">
-                              Delhivery: {formatDeliveryTrackingStatus(
-                                parseJsonObject(volunteer.response_meta)
-                              )}
-                            </p>
-                          ) : null}
-                          {volunteer.message && (
-                            <div className="bg-gray-50 p-3 rounded-lg">
-                              <p className="text-sm text-gray-700">
-                                <strong>Message:</strong> {volunteer.message}
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                        {!deliverableNeed ? (
-                          <div className="flex gap-2 ml-4">
-                            <Button
-                              size="sm"
-                              onClick={() => handleVolunteerStatusUpdate(volunteer, 'active')}
-                              disabled={updating === volunteer.id}
-                            >
-                              {updating === volunteer.id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                'Start Work'
-                              )}
-                            </Button>
-                          </div>
-                        ) : null}
-                      </div>
-                    </CardContent>
-                  </Card>
+                  <AcceptedVolunteerCard key={volunteer.id} {...cardProps(volunteer)} />
                 ))
               )}
             </div>
           </TabsContent>
 
-          {/* Active Volunteers */}
           <TabsContent value="active">
             <div className="space-y-4">
               {activeVolunteers.length === 0 ? (
-                <Card>
-                  <CardContent className="pt-6 text-center text-gray-500">
-                    <Users className="mx-auto mb-2" size={48} />
-                    <p>No active volunteers</p>
-                  </CardContent>
-                </Card>
+                <EmptyTabCard icon={Users} message="No active volunteers" />
               ) : (
                 activeVolunteers.map((volunteer) => (
-                  <Card key={volunteer.id}>
-                    <CardContent className="pt-6">
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <VerifiedAccountName
-                              name={volunteer.volunteer_name}
-                              status={volunteer.volunteer_verification_status}
-                              size="sm"
-                              nameClassName="font-semibold"
-                            />
-                            <Badge variant="outline">
-                              {volunteer.volunteer_type === 'individual' ? 'Individual' : 'Company'}
-                            </Badge>
-                            {getStatusBadge(volunteer.status)}
-                          </div>
-                          <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
-                            <span className="flex items-center gap-1">
-                              <Mail size={14} />
-                              {volunteer.volunteer_email}
-                            </span>
-                            {volunteer.start_date && (
-                              <span className="flex items-center gap-1">
-                                <Calendar size={14} />
-                                Started {formatDate(volunteer.start_date)}
-                              </span>
-                            )}
-                            {volunteer.hours_contributed > 0 && (
-                              <span className="text-green-600 font-medium">
-                                {volunteer.hours_contributed} hours contributed
-                              </span>
-                            )}
-                            <span className="font-medium text-slate-700">
-                              Assigned: {formatVolunteerOffer(request, volunteer)}
-                            </span>
-                          </div>
-                          {deliverableNeed ? (
-                            <p className="text-sm text-indigo-700">
-                              Delhivery: {formatDeliveryTrackingStatus(
-                                parseJsonObject(volunteer.response_meta)
-                              )}
-                            </p>
-                          ) : null}
-                        </div>
-                        {!deliverableNeed ? (
-                          <div className="flex gap-2 ml-4">
-                            <Button
-                              size="sm"
-                              onClick={() => handleVolunteerStatusUpdate(volunteer, 'completed')}
-                              disabled={updating === volunteer.id}
-                              className="bg-green-600 hover:bg-green-700"
-                            >
-                              {updating === volunteer.id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                'Mark Complete'
-                              )}
-                            </Button>
-                          </div>
-                        ) : null}
-                      </div>
-                    </CardContent>
-                  </Card>
+                  <ActiveVolunteerCard key={volunteer.id} {...cardProps(volunteer)} />
                 ))
               )}
             </div>
           </TabsContent>
 
-          {/* Completed Volunteers */}
           <TabsContent value="completed">
             <div className="space-y-4">
               {completedVolunteers.length === 0 ? (
-                <Card>
-                  <CardContent className="pt-6 text-center text-gray-500">
-                    <CheckCircle className="mx-auto mb-2" size={48} />
-                    <p>No completed volunteers</p>
-                  </CardContent>
-                </Card>
+                <EmptyTabCard icon={CheckCircle} message="No completed volunteers" />
               ) : (
                 completedVolunteers.map((volunteer) => (
-                  <Card key={volunteer.id}>
-                    <CardContent className="pt-6">
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <VerifiedAccountName
-                              name={volunteer.volunteer_name}
-                              status={volunteer.volunteer_verification_status}
-                              size="sm"
-                              nameClassName="font-semibold"
-                            />
-                            <Badge variant="outline">
-                              {volunteer.volunteer_type === 'individual' ? 'Individual' : 'Company'}
-                            </Badge>
-                            {getStatusBadge(volunteer.status)}
-                          </div>
-                          <div className="flex items-center gap-4 text-sm text-gray-600">
-                            <span className="flex items-center gap-1">
-                              <Mail size={14} />
-                              {volunteer.volunteer_email}
-                            </span>
-                            {volunteer.end_date && (
-                              <span className="flex items-center gap-1">
-                                <Calendar size={14} />
-                                Completed {formatDate(volunteer.end_date)}
-                              </span>
-                            )}
-                            {volunteer.hours_contributed > 0 && (
-                              <span className="text-green-600 font-medium">
-                                {volunteer.hours_contributed} hours contributed
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
+                  <CompletedVolunteerCard key={volunteer.id} volunteer={volunteer} />
                 ))
               )}
             </div>

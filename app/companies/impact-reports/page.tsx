@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useIsClient } from "@/hooks/use-is-client"
 import { useAuth } from "@/lib/auth-context"
 import { Header } from "@/components/header"
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -8,13 +8,9 @@ import { ImpactReportsPanel } from "@/components/companies/impact-reports-panel"
 
 export default function ImpactReportsPage() {
   const { user } = useAuth()
-  const [isHydrated, setIsHydrated] = useState(false)
+  const isHydrated = useIsClient()
 
   const effectiveUserType = isHydrated ? user?.user_type : undefined
-
-  useEffect(() => {
-    setIsHydrated(true)
-  }, [])
 
   if (!isHydrated) {
     return (

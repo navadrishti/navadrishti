@@ -1,6 +1,6 @@
-import jwt, { type SignOptions } from 'jsonwebtoken';
+import type { SignOptions } from 'jsonwebtoken';
 import { NextRequest } from 'next/server';
-import { comparePassword, hashPassword, JWT_SECRET } from '@/lib/auth';
+import { AuthError, comparePassword, hashPassword, signScopedToken, verifyScopedToken } from '@/lib/auth';
 import { supabase } from '@/lib/db';
 
 export type GovernmentAdminRole = 'super_admin' | 'government_admin' | 'state_officer' | 'district_officer' | 'field_officer';
@@ -48,20 +48,15 @@ export function generateGovernmentAdminToken(account: GovernmentAdminAccount): s
     role: account.role,
   };
 
-  return jwt.sign(payload, JWT_SECRET, {
-    expiresIn: (process.env.GOVT_ADMIN_JWT_EXPIRES_IN || '12h') as SignOptions['expiresIn'],
-  });
+  return signScopedToken(
+    'government_admin',
+    payload,
+    (process.env.GOVT_ADMIN_JWT_EXPIRES_IN || '12h') as SignOptions['expiresIn']
+  );
 }
 
 export function verifyGovernmentAdminToken(token: string): GovernmentAdminTokenPayload | null {
-  try {
-    if (!token || !token.trim()) return null;
-    const cleanToken = token.replace(/["'\n\r\t]/g, '').replace(/^Bearer\s+/i, '').trim();
-    if (!cleanToken) return null;
-    return jwt.verify(cleanToken, JWT_SECRET) as GovernmentAdminTokenPayload;
-  } catch {
-    return null;
-  }
+  return verifyScopedToken<GovernmentAdminTokenPayload>(token, 'government_admin');
 }
 
 export function getGovernmentAdminTokenFromRequest(request: NextRequest): string | null {
@@ -199,7 +194,7 @@ export async function createGovernmentBody(input: {
 export async function assertGovernmentAdmin(request: NextRequest) {
   const admin = await getGovernmentAdminFromRequest(request);
   if (!admin) {
-    throw new Error('Government admin authentication required');
+    throw new AuthError('Government admin authentication required');
   }
   return admin;
 }

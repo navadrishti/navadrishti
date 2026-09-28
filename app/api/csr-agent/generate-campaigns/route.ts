@@ -6,6 +6,7 @@ import {
   type Campaign,
 } from "@/lib/csr-agent/llm";
 import type { CapabilityMatch } from "@/lib/csr-agent/find-service-offers";
+import { findAuthUser } from "@/lib/server-auth";
 
 /* ───────────────── TYPES ───────────────── */
 
@@ -20,6 +21,20 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const user = findAuthUser(request, { allowCookie: true });
+  if (!user) {
+    return NextResponse.json<CampaignResponse>(
+      { success: false, error: "Company login required" },
+      { status: 401 }
+    );
+  }
+  if (user.user_type !== "company") {
+    return NextResponse.json<CampaignResponse>(
+      { success: false, error: "Only companies can generate campaigns" },
+      { status: 403 }
+    );
+  }
+
   try {
     const body = await request.json();
 
@@ -40,8 +55,8 @@ export async function POST(request: NextRequest) {
     // a `recommendations` array in the request body, we'll echo it back in the
     // response. Do NOT perform server-side matching here to keep concerns
     // separated and avoid unexpected DB calls from the LLM flow.
-    const recommendations: CapabilityMatch[] = Array.isArray((body as any).recommendations)
-      ? (body as any).recommendations
+    const recommendations: CapabilityMatch[] = Array.isArray(body.recommendations)
+      ? body.recommendations
       : [];
 
     let campaigns: Campaign[];

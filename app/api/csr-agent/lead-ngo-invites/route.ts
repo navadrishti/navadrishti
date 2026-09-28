@@ -5,15 +5,17 @@ import {
   normalizeExpiryDate,
   CSR_WORK_END_DATE_REQUIRED_MESSAGE,
 } from '@/lib/auth'
-import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth'
+import { findAuthUser } from '@/lib/server-auth'
 import { parseLeadNgoInvites, type LeadNgoInvite } from '@/lib/campaign-volunteer-attendance'
 import { parseJsonObject } from '@/lib/utils'
+import type { Tables } from '@/lib/database.types'
 
-function summarizeLeadInviteState(campaign: {
-  id: string
-  impact_metrics?: Record<string, any> | null
-  lead_ngo_user_id?: number | null
-}) {
+type CampaignDraft = Pick<
+  Tables<'campaigns'>,
+  'id' | 'status' | 'impact_metrics' | 'start_date' | 'end_date' | 'lead_ngo_user_id'
+>
+
+function summarizeLeadInviteState(campaign: CampaignDraft) {
   const impact = parseJsonObject(campaign.impact_metrics)
   const invites = parseLeadNgoInvites(impact.lead_ngo_invites)
   const leadNgoId = Number(campaign.lead_ngo_user_id || 0) || null
@@ -28,7 +30,10 @@ function summarizeLeadInviteState(campaign: {
   }
 }
 
-function readProjectEndDate(projectData: Record<string, any>, campaign?: any): string | null {
+function readProjectEndDate(
+  projectData: Record<string, unknown>,
+  campaign?: Pick<CampaignDraft, 'end_date'> | null
+): string | null {
   return (
     normalizeExpiryDate(projectData?.endDate) ||
     normalizeExpiryDate(projectData?.end_date) ||
@@ -37,7 +42,7 @@ function readProjectEndDate(projectData: Record<string, any>, campaign?: any): s
   )
 }
 
-function readProjectStartDate(projectData: Record<string, any>): string | null {
+function readProjectStartDate(projectData: Record<string, unknown>): string | null {
   return normalizeExpiryDate(projectData?.startDate) || normalizeExpiryDate(projectData?.start_date)
 }
 
@@ -86,21 +91,33 @@ async function findDraftBySession(sessionId: string, companyId: number) {
   return data
 }
 
+function authorizeCompany(request: NextRequest) {
+  const user = findAuthUser(request)
+  if (!user) {
+    return { user: null, error: NextResponse.json({ error: 'Authentication required' }, { status: 401 }) }
+  }
+  if (user.user_type !== 'company') {
+    return { user: null, error: NextResponse.json({ error: 'Only companies can manage lead NGO invites' }, { status: 403 }) }
+  }
+  return { user, error: null }
+}
+
 export async function GET(request: NextRequest) {
   try {
-    const user = getAuthUserFromRequest(request)
-    assertUserType(user, ['company'])
+    const { user, error: authError } = authorizeCompany(request)
+    if (!user) return authError
 
     const sessionId = String(new URL(request.url).searchParams.get('sessionId') || '').trim()
     const draftCampaignId = String(new URL(request.url).searchParams.get('draftCampaignId') || '').trim()
 
-    let campaign: any = null
+    let campaign: CampaignDraft | null = null
     if (draftCampaignId) {
       const { data, error } = await supabase
         .from('campaigns')
         .select('id, status, impact_metrics, start_date, end_date, lead_ngo_user_id')
         .eq('id', draftCampaignId)
         .eq('company_id', user.id)
+        .eq('status', 'draft')
         .maybeSingle()
       if (error) throw error
       campaign = data
@@ -131,8 +148,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const user = getAuthUserFromRequest(request)
-    assertUserType(user, ['company'])
+    const { user, error: authError } = authorizeCompany(request)
+    if (!user) return authError
 
     const body = await request.json()
     const sessionId = String(body?.sessionId || '').trim()
@@ -147,26 +164,37 @@ export async function POST(request: NextRequest) {
     if (!sessionId) {
       return NextResponse.json({ error: 'sessionId is required' }, { status: 400 })
     }
-    if (!Number.isFinite(ngoId) || ngoId <= 0) {
+    if (!['invite', 'revoke', 'save_draft'].includes(action)) {
+      return NextResponse.json({ error: 'Unsupported action' }, { status: 400 })
+    }
+    if (action !== 'save_draft' && (!Number.isFinite(ngoId) || ngoId <= 0)) {
       return NextResponse.json({ error: 'Valid ngoId is required' }, { status: 400 })
     }
 
-    let campaign: any = null
+    let campaign: CampaignDraft | null = null
     if (draftCampaignId) {
       const { data, error } = await supabase
         .from('campaigns')
         .select('id, status, impact_metrics, start_date, end_date, lead_ngo_user_id')
         .eq('id', draftCampaignId)
         .eq('company_id', user.id)
+        .eq('status', 'draft')
         .maybeSingle()
       if (error) throw error
+      if (!data) {
+        return NextResponse.json({ error: 'Draft campaign not found' }, { status: 404 })
+      }
       campaign = data
     } else {
       campaign = await findDraftBySession(sessionId, user.id)
       if (campaign?.id) draftCampaignId = String(campaign.id)
     }
 
-    if (action !== 'revoke') {
+    if (action === 'save_draft' && campaign) {
+      return NextResponse.json({ success: true, data: summarizeLeadInviteState(campaign) })
+    }
+
+    if (action === 'invite') {
       const campaignEnd = readProjectEndDate(projectData, campaign)
       if (!campaignEnd) {
         return NextResponse.json({ error: CSR_WORK_END_DATE_REQUIRED_MESSAGE }, { status: 400 })
@@ -231,20 +259,17 @@ export async function POST(request: NextRequest) {
 
     if (action === 'revoke') {
       invites = invites.filter((invite) => invite.ngo_id !== ngoId)
-    } else {
-      const existing = invites.find((invite) => invite.ngo_id === ngoId)
-      if (!existing) {
-        invites = [
-          ...invites,
-          {
-            ngo_id: ngoId,
-            name: ngoName,
-            email: ngoEmail,
-            status: 'invited',
-            invited_at: new Date().toISOString(),
-          },
-        ]
-      }
+    } else if (action === 'invite') {
+      invites = [
+        ...invites.filter((invite) => invite.ngo_id !== ngoId),
+        {
+          ngo_id: ngoId,
+          name: ngoName,
+          email: ngoEmail,
+          status: 'invited',
+          invited_at: new Date().toISOString(),
+        },
+      ]
     }
 
     const startDate = readProjectStartDate(projectData)

@@ -10,8 +10,16 @@ import {
 } from '@/lib/auth';
 import { applyCaBadgeToProfile } from '@/lib/platform-ca-auth';
 import { parseJsonObject } from '@/lib/utils';
+import type { Json } from '@/lib/database.types';
 
 type UserType = 'individual' | 'ngo' | 'company';
+
+export class ReverificationConflictError extends Error {
+  constructor() {
+    super('This reverification was already decided by another reviewer');
+    this.name = 'ReverificationConflictError';
+  }
+}
 
 const verificationDocKeyByUserType: Record<UserType, string> = {
   individual: 'individual',
@@ -122,7 +130,10 @@ async function loadReverificationUser(userId: number) {
   return { user, summary };
 }
 
-function buildClearedTypeBlock(typeBlock: Record<string, any>, updates: Record<string, any>) {
+function buildClearedTypeBlock(
+  typeBlock: Record<string, Json | undefined>,
+  updates: Record<string, Json | undefined>
+) {
   const nextBlock = { ...typeBlock, ...updates };
   delete nextBlock.reverification_documents;
   delete nextBlock.reverification_compliance_numbers;
@@ -164,7 +175,7 @@ export async function approveReverification(
   }
 
   const pendingNumbers = parseJsonObject(typeBlock.reverification_compliance_numbers);
-  let nextProfileData: Record<string, any> = {
+  let nextProfileData: Record<string, unknown> = {
     ...profileData,
     reverification_pending: false,
     compliance_documents: complianceDocuments,
@@ -234,19 +245,28 @@ export async function approveReverification(
   });
   nextProfileData = attached.profileData;
 
+  return saveReverificationDecision(userId, nextProfileData as Json);
+}
+
+async function saveReverificationDecision(userId: number, profileData: Json) {
   const { data, error } = await supabase
     .from('users')
     .update({
-      profile_data: nextProfileData,
+      profile_data: profileData,
       verification_status: 'verified',
       updated_at: new Date().toISOString(),
     })
     .eq('id', userId)
+    .eq('verification_status', 'verified')
+    .contains('profile_data', { reverification_pending: true })
     .select('id, name, email, user_type, verification_status, profile_data, updated_at')
-    .single();
+    .maybeSingle();
 
   if (error) {
     throw error;
+  }
+  if (!data) {
+    throw new ReverificationConflictError();
   }
 
   return data;
@@ -263,7 +283,7 @@ export async function rejectReverification(userId: number, reason = '', reviewed
   const verificationDocuments = parseJsonObject(profileData.verification_documents);
   const typeBlock = parseJsonObject(verificationDocuments[typeKey]);
 
-  let complianceDocuments = parseJsonObject(profileData.compliance_documents);
+  const complianceDocuments = parseJsonObject(profileData.compliance_documents);
   if (user.user_type === 'ngo') {
     delete complianceDocuments.pending_reverification;
   }
@@ -283,20 +303,5 @@ export async function rejectReverification(userId: number, reason = '', reviewed
     },
   };
 
-  const { data, error } = await supabase
-    .from('users')
-    .update({
-      profile_data: nextProfileData,
-      verification_status: 'verified',
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', userId)
-    .select('id, name, email, user_type, verification_status, profile_data, updated_at')
-    .single();
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
+  return saveReverificationDecision(userId, nextProfileData);
 }

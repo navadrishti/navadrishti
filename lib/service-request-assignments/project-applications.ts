@@ -18,6 +18,8 @@ import {
   isFullyVerifiedCompany,
 } from '@/lib/service-request-assignments/shared'
 
+const PENDING_LEAD_INVITE_STATUSES = ['pending', 'invited', 'pending_acceptance', 'awaiting_acceptance', 'offered']
+
 export async function submitProjectApplication(request: NextRequest) {
   try {
     const decoded = getTokenClaims(request)
@@ -29,7 +31,7 @@ export async function submitProjectApplication(request: NextRequest) {
     const body = await request.json()
     const action = String(body.action || '').trim()
 
-    if (!['apply-project', 'invite-lead-ngo'].includes(action)) {
+    if (!['apply-project', 'invite-lead-ngo', 'revoke-lead-ngo'].includes(action)) {
       return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
     }
 
@@ -61,7 +63,10 @@ export async function submitProjectApplication(request: NextRequest) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 
-    const projectRow = enrichProjectRecord(projectRowRaw) as any
+    const projectRow = enrichProjectRecord(projectRowRaw)
+    if (!projectRow) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+    }
     const ownerNgoId = Number(projectRow.ngo_id || 0)
 
     if (ownerNgoId === userId) {
@@ -187,6 +192,30 @@ export async function submitProjectApplication(request: NextRequest) {
       })
     }
 
+    if (action === 'revoke-lead-ngo') {
+      const ngoId = Number(body.ngoId || 0)
+      if (!Number.isFinite(ngoId) || ngoId <= 0) {
+        return NextResponse.json({ error: 'Valid ngoId is required' }, { status: 400 })
+      }
+
+      const { data: removed, error: removeError } = await supabase
+        .from('service_request_contributions')
+        .delete()
+        .eq('contribution_type', LEAD_NGO_INVITE_CONTRIBUTION_TYPE)
+        .eq('meta->>project_id', projectId)
+        .eq('meta->>inviting_company_id', String(userId))
+        .eq('contributor_id', ngoId)
+        .in('status', PENDING_LEAD_INVITE_STATUSES)
+        .select('id')
+
+      if (removeError) throw removeError
+      if (!removed || removed.length === 0) {
+        return NextResponse.json({ error: 'This invite has already been answered and can no longer be removed.' }, { status: 409 })
+      }
+
+      return NextResponse.json({ success: true, data: { projectId, message: 'Lead NGO invite removed.' } })
+    }
+
     if (activeNeeds.length === 0 && action === 'invite-lead-ngo') {
       return NextResponse.json({
         error: 'Lead NGO invites for projects without legacy needs are managed from the project assignment after NGO acceptance. Ensure the project is accepted first.'
@@ -198,9 +227,10 @@ export async function submitProjectApplication(request: NextRequest) {
     }
 
     if (action === 'invite-lead-ngo') {
-      const ngoIds = (Array.isArray(body.ngoIds)
-        ? [...new Set(body.ngoIds.map((value: any) => Number(value)).filter((value: number) => Number.isFinite(value) && value > 0))]
-        : []) as number[]
+      const rawNgoIds: unknown = body.ngoIds
+      const ngoIds = Array.isArray(rawNgoIds)
+        ? [...new Set(rawNgoIds.map((value: unknown) => Number(value)).filter((value) => Number.isFinite(value) && value > 0))]
+        : []
 
       if (ngoIds.length === 0) {
         return NextResponse.json({ error: 'At least one NGO id is required' }, { status: 400 })
@@ -295,9 +325,9 @@ export async function submitProjectApplication(request: NextRequest) {
 
       if (existingInvitesError) throw existingInvitesError
 
-      const existingByNgo = new Map<number, any>((existingInvites || []).map((item) => [Number(item.contributor_id), item]))
+      const existingInvitedNgoIds = new Set((existingInvites || []).map((item) => Number(item.contributor_id)))
       const rowsToInsert = ngoIds
-        .filter((ngoId: number) => !existingByNgo.has(ngoId))
+        .filter((ngoId: number) => !existingInvitedNgoIds.has(ngoId))
         .map((ngoId: number) => ({
           service_request_id: anchorNeedId,
           contributor_id: ngoId,

@@ -15,6 +15,7 @@ import {
   reviewQueueProjectApplicationStatuses,
   type AssignmentsPutContext,
 } from '@/lib/service-request-assignments/shared'
+import type { Tables, TablesUpdate } from '@/lib/database.types'
 
 export async function reviewProjectApplication(ctx: AssignmentsPutContext) {
   const { body, userId, userType } = ctx
@@ -72,8 +73,8 @@ export async function reviewProjectApplication(ctx: AssignmentsPutContext) {
     return NextResponse.json({ error: 'Project not found under your NGO' }, { status: 404 })
   }
 
-  const projectForReview = enrichProjectRecord(projectForReviewRaw) as any
-  const pendingApps = Array.isArray(projectForReview.pending_company_applications)
+  const projectForReview = enrichProjectRecord(projectForReviewRaw)
+  const pendingApps = Array.isArray(projectForReview?.pending_company_applications)
     ? [...projectForReview.pending_company_applications]
     : []
   const metaAppIndex = pendingApps.findIndex((item) => Number(item.company_id) === companyId)
@@ -90,7 +91,7 @@ export async function reviewProjectApplication(ctx: AssignmentsPutContext) {
 
   const needIds = (ownNeeds || []).map((item) => item.id)
 
-  let targetRows: any[] = []
+  let targetRows: Pick<Tables<'service_request_contributions'>, 'id' | 'service_request_id' | 'meta'>[] = []
   if (needIds.length > 0) {
     const { data: rows, error: targetRowsError } = await supabase
       .from('service_request_contributions')
@@ -119,7 +120,7 @@ export async function reviewProjectApplication(ctx: AssignmentsPutContext) {
 
   if (decision === 'accepted') {
     const alreadyAcceptedMeta = pendingApps.some(
-      (item: any) =>
+      (item) =>
         Number(item.company_id) !== companyId &&
         String(item.status || '').toLowerCase() === 'accepted'
     )
@@ -144,6 +145,39 @@ export async function reviewProjectApplication(ctx: AssignmentsPutContext) {
           error: 'A company application is already accepted for this project. You cannot accept another application.'
         }, { status: 409 })
       }
+    }
+
+    // Capacity check against project volunteers_needed (standalone) or legacy child needs.
+    try {
+      const volunteersNeeded = Number(projectForReview?.volunteers_needed || 0)
+      let totalVolunteersNeeded = volunteersNeeded
+
+      if (needIds.length > 0) {
+        const { data: volunteerRows, error: volunteerRowsError } = await supabase
+          .from('service_requests')
+          .select('volunteers_needed')
+          .eq('project_id', projectId)
+          .not('status', 'in', '(completed,cancelled)')
+
+        if (volunteerRowsError) throw volunteerRowsError
+        const fromNeeds = (volunteerRows || []).reduce((acc: number, r) => acc + (Number(r.volunteers_needed || 0)), 0)
+        if (fromNeeds > 0) totalVolunteersNeeded = fromNeeds
+      }
+
+      const { data: ngoUser, error: ngoUserError } = await supabase
+        .from('users')
+        .select('id, ngo_volunteer_capacity')
+        .eq('id', userId)
+        .single()
+
+      if (!ngoUserError && ngoUser && Number.isFinite(Number(ngoUser.ngo_volunteer_capacity))) {
+        const capacity = Number(ngoUser.ngo_volunteer_capacity || 0)
+        if (capacity > 0 && totalVolunteersNeeded > capacity) {
+          return NextResponse.json({ error: `NGO volunteer capacity (${capacity}) is less than required volunteers (${totalVolunteersNeeded}). Please review before accepting.` }, { status: 409 })
+        }
+      }
+    } catch (e) {
+      console.warn('Capacity check failed:', e)
     }
   }
 
@@ -170,7 +204,7 @@ export async function reviewProjectApplication(ctx: AssignmentsPutContext) {
       pending_company_applications: nextPending,
     })
 
-    const projectUpdate: Record<string, any> = {
+    const projectUpdate: TablesUpdate<'service_request_projects'> = {
       description: nextDescription,
       updated_at: new Date().toISOString(),
     }
@@ -214,39 +248,6 @@ export async function reviewProjectApplication(ctx: AssignmentsPutContext) {
   }
 
   if (decision === 'accepted') {
-    // Capacity check against project volunteers_needed (standalone) or legacy child needs.
-    try {
-      const volunteersNeeded = Number(projectForReview.volunteers_needed || 0)
-      let totalVolunteersNeeded = volunteersNeeded
-
-      if (needIds.length > 0) {
-        const { data: volunteerRows, error: volunteerRowsError } = await supabase
-          .from('service_requests')
-          .select('volunteers_needed')
-          .eq('project_id', projectId)
-          .not('status', 'in', '(completed,cancelled)')
-
-        if (volunteerRowsError) throw volunteerRowsError
-        const fromNeeds = (volunteerRows || []).reduce((acc: number, r) => acc + (Number(r.volunteers_needed || 0)), 0)
-        if (fromNeeds > 0) totalVolunteersNeeded = fromNeeds
-      }
-
-      const { data: ngoUser, error: ngoUserError } = await supabase
-        .from('users')
-        .select('id, ngo_volunteer_capacity')
-        .eq('id', userId)
-        .single()
-
-      if (!ngoUserError && ngoUser && Number.isFinite(Number(ngoUser.ngo_volunteer_capacity))) {
-        const capacity = Number(ngoUser.ngo_volunteer_capacity || 0)
-        if (capacity > 0 && totalVolunteersNeeded > capacity) {
-          return NextResponse.json({ error: `NGO volunteer capacity (${capacity}) is less than required volunteers (${totalVolunteersNeeded}). Please review before accepting.` }, { status: 409 })
-        }
-      }
-    } catch (e) {
-      console.warn('Capacity check failed:', e)
-    }
-
     if (needIds.length > 0) {
       const { error: expireOtherApplicationsError } = await supabase
         .from('service_request_contributions')

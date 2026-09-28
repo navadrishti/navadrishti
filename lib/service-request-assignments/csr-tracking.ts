@@ -215,13 +215,14 @@ export async function getCsrTracking(ctx: AssignmentsGetContext) {
 
   if (needsError) throw needsError
 
-  const { data: allLeadInvites, error: allLeadInvitesError } = await supabase
+  const { data: leadInvites, error: leadInvitesError } = await supabase
     .from('service_request_contributions')
     .select('id, contributor_id, status, reference_text, meta, created_at, updated_at')
     .eq('contribution_type', LEAD_NGO_INVITE_CONTRIBUTION_TYPE)
+    .in('meta->>project_id', projectIds)
     .order('created_at', { ascending: false })
 
-  if (allLeadInvitesError) throw allLeadInvitesError
+  if (leadInvitesError) throw leadInvitesError
 
   const userIds = new Set<number>()
   for (const project of projectById.values()) {
@@ -233,7 +234,7 @@ export async function getCsrTracking(ctx: AssignmentsGetContext) {
   for (const pair of handoffPairs.values()) {
     userIds.add(pair.companyId)
   }
-  for (const invite of allLeadInvites || []) {
+  for (const invite of leadInvites || []) {
     userIds.add(Number(invite.contributor_id))
   }
 
@@ -313,7 +314,7 @@ export async function getCsrTracking(ctx: AssignmentsGetContext) {
           return rank(b) - rank(a)
         })[0]
 
-      const relevantInvites = (allLeadInvites || []).filter((invite) => {
+      const relevantInvites = (leadInvites || []).filter((invite) => {
         const meta = parseJsonObject(invite.meta)
         return String(meta.project_id || '') === projectId && Number(meta.inviting_company_id || 0) === companyId
       })

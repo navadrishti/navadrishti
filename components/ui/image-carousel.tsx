@@ -113,6 +113,7 @@ export function ImageCarousel({
     >
       {/* Main Image */}
       <div className="relative h-full w-full overflow-hidden bg-gray-100">
+        {/* eslint-disable-next-line @next/next/no-img-element -- listing images are user-supplied URLs from arbitrary hosts */}
         <img 
           src={currentImage} 
           alt={`${alt} - Image ${currentIndex + 1}`}
@@ -199,6 +200,7 @@ export function ImageCarousel({
                     : "border-white/50 hover:border-white/75"
                 )}
               >
+                {/* eslint-disable-next-line @next/next/no-img-element -- listing images are user-supplied URLs from arbitrary hosts */}
                 <img 
                   src={image} 
                   alt={`${alt} thumbnail ${index + 1}`}

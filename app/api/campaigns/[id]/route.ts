@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
-import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth'
+import { getAuthUserFromRequest, assertUserType, authErrorResponse, findAuthUser } from '@/lib/server-auth'
 import { deleteCampaignWithDependencies, formatCampaignDeleteError } from '@/lib/campaign-delete'
-import { getCampaignLeadNgoId } from '@/lib/campaign-volunteer-attendance'
+import { getCampaignLeadNgoId, parseLeadNgoInvites } from '@/lib/campaign-volunteer-attendance'
+import { parseJsonObject } from '@/lib/utils'
 
 async function loadCampaign(campaignId: string) {
   const { data, error } = await supabase
@@ -18,10 +19,25 @@ async function loadCampaign(campaignId: string) {
   return data
 }
 
-export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+function canViewDraft(campaign: Awaited<ReturnType<typeof loadCampaign>>, viewerId: number) {
+  if (viewerId <= 0) return false
+  if (Number(campaign.company_id || 0) === viewerId) return true
+  if (getCampaignLeadNgoId(campaign) === viewerId) return true
+  const impact = parseJsonObject(campaign.impact_metrics)
+  return parseLeadNgoInvites(impact.lead_ngo_invites).some((invite) => invite.ngo_id === viewerId)
+}
+
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
     const campaign = await loadCampaign(id)
+
+    if (campaign.status === 'draft') {
+      const viewer = findAuthUser(request, { allowCookie: true })
+      if (!viewer || !canViewDraft(campaign, Number(viewer.id))) {
+        return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
+      }
+    }
 
     let companyName: string | null = null
     let companyVerificationStatus: string | null = null
@@ -87,6 +103,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
     return NextResponse.json({ success: true })
   } catch (error) {
+    const authResponse = authErrorResponse(error)
+    if (authResponse) return authResponse
     console.error('Campaign delete error:', error)
     const message = formatCampaignDeleteError(error)
     const status = (error as { code?: string } | null)?.code === '23503' ? 409 : 500

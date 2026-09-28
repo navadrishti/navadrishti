@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
 import { CSR_ELIGIBILITY_REQUIRED_MESSAGE, CSR_TIMELINE_COVERAGE_REQUIRED_MESSAGE, CSR_WORK_END_DATE_REQUIRED_MESSAGE } from '@/lib/auth'
-import { getAuthUserFromRequest, assertUserType, ngoUserIsCsrEligible, assertNgoCsr1CoversWork } from '@/lib/server-auth'
+import { findAuthUser, ngoUserIsCsrEligible, assertNgoCsr1CoversWork } from '@/lib/server-auth'
 import { getCampaignLeadNgoId, parseLeadNgoInvites } from '@/lib/campaign-volunteer-attendance'
 import { parseJsonObject } from '@/lib/utils'
 
 export async function POST(request: NextRequest) {
   try {
-    const user = getAuthUserFromRequest(request)
+    const user = findAuthUser(request)
     if (!user) return NextResponse.json({ error: 'Authentication required' }, { status: 401 })
-    assertUserType(user, ['ngo'])
+    if (user.user_type !== 'ngo') {
+      return NextResponse.json({ error: 'Only NGOs can accept the lead role' }, { status: 403 })
+    }
 
     if (!(await ngoUserIsCsrEligible(user.id))) {
       return NextResponse.json({ error: CSR_ELIGIBILITY_REQUIRED_MESSAGE }, { status: 403 })
@@ -75,12 +77,16 @@ export async function POST(request: NextRequest) {
           updated_at: new Date().toISOString(),
         })
         .eq('id', campaignId)
+        .or(`lead_ngo_user_id.is.null,lead_ngo_user_id.eq.${user.id}`)
         .select('*')
-        .single()
+        .maybeSingle()
 
       if (updateErr) {
         console.error('Failed to update draft campaign on accept:', updateErr)
         return NextResponse.json({ error: 'Failed to accept lead role' }, { status: 500 })
+      }
+      if (!updated) {
+        return NextResponse.json({ error: 'A lead NGO is already assigned to this campaign.' }, { status: 409 })
       }
 
       await supabase.from('csr_audit_log').insert({

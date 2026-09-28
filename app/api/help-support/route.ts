@@ -1,10 +1,10 @@
 import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
+import type { UploadApiOptions, UploadApiResponse } from 'cloudinary';
 import { cloudinary } from '@/lib/cloudinary';
 import { sendEmail } from '@/lib/email';
 import { db } from '@/lib/db';
 import { getTokenClaims } from '@/lib/auth';
-import { getErrorMessage } from '@/lib/utils';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
     const bytes = await proof.arrayBuffer();
     const buffer = Buffer.from(bytes);
     const isImage = proof.type.startsWith('image/');
-    const uploadOptions: Record<string, any> = {
+    const uploadOptions: UploadApiOptions = {
       resource_type: isImage ? 'image' : 'raw',
       folder: `support-tickets/${decoded.id}`,
       public_id: `ticket_${Date.now()}_${crypto.randomUUID()}`,
@@ -90,10 +90,10 @@ export async function POST(request: NextRequest) {
       ];
     }
 
-    const uploaded = await new Promise<any>((resolve, reject) => {
+    const uploaded = await new Promise<UploadApiResponse>((resolve, reject) => {
       cloudinary.uploader.upload_stream(uploadOptions, (error, result) => {
-        if (error) {
-          reject(error);
+        if (error || !result) {
+          reject(error ?? new Error('Cloudinary upload returned no result'));
           return;
         }
         resolve(result);
@@ -169,6 +169,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Support ticket submission error:', error);
-    return NextResponse.json({ error: getErrorMessage(error) || 'Failed to submit support ticket' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to submit support ticket' }, { status: 500 });
   }
 }

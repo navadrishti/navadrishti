@@ -4,6 +4,7 @@ import { getTokenClaims } from '@/lib/auth';
 import { isCapabilityRentalTransaction, resolveCapabilityRentalRate } from '@/lib/service-offers';
 
 import { parseJsonObject } from '@/lib/utils';
+import type { TablesUpdate } from '@/lib/database.types';
 
 export async function PUT(
   request: NextRequest,
@@ -68,7 +69,7 @@ export async function PUT(
 
     const nowIso = new Date().toISOString()
 
-    const updatePayload: Record<string, any> = {
+    const updatePayload: TablesUpdate<'service_clients'> = {
       response_meta: {
         ...currentMeta,
         isAssigned: status === 'accepted' || status === 'completed'

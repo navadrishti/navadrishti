@@ -390,7 +390,7 @@ export function buildFallbackCampaigns(input: GenerateCampaignsInput): Campaign[
   const volunteerRequirement = (input.volunteerRequirement || "cross-functional volunteer support").trim()
   const sourceMilestones = Array.isArray(input.milestone_info) ? input.milestone_info : []
 
-  const defaultMilestones = Array.from({ length: milestoneCount }, (_, index) => ({
+  const defaultMilestones: RequestMilestone[] = Array.from({ length: milestoneCount }, (_, index) => ({
     description: `Phase ${index + 1} implementation for ${requirementText}`,
     budget_allocated: 0,
   }))
@@ -424,7 +424,7 @@ export function buildFallbackCampaigns(input: GenerateCampaignsInput): Campaign[
     const milestoneBudgets = distributeMilestoneBudget(budget, seedMilestones.length, preferredBudgets)
 
     const milestones: ResponseMilestone[] = seedMilestones.map((source, index) => {
-      const sourceTitle = String((source as any).title || '').trim()
+      const sourceTitle = String(source.title || '').trim()
       const sourceDescription = String(source.description || '').trim()
       const weeks = Math.max(1, Math.floor((index + 1 + milestoneCount) / milestoneCount))
       const milestoneTitle = sourceTitle || (config.lever === "Direct Implementation"
@@ -438,8 +438,8 @@ export function buildFallbackCampaigns(input: GenerateCampaignsInput): Campaign[
         description: buildMilestoneDescription(config.lever, sourceDescription || `Milestone ${index + 1}`, location),
         duration_weeks: weeks,
         budget_allocated: milestoneBudgets[index] || 0,
-        start_date: (source as any).start_date,
-        end_date: (source as any).end_date,
+        start_date: source.start_date,
+        end_date: source.end_date,
         deliverables: [
           `${config.lever} plan approved for stage ${index + 1}`,
           `Execution evidence recorded for ${location}`,

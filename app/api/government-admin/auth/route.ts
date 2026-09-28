@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateGovernmentAdminToken, verifyGovernmentAdminPassword, type GovernmentAdminRole } from '@/lib/government-admin-auth';
 import { supabase } from '@/lib/db';
 import { setGovtAdminTokenCookie } from '@/lib/server-auth';
+import { limitAttempts } from '@/lib/rate-limit';
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,6 +14,9 @@ export async function POST(request: NextRequest) {
 
     const identifier = String(username).trim();
     const passwordValue = String(password);
+
+    const limited = await limitAttempts(request, 'government-admin-login', identifier);
+    if (limited) return limited;
 
     let account = null;
 

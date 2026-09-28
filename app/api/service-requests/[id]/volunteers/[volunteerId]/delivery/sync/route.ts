@@ -61,7 +61,7 @@ export async function POST(
       return NextResponse.json({ error: 'You can only track your own assignments' }, { status: 403 });
     }
 
-    let body: any = {};
+    let body: Record<string, unknown> | null = {};
     try {
       body = await request.json();
     } catch {
@@ -74,7 +74,7 @@ export async function POST(
     const trackingId =
       extractTrackingId(body?.trackingId) ||
       extractTrackingId(body?.deliveryTrackingId) ||
-      extractTrackingId((existingMeta as any).delivery_tracking_id);
+      extractTrackingId(existingMeta.delivery_tracking_id);
 
     if (!trackingId) {
       return NextResponse.json({ error: 'Delhivery tracking ID is required' }, { status: 400 });

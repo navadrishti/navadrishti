@@ -15,12 +15,25 @@ export function isCampaignVolunteerAssignment(
   )
 }
 
+export type CampaignVolunteerApplicationEntry = {
+  user_id?: number | string | null
+  user_type?: string | null
+  name?: string | null
+  capacity?: number | null
+  applied_at?: string | null
+  [key: string]: unknown
+}
+
+function readVolunteerApplications(impactMetrics: unknown): CampaignVolunteerApplicationEntry[] {
+  const impact = parseJsonObject(impactMetrics)
+  return Array.isArray(impact.volunteer_applications) ? impact.volunteer_applications : []
+}
+
 export function getVolunteerApplicationForUser(
   impactMetrics: unknown,
   userId: number
-): Record<string, any> | null {
-  const impact = parseJsonObject(impactMetrics)
-  const applications = Array.isArray(impact.volunteer_applications) ? impact.volunteer_applications : []
+): CampaignVolunteerApplicationEntry | null {
+  const applications = readVolunteerApplications(impactMetrics)
   return (
     applications.find((entry) => Number(entry?.user_id || 0) === Number(userId)) || null
   )
@@ -73,12 +86,9 @@ export function isCampaignVolunteerApplicant(campaign: CampaignLeadRef, userId: 
 
 export function filterVolunteerApplicationsExcludingLeadNgo(
   campaign: CampaignLeadRef
-): Record<string, any>[] {
-  const impact = parseJsonObject(campaign.impact_metrics)
+): CampaignVolunteerApplicationEntry[] {
   const leadNgoId = getCampaignLeadNgoId(campaign)
-  const applications = Array.isArray(impact.volunteer_applications)
-    ? impact.volunteer_applications
-    : []
+  const applications = readVolunteerApplications(campaign.impact_metrics)
   if (!(leadNgoId > 0)) return applications
   return applications.filter((entry) => Number(entry?.user_id || 0) !== leadNgoId)
 }

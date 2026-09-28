@@ -7,6 +7,7 @@ import {
   type CapabilityMatch,
 } from "@/lib/csr-agent/find-service-offers";
 import { buildRequirementDetails } from "@/lib/csr-agent/recommendation-utils";
+import { findAuthUser } from "@/lib/server-auth";
 
 type RecommendationResponse =
   | { success: true; data: CapabilityMatch[] }
@@ -176,6 +177,13 @@ const findServiceOffersFallback = async (input: z.infer<typeof RequestCoercionSc
 };
 
 export async function POST(request: NextRequest) {
+  if (!findAuthUser(request, { allowCookie: true })) {
+    return NextResponse.json<RecommendationResponse>(
+      { success: false, error: "Login required" },
+      { status: 401 }
+    );
+  }
+
   try {
     const body = await request.json();
 

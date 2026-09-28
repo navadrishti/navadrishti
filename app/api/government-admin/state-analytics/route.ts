@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { assertGovernmentAdmin } from '@/lib/government-admin-auth';
+import { authErrorResponse } from '@/lib/server-auth';
 import { supabase } from '@/lib/db';
 import { getErrorMessage } from '@/lib/utils';
 
@@ -13,6 +14,12 @@ type DistrictSummary = {
   rejected_evidence: number;
   flagged_evidence: number;
   field_officers_count: number;
+};
+
+type ProjectWithMilestones = {
+  id: string;
+  created_by_government_admin_id: number | null;
+  government_project_milestones: { is_fulfilled: boolean }[] | null;
 };
 
 export async function GET(request: NextRequest) {
@@ -52,7 +59,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    let projects: any[] = [];
+    let projects: ProjectWithMilestones[] = [];
     if (districtByAdminId.size > 0) {
       const { data, error: projectsError } = await supabase
         .from('government_projects')
@@ -65,9 +72,9 @@ export async function GET(request: NextRequest) {
 
     const districtMap = new Map<string, { total: number; active: number; progressSum: number }>();
     for (const project of projects) {
-      const district = districtByAdminId.get(project.created_by_government_admin_id) || 'Unassigned';
+      const district = districtByAdminId.get(Number(project.created_by_government_admin_id)) || 'Unassigned';
       const entry = districtMap.get(district) || { total: 0, active: 0, progressSum: 0 };
-      const milestones: { is_fulfilled: boolean }[] = project.government_project_milestones || [];
+      const milestones = project.government_project_milestones || [];
       const completed = milestones.filter((m) => m.is_fulfilled).length;
 
       entry.total++;
@@ -110,6 +117,8 @@ export async function GET(request: NextRequest) {
       summary,
     });
   } catch (error) {
+    const authResponse = authErrorResponse(error);
+    if (authResponse) return authResponse;
     console.error('State analytics error:', error);
     return NextResponse.json(
       { error: getErrorMessage(error) || 'Failed to load state analytics' },

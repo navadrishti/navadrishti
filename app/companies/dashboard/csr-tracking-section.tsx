@@ -20,6 +20,7 @@ interface CsrTrackingSectionProps {
   allVerified: boolean;
   invitingProjectId: string | null;
   onInvite: (projectId: string, ngoIds: number[]) => void;
+  onRevokeInvite: (projectId: string, ngoId: number) => void;
 }
 
 export function CsrTrackingSection({
@@ -33,6 +34,7 @@ export function CsrTrackingSection({
   allVerified,
   invitingProjectId,
   onInvite,
+  onRevokeInvite,
 }: CsrTrackingSectionProps) {
   return (
     <div className="rounded-md border bg-slate-50 p-4 space-y-3">
@@ -93,6 +95,7 @@ export function CsrTrackingSection({
                   allVerified={allVerified}
                   invitingProjectId={invitingProjectId}
                   onInvite={onInvite}
+                  onRevokeInvite={onRevokeInvite}
                 />
               )}
 

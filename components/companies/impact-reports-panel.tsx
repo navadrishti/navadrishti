@@ -101,8 +101,10 @@ export function ImpactReportsPanel({ audience }: ImpactReportsPanelProps) {
   const needsPeriod =
     documentType === "impact_report" || documentType === "implementing_agency_report"
 
+  const userId = user?.id
+
   const loadEntities = useCallback(async () => {
-    if (!user?.id) {
+    if (!userId) {
       setEntities([])
       setLoadingEntities(false)
       return
@@ -113,7 +115,7 @@ export function ImpactReportsPanel({ audience }: ImpactReportsPanelProps) {
       const authHeaders = token ? { Authorization: `Bearer ${token}` } : undefined
 
       if (resolvedAudience === "company") {
-        const response = await fetch(`/api/campaigns?company_id=${user.id}`, {
+        const response = await fetch(`/api/campaigns?company_id=${userId}`, {
           headers: authHeaders,
         })
         const payload = await response.json().catch(() => null)
@@ -150,7 +152,7 @@ export function ImpactReportsPanel({ audience }: ImpactReportsPanelProps) {
       }))
 
       const leadCampaignOptions: EntityOption[] = campaigns
-        .filter((row) => getCampaignLeadNgoId(row) === user.id)
+        .filter((row) => getCampaignLeadNgoId(row) === userId)
         .map((row) => ({
           id: `campaign:${String(row.id)}`,
           kind: "campaign" as const,
@@ -170,7 +172,7 @@ export function ImpactReportsPanel({ audience }: ImpactReportsPanelProps) {
     } finally {
       setLoadingEntities(false)
     }
-  }, [resolvedAudience, token, user?.id])
+  }, [resolvedAudience, token, userId])
 
   useEffect(() => {
     void loadEntities()
