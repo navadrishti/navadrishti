@@ -31,7 +31,10 @@ vi.mock('@/lib/db', () => ({
     supportTicketMessages: { create: mocks.createMessage },
   },
 }))
-vi.mock('@/lib/email', () => ({ sendEmail: mocks.sendEmail }))
+vi.mock('@/lib/email', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/email')>()),
+  sendEmail: mocks.sendEmail,
+}))
 
 const user: UserData = { id: 7, email: 'asha@example.org', name: 'Asha', user_type: 'ngo' }
 const bearer = { authorization: `Bearer ${generateToken(user)}` }
