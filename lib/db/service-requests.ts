@@ -1,5 +1,5 @@
 import 'server-only'
-import { getServiceRequestTarget } from '@/lib/service-request-allocation'
+import { formatProjectLocation, getServiceRequestTarget } from '@/lib/service-request-allocation'
 import {
   isMissingRpcFunction,
   NeedCapacityExceededError,
@@ -206,7 +206,7 @@ export const serviceRequests = {
 
         if (projectRow) {
           requestData.beneficiary_count = requestData.beneficiary_count ?? projectRow.expected_beneficiaries ?? requestData.beneficiary_count;
-          requestData.location = requestData.location || projectRow.exact_address || projectRow.location || requestData.location;
+          requestData.location = requestData.location || formatProjectLocation(projectRow.exact_address, projectRow.location) || requestData.location;
           requestData.impact_description = requestData.impact_description || projectRow.description || requestData.impact_description;
           requestData.timeline = requestData.timeline || projectRow.timeline || requestData.timeline;
           requestData.project_context = withProjectSnapshot(requestData.project_context, projectRow);
@@ -235,7 +235,7 @@ export const serviceRequests = {
           if (requestData.beneficiary_count === undefined || requestData.beneficiary_count === null) {
             requestData.beneficiary_count = projectRow.expected_beneficiaries ?? requestData.beneficiary_count;
           }
-          requestData.location = requestData.location || projectRow.exact_address || projectRow.location || requestData.location;
+          requestData.location = requestData.location || formatProjectLocation(projectRow.exact_address, projectRow.location) || requestData.location;
           requestData.impact_description = requestData.impact_description || projectRow.description || requestData.impact_description;
           requestData.timeline = requestData.timeline || projectRow.timeline || requestData.timeline;
           requestData.project_context = withProjectSnapshot(requestData.project_context, projectRow);

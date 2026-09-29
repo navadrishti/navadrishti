@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
 import { ngoIsCsrEligibleForProject } from '@/lib/auth'
-import { enrichProjectRecord } from '@/lib/service-request-allocation'
+import { enrichProjectRecord, formatProjectLocation } from '@/lib/service-request-allocation'
 import {
   isFullyVerifiedCompany,
   type AssignmentsGetContext,
@@ -88,7 +88,7 @@ export async function getCompanyProjects(ctx: AssignmentsGetContext) {
       project_id: String(project.id),
       project_title: project.title || 'Project',
       project_description: project.description || '',
-      project_location: project.exact_address || project.location || '',
+      project_location: formatProjectLocation(project.exact_address, project.location),
       project_timeline: project.timeline || '',
       project_category: project.category || null,
       project_budget_inr: project.budget_inr ?? null,

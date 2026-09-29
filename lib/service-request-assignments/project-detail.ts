@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
 import { parseJsonObject } from '@/lib/utils'
-import { enrichProjectRecord, redactProjectSensitiveFields } from '@/lib/service-request-allocation'
+import { enrichProjectRecord, formatProjectLocation, redactProjectSensitiveFields } from '@/lib/service-request-allocation'
 import {
   COMPANY_PROJECT_CONTRIBUTION_TYPE,
   LEAD_NGO_INVITE_CONTRIBUTION_TYPE,
@@ -114,7 +114,7 @@ export async function getProjectDetail(ctx: AssignmentsGetContext) {
       ngo_id: fallbackNgoId,
       title: String(projectContext.project_title || firstNeed.title || 'Project'),
       description: String(projectContext.project_description || firstNeed.description || ''),
-      location: String(projectContext.project_location || firstNeed.location || ''),
+      location: formatProjectLocation(projectContext.project_location, firstNeed.location),
       exact_address: String(projectContext.project_location || firstNeed.location || ''),
       timeline: String(projectContext.project_timeline || firstNeed.timeline || ''),
       status: String(projectContext.project_status || 'active'),
