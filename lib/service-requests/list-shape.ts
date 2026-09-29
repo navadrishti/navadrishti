@@ -1,5 +1,6 @@
 import { SERVICE_REQUEST_TYPES } from '@/lib/categories';
 import { getRequestUrgencyLevel, parseJsonObject } from '@/lib/utils';
+import { formatProjectLocation } from '@/lib/service-request-allocation';
 import type { Tables } from '@/lib/database.types';
 import { parseImageArray } from './parsing';
 
@@ -135,7 +136,7 @@ function summarizeProject(
     return {
       id: String(request.project.id || ''),
       title: String(request.project.title || projectContextObj?.project_title || 'Project'),
-      location: String(request.project.location || request.project.exact_address || projectContextObj?.project_location || ''),
+      location: formatProjectLocation(request.project.location, request.project.exact_address, projectContextObj?.project_location),
       timeline: String(request.project.timeline || projectContextObj?.project_timeline || ''),
       category: String(projectContextObj?.project_category || category || '')
     };
@@ -145,7 +146,7 @@ function summarizeProject(
     return {
       id: String(projectContextObj.project.id || ''),
       title: String(projectContextObj.project_title || projectContextObj.project.title || ''),
-      location: String(projectContextObj.project_location || projectContextObj.project.exact_address || ''),
+      location: formatProjectLocation(projectContextObj.project_location, projectContextObj.project.exact_address),
       timeline: String(projectContextObj.project_timeline || projectContextObj.project.timeline || ''),
       category: String(projectContextObj.project_category || projectContextObj.project.category || '')
     };

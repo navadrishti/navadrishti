@@ -127,6 +127,34 @@ export function projectAddressToLocationSummary(address: Partial<ProjectExactAdd
   })
 }
 
+function readStructuredAddress(candidate: unknown): Partial<ProjectExactAddress> | null {
+  if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
+    return candidate as Partial<ProjectExactAddress>
+  }
+  try {
+    const parsed = JSON.parse(String(candidate))
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+export function formatProjectLocation(...candidates: unknown[]): string {
+  for (const candidate of candidates) {
+    const isObject = Boolean(candidate) && typeof candidate === 'object'
+    const text = isObject ? '' : readAddressTextField(candidate)
+    if (!isObject && !text) continue
+    if (!isObject && !text.startsWith('{')) return text
+
+    const structured = readStructuredAddress(isObject ? candidate : text)
+    if (!structured) continue
+    const address = normalizeProjectAddress(structured)
+    if (!address.city && !address.state && !address.pincode) continue
+    return projectAddressToLocationSummary(address)
+  }
+  return ''
+}
+
 export function toProjectAddressDateInput(value: unknown): string {
   const text = String(value || '').trim()
   if (!text) return ''

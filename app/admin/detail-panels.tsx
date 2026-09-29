@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { AdminDetailItems, AdminDetailSection, formatAdminDetailValue } from '@/components/evidence-verification/portal-ui';
 import { formatStatusLabel } from '@/lib/format-date';
+import { formatProjectExactAddress } from '@/lib/service-request-allocation';
 import { cn, parseJsonObject } from '@/lib/utils';
 import type {
   AdminCampaign,
@@ -107,7 +108,7 @@ export function ProjectFullDetails({ project }: { project: AdminProject }) {
           { label: 'Title', value: formatAdminDetailValue(project.title) },
           { label: 'Status', value: formatAdminDetailValue(project.status) },
           { label: 'Location', value: formatAdminDetailValue(project.location) },
-          { label: 'Exact address', value: formatAdminDetailValue(project.exact_address) },
+          { label: 'Exact address', value: formatAdminDetailValue(project.exact_address ? formatProjectExactAddress(project.exact_address) : null) },
           { label: 'Timeline', value: formatAdminDetailValue(project.timeline) },
           { label: 'NGO', value: formatAdminDetailValue(project.ngo?.name) },
           { label: 'NGO email', value: formatAdminDetailValue(project.ngo?.email) },

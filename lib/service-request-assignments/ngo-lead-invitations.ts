@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
 import { parseJsonObject } from '@/lib/utils'
+import { formatProjectLocation } from '@/lib/service-request-allocation'
 import {
   LEAD_NGO_INVITE_CONTRIBUTION_TYPE,
   type AssignmentsGetContext,
@@ -60,7 +61,7 @@ export async function getNgoLeadInvitations(ctx: AssignmentsGetContext) {
       invited_at: invite.created_at,
       project_id: projectId,
       project_title: project?.title || 'Project',
-      project_location: project?.exact_address || project?.location || '',
+      project_location: formatProjectLocation(project?.exact_address, project?.location),
       project_timeline: project?.timeline || '',
       company_id: companyId,
       company_name: company?.name || 'Company',

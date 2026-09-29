@@ -4,6 +4,7 @@ import {
   formatAttendanceSummary,
   formatDeliveryTrackingStatus,
   formatProjectExactAddress,
+  formatProjectLocation,
   getDeliveryTrackingEvents,
   getNgoNeedFulfillmentMode,
   getSkillServiceDailyRate,
@@ -280,5 +281,15 @@ describe('project exact address', () => {
 
   it('summarises the location without repeating the city', () => {
     expect(projectAddressToLocationSummary(address)).toBe('Pune, Maharashtra, 411001, India')
+  })
+
+  it('never returns a stored address as raw JSON', () => {
+    const stored = serializeProjectExactAddress({ address_line: 'dadada', city: 'Delhi', state: 'Delhi', pincode: '112231' })
+    expect(formatProjectLocation(stored, 'ignored')).toBe('Delhi, Delhi, 112231, India')
+    expect(formatProjectLocation(address)).toBe('Pune, Maharashtra, 411001, India')
+    expect(formatProjectLocation('', null, 'Ward 9')).toBe('Ward 9')
+    expect(formatProjectLocation('{not json', 'Ward 9')).toBe('Ward 9')
+    expect(formatProjectLocation('{"country":""}', 'Ward 9')).toBe('Ward 9')
+    expect(formatProjectLocation(null, undefined)).toBe('')
   })
 })

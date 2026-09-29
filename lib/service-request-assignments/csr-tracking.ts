@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabase, getProjectLeadNgoId, buildProjectLeadNgoPatch } from '@/lib/db'
 import { parseJsonObject } from '@/lib/utils'
+import { formatProjectLocation } from '@/lib/service-request-allocation'
 import {
   COMPANY_PROJECT_CONTRIBUTION_TYPE,
   LEAD_NGO_INVITE_CONTRIBUTION_TYPE,
@@ -342,7 +343,7 @@ export async function getCsrTracking(ctx: AssignmentsGetContext) {
         project_id: projectId,
         project_title: project.title || 'Project',
         project_description: project.description || '',
-        project_location: project.exact_address || project.location || '',
+        project_location: formatProjectLocation(project.exact_address, project.location),
         project_timeline: project.timeline || '',
         project_category: categoryLabels.length === 1
           ? categoryLabels[0]
