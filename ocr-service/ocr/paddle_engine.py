@@ -29,7 +29,12 @@ from paddleocr import PaddleOCR
 class PaddleOCREngine:
 
     def __init__(self):
-        self._ocr = PaddleOCR(use_angle_cls=True, lang="en", show_log=False)
+        self._ocr = PaddleOCR(
+            lang="en",
+            use_doc_orientation_classify=False,
+            use_doc_unwarping=False,
+            use_textline_orientation=True,
+        )
 
     def extract(self, file_input: Union[str, bytes, np.ndarray]) -> "OCRResult":
         """
@@ -71,14 +76,16 @@ class PaddleOCREngine:
         all_confidences = []
 
         for page_num, img in enumerate(images):
-            result = self._ocr.ocr(img)
-            if result and result[0]:
+            result = self._ocr.predict(img)
+            page   = result[0] if result else None
+            texts  = page["rec_texts"] if page else []
+            scores = page["rec_scores"] if page else []
+            if texts:
                 if len(images) > 1:
                     all_lines.append(f"[PAGE {page_num + 1}]")
-                for line in result[0]:
-                    text, conf = line[1]
+                for text, conf in zip(texts, scores):
                     all_lines.append(text.strip())
-                    all_confidences.append(conf)
+                    all_confidences.append(float(conf))
 
         return OCRResult(
             full_text       = "\n".join(all_lines),

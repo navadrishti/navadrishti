@@ -96,7 +96,7 @@ export default function ServiceRequestDetailPage() {
   return (
     <div className="min-h-screen overflow-x-hidden bg-background">
       <Header />
-
+      
       <div className="mx-auto max-w-7xl px-4 py-8">
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <Button variant="ghost" onClick={() => router.back()} className="w-full justify-start px-0 text-udaan-blue hover:text-gram-ink hover:bg-transparent active:bg-transparent focus-visible:bg-transparent focus-visible:ring-0 sm:w-auto">

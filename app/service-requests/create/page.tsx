@@ -305,9 +305,9 @@ export default function CreateServiceRequestPage() {
                               onRemoveImage={(url) => removeNeedImageUrl(index, url)}
                             />
                           ))}
-                        </div>
-                      </div>
-                    </div>
+                                          </div>
+                                    </div>
+                                  </div>
 
                     <RelatedOffersSidebar
                       needs={needs}

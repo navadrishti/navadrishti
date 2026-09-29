@@ -20,7 +20,7 @@ export function Header({ className = '' }: { className?: string } = {}) {
 
   const navLoading = !mounted || loading
   const navItems = getHeaderNavItems(user, mounted)
-
+  
   return (
     <>
       <DesktopSidebar

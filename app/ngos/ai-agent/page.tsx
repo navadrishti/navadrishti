@@ -80,7 +80,7 @@ export default function NGOAIAgentPage() {
   })
   const { publishDraft } = usePublishDraft({
     intake,
-    selectedOfferIdsByNeed,
+      selectedOfferIdsByNeed,
     relatedOffersByNeed,
     user,
     token,
@@ -184,8 +184,8 @@ export default function NGOAIAgentPage() {
               onRemoveAll={offers.removeAllOffersForNeed}
               onToggleOffer={offers.toggleOfferForNeed}
               onPublish={() => {
-                void publishDraft()
-              }}
+                            void publishDraft()
+                          }}
             />
           </div>
         </div>
