@@ -17,6 +17,9 @@ type VerificationActionRow = {
   verification_status: string | null
   verification_date: string | null
   updated_at: string | null
+  reviewed_by_platform_ca_id: number | null
+  reviewed_at: string | null
+  rejection_reason: string | null
   aadhaar_verified?: boolean | null
   pan_verified?: boolean | null
   aadhaar_verified_at?: string | null
@@ -87,12 +90,14 @@ export async function applyCAVerificationAction(options: {
   const { table, profileKey } = TYPE_CONFIG[type]
   const reviewedAt = new Date().toISOString()
 
+  const baseColumns =
+    'id, user_id, verification_status, verification_date, updated_at, reviewed_by_platform_ca_id, reviewed_at, rejection_reason'
   const rowSelect =
     type === 'companies'
-      ? 'id, user_id, verification_status, verification_date, updated_at, company_name'
+      ? `${baseColumns}, company_name`
       : type === 'ngos'
-        ? 'id, user_id, verification_status, verification_date, updated_at, ngo_name'
-        : 'id, user_id, verification_status, verification_date, updated_at, aadhaar_verified, pan_verified, aadhaar_verified_at, pan_verified_at'
+        ? `${baseColumns}, ngo_name`
+        : `${baseColumns}, aadhaar_verified, pan_verified, aadhaar_verified_at, pan_verified_at`
 
   const { data: rowData, error: fetchError } = await supabase
     .from(table)
@@ -159,6 +164,9 @@ export async function applyCAVerificationAction(options: {
   const verificationUpdate = {
     verification_status: nextStatus,
     updated_at: reviewedAt,
+    reviewed_by_platform_ca_id: ca.id,
+    reviewed_at: reviewedAt,
+    rejection_reason: action === 'reject' ? reason || '' : null,
     ...(action === 'approve' ? { verification_date: reviewedAt } : {}),
   }
 
@@ -263,6 +271,9 @@ export async function applyCAVerificationAction(options: {
       verification_status: row.verification_status ?? null,
       verification_date: row.verification_date ?? null,
       updated_at: row.updated_at ?? reviewedAt,
+      reviewed_by_platform_ca_id: row.reviewed_by_platform_ca_id ?? null,
+      reviewed_at: row.reviewed_at ?? null,
+      rejection_reason: row.rejection_reason ?? null,
     }
     if (action === 'approve' && type === 'individuals') {
       await supabase

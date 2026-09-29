@@ -41,7 +41,7 @@ export function ExistingApplicationPanel({ application, offerPriceAmount, paying
         </div>
 
         <p className="text-xs text-muted-foreground">
-          Applied on {formatDate(application.created_at)}
+          Applied on {formatDate(application.applied_at)}
         </p>
 
         {['accepted', 'active'].includes(application.status) && application.service_request_id ? (
@@ -58,7 +58,7 @@ export function ExistingApplicationPanel({ application, offerPriceAmount, paying
               </Badge>
             </div>
 
-            {meta?.payment_status !== 'paid' && Number(meta?.payment_amount_inr || offerPriceAmount || 0) > 0 ? (
+            {meta?.payment_status !== 'paid' && meta?.payment_required !== false && Number(meta?.payment_amount_inr || offerPriceAmount || 0) > 0 ? (
               <Button onClick={onPay} disabled={paying} className="w-full">
                 {paying ? (
                   <>

@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { uploadToCloudinary } from '@/lib/cloudinary'
 import { getTokenClaims } from '@/lib/auth'
 
+const ALLOWED_RECEIPT_TYPES = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/webp'])
+const MAX_RECEIPT_SIZE = 10 * 1024 * 1024
+
 export async function POST(request: NextRequest) {
   try {
     const decoded = getTokenClaims(request)
@@ -14,6 +17,14 @@ export async function POST(request: NextRequest) {
 
     if (!(file instanceof File)) {
       return NextResponse.json({ error: 'Receipt file is required' }, { status: 400 })
+    }
+
+    if (file.size > MAX_RECEIPT_SIZE) {
+      return NextResponse.json({ error: 'Receipt file is too large. Maximum size is 10MB.' }, { status: 413 })
+    }
+
+    if (!ALLOWED_RECEIPT_TYPES.has(file.type)) {
+      return NextResponse.json({ error: 'Only PDF, JPEG, PNG, or WebP receipts are allowed' }, { status: 400 })
     }
 
     const arrayBuffer = await file.arrayBuffer()

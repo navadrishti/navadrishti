@@ -6,6 +6,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import ProtectedRoute from '@/components/protected-route';
 import { Header } from '@/components/header';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent } from '@/components/ui/tabs';
 import { ProfileDashboardTab } from '@/components/profile-dashboard-tab';
@@ -100,6 +102,17 @@ function CompanyDashboardContent() {
                 </p>
               </div>
             </div>
+
+            {data.failedSections.length > 0 ? (
+              <Alert variant="destructive">
+                <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <span>Could not load {data.failedSections.join(', ')}. What you see may be out of date.</span>
+                  <Button type="button" size="sm" variant="outline" onClick={() => void data.reloadDashboard()}>
+                    Retry
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            ) : null}
 
             <Card>
               <CardContent className="pt-6">

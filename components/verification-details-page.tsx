@@ -32,17 +32,24 @@ export default function VerificationDetailsPage({ type }: VerificationDetailsPag
   const [reviewLoading, setReviewLoading] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
   const [complianceTags, setComplianceTags] = useState<string[]>([]);
+  const [loadError, setLoadError] = useState('');
 
   const fetchItems = async () => {
     try {
       setLoading(true);
+      setLoadError('');
       const response = await fetch(`/api/ca/queue?type=${type}&status=unverified`, {
         credentials: 'include',
       });
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setLoadError(data.error || 'The verification queue could not be loaded.');
+        return;
+      }
       setItems(data.data || []);
     } catch (error) {
       console.error('Failed to fetch items:', error);
+      setLoadError('The verification queue could not be loaded. Check your connection and try again.');
     } finally {
       setLoading(false);
     }
@@ -209,7 +216,7 @@ export default function VerificationDetailsPage({ type }: VerificationDetailsPag
                   <div className="text-sm text-gray-600 line-clamp-1">{display.email}</div>
                   <div className="flex items-center justify-between">
                     <Badge variant="outline">
-                      {item.documents_verified || 0}/{item.documents_total || 0} docs
+                      {item.documents_total || 0} document{item.documents_total === 1 ? '' : 's'}
                     </Badge>
                     {item.reverification_pending ? (
                       <span className="text-xs text-slate-500">Reverification</span>
@@ -226,7 +233,16 @@ export default function VerificationDetailsPage({ type }: VerificationDetailsPag
         {items.length === 0 && (
           <Card>
             <CardContent className="py-12 text-center">
-              <p className="text-gray-500">No pending verifications</p>
+              {loadError ? (
+                <div className="space-y-3">
+                  <p className="text-red-700">{loadError}</p>
+                  <Button variant="outline" onClick={() => void fetchItems()}>
+                    Try again
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-gray-500">No pending verifications</p>
+              )}
             </CardContent>
           </Card>
         )}

@@ -33,10 +33,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const stateName = new URL(request.url).searchParams.get('state') || admin.state_name;
+    const stateName = admin.state_name;
     if (!stateName) {
       return NextResponse.json(
-        { error: 'State name is required' },
+        { error: 'Your account has no state assigned' },
         { status: 400 }
       );
     }

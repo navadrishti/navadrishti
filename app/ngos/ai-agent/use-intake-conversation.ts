@@ -3,14 +3,12 @@ import { CSR_PROJECT_CREATE_REQUIRED_MESSAGE, ngoIsCsrEligible } from "@/lib/aut
 import {
   type Message,
   type NeedIntakeData,
-  type OfferRecommendation,
   type ProjectIntakeData,
   createEmptyNeed,
   getNeedQuestions,
   parseProjectCategory,
   parseRequestType,
   projectQuestions,
-  toRelatedOfferEntries,
   validateNeedAnswer,
   validateProjectAnswer,
 } from "./intake"
@@ -33,6 +31,7 @@ export function useIntakeConversation({ intake, offers, user, lockMobileChatScro
     input,
     setInput,
     setMessages,
+    isTyping,
     setIsTyping,
     projectData,
     setProjectData,
@@ -50,7 +49,7 @@ export function useIntakeConversation({ intake, offers, user, lockMobileChatScro
     generatedDraft,
     setGeneratedDraft,
   } = intake
-  const { setOffersLoading, setRelatedOffersByNeed, setSelectedOfferIdsByNeed, setLastCompletedNeedIndex } = offers
+  const { setLastCompletedNeedIndex } = offers
 
   const appendAssistant = (content: string) => {
     setMessages(prev => [...prev, { role: 'assistant', content }])
@@ -68,45 +67,6 @@ export function useIntakeConversation({ intake, offers, user, lockMobileChatScro
     setGeneratedDraft(draft)
     setConversationStage('complete')
     appendAssistant(describeProjectDraft(draft))
-  }
-
-  const loadOffersForCompletedNeed = async (need: NeedIntakeData) => {
-    try {
-      const needPayload = {
-        request_type: need.requestType,
-        title: need.title,
-        description: need.description,
-        material_items: need.material_items,
-        skill_role: need.skill_role,
-        infrastructure_scope: need.infrastructure_scope,
-        target_quantity: need.beneficiaryCount,
-        beneficiary_count: need.beneficiaryCount,
-        estimated_budget: need.estimatedBudget,
-        budget: need.estimatedBudget,
-        limit: 6
-      }
-
-      setOffersLoading(true)
-      const res = await fetch('/api/service-requests/recommend', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(needPayload)
-      })
-      const json = await res.json().catch(() => ({}))
-      const recs: OfferRecommendation[] = res.ok && json?.success && Array.isArray(json?.data?.recommendations) ? json.data.recommendations : []
-
-      const mapped = toRelatedOfferEntries(recs)
-
-      setRelatedOffersByNeed((prev) => ({ ...prev, [0]: mapped }))
-      setSelectedOfferIdsByNeed((prev) => ({ ...prev, [0]: [] }))
-      setLastCompletedNeedIndex(0)
-
-      appendAssistant(`I found ${mapped.length} related offers for your need. Review them in the preview panel or invite directly below.`)
-    } catch {
-      // Recommendations are optional; the draft is still generated.
-    } finally {
-      setOffersLoading(false)
-    }
   }
 
   const answerEntry = (userText: string) => {
@@ -193,12 +153,13 @@ export function useIntakeConversation({ intake, offers, user, lockMobileChatScro
       return
     }
 
-    void loadOffersForCompletedNeed(updatedNeed)
+    // The draft change triggers useRelatedOffersLoader, which owns recommendations and selection.
+    setLastCompletedNeedIndex(0)
     generateDraftForNeed(updatedNeed)
   }
 
   const submitUserText = (userText: string) => {
-    if (generatedDraft) return
+    if (generatedDraft || isTyping) return
     lockMobileChatScroll()
     const userMessage: Message = { role: 'user', content: userText }
     setMessages(prev => [...prev, userMessage])

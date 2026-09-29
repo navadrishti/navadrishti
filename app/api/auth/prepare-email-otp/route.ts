@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prepareEmailOtpSession } from '@/lib/email';
+import { limitAttempts } from '@/lib/rate-limit';
+
+const EMAIL_OTP_PER_IP_LIMIT = { limit: 30, windowMs: 60 * 60 * 1000 };
 
 const prepareEmailOtpSchema = z.object({
   email: z.string().trim().toLowerCase().email('Invalid email address'),
@@ -18,7 +21,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const result = await prepareEmailOtpSession(validationResult.data.email);
+    const email = validationResult.data.email;
+    const limited =
+      (await limitAttempts(req, 'prepare-email-otp', email)) ??
+      (await limitAttempts(req, 'prepare-email-otp-ip', '', EMAIL_OTP_PER_IP_LIMIT));
+    if (limited) return limited;
+
+    const result = await prepareEmailOtpSession(email);
 
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: result.status });

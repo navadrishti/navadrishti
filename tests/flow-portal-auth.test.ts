@@ -2,7 +2,9 @@ import { NextRequest } from 'next/server'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { comparePassword, generateToken, hashPassword, verifyAdminToken, verifyToken, type UserData } from '@/lib/auth'
 import { verifyPlatformCAToken } from '@/lib/platform-ca-auth'
-import { verifyGovernmentAdminToken } from '@/lib/government-admin-auth'
+import { generateGovernmentAdminToken, verifyGovernmentAdminToken, type GovernmentAdminAccount } from '@/lib/government-admin-auth'
+import { POST as createCredential } from '@/app/api/government-admin/credentials/route'
+import { GET as districtAnalytics } from '@/app/api/government-admin/district-analytics/route'
 import { POST as adminLogin } from '@/app/api/admin/auth/route'
 import { POST as adminLogout } from '@/app/api/admin/logout/route'
 import { POST as caLogin } from '@/app/api/ca/auth/route'
@@ -274,6 +276,65 @@ describe('government admin login', () => {
     expect(Number(blocked.headers.get('Retry-After'))).toBeGreaterThan(15 * 60 - 5)
     expect(fake.queries).toHaveLength(lookups)
     expect((await attempt('gov9')).status).toBe(401)
+  })
+})
+
+describe('government officer permissions', () => {
+  const officer = (role: string, extra: Partial<GovernmentAdminAccount> = {}): GovernmentAdminAccount => ({
+    id: 8,
+    government_body_id: 1,
+    username: 'gov8',
+    email: 'gov8@gov.in',
+    display_name: 'Gov Eight',
+    role: role as GovernmentAdminAccount['role'],
+    active: true,
+    must_change_password: false,
+    state_name: 'Kerala',
+    district_name: 'Ernakulam',
+    ...extra,
+  })
+  const withToken = (account: GovernmentAdminAccount, path: string, body?: unknown) =>
+    new NextRequest(`http://localhost${path}`, {
+      method: body === undefined ? 'GET' : 'POST',
+      headers: { 'content-type': 'application/json', cookie: `govt-admin-token=${generateGovernmentAdminToken(account)}` },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    })
+
+  it.each(['field_officer', 'district_officer', 'state_officer'])('stops a %s from issuing officer credentials', async (role) => {
+    const fake = useDb({ 'government_admin_accounts.select': [{ data: officer(role) }] })
+    const response = await createCredential(
+      withToken(officer(role), '/api/government-admin/credentials', {
+        role: 'state_officer', department_name: 'Dept', state_name: 'Kerala', username: 'takeover', password: 'x',
+      })
+    )
+    expect(response.status).toBe(403)
+    expect(fake.writes('government_admin_accounts')).toHaveLength(0)
+    expect(fake.queries.every((query) => query.columns !== '*')).toBe(true)
+  })
+
+  it('never returns the password hash for a created officer', async () => {
+    const created = officer('field_officer', { id: 9 })
+    const fake = useDb({
+      'government_admin_accounts.select': [{ data: officer('government_admin') }],
+      'government_projects.select': [{ data: { title: 'Roads' } }],
+      'government_bodies.insert': [{ data: { id: 2 } }],
+      'government_admin_accounts.insert': [{ data: created }],
+    })
+    const response = await createCredential(
+      withToken(officer('government_admin'), '/api/government-admin/credentials', {
+        role: 'field_officer', department_name: 'Dept', state_name: 'Kerala', username: 'field9', password: 'Temp#123', project_id: 'p1',
+      })
+    )
+    expect(response.status).toBe(200)
+    const [insert] = fake.writes('government_admin_accounts', 'insert')
+    expect(insert.returning).not.toMatch(/\*|password_hash/)
+  })
+
+  it('scopes district analytics to the officer district, ignoring the query string', async () => {
+    const fake = useDb({ 'government_admin_accounts.select': [{ data: officer('district_officer') }] })
+    await districtAnalytics(withToken(officer('district_officer'), '/api/government-admin/district-analytics?district=Other'))
+    const districtLookup = fake.find('government_admin_accounts', 'select')[1]
+    expect(districtLookup.filters).toContainEqual(['eq', 'district_name', 'Ernakulam'])
   })
 })
 

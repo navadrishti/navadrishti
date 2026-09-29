@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
     const lower = message.toLowerCase();
     const status =
       lower.includes('not found') ? 404 :
-      lower.includes('lead ngo') || lower.includes('not captured') || lower.includes('concurrently') ? 409 :
+      lower.includes('lead ngo') || lower.includes('not captured') || lower.includes('concurrently') || lower.includes('already paid') ? 409 :
       /invalid|does not match|mismatch|only inr|unable to fetch payment/.test(lower) ? 400 :
       500;
     return NextResponse.json({ error: message }, { status });
@@ -116,10 +116,10 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
     }
 
-    if (currentStatus === "active") {
+    if (String(currentStatus).toLowerCase() !== "draft") {
       return NextResponse.json(
-        { error: "Cannot update an active campaign" }, 
-        { status: 403 }
+        { error: "Only draft campaigns can be edited" },
+        { status: 409 }
       );
     }
 
@@ -167,7 +167,7 @@ export async function PUT(req: NextRequest) {
 
     const status =
         message.toLowerCase().includes("not found") ? 404 :
-        message.toLowerCase().includes("active") ? 403 : // Guard check fail
+        message.toLowerCase().includes("concurrently") || message === "Update failed" ? 409 :
         message.toLowerCase().includes("invalid") ? 400 :
         500;
 

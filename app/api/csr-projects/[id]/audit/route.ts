@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { findAuthUser, isCARequest, getCompanyCAFromRequest } from '@/lib/server-auth';
+import { findAuthUser, hasActiveCASession, getCompanyCAFromRequest } from '@/lib/server-auth';
 import type { UserData } from '@/lib/auth';
 import type { Tables } from '@/lib/database.types';
 
@@ -13,7 +13,7 @@ type ProjectViewer = {
 };
 
 async function resolveProjectViewer(request: NextRequest): Promise<ProjectViewer | null> {
-  if (isCARequest(request)) {
+  if (await hasActiveCASession(request)) {
     return { isPlatformCA: true, companyCAUserId: null, user: null };
   }
 

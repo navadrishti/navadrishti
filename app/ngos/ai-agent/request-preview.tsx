@@ -24,10 +24,12 @@ type GeneratedNeedCardProps = {
   relatedOffers: RelatedOfferEntry[]
   selectedIds: number[]
   offersLoading: boolean
-  onInviteAll: (needIndex: number) => void
-  onClearInvites: (needIndex: number) => void
-  onToggleInvite: (needIndex: number, offerId: number) => void
+  onApplyAll: (needIndex: number) => void
+  onRemoveAll: (needIndex: number) => void
+  onToggleOffer: (needIndex: number, offerId: number) => void
 }
+
+const REMOVE_BUTTON_CLASS = "border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
 
 function GeneratedNeedCard({
   need,
@@ -35,51 +37,53 @@ function GeneratedNeedCard({
   relatedOffers,
   selectedIds,
   offersLoading,
-  onInviteAll,
-  onClearInvites,
-  onToggleInvite,
+  onApplyAll,
+  onRemoveAll,
+  onToggleOffer,
 }: GeneratedNeedCardProps) {
-  const allInvited = relatedOffers.length > 0 && relatedOffers.every((entry) => selectedIds.includes(entry.offer.id))
+  const allSelected = relatedOffers.length > 0 && relatedOffers.every((entry) => selectedIds.includes(entry.offer.id))
+  const beneficiaries = Number(need.beneficiary_count) || 0
+  const summary = [
+    need.request_type,
+    need.urgency,
+    beneficiaries > 0 ? `${beneficiaries} beneficiar${beneficiaries === 1 ? 'y' : 'ies'}` : '',
+  ].filter(Boolean).join(' • ')
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
-      <p className="text-sm font-semibold text-slate-900 break-words">Need {index + 1}: {need.title}</p>
-      <p className="text-xs text-slate-600 break-words">{need.request_type} • {need.urgency} • {need.beneficiary_count} beneficiaries</p>
+      <p className="text-sm font-semibold text-slate-900 break-words">Need {index + 1}: {need.title || 'Untitled need'}</p>
+      {summary && <p className="text-xs text-slate-600 break-words">{summary}</p>}
 
       <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
         <div className="flex items-center justify-between gap-2">
           <p className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-500">Related offers</p>
           <span className="text-xs text-slate-500">
-            Invited {selectedIds.length}
+            {selectedIds.length} selected
           </span>
         </div>
+        <p className="mt-1 text-xs text-slate-500">Applications are sent to the selected offers when you publish.</p>
 
         <div className="mt-2 flex items-center gap-2">
           <Button
             type="button"
             size="sm"
             variant="outline"
-            onClick={() => onInviteAll(index)}
-            disabled={relatedOffers.length === 0 || allInvited}
+            onClick={() => onApplyAll(index)}
+            disabled={relatedOffers.length === 0 || allSelected}
           >
-            {allInvited ? 'All Invited' : 'Invite All'}
+            {allSelected ? 'All selected' : 'Apply to all'}
           </Button>
           <Button
             type="button"
             size="sm"
-            variant="ghost"
-            onClick={() => onClearInvites(index)}
+            variant="outline"
+            className={REMOVE_BUTTON_CLASS}
+            onClick={() => onRemoveAll(index)}
             disabled={selectedIds.length === 0}
           >
-            Clear
+            Remove all
           </Button>
         </div>
-
-        {allInvited && (
-          <div className="mt-2 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-xs text-emerald-700">
-            All related offers are invited for this need.
-          </div>
-        )}
 
         <div className="mt-2 space-y-2">
           {offersLoading ? (
@@ -91,10 +95,17 @@ function GeneratedNeedCard({
             <p className="text-xs text-slate-500">No active offers found for this need type yet.</p>
           ) : (
             relatedOffers.map((entry) => {
-              const invited = selectedIds.includes(entry.offer.id)
+              const selected = selectedIds.includes(entry.offer.id)
               return (
                 <div key={`need-${index}-offer-${entry.offer.id}`} className="rounded-md border border-slate-200 bg-white px-3 py-2">
-                  <p className="text-xs font-semibold text-slate-900">{entry.offer.title || `Offer #${entry.offer.id}`}</p>
+                  <div className="flex items-start justify-between gap-2">
+                    <Link href={`/service-offers/${entry.offer.id}`} className="text-xs font-semibold text-slate-900 hover:underline">
+                      {entry.offer.title || `Offer #${entry.offer.id}`}
+                    </Link>
+                    {selected && (
+                      <span className="whitespace-nowrap rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">Selected</span>
+                    )}
+                  </div>
                   <p className="mt-1 flex flex-wrap items-center gap-1 text-[11px] text-slate-600">
                     <VerifiedAccountName
                       name={entry.offer.provider_name || entry.offer.ngo_name || 'Offer provider'}
@@ -105,14 +116,15 @@ function GeneratedNeedCard({
                     />
                     <span>• Score {entry.score}</span>
                   </p>
-                  <div className="mt-2 flex items-center gap-2">
-                    <Button type="button" size="sm" variant={invited ? 'default' : 'outline'} onClick={() => onToggleInvite(index, entry.offer.id)}>
-                      {invited ? 'Invited' : 'Invite'}
-                    </Button>
-                    <Button type="button" size="sm" variant="ghost" asChild>
-                      <Link href={`/service-offers/${entry.offer.id}`}>
-                        Apply
-                      </Link>
+                  <div className="mt-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className={selected ? REMOVE_BUTTON_CLASS : undefined}
+                      onClick={() => onToggleOffer(index, entry.offer.id)}
+                    >
+                      {selected ? 'Remove' : 'Apply'}
                     </Button>
                   </div>
                 </div>
@@ -136,9 +148,10 @@ type RequestPreviewProps = {
   selectedOfferIdsByNeed: Record<number, number[]>
   offersLoading: boolean
   publishingDraft: boolean
-  onInviteAll: (needIndex: number) => void
-  onClearInvites: (needIndex: number) => void
-  onToggleInvite: (needIndex: number, offerId: number) => void
+  publishedProjectId?: string | null
+  onApplyAll: (needIndex: number) => void
+  onRemoveAll: (needIndex: number) => void
+  onToggleOffer: (needIndex: number, offerId: number) => void
   onPublish: () => void
 }
 
@@ -153,9 +166,10 @@ export function RequestPreview({
   selectedOfferIdsByNeed,
   offersLoading,
   publishingDraft,
-  onInviteAll,
-  onClearInvites,
-  onToggleInvite,
+  publishedProjectId = null,
+  onApplyAll,
+  onRemoveAll,
+  onToggleOffer,
   onPublish,
 }: RequestPreviewProps) {
   const liveFields = intakePath === 'need'
@@ -178,21 +192,20 @@ export function RequestPreview({
     return requiredFields.every((field) => String(need[field.key as keyof NeedIntakeData] || '').trim())
   })
 
-  const generatedFields = generatedDraft
+  const generatedFields = (generatedDraft
     ? intakePath === 'need'
       ? [
-          { label: 'Need', value: generatedDraft.needs[0]?.title || 'N/A' },
-          { label: 'Type', value: generatedDraft.needs[0]?.request_type || 'N/A' },
-          { label: 'Category', value: generatedDraft.needs[0]?.category || 'N/A' },
-          { label: 'Urgency', value: generatedDraft.needs[0]?.urgency || 'N/A' },
+          { label: 'Type', value: generatedDraft.needs[0]?.request_type },
+          { label: 'Category', value: generatedDraft.needs[0]?.category },
+          { label: 'Urgency', value: generatedDraft.needs[0]?.urgency },
         ]
       : [
-          { label: 'Project', value: generatedDraft.project.title },
           { label: 'Category', value: generatedDraft.project.category },
           { label: 'Location', value: generatedDraft.project.location },
           { label: 'Timeline', value: generatedDraft.project.timeline },
         ]
     : []
+  ).filter((field) => String(field.value ?? '').trim())
 
   return (
     <Card className="flex h-auto min-h-0 flex-col overflow-hidden border-slate-200/70 bg-white/90 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur max-md:[overflow-anchor:none] md:h-full">
@@ -212,55 +225,77 @@ export function RequestPreview({
             <>
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Project title</p>
-                <h3 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">
+                <h3 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950 [overflow-wrap:anywhere]">
                   {generatedDraft.project.title}
                 </h3>
-                <p className="mt-3 text-sm leading-6 text-slate-600 break-words whitespace-normal">{generatedDraft.project.description}</p>
+                {generatedDraft.project.description && (
+                  <p className="mt-3 text-sm leading-6 text-slate-600 break-words whitespace-normal">{generatedDraft.project.description}</p>
+                )}
               </div>
 
-              <div className="rounded-2xl border border-slate-200 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Generated needs</p>
-                <div className="mt-4 space-y-3">
-                  {generatedFields.slice(2).map((field) => (
-                    <div key={field.label} className="flex items-start justify-between gap-4">
-                      <span className="text-sm font-medium text-slate-500">{field.label}</span>
-                      <span className="max-w-[60%] text-right text-sm font-semibold text-slate-900 break-words">{field.value}</span>
-                    </div>
-                  ))}
+              {generatedFields.length > 0 && (
+                <div className="rounded-2xl border border-slate-200 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    {intakePath === 'need' ? 'Need details' : 'Project details'}
+                  </p>
+                  <div className="mt-4 space-y-3">
+                    {generatedFields.map((field) => (
+                      <div key={field.label} className="flex items-start justify-between gap-4">
+                        <span className="text-sm font-medium text-slate-500">{field.label}</span>
+                        <span className="max-w-[60%] text-right text-sm font-semibold text-slate-900 break-words">{field.value}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
-              <div className="rounded-2xl border border-slate-200 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Need list</p>
-                <div className="mt-3 space-y-2">
-                  {generatedDraft.needs.map((need, index) => (
-                    <GeneratedNeedCard
-                      key={`generated-need-${index}`}
-                      need={need}
-                      index={index}
-                      relatedOffers={relatedOffersByNeed[index] || []}
-                      selectedIds={selectedOfferIdsByNeed[index] || []}
-                      offersLoading={offersLoading}
-                      onInviteAll={onInviteAll}
-                      onClearInvites={onClearInvites}
-                      onToggleInvite={onToggleInvite}
-                    />
-                  ))}
+              {generatedDraft.needs.length > 0 && (
+                <div className="rounded-2xl border border-slate-200 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Need list</p>
+                  <div className="mt-3 space-y-2">
+                    {generatedDraft.needs.map((need, index) => (
+                      <GeneratedNeedCard
+                        key={`generated-need-${index}`}
+                        need={need}
+                        index={index}
+                        relatedOffers={relatedOffersByNeed[index] || []}
+                        selectedIds={selectedOfferIdsByNeed[index] || []}
+                        offersLoading={offersLoading}
+                        onApplyAll={onApplyAll}
+                        onRemoveAll={onRemoveAll}
+                        onToggleOffer={onToggleOffer}
+                      />
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
-              <div className="rounded-2xl bg-gradient-to-r from-slate-950 to-slate-900 p-4 text-white">
-                <div className="flex items-center gap-2 text-sm font-semibold text-white/70">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-                  Draft complete
+              <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="flex items-center gap-2 text-sm font-semibold text-slate-950">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                    {publishedProjectId ? 'Published' : 'Draft complete'}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {publishedProjectId
+                      ? 'This project is live. Start a new session to draft another request.'
+                      : 'Review the details above, then publish when you are ready.'}
+                  </p>
                 </div>
-                <Button
-                  className="mt-4 w-full rounded-xl bg-white text-slate-950"
-                  onClick={onPublish}
-                  disabled={publishingDraft}
-                >
-                  {publishingDraft ? 'Publishing...' : intakePath === 'need' ? 'Publish Need' : 'Publish Project'}
-                </Button>
+                {publishedProjectId ? (
+                  <Button asChild variant="outline" className="shrink-0">
+                    <Link href={`/service-requests/projects/${publishedProjectId}`}>View project</Link>
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    className="shrink-0 bg-[#1d4ed8] text-white hover:bg-[#1e40af]"
+                    onClick={onPublish}
+                    disabled={publishingDraft}
+                  >
+                    {publishingDraft ? 'Publishing...' : intakePath === 'need' ? 'Publish Need' : 'Publish Project'}
+                  </Button>
+                )}
               </div>
             </>
           ) : (
@@ -268,7 +303,7 @@ export function RequestPreview({
               <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4">
                 <div className="space-y-2">
                   <div className="text-sm font-medium text-slate-500">Project title</div>
-                  <div className="text-lg font-semibold text-slate-900">
+                  <div className="text-lg font-semibold text-slate-900 [overflow-wrap:anywhere]">
                     {projectData.projectTitle || 'Waiting for the first answer'}
                   </div>
                 </div>
@@ -304,7 +339,7 @@ export function RequestPreview({
                   liveFields.map((field) => (
                     <div key={field.label} className="flex items-start justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-3">
                       <span className="text-sm font-medium text-slate-500">{field.label}</span>
-                      <span className="max-w-[60%] text-right text-sm font-semibold text-slate-900">
+                      <span className="max-w-[60%] text-right text-sm font-semibold text-slate-900 [overflow-wrap:anywhere]">
                         {field.value}
                       </span>
                     </div>

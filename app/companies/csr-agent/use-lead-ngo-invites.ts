@@ -42,6 +42,7 @@ export function useLeadNgoInvites({
   const [leadNgoInvites, setLeadNgoInvites] = useState<LeadNgoInvite[]>([])
   const [confirmedLeadNgo, setConfirmedLeadNgo] = useState<LeadNgoInvite | null>(null)
   const lastNgoSuggestionKeyRef = useRef<string | null>(null)
+  const ngoDirectoryRequestRef = useRef(0)
 
   const acceptedLeadNgo = useMemo(
     () => confirmedLeadNgo || getAcceptedLeadNgo(leadNgoInvites),
@@ -72,13 +73,18 @@ export function useLeadNgoInvites({
   )
 
   const refreshNgoDirectory = useEffectEvent(async (authToken: string, isCancelled: () => boolean) => {
+    const requestId = ++ngoDirectoryRequestRef.current
     if (!projectData.campaignName?.trim() || !projectData.category?.trim() || !projectData.endDate?.trim()) {
       setNgoDirectory([])
       lastNgoSuggestionKeyRef.current = null
+      setIsFetchingNgoDirectory(false)
       return
     }
 
-    if (lastNgoSuggestionKeyRef.current === ngoSuggestionKey && ngoDirectory.length > 0) return
+    if (lastNgoSuggestionKeyRef.current === ngoSuggestionKey && ngoDirectory.length > 0) {
+      setIsFetchingNgoDirectory(false)
+      return
+    }
 
     setIsFetchingNgoDirectory(true)
     try {
@@ -91,7 +97,8 @@ export function useLeadNgoInvites({
       console.error('Failed to load scored NGO directory', e)
       if (!isCancelled()) setNgoDirectory([])
     } finally {
-      if (!isCancelled()) setIsFetchingNgoDirectory(false)
+      // A cancelled request still clears the spinner unless a newer request has taken over.
+      if (requestId === ngoDirectoryRequestRef.current) setIsFetchingNgoDirectory(false)
     }
   })
 

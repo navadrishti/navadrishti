@@ -56,15 +56,17 @@ type NeedOfferSuggestionsProps = {
   offers: RelatedOfferEntry[]
   appliedOfferIds: number[]
   onApplyOffer: (offerId: number, needIndex: number) => void | Promise<void>
+  onRemoveOffer: (needIndex: number, offerId: number) => void
 }
 
-function NeedOfferSuggestions({ needIndex, offers, appliedOfferIds, onApplyOffer }: NeedOfferSuggestionsProps) {
+function NeedOfferSuggestions({ needIndex, offers, appliedOfferIds, onApplyOffer, onRemoveOffer }: NeedOfferSuggestionsProps) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-3">
       <p className="text-sm font-semibold text-slate-900">Suggestions for Need {needIndex + 1}</p>
-      <p className="text-xs text-slate-600">These offers may fulfill the need — invite or apply.</p>
+      <p className="text-xs text-slate-600">These offers may fulfill the need. Applications are sent when you publish.</p>
       <div className="mt-3 space-y-2">
         {offers.map((entry) => {
+          const applied = appliedOfferIds.includes(entry.offer.id)
           return (
             <div key={`chat-suggest-${entry.offer.id}`} className="flex items-center justify-between gap-3 rounded-md border border-slate-100 bg-slate-50 px-3 py-2">
               <div>
@@ -81,9 +83,21 @@ function NeedOfferSuggestions({ needIndex, offers, appliedOfferIds, onApplyOffer
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Button type="button" size="sm" variant={appliedOfferIds.includes(entry.offer.id) ? 'default' : 'outline'} onClick={() => void onApplyOffer(entry.offer.id, needIndex)}>
-                  {appliedOfferIds.includes(entry.offer.id) ? 'Applied' : 'Apply Offer'}
-                </Button>
+                {applied ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                    onClick={() => onRemoveOffer(needIndex, entry.offer.id)}
+                  >
+                    Remove
+                  </Button>
+                ) : (
+                  <Button type="button" size="sm" variant="outline" onClick={() => void onApplyOffer(entry.offer.id, needIndex)}>
+                    Apply
+                  </Button>
+                )}
               </div>
             </div>
           )
@@ -105,6 +119,7 @@ type ChatComposerProps = {
   onSend: () => void
   onQuickPick: (value: string) => void
   onApplyOffer: (offerId: number, needIndex: number) => void | Promise<void>
+  onRemoveOffer: (needIndex: number, offerId: number) => void
 }
 
 export function ChatComposer({
@@ -119,6 +134,7 @@ export function ChatComposer({
   onSend,
   onQuickPick,
   onApplyOffer,
+  onRemoveOffer,
 }: ChatComposerProps) {
   return (
     <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-2.5 shadow-sm sm:p-3">
@@ -131,20 +147,23 @@ export function ChatComposer({
               variant="outline"
               size="sm"
               className="h-9 shrink-0 rounded-full border-slate-200 bg-slate-50 px-3 text-xs text-slate-700 hover:bg-slate-100"
+              disabled={isTyping}
               onClick={() => onQuickPick(option)}
             >
               {option}
             </Button>
           ))}
-
-          {suggestionNeedIndex !== null && suggestedOffers.length > 0 && (
-            <NeedOfferSuggestions
-              needIndex={suggestionNeedIndex}
-              offers={suggestedOffers}
-              appliedOfferIds={appliedOfferIds}
-              onApplyOffer={onApplyOffer}
-            />
-          )}
+        </div>
+      )}
+      {suggestionNeedIndex !== null && suggestedOffers.length > 0 && (
+        <div className="mb-2">
+          <NeedOfferSuggestions
+            needIndex={suggestionNeedIndex}
+            offers={suggestedOffers}
+            appliedOfferIds={appliedOfferIds}
+            onApplyOffer={onApplyOffer}
+            onRemoveOffer={onRemoveOffer}
+          />
         </div>
       )}
       <div className="flex flex-col gap-2 sm:flex-row">

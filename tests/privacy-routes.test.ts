@@ -251,6 +251,26 @@ describe('pwa gateway', () => {
     expect(response.headers.get('set-cookie')).toBeNull()
   })
 
+  it('passes only the field session cookie through in both directions', async () => {
+    vi.stubEnv('PWA_UPSTREAM_URL', 'https://field.example.com')
+    const upstreamHeaders = new Headers({ 'content-type': 'application/json' })
+    upstreamHeaders.append('set-cookie', 'navadrishti_session=new-field; Path=/; HttpOnly')
+    upstreamHeaders.append('set-cookie', 'tracking=1; Path=/')
+    const upstream = vi.fn().mockResolvedValue(new Response('{"ok":true}', { status: 200, headers: upstreamHeaders }))
+    vi.stubGlobal('fetch', upstream)
+
+    const request = new NextRequest('http://localhost/api/pwa/login', {
+      method: 'POST',
+      body: '{}',
+      headers: { cookie: 'token=platform-jwt; navadrishti_session=field-token; admin-token=admin-jwt' },
+    })
+    const response = await pwaPost(request, { params: Promise.resolve({ path: ['login'] }) })
+
+    const forwarded = new Headers(upstream.mock.calls[0][1].headers)
+    expect(forwarded.get('cookie')).toBe('navadrishti_session=field-token')
+    expect(response.headers.getSetCookie()).toEqual(['navadrishti_session=new-field; Path=/; HttpOnly'])
+  })
+
   it('reports a missing upstream', async () => {
     vi.stubEnv('PWA_UPSTREAM_URL', '')
     vi.stubEnv('PWA_APP_URL', '')

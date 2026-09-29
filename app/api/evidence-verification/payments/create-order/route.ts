@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { listCompanyOwnedAssignmentIds } from '@/lib/company-ca'
-import { getCompanyCAFromRequest } from '@/lib/server-auth'
+import { getCompanyCAFromRequest, hasCompanyCaPermission } from '@/lib/server-auth'
 import Razorpay from 'razorpay'
 import { supabase } from '@/lib/db'
 import { getErrorMessage } from '@/lib/utils'
@@ -14,7 +14,11 @@ export async function POST(request: NextRequest) {
   try {
     let companyUserId: number
     try {
-      companyUserId = (await getCompanyCAFromRequest(request)).identity.company_user_id
+      const companyCA = await getCompanyCAFromRequest(request)
+      if (!hasCompanyCaPermission(companyCA.identity, 'can_confirm_payments')) {
+        return NextResponse.json({ error: 'Company CA does not have permission to confirm payments' }, { status: 403 })
+      }
+      companyUserId = companyCA.identity.company_user_id
     } catch {
       return NextResponse.json({ error: 'Company CA authentication required' }, { status: 401 })
     }

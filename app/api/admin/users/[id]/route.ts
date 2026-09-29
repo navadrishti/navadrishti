@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { assertAdminUser, authErrorResponse } from '@/lib/server-auth';
+import { assertAdminUser, authErrorResponse, forgetSessionBlockReason } from '@/lib/server-auth';
 import {
   getAdminModeration,
   type AdminModerationState,
@@ -21,6 +21,7 @@ async function updateUser(userId: number, updatePayload: TablesUpdate<'users'>) 
     .select(USER_SELECT)
     .single();
   if (error) throw error;
+  forgetSessionBlockReason(userId);
   return data;
 }
 
@@ -185,6 +186,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         delete cleaned.ca_badge_number;
         delete cleaned.reverification_pending;
         delete cleaned.allotted_compliance_tags;
+        // An empty list (not a missing key) stops getStoredCaComplianceTags re-inferring tags.
+        cleaned.ca_compliance_tags = [];
         updatePayload.profile_data = cleaned;
       }
     }

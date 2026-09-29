@@ -6,7 +6,7 @@ import {
   activateVerifiedNgoPayoutListingsForNetwork,
   removeLegacyGeneralSupportRequests,
 } from '@/lib/razorpay-route';
-import { getErrorMessage } from '@/lib/utils';
+import { getErrorMessage, toSearchPattern } from '@/lib/utils';
 
 export async function GET(request: NextRequest) {
   try {
@@ -32,8 +32,8 @@ export async function GET(request: NextRequest) {
       query = query.eq('verification_status', verification);
     }
 
-    if (search) {
-      const term = `%${search.trim()}%`;
+    const term = toSearchPattern(search);
+    if (term) {
       query = query.or(`name.ilike.${term},email.ilike.${term},city.ilike.${term},state_province.ilike.${term}`);
     }
 

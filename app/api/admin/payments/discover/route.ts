@@ -11,6 +11,7 @@ export async function GET(request: NextRequest) {
     const url = new URL(request.url)
     const paymentId = String(url.searchParams.get('paymentId') || '').trim()
     if (!paymentId) return NextResponse.json({ error: 'paymentId query is required' }, { status: 400 })
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(paymentId)) return NextResponse.json({ error: 'Invalid paymentId' }, { status: 400 })
 
     const { data: paymentRow } = await supabase
       .from('razorpay_payments')

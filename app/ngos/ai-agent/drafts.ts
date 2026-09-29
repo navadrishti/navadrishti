@@ -63,7 +63,7 @@ export const buildProjectDraft = (project: ProjectIntakeData): ServiceRequestDra
 })
 
 export const describeNeedDraft = (draft: ServiceRequestDraftPayload) =>
-  `Excellent! I've created your standalone Need:\n\n**Title:** ${draft.needs[0].title}\n**Type:** ${draft.needs[0].request_type}\n**Category:** ${draft.needs[0].category}\n\nNow review related service offers, invite the ones you want, and publish when ready.`
+  `Excellent! I've created your standalone Need:\n\n**Title:** ${draft.needs[0].title}\n**Type:** ${draft.needs[0].request_type}\n**Category:** ${draft.needs[0].category}\n\nNow review related service offers, choose the ones to apply to, and publish when ready.`
 
 export const describeProjectDraft = (draft: ServiceRequestDraftPayload) =>
   `Excellent! I've created your CSR Project package:\n\n**Project:** ${draft.project.title}\n**Category:** ${draft.project.category}\n\nYou can now publish this project. Individual needs can be added later.`

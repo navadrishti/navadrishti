@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
 import { getTokenClaims } from '@/lib/auth';
 import { resolveEffectiveVerificationStatus } from '@/lib/server-auth';
 import { listServiceRequests } from '@/lib/service-requests/list-query';
@@ -48,7 +47,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// Creates a need (verified NGOs) or registers the caller as a volunteer for one.
+// Creates a need (verified NGOs).
 export async function POST(request: NextRequest) {
   try {
     const decoded = getTokenClaims(request);
@@ -88,36 +87,9 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'volunteer') {
-      if (userType === 'ngo') {
-        return NextResponse.json({ error: 'NGOs cannot volunteer for their own requests' }, { status: 403 });
-      }
-
-      const { serviceRequestId, message } = body;
-
-      if (!serviceRequestId) {
-        return NextResponse.json({ error: 'Service request ID is required' }, { status: 400 });
-      }
-
-      const existing = await db.serviceRequestApplications.findExisting(serviceRequestId, userId);
-
-      if (existing) {
-        return NextResponse.json({ error: 'Already volunteering for this request' }, { status: 400 });
-      }
-
-      await db.serviceRequestApplications.create({
-        service_request_id: serviceRequestId,
-        applicant_user_id: userId,
-        volunteer_type: userType,
-        message: message || '',
-        status: 'pending',
-        applied_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      });
-
       return NextResponse.json({
-        success: true,
-        data: { message: 'Successfully volunteered for service request' }
-      });
+        error: 'Apply through POST /api/service-requests/[id]/volunteers'
+      }, { status: 400 });
     }
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });

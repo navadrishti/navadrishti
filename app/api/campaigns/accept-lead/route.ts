@@ -4,6 +4,9 @@ import { CSR_ELIGIBILITY_REQUIRED_MESSAGE, CSR_TIMELINE_COVERAGE_REQUIRED_MESSAG
 import { findAuthUser, ngoUserIsCsrEligible, assertNgoCsr1CoversWork } from '@/lib/server-auth'
 import { getCampaignLeadNgoId, parseLeadNgoInvites } from '@/lib/campaign-volunteer-attendance'
 import { parseJsonObject } from '@/lib/utils'
+import { redactCampaignForViewer } from '@/lib/campaign-public-view'
+
+const CLOSED_OR_LIVE_STATUSES = new Set(['active', 'completed', 'cancelled', 'closed'])
 
 export async function POST(request: NextRequest) {
   try {
@@ -77,6 +80,7 @@ export async function POST(request: NextRequest) {
           updated_at: new Date().toISOString(),
         })
         .eq('id', campaignId)
+        .eq('status', campaign.status)
         .or(`lead_ngo_user_id.is.null,lead_ngo_user_id.eq.${user.id}`)
         .select('*')
         .maybeSingle()
@@ -98,11 +102,15 @@ export async function POST(request: NextRequest) {
         created_by: user.id,
       })
 
-      return NextResponse.json({ success: true, data: updated })
+      return NextResponse.json({ success: true, data: redactCampaignForViewer(updated, user.id) })
     }
 
     if (selectedLead !== user.id) {
       return NextResponse.json({ error: 'You are not the selected lead NGO for this campaign' }, { status: 403 })
+    }
+
+    if (impact.lead_ngo_accepted || CLOSED_OR_LIVE_STATUSES.has(status)) {
+      return NextResponse.json({ error: 'This campaign has already been accepted or is no longer awaiting a lead NGO.' }, { status: 409 })
     }
 
     const required = Number(impact.volunteer_requirement ?? 0)
@@ -126,14 +134,19 @@ export async function POST(request: NextRequest) {
 
     const { data: updated, error: updateErr } = await supabase
       .from('campaigns')
-      .update({ status: 'active', impact_metrics: newImpact })
+      .update({ status: 'active', impact_metrics: newImpact, updated_at: new Date().toISOString() })
       .eq('id', campaignId)
+      .eq('status', campaign.status)
+      .eq('lead_ngo_user_id', user.id)
       .select('*')
-      .single()
+      .maybeSingle()
 
     if (updateErr) {
       console.error('Failed to update campaign on accept:', updateErr)
       return NextResponse.json({ error: 'Failed to accept campaign' }, { status: 500 })
+    }
+    if (!updated) {
+      return NextResponse.json({ error: 'This campaign changed while accepting. Refresh and try again.' }, { status: 409 })
     }
 
     await supabase.from('csr_audit_log').insert({
@@ -145,7 +158,7 @@ export async function POST(request: NextRequest) {
       created_by: user.id,
     })
 
-    return NextResponse.json({ success: true, data: updated })
+    return NextResponse.json({ success: true, data: redactCampaignForViewer(updated, user.id) })
   } catch (e) {
     console.error('Campaign accept error:', e)
     return NextResponse.json({ error: 'Failed to accept lead role' }, { status: 500 })

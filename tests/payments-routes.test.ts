@@ -4,10 +4,11 @@ import { POST as settle } from '@/app/api/service-assignments/[id]/settle/route'
 import { POST as verifyOfferPayment } from '@/app/api/service-offers/[id]/clients/[clientId]/payments/verify/route'
 import { finalizeEngagementSettlement } from '@/lib/engagement-settlement'
 import { razorpaySignature, tokenFor } from './support/requests'
-import { createSupabaseFake, hasCall, type FakeQuery, type FakeResult } from './support/supabase-fake'
+import { createSupabaseFake, fakeAdjustProgress, hasCall, type FakeQuery, type FakeResult } from './support/supabase-fake'
 
 const mocks = vi.hoisted(() => ({
   supabase: { from: vi.fn() },
+  adjustProgress: vi.fn(),
   db: {
     serviceOffers: { getById: vi.fn() },
     serviceRequests: { getById: vi.fn() },
@@ -18,7 +19,7 @@ const mocks = vi.hoisted(() => ({
   },
 }))
 
-vi.mock('@/lib/db', () => ({ supabase: mocks.supabase, db: mocks.db }))
+vi.mock('@/lib/db', () => ({ supabase: mocks.supabase, db: mocks.db, adjustServiceRequestProgress: mocks.adjustProgress }))
 vi.mock('razorpay', () => ({
   default: vi.fn(function () {
     return mocks.razorpay
@@ -90,7 +91,9 @@ describe('engagement settlement verify', () => {
   function setup(orderNotes: Record<string, unknown> = {}) {
     return useSupabase((query) => {
       if (query.table === 'service_engagement_assignments') return { data: assignment }
-      if (query.table === 'razorpay_payment_orders' && hasCall(query, 'maybeSingle')) return { data: { order_notes: orderNotes } }
+      if (query.table === 'razorpay_payment_orders' && hasCall(query, 'maybeSingle')) {
+        return { data: { order_notes: { assignment_id: 'asg_1', ...orderNotes }, payer_user_id: 12, order_status: 'created' } }
+      }
       return undefined
     })
   }
@@ -135,12 +138,13 @@ describe('service offer client payment verify', () => {
   function setup() {
     mocks.db.serviceOffers.getById.mockResolvedValue({ id: 3, creator_id: 12 })
     mocks.db.serviceRequests.getById.mockResolvedValue({ target_amount: 5000, current_amount: 0 })
+    mocks.adjustProgress.mockImplementation(fakeAdjustProgress)
     return useSupabase((query) => {
-      if (query.table === 'service_clients' && hasCall(query, 'single')) {
+      if (query.table === 'service_clients' && hasCall(query, 'maybeSingle')) {
         return { data: { id: 7, status: 'accepted', service_request_id: 20, response_meta: {} } }
       }
       if (query.table === 'razorpay_payment_orders' && hasCall(query, 'maybeSingle')) {
-        return { data: { id: 9, service_request_id: 20, payer_user_id: 14, order_notes: {} } }
+        return { data: { id: 9, service_request_id: 20, payer_user_id: 14, order_notes: { service_client_id: 7 } } }
       }
       return undefined
     })

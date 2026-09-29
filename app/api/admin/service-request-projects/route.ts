@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { assertAdminUser } from '@/lib/server-auth';
-import { getErrorMessage } from '@/lib/utils';
+import { getErrorMessage, toSearchPattern } from '@/lib/utils';
 
 export async function GET(request: NextRequest) {
   try {
@@ -33,8 +33,8 @@ export async function GET(request: NextRequest) {
       query = query.eq('status', status);
     }
 
-    if (search) {
-      const term = `%${search.trim()}%`;
+    const term = toSearchPattern(search);
+    if (term) {
       query = query.or(`title.ilike.${term},description.ilike.${term},location.ilike.${term},exact_address.ilike.${term}`);
     }
 

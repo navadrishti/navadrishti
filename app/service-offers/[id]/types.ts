@@ -61,7 +61,7 @@ export interface ClientApplication {
   message: string
   status: 'pending' | 'accepted' | 'rejected' | 'active' | 'completed' | 'cancelled'
   response_meta?: ApplicationResponseMeta | null
-  created_at: string
+  applied_at: string | null
 }
 
 export interface NgoNeedOption {

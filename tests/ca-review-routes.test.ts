@@ -47,6 +47,16 @@ function useDb(responses: Record<string, FakeResult[]> = {}) {
   return fake
 }
 
+function useActiveCaAccount(overrides: Record<string, unknown> = {}) {
+  const fake = createSupabaseFake((query) =>
+    query.table === 'platform_ca_accounts'
+      ? { data: { id: 3, active: true, must_change_password: false, ...overrides } }
+      : undefined
+  )
+  mocks.from.mockImplementation(fake.from)
+  return fake
+}
+
 function request(path: string, options: { token?: string; body?: unknown; rawBody?: string } = {}) {
   const headers: Record<string, string> = { 'content-type': 'application/json' }
   if (options.token) headers.cookie = `navadrishti-ca-token=${options.token}`
@@ -60,7 +70,7 @@ async function read(response: Response) {
 
 beforeEach(() => {
   mocks.from.mockReset()
-  useDb()
+  useActiveCaAccount()
   mocks.list.mockReset().mockResolvedValue([])
   mocks.review.mockReset()
   mocks.action.mockReset()
@@ -248,6 +258,25 @@ describe('GET /api/ca/queue', () => {
       body: { error: 'CA authentication required' },
     })
     expect(mocks.list).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['deactivated', { active: false }, 401, 'CA account is inactive'],
+    ['awaiting a password change', { must_change_password: true }, 403, 'Password change required'],
+  ])('rejects a CA whose account is %s', async (_label, overrides, status, error) => {
+    const fake = useActiveCaAccount(overrides)
+    expect(await read(await queue(request('/api/ca/queue', { token: caToken })))).toEqual({ status, body: { error } })
+    expect(fake.queries[0].filters).toContainEqual(['eq', 'id', 3])
+    expect(mocks.list).not.toHaveBeenCalled()
+  })
+
+  it('rejects a CA whose account was deleted', async () => {
+    useDb()
+    expect((await verificationAction(request('/api/ca/verification-action', {
+      token: caToken,
+      body: { entity_type: 'ngos', entity_id: 1, action: 'approve' },
+    }))).status).toBe(401)
+    expect(mocks.action).not.toHaveBeenCalled()
   })
 
   it('lists a single type with the default status', async () => {

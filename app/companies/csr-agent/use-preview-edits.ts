@@ -7,12 +7,13 @@ import {
   normalizeCategory,
   parseMoneyValue,
 } from "./session"
+import type { FinalizeOverrides } from "./use-campaign-drafts"
 import type { CampaignState } from "./use-campaign-state"
 
 type PreviewEditsOptions = {
   campaign: CampaignState
   setServiceSuggestions: (suggestions: ServiceSuggestion[]) => void
-  finalizeConversation: () => Promise<void>
+  finalizeConversation: (overrides?: FinalizeOverrides) => Promise<void>
   appendAssistantMessage: (content: string) => void
   persistSnapshot: (overrides: Partial<CSRAgentSession>) => void
 }
@@ -36,11 +37,22 @@ export function usePreviewEdits({
   appendAssistantMessage,
   persistSnapshot,
 }: PreviewEditsOptions) {
-  const maybeRegenerateAfterPreviewEdit = async (nextProjectData: ProjectIntakeData, nextMilestoneCount: number | null, nextMilestones: MilestoneInput[]) => {
+  const maybeRegenerateAfterPreviewEdit = async (
+    nextProjectData: ProjectIntakeData,
+    nextMilestoneCount: number | null,
+    nextMilestones: MilestoneInput[],
+    serviceSuggestions?: ServiceSuggestion[],
+  ) => {
     if (!isQuestionnaireCompleteFor(nextProjectData, nextMilestoneCount, nextMilestones)) return
     setConversationStage('milestones')
     appendAssistantMessage('Preview changes saved. Regenerating drafts with the updated project details and milestones.')
-    await finalizeConversation()
+    await finalizeConversation({
+      projectData: nextProjectData,
+      milestoneCount: nextMilestoneCount,
+      milestoneInputs: nextMilestones,
+      serviceSuggestions,
+      questionnaireComplete: true,
+    })
   }
 
   const handleSaveProjectPreviewEdit = (previewDraft: ProjectIntakeData) => {
@@ -65,7 +77,7 @@ export function usePreviewEdits({
     appendAssistantMessage('Campaign details updated from preview.')
     persistSnapshot({})
 
-    void maybeRegenerateAfterPreviewEdit(normalizedProjectData, milestoneCount, milestoneInputs)
+    void maybeRegenerateAfterPreviewEdit(normalizedProjectData, milestoneCount, milestoneInputs, [])
     return true
   }
 

@@ -104,6 +104,7 @@ function CSRAgentPage() {
 
   const { editingCampaignHasLead } = useEditingCampaign({
     mounted,
+    token,
     editingCampaignId,
     setProjectData: campaign.setProjectData,
     setGeneratedCampaigns: campaign.setGeneratedCampaigns,
@@ -262,7 +263,7 @@ function CSRAgentPage() {
     appendAssistantMessage,
   })
 
-  const { finalizeConversation, handlePublishDraft } = useCampaignDrafts({
+  const { finalizeConversation, handlePublishDraft, publishing } = useCampaignDrafts({
     campaign,
     userId: user?.id,
     token,
@@ -437,7 +438,7 @@ function CSRAgentPage() {
           />
         </ChatPanel>
 
-        <PreviewPanel generationError={generationError}>
+        <PreviewPanel>
           <CampaignDetailsCard
             projectData={projectData}
             milestoneCount={milestoneCount}
@@ -502,7 +503,10 @@ function CSRAgentPage() {
             leadLocked={hasLockedLeadNgo}
             questionnaireComplete={isQuestionnaireComplete}
             actionsEnabled={canUseCampaignActions}
+            publishing={publishing}
+            publishedCampaignId={campaign.publishedCampaignId}
             onPublish={handlePublishDraft}
+            onRetry={() => finalizeConversation()}
           />
         </PreviewPanel>
       </div>

@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import {
-  buildAllocationUpdatePayload,
   getFundingProgress,
   getNeedRemainingQuantity,
   getServiceRequestTarget,
@@ -48,24 +47,6 @@ describe('getNeedRemainingQuantity', () => {
 
   it('prefers the stored remaining column when present', () => {
     expect(getNeedRemainingQuantity({ ...financialNeed, remaining_amount: 1234 })).toBe(1234)
-  })
-})
-
-describe('buildAllocationUpdatePayload', () => {
-  it('closes the listing once the target is met', () => {
-    expect(buildAllocationUpdatePayload(financialNeed, { amount: 30000 })).toEqual({
-      current_amount: 50000,
-      remaining_amount: 0,
-      listing_open: false,
-    })
-  })
-
-  it('keeps the listing open while quantity remains', () => {
-    expect(buildAllocationUpdatePayload(materialNeed, { quantity: 10 })).toEqual({
-      current_quantity: 50,
-      remaining_quantity: 50,
-      listing_open: true,
-    })
   })
 })
 

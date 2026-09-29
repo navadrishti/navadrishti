@@ -123,7 +123,7 @@ async function filterOwnUnassignedNeeds(requests: ListingRequest[]): Promise<Lis
   return baseFiltered.filter((item) => !assignedNeedIds.has(Number(item.id)));
 }
 
-/** Public browse view: open, unassigned, unexpired needs that still have volunteer slots. */
+/** Public browse view: open, unassigned, unexpired needs that still have remaining capacity. */
 async function filterBrowsableNeeds(requests: ListingRequest[]): Promise<ListingRequest[]> {
   const browsableRequests = requests.filter(
     (item) =>
@@ -146,27 +146,24 @@ async function filterBrowsableNeeds(requests: ListingRequest[]): Promise<Listing
         }
 
         const acceptedCount = Array.isArray(acceptedVolunteers) ? acceptedVolunteers.length : 0;
-        const volunteerLimit = request.volunteers_needed || 1;
 
         return {
           ...request,
           accepted_volunteers_count: acceptedCount,
-          is_full: acceptedCount >= volunteerLimit
+          is_full: !isNeedOpenForListing(request)
         };
       } catch (error) {
         console.error('Error counting volunteers for request', request?.id, error);
         return {
           ...request,
           accepted_volunteers_count: 0,
-          is_full: false
+          is_full: !isNeedOpenForListing(request)
         };
       }
     })
   );
 
-  return requestsWithVolunteerCount.filter(
-    (request) => !request.is_full && isNeedOpenForListing(request)
-  );
+  return requestsWithVolunteerCount.filter((request) => !request.is_full);
 }
 
 function applySearchFilters(requests: ListingRequest[], params: ListingParams): ListingRequest[] {

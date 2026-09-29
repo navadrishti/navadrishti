@@ -4,6 +4,7 @@ import { useMemo } from "react"
 import { useIsClient } from "@/hooks/use-is-client"
 import { useAuth } from "@/lib/auth-context"
 import { Header } from "@/components/header"
+import { ConsoleFooter } from "@/components/product-brand"
 import { AGENT_NAMES, agentLoadingLabel } from "@/lib/ai-agent-sessions"
 import { describeCloudSaveStatus } from "@/lib/cloud-save-status"
 import { useSessionSync } from "./use-session-sync"
@@ -28,7 +29,7 @@ export default function NGOAIAgentPage() {
   const sync = useSessionSync({ mounted, userId: user?.id, token })
   const { sessions, setActiveSessionId, activeSessionId, cloudSaveStatus, lastCloudSavedAt, persistSessions } = sync
   const intake = useIntakeState()
-  const { messages, setMessages, input, setInput, isTyping, projectData, needsData, needCount, intakePath, generatedDraft, publishingDraft } = intake
+  const { messages, setMessages, input, setInput, isTyping, projectData, needsData, needCount, intakePath, generatedDraft, publishingDraft, publishedProjectId } = intake
   const offers = useOfferSelection(setMessages)
   const { offersLoading, relatedOffersByNeed, selectedOfferIdsByNeed, lastCompletedNeedIndex } = offers
   const progress = useIntakeProgress(intake)
@@ -80,6 +81,7 @@ export default function NGOAIAgentPage() {
   const { publishDraft } = usePublishDraft({
     intake,
     selectedOfferIdsByNeed,
+    relatedOffersByNeed,
     user,
     token,
     normalizeSessionFromState,
@@ -112,10 +114,10 @@ export default function NGOAIAgentPage() {
   }
 
   return (
-    <>
+    <div className="flex min-h-dvh flex-col bg-white md:h-dvh">
       <Header />
-      <main className="bg-white md:h-[calc(100dvh-4rem)] md:overflow-hidden">
-        <div className="container mx-auto flex min-h-[calc(100dvh-4rem)] flex-col px-3 py-3 md:h-full md:min-h-0 md:px-4 md:py-4">
+      <main className="flex flex-1 flex-col md:min-h-0 md:overflow-hidden">
+        <div className="container mx-auto flex min-h-[calc(100dvh-4rem)] flex-1 flex-col px-3 py-3 md:min-h-0 md:px-4 md:py-4">
           <ProgressHeader
             title={progress.promptTitle}
             isDraftComplete={Boolean(generatedDraft)}
@@ -154,7 +156,7 @@ export default function NGOAIAgentPage() {
                 input={input}
                 isTyping={isTyping}
                 fixedChoiceOptions={progress.fixedChoiceOptions}
-                suggestionNeedIndex={lastCompletedNeedIndex}
+                suggestionNeedIndex={generatedDraft ? null : lastCompletedNeedIndex}
                 suggestedOffers={lastCompletedNeedIndex !== null ? relatedOffersByNeed[lastCompletedNeedIndex] || [] : []}
                 appliedOfferIds={lastCompletedNeedIndex !== null ? selectedOfferIdsByNeed[lastCompletedNeedIndex] || [] : []}
                 onInputChange={setInput}
@@ -162,6 +164,7 @@ export default function NGOAIAgentPage() {
                 onSend={handleSend}
                 onQuickPick={handleQuickPick}
                 onApplyOffer={offers.applyOfferFromChat}
+                onRemoveOffer={offers.toggleOfferForNeed}
               />
             </ChatPanel>
 
@@ -176,9 +179,10 @@ export default function NGOAIAgentPage() {
               selectedOfferIdsByNeed={selectedOfferIdsByNeed}
               offersLoading={offersLoading}
               publishingDraft={publishingDraft}
-              onInviteAll={offers.inviteAllOffersForNeed}
-              onClearInvites={offers.clearInvitesForNeed}
-              onToggleInvite={offers.toggleInviteOfferForNeed}
+              publishedProjectId={publishedProjectId}
+              onApplyAll={offers.applyToAllOffersForNeed}
+              onRemoveAll={offers.removeAllOffersForNeed}
+              onToggleOffer={offers.toggleOfferForNeed}
               onPublish={() => {
                 void publishDraft()
               }}
@@ -186,6 +190,7 @@ export default function NGOAIAgentPage() {
           </div>
         </div>
       </main>
-    </>
+      <ConsoleFooter />
+    </div>
   )
 }

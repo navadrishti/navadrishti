@@ -309,7 +309,7 @@ export async function reviewProjectApplication(ctx: AssignmentsPutContext) {
           .eq('id', projectId)
           .is('assigned_company_user_id', null)
           .select()
-          .single()
+          .maybeSingle()
 
         if (projUpdateError) throw projUpdateError
 

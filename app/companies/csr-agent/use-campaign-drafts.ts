@@ -1,14 +1,24 @@
+import { useRef, useState } from "react"
 import { AGENT_NAMES } from "@/lib/ai-agent-sessions"
 import { buildPublishCampaignBody, publishCampaignDraft, requestCampaignDrafts } from "./api"
 import {
   type CSRAgentSession,
   type LeadNgoInvite,
+  type MilestoneInput,
   type ProjectIntakeData,
   type ProjectSuggestion,
   type ServiceSuggestion,
   parseMoneyValue,
 } from "./session"
 import type { CampaignState } from "./use-campaign-state"
+
+export type FinalizeOverrides = {
+  projectData?: ProjectIntakeData
+  milestoneCount?: number | null
+  milestoneInputs?: MilestoneInput[]
+  serviceSuggestions?: ServiceSuggestion[]
+  questionnaireComplete?: boolean
+}
 
 type CampaignDraftsOptions = {
   campaign: CampaignState
@@ -58,7 +68,14 @@ export function useCampaignDrafts({
   normalizeSessionFromState,
   appendAssistantMessage,
 }: CampaignDraftsOptions) {
-  const generateCampaignDrafts = async (payload: ProjectIntakeData, recommendations: ServiceSuggestion[]) => {
+  const [publishing, setPublishing] = useState(false)
+  const publishingRef = useRef(false)
+
+  const generateCampaignDrafts = async (
+    payload: ProjectIntakeData,
+    recommendations: ServiceSuggestion[],
+    milestones: { count: number | null; inputs: MilestoneInput[] },
+  ) => {
     if (!userId) {
       throw new Error("Unable to identify company account. Please sign in again.")
     }
@@ -72,8 +89,8 @@ export function useCampaignDrafts({
       companyId: userId,
       budget,
       payload,
-      milestoneCount,
-      milestoneInputs,
+      milestoneCount: milestones.count,
+      milestoneInputs: milestones.inputs,
       recommendations,
     })
     setGeneratedCampaigns(campaigns)
@@ -83,8 +100,16 @@ export function useCampaignDrafts({
     return campaigns
   }
 
-  const finalizeConversation = async () => {
-    if (!canUseCampaignActions) {
+  /** Overrides carry values the caller just set in state, which this render's closure has not seen yet. */
+  const finalizeConversation = async (overrides: FinalizeOverrides = {}) => {
+    const nextProjectData = overrides.projectData ?? projectData
+    const nextMilestones = {
+      count: overrides.milestoneCount !== undefined ? overrides.milestoneCount : milestoneCount,
+      inputs: overrides.milestoneInputs ?? milestoneInputs,
+    }
+    const nextServiceSuggestions = overrides.serviceSuggestions ?? serviceSuggestions
+
+    if (!canUseCampaignActions && !overrides.questionnaireComplete) {
       setConversationStage('milestones')
       appendAssistantMessage('Please select an existing project or finish the campaign details before I generate the final draft.')
       return
@@ -102,8 +127,8 @@ export function useCampaignDrafts({
     appendAssistantMessage(`Thanks. I have all the details. ${AGENT_NAMES.pulse} is matching capability offers and generating campaign drafts now.`)
 
     try {
-      const recommendations = serviceSuggestions.length > 0 ? serviceSuggestions : await loadRecommendations(projectData)
-      const generated = await generateCampaignDrafts(projectData, recommendations)
+      const recommendations = nextServiceSuggestions.length > 0 ? nextServiceSuggestions : await loadRecommendations(nextProjectData)
+      const generated = await generateCampaignDrafts(nextProjectData, recommendations, nextMilestones)
       setConversationStage("complete")
       appendAssistantMessage(`Done. I generated ${generated.length} campaign draft${generated.length === 1 ? "" : "s"}. The drafts are ready in the right panel.`)
     } catch (error) {
@@ -117,6 +142,7 @@ export function useCampaignDrafts({
   }
 
   const handlePublishDraft = async () => {
+    if (publishingRef.current) return
     if (!canUseCampaignActions) {
       appendAssistantMessage('Please finish campaign details before publishing.')
       return
@@ -140,6 +166,8 @@ export function useCampaignDrafts({
       return
     }
 
+    publishingRef.current = true
+    setPublishing(true)
     try {
       const campaignBody = buildPublishCampaignBody(generatedCampaigns[0], {
         sessionId: activeSessionId,
@@ -166,8 +194,11 @@ export function useCampaignDrafts({
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to publish campaign'
       appendAssistantMessage(message)
+    } finally {
+      publishingRef.current = false
+      setPublishing(false)
     }
   }
 
-  return { finalizeConversation, handlePublishDraft }
+  return { finalizeConversation, handlePublishDraft, publishing }
 }

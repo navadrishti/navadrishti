@@ -1,5 +1,6 @@
 import 'server-only'
 import type { TablesInsert, TablesUpdate } from '@/lib/database.types'
+import { toSearchPattern } from '@/lib/utils'
 import { supabase } from './client'
 
 export const supportTickets = {
@@ -27,14 +28,9 @@ export const supportTickets = {
       query = query.eq('status', filters.status);
     }
 
-    if (filters.search) {
-      const search = filters.search
-        .replace(/[,.():*%\\"_]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-      if (search) {
-        query = query.or(`title.ilike.%${search}%,description.ilike.%${search}%,ticket_id.ilike.%${search}%`);
-      }
+    const term = toSearchPattern(filters.search);
+    if (term) {
+      query = query.or(`title.ilike.${term},description.ilike.${term},ticket_id.ilike.${term}`);
     }
 
     const { data, error } = await query;

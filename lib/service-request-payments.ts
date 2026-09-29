@@ -1,5 +1,5 @@
 import type Razorpay from 'razorpay'
-import { db, getApplicationApplicantUserId, supabase } from '@/lib/db'
+import { adjustServiceRequestProgress, db, getApplicationApplicantUserId, supabase } from '@/lib/db'
 import { isGeneralNgoNetworkNeed, releaseHeldTransfersForPayment } from '@/lib/razorpay-route'
 import { resolveFundingTargetInr } from '@/lib/service-request-allocation'
 import { parseAmountToInr, parseJsonObject } from '@/lib/utils'
@@ -10,6 +10,20 @@ const ACTIVE_APPLICATION_STATUSES = ['accepted', 'active', 'completed']
 export function isServiceRequestContributionOrder(orderNotes: unknown): boolean {
   const notes = parseJsonObject(orderNotes)
   return Boolean(notes.service_request_id) && CONTRIBUTION_PAYMENT_KINDS.has(String(notes.payment_kind || ''))
+}
+
+/** Why a Razorpay order cannot be credited to this request by this contributor, or null when it can. */
+export function contributionOrderNotesError(
+  orderNotes: unknown,
+  expected: { serviceRequestId: number; contributorId: number }
+): string | null {
+  if (!isServiceRequestContributionOrder(orderNotes)) return 'Payment is not a contribution to a service request'
+  const notes = parseJsonObject(orderNotes)
+  if (Number(notes.service_request_id) !== expected.serviceRequestId) return 'Payment is linked to a different request'
+  if (!notes.contributor_id || Number(notes.contributor_id) !== expected.contributorId) {
+    return 'Payment belongs to a different contributor'
+  }
+  return null
 }
 
 function requestFundingTargetInr(
@@ -66,7 +80,8 @@ export async function creditServiceRequestContribution(input: {
 
   const notes = parseJsonObject(order.order_notes)
   const creditedInr = parseAmountToInr(notes.base_amount_inr) || parseAmountToInr(order.amount_inr)
-  const raisedInr = Number((currentInr + creditedInr).toFixed(2))
+  const credited = await adjustServiceRequestProgress(serviceRequest, { amount: creditedInr }, { targetAmount: targetInr })
+  const raisedInr = parseAmountToInr(credited.current_amount)
   const reachedTarget = !isGeneralNeed && targetInr > 0 && raisedInr >= targetInr
 
   const payerUserId = Number(order.payer_user_id || 0)
@@ -85,16 +100,13 @@ export async function creditServiceRequestContribution(input: {
     })
   }
 
-  let status: string | null = serviceRequest.status ?? null
+  let status: string | null = credited.status ?? null
   if (reachedTarget) status = 'completed'
   else if (status === 'active') status = 'in_progress'
 
-  await db.serviceRequests.update(input.serviceRequestId, {
-    current_amount: raisedInr,
-    remaining_amount: Number(Math.max(0, targetInr - raisedInr).toFixed(2)),
-    status,
-    updated_at: new Date().toISOString(),
-  })
+  if (status !== credited.status) {
+    await db.serviceRequests.update(input.serviceRequestId, { status, updated_at: new Date().toISOString() })
+  }
 
   if (reachedTarget) {
     await releaseHeldTransfersForPayment({
@@ -127,20 +139,17 @@ export async function debitServiceRequestRefund(serviceRequestId: number, refund
   const serviceRequest = await db.serviceRequests.getById(serviceRequestId)
   if (!serviceRequest) return null
 
-  const requirements = parseJsonObject(serviceRequest.requirements)
-  const raisedInr = Number(Math.max(0, parseAmountToInr(serviceRequest.current_amount) - refundInr).toFixed(2))
-  const targetInr = requestFundingTargetInr(serviceRequest, requirements)
+  const targetInr = requestFundingTargetInr(serviceRequest, parseJsonObject(serviceRequest.requirements))
+  const debited = await adjustServiceRequestProgress(serviceRequest, { amount: -refundInr }, { targetAmount: targetInr })
+  const raisedInr = parseAmountToInr(debited.current_amount)
 
-  let status: string | null = serviceRequest.status ?? null
+  let status: string | null = debited.status ?? null
   if (status === 'completed' && targetInr > 0 && raisedInr < targetInr) status = raisedInr > 0 ? 'in_progress' : 'active'
   else if (status === 'in_progress' && raisedInr <= 0) status = 'active'
 
-  await db.serviceRequests.update(serviceRequestId, {
-    current_amount: raisedInr,
-    remaining_amount: targetInr > 0 ? Number(Math.max(0, targetInr - raisedInr).toFixed(2)) : serviceRequest.remaining_amount ?? null,
-    status,
-    updated_at: new Date().toISOString(),
-  })
+  if (status !== debited.status) {
+    await db.serviceRequests.update(serviceRequestId, { status, updated_at: new Date().toISOString() })
+  }
 
   return raisedInr
 }

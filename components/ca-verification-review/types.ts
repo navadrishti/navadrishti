@@ -12,7 +12,6 @@ export type CAReviewItem = {
   submitted_at?: string
   documents?: CAReviewDocument[]
   documents_total?: number
-  documents_verified?: number
   ocr_error?: string
   field_comparisons?: CAFieldComparison[]
   name?: string

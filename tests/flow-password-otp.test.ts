@@ -27,8 +27,15 @@ const mocks = vi.hoisted(() => ({
   sendEmailOtpWithSupabase: vi.fn(),
   verifyEmailOtpWithSupabase: vi.fn(),
   sendSMS: vi.fn(),
+  afterResponse: [] as Array<() => unknown>,
 }))
 
+vi.mock('next/server', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('next/server')>()),
+  after: (task: () => unknown) => {
+    mocks.afterResponse.push(task)
+  },
+}))
 vi.mock('server-only', () => ({}))
 vi.mock('@/lib/db', () => ({
   supabase: {
@@ -57,6 +64,7 @@ let store = createAuthStoreFake()
 
 beforeEach(() => {
   mocks.users = [{ id: 7, email: 'asha@example.org', name: 'Asha', password: 'old-hash' }]
+  mocks.afterResponse.length = 0
   mocks.update.mockReset()
   mocks.from.mockReset()
   mocks.prepareEmailOtpSession.mockReset().mockResolvedValue({ ok: true })
@@ -100,13 +108,19 @@ function post(path: string, body: unknown, headers: Record<string, string> = {})
   })
 }
 
+async function flushAfterResponse() {
+  while (mocks.afterResponse.length) await mocks.afterResponse.shift()!()
+}
+
 async function call(handler: (req: NextRequest) => Promise<Response>, path: string, body: unknown, headers?: Record<string, string>) {
   const response = await handler(post(path, body, headers))
+  await flushAfterResponse()
   return { status: response.status, body: await response.json() }
 }
 
 async function raw(email: string) {
   const response = await forgotPassword(post('/api/auth/forgot-password', { email }))
+  await flushAfterResponse()
   return {
     status: response.status,
     headers: [...response.headers.entries()],
@@ -138,6 +152,24 @@ describe('forgot password', () => {
     expect(mocks.prepareEmailOtpSession).toHaveBeenCalledWith('asha@example.org')
     expect(mocks.sendEmailOtpWithSupabase).toHaveBeenCalledTimes(1)
     expect(mocks.sendEmailOtpWithSupabase).toHaveBeenCalledWith('asha@example.org')
+  })
+
+  it('responds before looking up the account, so timing does not reveal it either', async () => {
+    const response = await forgotPassword(post('/api/auth/forgot-password', { email: 'asha@example.org' }))
+    expect(response.status).toBe(200)
+    expect(mocks.prepareEmailOtpSession).not.toHaveBeenCalled()
+    expect(mocks.sendEmailOtpWithSupabase).not.toHaveBeenCalled()
+
+    await flushAfterResponse()
+    expect(mocks.sendEmailOtpWithSupabase).toHaveBeenCalledWith('asha@example.org')
+  })
+
+  it('logs instead of failing when the account lookup throws after responding', async () => {
+    mocks.users = null as unknown as UserRow[]
+    const response = await forgotPassword(post('/api/auth/forgot-password', { email: 'asha@example.org' }))
+    expect(response.status).toBe(200)
+    await flushAfterResponse()
+    expect(console.error).toHaveBeenCalledWith('Forgot password OTP send error:', expect.any(TypeError))
   })
 
   it('normalises the email before looking it up', async () => {
@@ -398,6 +430,7 @@ describe.each<StoreMode>(['database', 'memory'])('phone OTP (%s store)', (mode) 
 
   it.each([
     [sendPhoneOtp, { phone: '  ' }, 'Phone number is required'],
+    [sendPhoneOtp, { phone: 'call me' }, 'Enter a valid phone number'],
     [verifyPhoneOtp, { otp: '123456' }, 'Phone number is required'],
     [verifyPhoneOtp, { phone: '+919876543210' }, 'Phone OTP is required'],
   ])('validates input (%#)', async (handler, body, message) => {

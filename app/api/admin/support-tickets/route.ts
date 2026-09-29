@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { getAdminUser } from '@/lib/server-auth';
-import { getErrorMessage } from '@/lib/utils';
+import { getErrorMessage, toSearchPattern } from '@/lib/utils';
 
 export async function GET(request: NextRequest) {
   try {
@@ -27,16 +27,14 @@ export async function GET(request: NextRequest) {
       query = query.eq('status', status);
     }
 
-    if (search && search.trim()) {
-      const term = search.trim().replace(/[%_,]/g, '');
-      if (term) {
-        query = query.or(
-          `title.ilike.%${term}%,description.ilike.%${term}%,ticket_id.ilike.%${term}%,user_name.ilike.%${term}%,user_email.ilike.%${term}%`
-        );
-      }
+    const term = toSearchPattern(search);
+    if (term) {
+      query = query.or(
+        `title.ilike.${term},description.ilike.${term},ticket_id.ilike.${term},user_name.ilike.${term},user_email.ilike.${term}`
+      );
     }
 
-    query = query.limit(search?.trim() ? 100 : limit);
+    query = query.limit(term ? 100 : limit);
 
     const { data, error } = await query;
     if (error) throw error;

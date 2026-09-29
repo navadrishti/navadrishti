@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { getAuthUserFromRequest, assertUserType } from '@/lib/server-auth';
 
+const LOCKED_MILESTONE_STATUSES = ['approved', 'completed'];
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -34,6 +36,13 @@ export async function POST(
 
     if (project.ngo_user_id !== user.id) {
       return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
+    }
+
+    if (LOCKED_MILESTONE_STATUSES.includes(String(milestone.status || '').toLowerCase())) {
+      return NextResponse.json(
+        { error: 'Evidence can no longer be submitted for an approved or completed milestone' },
+        { status: 409 }
+      );
     }
 
     const body = await request.json();
@@ -117,10 +126,16 @@ export async function POST(
       }
     }
 
-    await supabase
+    const { error: statusError } = await supabase
       .from('csr_project_milestones')
       .update({ status: 'submitted', updated_at: new Date().toISOString() })
-      .eq('id', milestoneId);
+      .eq('id', milestoneId)
+      .not('status', 'in', `(${LOCKED_MILESTONE_STATUSES.join(',')})`);
+
+    if (statusError) {
+      console.error('Failed to mark milestone submitted:', statusError);
+      return NextResponse.json({ error: 'Failed to submit evidence' }, { status: 500 });
+    }
 
     await supabase.from('csr_audit_log').insert({
       entity_type: 'evidence',

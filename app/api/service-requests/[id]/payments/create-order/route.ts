@@ -150,26 +150,24 @@ export async function POST(
           notes: orderNotes,
         });
 
-    try {
-      const ngoUserIdForOrder = Number(serviceRequest.ngo_id || 0);
+    const { data: assignment } = await supabase
+      .from('service_request_applications')
+      .select('id, status')
+      .eq('service_request_id', requestId)
+      .eq('applicant_user_id', decoded.id)
+      .in('status', ['accepted', 'active', 'completed'])
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-      const { data: assignment } = await supabase
-        .from('service_request_applications')
-        .select('id, status')
-        .eq('service_request_id', requestId)
-        .eq('applicant_user_id', decoded.id)
-        .in('status', ['accepted', 'active', 'completed'])
-        .order('updated_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      const nowIso = new Date().toISOString();
-      const orderPayload = {
+    const { error: orderRecordError } = await supabase
+      .from('razorpay_payment_orders')
+      .upsert({
         service_request_id: requestId,
         application_id: assignment?.id || null,
         contribution_id: null,
         payer_user_id: decoded.id,
-        ngo_user_id: ngoUserIdForOrder > 0 ? ngoUserIdForOrder : decoded.id,
+        ngo_user_id: ngoUserId > 0 ? ngoUserId : decoded.id,
         razorpay_order_id: String(order.id),
         receipt: String(order.receipt || `sr_${requestId}`),
         amount_inr: Number(pricing.totalChargeInr.toFixed(2)),
@@ -177,14 +175,12 @@ export async function POST(
         currency: String(order.currency || 'INR'),
         order_status: 'created',
         order_notes: orderNotes,
-        updated_at: nowIso
-      };
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'razorpay_order_id' });
 
-      await supabase
-        .from('razorpay_payment_orders')
-        .upsert(orderPayload, { onConflict: 'razorpay_order_id' });
-    } catch (orderRecordError) {
+    if (orderRecordError) {
       console.error('Failed to record Razorpay order:', orderRecordError);
+      return NextResponse.json({ error: 'Failed to create payment order' }, { status: 500 });
     }
 
     return NextResponse.json({

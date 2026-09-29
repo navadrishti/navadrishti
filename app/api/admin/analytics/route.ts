@@ -25,9 +25,9 @@ export async function GET(request: NextRequest) {
     }
 
     const url = new URL(request.url);
-    const period = url.searchParams.get('period') || '30'; // days
+    const periodDays = Math.min(Math.max(Number.parseInt(url.searchParams.get('period') || '', 10) || 30, 1), 365);
     const startDate = new Date();
-    startDate.setDate(startDate.getDate() - parseInt(period));
+    startDate.setDate(startDate.getDate() - periodDays);
 
     const [serviceOfferStatsResult, performanceStatsResult] = await Promise.all([
       supabase
@@ -157,7 +157,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      period_days: parseInt(period),
+      period_days: periodDays,
       data: {
         overview: {
           total_service_offers: totalServiceOffers,

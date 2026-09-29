@@ -2,24 +2,28 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { getAdminUser } from '@/lib/server-auth';
 import { emailService } from '@/lib/email';
+import { getClientIp } from '@/lib/rate-limit';
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ offerId: string }> }
 ) {
   try {
-    const { offerId } = await params;
-    const { action, comments } = await request.json();
-
     if (!getAdminUser(request)) {
       return NextResponse.json({ error: 'Admin authentication required' }, { status: 401 });
     }
+
+    const { offerId } = await params;
+    const serviceOfferId = Number.parseInt(offerId, 10) || 0;
+    const body = await request.json().catch(() => ({}));
+    const action = body?.action;
+    const comments = typeof body?.comments === 'string' ? body.comments : '';
 
     if (!['approve', 'reject'].includes(action)) {
       return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
     }
 
-    if (!comments || comments.trim().length === 0) {
+    if (!comments.trim()) {
       return NextResponse.json({ error: 'Review comments are required' }, { status: 400 });
     }
 
@@ -34,8 +38,8 @@ export async function POST(
           profile_image
         )
       `)
-      .eq('id', parseInt(offerId))
-      .single();
+      .eq('id', serviceOfferId)
+      .maybeSingle();
 
     if (fetchError || !serviceOffer) {
       return NextResponse.json({ error: 'Service offer not found' }, { status: 404 });
@@ -52,7 +56,7 @@ export async function POST(
     const { error: updateError } = await supabase
       .from('service_offers')
       .update(updateData)
-      .eq('id', parseInt(offerId));
+      .eq('id', serviceOfferId);
 
     if (updateError) {
       console.error('Error updating service offer:', updateError);
@@ -62,14 +66,12 @@ export async function POST(
     const { error: auditError } = await supabase
       .from('service_offer_reviews')
       .insert({
-        service_offer_id: parseInt(offerId),
+        service_offer_id: serviceOfferId,
         review_action: action === 'approve' ? 'approved' : 'rejected',
         admin_comments: comments.trim(),
         offer_snapshot: serviceOffer,
         admin_username: 'admin',
-        admin_ip_address: request.headers.get('x-forwarded-for') ||
-                         request.headers.get('x-real-ip') ||
-                         '127.0.0.1',
+        admin_ip_address: getClientIp(request),
         admin_user_agent: request.headers.get('user-agent'),
         review_priority: 3,
         review_category: 'standard_review'
@@ -126,7 +128,7 @@ export async function POST(
           .update({
             review_category: isApproved ? 'approval_email_sent' : 'rejection_email_sent'
           })
-          .eq('service_offer_id', parseInt(offerId))
+          .eq('service_offer_id', serviceOfferId)
           .eq('review_action', action === 'approve' ? 'approved' : 'rejected')
           .order('created_at', { ascending: false })
           .limit(1);

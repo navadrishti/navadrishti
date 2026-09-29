@@ -3,7 +3,7 @@ import { getCompanyCAFromRequest } from '@/lib/server-auth';
 
 export async function GET(request: NextRequest) {
   try {
-    const context = await getCompanyCAFromRequest(request);
+    const context = await getCompanyCAFromRequest(request, { allowPasswordChangePending: true });
 
     return NextResponse.json({
       success: true,

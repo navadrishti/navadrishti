@@ -4,6 +4,8 @@ import { db, supabase } from '@/lib/db';
 import { getTokenClaims, requireBankStatementDocument } from '@/lib/auth';
 import { getErrorMessage, parseJsonObject } from '@/lib/utils';
 import type { TablesUpdate } from '@/lib/database.types';
+import { untrustedDocumentResponse } from '@/lib/ca-review/document-urls';
+import { initiateBlockedByStatus } from '@/lib/ca-review/submission-guards';
 
 export async function POST(req: NextRequest) {
   try {
@@ -19,7 +21,7 @@ export async function POST(req: NextRequest) {
 
     const { data: user, error: userError } = await supabase
       .from('users')
-      .select('user_type')
+      .select('user_type, verification_status')
       .eq('id', userId)
       .single();
 
@@ -31,14 +33,20 @@ export async function POST(req: NextRequest) {
 
     switch (action) {
       case 'initiate': {
+        const statusError = initiateBlockedByStatus(user.verification_status);
+        if (statusError) return statusError;
         const bankStatementError = requireBankStatementDocument(documents);
         if (bankStatementError) return bankStatementError;
+        const documentError = untrustedDocumentResponse(userId, documents);
+        if (documentError) return documentError;
         return await initiateCompanyVerification(userId, companyName, cinNumber, companyType, documents, panNumber, gstNumber, registrationNumber);
       }
 
       case 'reverify': {
         const bankStatementError = requireBankStatementDocument(documents);
         if (bankStatementError) return bankStatementError;
+        const documentError = untrustedDocumentResponse(userId, documents);
+        if (documentError) return documentError;
         return await reverifyCompanyVerification(userId, companyName, cinNumber, companyType, documents, panNumber, gstNumber, registrationNumber);
       }
       
@@ -80,36 +88,37 @@ async function initiateCompanyVerification(
     if (entered.gst) verificationPayload.gst_number = entered.gst;
     if (entered.registration_number) verificationPayload.registration_number = entered.registration_number;
 
-    const { data: existingVerification } = await supabase
+    const { data: existingVerification, error: existingError } = await supabase
       .from('company_verifications')
       .select('id')
       .eq('user_id', userId)
-      .single();
+      .maybeSingle();
+    if (existingError) throw existingError;
 
-    if (!existingVerification) {
-      await supabase
-        .from('company_verifications')
-        .insert({
-          user_id: userId,
-          ...verificationPayload
-        });
-    } else {
-      await supabase
-        .from('company_verifications')
-        .update(verificationPayload)
-        .eq('user_id', userId);
-    }
+    const { error: verificationWriteError } = !existingVerification
+      ? await supabase
+          .from('company_verifications')
+          .insert({
+            user_id: userId,
+            ...verificationPayload
+          })
+      : await supabase
+          .from('company_verifications')
+          .update(verificationPayload)
+          .eq('user_id', userId);
+    if (verificationWriteError) throw verificationWriteError;
 
-    const { data: userRow } = await supabase
+    const { data: userRow, error: userReadError } = await supabase
       .from('users')
       .select('profile_data')
       .eq('id', userId)
-      .single();
+      .maybeSingle();
+    if (userReadError) throw userReadError;
 
     const existingProfileData = parseJsonObject(userRow?.profile_data);
     const existingVerificationDocs = parseJsonObject(existingProfileData.verification_documents);
 
-    await supabase
+    const { error: userWriteError } = await supabase
       .from('users')
       .update({
       profile_data: {
@@ -128,6 +137,7 @@ async function initiateCompanyVerification(
       verification_status: 'pending'
       })
       .eq('id', userId);
+    if (userWriteError) throw userWriteError;
 
     await db.verificationDocuments.syncActorDocuments({
       userId,
@@ -177,11 +187,12 @@ async function reverifyCompanyVerification(
       return NextResponse.json({ error: 'Only verified users can request reverification' }, { status: 400 });
     }
 
-    const { data: existingVerification } = await supabase
+    const { data: existingVerification, error: existingError } = await supabase
       .from('company_verifications')
       .select('verification_status')
       .eq('user_id', userId)
-      .single();
+      .maybeSingle();
+    if (existingError) throw existingError;
 
     if (!existingVerification || existingVerification.verification_status !== 'verified') {
       return NextResponse.json({ error: 'Only verified users can request reverification' }, { status: 400 });
@@ -198,16 +209,7 @@ async function reverifyCompanyVerification(
       company_type: companyType || '',
     };
 
-    await supabase
-      .from('company_verifications')
-      .update({
-        company_name: companyName,
-        ...(entered.gst ? { gst_number: entered.gst } : {}),
-        ...(entered.registration_number ? { registration_number: entered.registration_number } : {}),
-      })
-      .eq('user_id', userId);
-
-    await supabase
+    const { error: userWriteError } = await supabase
       .from('users')
       .update({
         profile_data: {
@@ -220,12 +222,18 @@ async function reverifyCompanyVerification(
               reverification_status: 'pending',
               reverification_documents: documents || {},
               reverification_submitted_at: new Date().toISOString(),
-              entered_fields: entered,
+              reverification_entered_fields: entered,
+              reverification_details: {
+                ...(typeof companyName === 'string' && companyName.trim() ? { company_name: companyName.trim() } : {}),
+                ...(entered.gst ? { gst_number: entered.gst } : {}),
+                ...(entered.registration_number ? { registration_number: entered.registration_number } : {}),
+              },
             },
           },
         },
       })
       .eq('id', userId);
+    if (userWriteError) throw userWriteError;
 
     return NextResponse.json({
       success: true,

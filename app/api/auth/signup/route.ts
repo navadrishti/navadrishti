@@ -4,6 +4,7 @@ import { db, supabase } from '@/lib/db';
 import { hashPassword, generateToken, validateNgoHeadquartersLocation, validateCompanyHeadquartersLocation, normalizePincode, buildNgoLocationDisplay, normalizePhoneDigits, isPermanentlyBannedAccount } from '@/lib/auth';
 import { setAuthTokenCookie } from '@/lib/server-auth';
 import { stripServerOwnedProfileKeys } from '@/lib/profile-update/profile-fields';
+import { limitAttempts } from '@/lib/rate-limit';
 
 const parseInteger = (value: unknown): number | null => {
   if (value === null || value === undefined) return null;
@@ -58,8 +59,17 @@ const signupSchema = z.object({
   country: z.string().optional(),
   location: z.string().optional(),
   profile_data: z.record(z.any()).optional(),
-  ngo_volunteer_capacity: z.union([z.number().int(), z.string()]).optional()
+  ngo_volunteer_capacity: z.union([z.number().int(), z.string()]).optional(),
+  email_verification_token: z.string().optional(),
 });
+
+/** True when the token is a live Supabase session for this address, which only the email OTP step can produce. */
+async function hasVerifiedEmail(email: string, token: string | undefined): Promise<boolean> {
+  if (!token) return false;
+  const { data, error } = await supabase.auth.getUser(token);
+  if (error || !data.user?.email) return false;
+  return data.user.email.trim().toLowerCase() === email && Boolean(data.user.email_confirmed_at);
+}
 
 const getFriendlySignupError = (error: unknown): string => {
   const message = typeof error === 'string'
@@ -95,7 +105,10 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
     
-    const { email, password, name, user_type, phone, city, state_province, pincode, country, location, profile_data, ngo_volunteer_capacity } = validationResult.data;
+    const { email, password, name, user_type, phone, city, state_province, pincode, country, location, profile_data, ngo_volunteer_capacity, email_verification_token } = validationResult.data;
+    const limited = await limitAttempts(req, 'signup', email);
+    if (limited) return limited;
+
     const profile = stripServerOwnedProfileKeys(profile_data || {});
 
     if (user_type === 'ngo') {
@@ -197,7 +210,7 @@ export async function POST(req: NextRequest) {
       }
     }
     
-    // Hash password
+    const emailVerified = await hasVerifiedEmail(email, email_verification_token);
     const hashedPassword = await hashPassword(password);
     
     const userData = {
@@ -205,9 +218,9 @@ export async function POST(req: NextRequest) {
       password: hashedPassword,
       name,
       user_type,
-      email_verified: true,
+      email_verified: emailVerified,
       phone_verified: false,
-      email_verified_at: new Date().toISOString(),
+      email_verified_at: emailVerified ? new Date().toISOString() : null,
       phone_verified_at: null,
       phone,
       city,
@@ -244,7 +257,7 @@ export async function POST(req: NextRequest) {
       name,
       user_type,
       verification_status: 'unverified' as const,
-      email_verified: true,
+      email_verified: emailVerified,
       phone_verified: false
     };
     
@@ -263,7 +276,7 @@ export async function POST(req: NextRequest) {
         pincode: newUser.pincode || '',
         country: newUser.country || '',
         verification_status: 'unverified',
-        email_verified: true,
+        email_verified: emailVerified,
         phone_verified: false,
         profile_data: newUser.profile_data || {},
         profile: newUser.profile_data || {},

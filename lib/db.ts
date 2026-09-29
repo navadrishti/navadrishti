@@ -16,7 +16,11 @@ export {
   splitApplicationUpdatePayload,
 } from './db/applications'
 export { buildProjectLeadNgoPatch, getProjectLeadNgoId } from './db/request-projects'
-export { applyVolunteerAcceptanceAllocation } from './db/service-requests'
+export {
+  adjustServiceRequestProgress,
+  applyVolunteerAcceptanceAllocation,
+  releaseVolunteerAllocation,
+} from './db/service-requests'
 export { type VerificationActorType, type VerificationDocumentRow } from './db/verification'
 export {
   archiveAgentSession,

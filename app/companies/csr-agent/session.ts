@@ -276,10 +276,15 @@ export const getSessionDisplayTitle = (session: CSRAgentSession): string => {
   return session.title || 'Untitled session'
 }
 
+export const createSessionId = (): string =>
+  typeof globalThis.crypto?.randomUUID === "function"
+    ? globalThis.crypto.randomUUID()
+    : `csr-session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+
 export const buildEmptySession = (): CSRAgentSession => {
   const now = new Date().toISOString()
   return {
-    id: `csr-session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    id: createSessionId(),
     title: "Untitled session",
     createdAt: now,
     updatedAt: now,

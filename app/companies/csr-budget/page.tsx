@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useIsClient } from "@/hooks/use-is-client"
+import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/lib/auth-context"
 import { Header } from "@/components/header"
 import { Button } from "@/components/ui/button"
@@ -15,36 +16,62 @@ import { PieChart, TrendingUp, IndianRupee, Plus, Trash2 } from "lucide-react"
 interface BudgetCategory {
   id: string
   name: string
-  amount: number
   percentage: number
   color: string
 }
 
+type BudgetPlan = { totalBudget: number; categories: BudgetCategory[] }
+
+const planStorageKey = (userId: number | string) => `nd_csr_budget_plan_${userId}`
+
+function readSavedPlan(userId: number | string): BudgetPlan | null {
+  try {
+    const plan = JSON.parse(localStorage.getItem(planStorageKey(userId)) || 'null') as BudgetPlan | null
+    return plan && Number.isFinite(plan.totalBudget) && Array.isArray(plan.categories) ? plan : null
+  } catch {
+    return null
+  }
+}
+
 export default function CSRBudgetPage() {
-  const { user } = useAuth()
+  const { user, loading: authLoading } = useAuth()
+  const { toast } = useToast()
   const isHydrated = useIsClient()
   const [totalBudget, setTotalBudget] = useState(1000000)
   const [categories, setCategories] = useState<BudgetCategory[]>([
-    { id: '1', name: 'Education', amount: 400000, percentage: 40, color: '#FF6B35' },
-    { id: '2', name: 'Healthcare', amount: 300000, percentage: 30, color: '#004E89' },
-    { id: '3', name: 'Environment', amount: 200000, percentage: 20, color: '#00A676' },
-    { id: '4', name: 'Women Empowerment', amount: 100000, percentage: 10, color: '#F77F00' },
+    { id: '1', name: 'Education', percentage: 40, color: '#FF6B35' },
+    { id: '2', name: 'Healthcare', percentage: 30, color: '#004E89' },
+    { id: '3', name: 'Environment', percentage: 20, color: '#00A676' },
+    { id: '4', name: 'Women Empowerment', percentage: 10, color: '#F77F00' },
   ])
+
+  useEffect(() => {
+    if (!user?.id) return
+    const saved = readSavedPlan(user.id)
+    if (saved) {
+      setTotalBudget(saved.totalBudget)
+      setCategories(saved.categories)
+    }
+  }, [user?.id])
 
   const effectiveUserType = isHydrated ? user?.user_type : undefined
 
   const updateCategory = (id: string, percentage: number) => {
-    const newAmount = (totalBudget * percentage) / 100
-    setCategories(categories.map(cat => 
-      cat.id === id ? { ...cat, percentage, amount: newAmount } : cat
-    ))
+    setCategories(categories.map(cat => (cat.id === id ? { ...cat, percentage } : cat)))
+  }
+
+  const amountFor = (category: BudgetCategory) => (Math.max(0, totalBudget) * category.percentage) / 100
+
+  const savePlan = () => {
+    if (!user?.id) return
+    localStorage.setItem(planStorageKey(user.id), JSON.stringify({ totalBudget, categories } satisfies BudgetPlan))
+    toast({ title: 'Budget plan saved', description: 'Your plan is saved on this device.' })
   }
 
   const addCategory = () => {
     const newCategory: BudgetCategory = {
       id: Date.now().toString(),
       name: 'New Category',
-      amount: 0,
       percentage: 0,
       color: '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0')
     }
@@ -74,7 +101,7 @@ export default function CSRBudgetPage() {
     <>
       <Header />
       <div className="container mx-auto px-4 py-8">
-        {!isHydrated ? (
+        {!isHydrated || authLoading ? (
           <Card>
             <CardHeader>
               <CardTitle>Loading</CardTitle>
@@ -149,7 +176,8 @@ export default function CSRBudgetPage() {
               <Input 
                 type="number" 
                 value={totalBudget}
-                onChange={(e) => setTotalBudget(Number(e.target.value))}
+                min={0}
+                onChange={(e) => setTotalBudget(Math.max(0, Number(e.target.value) || 0))}
                 className="mt-1"
               />
             </div>
@@ -175,7 +203,7 @@ export default function CSRBudgetPage() {
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="font-medium">{category.percentage}%</span>
-                  <span className="text-gray-600">{formatINR(category.amount)}</span>
+                  <span className="text-gray-600">{formatINR(amountFor(category))}</span>
                 </div>
                 <Slider
                   value={[category.percentage]}
@@ -213,7 +241,7 @@ export default function CSRBudgetPage() {
                 <div key={category.id}>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-medium">{category.name}</span>
-                    <span className="text-sm text-gray-600">{formatINR(category.amount)}</span>
+                    <span className="text-sm text-gray-600">{formatINR(amountFor(category))}</span>
                   </div>
                   <Progress 
                     value={category.percentage} 
@@ -238,7 +266,7 @@ export default function CSRBudgetPage() {
               </ul>
             </div>
 
-            <Button className="w-full mt-6 bg-green-600 hover:bg-green-700">
+            <Button className="w-full mt-6 bg-green-600 hover:bg-green-700" onClick={savePlan} disabled={remaining < 0}>
               Save Budget Plan
             </Button>
           </CardContent>

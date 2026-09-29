@@ -8,6 +8,7 @@ import {
   type NgoVerificationSubmission,
 } from '@/lib/ngo-verification/submission';
 import { getNgoVerificationStatus } from '@/lib/ngo-verification/status';
+import { untrustedDocumentResponse } from '@/lib/ca-review/document-urls';
 
 export async function POST(req: NextRequest) {
   try {
@@ -66,12 +67,16 @@ export async function POST(req: NextRequest) {
       case 'initiate': {
         const bankStatementError = requireBankStatementDocument(documents);
         if (bankStatementError) return bankStatementError;
+        const documentError = untrustedDocumentResponse(userId, documents, complianceDocuments);
+        if (documentError) return documentError;
         return await initiateNgoVerification(userId, submission);
       }
 
       case 'reverify': {
         const bankStatementError = requireBankStatementDocument(documents);
         if (bankStatementError) return bankStatementError;
+        const documentError = untrustedDocumentResponse(userId, documents, complianceDocuments);
+        if (documentError) return documentError;
         return await reverifyNgoVerification(userId, submission);
       }
       

@@ -12,6 +12,31 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
+const ALLOWED_FOLDERS = new Set(['images', 'documents']);
+const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+const ALLOWED_DOCUMENT_TYPES = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+]);
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+
+function toPathSegment(value: FormDataEntryValue | null, fallback: string) {
+  const cleaned = typeof value === 'string' ? value.trim().replace(/[^A-Za-z0-9_-]/g, '') : '';
+  return cleaned || fallback;
+}
+
+// Legacy uploads were stored flat as `<folder>/<key>_<userId>_<timestamp>`.
+function publicIdBelongsTo(publicId: string, userId: string) {
+  const segments = publicId.split('/');
+  if (segments.some((segment) => segment === '' || segment === '.' || segment === '..')) return false;
+  if (segments.length === 3 && ALLOWED_FOLDERS.has(segments[0]) && segments[1] === userId) return true;
+  if (segments.length === 2 && ALLOWED_FOLDERS.has(segments[0])) {
+    return segments[1].match(/_(\d+)_\d+$/)?.[1] === userId;
+  }
+  return false;
+}
+
 export async function POST(request: NextRequest) {
   try {
     if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
@@ -27,35 +52,33 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Uploads are allowed before signup completes, so a token is optional here.
     const authUser = findAuthUser(request);
-    const userId = authUser ? String(authUser.id) : 'anonymous';
+    if (!authUser) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
+    const userId = String(authUser.id);
 
     const formData = await request.formData();
-    const file = formData.get('file') as File;
+    const file = formData.get('file');
     const folderField = formData.get('folder');
-    const documentKeyField = formData.get('documentKey');
     
-    if (!file) {
+    if (!(file instanceof File)) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
     const requestedFolder =
       typeof folderField === 'string' && folderField.trim() ? folderField.trim() : '';
-    const documentKey =
-      typeof documentKeyField === 'string' && documentKeyField.trim()
-        ? documentKeyField.trim().replace(/[^a-zA-Z0-9/_-]/g, '_')
-        : 'file';
+    if (requestedFolder && !ALLOWED_FOLDERS.has(requestedFolder)) {
+      return NextResponse.json({ error: 'Invalid upload folder' }, { status: 400 });
+    }
+    const documentKey = toPathSegment(formData.get('documentKey'), 'file');
 
-    // Check file size (max 10MB)
-    if (file.size > 10 * 1024 * 1024) {
+    if (file.size > MAX_FILE_SIZE) {
       return NextResponse.json({ error: 'File too large. Maximum size is 10MB.' }, { status: 413 });
     }
 
-    const isImage = file.type.startsWith('image/');
-    const isDocument = file.type === 'application/pdf' || 
-                      file.type === 'application/msword' || 
-                      file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    const isImage = ALLOWED_IMAGE_TYPES.has(file.type);
+    const isDocument = ALLOWED_DOCUMENT_TYPES.has(file.type);
     
     if (!isImage && !isDocument) {
       return NextResponse.json({ 
@@ -70,8 +93,9 @@ export async function POST(request: NextRequest) {
     const uploadFolder = requestedFolder || (isDocument ? 'documents' : 'images');
     const uploadOptions: UploadApiOptions = {
       resource_type: resourceType,
-      folder: uploadFolder,
-      public_id: `${documentKey}_${userId}_${Date.now()}`,
+      folder: `${uploadFolder}/${userId}`,
+      public_id: `${documentKey}_${Date.now()}`,
+      overwrite: false,
     };
     
     if (isImage) {
@@ -136,15 +160,20 @@ export async function POST(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    if (!findAuthUser(request)) {
+    const authUser = findAuthUser(request);
+    if (!authUser) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
     const { searchParams } = new URL(request.url);
-    const publicId = searchParams.get('publicId');
+    const publicId = searchParams.get('publicId')?.trim();
 
     if (!publicId) {
       return NextResponse.json({ error: 'Public ID is required' }, { status: 400 });
+    }
+
+    if (!publicIdBelongsTo(publicId, String(authUser.id))) {
+      return NextResponse.json({ error: 'You can only delete your own uploads' }, { status: 403 });
     }
 
     await cloudinary.uploader.destroy(publicId);

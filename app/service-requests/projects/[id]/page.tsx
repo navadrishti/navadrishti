@@ -4,8 +4,9 @@ import { useState } from 'react';
 import { useIsClient } from '@/hooks/use-is-client';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, XCircle } from 'lucide-react';
 import { Header } from '@/components/header';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -40,8 +41,28 @@ export default function ServiceRequestProjectDetailPage() {
     removed: false
   });
 
-  if (!isHydrated || loading || !payload) {
+  if (!isHydrated || loading) {
     return <ProjectLoadingSkeleton />;
+  }
+
+  if (!payload) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <div className="mx-auto max-w-7xl space-y-4 px-4 py-8">
+          <Alert>
+            <XCircle className="h-4 w-4" />
+            <AlertDescription>This project could not be found or failed to load.</AlertDescription>
+          </Alert>
+          <Button variant="outline" asChild>
+            <Link href="/service-requests">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to needs
+            </Link>
+          </Button>
+        </div>
+      </div>
+    );
   }
 
   const projectData = resolveProject(payload, projectId);

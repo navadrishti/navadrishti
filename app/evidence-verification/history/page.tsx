@@ -31,6 +31,14 @@ function prettifyLabel(value: string) {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+const eventKey = (event: AuditEvent) => `${event.id}-${event.entity_id}-${event.created_at}`;
+
+function detailEntries(details: AuditEvent['details']) {
+  return Object.entries(details || {})
+    .filter(([, value]) => value !== null && value !== undefined && String(value).trim() !== '')
+    .map(([key, value]) => [prettifyLabel(key), typeof value === 'object' ? JSON.stringify(value) : String(value)] as const);
+}
+
 function HistorySkeleton() {
   return (
     <>
@@ -90,7 +98,7 @@ export default function EvidenceVerificationHistoryPage() {
   const dedupeEvents = (events: AuditEvent[]) => {
     const map = new Map<string, AuditEvent>();
     for (const event of events) {
-      const key = `${event.id}-${event.entity_id}-${event.created_at}`;
+      const key = eventKey(event);
       if (!map.has(key)) {
         map.set(key, event);
       }
@@ -289,29 +297,37 @@ export default function EvidenceVerificationHistoryPage() {
             <p className="text-sm text-slate-600">No audit events recorded yet.</p>
           ) : (
             <div className="space-y-3">
-              {filteredEvents.map((event: AuditEvent) => (
-                <div key={event.id} className="w-full rounded-md border border-slate-200 bg-white p-4">
-                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                    <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-slate-900">{event.event_type}</p>
-                      <p className="text-sm text-slate-600">
-                        {event.entity_type || 'Entity'}: {event.entity_id}
+              {filteredEvents.map((event: AuditEvent) => {
+                const details = detailEntries(event.details);
+                return (
+                  <div key={eventKey(event)} className="w-full rounded-md border border-slate-200 bg-white p-4">
+                    <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-slate-900">{prettifyLabel(event.event_type || 'event')}</p>
+                        <p className="text-sm text-slate-600 break-all">
+                          {event.entity_type ? prettifyLabel(event.entity_type) : 'Entity'}: {event.entity_id}
+                        </p>
+                        {event.description ? (
+                          <p className="mt-1 text-sm text-slate-600">{event.description}</p>
+                        ) : null}
+                      </div>
+                      <p className="shrink-0 whitespace-nowrap text-sm text-slate-600">
+                        {formatDateTime(event.created_at)}
                       </p>
-                      {event.description ? (
-                        <p className="mt-1 text-sm text-slate-600">{event.description}</p>
-                      ) : null}
                     </div>
-                    <p className="shrink-0 whitespace-nowrap text-sm text-slate-600">
-                      {formatDateTime(event.created_at)}
-                    </p>
+                    {details.length > 0 ? (
+                      <dl className="mt-2 grid gap-1 rounded border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600 sm:grid-cols-[auto_1fr] sm:gap-x-3">
+                        {details.map(([label, value]) => (
+                          <div key={label} className="contents">
+                            <dt className="font-medium text-slate-700">{label}</dt>
+                            <dd className="break-all">{value}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    ) : null}
                   </div>
-                  {event.details ? (
-                    <div className="mt-2 rounded border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600">
-                      <pre className="overflow-auto">{JSON.stringify(event.details, null, 2)}</pre>
-                    </div>
-                  ) : null}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
           </div>

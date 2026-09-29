@@ -101,7 +101,7 @@ describe('help & support ticket', () => {
     )
     expect(mocks.createMessage).toHaveBeenCalledWith(expect.objectContaining({ ticket_id: body.data.ticketId, sender_id: 7, sender_type: 'user' }))
     expect(mocks.sendEmail).toHaveBeenCalledWith(expect.objectContaining({ to: 'support@navadrishti.org', replyTo: 'asha@example.org' }))
-    expect(body.data).toMatchObject({ ticketId: expect.stringMatching(/^SUP-\d+$/), emailSent: true })
+    expect(body.data).toMatchObject({ ticketId: expect.stringMatching(/^SUP-\d+-[0-9A-F]{4}$/), emailSent: true })
   })
 
   it('uploads documents as raw files without transformations', async () => {

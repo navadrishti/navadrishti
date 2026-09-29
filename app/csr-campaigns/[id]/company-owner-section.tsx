@@ -1,19 +1,33 @@
 import { DetailField, DetailSection } from "@/components/detail-fields"
-import { formatDisplayDate } from "@/lib/format-date"
+import { VerifiedAccountName } from "@/components/verification-badge"
+import { formatDisplayDate, formatStatusLabel } from "@/lib/format-date"
 import type { Campaign } from "./types"
 
 export function CompanyOwnerSection({ campaign }: { campaign: Campaign }) {
-  const ownerName = campaign.company_id ? `Company #${campaign.company_id}` : 'Company not set'
+  const startDate = formatDisplayDate(campaign.start_date)
+  const endDate = formatDisplayDate(campaign.end_date)
 
   return (
     <DetailSection title="Company Owner">
-      <DetailField label="Owner Name" value={ownerName} />
-      <DetailField label="Owner Type" value="Company" />
-      <DetailField label="Company ID" value={campaign.company_id || 'Not set'} />
-      <DetailField label="Campaign Status" value={campaign.status || 'draft'} />
+      <DetailField
+        label="Company"
+        value={
+          campaign.company_name ? (
+            <VerifiedAccountName
+              name={campaign.company_name}
+              status={campaign.company_verification_status}
+              verified={campaign.company_verified}
+              size="sm"
+            />
+          ) : (
+            'Not set'
+          )
+        }
+      />
+      <DetailField label="Campaign Status" value={formatStatusLabel(campaign.status || 'draft')} />
       <DetailField
         label="Campaign Timeline"
-        value={`${formatDisplayDate(campaign.start_date) || 'Not set'} to ${formatDisplayDate(campaign.end_date) || 'Not set'}`}
+        value={startDate || endDate ? `${startDate || 'Not set'} to ${endDate || 'Not set'}` : 'Not set'}
       />
     </DetailSection>
   )

@@ -1,5 +1,29 @@
+import jwt from 'jsonwebtoken'
 import { NextRequest } from 'next/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+
+const accounts = vi.hoisted(() => ({ rows: new Map<number, Record<string, unknown> | null>(), lookups: 0 }))
+
+vi.mock('@/lib/db', () => ({
+  db: {},
+  supabase: {
+    from: () => {
+      let userId = 0
+      const query = {
+        select: () => query,
+        eq: (_column: string, value: number) => {
+          userId = value
+          return query
+        },
+        maybeSingle: async () => {
+          accounts.lookups += 1
+          return { data: accounts.rows.get(userId) ?? null, error: null }
+        },
+      }
+      return query
+    },
+  },
+}))
 import {
   canAccessRoute,
   getDashboardSidebarItemCount,
@@ -138,20 +162,60 @@ describe('routes', () => {
 })
 
 describe('proxy', () => {
-  it.each(['/government-admin', '/government-admin/accounts'])('redirects %s to /', (path) => {
-    const response = proxy(new NextRequest(`https://app.example.com${path}`))
+  it.each(['/government-admin', '/government-admin/accounts'])('redirects %s to /', async (path) => {
+    const response = await proxy(new NextRequest(`https://app.example.com${path}`))
     expect(response.status).toBe(307)
     expect(response.headers.get('location')).toBe('https://app.example.com/')
   })
 
-  it('lets other paths through', () => {
-    const response = proxy(new NextRequest('https://app.example.com/government-administration'))
+  it('lets other paths through', async () => {
+    const response = await proxy(new NextRequest('https://app.example.com/government-administration'))
     expect(response.headers.get('location')).toBeNull()
     expect(response.headers.get('x-middleware-next')).toBe('1')
   })
 
-  it('matches only government-admin routes', () => {
-    expect(config.matcher).toEqual(['/government-admin', '/government-admin/:path*'])
+  it('matches government-admin pages and API routes', () => {
+    expect(config.matcher).toEqual(['/government-admin', '/government-admin/:path*', '/api/:path*'])
+  })
+
+  const apiRequest = (userId: number, path = '/api/service-requests') =>
+    new NextRequest(`https://app.example.com${path}`, {
+      headers: { authorization: `Bearer ${jwt.sign({ id: userId, email: 'u@example.org', user_type: 'ngo' }, 'test-secret')}` },
+    })
+
+  it('ends a banned user API session immediately and clears the cookie', async () => {
+    accounts.rows.set(41, { account_status: 'banned', locked_until: null, profile_data: {} })
+    const response = await proxy(apiRequest(41))
+    expect(response.status).toBe(403)
+    expect((await response.json()).error).toMatch(/permanently banned/)
+    expect(response.headers.get('set-cookie')).toMatch(/token=;/)
+  })
+
+  it('blocks suspended users until the suspension ends', async () => {
+    const until = new Date(Date.now() + 86_400_000).toISOString()
+    accounts.rows.set(42, { account_status: 'suspended', locked_until: until, profile_data: {} })
+    expect((await proxy(apiRequest(42))).status).toBe(403)
+  })
+
+  it('lets active users through and caches the lookup', async () => {
+    accounts.rows.set(43, { account_status: 'active', locked_until: null, profile_data: {} })
+    const before = accounts.lookups
+    expect((await proxy(apiRequest(43))).headers.get('x-middleware-next')).toBe('1')
+    await proxy(apiRequest(43))
+    expect(accounts.lookups - before).toBe(1)
+  })
+
+  it('still lets a banned user sign out', async () => {
+    accounts.rows.set(44, { account_status: 'banned', locked_until: null, profile_data: {} })
+    const response = await proxy(apiRequest(44, '/api/auth/logout'))
+    expect(response.headers.get('x-middleware-next')).toBe('1')
+  })
+
+  it('skips requests without a user token', async () => {
+    const before = accounts.lookups
+    const response = await proxy(new NextRequest('https://app.example.com/api/campaigns'))
+    expect(response.headers.get('x-middleware-next')).toBe('1')
+    expect(accounts.lookups).toBe(before)
   })
 })
 

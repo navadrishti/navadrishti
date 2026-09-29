@@ -122,7 +122,7 @@ describe('cron cleanup', () => {
     const source = read('app/api/cron/daily-cleanup/route.ts')
     const handler = source.indexOf('export async function GET')
     expect(source.indexOf('CRON_SECRET', handler)).toBeLessThan(source.indexOf('await supabase', handler))
-    expect(source).toMatch(/cronSecret\s*\?\s*providedSecret === cronSecret\s*:\s*process\.env\.NODE_ENV === 'development'/)
+    expect(source).toMatch(/cronSecret\s*\?\s*secretsMatch\(providedSecret, cronSecret\)\s*:\s*process\.env\.NODE_ENV === 'development'/)
   })
 })
 

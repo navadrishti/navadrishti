@@ -4,6 +4,8 @@ import { db } from '@/lib/db';
 import { getTokenClaims, requireBankStatementDocument } from '@/lib/auth';
 import { getErrorMessage, parseJsonObject } from '@/lib/utils';
 import type { TablesUpdate } from '@/lib/database.types';
+import { untrustedDocumentResponse } from '@/lib/ca-review/document-urls';
+import { initiateBlockedByStatus } from '@/lib/ca-review/submission-guards';
 
 export async function POST(req: NextRequest) {
   try {
@@ -32,14 +34,20 @@ export async function POST(req: NextRequest) {
 
     switch (action) {
       case 'initiate': {
+        const statusError = initiateBlockedByStatus(user.verification_status);
+        if (statusError) return statusError;
         const bankStatementError = requireBankStatementDocument(documents);
         if (bankStatementError) return bankStatementError;
+        const documentError = untrustedDocumentResponse(userId, documents);
+        if (documentError) return documentError;
         return await initiateVerification(userId, documentType, documents, aadhaarNumber, panNumber);
       }
 
       case 'reverify': {
         const bankStatementError = requireBankStatementDocument(documents);
         if (bankStatementError) return bankStatementError;
+        const documentError = untrustedDocumentResponse(userId, documents);
+        if (documentError) return documentError;
         return await reverifyVerification(userId, documentType, documents, aadhaarNumber, panNumber);
       }
       
@@ -172,7 +180,7 @@ async function reverifyVerification(
             reverification_status: 'pending',
             reverification_documents: documents || {},
             reverification_submitted_at: new Date().toISOString(),
-            entered_fields: {
+            reverification_entered_fields: {
               aadhaar: typeof aadhaarNumber === 'string' ? aadhaarNumber.replace(/\s/g, '') : '',
               pan: typeof panNumber === 'string' ? panNumber.trim().toUpperCase() : '',
             },

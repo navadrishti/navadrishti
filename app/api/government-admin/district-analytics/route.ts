@@ -28,10 +28,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const districtName = new URL(request.url).searchParams.get('district') || admin.district_name;
+    const districtName = admin.district_name;
     if (!districtName) {
       return NextResponse.json(
-        { error: 'District name is required' },
+        { error: 'Your account has no district assigned' },
         { status: 400 }
       );
     }

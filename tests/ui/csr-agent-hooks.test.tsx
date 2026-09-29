@@ -162,6 +162,9 @@ function rentalOptions(overrides: Partial<Parameters<typeof useCapabilityRentals
   }
 }
 
+const paymentCalls = (fetchMock: ReturnType<typeof mockFetch>) =>
+  fetchMock.mock.calls.filter(([url]) => String(url).includes('/api/csr-agent/update-campaign'))
+
 describe('useCapabilityRentals', () => {
   it('blocks payment until the lead NGO accepts', async () => {
     const fetchMock = mockFetch(() => jsonResponse({}))
@@ -170,7 +173,7 @@ describe('useCapabilityRentals', () => {
 
     await act(() => result.current.handlePayAndReserveOffer(55, 'equipment'))
 
-    expect(fetchMock).not.toHaveBeenCalled()
+    expect(paymentCalls(fetchMock)).toHaveLength(0)
     expect(options.ensureCampaignId).not.toHaveBeenCalled()
     expect(options.appendAssistantMessage).toHaveBeenCalledWith(
       'Capability offers can be reserved once a lead NGO accepts the campaign.',
@@ -185,8 +188,103 @@ describe('useCapabilityRentals', () => {
 
     await act(() => result.current.handlePayAndReserveOffer(55))
 
-    expect(fetchMock).not.toHaveBeenCalled()
+    expect(paymentCalls(fetchMock)).toHaveLength(0)
     expect(options.appendAssistantMessage).toHaveBeenCalledWith(expect.stringContaining('suspended'))
+  })
+
+  it('restores paid rentals for the campaign and clears them when the campaign changes', async () => {
+    const paid = { service_offer_id: 55, payment_status: 'paid' }
+    const pending = { service_offer_id: 56, payment_status: 'pending' }
+    const fetchMock = mockFetch((url) =>
+      url === '/api/campaigns/camp-1'
+        ? jsonResponse({ success: true, data: { impact_metrics: { csr_capability_rentals: [paid, pending] } } })
+        : jsonResponse({ success: true, data: { impact_metrics: {} } }),
+    )
+    const { result, rerender } = renderHook((props: { campaignId: string }) => useCapabilityRentals(rentalOptions(props)), {
+      initialProps: { campaignId: 'camp-1' },
+    })
+
+    await waitFor(() => expect(result.current.paidOfferIds).toEqual([55]))
+    expect(result.current.paidRentalsByOfferId[55]).toMatchObject(paid)
+    expect(fetchMock.mock.calls[0][1]?.headers).toMatchObject({ Authorization: 'Bearer tok' })
+
+    rerender({ campaignId: 'camp-2' })
+    expect(result.current.paidOfferIds).toEqual([])
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/campaigns/camp-2', expect.anything()))
+    expect(result.current.paidOfferIds).toEqual([])
+  })
+
+  it('retries verification while Razorpay is still capturing the payment', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    let verifyAttempts = 0
+    mockFetch((_url, init) => {
+      const body = requestBody(init)
+      if (body.action === 'capability_rental_create_order') {
+        return jsonResponse({ success: true, data: { paymentRequired: true, keyId: 'key', orderId: 'order_1', amount: 1500 } })
+      }
+      if (body.action === 'capability_rental_verify') {
+        verifyAttempts += 1
+        return verifyAttempts === 1
+          ? jsonResponse({ error: 'Payment not captured yet (status: authorized)' }, 409)
+          : jsonResponse({ success: true, data: { rental: { service_offer_id: 55 } } })
+      }
+      return jsonResponse({})
+    })
+    checkout.open.mockImplementation(async (options: { onSuccess: (response: Record<string, string>) => Promise<void> }) => {
+      await options.onSuccess({ razorpay_order_id: 'order_1', razorpay_payment_id: 'pay_1', razorpay_signature: 'sig' })
+    })
+    const { result } = renderHook(() => useCapabilityRentals(rentalOptions()))
+
+    const paying = act(() => result.current.handlePayAndReserveOffer(55))
+    await act(() => vi.advanceTimersByTimeAsync(2000))
+    await paying
+    vi.useRealTimers()
+
+    expect(verifyAttempts).toBe(2)
+    expect(result.current.paidOfferIds).toEqual([55])
+  })
+
+  it('reports a failed verification with the payment reference', async () => {
+    mockFetch((_url, init) => {
+      const body = requestBody(init)
+      if (body.action === 'capability_rental_create_order') {
+        return jsonResponse({ success: true, data: { paymentRequired: true, keyId: 'key', orderId: 'order_1', amount: 1500 } })
+      }
+      if (body.action === 'capability_rental_verify') return jsonResponse({ error: 'Order and payment mismatch' }, 400)
+      return jsonResponse({})
+    })
+    checkout.open.mockImplementation(async (options: { onSuccess: (response: Record<string, string>) => Promise<void> }) => {
+      await options.onSuccess({ razorpay_order_id: 'order_1', razorpay_payment_id: 'pay_9', razorpay_signature: 'sig' })
+    })
+    const options = rentalOptions()
+    const { result } = renderHook(() => useCapabilityRentals(options))
+
+    await act(() => result.current.handlePayAndReserveOffer(55))
+
+    expect(options.appendAssistantMessage).toHaveBeenLastCalledWith(expect.stringMatching(/Order and payment mismatch.*pay_9/))
+    expect(result.current.paidOfferIds).toEqual([])
+    expect(result.current.payingOfferId).toBeNull()
+  })
+
+  it('passes the refund notice through unchanged', async () => {
+    const refunded = 'This capability was already paid for, so this duplicate payment has been refunded.'
+    mockFetch((_url, init) => {
+      const body = requestBody(init)
+      if (body.action === 'capability_rental_create_order') {
+        return jsonResponse({ success: true, data: { paymentRequired: true, keyId: 'key', orderId: 'order_1', amount: 1500 } })
+      }
+      if (body.action === 'capability_rental_verify') return jsonResponse({ error: refunded }, 409)
+      return jsonResponse({})
+    })
+    checkout.open.mockImplementation(async (options: { onSuccess: (response: Record<string, string>) => Promise<void> }) => {
+      await options.onSuccess({ razorpay_order_id: 'order_1', razorpay_payment_id: 'pay_2', razorpay_signature: 'sig' })
+    })
+    const options = rentalOptions()
+    const { result } = renderHook(() => useCapabilityRentals(options))
+
+    await act(() => result.current.handlePayAndReserveOffer(55))
+
+    expect(options.appendAssistantMessage).toHaveBeenLastCalledWith(refunded)
   })
 
   it('marks the offer reserved when no payment is required', async () => {

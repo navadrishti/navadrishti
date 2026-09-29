@@ -11,7 +11,7 @@ const changePasswordSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    const companyCA = await getCompanyCAFromRequest(request);
+    const companyCA = await getCompanyCAFromRequest(request, { allowPasswordChangePending: true });
 
     const body = await request.json();
     const parsed = changePasswordSchema.safeParse(body);

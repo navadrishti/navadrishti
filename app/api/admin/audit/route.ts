@@ -26,9 +26,9 @@ export async function GET(request: NextRequest) {
     }
 
     const url = new URL(request.url);
-    const limit = parseInt(url.searchParams.get('limit') || '50');
-    const offset = parseInt(url.searchParams.get('offset') || '0');
-    const serviceOfferId = url.searchParams.get('serviceOfferId');
+    const limit = Math.min(Math.max(Number.parseInt(url.searchParams.get('limit') || '', 10) || 50, 1), 200);
+    const offset = Math.max(Number.parseInt(url.searchParams.get('offset') || '', 10) || 0, 0);
+    const serviceOfferId = Number.parseInt(url.searchParams.get('serviceOfferId') || '', 10);
 
     let query = supabase
       .from('service_offer_reviews')
@@ -38,8 +38,8 @@ export async function GET(request: NextRequest) {
       `)
       .order('reviewed_at', { ascending: false });
 
-    if (serviceOfferId) {
-      query = query.eq('service_offer_id', parseInt(serviceOfferId));
+    if (serviceOfferId > 0) {
+      query = query.eq('service_offer_id', serviceOfferId);
     }
 
     const { data: reviews, error: reviewsError } = await query.range(offset, offset + limit - 1);

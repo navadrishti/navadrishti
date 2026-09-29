@@ -4,6 +4,7 @@ import type { ConversationStage, GeneratedCampaign, ProjectIntakeData } from "./
 
 type EditingCampaignOptions = {
   mounted: boolean
+  token: string | null
   editingCampaignId: string | null
   setProjectData: (projectData: ProjectIntakeData) => void
   setGeneratedCampaigns: (campaigns: GeneratedCampaign[]) => void
@@ -13,6 +14,7 @@ type EditingCampaignOptions = {
 
 export function useEditingCampaign({
   mounted,
+  token,
   editingCampaignId,
   setProjectData,
   setGeneratedCampaigns,
@@ -26,7 +28,7 @@ export function useEditingCampaign({
 
     const hydrateCampaign = async () => {
       try {
-        const campaign = await fetchCampaignRow(editingCampaignId)
+        const campaign = await fetchCampaignRow(editingCampaignId, token)
         if (!campaign) return
 
         const draft = campaignRowToDraft(campaign)
@@ -51,7 +53,7 @@ export function useEditingCampaign({
     }
 
     void hydrateCampaign()
-  }, [mounted, editingCampaignId, setProjectData, setGeneratedCampaigns, setPublishedCampaignId, setConversationStage])
+  }, [mounted, token, editingCampaignId, setProjectData, setGeneratedCampaigns, setPublishedCampaignId, setConversationStage])
 
   return { editingCampaignHasLead }
 }

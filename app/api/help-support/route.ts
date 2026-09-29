@@ -100,7 +100,7 @@ export async function POST(request: NextRequest) {
       }).end(buffer);
     });
 
-    const ticketId = `SUP-${Date.now()}`;
+    const ticketId = `SUP-${Date.now()}-${crypto.randomUUID().slice(0, 4).toUpperCase()}`;
     const adminEmail = process.env.SUPPORT_EMAIL || process.env.EMAIL_REPLY_TO || process.env.SMTP_FROM || process.env.SMTP_USER;
 
     const ticketRecord = await db.supportTickets.create({
