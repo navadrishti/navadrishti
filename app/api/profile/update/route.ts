@@ -11,7 +11,12 @@ import {
 } from '@/lib/profile-update/payout';
 import { buildProfileUpdate } from '@/lib/profile-update/profile-fields';
 import { validateNameAndEmail } from '@/lib/profile-update/identity';
-import { normalizeProfileForm, saveProfileForm, updateProfileSchema } from '@/lib/profile-update/profile-form';
+import {
+  normalizeProfileForm,
+  PROFILE_RESPONSE_COLUMNS,
+  saveProfileForm,
+  updateProfileSchema,
+} from '@/lib/profile-update/profile-form';
 
 export async function GET(request: NextRequest) {
   try {
@@ -120,7 +125,7 @@ export async function POST(request: NextRequest) {
       .from('users')
       .update(updateData)
       .eq('id', userId)
-      .select();
+      .select(PROFILE_RESPONSE_COLUMNS);
 
     if (error) {
       console.error('Error updating profile:', error);

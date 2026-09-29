@@ -4,7 +4,7 @@ import { useEffect, useEffectEvent, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
 import { useToast } from '@/hooks/use-toast'
-import type { ApplicantEntry, ServiceRequest, VolunteerApplication } from './types'
+import type { ServiceRequest, VolunteerApplication } from './types'
 
 export function useServiceRequestData(requestId: string) {
   const router = useRouter()
@@ -12,7 +12,6 @@ export function useServiceRequestData(requestId: string) {
   const { toast } = useToast()
   const [request, setRequest] = useState<ServiceRequest | null>(null)
   const [userApplication, setUserApplication] = useState<VolunteerApplication | null>(null)
-  const [applicants, setApplicants] = useState<ApplicantEntry[]>([])
   const [loading, setLoading] = useState(true)
 
   const isAuthenticated = !!(user && token)
@@ -46,11 +45,17 @@ export function useServiceRequestData(requestId: string) {
 
   const checkExistingApplication = async () => {
     try {
-      const response = await fetch(`/api/service-requests/${requestId}/volunteers?userId=${user?.id}`)
+      if (!token || !user) return
+
+      const response = await fetch(`/api/service-requests/${requestId}/volunteers?userId=${user.id}`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      })
       if (response.ok) {
         const data = await response.json()
         const applications: VolunteerApplication[] = data.success ? data.data : data
-        const existingApplication = applications.find((app) => Number(app.applicant_user_id) === Number(user?.id))
+        const existingApplication = applications.find((app) => Number(app.applicant_user_id) === Number(user.id))
         setUserApplication(existingApplication || null)
       }
     } catch (error) {
@@ -58,35 +63,9 @@ export function useServiceRequestData(requestId: string) {
     }
   }
 
-  const fetchApplicants = async () => {
-    try {
-      if (!token) return
-
-      const response = await fetch(`/api/service-requests/${requestId}/volunteers`, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      })
-
-      if (!response.ok) {
-        return
-      }
-
-      const data = await response.json()
-      if (data.success && Array.isArray(data.data)) {
-        setApplicants(data.data)
-      }
-    } catch (error) {
-      console.error('Error fetching applicants:', error)
-    }
-  }
-
   const loadForViewer = useEffectEvent(() => {
     fetchRequestDetails()
-    if (!isAuthenticated || !user) return
-    if (user.user_type === 'ngo') {
-      fetchApplicants()
-    } else if (user.user_type === 'individual') {
+    if (isAuthenticated && user?.user_type === 'individual') {
       checkExistingApplication()
     }
   })
@@ -98,11 +77,9 @@ export function useServiceRequestData(requestId: string) {
   return {
     request,
     loading,
-    applicants,
     userApplication,
     setUserApplication,
     fetchRequestDetails,
-    fetchApplicants,
     checkExistingApplication,
   }
 }

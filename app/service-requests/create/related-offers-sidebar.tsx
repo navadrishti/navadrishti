@@ -35,7 +35,7 @@ function RecommendationCard({ recommendation, isSelected, onApply }: Recommendat
         <span className="text-muted-foreground">Score {recommendation.score}</span>
       </div>
       <p className="mt-2 text-xs text-muted-foreground">{recommendation.rationale}</p>
-      {(recommendation.matched_keywords?.length || recommendation.matched_phrases?.length || recommendation.matched_fields?.length) && (
+      {Boolean(recommendation.matched_keywords?.length || recommendation.matched_phrases?.length || recommendation.matched_fields?.length) && (
         <div className="mt-2 flex flex-wrap gap-2">
           {recommendation.matched_phrases?.map((p) => (
             <span key={`phrase-${p}`} className="rounded-full bg-sky-100 px-2 py-0.5 text-xs text-sky-800">{p}</span>

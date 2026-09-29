@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { supabase } from "@/lib/db";
+import { parseJsonObject } from "@/lib/utils";
+import type { TablesUpdate } from "@/lib/database.types";
 
 function coerceInteger(schema: z.ZodNumber) {
   return z.preprocess((value) => {
@@ -58,21 +60,56 @@ export async function getCampaignStatus(id: string, company_id: number) {
   return data?.status || null;
 }
 
+/**
+ * Only drafts can be edited. impact_metrics is merged into the stored object because the schema
+ * strips server-owned keys (lead NGO invites, rentals, invited offers) that must survive the edit.
+ */
 export async function updateCampaignDb(
   id: string,
   company_id: number,
   updates: Partial<z.infer<typeof CampaignDraftSchema>>
 ) {
-  const { data, error } = await supabase
+  const { impact_metrics: impactUpdates, ...rest } = updates;
+  let payload: TablesUpdate<"campaigns"> = rest;
+  let previousUpdatedAt: string | null | undefined;
+
+  if (impactUpdates) {
+    const { data: current, error: readError } = await supabase
+      .from("campaigns")
+      .select("impact_metrics, updated_at")
+      .eq("id", id)
+      .eq("company_id", company_id)
+      .maybeSingle();
+    if (readError) throw new Error(readError.message || "Update failed");
+    if (!current) throw new Error("Campaign not found");
+    previousUpdatedAt = current.updated_at ?? null;
+    payload = {
+      ...rest,
+      impact_metrics: { ...parseJsonObject(current.impact_metrics), ...impactUpdates },
+      updated_at: new Date().toISOString(),
+    };
+  }
+
+  let query = supabase
     .from("campaigns")
-    .update(updates)
+    .update(payload)
     .eq("id", id)
     .eq("company_id", company_id)
-    .select("id, title, status")
-    .single();
+    .eq("status", "draft");
+  if (previousUpdatedAt !== undefined) {
+    query = previousUpdatedAt ? query.eq("updated_at", previousUpdatedAt) : query.is("updated_at", null);
+  }
+  const { data, error } = await query.select("id, title, status").maybeSingle();
 
-  if (error || !data) {
-    throw new Error(error?.message || "Update failed");
+  if (error) {
+    throw new Error(error.message || "Update failed");
+  }
+  if (!data) {
+    throw new Error(
+      previousUpdatedAt !== undefined
+        ? "Campaign was updated concurrently. Refresh and try again."
+        : "Update failed"
+    );
   }
   return data;
 }

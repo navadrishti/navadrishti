@@ -166,6 +166,16 @@ export default function GovernmentAdminPage() {
           return;
         }
 
+        const role = verifyData?.account?.role;
+        if (role === 'state_officer' || role === 'district_officer') {
+          router.replace(role === 'state_officer' ? '/government-admin/state-dashboard' : '/government-admin/district-dashboard');
+          return;
+        }
+        if (role === 'field_officer') {
+          setError('This console is for government administrators. Field officer accounts cannot manage projects or credentials.');
+          return;
+        }
+
         await loadDashboardData();
       } catch (err) {
         setError(getErrorMessage(err) || 'Failed to load dashboard');

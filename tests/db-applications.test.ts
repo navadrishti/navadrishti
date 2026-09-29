@@ -146,8 +146,20 @@ describe('serviceRequestApplications reads', () => {
   })
 
   it('treats a missing application as null', async () => {
-    useDb({ 'service_request_applications.select': [{ error: { code: 'PGRST116' } }] })
+    useDb({ 'service_request_applications.select': [{ data: null }] })
     await expect(serviceRequestApplications.findExisting(2, 4)).resolves.toBeNull()
+  })
+
+  it('takes the newest row so legacy duplicates do not hide an application', async () => {
+    useDb({ 'service_request_applications.select': [{ data: { id: 3 } }] })
+    await expect(serviceRequestApplications.findExisting(2, 4)).resolves.toMatchObject({ id: 3 })
+    expect(callsOf(fake.queries[0], 'order')).toEqual([['applied_at', { ascending: false }]])
+    expect(callsOf(fake.queries[0], 'limit')).toEqual([[1]])
+  })
+
+  it('throws lookup errors instead of treating them as no application', async () => {
+    useDb({ 'service_request_applications.select': [{ error: { code: 'PGRST116' } }] })
+    await expect(serviceRequestApplications.getUserApplication(2, 4)).rejects.toEqual({ code: 'PGRST116' })
   })
 
   it('lists an applicant newest first', async () => {

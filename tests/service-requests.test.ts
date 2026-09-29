@@ -192,11 +192,12 @@ describe('listServiceRequests', () => {
     return { 'service_request_applications.select': [{ data: [] }, { data: [{ id: 1 }] }, { data: [] }, { data: [] }] }
   }
 
-  it('lists only open, unassigned needs with free slots in the browse view', async () => {
+  it('lists only open, unassigned needs with remaining capacity in the browse view', async () => {
     mocks.getAll.mockResolvedValue(rows)
     useDb(applicationCounts())
     const result = await listServiceRequests(params)
-    expect(result.map((item) => item.id)).toEqual([1, 6])
+    // Need 4 has one accepted applicant but 10 units still unallocated.
+    expect(result.map((item) => item.id)).toEqual([1, 4, 6])
   })
 
   it('applies search and location filters', async () => {

@@ -10,7 +10,7 @@ import {
   CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE,
 } from '@/lib/server-auth';
 import { resolveFundingTargetInr } from '@/lib/service-request-allocation';
-import { creditServiceRequestContribution } from '@/lib/service-request-payments';
+import { contributionOrderNotesError, creditServiceRequestContribution } from '@/lib/service-request-payments';
 import { canContributeViaPlatform, isGeneralNgoNetworkNeed } from '@/lib/razorpay-route';
 
 function safeSignatureMatch(expected: string, received: string): boolean {
@@ -137,14 +137,12 @@ export async function POST(
       return NextResponse.json({ error: 'Paid amount does not match checkout total' }, { status: 400 });
     }
 
-    const providerRequestId = Number(providerNotes?.service_request_id || 0);
-    if (providerRequestId > 0 && providerRequestId !== requestId) {
-      return NextResponse.json({ error: 'Payment is linked to a different request' }, { status: 403 });
-    }
-
-    const providerContributorId = Number(providerNotes?.contributor_id || 0);
-    if (providerContributorId > 0 && providerContributorId !== Number(decoded.id)) {
-      return NextResponse.json({ error: 'Payment belongs to a different contributor' }, { status: 403 });
+    const notesError = contributionOrderNotesError(providerNotes, {
+      serviceRequestId: requestId,
+      contributorId: Number(decoded.id),
+    });
+    if (notesError) {
+      return NextResponse.json({ error: notesError }, { status: 403 });
     }
 
     const targetInr = resolveFundingTargetInr({

@@ -121,31 +121,96 @@ export async function createCsrCapabilityRentalOrder(input: {
   };
 }
 
-async function assertCsrRentalPaymentCaptured(
-  rental: CsrCapabilityRentalRecord,
-  razorpayOrderId: string,
-  razorpayPaymentId: string
-) {
-  if (!rental.razorpay_order_id || rental.razorpay_order_id !== razorpayOrderId) {
-    throw new Error("Payment order does not match this rental");
-  }
+type RentalPaymentInput = {
+  campaignId: string;
+  companyId: number;
+  offerId: number;
+  razorpayOrderId: string;
+  razorpayPaymentId: string;
+};
 
+const DUPLICATE_PAYMENT_REFUNDED =
+  "This capability was already paid for, so this duplicate payment has been refunded.";
+const DUPLICATE_PAYMENT_REFUND_FAILED =
+  "This capability was already paid for. The duplicate payment could not be refunded automatically; please contact support.";
+
+function createRazorpayClient() {
   const keyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
   const keySecret = process.env.RAZORPAY_KEY_SECRET;
   if (!keyId || !keySecret) throw new Error("Razorpay is not configured");
+  return new Razorpay({ key_id: keyId, key_secret: keySecret });
+}
 
-  const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret });
-  const [providerPayment, providerOrder] = await Promise.all([
-    razorpay.payments.fetch(razorpayPaymentId),
-    razorpay.orders.fetch(razorpayOrderId),
+/** Order notes are written by createCsrCapabilityRentalOrder, so they identify the rental the order was created for. */
+function orderBelongsToRental(order: { notes?: unknown } | null | undefined, input: RentalPaymentInput) {
+  const notes = parseJsonObject(order?.notes);
+  return (
+    notes.target_type === "csr_capability_rental" &&
+    String(notes.campaign_id ?? "") === input.campaignId &&
+    String(notes.service_offer_id ?? "") === String(input.offerId) &&
+    String(notes.payer_user_id ?? "") === String(input.companyId)
+  );
+}
+
+/**
+ * Fetches the payment and its order, confirming both belong to this rental. A checkout opened in an
+ * earlier tab carries an older order id than the rental row, so ownership is proven by the order notes.
+ */
+async function fetchRentalPayment(razorpay: Razorpay, rental: CsrCapabilityRentalRecord, input: RentalPaymentInput) {
+  const isCurrentOrder = Boolean(rental.razorpay_order_id) && rental.razorpay_order_id === input.razorpayOrderId;
+  let providerOrder = null;
+  if (!isCurrentOrder) {
+    try {
+      providerOrder = await razorpay.orders.fetch(input.razorpayOrderId);
+    } catch {
+      providerOrder = null;
+    }
+    if (!providerOrder || !orderBelongsToRental(providerOrder, input)) {
+      throw new Error("Payment order does not match this rental");
+    }
+  }
+
+  const [providerPayment, fetchedOrder] = await Promise.all([
+    razorpay.payments.fetch(input.razorpayPaymentId),
+    providerOrder ?? razorpay.orders.fetch(input.razorpayOrderId),
   ]);
 
-  if (!providerPayment || providerPayment.id !== razorpayPaymentId) {
+  if (!providerPayment || providerPayment.id !== input.razorpayPaymentId) {
     throw new Error("Unable to fetch payment from provider");
   }
-  if (providerPayment.order_id !== razorpayOrderId || providerOrder?.id !== razorpayOrderId) {
+  if (providerPayment.order_id !== input.razorpayOrderId || fetchedOrder?.id !== input.razorpayOrderId) {
     throw new Error("Order and payment mismatch");
   }
+
+  return { providerPayment, providerOrder: fetchedOrder };
+}
+
+/** Refunds a second captured payment for a rental that another payment already settled, then reports it. */
+async function refundDuplicateRentalPayment(rental: CsrCapabilityRentalRecord, input: RentalPaymentInput): Promise<never> {
+  const razorpay = createRazorpayClient();
+  const { providerPayment } = await fetchRentalPayment(razorpay, rental, input);
+  const providerStatus = String(providerPayment.status || "").toLowerCase();
+
+  if (providerStatus === "captured") {
+    try {
+      await razorpay.payments.refund(input.razorpayPaymentId, {
+        amount: Number(providerPayment.amount || 0),
+        notes: { reason: "csr_capability_duplicate_payment", campaign_id: input.campaignId },
+      });
+    } catch (refundError) {
+      console.error("CSR capability duplicate payment refund failed:", refundError);
+      throw new Error(DUPLICATE_PAYMENT_REFUND_FAILED);
+    }
+  } else if (providerStatus !== "refunded") {
+    throw new Error(`Payment not captured yet (status: ${providerStatus || "unknown"})`);
+  }
+
+  throw new Error(DUPLICATE_PAYMENT_REFUNDED);
+}
+
+async function assertCsrRentalPaymentCaptured(rental: CsrCapabilityRentalRecord, input: RentalPaymentInput) {
+  const razorpay = createRazorpayClient();
+  const { providerPayment, providerOrder } = await fetchRentalPayment(razorpay, rental, input);
 
   const providerStatus = String(providerPayment.status || "").toLowerCase();
   if (providerStatus !== "captured") {
@@ -166,13 +231,7 @@ async function assertCsrRentalPaymentCaptured(
   }
 }
 
-export async function attachCsrCapabilityAfterPayment(input: {
-  campaignId: string;
-  companyId: number;
-  offerId: number;
-  razorpayOrderId: string;
-  razorpayPaymentId: string;
-}) {
+export async function attachCsrCapabilityAfterPayment(input: RentalPaymentInput) {
   const [campaign, offerResult] = await Promise.all([
     loadCompanyCampaign(input.campaignId, input.companyId),
     supabase.from("service_offers").select("*").eq("id", input.offerId).single(),
@@ -184,9 +243,12 @@ export async function attachCsrCapabilityAfterPayment(input: {
   const id = rentalRecordKey(input.campaignId, input.offerId);
   const rental = rentals.find((row) => row.id === id);
   if (!rental) throw new Error("CSR capability rental record not found");
-  if (rental.payment_status === "paid") return rental;
+  if (rental.payment_status === "paid") {
+    if (rental.razorpay_payment_id === input.razorpayPaymentId) return rental;
+    return refundDuplicateRentalPayment(rental, input);
+  }
 
-  await assertCsrRentalPaymentCaptured(rental, input.razorpayOrderId, input.razorpayPaymentId);
+  await assertCsrRentalPaymentCaptured(rental, input);
 
   const paidAt = new Date().toISOString();
   const leadNgoId = Number(campaign.lead_ngo_user_id || 0) || null;
@@ -219,8 +281,9 @@ export async function attachCsrCapabilityAfterPayment(input: {
   });
   if (!claimedAt) {
     const latest = (await getCsrCapabilityRentals(input.campaignId, input.companyId)).find((row) => row.id === id);
-    if (latest?.payment_status === "paid" && latest.razorpay_payment_id === input.razorpayPaymentId) {
-      return latest;
+    if (latest?.payment_status === "paid") {
+      if (latest.razorpay_payment_id === input.razorpayPaymentId) return latest;
+      return refundDuplicateRentalPayment(latest, input);
     }
     throw new Error("CSR capability rental was updated concurrently. Refresh and try again.");
   }

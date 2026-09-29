@@ -46,7 +46,7 @@ describe('client and server boundaries', () => {
 
   it('requires a platform CA token for evidence approvals', () => {
     const serverAuth = read('lib/server-auth.ts')
-    expect(serverAuth).toMatch(/const platformCA = getCAFromRequest\(request\)/)
+    expect(serverAuth).toMatch(/const platformCA = await getActiveCAFromRequest\(request\)/)
     expect(serverAuth).toMatch(/if \(platformCA\) \{[\s\S]*actorType: 'platform_ca'/)
   })
 

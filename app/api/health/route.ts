@@ -23,8 +23,11 @@ export async function GET() {
 
       const pingPromise = supabase
         .from('users')
-        .select('count')
-        .limit(1);
+        .select('id')
+        .limit(1)
+        .then(({ error }) => {
+          if (error) throw error;
+        });
 
       await Promise.race([pingPromise, timeoutPromise]);
       checks.checks.database = 'healthy';

@@ -232,6 +232,42 @@ export function buildOfferCapabilityRow(offer: { id: number; offer_type: string;
   }
 }
 
+export const OFFER_PRICING_FIELDS = [
+  'transaction_type', 'price_type', 'price_amount', 'unit_rate', 'billing_cycle', 'payment_mode', 'rate_currency',
+] as const
+
+export const OFFER_REVIEWED_FIELDS = [
+  'title', 'description', 'offer_type', 'impact_area', 'tags', 'requirements', 'offer_details', 'price_description',
+  ...OFFER_PRICING_FIELDS,
+] as const
+
+// jsonb reorders object keys and numeric columns can come back as strings,
+// so values are normalised before comparing.
+function normalizeForCompare(value: unknown): unknown {
+  if (value === undefined || value === null || value === '') return null
+  if (typeof value === 'number') return value
+  if (typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value))) return Number(value)
+  if (Array.isArray(value)) return value.length > 0 ? value.map(normalizeForCompare) : null
+  if (typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .map(([key, entry]) => [key, normalizeForCompare(entry)] as const)
+      .filter(([, entry]) => entry !== null)
+      .sort(([a], [b]) => a.localeCompare(b))
+    return entries.length > 0 ? Object.fromEntries(entries) : null
+  }
+  return value
+}
+
+export function changedOfferFields(
+  existing: Record<string, unknown>,
+  next: Record<string, unknown>,
+  fields: readonly string[]
+): string[] {
+  return fields.filter((field) =>
+    JSON.stringify(normalizeForCompare(existing[field])) !== JSON.stringify(normalizeForCompare(next[field]))
+  )
+}
+
 type OfferResponseSource = {
   creator_id?: number | null
   ngo_id?: number | null

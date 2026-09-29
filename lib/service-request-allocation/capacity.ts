@@ -91,37 +91,6 @@ export function isNeedOpenForListing(request: ServiceRequestLike | null | undefi
   return getNeedRemainingQuantity(request) > 0
 }
 
-export function buildAllocationUpdatePayload(
-  request: ServiceRequestLike,
-  input: { amount?: number; quantity?: number }
-) {
-  const target = getServiceRequestTarget(request)
-  const addAmount = parseAmountToInr(input.amount)
-  const addQuantity = parseAmountToInr(input.quantity)
-
-  if (target.isFinancial) {
-    const currentAmount = Number(request?.current_amount || 0)
-    const nextCurrentAmount = currentAmount + addAmount
-    const nextRemainingAmount = Math.max(0, target.amount - nextCurrentAmount)
-
-    return {
-      current_amount: nextCurrentAmount,
-      remaining_amount: target.amount > 0 ? nextRemainingAmount : null,
-      listing_open: nextRemainingAmount > 0,
-    }
-  }
-
-  const currentQuantity = Number(request?.current_quantity || 0)
-  const nextCurrentQuantity = currentQuantity + addQuantity
-  const nextRemainingQuantity = Math.max(0, target.quantity - nextCurrentQuantity)
-
-  return {
-    current_quantity: nextCurrentQuantity,
-    remaining_quantity: target.quantity > 0 ? nextRemainingQuantity : null,
-    listing_open: nextRemainingQuantity > 0,
-  }
-}
-
 export function isFinancialNeedType(value: unknown): boolean {
   return String(value || '').toLowerCase().includes('financial')
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { getAuthUserFromRequest, assertUserType, isCARequest } from '@/lib/server-auth';
+import { getAuthUserFromRequest, assertUserType, hasActiveCASession } from '@/lib/server-auth';
 
 async function getProjectById(projectId: string) {
   const { data, error } = await supabase
@@ -21,7 +21,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const caMode = isCARequest(request);
+    const caMode = await hasActiveCASession(request);
     const user = caMode ? null : getAuthUserFromRequest(request);
 
     if (user) {

@@ -1,10 +1,53 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/db'
 import { getAuthUserFromRequest, assertUserType, assertNgoCsr1CoversWork, authErrorResponse } from '@/lib/server-auth'
-import { resolveCampaignCategoryInput, resolveCampaignLocationInput, resolveAppOrigin } from '@/lib/campaign-schema'
+import {
+  pickClientImpactMetrics,
+  resolveCampaignCategoryInput,
+  resolveCampaignLocationInput,
+  resolveAppOrigin,
+} from '@/lib/campaign-schema'
 import { verifyPaidCsrOffersForPublish } from '@/lib/csr-agent/campaign'
 import { CSR_WORK_END_DATE_REQUIRED_MESSAGE } from '@/lib/auth'
 import { getErrorMessage, parseJsonObject } from '@/lib/utils';
+
+const BUDGET_TOLERANCE_INR = 1
+
+function sumAmounts(values: unknown[]): number | null {
+  let total = 0
+  for (const value of values) {
+    const amount = Number(value ?? 0)
+    if (!Number.isFinite(amount) || amount < 0) return null
+    total += amount
+  }
+  return total
+}
+
+function validateBudgetAllocation(campaign: Record<string, unknown>): string | null {
+  const budget = Number(campaign.budget_inr ?? 0)
+  if (!Number.isFinite(budget) || budget <= 0) return null
+
+  const breakdown = parseJsonObject(campaign.budget_breakdown)
+  const breakdownValues = Object.values(breakdown)
+  if (breakdownValues.length > 0) {
+    const total = sumAmounts(breakdownValues)
+    if (total === null) return 'budget_breakdown amounts must be non-negative numbers'
+    if (Math.abs(total - budget) > BUDGET_TOLERANCE_INR) {
+      return `budget_breakdown adds up to ${total} but budget_inr is ${budget}`
+    }
+  }
+
+  const milestones = Array.isArray(campaign.milestones) ? campaign.milestones : []
+  if (milestones.length > 0) {
+    const total = sumAmounts(milestones.map((milestone) => parseJsonObject(milestone).budget_allocated))
+    if (total === null) return 'Milestone budget_allocated amounts must be non-negative numbers'
+    if (Math.abs(total - budget) > BUDGET_TOLERANCE_INR) {
+      return `Milestone budgets add up to ${total} but budget_inr is ${budget}`
+    }
+  }
+
+  return null
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -63,14 +106,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: getErrorMessage(error) }, { status: 409 })
     }
 
+    const budgetError = validateBudgetAllocation(campaign)
+    if (budgetError) {
+      return NextResponse.json({ error: budgetError }, { status: 400 })
+    }
+
     const category = resolveCampaignCategoryInput(campaign)
     const location = resolveCampaignLocationInput(campaign)
     const campaignUrl = `${resolveAppOrigin(request)}/csr-campaigns/${campaignId}`
 
-    const { csr_capability_rentals: _clientRentals, ...clientImpact } = parseJsonObject(campaign.impact_metrics)
     const nextImpact = {
       ...impact,
-      ...clientImpact,
+      ...pickClientImpactMetrics(campaign.impact_metrics),
       invited_offer_ids: invitedOfferIds,
       lead_ngo_accepted: true,
       campaign_public_url: campaignUrl,
@@ -97,10 +144,14 @@ export async function POST(request: NextRequest) {
       })
       .eq('id', campaignId)
       .eq('company_id', user.id)
+      .eq('status', 'draft')
       .select('*')
-      .single()
+      .maybeSingle()
 
     if (updateError) throw updateError
+    if (!updated) {
+      return NextResponse.json({ error: 'Only draft campaigns can be published' }, { status: 409 })
+    }
 
     await supabase.from('csr_audit_log').insert({
       entity_type: 'campaign',

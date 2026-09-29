@@ -81,6 +81,8 @@ describe('profile update', () => {
     expect(payload).toMatchObject({ name: 'Asha K', city: 'Mumbai', timezone: 'Asia/Kolkata', updated_at: expect.any(String) })
     expect(payload.profile_data).toEqual({ ...currentRow.profile_data, website: 'https://seva.org', bio: 'New bio' })
     expect(payload.location).toContain('Mumbai')
+    expect(fake.writes('users')[0].returning).toBeTruthy()
+    expect(fake.writes('users')[0].returning).not.toMatch(/\*|password|two_factor_secret/)
   })
 
   it('ignores protected columns and server-owned profile keys', async () => {

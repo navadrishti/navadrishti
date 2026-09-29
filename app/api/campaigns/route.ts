@@ -3,6 +3,8 @@ import { supabase } from '@/lib/db';
 import { getAuthUserFromRequest, assertUserType, authErrorResponse, findAuthUser } from '@/lib/server-auth';
 import { buildCampaignWritePayload, resolveCampaignCategoryInput, resolveCampaignLocationInput } from '@/lib/campaign-schema';
 import { getCampaignLeadNgoId } from '@/lib/campaign-volunteer-attendance';
+import { redactCampaignForViewer } from '@/lib/campaign-public-view';
+import { toSearchPattern } from '@/lib/utils';
 
 export async function GET(request: NextRequest) {
   try {
@@ -36,9 +38,9 @@ export async function GET(request: NextRequest) {
       query = query.neq('status', 'draft');
     }
 
-    if (search) {
-      const term = `%${search.replace(/["\\]/g, ' ').trim()}%`;
-      query = query.or(`title.ilike."${term}",description.ilike."${term}",category.ilike."${term}",location.ilike."${term}",schedule_vii.ilike."${term}"`);
+    const term = toSearchPattern(search);
+    if (term) {
+      query = query.or(`title.ilike.${term},description.ilike.${term},category.ilike.${term},location.ilike.${term},schedule_vii.ilike.${term}`);
     }
 
     const { data, error } = await query;
@@ -86,7 +88,7 @@ export async function GET(request: NextRequest) {
       const selectedLeadNgoId = getCampaignLeadNgoId(row);
       const leadNgo = selectedLeadNgoId > 0 ? userMetaById[selectedLeadNgoId] : null;
       return {
-        ...row,
+        ...redactCampaignForViewer(row, viewer ? Number(viewer.id) : null),
         company_name: company?.name || null,
         company_verification_status: company?.verification_status || null,
         company_verified: company?.verification_status === 'verified',

@@ -36,7 +36,6 @@ function queueItem(extra: Record<string, unknown> = {}): CAQueueItem {
     verification_status: 'pending',
     documents: [],
     documents_total: 0,
-    documents_verified: 0,
     ocr_error: '',
     ...extra,
   }

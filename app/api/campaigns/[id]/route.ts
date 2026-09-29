@@ -4,6 +4,7 @@ import { getAuthUserFromRequest, assertUserType, authErrorResponse, findAuthUser
 import { deleteCampaignWithDependencies, formatCampaignDeleteError } from '@/lib/campaign-delete'
 import { getCampaignLeadNgoId, parseLeadNgoInvites } from '@/lib/campaign-volunteer-attendance'
 import { parseJsonObject } from '@/lib/utils'
+import { redactCampaignForViewer } from '@/lib/campaign-public-view'
 
 async function loadCampaign(campaignId: string) {
   const { data, error } = await supabase
@@ -31,9 +32,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   try {
     const { id } = await params
     const campaign = await loadCampaign(id)
+    const viewer = findAuthUser(request, { allowCookie: true })
 
     if (campaign.status === 'draft') {
-      const viewer = findAuthUser(request, { allowCookie: true })
       if (!viewer || !canViewDraft(campaign, Number(viewer.id))) {
         return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
       }
@@ -72,7 +73,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return NextResponse.json({
       success: true,
       data: {
-        ...campaign,
+        ...redactCampaignForViewer(campaign, viewer ? Number(viewer.id) : null),
         company_name: companyName,
         company_verification_status: companyVerificationStatus,
         company_verified: companyVerificationStatus === 'verified',

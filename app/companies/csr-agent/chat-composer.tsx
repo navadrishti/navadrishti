@@ -69,6 +69,7 @@ export function ChatComposer({
               variant="outline"
               size="sm"
               className="h-9 shrink-0 rounded-full border-slate-200 bg-slate-50 px-3 text-xs text-slate-700 hover:bg-slate-100"
+              disabled={disabled}
               onClick={() => void onQuickPick(option)}
             >
               {option}
@@ -85,6 +86,7 @@ export function ChatComposer({
               size="sm"
               variant="outline"
               className={`rounded-full px-3 text-xs ${milestoneMode === 'enter' ? 'bg-slate-900 text-white border-transparent' : ''}`}
+              disabled={disabled}
               onClick={() => onChooseMilestoneMode('enter')}
             >
               Enter manually
@@ -95,6 +97,7 @@ export function ChatComposer({
               size="sm"
               variant="outline"
               className={`rounded-full px-3 text-xs ${milestoneMode === 'suggest' ? 'bg-slate-900 text-white border-transparent' : ''}`}
+              disabled={disabled}
               onClick={() => onChooseMilestoneMode('suggest')}
             >
               Get suggestions
@@ -126,14 +129,14 @@ export function ChatComposer({
                       <p className="text-xs text-slate-500">Suggested whole set selection</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Button size="sm" variant="outline" onClick={() => onSelectSuggestedSet(idx)}>Select this set</Button>
+                      <Button size="sm" variant="outline" disabled={disabled} onClick={() => onSelectSuggestedSet(idx)}>Select this set</Button>
                     </div>
                   </div>
                   <div className="mt-2 grid gap-2">
                     {set.milestones.map((m, i) => (
                       <div key={i} className="rounded-md border border-slate-100 bg-slate-50 p-2 text-xs text-slate-700">
                         <p className="font-semibold text-slate-900">Milestone {i + 1}: {m.title || `Phase ${i + 1}`}</p>
-                        <p className="mt-1 break-words whitespace-normal">{m.description}</p>
+                        {m.description ? <p className="mt-1 break-words whitespace-normal">{m.description}</p> : null}
                         <p className="mt-1 text-slate-600">
                           {formatCurrency(parseMoneyValue(m.budgetTarget) || 0)}
                           {m.startDate && m.endDate ? ` • ${m.startDate} to ${m.endDate}` : ''}

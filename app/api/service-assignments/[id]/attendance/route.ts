@@ -27,12 +27,18 @@ async function loadAssignment(assignmentId: string) {
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    if (!getTokenClaims(request)) {
+    const claims = getTokenClaims(request);
+    if (!claims) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
     const { id } = await params;
     const assignment = await loadAssignment(id);
+
+    const callerId = Number(claims.id);
+    if (callerId !== Number(assignment.owner_user_id) && callerId !== Number(assignment.assignee_user_id)) {
+      return NextResponse.json({ error: 'You do not have access to this assignment' }, { status: 403 });
+    }
 
     const { data, error } = await supabase
       .from('service_attendance_entries')

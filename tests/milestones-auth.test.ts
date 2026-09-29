@@ -88,10 +88,25 @@ describe('milestone routes authenticate before reading the record', () => {
   })
 
   it('lets a platform CA reach the milestone lookup', async () => {
-    const fake = useSupabase(() => ({ data: null }))
+    const fake = useSupabase((query) =>
+      query.table === 'platform_ca_accounts'
+        ? { data: { id: 3, active: true, must_change_password: false } }
+        : { data: null }
+    )
     const res = await call(getMilestone, 'GET', platformCa)
     expect(res.status).toBe(404)
-    expect(fake.queries.map((query) => query.table)).toEqual(['csr_project_milestones'])
+    expect(fake.queries.map((query) => query.table)).toEqual(['platform_ca_accounts', 'csr_project_milestones'])
+  })
+
+  it('stops a deactivated platform CA before the milestone lookup', async () => {
+    const fake = useSupabase((query) =>
+      query.table === 'platform_ca_accounts'
+        ? { data: { id: 3, active: false, must_change_password: false } }
+        : { data: null }
+    )
+    const res = await call(getMilestone, 'GET', platformCa)
+    expect(res.status).toBe(401)
+    expect(fake.queries.map((query) => query.table)).toEqual(['platform_ca_accounts'])
   })
 
   it.each<[string, 'GET' | 'POST', Handler]>([
@@ -112,6 +127,22 @@ describe('milestone routes authenticate before reading the record', () => {
     expect(fake.queries[0].table).toBe('company_ca_identities')
     expect(fake.queries.map((query) => query.table)).not.toContain('csr_milestone_reviews')
     expect(fake.queries.map((query) => query.table)).not.toContain('csr_payment_confirmations')
+  })
+
+  it.each<[string, Handler, string]>([
+    ['milestones/[id]/review', reviewMilestone, 'can_review_evidence'],
+    ['milestones/[id]/payments/create-order', createOrder, 'can_confirm_payments'],
+    ['milestones/[id]/payments/verify', verifyPayment, 'can_confirm_payments'],
+    ['milestones/[id]/payment', recordPayment, 'can_confirm_payments'],
+  ])('%s returns 403 when the company CA has %s revoked', async (_route, handler, permission) => {
+    const fake = useSupabase((query) =>
+      query.table === 'company_ca_identities'
+        ? { data: { id: 'ci_1', user_id: 30, company_user_id: 13, ca_id: 'CA-1', status: 'active', permissions: { [permission]: false } } }
+        : undefined
+    )
+    const res = await call(handler, 'POST', companyCa)
+    expect(res.status).toBe(403)
+    expect(fake.queries.map((query) => query.table)).toEqual(['company_ca_identities'])
   })
 
   it('returns 401 when the company CA identity is missing', async () => {

@@ -815,7 +815,8 @@ export type Database = {
           id: string
           milestone_id: string
           evidence_id: string | null
-          reviewer_id: number
+          reviewer_id: number | null
+          reviewer_platform_ca_id: number | null
           decision: string
           comments: string | null
           reviewed_at: string | null
@@ -825,7 +826,8 @@ export type Database = {
           id?: string
           milestone_id: string
           evidence_id?: string | null
-          reviewer_id: number
+          reviewer_id?: number | null
+          reviewer_platform_ca_id?: number | null
           decision: string
           comments?: string | null
           reviewed_at?: string | null
@@ -835,7 +837,8 @@ export type Database = {
           id?: string
           milestone_id?: string
           evidence_id?: string | null
-          reviewer_id?: number
+          reviewer_id?: number | null
+          reviewer_platform_ca_id?: number | null
           decision?: string
           comments?: string | null
           reviewed_at?: string | null
@@ -861,6 +864,13 @@ export type Database = {
             columns: ["reviewer_id"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "csr_milestone_reviews_reviewer_platform_ca_id_fkey"
+            columns: ["reviewer_platform_ca_id"]
+            isOneToOne: false
+            referencedRelation: "platform_ca_accounts"
             referencedColumns: ["id"]
           },
         ]
@@ -3823,16 +3833,16 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      accept_volunteer_assignment: {
+      adjust_service_request_progress: {
         Args: {
           p_request_id: number
-          p_volunteer_app_id: number
-          p_ngo_user_id: number
-          p_allocation_amount: number
-          p_allocation_quantity: number
-          p_actor_user_id: number
+          p_amount_delta: number
+          p_quantity_delta: number
+          p_target_amount: number
+          p_target_quantity: number
+          p_enforce_capacity: boolean
         }
-        Returns: Json
+        Returns: Database["public"]["Tables"]["service_requests"]["Row"][]
       }
       auth_code_attempt: {
         Args: {

@@ -18,8 +18,19 @@ import {
   EvidenceSectionCard,
 } from '@/components/evidence-verification/portal-ui';
 import { formatStatusLabel } from '@/lib/format-date';
-import { finalizeConsoleLogout } from '@/lib/utils';
-import type { CompanyCAContext, MilestoneDetail } from '../../types';
+import { finalizeConsoleLogout, formatInr } from '@/lib/utils';
+import type { CompanyCAContext, MilestoneDetail, MilestoneEvidence } from '../../types';
+
+function hasEvidenceDetails(ev: MilestoneEvidence) {
+  return Boolean(
+    ev.description ||
+      ev.captured_at ||
+      ev.gps_lat ||
+      ev.gps_long ||
+      (Array.isArray(ev.media) && ev.media.length > 0) ||
+      (Array.isArray(ev.documents) && ev.documents.length > 0)
+  );
+}
 
 export default function ReviewDetailPage() {
   const router = useRouter();
@@ -31,6 +42,7 @@ export default function ReviewDetailPage() {
   const [reviewData, setReviewData] = useState<MilestoneDetail | null>(null);
   const [comments, setComments] = useState<string>('');
   const [actionLoading, setActionLoading] = useState<'approved' | 'rejected' | null>(null);
+  const [decided, setDecided] = useState(false);
   const [panelMessage, setPanelMessage] = useState<string>('');
 
   const formatDateTime = (value: string) => {
@@ -101,6 +113,7 @@ export default function ReviewDetailPage() {
         return;
       }
 
+      setDecided(true);
       setPanelMessage(`Evidence ${decision} successfully.`);
       setTimeout(() => {
         router.push('/evidence-verification');
@@ -197,7 +210,7 @@ export default function ReviewDetailPage() {
               <Badge variant="outline">{formatStatusLabel(reviewData.status)}</Badge>
             </EvidenceDetailField>
             <EvidenceDetailField label="Due Date">{reviewData.due_date ? formatDateTime(reviewData.due_date) : 'N/A'}</EvidenceDetailField>
-            <EvidenceDetailField label="Amount">Rs {reviewData.amount || 0}</EvidenceDetailField>
+            <EvidenceDetailField label="Amount">{formatInr(Number(reviewData.amount) || 0)}</EvidenceDetailField>
           </div>
           {reviewData.description ? (
             <div className="mt-4">
@@ -215,7 +228,6 @@ export default function ReviewDetailPage() {
                 <EvidenceQueueItem
                   key={ev.id || idx}
                   title={`Evidence #${idx + 1}`}
-                  badge={<Badge variant="outline">{ev.id}</Badge>}
                   meta={
                     <div className="grid gap-3 sm:grid-cols-2">
                       {ev.description ? (
@@ -238,7 +250,7 @@ export default function ReviewDetailPage() {
                                 href={media.media_url}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="block text-blue-700 underline"
+                                className="block break-all text-blue-700 underline"
                               >
                                 {media.file_name || media.media_url}
                               </a>
@@ -255,13 +267,16 @@ export default function ReviewDetailPage() {
                                 href={doc.document_url}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="block text-blue-700 underline"
+                                className="block break-all text-blue-700 underline"
                               >
                                 {doc.file_name || doc.document_url}
                               </a>
                             ))}
                           </div>
                         </EvidenceDetailField>
+                      ) : null}
+                      {!hasEvidenceDetails(ev) ? (
+                        <p className="text-sm text-slate-500">No details were captured with this submission.</p>
                       ) : null}
                     </div>
                   }
@@ -283,13 +298,13 @@ export default function ReviewDetailPage() {
               />
             </div>
             <EvidenceActionRow className="sm:justify-stretch [&>button]:sm:flex-1">
-              <Button onClick={() => handleDecision('approved')} disabled={actionLoading !== null}>
+              <Button onClick={() => handleDecision('approved')} disabled={actionLoading !== null || decided || evidence.length === 0}>
                 {actionLoading === 'approved' ? 'Approving...' : 'Approve Evidence'}
               </Button>
               <Button
                 variant="destructive"
                 onClick={() => handleDecision('rejected')}
-                disabled={actionLoading !== null}
+                disabled={actionLoading !== null || decided}
               >
                 {actionLoading === 'rejected' ? 'Rejecting...' : 'Reject Evidence'}
               </Button>

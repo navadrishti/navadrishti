@@ -3,7 +3,7 @@
 import { useIsClient } from '@/hooks/use-is-client'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Building, XCircle, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, XCircle, AlertTriangle } from 'lucide-react'
 import { useAuth } from '@/lib/auth-context'
 import { Header } from '@/components/header'
 import { getFundingProgress, resolveFundingTargetInr } from '@/lib/service-request-allocation'
@@ -13,13 +13,11 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { getNeedFlags, parseRequirements } from './helpers'
 import { useServiceRequestData } from './use-service-request-data'
-import { useApplicantReview } from './use-applicant-review'
 import { useVolunteerApplication } from './use-volunteer-application'
 import { useContribution } from './use-contribution'
 import { RequestNeedDetailsSection } from './need-details-section'
 import { FundingProgressCard } from './funding-progress-card'
 import { RequesterSection } from './requester-section'
-import { ApplicantCard } from './applicant-card'
 import { MyApplicationCard } from './my-application-card'
 import { ApplyForm } from './apply-form'
 import { ServiceRequestDetailSkeleton } from './detail-skeleton'
@@ -34,11 +32,9 @@ export default function ServiceRequestDetailPage() {
   const {
     request,
     loading,
-    applicants,
     userApplication,
     setUserApplication,
     fetchRequestDetails,
-    fetchApplicants,
     checkExistingApplication,
   } = useServiceRequestData(requestId)
 
@@ -66,7 +62,6 @@ export default function ServiceRequestDetailPage() {
   const fundingProgress = request?.funding_progress ?? funding.progress
   const canPayForRequest = Boolean(isAuthenticated && canVolunteer && !isNgoOwner && request?.status !== 'completed' && request?.status !== 'cancelled')
 
-  const review = useApplicantReview({ requestId, request, fetchApplicants, fetchRequestDetails })
   const volunteer = useVolunteerApplication({
     requestId,
     userApplication,
@@ -109,9 +104,14 @@ export default function ServiceRequestDetailPage() {
             Back
           </Button>
           {isNgoOwner && (
-            <Link href={`/service-requests/edit/${request.id}`}>
-              <Button variant="outline" className="w-full sm:w-auto">Edit Need</Button>
-            </Link>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button variant="outline" className="w-full sm:w-auto" asChild>
+                <Link href={`/service-requests/applicants/${request.id}`}>Review applicants</Link>
+              </Button>
+              <Button variant="outline" className="w-full sm:w-auto" asChild>
+                <Link href={`/service-requests/edit/${request.id}`}>Edit Need</Link>
+              </Button>
+            </div>
           )}
         </div>
 
@@ -158,46 +158,6 @@ export default function ServiceRequestDetailPage() {
                           </div>
                         )}
 
-                        {isAuthenticated && isNgoOwner && (
-                          <div className="space-y-4">
-                            {applicants.length === 0 ? (
-                              <Alert>
-                                <AlertDescription>
-                                  No invitations yet for this request.
-                                </AlertDescription>
-                              </Alert>
-                            ) : (
-                              applicants.map((applicant) => (
-                                <ApplicantCard
-                                  key={applicant.id}
-                                  applicant={applicant}
-                                  isFinancialNeed={isFinancialNeed}
-                                  isMaterialNeed={isMaterialNeed}
-                                  review={review}
-                                />
-                              ))
-                            )}
-                          </div>
-                        )}
-
-                        {isAuthenticated && effectiveUserType === 'company' && (
-                          <Alert>
-                            <Building className="h-4 w-4" />
-                            <AlertDescription>
-                              Companies cannot volunteer from need details. Use project details or the CSR dashboard for company actions.
-                            </AlertDescription>
-                          </Alert>
-                        )}
-
-                        {isAuthenticated && effectiveUserType === 'ngo' && !isNgoOwner && (
-                          <Alert>
-                            <XCircle className="h-4 w-4" />
-                            <AlertDescription>
-                              NGOs create needs. Only verified individuals can volunteer from need details.
-                            </AlertDescription>
-                          </Alert>
-                        )}
-
                         {isAuthenticated && user && user.verification_status !== 'verified' && (
                           <div className="space-y-4">
                             <Alert>
@@ -209,7 +169,6 @@ export default function ServiceRequestDetailPage() {
 
                             <div className="p-4 bg-amber-50 border border-amber-200 rounded-md">
                               <div className="flex items-start gap-3">
-                                <div className="text-amber-600"></div>
                                 <div>
                                   <p className="text-amber-800 font-medium text-sm">Verification Required</p>
                                   <p className="text-amber-700 text-sm mt-1">

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getCompanyCAFromRequest } from '@/lib/server-auth'
+import { authErrorResponse, getCompanyCAFromRequest } from '@/lib/server-auth'
 import { listCompanyCampaignVolunteerAttendance } from '@/lib/db'
 
 export const runtime = 'nodejs'
@@ -26,6 +26,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, data: { campaigns, totals } })
   } catch (error) {
+    const authResponse = authErrorResponse(error)
+    if (authResponse) return authResponse
     if (
       error instanceof Error &&
       [

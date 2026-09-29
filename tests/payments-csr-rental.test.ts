@@ -21,7 +21,7 @@ import { argOf, createSupabaseFake, eqValue, hasCall, type FakeQuery } from './s
 
 const mocks = vi.hoisted(() => ({
   supabase: { from: vi.fn() },
-  razorpay: { orders: { create: vi.fn(), fetch: vi.fn() }, payments: { fetch: vi.fn() } },
+  razorpay: { orders: { create: vi.fn(), fetch: vi.fn() }, payments: { fetch: vi.fn(), refund: vi.fn() } },
 }))
 
 vi.mock('@/lib/db', () => ({ supabase: mocks.supabase, db: {} }))
@@ -34,6 +34,7 @@ vi.mock('razorpay', () => ({
 
 const CAMPAIGN_ID = '6f1d7a4e-2b3c-4d5e-8f90-1234567890ab'
 const LEAD_MISSING = 'Capability offers can be reserved once a lead NGO accepts the campaign.'
+const DUPLICATE_REFUNDED = 'This capability was already paid for, so this duplicate payment has been refunded.'
 
 type Row = Record<string, unknown>
 
@@ -328,9 +329,10 @@ describe('update-campaign route', () => {
       expect(rentals[0]).toMatchObject({ payment_status: 'paid', service_client_id: 81 })
     })
 
-    it('returns 409 when a different payment claimed the rental first', async () => {
+    it('refunds the payment and returns 409 when a different payment claimed the rental first', async () => {
       const { fake, state } = useCampaignDb({ ...baseCampaign, impact_metrics: { csr_capability_rentals: [pendingRental] } })
       useProvider()
+      mocks.razorpay.payments.refund.mockResolvedValue({ id: 'rfnd_1' })
       const respond = mocks.supabase.from.getMockImplementation()!
       let raced = false
       mocks.supabase.from.mockImplementation((table: string) => {
@@ -346,8 +348,108 @@ describe('update-campaign route', () => {
       })
       const { status, body } = await send(POST, request('POST', validBody))
       expect(status).toBe(409)
-      expect(body.error).toBe('CSR capability rental was updated concurrently. Refresh and try again.')
+      expect(body.error).toBe(DUPLICATE_REFUNDED)
+      expect(mocks.razorpay.payments.refund).toHaveBeenCalledTimes(1)
+      expect(mocks.razorpay.payments.refund).toHaveBeenCalledWith('pay_1', expect.objectContaining({ amount: 210000 }))
       expect(fake.find('service_clients')).toHaveLength(0)
+    })
+
+    it('keeps the retryable error when the rental changed but is still unpaid', async () => {
+      const { state } = useCampaignDb({ ...baseCampaign, impact_metrics: { csr_capability_rentals: [pendingRental] } })
+      useProvider()
+      const respond = mocks.supabase.from.getMockImplementation()!
+      let raced = false
+      mocks.supabase.from.mockImplementation((table: string) => {
+        if (table === 'campaigns' && !raced && mocks.razorpay.payments.fetch.mock.calls.length > 0) {
+          raced = true
+          state.campaign = { ...state.campaign, updated_at: '2026-09-27T10:05:00.000Z' }
+        }
+        return respond(table)
+      })
+      const { status, body } = await send(POST, request('POST', validBody))
+      expect(status).toBe(409)
+      expect(body.error).toBe('CSR capability rental was updated concurrently. Refresh and try again.')
+      expect(mocks.razorpay.payments.refund).not.toHaveBeenCalled()
+    })
+
+    describe('duplicate and earlier-tab payments', () => {
+      const rentalNotes = { campaign_id: CAMPAIGN_ID, service_offer_id: '7', target_type: 'csr_capability_rental', payer_user_id: '3' }
+      const oldOrderBody = verifyBody('order_old', 'pay_2', razorpaySignature('order_old', 'pay_2', 'rzp_secret'))
+      const paidRental = { ...pendingRental, payment_status: 'paid', razorpay_payment_id: 'pay_1' }
+
+      function useOldOrder(payment: Row = {}, notes: Row = rentalNotes) {
+        mocks.razorpay.payments.fetch.mockResolvedValue({ id: 'pay_2', order_id: 'order_old', status: 'captured', currency: 'INR', amount: 210000, ...payment })
+        mocks.razorpay.orders.fetch.mockResolvedValue({ id: 'order_old', amount: 210000, notes: { base_amount_inr: 2000, total_charge_inr: 2100, ...notes } })
+      }
+
+      it('accepts a payment made on an earlier order for the same rental', async () => {
+        const { state } = useCampaignDb({ ...baseCampaign, impact_metrics: { csr_capability_rentals: [pendingRental] } })
+        useOldOrder()
+        const { status, body } = await send(POST, request('POST', oldOrderBody))
+        expect(status).toBe(200)
+        expect(body.data).toMatchObject({ rental: { payment_status: 'paid', razorpay_payment_id: 'pay_2' } })
+        const rentals = (state.campaign.impact_metrics as { csr_capability_rentals: CsrCapabilityRentalRecord[] }).csr_capability_rentals
+        expect(rentals[0]).toMatchObject({ razorpay_order_id: 'order_old' })
+      })
+
+      it.each([
+        ['another campaign', { campaign_id: 'other-campaign' }],
+        ['another offer', { service_offer_id: '8' }],
+        ['another payer', { payer_user_id: '99' }],
+        ['a different payment kind', { target_type: 'donation' }],
+      ])('rejects an earlier order created for %s', async (_label, notes) => {
+        const { fake } = useCampaignDb({ ...baseCampaign, impact_metrics: { csr_capability_rentals: [pendingRental] } })
+        useOldOrder({}, { ...rentalNotes, ...notes })
+        const { status, body } = await send(POST, request('POST', oldOrderBody))
+        expect(status).toBe(400)
+        expect(body.error).toBe('Payment order does not match this rental')
+        expect(mocks.razorpay.payments.fetch).not.toHaveBeenCalled()
+        expect(fake.find('service_clients')).toHaveLength(0)
+      })
+
+      it('refunds a second captured payment for an already paid rental', async () => {
+        const { fake } = useCampaignDb({ ...baseCampaign, impact_metrics: { csr_capability_rentals: [paidRental] } })
+        useOldOrder()
+        mocks.razorpay.payments.refund.mockResolvedValue({ id: 'rfnd_2' })
+        const { status, body } = await send(POST, request('POST', oldOrderBody))
+        expect(status).toBe(409)
+        expect(body.error).toBe(DUPLICATE_REFUNDED)
+        expect(mocks.razorpay.payments.refund).toHaveBeenCalledWith('pay_2', {
+          amount: 210000,
+          notes: { reason: 'csr_capability_duplicate_payment', campaign_id: CAMPAIGN_ID },
+        })
+        expect(fake.find('campaigns', 'update')).toHaveLength(0)
+      })
+
+      it('does not refund a duplicate payment twice', async () => {
+        useCampaignDb({ ...baseCampaign, impact_metrics: { csr_capability_rentals: [paidRental] } })
+        useOldOrder({ status: 'refunded' })
+        const { status, body } = await send(POST, request('POST', oldOrderBody))
+        expect(status).toBe(409)
+        expect(body.error).toBe(DUPLICATE_REFUNDED)
+        expect(mocks.razorpay.payments.refund).not.toHaveBeenCalled()
+      })
+
+      it('asks the company to contact support when the refund fails', async () => {
+        const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+        useCampaignDb({ ...baseCampaign, impact_metrics: { csr_capability_rentals: [paidRental] } })
+        useOldOrder()
+        mocks.razorpay.payments.refund.mockRejectedValue(new Error('gateway down'))
+        const { status, body } = await send(POST, request('POST', oldOrderBody))
+        expect(status).toBe(409)
+        expect(body.error).toBe('This capability was already paid for. The duplicate payment could not be refunded automatically; please contact support.')
+        expect(errorLog).toHaveBeenCalled()
+        errorLog.mockRestore()
+      })
+
+      it('does not refund an order that belongs to another rental', async () => {
+        useCampaignDb({ ...baseCampaign, impact_metrics: { csr_capability_rentals: [paidRental] } })
+        useOldOrder({}, { ...rentalNotes, campaign_id: 'other-campaign' })
+        const { status, body } = await send(POST, request('POST', oldOrderBody))
+        expect(status).toBe(400)
+        expect(body.error).toBe('Payment order does not match this rental')
+        expect(mocks.razorpay.payments.refund).not.toHaveBeenCalled()
+      })
     })
 
     it('releases the claim when the capability cannot be attached', async () => {
@@ -386,7 +488,7 @@ describe('update-campaign route', () => {
   it('PUT refuses to edit an active campaign', async () => {
     useCampaignDb({ ...baseCampaign, status: 'active' })
     const { status } = await send(PUT, request('PUT', { campaign_id: CAMPAIGN_ID, company_id: 3, campaign: { title: 'x' } }))
-    expect(status).toBe(403)
+    expect(status).toBe(409)
   })
 })
 

@@ -43,6 +43,35 @@ export type CampaignWriteBody = Record<string, unknown> & {
   status?: string
 }
 
+/**
+ * impact_metrics keys a company may set directly. Everything else (lead NGO state, rentals,
+ * volunteer applications, invites, publish metadata, session links) is written only by the server.
+ */
+export const CLIENT_CAMPAIGN_IMPACT_KEYS = [
+  'beneficiaries',
+  'expected_beneficiaries',
+  'impact_reach',
+  'duration',
+  'volunteer_requirement',
+  'volunteer_limit',
+  'city',
+  'state',
+  'state_province',
+  'pincode',
+  'custom_metrics',
+  'selected_existing_project_id',
+] as const
+
+export function pickClientImpactMetrics(value: unknown): Record<string, Json> {
+  const impact = parseJsonObject(value) as Record<string, Json | undefined>
+  const picked: Record<string, Json> = {}
+  for (const key of CLIENT_CAMPAIGN_IMPACT_KEYS) {
+    const entry = impact[key]
+    if (entry !== undefined) picked[key] = entry
+  }
+  return picked
+}
+
 export function buildCampaignWritePayload(body: CampaignWriteBody, companyId: number): TablesInsert<'campaigns'> {
   const category = resolveCampaignCategoryInput(body)
   const location = resolveCampaignLocationInput(body)
@@ -57,11 +86,11 @@ export function buildCampaignWritePayload(body: CampaignWriteBody, companyId: nu
     budget_breakdown: body.budget_breakdown ?? {},
     schedule_vii: (body.schedule_vii ?? category) || null,
     sdg_alignment: body.sdg_alignment ?? [],
-    impact_metrics: body.impact_metrics ?? {},
+    impact_metrics: pickClientImpactMetrics(body.impact_metrics),
     milestones: body.milestones ?? [],
     start_date: body.start_date ?? null,
     end_date: body.end_date ?? null,
-    ...(body.status ? { status: body.status } : {}),
+    status: 'draft',
   }
 }
 

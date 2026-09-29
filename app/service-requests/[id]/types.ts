@@ -97,32 +97,6 @@ export interface VolunteerApplication {
   ngo_receipt_url?: string | null
 }
 
-export interface ApplicantEntry {
-  id: number
-  applicant_user_id: number
-  application_message: string
-  status: ApplicationStatus
-  applied_at: string
-  fulfillment_amount?: number | null
-  assigned_amount?: number | null
-  fulfillment_quantity?: number | null
-  assigned_quantity?: number | null
-  response_meta?: ApplicationResponseMeta
-  volunteer?: {
-    id?: number
-    name?: string
-    email?: string
-    user_type?: 'individual' | 'company' | 'ngo'
-    verification_status?: string | null
-    profile_image?: string | null
-    city?: string | null
-    state_province?: string | null
-    location?: string | null
-    phone?: string | null
-    ngo_name?: string | null
-  }
-}
-
 export type RequestRecord = {
   id?: number
   title: string

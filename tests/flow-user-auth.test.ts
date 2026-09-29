@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   deleteCookie: vi.fn(),
   update: vi.fn(),
   findById: vi.fn(),
+  getAuthUser: vi.fn(),
 }))
 
 vi.mock('server-only', () => ({}))
@@ -27,6 +28,7 @@ vi.mock('@/lib/db', () => ({
   supabase: {
     from: (table: string) => mocks.from(table),
     rpc: async (fn: string) => ({ data: null, error: { code: 'PGRST202', message: `Could not find the function public.${fn}` } }),
+    auth: { getUser: mocks.getAuthUser },
   },
   db: {
     users: {
@@ -73,6 +75,7 @@ beforeEach(() => {
   mocks.update.mockReset()
   mocks.findById.mockReset()
   mocks.deleteCookie.mockReset()
+  mocks.getAuthUser.mockReset().mockResolvedValue({ data: { user: null }, error: { message: 'invalid token' } })
   mocks.isCompanyCAUser.mockReset().mockResolvedValue(false)
   resetRateLimits()
   vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -170,6 +173,24 @@ describe('signup', () => {
     const cookie = response.cookies.get('token')
     expect(cookie).toMatchObject({ httpOnly: true, sameSite: 'strict', path: '/' })
     expect(cookie?.value).toBe((await response.json()).token)
+  })
+
+  it('marks the email verified only with a confirmed OTP session for the same address', async () => {
+    mocks.getAuthUser.mockResolvedValue({ data: { user: { email: 'New@example.org', email_confirmed_at: '2026-09-27T00:00:00Z' } }, error: null })
+    const response = await signup(post('/api/auth/signup', { ...signupBodies.individual, email_verification_token: 'otp-session' }))
+    expect(mocks.getAuthUser).toHaveBeenCalledWith('otp-session')
+    expect((await response.json()).user.email_verified).toBe(true)
+    expect(mocks.users[0]).toMatchObject({ email_verified: true, email_verified_at: expect.any(String) })
+  })
+
+  it.each([
+    ['no proof', undefined, null],
+    ['an OTP session for another address', 'otp-session', { email: 'someone@else.org', email_confirmed_at: '2026-09-27T00:00:00Z' }],
+  ])('leaves the email unverified with %s', async (_label, token, authUser) => {
+    if (authUser) mocks.getAuthUser.mockResolvedValue({ data: { user: authUser }, error: null })
+    const response = await signup(post('/api/auth/signup', { ...signupBodies.individual, email_verification_token: token }))
+    expect(response.status).toBe(201)
+    expect(mocks.users[0]).toMatchObject({ email_verified: false, email_verified_at: null })
   })
 
   it('lowercases the email before storing it', async () => {
@@ -334,7 +355,7 @@ describe('login', () => {
 
   it('throttles repeated attempts per IP and email with Retry-After', async () => {
     const attempt = (email: string, ip = '203.0.113.5') =>
-      login(post('/api/auth/login', { email, password: 'not-it' }, { 'x-forwarded-for': `${ip}, 10.0.0.1` }))
+      login(post('/api/auth/login', { email, password: 'not-it' }, { 'x-forwarded-for': `1.2.3.4, ${ip}` }))
     for (let i = 0; i < 10; i++) expect((await attempt('asha@example.org')).status).toBe(401)
 
     const blocked = await attempt('ASHA@example.org')
@@ -459,13 +480,27 @@ describe('delete account', () => {
     expect(mocks.findById).not.toHaveBeenCalled()
   })
 
-  it('deletes the account once the password matches', async () => {
+  it('anonymises the account and closes its open listings once the password matches', async () => {
     addUser()
     const fake = useDb()
     const response = await remove({ password: PASSWORD, confirmation: 'DELETE MY ACCOUNT' })
     expect(response.status).toBe(200)
     const text = await response.text()
     expect(text).not.toContain(passwordHash)
-    expect(fake.writes('users', 'delete')[0].filters).toContainEqual(['eq', 'id', 7])
+    expect(fake.writes('users', 'delete')).toHaveLength(0)
+    const [anonymise] = fake.writes('users')
+    expect(anonymise.filters).toContainEqual(['eq', 'id', 7])
+    expect(anonymise.payload).toMatchObject({ name: 'Deleted user', phone: null, account_status: 'suspended' })
+    expect((anonymise.payload as { email: string }).email).not.toContain('asha')
+    expect(fake.writes('service_offers')[0].payload).toMatchObject({ status: 'inactive' })
+    expect(fake.writes('service_requests')[0].payload).toMatchObject({ status: 'cancelled' })
+  })
+
+  it('reports a failure instead of half-deleting', async () => {
+    addUser()
+    const fake = useDb({ 'service_requests.update': [{ error: { message: 'boom' } }] })
+    const response = await remove({ password: PASSWORD, confirmation: 'DELETE MY ACCOUNT' })
+    expect(response.status).toBe(500)
+    expect(fake.writes('users')).toHaveLength(0)
   })
 })

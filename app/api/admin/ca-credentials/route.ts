@@ -108,14 +108,13 @@ export async function POST(request: NextRequest) {
       .from(PLATFORM_CA_ACCOUNTS_TABLE)
       .select('id')
       .eq('username', username)
-      .eq('ca_id', ca_id)
-      .maybeSingle();
+      .limit(1);
 
     if (checkError) throw checkError;
-    if (existing) {
+    if (existing && existing.length > 0) {
       return NextResponse.json(
-        { error: 'CA account with this username already exists for the provided ca_id' },
-        { status: 400 }
+        { error: 'A CA account with this username already exists' },
+        { status: 409 }
       );
     }
 
@@ -143,6 +142,9 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const authResponse = authErrorResponse(error);
     if (authResponse) return authResponse;
+    if ((error as { code?: unknown } | null)?.code === '23505') {
+      return NextResponse.json({ error: 'A CA account with this username already exists' }, { status: 409 });
+    }
     console.error('Create CA credentials error:', error);
     return NextResponse.json(
       { error: getErrorMessage(error) || 'Failed to create CA credentials' },

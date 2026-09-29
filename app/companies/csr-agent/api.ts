@@ -43,11 +43,15 @@ type ScoredNgoRow = {
   verified?: boolean | null
 }
 
-export async function fetchCampaignRow(campaignId: string): Promise<CampaignApiRow | null> {
-  const response = await fetch('/api/campaigns')
+export async function fetchCampaignRow(campaignId: string, token: string | null): Promise<CampaignApiRow | null> {
+  const response = await fetch(`/api/campaigns/${encodeURIComponent(campaignId)}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    credentials: 'include',
+  })
+  if (!response.ok) return null
   const payload = await response.json().catch(() => null)
-  const rows: CampaignApiRow[] = Array.isArray(payload?.data) ? payload.data : []
-  return rows.find((item) => String(item.id) === String(campaignId)) || null
+  const row = payload?.data
+  return row && typeof row === 'object' ? (row as CampaignApiRow) : null
 }
 
 export function campaignRowToDraft(campaign: CampaignApiRow): GeneratedCampaign {

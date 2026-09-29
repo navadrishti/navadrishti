@@ -14,7 +14,7 @@ import { useToast } from '@/hooks/use-toast'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { AI_DRAFT_STORAGE_KEY, buildNeedPayload, createEmptyNeed, needsFromDraft, validateNeed } from './helpers'
+import { AI_DRAFT_STORAGE_KEY, buildNeedPayload, createEmptyNeed, needsFromDraft, validateNeed, withoutIndex } from './helpers'
 import { NeedCard } from './need-card'
 import { getNeedRecommendations } from './recommendations'
 import { RelatedOffersSidebar } from './related-offers-sidebar'
@@ -51,8 +51,10 @@ export default function CreateServiceRequestPage() {
     localStorage.removeItem(AI_DRAFT_STORAGE_KEY)
   }, [])
 
-  const { serviceOffers, offersLoading, serverRecommendations, refreshNeedRecommendations } = useNeedRecommendations(needs)
-  const { needUploadProgress, handleNeedImageFiles, removeNeedImageUrl } = useNeedImageUpload(setNeeds, setError)
+  const { serviceOffers, offersLoading, serverRecommendations, refreshNeedRecommendations, forgetNeedRecommendations } =
+    useNeedRecommendations(needs)
+  const { needUploadProgress, handleNeedImageFiles, removeNeedImageUrl, forgetNeedUploadProgress } =
+    useNeedImageUpload(setNeeds, setError)
 
   const updateNeed = (index: number, field: keyof NeedDraft, value: string) => {
     setNeeds((prev) => prev.map((need, needIndex) => (needIndex === index ? { ...need, [field]: value } : need)))
@@ -63,19 +65,11 @@ export default function CreateServiceRequestPage() {
   }
 
   const removeNeed = (index: number) => {
-    setNeeds((prev) => prev.length === 1 ? prev : prev.filter((_, needIndex) => needIndex !== index))
-    setSelectedOffersByNeed((prev) => {
-      const next: Record<number, number[]> = {}
-      Object.entries(prev).forEach(([key, value]) => {
-        const currentIndex = Number(key)
-        if (currentIndex < index) {
-          next[currentIndex] = value
-        } else if (currentIndex > index) {
-          next[currentIndex - 1] = value
-        }
-      })
-      return next
-    })
+    if (needs.length <= 1) return
+    setNeeds((prev) => prev.filter((_, needIndex) => needIndex !== index))
+    setSelectedOffersByNeed((prev) => withoutIndex(prev, index))
+    forgetNeedRecommendations(index)
+    forgetNeedUploadProgress(index)
   }
 
   const setNeedCount = (count: number) => {
@@ -116,7 +110,7 @@ export default function CreateServiceRequestPage() {
     try {
       const response = await fetch(`/api/service-offers/${offerId}/clients`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('token')}` },
         body: JSON.stringify({
           client_id: user?.id,
           client_type: user?.user_type,
@@ -207,8 +201,25 @@ export default function CreateServiceRequestPage() {
         return
       }
 
+      // Needs are created in order, so the first `successfulCount` are already live and must not be resubmitted.
+      if (successfulCount > 0) {
+        setNeeds((prev) => prev.slice(successfulCount))
+        setSelectedOffersByNeed((prev) => {
+          let next = prev
+          for (let i = 0; i < successfulCount; i += 1) next = withoutIndex(next, 0)
+          return next
+        })
+        for (let i = 0; i < successfulCount; i += 1) {
+          forgetNeedRecommendations(0)
+          forgetNeedUploadProgress(0)
+        }
+      }
+
       const failure = creationResults.find((result) => !result.ok)
-      setError(failure?.error || 'Failed to create all needs')
+      const published = successfulCount > 0
+        ? `${successfulCount} need${successfulCount === 1 ? ' was' : 's were'} published and removed from this form. `
+        : ''
+      setError(`${published}${failure?.error || 'Failed to create all needs'}`)
     } catch {
       setError('Error creating need')
     } finally {

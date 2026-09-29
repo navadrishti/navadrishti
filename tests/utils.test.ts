@@ -4,6 +4,7 @@ import {
   maskAccountNumber,
   parseAmountToInr,
   parseJsonObject,
+  toSearchPattern,
   validateCapturedPaymentAmounts,
   validateNgoPayoutAccount,
 } from '@/lib/utils'
@@ -37,6 +38,26 @@ describe('parseJsonObject', () => {
     expect(parseJsonObject('[1,2]')).toEqual({})
     expect(parseJsonObject([1, 2])).toEqual({})
     expect(parseJsonObject(42)).toEqual({})
+  })
+})
+
+describe('toSearchPattern', () => {
+  it('wraps plain text in LIKE wildcards', () => {
+    expect(toSearchPattern('  clean water ')).toBe('%clean water%')
+  })
+
+  it('removes characters that would change a PostgREST or() filter', () => {
+    expect(toSearchPattern('water,status.eq.draft')).toBe('%water status eq draft%')
+    expect(toSearchPattern('a%b_c(d)*"e\\')).toBe('%a b c d e%')
+  })
+
+  it('returns an empty string when nothing searchable is left', () => {
+    expect(toSearchPattern(null)).toBe('')
+    expect(toSearchPattern(' ,.() ')).toBe('')
+  })
+
+  it('caps very long input', () => {
+    expect(toSearchPattern('x'.repeat(500))).toHaveLength(102)
   })
 })
 

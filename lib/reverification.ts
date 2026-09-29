@@ -137,7 +137,36 @@ function buildClearedTypeBlock(
   const nextBlock = { ...typeBlock, ...updates };
   delete nextBlock.reverification_documents;
   delete nextBlock.reverification_compliance_numbers;
+  delete nextBlock.reverification_entered_fields;
+  delete nextBlock.reverification_details;
   return nextBlock;
+}
+
+function nonEmptyStrings(value: unknown, allowedKeys?: readonly string[]) {
+  return Object.fromEntries(
+    Object.entries(parseJsonObject(value)).filter(
+      ([key, entry]) =>
+        (!allowedKeys || allowedKeys.includes(key)) && typeof entry === 'string' && entry.trim().length > 0
+    )
+  ) as Record<string, string>;
+}
+
+const NGO_DETAIL_KEYS = ['ngo_name', 'registration_number', 'registration_type', 'fcra_number'] as const;
+const COMPANY_DETAIL_KEYS = ['company_name', 'gst_number', 'registration_number'] as const;
+
+async function applyStagedVerificationDetails(userId: number, userType: string, stagedDetails: unknown) {
+  const keys = userType === 'ngo' ? NGO_DETAIL_KEYS : userType === 'company' ? COMPANY_DETAIL_KEYS : null;
+  const details = keys ? nonEmptyStrings(stagedDetails, keys) : {};
+  if (Object.keys(details).length === 0) return;
+
+  const update = { ...details, updated_at: new Date().toISOString() };
+  const { error } =
+    userType === 'ngo'
+      ? await supabase.from('ngo_verifications').update(update).eq('user_id', userId)
+      : await supabase.from('company_verifications').update(update).eq('user_id', userId);
+  if (error) {
+    console.error('Failed to apply approved reverification details:', error);
+  }
 }
 
 export async function approveReverification(
@@ -175,6 +204,7 @@ export async function approveReverification(
   }
 
   const pendingNumbers = parseJsonObject(typeBlock.reverification_compliance_numbers);
+  const stagedDetails = typeBlock.reverification_details;
   let nextProfileData: Record<string, unknown> = {
     ...profileData,
     reverification_pending: false,
@@ -185,6 +215,10 @@ export async function approveReverification(
         documents: {
           ...parseJsonObject(typeBlock.documents),
           ...pendingDocuments,
+        },
+        entered_fields: {
+          ...parseJsonObject(typeBlock.entered_fields),
+          ...nonEmptyStrings(typeBlock.reverification_entered_fields),
         },
         status: 'verified',
         reverification_status: 'approved',
@@ -245,7 +279,9 @@ export async function approveReverification(
   });
   nextProfileData = attached.profileData;
 
-  return saveReverificationDecision(userId, nextProfileData as Json);
+  const saved = await saveReverificationDecision(userId, nextProfileData as Json);
+  await applyStagedVerificationDetails(userId, String(user.user_type || ''), stagedDetails);
+  return saved;
 }
 
 async function saveReverificationDecision(userId: number, profileData: Json) {

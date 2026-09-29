@@ -40,6 +40,17 @@ export function parseAmountToInr(value: unknown): number {
   return Number.isFinite(parsed) ? Math.max(0, parsed) : 0
 }
 
+// PostgREST .or() filters are comma/paren separated, so user search text must not carry those
+// characters or LIKE wildcards. Returns '' when nothing searchable is left.
+export function toSearchPattern(value: unknown): string {
+  const term = String(value ?? '')
+    .replace(/[,.():*%\\"_]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 100)
+  return term ? `%${term}%` : ''
+}
+
 // Currency formatting
 export function formatCurrency(amount: number | string, showDecimals = false): string {
   const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount

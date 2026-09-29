@@ -19,16 +19,18 @@ export function useVerificationPanel() {
   const [volunteerAttendance, setVolunteerAttendance] = useState<VolunteerAttendanceData | null>(null);
 
   const fetchProjectTimeline = async (projectId: string): Promise<ProjectTimeline | null> => {
-    const response = await fetch(`/api/csr-projects/${projectId}/evidence`, {
-      credentials: 'include',
-    });
-
-    const payload = await response.json();
-    if (response.ok && payload?.success) {
-      setProjectTimelineById((prev) => ({ ...prev, [projectId]: payload.data }));
-      return payload.data;
+    try {
+      const response = await fetch(`/api/csr-projects/${projectId}/evidence`, {
+        credentials: 'include',
+      });
+      const payload = await response.json();
+      if (response.ok && payload?.success) {
+        setProjectTimelineById((prev) => ({ ...prev, [projectId]: payload.data }));
+        return payload.data;
+      }
+    } catch {
+      // Reported by the caller as a partial load.
     }
-
     return null;
   };
 
@@ -38,10 +40,12 @@ export function useVerificationPanel() {
       const payload = await res.json();
       if (res.ok && payload?.success) {
         setCaPendingPayments([...(payload.data.attendance || []), ...(payload.data.contributions || [])]);
+        return true;
       }
     } catch {
-      // ignore
+      // Reported by the caller as a partial load.
     }
+    return false;
   };
 
   const fetchVolunteerAttendance = async () => {
@@ -52,10 +56,12 @@ export function useVerificationPanel() {
       const payload = await res.json();
       if (res.ok && payload?.success) {
         setVolunteerAttendance(payload.data);
+        return true;
       }
     } catch {
-      // ignore
+      // Reported by the caller as a partial load.
     }
+    return false;
   };
 
   const loadPanel = async ({ background = false }: { background?: boolean } = {}) => {
@@ -69,31 +75,41 @@ export function useVerificationPanel() {
         credentials: 'include',
       });
 
-      const verifyPayload = await verifyResponse.json();
-      if (!verifyResponse.ok || !verifyPayload?.success) {
+      const verifyPayload = await verifyResponse.json().catch(() => null);
+      if (verifyResponse.status === 401 || verifyResponse.status === 403 || (verifyResponse.ok && !verifyPayload?.success)) {
         router.push('/evidence-verification/login');
+        return;
+      }
+      if (!verifyResponse.ok) {
+        setPanelMessage('The verification console could not be loaded. Please refresh to try again.');
         return;
       }
 
       setContext(verifyPayload.company_ca);
 
+      const failed: string[] = [];
       const projectsResponse = await fetch('/api/csr-projects', {
         credentials: 'include',
       });
 
-      const projectsPayload = await projectsResponse.json();
+      const projectsPayload = await projectsResponse.json().catch(() => null);
       if (projectsResponse.ok && projectsPayload?.success) {
         const loadedProjects: CsrProjectSummary[] = Array.isArray(projectsPayload.data) ? projectsPayload.data : [];
         setProjects(loadedProjects);
-        await Promise.all(loadedProjects.map((project) => fetchProjectTimeline(project.id)));
+        const timelines = await Promise.all(loadedProjects.map((project) => fetchProjectTimeline(project.id)));
+        if (timelines.some((timeline) => timeline === null)) failed.push('some project timelines');
       } else {
-        setProjects([]);
+        failed.push('projects');
       }
 
-      await fetchCaPendingPayments();
-      await fetchVolunteerAttendance();
+      if (!(await fetchCaPendingPayments())) failed.push('pending payments');
+      if (!(await fetchVolunteerAttendance())) failed.push('volunteer attendance');
+
+      if (failed.length > 0) {
+        setPanelMessage(`Could not load ${failed.join(', ')}. Refresh to try again.`);
+      }
     } catch {
-      router.push('/evidence-verification/login');
+      setPanelMessage('The verification console could not be loaded. Check your connection and refresh.');
     } finally {
       setLoading(false);
     }

@@ -1,11 +1,17 @@
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { emailService } from '@/lib/email';
+import { autoRejectExpiredServiceOffers } from '@/lib/admin-offer-automation';
 import { processCsrCapabilityDailyCompliance, markCsrProjectCompleted, syncAllCsrCapabilityRentalsDelhivery } from '@/lib/csr-agent/campaign';
 import { getDocumentExpiries, dropExpiredCaComplianceTags } from '@/lib/auth';
 import { backfillServiceOfferEmbeddings } from '@/lib/embeddings';
 import { parseJsonObject, getErrorMessage } from '@/lib/utils';
 import { isMissingStoreError } from '@/lib/auth-store';
+
+function secretsMatch(provided: string, expected: string) {
+  const digest = (value: string) => createHash('sha256').update(value).digest();
+  return timingSafeEqual(digest(provided), digest(expected));
+}
 
 async function processNgoDocumentExpiryJobs(now = new Date()) {
   const stats = {
@@ -100,103 +106,17 @@ export async function GET(request: NextRequest) {
     const providedSecret = authHeader.replace(/^Bearer\s+/i, '').trim();
 
     const authorized = cronSecret
-      ? providedSecret === cronSecret
+      ? secretsMatch(providedSecret, cronSecret)
       : process.env.NODE_ENV === 'development';
     if (!authorized) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Auto-reject pending clients on expired service offers.
-    
-    const fiveDaysAgo = new Date();
-    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
-    
-    const { data: expiredOffers, error: fetchError } = await supabase
-      .from('service_offers')
-      .select(`
-        *,
-        organization:users!creator_id (
-          id,
-          name,
-          email
-        )
-      `)
-      .eq('admin_status', 'pending')
-      .lt('submitted_for_review_at', fiveDaysAgo.toISOString());
-
-    let rejectedCount = 0;
-    const rejectedOffers = [];
-
-    if (fetchError) {
-      console.error('Error fetching expired offers:', fetchError);
-    } else if (expiredOffers && expiredOffers.length > 0) {
-      
-      for (const offer of expiredOffers) {
-        try {
-          const { error: updateError } = await supabase
-            .from('service_offers')
-            .update({
-              admin_status: 'rejected',
-              admin_reviewed_at: new Date().toISOString(),
-              admin_comments: 'Automatically rejected: Review deadline exceeded (5 days). Please resubmit if still needed.'
-            })
-            .eq('id', offer.id);
-
-          if (updateError) {
-            console.error(`Error updating offer ${offer.id}:`, updateError);
-            continue;
-          }
-
-          rejectedOffers.push(offer);
-          rejectedCount++;
-
-          if (offer.organization?.email) {
-            try {
-              await emailService.sendEmail({
-                to: offer.organization.email,
-                subject: 'Service Offer Auto-Rejected - Review Deadline Exceeded',
-                html: `
-                  <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                    <h2 style="color: #dc2626;">Service Offer Auto-Rejected</h2>
-                    
-                    <p>Dear ${offer.organization.name},</p>
-                    
-                    <p>Your service offer "<strong>${offer.title}</strong>" has been automatically rejected due to exceeding the 5-day review deadline.</p>
-                    
-                    <div style="background-color: #fef2f2; padding: 15px; border-left: 4px solid #dc2626; margin: 20px 0;">
-                      <h3 style="color: #dc2626; margin: 0 0 10px 0;">Auto-Rejection Details</h3>
-                      <p style="margin: 5px 0;"><strong>Offer:</strong> ${offer.title}</p>
-                      <p style="margin: 5px 0;"><strong>Submitted:</strong> ${offer.submitted_for_review_at ? new Date(offer.submitted_for_review_at).toLocaleDateString() : 'N/A'}</p>
-                      <p style="margin: 5px 0;"><strong>Auto-Rejected:</strong> ${new Date().toLocaleDateString()}</p>
-                      <p style="margin: 5px 0;"><strong>Reason:</strong> 5-day review deadline exceeded</p>
-                    </div>
-                    
-                    <h3>What happens next?</h3>
-                    <ul>
-                      <li>Your offer is no longer visible to potential applicants</li>
-                      <li>You can view this in your "Track Offers" tab</li>
-                      <li>You may create a new offer if still needed</li>
-                      <li>Our admin team will prioritize future submissions</li>
-                    </ul>
-                    
-                    <p>We apologize for the delay in reviewing your submission. Our team is working to improve response times.</p>
-                    
-                    <p>If you have any questions, please don't hesitate to contact our support team.</p>
-                    
-                    <p>Best regards,<br>The Navdrishti Team</p>
-                  </div>
-                `
-              });
-            } catch (emailError) {
-              console.error(`Error sending email for offer ${offer.id}:`, emailError);
-            }
-          }
-
-        } catch (offerError) {
-          console.error(`Error processing offer ${offer.id}:`, offerError);
-        }
-      }
-    } else {
+    let autoRejectExpired: Awaited<ReturnType<typeof autoRejectExpiredServiceOffers>> = { rejectedCount: 0, rejectedOffers: [] };
+    try {
+      autoRejectExpired = await autoRejectExpiredServiceOffers();
+    } catch (autoRejectErr) {
+      console.error('Error auto-rejecting expired offers:', autoRejectErr);
     }
 
     // Expire capability offers past valid_until.
@@ -223,7 +143,6 @@ export async function GET(request: NextRequest) {
           console.error(`Error deactivating offer ${offer.id}:`, deactivateError);
         }
       }
-    } else {
     }
 
     // Expire projects and their needs.
@@ -266,7 +185,6 @@ export async function GET(request: NextRequest) {
           }
         }
 
-      } else {
       }
     } catch (expireErr) {
       console.error('Error in project expiry task:', expireErr);
@@ -339,14 +257,7 @@ export async function GET(request: NextRequest) {
       message: 'Daily cleanup completed successfully',
       timestamp: new Date().toISOString(),
       tasks: {
-        autoRejectExpired: {
-          rejectedCount,
-          rejectedOffers: rejectedOffers.map(offer => ({
-            id: offer.id,
-            title: offer.title,
-            organization: offer.organization?.name
-          }))
-        },
+        autoRejectExpired,
         documentExpiry: documentExpiryStats,
         csrDelhiverySync: csrDelhiverySyncStats,
         csrCapabilityCompliance: csrComplianceStats,

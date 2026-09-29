@@ -47,9 +47,10 @@ export const requestProjects = {
       .from('service_request_projects')
       .select('*')
       .eq('id', id)
-      .single();
+      .maybeSingle();
 
-    if (error && error.code !== 'PGRST116') throw error;
+    // 22P02: the id is not a valid uuid, which can only mean the project does not exist.
+    if (error && error.code !== '22P02') throw error;
     return data;
   },
 

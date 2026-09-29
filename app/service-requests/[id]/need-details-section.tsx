@@ -38,12 +38,12 @@ export function RequestNeedDetailsSection({ request }: { request: RequestRecord 
 
         <div>
           <p className="text-sm text-gray-500">Need Title</p>
-          <p className="text-sm font-medium text-slate-800">{request.title}</p>
+          <p className="text-sm font-medium text-slate-800">{displayValue(request.title)}</p>
         </div>
 
         <section className="space-y-3">
           <h4 className="text-sm font-medium text-gray-500">Description</h4>
-          <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">{request.description}</p>
+          <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">{displayValue(request.description)}</p>
         </section>
 
         {images.length > 0 ? (

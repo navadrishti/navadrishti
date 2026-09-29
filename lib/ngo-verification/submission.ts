@@ -8,6 +8,7 @@ import {
   resolveComplianceNumbersForSubmission,
   validateOptionalNgoCertificates,
 } from './compliance';
+import { initiateBlockedByStatus } from '@/lib/ca-review/submission-guards';
 
 export type NgoVerificationSubmission = {
   organizationName: string;
@@ -80,9 +81,12 @@ export async function initiateNgoVerification(userId: number, input: NgoVerifica
   try {
     const { data: userRow } = await supabase
       .from('users')
-      .select('profile_data')
+      .select('verification_status, profile_data')
       .eq('id', userId)
       .single();
+
+    const statusError = initiateBlockedByStatus(userRow?.verification_status);
+    if (statusError) return statusError;
 
     const existingProfileData = parseJsonObject(userRow?.profile_data);
 
@@ -210,7 +214,7 @@ export async function reverifyNgoVerification(userId: number, input: NgoVerifica
 
     const prepared = prepareSubmission(existingProfileData, input);
     if (prepared.error) return prepared.error;
-    const { merged, submitted, entered, submittedAt, documentExpiries } = prepared;
+    const { submitted, entered, submittedAt } = prepared;
     const { documents, complianceDocuments } = input;
 
     const { data: existingVerification } = await supabase
@@ -233,27 +237,22 @@ export async function reverifyNgoVerification(userId: number, input: NgoVerifica
           )
         : {};
 
-    await supabase
-      .from('ngo_verifications')
-      .update({
+    // Numbers, expiries and registration details stay staged until a reviewer approves them in
+    // approveReverification; writing them live here would let an NGO self-renew CSR-1.
+    const reverificationDetails = Object.fromEntries(
+      Object.entries({
         ngo_name: input.organizationName,
         registration_number: input.registrationNumber,
         registration_type: input.registrationType,
-        ...(entered.fcra_number ? { fcra_number: entered.fcra_number } : {}),
-      })
-      .eq('user_id', userId)
-      .throwOnError();
+        fcra_number: entered.fcra_number,
+      }).filter(([, value]) => typeof value === 'string' && value.trim())
+    );
 
     await supabase
       .from('users')
       .update({
         profile_data: {
           ...existingProfileData,
-          twelve_a_number: merged.twelve_a_number,
-          eighty_g_number: merged.eighty_g_number,
-          csr1_registration_number: merged.csr1_registration_number,
-          fcra_expiry_date: entered.fcra_expiry || existingProfileData.fcra_expiry_date || null,
-          document_expiries: documentExpiries,
           reverification_pending: true,
           compliance_documents: {
             ...existingComplianceDocuments,
@@ -269,7 +268,8 @@ export async function reverifyNgoVerification(userId: number, input: NgoVerifica
               reverification_documents: documents || {},
               reverification_compliance_numbers: submitted,
               reverification_submitted_at: submittedAt,
-              entered_fields: entered,
+              reverification_entered_fields: entered,
+              reverification_details: reverificationDetails,
             },
           },
         },

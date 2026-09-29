@@ -49,6 +49,10 @@ export async function GET(request: NextRequest) {
     const transactionTypeFilter = searchParams.get('transaction_type')
     const includeExpired = searchParams.get('include_expired') === 'true'
 
+    if (view && !['all', 'my-offers', 'my-responses'].includes(view)) {
+      return NextResponse.json({ error: 'Invalid view' }, { status: 400 })
+    }
+
     let authenticatedUserId: number | null = null
     if (view === 'my-offers' || view === 'my-responses') {
       const claims = getTokenClaims(request)
@@ -256,10 +260,13 @@ export async function GET(request: NextRequest) {
 
         filteredOffers.forEach((offer) => {
           const offerCounts = counts[offer.id] || { total: 0, accepted: 0, pending: 0, usage: [] }
+          const isOwner = authenticatedUserId !== null && offer.creator_id === authenticatedUserId
           offer.applications_count = offerCounts.total
           offer.pending_applications = offerCounts.pending
           offer.isAssigned = offerCounts.accepted > 0 || offerCounts.usage.length > 0
-          offer.usage_records = offerCounts.usage
+          offer.usage_records = isOwner
+            ? offerCounts.usage
+            : offerCounts.usage.map(({ client_email: _email, message: _message, ...record }) => record)
         })
       }
     }

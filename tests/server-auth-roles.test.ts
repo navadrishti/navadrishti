@@ -163,20 +163,23 @@ describe('getCAFromRequest', () => {
 })
 
 describe('requireCA', () => {
-  it('returns the CA payload', () => {
-    expect(requireCA(buildRequest({ cookies: { 'navadrishti-ca-token': caToken } }))).toMatchObject({ ca_id: 'CA-3' })
+  it('returns the CA payload', async () => {
+    supabaseFake.queue('platform_ca_accounts', { data: { id: 3, active: true, must_change_password: false } })
+    await expect(requireCA(buildRequest({ cookies: { 'navadrishti-ca-token': caToken } }))).resolves.toMatchObject({
+      ca_id: 'CA-3',
+    })
   })
 
   it.each([
     ['missing', buildRequest()],
     ['forged', buildRequest({ header: `Bearer ${jwt.sign({ id: 3 }, 'nope')}` })],
     ['expired', buildRequest({ header: `Bearer ${expired({ id: 3, ca_id: 'CA-3' })}` })],
-  ])('throws for a %s token', (_label, request) => {
-    expect(() => requireCA(request)).toThrow('CA authentication required')
+  ])('throws for a %s token', async (_label, request) => {
+    await expect(requireCA(request)).rejects.toThrow('CA authentication required')
   })
 
-  it('rejects an admin JWT', () => {
-    expect(() => requireCA(buildRequest({ header: `Bearer ${adminToken}` }))).toThrow()
+  it('rejects an admin JWT', async () => {
+    await expect(requireCA(buildRequest({ header: `Bearer ${adminToken}` }))).rejects.toThrow()
   })
 })
 
@@ -245,8 +248,9 @@ describe('getCompanyCAFromRequest', () => {
 
 describe('getEvidenceApproverContext', () => {
   it('treats platform CA tokens as platform_ca', async () => {
+    supabaseFake.queue('platform_ca_accounts', { data: { id: 3, active: true, must_change_password: false } })
     const context = await getEvidenceApproverContext(buildRequest({ cookies: { 'navadrishti-ca-token': caToken } }))
-    expect(context).toEqual({ actorType: 'platform_ca', reviewerUserId: null, companyUserId: null, companyCAIdentityId: null })
+    expect(context).toEqual({ actorType: 'platform_ca', reviewerUserId: null, platformCAId: 3, companyUserId: null, companyCAIdentityId: null })
   })
 
   it('rejects a company CA from another company', async () => {

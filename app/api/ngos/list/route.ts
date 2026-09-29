@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { findAuthUser } from '@/lib/server-auth';
-import { parseJsonObject } from '@/lib/utils';
+import { parseJsonObject, toSearchPattern } from '@/lib/utils';
 import {
   getCaComplianceTagExpiry,
   ngoIsCsrEligible,
@@ -20,7 +20,8 @@ export async function GET(request: NextRequest) {
   try {
     const signedIn = Boolean(findAuthUser(request, { allowCookie: true }));
     const { searchParams } = new URL(request.url);
-    const q = String(searchParams.get('q') || '').replace(/[,.():*%\\"_]/g, ' ').replace(/\s+/g, ' ').trim();
+    const qStr = toSearchPattern(searchParams.get('q'));
+    const q = qStr.slice(1, -1);
     const limit = Math.min(Math.max(Number(searchParams.get('limit') || 30) || 30, 1), 250);
     const endDate = normalizeExpiryDate(searchParams.get('end_date') || searchParams.get('endDate'));
 
@@ -30,9 +31,8 @@ export async function GET(request: NextRequest) {
       .select('id, name, email, city, state_province, profile_data, verification_status')
       .eq('user_type', 'ngo')
 
-    if (q) {
+    if (qStr) {
       // lightweight server-side filter to reduce rows
-      const qStr = `%${q}%`
       const emailFilter = signedIn ? `,email.ilike.${qStr}` : ''
       query = query.or(`name.ilike.${qStr}${emailFilter},city.ilike.${qStr},state_province.ilike.${qStr}`)
     }

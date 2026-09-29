@@ -23,6 +23,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     assertAdminUser(request);
     const { id } = await params;
     const requestId = Number(id);
+    if (!Number.isInteger(requestId) || requestId <= 0) {
+      return NextResponse.json({ error: 'Valid service request ID is required' }, { status: 400 });
+    }
 
     const serviceRequest = await db.serviceRequests.getById(requestId);
     if (!serviceRequest) {
@@ -43,15 +46,21 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     assertAdminUser(request);
     const { id } = await params;
     const requestId = Number(id);
+    if (!Number.isInteger(requestId) || requestId <= 0) {
+      return NextResponse.json({ error: 'Valid service request ID is required' }, { status: 400 });
+    }
     const body = await request.json();
 
     const { data: existingRequest, error: fetchError } = await supabase
       .from('service_requests')
       .select('*')
       .eq('id', requestId)
-      .single();
+      .maybeSingle();
 
     if (fetchError) throw fetchError;
+    if (!existingRequest) {
+      return NextResponse.json({ error: 'Service request not found' }, { status: 404 });
+    }
 
     const existingRequirements = parseJsonObject(existingRequest?.requirements);
     const existingProjectContext = parseJsonObject(existingRequest?.project_context);

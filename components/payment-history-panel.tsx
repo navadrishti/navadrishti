@@ -74,10 +74,13 @@ export function PaymentHistoryPanel({
     }>
   >([])
 
+  const [loadError, setLoadError] = useState(false)
+
   useEffect(() => {
     const load = async () => {
       try {
         setLoading(true)
+        setLoadError(false)
         const token = localStorage.getItem('token')
         if (!token) {
           setPayments([])
@@ -88,11 +91,14 @@ export function PaymentHistoryPanel({
           headers: { Authorization: `Bearer ${token}` },
         })
         const payload = await response.json()
-        setPayments(response.ok && payload.success ? payload.data || [] : [])
-        setFines(response.ok && payload.success && role === 'sent' ? payload.fines || [] : [])
+        if (!response.ok || !payload?.success) {
+          setLoadError(true)
+          return
+        }
+        setPayments(payload.data || [])
+        setFines(role === 'sent' ? payload.fines || [] : [])
       } catch {
-        setPayments([])
-        setFines([])
+        setLoadError(true)
       } finally {
         setLoading(false)
       }
@@ -141,6 +147,8 @@ export function PaymentHistoryPanel({
             <Skeleton className="h-16 w-full" />
             <Skeleton className="h-16 w-full" />
           </div>
+        ) : loadError ? (
+          <p className="text-sm text-red-700">Payment history could not be loaded. Refresh the page to try again.</p>
         ) : payments.length === 0 ? (
           <p className="text-sm text-muted-foreground">{emptyMessage}</p>
         ) : (

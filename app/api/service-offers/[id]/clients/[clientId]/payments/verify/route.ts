@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
-import { db, supabase } from '@/lib/db';
+import { adjustServiceRequestProgress, db, supabase } from '@/lib/db';
 import { getTokenClaims } from '@/lib/auth';
 import { parseAmountToInr, getErrorMessage, parseJsonObject } from '@/lib/utils';
 import { validateCapturedPaymentAmounts } from '@/lib/razorpay-route';
@@ -49,9 +49,15 @@ export async function POST(
       .select('*')
       .eq('service_offer_id', offerId)
       .eq('client_id', payerUserId)
-      .single();
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-    if (applicationError || !application) {
+    if (applicationError) {
+      return NextResponse.json({ error: 'Failed to load application' }, { status: 500 });
+    }
+
+    if (!application) {
       return NextResponse.json({ error: 'Application not found' }, { status: 404 });
     }
 
@@ -117,7 +123,12 @@ export async function POST(
       return NextResponse.json({ error: 'Payment order not found' }, { status: 404 });
     }
 
-    if (Number(orderRow.data.service_request_id) !== linkedServiceRequestId || Number(orderRow.data.payer_user_id) !== payerUserId) {
+    const storedOrderNotes = parseJsonObject(orderRow.data.order_notes);
+    if (
+      Number(orderRow.data.service_request_id) !== linkedServiceRequestId ||
+      Number(orderRow.data.payer_user_id) !== payerUserId ||
+      Number(storedOrderNotes.service_client_id) !== Number(application.id)
+    ) {
       return NextResponse.json({ error: 'Payment is linked to a different application' }, { status: 403 });
     }
 
@@ -136,10 +147,48 @@ export async function POST(
       return NextResponse.json({ error: 'Linked service request not found' }, { status: 404 });
     }
 
-    const targetAmount = parseAmountToInr(serviceRequest.target_amount ?? serviceRequest.estimated_budget ?? serviceRequest.current_amount);
-    const currentAmount = parseAmountToInr(serviceRequest.current_amount);
-    const nextAmount = Number((currentAmount + creditedInr).toFixed(2));
-    const nextRemaining = targetAmount > 0 ? Number(Math.max(0, targetAmount - nextAmount).toFixed(2)) : null;
+    const alreadyVerified = () => NextResponse.json({
+      success: true,
+      data: {
+        message: 'Payment already verified',
+        serviceRequestId: linkedServiceRequestId,
+        amountInr: paidInr,
+        status: serviceRequest.status ?? null,
+        alreadyProcessed: true
+      }
+    });
+
+    const currentMeta = parseJsonObject(application.response_meta);
+    if (currentMeta.payment_status === 'paid' && currentMeta.payment_order_id === razorpay_order_id) {
+      return alreadyVerified();
+    }
+
+    // The webhook marks service-offer orders `paid` without crediting them, so the
+    // claim keys on a verify-only marker instead of order_status.
+    const claimedAt = new Date().toISOString();
+    const { data: claimedOrder, error: claimError } = await supabase
+      .from('razorpay_payment_orders')
+      .update({
+        order_status: 'paid',
+        order_notes: {
+          ...storedOrderNotes,
+          service_offer_id: offerId,
+          service_client_id: application.id,
+          service_request_id: linkedServiceRequestId,
+          target_type: 'service_offer',
+          service_offer_credited_at: claimedAt
+        },
+        updated_at: claimedAt
+      })
+      .eq('razorpay_order_id', razorpay_order_id)
+      .is('order_notes->>service_offer_credited_at', null)
+      .select('id')
+      .maybeSingle();
+
+    if (claimError) throw claimError;
+    if (!claimedOrder) {
+      return alreadyVerified();
+    }
 
     await supabase
       .from('service_request_contributions')
@@ -160,68 +209,42 @@ export async function POST(
       });
 
     await supabase
-      .from('razorpay_payment_orders')
+      .from('razorpay_payments')
       .upsert({
-        service_request_id: linkedServiceRequestId,
-        contribution_id: null,
-        payer_user_id: payerUserId,
-        ngo_user_id: Number(offer.creator_id || offer.ngo_id || payerUserId),
+        order_id: claimedOrder.id,
         razorpay_order_id,
-        receipt: String(providerOrder.receipt || `so_${offerId}_${payerUserId}`),
+        razorpay_payment_id,
+        razorpay_signature,
         amount_inr: paidInr,
         amount_paise: Math.round(paidInr * 100),
         currency: 'INR',
-        order_status: 'paid',
-        order_notes: {
+        payment_status: 'captured',
+        payment_method: providerPayment.method || null,
+        paid_at: new Date((providerPayment.created_at || 0) * 1000).toISOString(),
+        provider_payload: {
           service_offer_id: offerId,
           service_client_id: application.id,
           service_request_id: linkedServiceRequestId,
-          target_type: 'service_offer'
+          provider_payment_status: providerStatus
         },
         updated_at: new Date().toISOString()
-      }, { onConflict: 'razorpay_order_id' });
+      }, { onConflict: 'razorpay_payment_id' });
 
-    const { data: orderRef } = await supabase
-      .from('razorpay_payment_orders')
-      .select('id')
-      .eq('razorpay_order_id', razorpay_order_id)
-      .maybeSingle();
-
-    if (orderRef?.id) {
-      await supabase
-        .from('razorpay_payments')
-        .upsert({
-          order_id: orderRef.id,
-          razorpay_order_id,
-          razorpay_payment_id,
-          razorpay_signature,
-          amount_inr: paidInr,
-          amount_paise: Math.round(paidInr * 100),
-          currency: 'INR',
-          payment_status: 'captured',
-          payment_method: providerPayment.method || null,
-          paid_at: new Date((providerPayment.created_at || 0) * 1000).toISOString(),
-          provider_payload: {
-            service_offer_id: offerId,
-            service_client_id: application.id,
-            service_request_id: linkedServiceRequestId,
-            provider_payment_status: providerStatus
-          },
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'razorpay_payment_id' });
+    const targetAmount = parseAmountToInr(serviceRequest.target_amount ?? serviceRequest.estimated_budget);
+    const progress = await adjustServiceRequestProgress(serviceRequest, { amount: creditedInr }, { targetAmount });
+    const currentRequestStatus = String(progress.status || '').toLowerCase();
+    let nextRequestStatus = progress.status ?? null;
+    if (['active', 'in_progress'].includes(currentRequestStatus)) {
+      const reachedTarget = targetAmount > 0 && parseAmountToInr(progress.current_amount) >= targetAmount;
+      nextRequestStatus = reachedTarget ? 'completed' : 'in_progress';
+      if (nextRequestStatus !== currentRequestStatus) {
+        await supabase
+          .from('service_requests')
+          .update({ status: nextRequestStatus, updated_at: new Date().toISOString() })
+          .eq('id', linkedServiceRequestId);
+      }
     }
 
-    await supabase
-      .from('service_requests')
-      .update({
-        current_amount: nextAmount,
-        remaining_amount: nextRemaining,
-        status: nextRemaining !== null && nextRemaining <= 0 ? 'completed' : 'in_progress',
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', linkedServiceRequestId);
-
-    const currentMeta = parseJsonObject(application.response_meta);
     await supabase
       .from('service_clients')
       .update({
@@ -243,7 +266,7 @@ export async function POST(
         message: 'Payment verified successfully',
         serviceRequestId: linkedServiceRequestId,
         amountInr: paidInr,
-        status: nextRemaining !== null && nextRemaining <= 0 ? 'completed' : 'in_progress'
+        status: nextRequestStatus
       }
     });
   } catch (error) {

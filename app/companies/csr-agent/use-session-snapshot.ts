@@ -1,6 +1,6 @@
 import { useMemo } from "react"
 import { upsertSession } from "./helpers"
-import { type CSRAgentSession, deriveSessionTitle } from "./session"
+import { type CSRAgentSession, createSessionId, deriveSessionTitle } from "./session"
 
 type SessionFields = Omit<CSRAgentSession, "id" | "title" | "createdAt" | "updatedAt">
 
@@ -58,7 +58,7 @@ export function useSessionSnapshot({ fields, activeSessionId, sessions, canPersi
     if (!messages.length) return null
     const now = new Date().toISOString()
     return {
-      id: activeSessionId || `csr-session-${Date.now()}`,
+      id: activeSessionId || createSessionId(),
       title: deriveSessionTitle(messages, projectData),
       createdAt: now,
       updatedAt: now,

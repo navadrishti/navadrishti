@@ -108,6 +108,13 @@ describe('PublishStatusSection', () => {
     expect(screen.getByText(/Invite at least one lead NGO above/)).toBeInTheDocument()
   })
 
+  it('explains the next step while the questionnaire is still in progress', () => {
+    render(<PublishStatusSection {...base} questionnaireComplete={false} invites={[]} />)
+    expect(screen.getByText('Publish')).toBeInTheDocument()
+    expect(screen.getByText(/Answer the remaining questions in the chat/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Publish' })).not.toBeInTheDocument()
+  })
+
   it('shows publish button once lead accepted and drafts exist', async () => {
     const onPublish = vi.fn()
     const campaign = {
@@ -147,6 +154,43 @@ describe('PublishStatusSection', () => {
     )
     expect(screen.getByText(/Green Earth accepted\. Generating your campaign draft/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Publish' })).not.toBeInTheDocument()
+  })
+
+  it('replaces the spinner with the error and a retry when generation failed', async () => {
+    const onRetry = vi.fn()
+    render(
+      <PublishStatusSection
+        {...base}
+        error="Budget is required before generating campaign drafts."
+        invites={[]}
+        acceptedLead={{ ngoId: 1, name: 'Green Earth', email: 'a@x.org', status: 'accepted' }}
+        onRetry={onRetry}
+      />,
+    )
+    expect(screen.queryByText(/Generating your campaign draft/)).not.toBeInTheDocument()
+    expect(screen.getAllByText('Budget is required before generating campaign drafts.')).toHaveLength(1)
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(onRetry).toHaveBeenCalled()
+  })
+
+  it('locks the publish button while publishing and links to the campaign once live', () => {
+    const accepted = { ngoId: 1, name: 'A', email: 'a@x.org', status: 'accepted' as const }
+    const campaign = {
+      title: 'T', description: '', category: '', location: '', budget_inr: 0,
+      budget_breakdown: { infrastructure: 0, training: 0, materials: 0, monitoring: 0, contingency: 0 },
+      schedule_vii: '', sdg_alignment: [], start_date: '', end_date: '',
+      impact_metrics: { beneficiaries: 0, duration: '' }, milestones: [],
+    }
+    const { rerender } = render(
+      <PublishStatusSection {...base} campaigns={[campaign]} invites={[]} acceptedLead={accepted} publishing />,
+    )
+    expect(screen.getByRole('button', { name: /Publishing/ })).toBeDisabled()
+
+    rerender(
+      <PublishStatusSection {...base} campaigns={[campaign]} invites={[]} acceptedLead={accepted} publishedCampaignId="c-9" />,
+    )
+    expect(screen.queryByRole('button', { name: 'Publish' })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'View campaign' })).toHaveAttribute('href', '/csr-campaigns/c-9')
   })
 })
 

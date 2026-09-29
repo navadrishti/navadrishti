@@ -123,6 +123,18 @@ export function createSupabaseFake(responder: FakeResponder = {}) {
 /** Shared instance for `vi.mock` factories, which cannot reach module-level variables. */
 export const supabaseFake = createSupabaseFake()
 
+type ProgressRow = { current_amount?: unknown; current_quantity?: unknown }
+
+/** Stand-in for `adjustServiceRequestProgress`: applies the delta to the row it was given. */
+export async function fakeAdjustProgress<Row extends ProgressRow>(row: Row, delta: { amount?: number; quantity?: number }) {
+  const next = (current: unknown, change = 0) => Number(Math.max(0, Number(current || 0) + change).toFixed(2))
+  return {
+    ...row,
+    current_amount: next(row.current_amount, delta.amount),
+    current_quantity: next(row.current_quantity, delta.quantity),
+  }
+}
+
 export function callsOf(query: FakeQuery | undefined, method: string) {
   return (query?.calls || []).filter((call) => call[0] === method).map((call) => call.slice(1))
 }

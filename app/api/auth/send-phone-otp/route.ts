@@ -2,10 +2,13 @@ import { NextResponse } from 'next/server'
 import crypto from 'crypto'
 import { withAuth } from '@/lib/auth'
 import { consumeOneTimeCode, issueOneTimeCode } from '@/lib/one-time-codes'
+import { limitAttempts } from '@/lib/rate-limit'
 import { sendSMS, generateOTPMessage } from '@/lib/sms'
 
 const PHONE_OTP_TTL_MS = 10 * 60 * 1000
 const PHONE_OTP_RESEND_MS = 60 * 1000
+// Per account across all numbers, so rotating the number can't be used to pump SMS.
+const PHONE_OTP_SEND_LIMIT = { limit: 5, windowMs: 60 * 60 * 1000 }
 
 const normalizePhone = (value: string) => value.trim().replace(/\s+/g, '')
 
@@ -18,6 +21,12 @@ export const POST = withAuth(async (req) => {
     if (!phone) {
       return NextResponse.json({ error: 'Phone number is required' }, { status: 400 })
     }
+    if (!/^\+?\d{10,15}$/.test(phone)) {
+      return NextResponse.json({ error: 'Enter a valid phone number' }, { status: 400 })
+    }
+
+    const limited = await limitAttempts(req, 'send-phone-otp', String(user.id), PHONE_OTP_SEND_LIMIT)
+    if (limited) return limited
 
     const subject = `${user.id}:${phone}`
     const otp = String(crypto.randomInt(100000, 999999))

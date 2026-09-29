@@ -74,9 +74,9 @@ export function ChatMessageList({
           <div key={`${message.role}-${index}`} className={`flex gap-3 ${message.role === "user" ? "justify-end" : "justify-start"}`}>
             {message.role === "assistant" && <AssistantAvatar />}
 
-            <div className="flex items-center gap-2">
+            <div className="flex min-w-0 max-w-[90%] items-center gap-2 sm:max-w-[85%]">
               <div
-                className={`min-w-[4rem] sm:min-w-[6rem] max-w-[90%] rounded-2xl px-4 py-3 text-sm leading-6 shadow-sm sm:max-w-[85%] whitespace-normal break-normal ${
+                className={`min-w-[4rem] max-w-full rounded-2xl px-4 py-3 text-sm leading-6 shadow-sm whitespace-pre-wrap [overflow-wrap:anywhere] sm:min-w-[6rem] ${
                   message.role === "user"
                     ? "bg-gradient-to-r from-[#1d4ed8] to-[#2563eb] text-white"
                     : "border border-slate-200 bg-slate-50 text-slate-800"
@@ -111,7 +111,7 @@ export function ChatMessageList({
                     </div>
                   </div>
                 ) : (
-                  <p className="whitespace-normal break-normal">{message.content}</p>
+                  <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">{message.content}</p>
                 )}
               </div>
 
@@ -122,7 +122,7 @@ export function ChatMessageList({
                       type="button"
                       variant="ghost"
                       size="icon"
-                      className="mt-1 h-8 w-8 rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm hover:bg-slate-50 hover:text-slate-900"
+                      className="mt-1 h-8 w-8 shrink-0 rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm hover:bg-slate-50 hover:text-slate-900"
                       aria-label="Message options"
                     >
                       <MoreVertical className="h-4 w-4" />

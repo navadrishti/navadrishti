@@ -5,6 +5,7 @@ import {
   assertNgoLiveCsr1,
   CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE,
   getEvidenceApproverContext,
+  authErrorStatus,
   type EvidenceApproverContext,
 } from '@/lib/server-auth';
 import { parseAmountToInr, getErrorMessage } from '@/lib/utils';
@@ -27,9 +28,9 @@ export async function POST(
 
     let approver: EvidenceApproverContext;
     try {
-      approver = await getEvidenceApproverContext(request);
+      approver = await getEvidenceApproverContext(request, undefined, { requiredPermission: 'can_confirm_payments' });
     } catch (error) {
-      return NextResponse.json({ error: getErrorMessage(error) || 'CA authentication required' }, { status: 401 });
+      return NextResponse.json({ error: getErrorMessage(error) || 'CA authentication required' }, { status: authErrorStatus(error) });
     }
 
     const { data: milestone, error: milestoneError } = await supabase

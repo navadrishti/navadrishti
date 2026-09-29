@@ -230,13 +230,15 @@ export async function openRazorpayCheckout(options: OpenRazorpayCheckoutOptions)
 
   const checkoutImage = await resolveRazorpayCheckoutImageUrl(options.image);
 
-  return new Promise<void>((resolve) => {
+  // Rejects when onSuccess throws, so a failed server verification reaches the caller's catch.
+  return new Promise<void>((resolve, reject) => {
     let settled = false;
-    const finish = () => {
+    const finish = (error?: unknown) => {
       if (settled) return;
       settled = true;
       clearBlockingAppOverlays();
-      resolve();
+      if (error === undefined) resolve();
+      else reject(error);
     };
 
     const razorpay = new window.Razorpay!({
@@ -268,8 +270,9 @@ export async function openRazorpayCheckout(options: OpenRazorpayCheckoutOptions)
       handler: async (response: RazorpaySuccessResponse) => {
         try {
           await options.onSuccess(response);
-        } finally {
           finish();
+        } catch (error) {
+          finish(error ?? new Error('Payment verification failed'));
         }
       },
     });

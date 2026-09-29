@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabase, pruneRemovedAgentSessions } from "@/lib/db"
-import { randomUUID } from 'crypto'
+import { createHash } from 'crypto'
 import { findAuthUser } from "@/lib/server-auth"
 import {
   buildProjectContextWithPublished,
@@ -58,6 +58,10 @@ type PersistedSession = {
   activeNeedQuestionIndex?: number
   selectedOfferIdsByNeed?: Json
   generatedDraft?: Json
+  draftCampaignId?: string | null
+  leadNgoInvites?: Json
+  invitedOfferIds?: Json
+  selectedProjectSuggestionId?: string | null
 }
 
 type SessionStateRow = Partial<Tables<"csr_ai_agent_session_state"> & Tables<"ngo_ai_agent_session_state">>
@@ -97,6 +101,10 @@ const buildStateFromSession = (agent: AgentKind, session: PersistedSession) => {
         projectStep: toNumberOr(session?.projectStep ?? incomingUiState?.projectStep, 0),
         milestoneIndex: toNumberOr(session?.milestoneIndex ?? incomingUiState?.milestoneIndex, 0),
         milestoneQuestionIndex: toNumberOr(session?.milestoneQuestionIndex ?? incomingUiState?.milestoneQuestionIndex, 0),
+        draftCampaignId: session?.draftCampaignId ?? incomingUiState?.draftCampaignId ?? null,
+        leadNgoInvites: session?.leadNgoInvites ?? incomingUiState?.leadNgoInvites ?? [],
+        invitedOfferIds: session?.invitedOfferIds ?? incomingUiState?.invitedOfferIds ?? [],
+        selectedProjectSuggestionId: session?.selectedProjectSuggestionId ?? incomingUiState?.selectedProjectSuggestionId ?? null,
       },
     }
   }
@@ -171,7 +179,29 @@ const parseAgent = (value: unknown): AgentKind | null => {
   return null
 }
 
-const isValidUUID = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v)
+const isValidUUID = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v)
+
+/** Legacy non-UUID client ids map to a name-based (v5-style) UUID so repeated saves hit the same row. */
+function resolveSessionRowId(agent: AgentKind, userId: number, clientId: string): string {
+  if (isValidUUID(clientId)) return clientId
+  const hash = createHash('sha1').update(`navadrishti:${agent}:${userId}:${clientId}`).digest()
+  hash[6] = (hash[6] & 0x0f) | 0x50
+  hash[8] = (hash[8] & 0x3f) | 0x80
+  const hex = hash.subarray(0, 16).toString('hex')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`
+}
+
+/** Drops rows whose id already belongs to another user so a client cannot overwrite their sessions. */
+async function filterOwnedSessionRows<T extends { id: string }>(table: string, userId: number, rows: T[]) {
+  if (rows.length === 0) return rows
+  const { data, error } = await supabase
+    .from(table as "csr_ai_agent_sessions")
+    .select("id, user_id")
+    .in("id", rows.map((row) => row.id))
+  if (error) throw error
+  const foreign = new Set((data || []).filter((row) => Number(row.user_id) !== Number(userId)).map((row) => String(row.id)))
+  return rows.filter((row) => !foreign.has(row.id))
+}
 
 const readProfileData = async (userId: number) => {
   const { data, error } = await supabase
@@ -249,6 +279,11 @@ async function buildLatestPayloadFromTables(userId: number, agent: AgentKind) {
         milestoneQuestionIndex: toNumberOr(uiState.milestoneQuestionIndex, 0),
         serviceSuggestions: state.service_suggestions || [],
         generatedCampaigns: state.generated_campaigns || [],
+        draftCampaignId: typeof uiState.draftCampaignId === "string" ? uiState.draftCampaignId : null,
+        leadNgoInvites: Array.isArray(uiState.leadNgoInvites) ? uiState.leadNgoInvites : [],
+        invitedOfferIds: Array.isArray(uiState.invitedOfferIds) ? uiState.invitedOfferIds : [],
+        selectedProjectSuggestionId:
+          typeof uiState.selectedProjectSuggestionId === "string" ? uiState.selectedProjectSuggestionId : null,
         publishedCampaignId:
           published?.type === "campaign"
             ? published.id
@@ -383,15 +418,14 @@ export async function POST(request: NextRequest) {
         const profileData = await readProfileData(userId)
         const key = keyByAgent[agent]
         const legacy = profileData[key] as PersistedPayload | undefined
-        if (legacy && Array.isArray(legacy.sessions) && legacy.sessions.length > 0) {
-          const toInsert: TablesInsert<"csr_ai_agent_sessions">[] = []
-          const legacyIdMap: Record<string, string> = {}
-          for (const s of legacy.sessions) {
-            const origId = s.id
-            const idToUse = isValidUUID(origId) ? origId : randomUUID()
-            if (!isValidUUID(origId) && origId) legacyIdMap[idToUse] = origId
-            toInsert.push({
-              id: idToUse,
+        const legacySessions = legacy && Array.isArray(legacy.sessions)
+          ? legacy.sessions.filter((s) => s && typeof s.id === 'string' && s.id)
+          : []
+        if (legacy && legacySessions.length > 0) {
+          const candidates: Array<TablesInsert<"csr_ai_agent_sessions"> & { id: string }> = []
+          for (const s of legacySessions) {
+            candidates.push({
+              id: resolveSessionRowId(agent, userId, s.id),
               user_id: userId,
               title: s.title || "Untitled session",
               status: s.status || "active",
@@ -402,13 +436,17 @@ export async function POST(request: NextRequest) {
             })
           }
 
+          const toInsert = await filterOwnedSessionRows(sessionsTable, userId, candidates)
+          const migratedIds = new Set(toInsert.map((row) => row.id))
+
           const { error: upsertErr } = await supabase.from(sessionsTable).upsert(toInsert, { onConflict: 'id' })
           if (upsertErr) console.warn('Migration upsert sessions error', upsertErr)
 
           const legacyMessageRows: TablesInsert<"csr_ai_agent_messages">[] = []
-          for (const s of legacy.sessions) {
+          for (const s of legacySessions) {
             const origId = s.id
-            const idToUse = isValidUUID(origId) ? origId : Object.keys(legacyIdMap).find(k => legacyIdMap[k] === origId) || randomUUID()
+            const idToUse = resolveSessionRowId(agent, userId, origId)
+            if (!migratedIds.has(idToUse)) continue
             if (s.state || s.session_state || s.projectData || s.project_context || s.conversationStage) {
               const state = buildStateFromSession(agent, s)
               const ui_state: JsonObject = state.ui_state || {}
@@ -441,16 +479,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Upsert incoming sessions/state into the dedicated tables
-    const incomingSessions = normalizedPayload.sessions
-    const idMap: Record<string, string> = {}
-    const sessionRows = incomingSessions.map((s) => {
-      const origId = s.id
-      const idToUse = isValidUUID(origId) ? origId : randomUUID()
-      if (!isValidUUID(origId) && origId) idMap[origId] = idToUse
+    const incomingSessions = normalizedPayload.sessions.filter((s) => s && typeof s.id === 'string' && s.id)
+    const candidateRows = incomingSessions.map((s) => {
       const existingContext =
         s.project_context && typeof s.project_context === "object" ? s.project_context : {}
       return {
-        id: idToUse,
+        id: resolveSessionRowId(agent, userId, s.id),
         user_id: userId,
         title: s.title || "Untitled session",
         status: s.status || "active",
@@ -461,14 +495,18 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    const { error: upsertSessionsError } = await supabase.from(sessionsTable).upsert(sessionRows, { onConflict: 'id' })
-    if (upsertSessionsError) throw upsertSessionsError
+    const sessionRows = await filterOwnedSessionRows(sessionsTable, userId, candidateRows)
+    const ownedIds = new Set(sessionRows.map((row) => row.id))
+
+    if (sessionRows.length > 0) {
+      const { error: upsertSessionsError } = await supabase.from(sessionsTable).upsert(sessionRows, { onConflict: 'id' })
+      if (upsertSessionsError) throw upsertSessionsError
+    }
 
     const messageRows: TablesInsert<"csr_ai_agent_messages">[] = []
     for (const s of incomingSessions) {
-      const origId = s.id
-      const assignedId = isValidUUID(origId) ? origId : idMap[origId]
-      if (!assignedId) continue
+      const assignedId = resolveSessionRowId(agent, userId, s.id)
+      if (!ownedIds.has(assignedId)) continue
       const messages = Array.isArray(s.messages) ? s.messages : []
       for (const message of messages) {
         if (!message || typeof message !== 'object') continue
@@ -499,8 +537,8 @@ export async function POST(request: NextRequest) {
 
     for (const s of incomingSessions) {
       const origId = s.id
-      const assignedId = isValidUUID(origId) ? origId : idMap[origId]
-      if (!assignedId) continue
+      const assignedId = resolveSessionRowId(agent, userId, origId)
+      if (!ownedIds.has(assignedId)) continue
       const state = buildStateFromSession(agent, s)
       const ui_state: JsonObject = state.ui_state || {}
       if (!isValidUUID(origId) && origId) ui_state.legacyId = origId

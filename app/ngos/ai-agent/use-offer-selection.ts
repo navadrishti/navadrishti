@@ -11,15 +11,15 @@ import {
 
 type SetMessages = Dispatch<SetStateAction<Message[]>>
 
-/** Recommended offers per need index and which of them the NGO has chosen to invite. */
+/** Recommended offers per need index and which of them the NGO will apply to on publish. */
 export function useOfferSelection(setMessages: SetMessages) {
   const [offersLoading, setOffersLoading] = useState(false)
   const [relatedOffersByNeed, setRelatedOffersByNeed] = useState<Record<number, RelatedOfferEntry[]>>({})
   const [selectedOfferIdsByNeed, setSelectedOfferIdsByNeed] = useState<Record<number, number[]>>({})
   const [lastCompletedNeedIndex, setLastCompletedNeedIndex] = useState<number | null>(null)
 
-  // Fulfillment is recorded when the offer owner accepts the application, not on invite.
-  const toggleInviteOfferForNeed = (needIndex: number, offerId: number) => {
+  // Fulfillment is recorded when the offer owner accepts the application, not on selection.
+  const toggleOfferForNeed = (needIndex: number, offerId: number) => {
     setSelectedOfferIdsByNeed((prev) => {
       const selected = prev[needIndex] || []
       const nextSel = selected.includes(offerId)
@@ -42,7 +42,7 @@ export function useOfferSelection(setMessages: SetMessages) {
     setMessages((prev) => [...prev, { role: 'assistant', content: `Application queued for offer ${offerId} on Need ${needIndex + 1}. It will be sent when the draft is published.` }])
   }
 
-  const inviteAllOffersForNeed = (needIndex: number) => {
+  const applyToAllOffersForNeed = (needIndex: number) => {
     const allIds = (relatedOffersByNeed[needIndex] || []).map((entry) => entry.offer.id)
     setSelectedOfferIdsByNeed((prev) => ({
       ...prev,
@@ -50,7 +50,7 @@ export function useOfferSelection(setMessages: SetMessages) {
     }))
   }
 
-  const clearInvitesForNeed = (needIndex: number) => {
+  const removeAllOffersForNeed = (needIndex: number) => {
     setSelectedOfferIdsByNeed((prev) => ({
       ...prev,
       [needIndex]: []
@@ -66,10 +66,10 @@ export function useOfferSelection(setMessages: SetMessages) {
     setSelectedOfferIdsByNeed,
     lastCompletedNeedIndex,
     setLastCompletedNeedIndex,
-    toggleInviteOfferForNeed,
+    toggleOfferForNeed,
     applyOfferFromChat,
-    inviteAllOffersForNeed,
-    clearInvitesForNeed,
+    applyToAllOffersForNeed,
+    removeAllOffersForNeed,
   }
 }
 
@@ -85,10 +85,14 @@ export function useRelatedOffersLoader(
   setMessages: SetMessages
 ) {
   useEffect(() => {
+    // Session switches replace generatedDraft; responses for the previous draft must not land.
+    let cancelled = false
+
     const loadRelatedOffers = async () => {
       if (!generatedDraft) {
         setRelatedOffersByNeed({})
         setSelectedOfferIdsByNeed({})
+        setOffersLoading(false)
         return
       }
 
@@ -123,6 +127,7 @@ export function useRelatedOffersLoader(
           nextRelated[index] = toRelatedOfferEntries(recs, getExpectedOfferType(need.request_type) || undefined)
         }))
 
+        if (cancelled) return
         setRelatedOffersByNeed(nextRelated)
 
         setSelectedOfferIdsByNeed((prev) => {
@@ -139,15 +144,18 @@ export function useRelatedOffersLoader(
         setMessages((prev) => {
           const alreadyAnnounced = prev.some((m) => m.role === 'assistant' && m.content.includes('Step 4 complete'))
           if (alreadyAnnounced) return prev
-          return [...prev, { role: 'assistant', content: `Step 4 complete: ${AGENT_NAMES.pulse} recommended the best available service offers for each need. You can review and adjust invited offers before publishing.` }]
+          return [...prev, { role: 'assistant', content: `Step 4 complete: ${AGENT_NAMES.pulse} recommended the best available service offers for each need. You can review and adjust the offers you apply to before publishing.` }]
         })
       } catch {
-        setRelatedOffersByNeed({})
+        if (!cancelled) setRelatedOffersByNeed({})
       } finally {
-        setOffersLoading(false)
+        if (!cancelled) setOffersLoading(false)
       }
     }
 
     void loadRelatedOffers()
+    return () => {
+      cancelled = true
+    }
   }, [generatedDraft, setOffersLoading, setRelatedOffersByNeed, setSelectedOfferIdsByNeed, setMessages])
 }

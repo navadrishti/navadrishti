@@ -71,6 +71,17 @@ export const parseImageUrls = (value: string) => {
     .filter(Boolean)
 }
 
+/** Per-need state is keyed by list position, so removing a need shifts every later entry down by one. */
+export function withoutIndex<T>(record: Record<number, T>, removed: number): Record<number, T> {
+  const next: Record<number, T> = {}
+  for (const [key, value] of Object.entries(record)) {
+    const index = Number(key)
+    if (index < removed) next[index] = value
+    else if (index > removed) next[index - 1] = value
+  }
+  return next
+}
+
 export function needsFromDraft(draft: AIGeneratedDraft): NeedDraft[] {
   if (!Array.isArray(draft.needs)) return []
 

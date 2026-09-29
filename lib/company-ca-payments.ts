@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/db'
+import { adjustServiceRequestProgress, supabase } from '@/lib/db'
 import { parseJsonObject, validateCapturedPaymentAmounts } from '@/lib/utils'
 
 export function isCompanyCaPaymentOrder(orderNotes: unknown): boolean {
@@ -13,15 +13,9 @@ function collectIds(single: unknown, list: unknown): string[] {
 
 async function addToServiceRequestTotal(serviceRequestId: number, amountInr: number) {
   if (amountInr <= 0) return
-  const { data: sr } = await supabase.from('service_requests').select('current_amount, target_amount').eq('id', serviceRequestId).maybeSingle()
+  const { data: sr } = await supabase.from('service_requests').select('id, target_amount').eq('id', serviceRequestId).maybeSingle()
   if (!sr) return
-  const next = Number((Number(sr.current_amount || 0) + amountInr).toFixed(2))
-  const target = Number(sr.target_amount || 0)
-  await supabase.from('service_requests').update({
-    current_amount: next,
-    remaining_amount: target > 0 ? Number(Math.max(0, target - next).toFixed(2)) : null,
-    updated_at: new Date().toISOString(),
-  }).eq('id', serviceRequestId)
+  await adjustServiceRequestProgress(sr, { amount: amountInr }, { targetAmount: Number(sr.target_amount || 0) })
 }
 
 export type CompanyCaSettlementResult =
