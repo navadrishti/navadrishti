@@ -185,7 +185,7 @@ export async function verifyEmailOtpWithSupabase(
 }
 
 class EmailService {
-  private transporter: nodemailer.Transporter | null = null;
+  private transporter: ReturnType<typeof nodemailer.createTransport> | null = null;
 
   constructor() { this.initializeTransporter(); }
 
