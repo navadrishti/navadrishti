@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import type { UploadApiOptions, UploadApiResponse } from 'cloudinary';
 import { cloudinary } from '@/lib/cloudinary';
-import { sendEmail } from '@/lib/email';
+import { escapeHtml, sendEmail } from '@/lib/email';
 import { db } from '@/lib/db';
 import { getTokenClaims } from '@/lib/auth';
 
@@ -21,14 +21,6 @@ const ALLOWED_MIME_TYPES = new Set([
 ]);
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
-
-const escapeHtml = (value: string) =>
-  value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 
 export async function POST(request: NextRequest) {
   try {

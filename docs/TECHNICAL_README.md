@@ -686,7 +686,7 @@ erDiagram
 **Purpose:** Government monitoring domain.
 
 ### service_offer_embeddings
-**Purpose:** One vector per service offer (`service_offer_id` PK, cascades on offer delete) with a `content_hash` so unchanged offers are not re-embedded. RPC: `match_service_offers`. SQL in the local `reference/service_offer_embeddings.sql`.
+**Purpose:** One vector per service offer (`service_offer_id` PK, cascades on offer delete) with a `content_hash` so unchanged offers are not re-embedded. RPC: `match_service_offers`.
 
 `embeddings` and `capability_embeddings` are older tables with no reader or writer: `embeddings.entity_id` is a uuid and cannot reference integer offer IDs, and `capability_embeddings.capability_id` is an identity column so it cannot mirror `offer_capabilities.id`.
 
@@ -718,7 +718,7 @@ erDiagram
 - **Validation:** Zod schemas + `buildFallbackCampaigns()` deterministic fallback
 
 ### Vector Embeddings
-- **Invocation:** Supabase Edge Function `"embed"` (built-in `gte-small`, 384 dimensions; source kept locally in `reference/embed-edge-function.ts`; to deploy, copy it to `supabase/functions/embed/index.ts` in a scratch folder and run `supabase functions deploy embed --project-ref <ref> --use-api`)
+- **Invocation:** Supabase Edge Function `"embed"` (built-in `gte-small`, 384 dimensions; source kept locally in `reference/supabase/functions/embed/index.ts`; to deploy, run from `reference/` `supabase functions deploy embed --project-ref <ref> --use-api`)
 - **Storage:** `service_offer_embeddings`
 - **RPC:** `match_service_offers` (active offers only, same vector length as the query); `match_ngo_service` / `match_ngo_services` are unused
 - **Writes:** `syncServiceOfferEmbedding()` runs after an offer is created or edited; the daily cron embeds up to 50 active offers that are still missing one
@@ -1066,7 +1066,7 @@ Health: GET /api/health
 | Evidence ML validation | Not populated on submit |
 | CI/CD | No GitHub Actions workflows |
 | Test suite | Vitest unit tests for pure `lib/` helpers plus config checks (`pnpm test`); no API or UI tests |
-| Migration scripts | None tracked in the repo; the schema lives in the local `reference/completeschema.txt` dump (plus `reference/service_offer_embeddings.sql` for the embeddings table and match function), and `lib/database.types.ts` is kept in sync with it by hand |
+| Migration scripts | None tracked in the repo; the schema lives in the local `reference/completeschema.txt` dump, and `lib/database.types.ts` is kept in sync with it by hand |
 | Phone verification | OTP flow exists but is switched off (`PHONE_VERIFICATION_ENABLED = false`) |
 
 ## Missing Integrations
