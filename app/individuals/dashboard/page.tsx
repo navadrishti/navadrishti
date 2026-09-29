@@ -81,10 +81,10 @@ function IndividualDashboardContent() {
             </div>
 
             <Card>
-              <CardContent className="pt-6">
-                {activeTab === 'profile' ? (
-                  <ProfileDashboardTab />
-                ) : activeTab === 'capability-offers' ? (
+                  <CardContent className="pt-6">
+                    {activeTab === 'profile' ? (
+                      <ProfileDashboardTab />
+                    ) : activeTab === 'capability-offers' ? (
                   <CapabilityOffersSection
                     data={data}
                     actions={actions}
@@ -99,10 +99,10 @@ function IndividualDashboardContent() {
                   <NgoRequestsSection data={data} tab={myApplicationsTab} onTabChange={setMyApplicationsTab} />
                 ) : activeTab === 'csr-campaigns' ? (
                   <CsrCampaignsSection data={data} tab={csrCampaignsTab} onTabChange={setCsrCampaignsTab} />
-                ) : null}
-              </CardContent>
-            </Card>
-          </div>
+                    ) : null}
+                  </CardContent>
+                </Card>
+              </div>
         </DashboardBodyLayout>
       </div>
     </ProtectedRoute>

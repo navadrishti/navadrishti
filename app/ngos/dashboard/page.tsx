@@ -70,8 +70,8 @@ function NGODashboardContent() {
   useEffect(() => {
     if (!user?.id || user.user_type !== 'ngo') return;
 
-    const token = localStorage.getItem('token');
-    if (!token) return;
+      const token = localStorage.getItem('token');
+      if (!token) return;
 
     fetch('/api/profile/update?scope=payout', {
       headers: { Authorization: `Bearer ${token}` },
@@ -117,8 +117,8 @@ function NGODashboardContent() {
     if (activeTab !== 'profile') {
       navigateToTab('profile');
       window.setTimeout(attemptScroll, 260);
-      return;
-    }
+        return;
+      }
 
     attemptScroll();
   };
@@ -130,49 +130,49 @@ function NGODashboardContent() {
         <DashboardBodyLayout
           showSidebar={sidebarItems.length > 1}
           sidebar={
-            <DashboardQuickSidebar
-              items={sidebarItems}
-              activeTab={activeTab}
-              onSelect={navigateToTab}
-              triggerLabel="Dashboard sections"
-            />
+              <DashboardQuickSidebar
+                items={sidebarItems}
+                activeTab={activeTab}
+                onSelect={navigateToTab}
+                triggerLabel="Dashboard sections"
+              />
           }
         >
           <div className="space-y-8 p-4 md:p-6 lg:p-8">
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-              <div>
+                                <div>
                 <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
                 <p className="text-gray-500 mt-1">
                   Manage your NGO capability offers, service requests, and CSR projects
                 </p>
-              </div>
-            </div>
+                                </div>
+                                </div>
 
             {allVerified && acceptsPayments === false ? (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="flex items-start gap-3">
                     <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
-                    <div>
+                              <div>
                       <p className="font-medium text-amber-900">Connect account to receive donations</p>
                       <p className="mt-1 text-sm text-amber-800">
                         {payoutDetailsSaved
                           ? 'Your NGO is listed on the NGO Network. Connect Razorpay payout below so donors and companies can pay you.'
                           : 'Your NGO is listed on the NGO Network. Save payout bank details, then connect Razorpay to receive donations.'}
                       </p>
-                    </div>
-                  </div>
-                  <Button
+                                      </div>
+                                        </div>
+                                  <Button
                     type="button"
-                    variant="outline"
+                                    variant="outline"
                     className="border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
                     onClick={scrollToPayoutBankSection}
                   >
                     {payoutDetailsSaved ? 'Connect Razorpay payout' : 'Set up payout account'}
-                  </Button>
-                </div>
-              </div>
-            ) : null}
+                                  </Button>
+                                </div>
+                              </div>
+                                  ) : null}
 
             <Card>
               <CardContent className="pt-6">
@@ -182,7 +182,7 @@ function NGODashboardContent() {
                 }} className="w-full">
                   <TabsContent value="profile" className="mt-4 space-y-4">
                     <ProfileDashboardTab />
-                  </TabsContent>
+                          </TabsContent>
 
                   <TabsContent value="service-offers" className="mt-4 space-y-4">
                     <CapabilityOffersSection
@@ -196,7 +196,7 @@ function NGODashboardContent() {
                       onOfferRequestsTabChange={setOfferRequestsTab}
                     />
                   </TabsContent>
-
+                  
                   <TabsContent value="service-requests" className="mt-4 space-y-4">
                     <NeedsSection
                       ongoingNeeds={data.ongoingNeeds}
@@ -206,7 +206,7 @@ function NGODashboardContent() {
                       onTabChange={setTrackingTab}
                       onNeedUpdated={data.fetchServiceRequests}
                     />
-                  </TabsContent>
+                      </TabsContent>
 
                   <TabsContent value="csr-projects" className="mt-4 space-y-4">
                     <CsrProjectsSection
@@ -217,11 +217,11 @@ function NGODashboardContent() {
                       projectsTab={csrProjectsTab}
                       onProjectsTabChange={setCsrProjectsTab}
                     />
-                  </TabsContent>
+                        </TabsContent>
 
                   <TabsContent value="impact-reports" className="mt-4">
                     <ImpactReportsPanel audience="ngo" />
-                  </TabsContent>
+                        </TabsContent>
 
                   <TabsContent value="payments" className="mt-4">
                     <PaymentHistoryPanel
@@ -231,10 +231,10 @@ function NGODashboardContent() {
                       emptyMessage="No Razorpay payments received yet on your NGO account."
                     />
                   </TabsContent>
-                </Tabs>
-              </CardContent>
-            </Card>
-          </div>
+                    </Tabs>
+                  </CardContent>
+                </Card>
+              </div>
         </DashboardBodyLayout>
       </div>
     </ProtectedRoute>

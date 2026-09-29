@@ -130,14 +130,14 @@ function CSRAgentPage() {
     canUseCampaignActions,
     activeQuestion,
   } = useQuestionnaireProgress({
-    projectData,
-    milestoneCount,
-    milestoneInputs,
+      projectData,
+      milestoneCount,
+      milestoneInputs,
     conversationStage,
-    projectStep,
-    milestoneQuestionIndex,
+      projectStep,
+      milestoneQuestionIndex,
     generatedCampaignCount: generatedCampaigns.length,
-    selectedProjectSuggestionId,
+      selectedProjectSuggestionId,
   })
 
   const effectiveUserType = mounted ? user?.user_type : undefined
@@ -390,7 +390,7 @@ function CSRAgentPage() {
         cloudSaveText={cloudSaveText}
       />
 
-      <div className="grid flex-1 gap-4 min-h-0 lg:grid-cols-[280px_1.1fr_0.9fr] lg:items-stretch lg:gap-6">
+          <div className="grid flex-1 gap-4 min-h-0 lg:grid-cols-[280px_1.1fr_0.9fr] lg:items-stretch lg:gap-6">
         <SessionSidebar
           sessions={orderedSessions}
           activeSessionId={activeSessionId}
@@ -486,7 +486,7 @@ function CSRAgentPage() {
               actionsEnabled={canUseCampaignActions}
               onToggleInvite={handleInviteLeadNgoToggle}
             />
-          ) : null}
+                                ) : null}
 
           <MilestonesCard
             milestoneCount={milestoneCount}
@@ -509,7 +509,7 @@ function CSRAgentPage() {
             onRetry={() => finalizeConversation()}
           />
         </PreviewPanel>
-      </div>
+                            </div>
     </AgentShell>
   )
 }

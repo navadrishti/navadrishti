@@ -115,11 +115,11 @@ function CompanyDashboardContent() {
             ) : null}
 
             <Card>
-              <CardContent className="pt-6">
-                <Tabs value={activeTab} onValueChange={(value) => {
+                  <CardContent className="pt-6">
+                    <Tabs value={activeTab} onValueChange={(value) => {
                   window.history.replaceState(null, '', companyDashboardTabHref(value));
                   router.replace(companyDashboardTabHref(value), { scroll: false });
-                }} className="w-full">
+                    }} className="w-full">
                   <TabsContent value="profile" className="mt-4 space-y-4">
                     <ProfileDashboardTab />
                   </TabsContent>
@@ -164,10 +164,10 @@ function CompanyDashboardContent() {
                       emptyMessage="No Razorpay payments recorded yet for your company account."
                     />
                   </TabsContent>
-                </Tabs>
-              </CardContent>
-            </Card>
-          </div>
+                    </Tabs>
+                  </CardContent>
+                </Card>
+              </div>
         </DashboardBodyLayout>
       </div>
     </ProtectedRoute>
