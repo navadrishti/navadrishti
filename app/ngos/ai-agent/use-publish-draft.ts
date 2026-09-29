@@ -1,7 +1,8 @@
+import { useRef } from "react"
 import { useRouter } from "next/navigation"
 import type { User } from "@/lib/auth-context"
 import { getErrorMessage } from "@/lib/utils"
-import type { NGOAIAgentSession, ServiceRequestDraftPayload } from "./intake"
+import type { NGOAIAgentSession, RelatedOfferEntry, ServiceRequestDraftPayload } from "./intake"
 import { buildNeedPublishBody, buildProjectPublishBody } from "./drafts"
 import type { IntakeState } from "./use-intake-state"
 
@@ -10,6 +11,7 @@ const REDIRECT_DELAY_MS = 1500
 type PublishDraftOptions = {
   intake: IntakeState
   selectedOfferIdsByNeed: Record<number, number[]>
+  relatedOffersByNeed: Record<number, RelatedOfferEntry[]>
   user: User | null
   token: string | null
   normalizeSessionFromState: () => NGOAIAgentSession | null
@@ -21,6 +23,7 @@ type PublishDraftOptions = {
 export function usePublishDraft({
   intake,
   selectedOfferIdsByNeed,
+  relatedOffersByNeed,
   user,
   token,
   normalizeSessionFromState,
@@ -28,6 +31,7 @@ export function usePublishDraft({
   persistSessions,
 }: PublishDraftOptions) {
   const router = useRouter()
+  const publishingRef = useRef(false)
   const { generatedDraft, publishingDraft, setPublishingDraft, setMessages, intakePath, projectData, setPublishedProjectId } = intake
 
   const appendAssistant = (content: string) => {
@@ -55,25 +59,39 @@ export function usePublishDraft({
 
     const needId = Number(needData.data.id)
 
-    const invited = selectedOfferIdsByNeed[0] || []
-    for (const offerId of invited) {
+    const offerTitle = (offerId: number) =>
+      (relatedOffersByNeed[0] || []).find((entry) => entry.offer.id === offerId)?.offer.title || `Offer #${offerId}`
+
+    // An application failing must not undo the published need, so failures are reported instead of thrown.
+    const failures = await Promise.all((selectedOfferIdsByNeed[0] || []).map(async (offerId) => {
       try {
-        await fetch(`/api/service-offers/${offerId}/clients`, {
+        const response = await fetch(`/api/service-offers/${offerId}/clients`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({
-            client_id: user?.id,
             client_type: user?.user_type,
             selected_need_ids: [needId],
-            message: `Applying for need ${needId}`
+            message: `Applying for need: ${draft.needs[0].title}`
           })
         })
+        if (response.ok) return null
+        const body = await response.json().catch(() => ({}))
+        return `${offerTitle(offerId)}: ${body?.message || body?.error || 'the application was not accepted'}`
       } catch {
-        // An individual invite failing should not block publishing.
+        return `${offerTitle(offerId)}: network error`
       }
-    }
+    }))
+    const appliedCount = failures.filter((failure) => failure === null).length
+    const failed = failures.filter((failure): failure is string => failure !== null)
 
-    appendAssistant(`Published successfully! Your standalone need is now live.`)
+    const summary = [`Published successfully! Your standalone need is now live.`]
+    if (appliedCount > 0) {
+      summary.push(`Applied to ${appliedCount} offer${appliedCount === 1 ? '' : 's'}. The offer owners can accept from their applicants list.`)
+    }
+    if (failed.length > 0) {
+      summary.push(`These applications could not be sent. You can apply again from the offer page:\n${failed.map((line) => `- ${line}`).join('\n')}`)
+    }
+    appendAssistant(summary.join('\n\n'))
 
     setTimeout(() => {
       router.push(`/service-requests/${needId}`)
@@ -114,13 +132,14 @@ export function usePublishDraft({
 
   const publishDraft = async (draftToPublish?: ServiceRequestDraftPayload | null) => {
     const draft = draftToPublish || generatedDraft
-    if (!draft || publishingDraft) return
+    if (!draft || publishingDraft || publishingRef.current) return
 
     if (!token) {
       appendAssistant('Please log in again. I could not find your auth session token.')
       return
     }
 
+    publishingRef.current = true
     setPublishingDraft(true)
     try {
       if (intakePath === 'need') {
@@ -130,9 +149,10 @@ export function usePublishDraft({
       } else {
         throw new Error('Unknown intake path')
       }
-      setPublishingDraft(false)
+      // Stay locked until the redirect so a second click cannot publish a duplicate.
     } catch (error) {
       appendAssistant(`Publishing failed: ${getErrorMessage(error) || 'Unknown error'}`)
+      publishingRef.current = false
       setPublishingDraft(false)
     }
   }

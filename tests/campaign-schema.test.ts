@@ -52,16 +52,36 @@ describe('buildCampaignWritePayload', () => {
       milestones: [],
       start_date: null,
       end_date: null,
+      status: 'draft',
     })
   })
 
-  it('uses category as schedule_vii and passes status through', () => {
-    const payload = buildCampaignWritePayload({ title: 'T', cause: 'Health', region: 'Pune', status: 'draft' }, 7)
-    expect(payload).toMatchObject({ category: 'Health', location: 'Pune', schedule_vii: 'Health', status: 'draft' })
+  it('uses category as schedule_vii', () => {
+    const payload = buildCampaignWritePayload({ title: 'T', cause: 'Health', region: 'Pune' }, 7)
+    expect(payload).toMatchObject({ category: 'Health', location: 'Pune', schedule_vii: 'Health' })
   })
 
-  it('omits status when not given', () => {
-    expect(buildCampaignWritePayload({ title: 'T' }, 7)).not.toHaveProperty('status')
+  it('always creates drafts', () => {
+    expect(buildCampaignWritePayload({ title: 'T', status: 'active' }, 7).status).toBe('draft')
+  })
+
+  it('keeps only client-editable impact metrics', () => {
+    const payload = buildCampaignWritePayload({
+      title: 'T',
+      impact_metrics: {
+        beneficiaries: 50,
+        duration: '6 months',
+        volunteer_requirement: '10',
+        lead_ngo_accepted: true,
+        lead_ngo_user_id: 9,
+        csr_capability_rentals: [{ id: 'x' }],
+        volunteer_applications: [{ user_id: 1 }],
+        invited_offer_ids: [4],
+        published_at: '2026-01-01',
+        csr_agent_session_id: 's1',
+      },
+    }, 7)
+    expect(payload.impact_metrics).toEqual({ beneficiaries: 50, duration: '6 months', volunteer_requirement: '10' })
   })
 })
 

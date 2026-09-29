@@ -11,7 +11,7 @@ import type { ClientApplication, NgoNeedOption, ServiceOffer, ServiceRequestList
 
 export function useServiceOffer(offerId: string) {
   const router = useRouter()
-  const { user, token } = useAuth()
+  const { user, token, loading: authLoading } = useAuth()
   const { toast } = useToast()
   const [offer, setOffer] = useState<ServiceOffer | null>(null)
   const [userApplication, setUserApplication] = useState<ClientApplication | null>(null)
@@ -33,7 +33,10 @@ export function useServiceOffer(offerId: string) {
 
   const fetchOfferDetails = async () => {
     try {
-      const response = await fetch(`/api/service-offers/${offerId}`, { cache: 'no-store' })
+      const response = await fetch(`/api/service-offers/${offerId}`, {
+        cache: 'no-store',
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined
+      })
       if (response.ok) {
         const data = await response.json()
         setOffer(data)
@@ -59,7 +62,9 @@ export function useServiceOffer(offerId: string) {
 
   const checkExistingApplication = async () => {
     try {
-      const response = await fetch(`/api/service-offers/${offerId}/clients?userId=${user?.id}`)
+      const response = await fetch(`/api/service-offers/${offerId}/clients?userId=${user?.id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
       if (response.ok) {
         const data = await response.json()
         setUserApplication(data || null)
@@ -117,8 +122,8 @@ export function useServiceOffer(offerId: string) {
   })
 
   useEffect(() => {
-    if (offerId) loadOffer()
-  }, [offerId, isAuthenticated, user])
+    if (offerId && !authLoading) loadOffer()
+  }, [offerId, authLoading, isAuthenticated, user])
 
   const loadNgoNeeds = useEffectEvent(() => {
     if (isAuthenticated && user?.user_type === 'ngo' && offer) {
@@ -179,7 +184,7 @@ export function useServiceOffer(offerId: string) {
 
     const isRentalOffer = isCapabilityRentalTransaction(offer?.transaction_type)
     const offerAmount = Number(offer?.price_amount || 0)
-    if (!isRentalOffer && Number.isFinite(offerAmount) && selectedNeedTotal > offerAmount) {
+    if (!isRentalOffer && Number.isFinite(offerAmount) && offerAmount > 0 && selectedNeedTotal > offerAmount) {
       toast({
         title: 'Selection exceeds offer value',
         description: 'Please choose needs whose total value fits within the offer amount.',
@@ -194,7 +199,8 @@ export function useServiceOffer(offerId: string) {
       const response = await fetch(`/api/service-offers/${offerId}/clients`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
         },
         body: JSON.stringify({
           client_id: user.id,

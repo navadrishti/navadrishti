@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { after, NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import crypto from 'crypto';
 import { db } from '@/lib/db';
@@ -125,12 +125,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const user = await db.users.findByEmail(email);
-
-    // Send failures are only logged: any difference in the response would reveal that the account exists.
-    if (user) {
-      await sendPasswordResetOtp(email);
-    }
+    // The lookup and send run after the response so neither its content nor its timing
+    // reveals whether the account exists; failures are only logged.
+    after(async () => {
+      try {
+        const user = await db.users.findByEmail(email);
+        if (user) await sendPasswordResetOtp(email);
+      } catch (error) {
+        console.error('Forgot password OTP send error:', error);
+      }
+    });
 
     return NextResponse.json(GENERIC_SEND_RESPONSE);
   } catch (error: unknown) {

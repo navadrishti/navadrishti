@@ -87,8 +87,8 @@ function deriveAutoUrgency(timeline: unknown, createdAtMs: number): 'low' | 'med
 function buildProgressFields(body: Record<string, unknown>, existing?: Record<string, unknown> | null) {
   const targetAmount = parseAmount(body.target_amount ?? body.estimated_budget ?? body.budget ?? existing?.target_amount ?? existing?.estimated_budget ?? existing?.budget);
   const targetQuantity = parseAmount(body.target_quantity ?? body.quantity ?? body.volunteers_needed ?? body.beneficiary_count ?? existing?.target_quantity ?? existing?.quantity ?? existing?.volunteers_needed ?? existing?.beneficiary_count);
-  const currentAmount = parseAmount(body.current_amount ?? existing?.current_amount) ?? 0;
-  const currentQuantity = parseAmount(body.current_quantity ?? existing?.current_quantity) ?? 0;
+  const currentAmount = parseAmount(existing?.current_amount) ?? 0;
+  const currentQuantity = parseAmount(existing?.current_quantity) ?? 0;
 
   return {
     target_amount: targetAmount,
@@ -214,8 +214,6 @@ export async function PUT(
       project,
       target_amount,
       target_quantity,
-      current_amount,
-      current_quantity,
       project_context,
       images,
       details
@@ -288,6 +286,35 @@ export async function PUT(
 
     if (isLockedCsrProject(existingRequest)) {
       return NextResponse.json({ error: 'This need is locked because the parent project is already assigned to a company.' }, { status: 409 });
+    }
+
+    const progressFields = buildProgressFields({
+      target_amount,
+      target_quantity,
+      estimated_budget,
+      budget,
+      beneficiary_count,
+      volunteers_needed: body.volunteers_needed,
+      quantity: body.quantity
+    }, existingRequest);
+
+    const sameNumber = (a: unknown, b: unknown) => (a == null ? null : Number(a)) === (b == null ? null : Number(b));
+    const changesAllocationBasis =
+      String(normalizedRequestType) !== String(existingRequest.request_type || '') ||
+      !sameNumber(progressFields.target_amount, existingRequest.target_amount) ||
+      !sameNumber(progressFields.target_quantity, existingRequest.target_quantity);
+
+    if (changesAllocationBasis) {
+      if (String(existingRequest.status || '').toLowerCase() !== 'active') {
+        return NextResponse.json({ error: 'The need type and target can only be changed while the need is active.' }, { status: 409 });
+      }
+      const applicants = await db.serviceRequestApplications.getByRequestId(requestId);
+      const hasAcceptedApplicant = (applicants || []).some((applicant) =>
+        ['accepted', 'active', 'completed'].includes(String(applicant.status || '').toLowerCase())
+      );
+      if (hasAcceptedApplicant) {
+        return NextResponse.json({ error: 'The need type and target cannot be changed after accepting an applicant.' }, { status: 409 });
+      }
     }
 
     let resolvedProjectId: string | null = projectId || existingRequest.project_id || null;
@@ -387,18 +414,6 @@ export async function PUT(
       category_details: details || {},
       images: parsedImages
     };
-
-    const progressFields = buildProgressFields({
-      target_amount,
-      target_quantity,
-      current_amount,
-      current_quantity,
-      estimated_budget,
-      budget,
-      beneficiary_count,
-      volunteers_needed: body.volunteers_needed,
-      quantity: body.quantity
-    }, existingRequest);
 
     const updateData = {
       title,

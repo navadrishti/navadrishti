@@ -1,7 +1,11 @@
 import 'server-only'
-import { buildAllocationUpdatePayload } from '@/lib/service-request-allocation'
-import { ServiceRequestDeleteBlockedError } from '@/lib/service-requests/errors'
-import { parseJsonObject } from '@/lib/utils'
+import { getServiceRequestTarget } from '@/lib/service-request-allocation'
+import {
+  isMissingRpcFunction,
+  NeedCapacityExceededError,
+  ServiceRequestDeleteBlockedError,
+} from '@/lib/service-requests/errors'
+import { parseAmountToInr, parseJsonObject } from '@/lib/utils'
 import type { Json, Tables, TablesInsert, TablesUpdate } from '@/lib/database.types'
 import { supabase } from './client'
 
@@ -416,35 +420,96 @@ export const serviceRequestContributions = {
   }
 }
 
-export async function applyVolunteerAcceptanceAllocation(
-  request: Tables<'service_requests'>,
-  input: { amount?: number; quantity?: number }
-) {
-  const allocation = buildAllocationUpdatePayload(request, input)
-  const updatePayload: TablesUpdate<'service_requests'> = {
-    updated_at: new Date().toISOString(),
+type ProgressDelta = { amount?: number; quantity?: number }
+
+function exceedsTarget(current: unknown, delta: number, target: number) {
+  return delta > 0 && target > 0 && Number(current || 0) + delta > target
+}
+
+/**
+ * Adds to (or, with negative deltas, takes from) a need's progress in a single statement, so
+ * concurrent acceptances and payments can't overwrite each other's totals. Until the
+ * adjust_service_request_progress function is deployed it falls back to a fresh read and update.
+ */
+export async function adjustServiceRequestProgress(
+  request: Pick<Tables<'service_requests'>, 'id'> & Partial<Tables<'service_requests'>>,
+  delta: ProgressDelta,
+  options: { enforceCapacity?: boolean; targetAmount?: number; targetQuantity?: number } = {}
+): Promise<Tables<'service_requests'>> {
+  const derived = getServiceRequestTarget(request)
+  const target = {
+    amount: options.targetAmount ?? derived.amount,
+    quantity: options.targetQuantity ?? derived.quantity,
+  }
+  const amountDelta = Number(delta.amount || 0)
+  const quantityDelta = Number(delta.quantity || 0)
+  const enforceCapacity = options.enforceCapacity ?? false
+
+  const { data, error } = await supabase.rpc('adjust_service_request_progress', {
+    p_request_id: request.id,
+    p_amount_delta: amountDelta,
+    p_quantity_delta: quantityDelta,
+    p_target_amount: target.amount,
+    p_target_quantity: target.quantity,
+    p_enforce_capacity: enforceCapacity,
+  })
+
+  if (!error) {
+    const row = Array.isArray(data) ? data[0] : data
+    if (!row) throw new NeedCapacityExceededError()
+    return row
+  }
+  if (!isMissingRpcFunction(error)) throw error
+
+  const { data: latest, error: readError } = await supabase
+    .from('service_requests')
+    .select('*')
+    .eq('id', request.id)
+    .maybeSingle()
+  if (readError) throw readError
+  if (!latest) throw new Error('Service request not found')
+
+  if (
+    enforceCapacity &&
+    (exceedsTarget(latest.current_amount, amountDelta, target.amount) ||
+      exceedsTarget(latest.current_quantity, quantityDelta, target.quantity))
+  ) {
+    throw new NeedCapacityExceededError()
   }
 
-  if (allocation.current_amount != null) {
-    updatePayload.current_amount = allocation.current_amount
-    updatePayload.remaining_amount = allocation.remaining_amount
+  const updatePayload: TablesUpdate<'service_requests'> = { updated_at: new Date().toISOString() }
+  if (amountDelta !== 0) {
+    const nextAmount = Number(Math.max(0, Number(latest.current_amount || 0) + amountDelta).toFixed(2))
+    updatePayload.current_amount = nextAmount
+    if (target.amount > 0) updatePayload.remaining_amount = Number(Math.max(0, target.amount - nextAmount).toFixed(2))
+  }
+  if (quantityDelta !== 0) {
+    const nextQuantity = Math.max(0, Number(latest.current_quantity || 0) + quantityDelta)
+    updatePayload.current_quantity = nextQuantity
+    if (target.quantity > 0) updatePayload.remaining_quantity = Math.max(0, target.quantity - nextQuantity)
   }
 
-  if (allocation.current_quantity != null) {
-    updatePayload.current_quantity = allocation.current_quantity
-    updatePayload.remaining_quantity = allocation.remaining_quantity
-  }
-
-  const { data, error } = await supabase
+  const { data: updated, error: updateError } = await supabase
     .from('service_requests')
     .update(updatePayload)
     .eq('id', request.id)
     .select('*')
     .single()
+  if (updateError || !updated) throw new Error(updateError?.message || 'Failed to update need progress')
+  return updated
+}
 
-  if (error || !data) {
-    throw new Error(error?.message || 'Failed to update need allocation')
-  }
+function allocationDelta(request: Tables<'service_requests'>, input: ProgressDelta, sign: 1 | -1): ProgressDelta {
+  return getServiceRequestTarget(request).isFinancial
+    ? { amount: sign * parseAmountToInr(input.amount) }
+    : { quantity: sign * parseAmountToInr(input.quantity) }
+}
 
-  return data
+export function applyVolunteerAcceptanceAllocation(request: Tables<'service_requests'>, input: ProgressDelta) {
+  return adjustServiceRequestProgress(request, allocationDelta(request, input, 1), { enforceCapacity: true })
+}
+
+/** Inverse of applyVolunteerAcceptanceAllocation, used when an accepted application is withdrawn. */
+export function releaseVolunteerAllocation(request: Tables<'service_requests'>, input: ProgressDelta) {
+  return adjustServiceRequestProgress(request, allocationDelta(request, input, -1))
 }

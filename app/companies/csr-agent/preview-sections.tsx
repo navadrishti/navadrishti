@@ -1,10 +1,12 @@
 "use client"
 
+import Link from "next/link"
 import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { InlineCsrCapabilityDelhivery } from "@/components/service-card"
 import { VerifiedAccountName } from "@/components/verification-badge"
 import { AGENT_NAMES } from "@/lib/ai-agent-sessions"
+import { formatStatusLabel } from "@/lib/format-date"
 import type { CsrCapabilityRentalRecord } from "@/lib/service-engagement"
 import { isPendingLeadInvite } from "./helpers"
 import type {
@@ -41,7 +43,7 @@ export function ProjectSuggestionsSection({
             <div key={project.id} className={`rounded-xl border bg-white p-3 ${selectedId === project.id ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200'}`}>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-slate-950">{project.title}</p>
+                  <p className="text-sm font-semibold text-slate-950 [overflow-wrap:anywhere]">{project.title}</p>
                   <p className="mt-1 text-xs text-slate-600 break-words">{project.description || 'No description available.'}</p>
                   <p className="mt-1 text-xs text-slate-500">{project.location || 'Location unavailable'}{project.timeline ? ` • ${project.timeline}` : ''}</p>
                 </div>
@@ -136,7 +138,10 @@ export function ServiceMatchesSection({
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-slate-950">{service.capability_name}</p>
-                  <p className="mt-1 text-xs text-slate-500">Offer #{service.service_offer_id} • {service.offer_type}</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Offer #{service.service_offer_id}
+                    {service.offer_type && service.offer_type !== "unknown" ? ` • ${formatStatusLabel(service.offer_type)}` : ""}
+                  </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2 self-start">
                   <span className="whitespace-nowrap rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">Score {service.score}</span>
@@ -271,7 +276,10 @@ export function PublishStatusSection({
   leadLocked,
   questionnaireComplete,
   actionsEnabled,
+  publishing = false,
+  publishedCampaignId = null,
   onPublish,
+  onRetry,
 }: {
   generating: boolean
   campaigns: GeneratedCampaign[]
@@ -281,14 +289,32 @@ export function PublishStatusSection({
   leadLocked: boolean
   questionnaireComplete: boolean
   actionsEnabled: boolean
+  publishing?: boolean
+  publishedCampaignId?: string | null
   onPublish: () => void | Promise<void>
+  onRetry?: () => void | Promise<void>
 }) {
+  const generationFailed = Boolean(error) && Boolean(acceptedLead) && campaigns.length === 0 && !generating
+
   return (
     <div className="rounded-2xl border border-blue-200 bg-white p-4 shadow-sm">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <p className="text-sm font-semibold text-slate-950">Publish</p>
+        <span className="text-xs text-slate-500">
+          {publishedCampaignId ? "Published" : campaigns.length > 0 ? "Draft ready" : "Waiting"}
+        </span>
+      </div>
       {generating ? (
         <div className="flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-slate-700">
           <Loader2 className="h-4 w-4 shrink-0 animate-spin text-[#1d4ed8]" />
           Generating your campaign draft...
+        </div>
+      ) : publishedCampaignId ? (
+        <div className="flex flex-col gap-3 rounded-xl border border-gram-border bg-gram-sage px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm font-semibold text-slate-900">This campaign is live on CSR Campaigns.</p>
+          <Button asChild variant="outline" className="shrink-0">
+            <Link href={`/csr-campaigns/${publishedCampaignId}`}>View campaign</Link>
+          </Button>
         </div>
       ) : acceptedLead && campaigns.length > 0 ? (
         <div className="flex flex-col gap-3 rounded-xl border border-gram-border bg-gram-sage px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
@@ -299,10 +325,26 @@ export function PublishStatusSection({
             type="button"
             className="shrink-0 bg-[#1d4ed8] text-white hover:bg-[#1e40af]"
             onClick={onPublish}
-            disabled={!actionsEnabled}
+            disabled={!actionsEnabled || publishing}
           >
-            Publish
+            {publishing ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Publishing...
+              </>
+            ) : (
+              "Publish"
+            )}
           </Button>
+        </div>
+      ) : generationFailed ? (
+        <div className="flex flex-col gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-red-700">{error}</p>
+          {onRetry && (
+            <Button type="button" variant="outline" className="shrink-0" onClick={onRetry}>
+              Try again
+            </Button>
+          )}
         </div>
       ) : acceptedLead ? (
         <div className="flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-slate-700">
@@ -317,8 +359,12 @@ export function PublishStatusSection({
         <div className="rounded-xl border border-dashed border-blue-200 bg-blue-50/40 px-4 py-3 text-sm text-slate-600">
           Invite at least one lead NGO above. Once they accept from their dashboard, your campaign draft will be generated and you can publish.
         </div>
-      ) : null}
-      {error ? (
+      ) : (
+        <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          Answer the remaining questions in the chat. Once every campaign detail is captured and a lead NGO accepts, your draft appears here ready to publish.
+        </div>
+      )}
+      {error && !generationFailed ? (
         <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>
       ) : null}
     </div>

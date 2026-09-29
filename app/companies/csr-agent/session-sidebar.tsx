@@ -43,7 +43,7 @@ export function SessionSidebar({ sessions, activeSessionId, onNewSession, onSele
                     onClick={() => onSelectSession(session)}
                     className="min-w-0 flex-1 px-3 py-2 text-left"
                   >
-                    <p className="text-sm font-semibold text-slate-900">{getSessionDisplayTitle(session)}</p>
+                    <p className="text-sm font-semibold text-slate-900 [overflow-wrap:anywhere]">{getSessionDisplayTitle(session)}</p>
                     <p className="mt-1 text-[11px] text-slate-500">{new Date(session.updatedAt).toLocaleString()}</p>
                   </button>
                   <button

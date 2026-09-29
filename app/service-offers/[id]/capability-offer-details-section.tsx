@@ -105,7 +105,7 @@ export function CapabilityOfferDetailsSection({ offer }: { offer: CapabilityOffe
 
         <div>
           <p className="text-sm text-gray-500">Offer Title</p>
-          <p className="text-sm font-medium text-slate-800">{offer.title}</p>
+          <p className="text-sm font-medium text-slate-800">{displayValue(offer.title)}</p>
         </div>
 
         <div className="grid grid-cols-1 gap-x-12 gap-y-6 md:grid-cols-2">
@@ -116,7 +116,7 @@ export function CapabilityOfferDetailsSection({ offer }: { offer: CapabilityOffe
 
         <section className="space-y-3">
           <h4 className="text-sm font-medium text-gray-500">Description</h4>
-          <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">{offer.description}</p>
+          <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">{displayValue(offer.description)}</p>
         </section>
 
         {images.length > 0 ? (

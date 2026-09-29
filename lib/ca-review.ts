@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { NextResponse, type NextRequest } from 'next/server'
-import { getCAFromRequest } from '@/lib/server-auth'
+import { authErrorResponse, getActiveCAFromRequest } from '@/lib/server-auth'
 import type { PlatformCATokenPayload } from '@/lib/platform-ca-auth'
 import { CAReviewError } from './ca-review/errors'
 
@@ -10,8 +10,8 @@ export { getCAReview } from './ca-review/review'
 export { applyCAVerificationAction } from './ca-review/verification-action'
 export { CAReviewError }
 
-export function requireCA(request: NextRequest): PlatformCATokenPayload {
-  const ca = getCAFromRequest(request)
+export async function requireCA(request: NextRequest): Promise<PlatformCATokenPayload> {
+  const ca = await getActiveCAFromRequest(request)
   if (!ca) {
     throw new Error('CA authentication required')
   }
@@ -25,5 +25,5 @@ export function caErrorResponse(error: unknown) {
   if (error instanceof CAReviewError) {
     return NextResponse.json({ error: error.message }, { status: error.status })
   }
-  return null
+  return authErrorResponse(error)
 }

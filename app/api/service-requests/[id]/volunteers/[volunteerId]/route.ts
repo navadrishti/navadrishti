@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, getApplicationApplicantUserId, shapeApplicationForApi, supabase, applyVolunteerAcceptanceAllocation } from '@/lib/db';
+import {
+  db,
+  getApplicationApplicantUserId,
+  shapeApplicationForApi,
+  supabase,
+  applyVolunteerAcceptanceAllocation,
+  releaseVolunteerAllocation,
+} from '@/lib/db';
 import { getTokenClaims } from '@/lib/auth';
 import {
   getNeedRemainingQuantity,
@@ -9,8 +16,15 @@ import {
   getSkillServiceDailyRate,
   shouldCreateSkillServiceAssignment,
 } from '@/lib/service-request-allocation';
-import { parseAmountToInr, getErrorMessage, parseJsonObject } from '@/lib/utils';
+import { NeedCapacityExceededError } from '@/lib/service-requests/errors';
+import { parseAmountToInr, parseJsonObject } from '@/lib/utils';
 import type { Json, TablesUpdate } from '@/lib/database.types';
+
+const NGO_STATUS_TRANSITIONS: Record<string, string[]> = {
+  pending: ['accepted', 'rejected'],
+  accepted: ['completed', 'cancelled', 'rejected'],
+  active: ['completed', 'cancelled', 'rejected'],
+};
 
 // PUT - Update volunteer status
 export async function PUT(
@@ -71,6 +85,25 @@ export async function PUT(
       return NextResponse.json({ error: 'You can only update your own application' }, { status: 403 });
     }
 
+    const currentStatus = String(volunteerApplication.status || 'pending').toLowerCase();
+
+    if (userType === 'individual') {
+      if (status !== 'completed' && status !== 'cancelled') {
+        return NextResponse.json({ error: 'You can only mark your work as done or withdraw a pending application' }, { status: 403 });
+      }
+      const allowedFrom = status === 'completed' ? ['accepted', 'active'] : ['pending'];
+      if (!allowedFrom.includes(currentStatus)) {
+        return NextResponse.json({ error: `Cannot change a ${currentStatus} application to ${status}` }, { status: 409 });
+      }
+    } else {
+      // Delivery sync can mark an application completed before the NGO confirms it.
+      const isPendingNgoConfirmation =
+        status === 'completed' && currentStatus === 'completed' && !volunteerApplication.ngo_confirmed_at;
+      if (!NGO_STATUS_TRANSITIONS[currentStatus]?.includes(status) && !isPendingNgoConfirmation) {
+        return NextResponse.json({ error: `Cannot change a ${currentStatus} application to ${status}` }, { status: 409 });
+      }
+    }
+
     const commentText = typeof decisionComment === 'string' ? decisionComment.trim() : '';
     if (commentText.length > 500) {
       return NextResponse.json({ error: 'Decision comment must be 500 characters or fewer' }, { status: 400 });
@@ -92,29 +125,6 @@ export async function PUT(
 
       if (allocationError) {
         return NextResponse.json({ error: allocationError }, { status: 400 });
-      }
-
-      // Try to call a DB-side stored procedure for atomic accept (if available).
-      try {
-        const allocationAmountParam = requestTarget.isFinancial ? resolvedAllocationAmount : 0;
-        const allocationQuantityParam = requestTarget.isFinancial ? 0 : resolvedAllocationQuantity;
-
-        const { data: rpcResult, error: rpcError } = await supabase.rpc('accept_volunteer_assignment', {
-          p_request_id: requestId,
-          p_volunteer_app_id: volId,
-          p_ngo_user_id: request_data.ngo_id,
-          p_allocation_amount: allocationAmountParam,
-          p_allocation_quantity: allocationQuantityParam,
-          p_actor_user_id: userId
-        });
-
-        if (rpcError) {
-          console.warn('RPC accept_volunteer_assignment failed, falling back to JS path:', rpcError.message)
-        } else if (rpcResult) {
-          return NextResponse.json({ success: true, data: rpcResult });
-        }
-      } catch (e) {
-        console.warn('RPC call attempted and failed:', getErrorMessage(e) || e)
       }
     }
 
@@ -166,13 +176,65 @@ export async function PUT(
       updatePayload.completion_note = completionNote || volunteerApplication.completion_note || null
     }
 
+    const { data: claimed, error: claimError } = await supabase
+      .from('service_request_applications')
+      .update({ status: String(updatePayload.status), updated_at: new Date().toISOString() })
+      .eq('id', volId)
+      .eq('service_request_id', requestId)
+      .eq('status', currentStatus)
+      .select('id')
+      .maybeSingle();
+
+    if (claimError) throw claimError;
+    if (!claimed) {
+      return NextResponse.json({ error: 'This application was changed by someone else. Refresh and try again.' }, { status: 409 });
+    }
+
     const updatedVolunteer = await db.serviceRequestApplications.update(volId, updatePayload);
 
     if (!updatedVolunteer) {
       return NextResponse.json({ error: 'Failed to update volunteer status' }, { status: 500 });
     }
 
+    const releasesAllocation =
+      userType === 'ngo' &&
+      ['accepted', 'active'].includes(currentStatus) &&
+      ['rejected', 'cancelled'].includes(status);
+
+    if (releasesAllocation) {
+      await releaseVolunteerAllocation(request_data, {
+        amount: parseAmountToInr(volunteerApplication.assigned_amount),
+        quantity: parseAmountToInr(volunteerApplication.assigned_quantity),
+      });
+
+      const { error: assignmentCloseError } = await supabase
+        .from('service_engagement_assignments')
+        .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+        .eq('application_table', 'service_request_applications')
+        .eq('application_id', String(volId))
+        .in('status', ['active', 'in_progress']);
+      if (assignmentCloseError) throw assignmentCloseError;
+    }
+
     if (userType === 'ngo' && status === 'accepted') {
+      let refreshedRequest: Awaited<ReturnType<typeof applyVolunteerAcceptanceAllocation>>;
+      try {
+        refreshedRequest = await applyVolunteerAcceptanceAllocation(request_data, {
+          amount: Number(updatePayload.assigned_amount || 0),
+          quantity: Number(updatePayload.assigned_quantity || 0),
+        });
+      } catch (allocationError) {
+        await supabase
+          .from('service_request_applications')
+          .update({ status: currentStatus, updated_at: new Date().toISOString() })
+          .eq('id', volId)
+          .eq('service_request_id', requestId);
+        if (allocationError instanceof NeedCapacityExceededError) {
+          return NextResponse.json({ error: allocationError.message }, { status: 409 });
+        }
+        throw allocationError;
+      }
+
       const acceptedMeta = parseJsonObject(updatedVolunteer.response_meta);
       const fulfillmentMode = getNgoNeedFulfillmentMode(request_data);
 
@@ -199,7 +261,7 @@ export async function PUT(
         };
 
         const { fulfillment_mode: _fulfillmentMode, ...assignmentColumns } = assignmentMeta;
-        const { data: assignment } = await supabase
+        const { data: assignment, error: assignmentError } = await supabase
           .from('service_engagement_assignments')
           .insert({
             ...assignmentColumns,
@@ -208,8 +270,9 @@ export async function PUT(
           })
           .select('*')
           .maybeSingle();
+        if (assignmentError) throw assignmentError;
 
-        await supabase
+        const { error: metaError } = await supabase
           .from('service_request_applications')
           .update({
             response_meta: {
@@ -224,8 +287,9 @@ export async function PUT(
           })
           .eq('id', volId)
           .eq('service_request_id', requestId);
+        if (metaError) throw metaError;
       } else {
-        await supabase
+        const { error: metaError } = await supabase
           .from('service_request_applications')
           .update({
             response_meta: {
@@ -238,24 +302,21 @@ export async function PUT(
           })
           .eq('id', volId)
           .eq('service_request_id', requestId);
+        if (metaError) throw metaError;
       }
-
-      const refreshedRequest = await applyVolunteerAcceptanceAllocation(request_data, {
-        amount: Number(updatePayload.assigned_amount || 0),
-        quantity: Number(updatePayload.assigned_quantity || 0),
-      });
 
       const remaining = getNeedRemainingQuantity(refreshedRequest);
       if (remaining <= 0) {
-        const { data: pendingApplicants } = await supabase
+        const { data: pendingApplicants, error: pendingError } = await supabase
           .from('service_request_applications')
           .select('id, response_meta')
           .eq('service_request_id', requestId)
           .eq('status', 'pending');
+        if (pendingError) throw pendingError;
 
         for (const pa of pendingApplicants || []) {
           const otherMeta = pa?.response_meta && typeof pa.response_meta === 'object' ? pa.response_meta : {};
-          await supabase
+          const { error: autoRejectError } = await supabase
             .from('service_request_applications')
             .update({
               status: 'rejected',
@@ -263,7 +324,9 @@ export async function PUT(
               updated_at: new Date().toISOString(),
             })
             .eq('id', pa.id)
-            .eq('service_request_id', requestId);
+            .eq('service_request_id', requestId)
+            .eq('status', 'pending');
+          if (autoRejectError) throw autoRejectError;
         }
       }
     }

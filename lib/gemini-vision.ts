@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { GeminiError, type GeminiGenerateResponse } from '@/lib/geminiClient'
+import { isTrustedDocumentUrl } from '@/lib/ca-review/document-urls'
 
 function parseGeminiJson(output: string): Record<string, unknown> {
   const trimmed = output.trim().replace(/^```json\s*/i, '').replace(/```$/i, '').trim()
@@ -302,7 +303,10 @@ export function isGeminiOcrUnavailable(error: unknown) {
 }
 
 async function fetchDocumentForGemini(fileUrl: string) {
-  const response = await fetch(fileUrl, { signal: AbortSignal.timeout(20000) })
+  if (!isTrustedDocumentUrl(fileUrl)) {
+    throw new Error('Document URL is not an allowed upload location')
+  }
+  const response = await fetch(fileUrl, { signal: AbortSignal.timeout(20000), redirect: 'error' })
   if (!response.ok) {
     throw new Error(`Failed to download document (${response.status})`)
   }

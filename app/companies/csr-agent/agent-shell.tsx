@@ -2,18 +2,20 @@
 
 import type React from "react"
 import { Header } from "@/components/header"
+import { ConsoleFooter } from "@/components/product-brand"
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
 export function AgentShell({ children }: { children: React.ReactNode }) {
   return (
-    <>
+    <div className="flex min-h-dvh flex-col bg-white md:h-dvh">
       <Header />
-      <main className="bg-white md:h-[calc(100dvh-4rem)] md:overflow-hidden">
-        <div className="container mx-auto flex min-h-[calc(100dvh-4rem)] flex-col px-3 py-3 md:h-full md:min-h-0 md:px-4 md:py-4">
+      <main className="flex flex-1 flex-col md:min-h-0 md:overflow-hidden">
+        <div className="container mx-auto flex min-h-[calc(100dvh-4rem)] flex-1 flex-col px-3 py-3 md:min-h-0 md:px-4 md:py-4">
           {children}
         </div>
       </main>
-    </>
+      <ConsoleFooter />
+    </div>
   )
 }
 

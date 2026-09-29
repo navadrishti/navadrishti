@@ -139,7 +139,7 @@ export function useVolunteerApplication({
         const error = await response.json()
         const errorMsg = error.error || 'Failed to submit application'
 
-        if (error.requiresVerification || response.status === 403) {
+        if (error.requiresVerification) {
           const verificationMessage = error.message || 'Please complete account verification before applying for volunteer opportunities.'
           toast({
             title: 'Verification Required',

@@ -62,6 +62,10 @@ function buildProfileFormUpdate(
   return finalUpdateData;
 }
 
+/** What a profile save sends back to the owner; never the password or 2FA secret. */
+export const PROFILE_RESPONSE_COLUMNS =
+  'id, email, name, user_type, profile_image, city, state_province, pincode, country, phone, profile_data, location, timezone'
+
 export async function saveProfileForm(userId: number, cleanUpdateData: ProfileFormData) {
   const { data: currentUser, error: fetchError } = await supabase
     .from('users')
@@ -77,7 +81,7 @@ export async function saveProfileForm(userId: number, cleanUpdateData: ProfileFo
     .from('users')
     .update(buildProfileFormUpdate(cleanUpdateData, currentUser))
     .eq('id', userId)
-    .select('id, email, name, user_type, profile_image, city, state_province, pincode, country, phone, profile_data, location, timezone');
+    .select(PROFILE_RESPONSE_COLUMNS);
 
   if (error) {
     return { status: 'update_failed' as const, error };

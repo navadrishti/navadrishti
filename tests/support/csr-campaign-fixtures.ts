@@ -32,10 +32,18 @@ export function createCampaignStore() {
     const id = eqValue(query, 'id')
     if (query.table === 'campaigns') {
       if (query.op === 'update') {
-        store.campaigns = store.campaigns.map((row) =>
-          String(row.id) === String(id) ? { ...row, ...(query.payload as Row) } : row
-        )
-        return {}
+        const guard = eqValue(query, 'updated_at')
+        const nullGuard = hasCall(query, 'is', 'updated_at')
+        const updated: Row[] = []
+        store.campaigns = store.campaigns.map((row) => {
+          if (String(row.id) !== String(id)) return row
+          if (guard !== undefined && guard !== row.updated_at) return row
+          if (nullGuard && row.updated_at != null) return row
+          const next = { ...row, ...(query.payload as Row) }
+          updated.push(next)
+          return next
+        })
+        return { data: updated }
       }
       const companyId = eqValue(query, 'company_id')
       const rows = store.campaigns.filter(

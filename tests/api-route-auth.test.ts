@@ -213,6 +213,7 @@ const loginRoutes: Array<[string, Method]> = [
   ['service-offers/[id]', 'PUT'],
   ['service-offers/[id]', 'DELETE'],
   ['service-offers/[id]/clients', 'GET'],
+  ['service-offers/[id]/clients', 'POST'],
   ['service-offers/[id]/clients/[clientId]/payments/create-order', 'POST'],
   ['service-offers/[id]/clients/[clientId]/payments/verify', 'POST'],
   ['service-offers/requests', 'GET'],
@@ -283,6 +284,8 @@ const wrongRole: Array<[string, Method, string, string]> = [
   ['evidence-verification/accounts/[identityId]', 'DELETE', 'ngo', ngo],
   ['milestones/[id]/evidence', 'POST', 'company', company],
   ['ngos/network', 'POST', 'ngo', ngo],
+  ['service-offers/[id]/clients', 'POST', 'company', company],
+  ['service-offers/[id]/clients', 'POST', 'individual', individual],
   ['service-offers/[id]/clients/[clientId]/payments/create-order', 'POST', 'ngo', ngo],
   ['service-offers/[id]/clients/[clientId]/payments/verify', 'POST', 'ngo', ngo],
   ['service-request-assignments', 'GET', 'company', company],
@@ -302,6 +305,19 @@ const wrongRole: Array<[string, Method, string, string]> = [
 describe('role checks', () => {
   it.each(wrongRole)('%s %s rejects a %s token with 403', async (route, method, _role, token) => {
     const res = await call(route, method, buildRequest(method, { token }))
+    expect(res.status).toBe(403)
+    expect(dbCalls).toEqual([])
+  })
+
+  it('refuses an offer application made on behalf of another NGO', async () => {
+    const res = await call('service-offers/[id]/clients', 'POST', buildRequest('POST', { token: ngo, body: JSON.stringify({ client_id: 99, selected_need_ids: [1] }) }))
+    expect(res.status).toBe(403)
+    expect(dbCalls).toEqual([])
+  })
+
+  it("refuses to show another user's offer application", async () => {
+    const request = new NextRequest('http://localhost/api/service-offers/1/clients?userId=99', { headers: { authorization: `Bearer ${ngo}` } })
+    const res = await call('service-offers/[id]/clients', 'GET', request)
     expect(res.status).toBe(403)
     expect(dbCalls).toEqual([])
   })
@@ -354,7 +370,6 @@ describe('CA and evidence verification routes', () => {
     ['ca/review', 'GET'],
     ['ca/verification-action', 'POST'],
     ['evidence-verification/change-password', 'POST'],
-    ['evidence-verification/mark-password-changed', 'POST'],
     ['evidence-verification/payments/create-order', 'POST'],
     ['evidence-verification/payments/verify', 'POST'],
     ['evidence-verification/verify', 'GET'],

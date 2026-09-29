@@ -132,8 +132,18 @@ export type OfferRecommendation = {
 
 export const INITIAL_ASSISTANT_MESSAGE = "Hello! I'm Atlas. Do you want to post a standalone Need (for individuals/one-time support) or a CSR Project (for companies/larger initiatives)? Reply with **Need** or **Project**."
 
-export const deriveSessionTitle = (messages: Message[]): string => {
-  const firstUser = messages.find((m) => m.role === 'user' && String(m.content || '').trim())
+type SessionTitleSource = Pick<NGOAIAgentSession, 'messages' | 'intakePath' | 'projectData' | 'needsData'>
+
+/** Names the chat after the project or need title once it is known. */
+export const deriveSessionTitle = ({ messages, intakePath, projectData, needsData }: SessionTitleSource): string => {
+  const title = String(
+    (intakePath === 'need' ? needsData?.[0]?.title : projectData?.projectTitle) || ''
+  ).trim()
+  if (title) return title
+  if (intakePath === 'need') return 'New need'
+  if (intakePath === 'project') return 'New project'
+
+  const firstUser = (messages || []).find((m) => m.role === 'user' && String(m.content || '').trim())
   if (!firstUser) return 'Untitled session'
   const words = String(firstUser.content || '').trim().split(/\s+/).filter(Boolean)
   if (words.length === 0) return 'Untitled session'

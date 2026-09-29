@@ -1,7 +1,8 @@
+import { randomUUID } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db, supabase } from '@/lib/db';
-import { comparePassword } from '@/lib/auth';
+import { comparePassword, hashPassword } from '@/lib/auth';
 import { clearAuthTokenCookie, findAuthUser } from '@/lib/server-auth';
 
 // Validation schema
@@ -13,81 +14,44 @@ const deleteAccountSchema = z.object({
   )
 });
 
-async function deleteUserData(userId: number) {
-  try {
-    
-    await supabase
-      .from('user_addresses')
-      .delete()
-      .eq('user_id', userId);
-    
-    const serviceRequests = await supabase
-      .from('service_requests')
-      .select('id')
-      .eq('ngo_id', userId);
-    
-    if (serviceRequests.data && serviceRequests.data.length > 0) {
-      const requestIds = serviceRequests.data.map((req) => req.id);
-      
-      await supabase
-        .from('service_request_applications')
-        .delete()
-        .in('service_request_id', requestIds);
-      
-      await supabase
-        .from('service_requests')
-        .delete()
-        .eq('ngo_id', userId);
-    }
-    
-    const serviceOffers = await supabase
-      .from('service_offers')
-      .select('id')
-      .eq('creator_id', userId);
-    
-    if (serviceOffers.data && serviceOffers.data.length > 0) {
-      const offerIds = serviceOffers.data.map((offer) => offer.id);
-      
-      await supabase
-        .from('service_clients')
-        .delete()
-        .in('service_offer_id', offerIds);
-      
-      await supabase
-        .from('service_offers')
-        .delete()
-        .eq('creator_id', userId);
-    }
-    
-    await supabase
-      .from('service_request_applications')
-      .delete()
-      .eq('applicant_user_id', userId);
-    
-    await supabase
-      .from('service_clients')
-      .delete()
-      .eq('client_id', userId);
-    
-    await supabase
-      .from('individual_verifications')
-      .delete()
-      .eq('user_id', userId);
-    
-    await supabase
-      .from('ngo_verifications')
-      .delete()
-      .eq('user_id', userId);
-    
-    await supabase
-      .from('company_verifications')
-      .delete()
-      .eq('user_id', userId);
-    
-  } catch (error) {
-    console.error(`Error deleting user data for ${userId}:`, error);
-    throw new Error('Failed to delete user data');
-  }
+async function mustSucceed(query: PromiseLike<{ error: unknown }>) {
+  const { error } = await query;
+  if (error) throw error;
+}
+
+/**
+ * Accounts are anonymised rather than removed: payments, reviews and contributions reference the
+ * user row, and a hard delete either fails on those keys or wipes records other people rely on.
+ */
+async function closeAccount(userId: number) {
+  const now = new Date().toISOString();
+
+  await mustSucceed(
+    supabase.from('service_offers').update({ status: 'inactive', updated_at: now }).eq('creator_id', userId).eq('status', 'active')
+  );
+  await mustSucceed(
+    supabase.from('service_requests').update({ status: 'cancelled', updated_at: now }).eq('ngo_id', userId).eq('status', 'active')
+  );
+  await mustSucceed(supabase.from('user_addresses').delete().eq('user_id', userId));
+
+  await mustSucceed(
+    supabase
+      .from('users')
+      .update({
+        email: `deleted-${userId}-${randomUUID()}@deleted.invalid`,
+        name: 'Deleted user',
+        phone: null,
+        password: await hashPassword(randomUUID()),
+        profile_image: null,
+        profile_data: { account_deleted_at: now },
+        account_status: 'suspended',
+        email_verified: false,
+        phone_verified: false,
+        two_factor_enabled: false,
+        updated_at: now,
+      })
+      .eq('id', userId)
+  );
 }
 
 export async function DELETE(req: NextRequest) {
@@ -126,15 +90,10 @@ export async function DELETE(req: NextRequest) {
       }, { status: 400 });
     }
     
-    await deleteUserData(userId);
-    
-    const { error: deleteError } = await supabase
-      .from('users')
-      .delete()
-      .eq('id', userId);
-    
-    if (deleteError) {
-      console.error('Error deleting user account:', deleteError);
+    try {
+      await closeAccount(userId);
+    } catch (closeError) {
+      console.error('Error deleting user account:', closeError);
       return NextResponse.json({ 
         error: 'Failed to delete account' 
       }, { status: 500 });

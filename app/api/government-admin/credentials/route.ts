@@ -4,6 +4,7 @@ import {
   createGovernmentAdminAccount,
   createGovernmentBody,
   findGovernmentAdminAccountByRole,
+  GOVERNMENT_MANAGER_ROLES,
   updateGovernmentAdminAccount,
   updateGovernmentBody,
 } from '@/lib/government-admin-auth';
@@ -23,7 +24,7 @@ function isRole(value: string): value is CredentialRole {
 
 export async function GET(request: NextRequest) {
   try {
-    await assertGovernmentAdmin(request);
+    await assertGovernmentAdmin(request, GOVERNMENT_MANAGER_ROLES);
 
     const { data, error } = await supabase
       .from('government_admin_accounts')
@@ -43,7 +44,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const actor = await assertGovernmentAdmin(request);
+    const actor = await assertGovernmentAdmin(request, GOVERNMENT_MANAGER_ROLES);
     const { role, department_name, state_name, district_name, username, password, project_id } = await request.json();
 
     const roleValue = normalizeText(role);

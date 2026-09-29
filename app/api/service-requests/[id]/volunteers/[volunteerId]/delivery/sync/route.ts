@@ -61,6 +61,11 @@ export async function POST(
       return NextResponse.json({ error: 'You can only track your own assignments' }, { status: 403 });
     }
 
+    const applicationStatus = String(volunteerApplication.status || '').toLowerCase();
+    if (!['accepted', 'active'].includes(applicationStatus)) {
+      return NextResponse.json({ error: 'Delivery can only be tracked for accepted assignments' }, { status: 409 });
+    }
+
     let body: Record<string, unknown> | null = {};
     try {
       body = await request.json();
@@ -115,7 +120,7 @@ export async function POST(
       const nowIso = new Date().toISOString();
       const creatorUserId = Number(userId) > 0 ? Number(userId) : null;
 
-      await supabase
+      const { error: shipmentUpsertError } = await supabase
         .from('service_request_shipments')
         .upsert({
           service_request_id: requestId,
@@ -135,6 +140,7 @@ export async function POST(
           created_by_user_id: creatorUserId,
           updated_at: nowIso
         }, { onConflict: 'provider,tracking_id' });
+      if (shipmentUpsertError) throw shipmentUpsertError;
 
       const { data: shipmentRow } = await supabase
         .from('service_request_shipments')
@@ -183,6 +189,7 @@ export async function POST(
       }
     } catch (shipmentRecordError) {
       console.error('Failed to record Delhivery shipment:', shipmentRecordError);
+      return NextResponse.json({ error: 'Failed to record shipment tracking' }, { status: 500 });
     }
 
     const delivered = isDeliveredTrackingStatus(snapshot.currentStatus)

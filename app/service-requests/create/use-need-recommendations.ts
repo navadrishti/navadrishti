@@ -1,4 +1,5 @@
 import { useEffect, useEffectEvent, useState } from 'react'
+import { withoutIndex } from './helpers'
 import { mapServerToNeedRecommendation } from './recommendations'
 import type { NeedDraft, NeedRecommendation, ServiceOfferLite } from './types'
 
@@ -87,5 +88,10 @@ export function useNeedRecommendations(needs: NeedDraft[]) {
     setRecPageByNeed((prev) => ({ ...prev, [index]: (prev[index] || 0) + 1 }))
   }
 
-  return { serviceOffers, offersLoading, serverRecommendations, refreshNeedRecommendations }
+  const forgetNeedRecommendations = (index: number) => {
+    setServerRecommendations((prev) => withoutIndex(prev, index))
+    setRecPageByNeed((prev) => withoutIndex(prev, index))
+  }
+
+  return { serviceOffers, offersLoading, serverRecommendations, refreshNeedRecommendations, forgetNeedRecommendations }
 }

@@ -6,7 +6,7 @@ const allowedTypes: CAQueueType[] = ['individuals', 'companies', 'ngos'];
 
 export async function GET(request: NextRequest) {
   try {
-    requireCA(request);
+    await requireCA(request);
     const type = request.nextUrl.searchParams.get('type') as CAQueueType;
     const id = Number(request.nextUrl.searchParams.get('id'));
 

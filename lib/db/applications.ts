@@ -176,15 +176,7 @@ export const serviceRequestApplications = {
   },
 
   async findExisting(serviceRequestId: number, applicantUserId: number) {
-    const { data, error } = await supabase
-      .from('service_request_applications')
-      .select(APPLICATION_WITH_FULFILLMENT)
-      .eq('service_request_id', serviceRequestId)
-      .eq('applicant_user_id', applicantUserId)
-      .maybeSingle();
-
-    if (error && error.code !== 'PGRST116') throw error;
-    return shapeApplicationForApi(data);
+    return this.getUserApplication(serviceRequestId, applicantUserId);
   },
 
   async getByVolunteerId(applicantUserId: number) {
@@ -219,9 +211,11 @@ export const serviceRequestApplications = {
       .select(APPLICATION_WITH_FULFILLMENT)
       .eq('service_request_id', serviceRequestId)
       .eq('applicant_user_id', applicantUserId)
+      .order('applied_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
 
-    if (error && error.code !== 'PGRST116') throw error;
+    if (error) throw error;
     return shapeApplicationForApi(data);
   },
 

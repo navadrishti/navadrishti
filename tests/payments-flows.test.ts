@@ -16,10 +16,11 @@ import {
   verifyRazorpaySignature,
 } from '@/lib/engagement-settlement'
 import { razorpaySignature } from './support/requests'
-import { argOf, createSupabaseFake, hasCall, type FakeQuery, type FakeResult } from './support/supabase-fake'
+import { argOf, createSupabaseFake, fakeAdjustProgress, hasCall, type FakeQuery, type FakeResult } from './support/supabase-fake'
 
 const mocks = vi.hoisted(() => ({
   supabase: { from: vi.fn() },
+  adjustProgress: vi.fn(),
   db: {
     serviceRequests: { getById: vi.fn(), update: vi.fn() },
     serviceRequestApplications: { getByRequestId: vi.fn(), update: vi.fn() },
@@ -35,6 +36,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/lib/db', () => ({
   supabase: mocks.supabase,
   db: mocks.db,
+  adjustServiceRequestProgress: mocks.adjustProgress,
   getApplicationApplicantUserId: (item: { applicant_id?: number }) => Number(item.applicant_id || 0),
 }))
 vi.mock('razorpay', () => ({
@@ -53,6 +55,7 @@ function useSupabase(respond?: (query: FakeQuery) => FakeResult | undefined) {
 
 beforeEach(() => {
   vi.resetAllMocks()
+  mocks.adjustProgress.mockImplementation(fakeAdjustProgress)
   mocks.razorpay.orders.create.mockImplementation(async (body: Record<string, unknown>) => ({
     id: 'order_new',
     receipt: body.receipt,
@@ -88,7 +91,7 @@ describe('settleCompanyCaPayment', () => {
       if (query.table === 'razorpay_payment_orders' && hasCall(query, 'select')) return { data: order }
       if (query.table === 'service_request_contributions' && hasCall(query, 'update')) return { data: [{ id: 'c1', amount: 200 }] }
       if (query.table === 'service_attendance_entries') return { data: [{ id: 5, amount_due: 300.1 }, { id: 6, amount_due: 499.9 }] }
-      if (query.table === 'service_requests' && hasCall(query, 'select')) return { data: { current_amount: 100, target_amount: 1500 } }
+      if (query.table === 'service_requests' && hasCall(query, 'select')) return { data: { id: 12, target_amount: 1500 } }
       return undefined
     })
   }
@@ -136,10 +139,9 @@ describe('settleCompanyCaPayment', () => {
     const aggregate = argOf(fake.find('service_request_contributions', 'insert')[0], 'insert') as Record<string, unknown>
     expect(aggregate).toMatchObject({ service_request_id: 12, contributor_id: 3, amount: 800, contribution_type: 'attendance_payment' })
 
-    const totals = fake.find('service_requests', 'update').map((query) => argOf(query, 'update'))
-    expect(totals).toEqual([
-      expect.objectContaining({ current_amount: 300, remaining_amount: 1200 }),
-      expect.objectContaining({ current_amount: 900, remaining_amount: 600 }),
+    expect(mocks.adjustProgress.mock.calls.map((call) => call.slice(1))).toEqual([
+      [{ amount: 200 }, { targetAmount: 1500 }],
+      [{ amount: 800 }, { targetAmount: 1500 }],
     ])
   })
 
@@ -186,17 +188,15 @@ describe('creditServiceRequestContribution', () => {
   it('credits the base amount, not the fee-inclusive total', async () => {
     setup()
     await expect(credit()).resolves.toEqual({ credited: true, raisedInr: 1500, targetInr: 5000, status: 'in_progress' })
-    expect(mocks.db.serviceRequests.update).toHaveBeenCalledWith(12, expect.objectContaining({
-      current_amount: 1500,
-      remaining_amount: 3500,
-      status: 'in_progress',
-    }))
+    expect(mocks.adjustProgress).toHaveBeenCalledWith(expect.objectContaining({ current_amount: 500 }), { amount: 1000 }, { targetAmount: 5000 })
+    expect(mocks.db.serviceRequests.update).toHaveBeenCalledWith(12, expect.objectContaining({ status: 'in_progress' }))
   })
 
   it('only reads totals when the order was already claimed', async () => {
     setup({ claim: null })
     await expect(credit()).resolves.toEqual({ credited: false, raisedInr: 500, targetInr: 5000, status: 'active' })
     expect(mocks.db.serviceRequests.update).not.toHaveBeenCalled()
+    expect(mocks.adjustProgress).not.toHaveBeenCalled()
   })
 
   it('completes the request and releases held transfers at target', async () => {
@@ -244,11 +244,9 @@ describe('debitServiceRequestRefund', () => {
   ])('%s with %d raised minus %d refund', async (status, current, target, refund, raised, nextStatus) => {
     mocks.db.serviceRequests.getById.mockResolvedValue({ status, current_amount: current, target_amount: target })
     await expect(debitServiceRequestRefund(1, refund)).resolves.toBe(raised)
-    expect(mocks.db.serviceRequests.update).toHaveBeenCalledWith(1, expect.objectContaining({
-      current_amount: raised,
-      remaining_amount: target - raised,
-      status: nextStatus,
-    }))
+    expect(mocks.adjustProgress).toHaveBeenCalledWith(expect.anything(), { amount: -refund }, { targetAmount: target })
+    if (nextStatus === status) expect(mocks.db.serviceRequests.update).not.toHaveBeenCalled()
+    else expect(mocks.db.serviceRequests.update).toHaveBeenCalledWith(1, expect.objectContaining({ status: nextStatus }))
   })
 
   it('returns null for a missing request', async () => {
@@ -264,11 +262,8 @@ describe('debitServiceRequestRefund', () => {
       requirements: { funding_target_inr: 5000 },
     })
     await expect(debitServiceRequestRefund(1, 1000)).resolves.toBe(4000)
-    expect(mocks.db.serviceRequests.update).toHaveBeenCalledWith(1, expect.objectContaining({
-      current_amount: 4000,
-      remaining_amount: 1000,
-      status: 'in_progress',
-    }))
+    expect(mocks.adjustProgress).toHaveBeenCalledWith(expect.anything(), { amount: -1000 }, { targetAmount: 5000 })
+    expect(mocks.db.serviceRequests.update).toHaveBeenCalledWith(1, expect.objectContaining({ status: 'in_progress' }))
   })
 })
 
@@ -374,7 +369,7 @@ describe('admin refunds', () => {
     expect(mocks.razorpay.payments.refund).toHaveBeenCalledWith('pay_1', expect.objectContaining({ amount: 20050 }))
     expect(argOf(fake.find('razorpay_payments', 'update')[0], 'update')).toMatchObject({ payment_status: 'partially_refunded' })
     expect(result).toMatchObject({ refund_status: 'pending', fundsRaisedInr: 1000 })
-    expect(mocks.db.serviceRequests.update).not.toHaveBeenCalled()
+    expect(mocks.adjustProgress).not.toHaveBeenCalled()
 
     await refund({ requestedRefundInr: 5000 })
     expect(mocks.razorpay.payments.refund).toHaveBeenLastCalledWith('pay_1', expect.objectContaining({ amount: 105900 }))
@@ -384,7 +379,7 @@ describe('admin refunds', () => {
     const fake = setup()
     const result = await refund({ refundReason: 'duplicate' })
     expect(argOf(fake.find('razorpay_payments', 'update')[0], 'update')).toMatchObject({ payment_status: 'refunded' })
-    expect(argOf(fake.find('razorpay_refunds', 'insert')[0], 'insert')).toMatchObject({
+    expect(argOf(fake.find('razorpay_refunds', 'upsert')[0], 'upsert')).toMatchObject({
       payment_id: 9,
       amount_inr: 1059,
       amount_paise: 105900,
@@ -397,19 +392,19 @@ describe('admin refunds', () => {
   it('debits only the credited base amount when refunding a fee-inclusive payment', async () => {
     setup({ request: { ...financialRequest, current_amount: 5000 } })
     await expect(refund()).resolves.toMatchObject({ refunded_amount_inr: 1059, fundsRaisedInr: 4000 })
-    expect(mocks.db.serviceRequests.update).toHaveBeenCalledWith(12, expect.objectContaining({ current_amount: 4000 }))
+    expect(mocks.adjustProgress).toHaveBeenCalledWith(expect.anything(), { amount: -1000 }, { targetAmount: 5000 })
   })
 
   it('debits a proportional share of the base amount for a processed partial refund', async () => {
     setup({ request: { ...financialRequest, current_amount: 5000 } })
     await expect(refund({ requestedRefundInr: 529.5 })).resolves.toMatchObject({ refunded_amount_inr: 529.5, fundsRaisedInr: 4500 })
-    expect(mocks.db.serviceRequests.update).toHaveBeenCalledWith(12, expect.objectContaining({ current_amount: 4500 }))
+    expect(mocks.adjustProgress).toHaveBeenCalledWith(expect.anything(), { amount: -500 }, { targetAmount: 5000 })
   })
 
   it('debits the refunded amount for payments without pricing notes', async () => {
     setup({ request: { ...financialRequest, current_amount: 5000 }, payment: { ...paymentRow, order: { service_request_id: 12, order_notes: {} } } })
     await refund()
-    expect(mocks.db.serviceRequests.update).toHaveBeenCalledWith(12, expect.objectContaining({ current_amount: 3941 }))
+    expect(mocks.adjustProgress).toHaveBeenCalledWith(expect.anything(), { amount: -1059 }, { targetAmount: 5000 })
   })
 })
 

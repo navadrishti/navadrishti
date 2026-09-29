@@ -4,7 +4,7 @@ import { CA_QUEUE_TYPES, type CAQueueType } from '@/lib/ca-review-types';
 
 export async function GET(request: NextRequest) {
   try {
-    requireCA(request);
+    await requireCA(request);
     const status = request.nextUrl.searchParams.get('status') || 'unverified';
     const typeParam = request.nextUrl.searchParams.get('type');
 

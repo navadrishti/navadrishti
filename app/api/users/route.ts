@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const type = searchParams.get('type')
     const view = searchParams.get('view')
-    const limit = parseInt(searchParams.get('limit') || '50')
+    const limit = Math.min(Math.max(Number.parseInt(searchParams.get('limit') || '', 10) || 50, 1), 100)
     const verified_only = searchParams.get('verified') === 'true'
     
     // Authenticate user for this request
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
 
     if (view === 'payment-history') {
       const role = String(searchParams.get('role') || 'sent').toLowerCase() === 'received' ? 'received' : 'sent'
-      const historyLimit = Math.min(Number(searchParams.get('limit') || 100), 300)
+      const historyLimit = Math.min(Math.max(Number(searchParams.get('limit')) || 100, 1), 300)
 
       if (role === 'received' && decoded.user_type !== 'ngo') {
         return NextResponse.json({ error: 'Only NGOs can view received payment history' }, { status: 403 })
@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from('users')
-      .select('id, name, email, user_type, location, city, state_province, pincode, verification_status, profile_image')
+      .select('id, name, user_type, location, city, state_province, pincode, verification_status, profile_image')
       .order('name', { ascending: true })
       .limit(limit)
 

@@ -79,15 +79,30 @@ export async function POST(
         return NextResponse.json({ error: 'Payment not captured yet' }, { status: 409 })
       }
 
-      const { data: orderRow } = await supabase
+      const { data: orderRow, error: orderLookupError } = await supabase
         .from('razorpay_payment_orders')
-        .select('order_notes')
+        .select('order_notes, payer_user_id, order_status')
         .eq('razorpay_order_id', razorpay_order_id)
         .maybeSingle()
+      if (orderLookupError) throw orderLookupError
+
+      if (!orderRow) {
+        return NextResponse.json({ error: 'Settlement order not found' }, { status: 404 })
+      }
+      const orderNotes = parseJsonObject(orderRow.order_notes)
+      if (String(orderNotes.assignment_id ?? '') !== String(assignment.id)) {
+        return NextResponse.json({ error: 'Payment is linked to a different engagement' }, { status: 403 })
+      }
+      if (Number(orderRow.payer_user_id) !== Number(decoded.id)) {
+        return NextResponse.json({ error: 'Payment belongs to a different payer' }, { status: 403 })
+      }
+      if (orderRow.order_status === 'paid') {
+        return NextResponse.json({ error: 'This payment has already been settled' }, { status: 409 })
+      }
 
       const paidInr = Number((Number(payment.amount || 0) / 100).toFixed(2))
       const amountCheck = validateCapturedPaymentAmounts({
-        orderNotes: parseJsonObject(orderRow?.order_notes || providerOrder.notes),
+        orderNotes: parseJsonObject(orderRow.order_notes || providerOrder.notes),
         orderAmountPaise: providerOrder.amount,
         paidInr,
       })
@@ -95,17 +110,33 @@ export async function POST(
         return NextResponse.json({ error: amountCheck.error }, { status: 400 })
       }
 
-      const meta = await finalizeEngagementSettlement(assignment, {
-        settledAmount: amountCheck.baseAmountInr,
-        settlementMode: 'razorpay',
-        razorpayOrderId: razorpay_order_id,
-        razorpayPaymentId: razorpay_payment_id,
-      })
+      const { data: claimedOrder, error: claimError } = await supabase
+        .from('razorpay_payment_orders')
+        .update({ order_status: 'paid', updated_at: new Date().toISOString() })
+        .eq('razorpay_order_id', razorpay_order_id)
+        .neq('order_status', 'paid')
+        .select('id')
+        .maybeSingle()
+      if (claimError) throw claimError
+      if (!claimedOrder) {
+        return NextResponse.json({ error: 'This payment has already been settled' }, { status: 409 })
+      }
 
-      await supabase.from('razorpay_payment_orders').update({
-        order_status: 'paid',
-        updated_at: new Date().toISOString(),
-      }).eq('razorpay_order_id', razorpay_order_id)
+      let meta: Awaited<ReturnType<typeof finalizeEngagementSettlement>>
+      try {
+        meta = await finalizeEngagementSettlement(assignment, {
+          settledAmount: amountCheck.baseAmountInr,
+          settlementMode: 'razorpay',
+          razorpayOrderId: razorpay_order_id,
+          razorpayPaymentId: razorpay_payment_id,
+        })
+      } catch (finalizeError) {
+        await supabase
+          .from('razorpay_payment_orders')
+          .update({ order_status: String(orderRow.order_status || 'created'), updated_at: new Date().toISOString() })
+          .eq('razorpay_order_id', razorpay_order_id)
+        throw finalizeError
+      }
 
       return NextResponse.json({
         success: true,

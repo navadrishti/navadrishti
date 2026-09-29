@@ -28,10 +28,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Service request not found or unauthorized' }, { status: 404 });
     }
 
-    const { data: allVolunteers } = await supabase
+    const { data: allVolunteers, error: volunteersError } = await supabase
       .from('service_request_applications')
       .select('id, status')
       .eq('service_request_id', serviceRequestId);
+
+    if (volunteersError) throw volunteersError;
 
     if (!allVolunteers || allVolunteers.length === 0) {
       return NextResponse.json({ error: 'No volunteers found for this request' }, { status: 404 });
@@ -45,18 +47,28 @@ export async function POST(request: NextRequest) {
     const pendingCount = allVolunteers.filter(v => v.status === 'pending').length;
     const workingVolunteers = acceptedCount + activeCount;
 
-    let newStatus = 'active'; // default
+    const previousStatus = String(requestData.status || '').toLowerCase();
+    if (!['active', 'in_progress', 'completed'].includes(previousStatus)) {
+      return NextResponse.json({ error: `A ${previousStatus || 'closed'} request cannot be refreshed` }, { status: 409 });
+    }
+
+    let newStatus = previousStatus === 'completed' ? 'active' : previousStatus;
     if (workingVolunteers === 0 && completedCount > 0) {
       newStatus = 'completed';
     }
 
-    await supabase
-      .from('service_requests')
-      .update({ 
-        status: newStatus,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', serviceRequestId);
+    if (newStatus !== previousStatus) {
+      const { error: updateError } = await supabase
+        .from('service_requests')
+        .update({
+          status: newStatus,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', serviceRequestId)
+        .eq('status', previousStatus);
+
+      if (updateError) throw updateError;
+    }
 
     return NextResponse.json({
       success: true,

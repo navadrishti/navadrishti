@@ -25,13 +25,14 @@ import {
 } from '@/lib/razorpay-route'
 import { POST as webhookPost } from '@/app/api/webhooks/razorpay/route'
 import { razorpaySignature } from './support/requests'
-import { argOf, createSupabaseFake, type FakeQuery, type FakeResult } from './support/supabase-fake'
+import { argOf, createSupabaseFake, fakeAdjustProgress, type FakeQuery, type FakeResult } from './support/supabase-fake'
 
 const dbMock = vi.hoisted(() => ({
   supabase: { from: vi.fn() },
   db: { serviceRequests: { getById: vi.fn(), update: vi.fn() } },
+  adjustProgress: vi.fn(),
 }))
-vi.mock('@/lib/db', () => ({ supabase: dbMock.supabase, db: dbMock.db }))
+vi.mock('@/lib/db', () => ({ supabase: dbMock.supabase, db: dbMock.db, adjustServiceRequestProgress: dbMock.adjustProgress }))
 vi.mock('razorpay', () => ({ default: vi.fn() }))
 
 function useSupabase(respond?: (query: FakeQuery) => FakeResult | undefined) {
@@ -567,6 +568,7 @@ describe('Razorpay webhook signature', () => {
       payload: { refund: { entity: { id: 'rfnd_1', payment_id: 'pay_1', amount: 52950, status: 'processed' } } },
     })
     dbMock.db.serviceRequests.getById.mockResolvedValue({ status: 'in_progress', current_amount: 5000, target_amount: 10000, requirements: {} })
+    dbMock.adjustProgress.mockImplementation(fakeAdjustProgress)
     useSupabase((query) => {
       if (query.table === 'provider_webhook_events' && argOf(query, 'insert')) return { data: { id: 'evt_row' } }
       if (query.table === 'razorpay_payments' && argOf(query, 'select')) return { data: { id: 9, order_id: 44, amount_inr: 1059 } }
@@ -576,7 +578,7 @@ describe('Razorpay webhook signature', () => {
       return undefined
     })
     expect((await webhookPost(request(hmac(refundBody), refundBody))).status).toBe(200)
-    expect(dbMock.db.serviceRequests.update).toHaveBeenCalledWith(12, expect.objectContaining({ current_amount: 4500 }))
+    expect(dbMock.adjustProgress).toHaveBeenCalledWith(expect.anything(), { amount: -500 }, { targetAmount: 10000 })
   })
 
   it('accepts a valid signature and dedupes processed events', async () => {

@@ -8,8 +8,11 @@ import {
   sumVolunteerApplicationCount,
 } from '@/lib/campaign-schema'
 import { isCampaignLeadNgo } from '@/lib/campaign-volunteer-attendance'
+import { redactCampaignForViewer } from '@/lib/campaign-public-view'
 
 import { parseJsonObject, getErrorMessage } from '@/lib/utils'
+
+const MAX_WRITE_ATTEMPTS = 3
 
 async function loadCampaign(campaignId: string) {
   const { data, error } = await supabase
@@ -135,12 +138,6 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const capacity = getVolunteerApplicationCapacity(decoded.user_type, actingUser)
 
-    const currentVolunteerCount = sumVolunteerApplicationCount(volunteerApplications)
-    const volunteerLimit = Number(impact.volunteer_requirement ?? impact.volunteer_limit ?? 0) || 0
-    if (isVolunteerCapacityFullForUser(decoded.user_type, currentVolunteerCount, volunteerLimit)) {
-      return NextResponse.json({ error: 'Volunteer capacity for this campaign is full' }, { status: 400 })
-    }
-
     const entry = {
       user_id: Number(decoded.id),
       user_type: decoded.user_type,
@@ -149,27 +146,50 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       applied_at: new Date().toISOString()
     }
 
-    const nextApplications = [...volunteerApplications, entry]
-    const volunteerCount = sumVolunteerApplicationCount(nextApplications)
-    const nextImpact = {
-      ...impact,
-      volunteer_applications: nextApplications,
-      volunteer_count: volunteerCount,
-      volunteer_last_applied_at: entry.applied_at
+    let latest = campaign
+    let data: typeof campaign | null = null
+    let volunteerCount = 0
+    for (let attempt = 0; attempt < MAX_WRITE_ATTEMPTS && !data; attempt++) {
+      if (attempt > 0) latest = await loadCampaign(id)
+      const latestImpact = parseJsonObject(latest.impact_metrics)
+      const applications = Array.isArray(latestImpact.volunteer_applications) ? latestImpact.volunteer_applications : []
+
+      const alreadyApplied = applications.find((item) => Number(item?.user_id || 0) === Number(decoded.id))
+      if (alreadyApplied) {
+        return NextResponse.json({ success: true, data: { campaign_id: id, applied: true, existing: alreadyApplied } })
+      }
+
+      const volunteerLimit = Number(latestImpact.volunteer_requirement ?? latestImpact.volunteer_limit ?? 0) || 0
+      if (isVolunteerCapacityFullForUser(decoded.user_type, sumVolunteerApplicationCount(applications), volunteerLimit)) {
+        return NextResponse.json({ error: 'Volunteer capacity for this campaign is full' }, { status: 400 })
+      }
+
+      const nextApplications = [...applications, entry]
+      volunteerCount = sumVolunteerApplicationCount(nextApplications)
+      const nextImpact = {
+        ...latestImpact,
+        volunteer_applications: nextApplications,
+        volunteer_count: volunteerCount,
+        volunteer_last_applied_at: entry.applied_at
+      }
+
+      const query = supabase
+        .from('campaigns')
+        .update({
+          impact_metrics: nextImpact,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id)
+      const guarded = latest.updated_at ? query.eq('updated_at', latest.updated_at) : query.is('updated_at', null)
+      const { data: rows, error } = await guarded.select('*')
+      if (error) {
+        throw new Error(error.message || 'Failed to apply for campaign')
+      }
+      data = Array.isArray(rows) && rows.length > 0 ? rows[0] : null
     }
 
-    const { data, error } = await supabase
-      .from('campaigns')
-      .update({
-        impact_metrics: nextImpact,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', id)
-      .select('*')
-      .single()
-
-    if (error || !data) {
-      throw new Error(error?.message || 'Failed to apply for campaign')
+    if (!data) {
+      return NextResponse.json({ error: 'This campaign is busy. Please try again.' }, { status: 409 })
     }
 
     try {
@@ -184,7 +204,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       console.error('Campaign volunteer assignment error:', assignmentError)
     }
 
-    return NextResponse.json({ success: true, data: { campaign: data, applied: true, capacity, volunteerCount } })
+    return NextResponse.json({
+      success: true,
+      data: { campaign: redactCampaignForViewer(data, Number(decoded.id)), applied: true, capacity, volunteerCount },
+    })
   } catch (error) {
     console.error('Campaign volunteer application error:', error)
     return NextResponse.json({ error: getErrorMessage(error) || 'Failed to apply for campaign' }, { status: 500 })

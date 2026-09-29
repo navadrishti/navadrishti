@@ -4,6 +4,7 @@ import Razorpay from 'razorpay';
 import { normalizeRefundStatus } from '@/lib/admin-refund';
 import { isCompanyCaPaymentOrder, settleCompanyCaPayment } from '@/lib/company-ca-payments';
 import { supabase } from '@/lib/db';
+import { confirmMilestonePayment, isCsrMilestonePaymentOrder, isUniqueViolation } from '@/lib/milestone-payments';
 import {
   creditServiceRequestContribution,
   debitServiceRequestRefund,
@@ -11,7 +12,7 @@ import {
   resolveRefundDebitInr,
 } from '@/lib/service-request-payments';
 import type { Json } from '@/lib/database.types';
-import { getErrorMessage } from '@/lib/utils';
+import { getErrorMessage, parseJsonObject } from '@/lib/utils';
 
 type RazorpayPaymentEntity = {
   id?: string;
@@ -96,9 +97,12 @@ export async function POST(request: NextRequest) {
   const eventType = String(payload?.event || '').trim();
   const paymentEntity = payload?.payload?.payment?.entity;
   const refundEntity = payload?.payload?.refund?.entity;
+  // Several events share one entity (payment.authorized/captured, refund.created/processed), so the
+  // entity id alone would swallow later events for the same payment or refund.
+  const entityId = String(refundEntity?.id || paymentEntity?.id || '').trim();
   const providerEventId = String(
-    refundEntity?.id ||
-      paymentEntity?.id ||
+    request.headers.get('x-razorpay-event-id')?.trim() ||
+      (entityId ? `${eventType || 'unknown'}:${entityId}` : '') ||
       payload?.id ||
       `${eventType || 'unknown'}:${String(payload?.created_at || Date.now())}`
   );
@@ -132,6 +136,10 @@ export async function POST(request: NextRequest) {
       .select('id')
       .single();
 
+    if (isUniqueViolation(eventInsertError)) {
+      return NextResponse.json({ error: 'Webhook event is already being processed' }, { status: 409 });
+    }
+
     if (eventInsertError || !insertedEvent?.id) {
       return NextResponse.json({ error: 'Failed to record webhook event' }, { status: 500 });
     }
@@ -148,7 +156,7 @@ export async function POST(request: NextRequest) {
 
       const { data: orderRow } = await supabase
         .from('razorpay_payment_orders')
-        .select('id, service_request_id, order_notes')
+        .select('id, service_request_id, order_notes, amount_paise, receipt')
         .eq('razorpay_order_id', String(paymentEntity.order_id))
         .maybeSingle();
 
@@ -204,6 +212,26 @@ export async function POST(request: NextRequest) {
           await markWebhookStatus(eventRowId, 'failed', result.error);
           return NextResponse.json({ success: true, settled: false });
         }
+      } else if (isCsrMilestonePaymentOrder(orderRow.order_notes)) {
+        const result = await confirmMilestonePayment({
+          milestoneId: String(parseJsonObject(orderRow.order_notes).milestone_id || ''),
+          razorpayOrderId: String(paymentEntity.order_id),
+          razorpayPaymentId: String(paymentEntity.id),
+          razorpaySignature: null,
+          paidInr: paiseToInr(paymentEntity.amount),
+          paymentMethod: paymentEntity.method || null,
+          paidAt: paymentEntity.created_at
+            ? new Date(Number(paymentEntity.created_at) * 1000).toISOString()
+            : new Date().toISOString(),
+          orderNotes: orderRow.order_notes,
+          orderAmountPaise: orderRow.amount_paise,
+          receipt: orderRow.receipt,
+          actor: { actorType: 'razorpay_webhook', companyCAIdentityId: null, reviewerUserId: null },
+        });
+        if (!result.ok) {
+          await markWebhookStatus(eventRowId, 'failed', result.error);
+          return NextResponse.json({ success: true, settled: false });
+        }
       } else {
         await supabase
           .from('razorpay_payment_orders')
@@ -240,55 +268,76 @@ export async function POST(request: NextRequest) {
         .eq('id', paymentRow.order_id)
         .maybeSingle();
 
-      if (!orderRow?.service_request_id) {
-        await markWebhookStatus(eventRowId, 'ignored', 'Order row missing for refund event');
-        return NextResponse.json({ success: true, ignored: true });
-      }
-
       const normalizedRefundStatus = normalizeRefundStatus(refundEntity?.status || eventType.replace('refund.', ''));
       const refundInr = paiseToInr(refundEntity?.amount);
+      const paidInr = Number(paymentRow.amount_inr || 0);
+      const nowIso = new Date().toISOString();
 
-      const { data: previousRefund } = await supabase
+      if (normalizedRefundStatus !== 'failed') {
+        const { error: paymentUpdateError } = await supabase
+          .from('razorpay_payments')
+          .update({
+            payment_status: refundInr + 0.01 >= paidInr ? 'refunded' : 'partially_refunded',
+            updated_at: nowIso,
+          })
+          .eq('id', paymentRow.id);
+        if (paymentUpdateError) throw paymentUpdateError;
+      }
+
+      // razorpay_refunds.service_request_id is NOT NULL, so only service-request refunds get a refund row and debit.
+      if (!orderRow?.service_request_id) {
+        await markWebhookStatus(eventRowId, 'processed', null);
+        return NextResponse.json({ success: true, event: eventType });
+      }
+
+      const { data: previousRefund, error: previousRefundError } = await supabase
         .from('razorpay_refunds')
         .select('refund_status')
         .eq('razorpay_refund_id', refundId)
         .maybeSingle();
+      if (previousRefundError) throw previousRefundError;
 
-      await supabase
-        .from('razorpay_refunds')
-        .upsert(
-          {
-            payment_id: paymentRow.id,
-            service_request_id: Number(orderRow.service_request_id),
-            initiated_by_admin_id: null,
-            support_ticket_id: null,
-            razorpay_refund_id: refundId,
-            refund_reason: String(refundEntity?.notes?.reason || refundEntity?.acquirer_data?.arn || 'provider_webhook'),
-            amount_inr: Number(refundInr.toFixed(2)),
-            amount_paise: Number(refundEntity?.amount || 0),
-            refund_status: normalizedRefundStatus,
-            provider_payload: refundEntity,
-            initiated_at: new Date().toISOString(),
-            processed_at: normalizedRefundStatus === 'processed' ? new Date().toISOString() : null,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'razorpay_refund_id' }
-        );
+      const wasProcessed = previousRefund?.refund_status === 'processed';
+      const persistedRefundStatus = wasProcessed ? 'processed' : normalizedRefundStatus;
 
-      await supabase
-        .from('razorpay_payments')
-        .update({
-          payment_status: normalizedRefundStatus === 'processed' ? 'refunded' : 'partially_refunded',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', paymentRow.id);
+      const { error: refundWriteError } = previousRefund
+        ? await supabase
+            .from('razorpay_refunds')
+            .update({
+              refund_status: persistedRefundStatus,
+              provider_payload: refundEntity,
+              ...(persistedRefundStatus === 'processed' && !wasProcessed ? { processed_at: nowIso } : {}),
+              updated_at: nowIso,
+            })
+            .eq('razorpay_refund_id', refundId)
+        : await supabase
+            .from('razorpay_refunds')
+            .upsert(
+              {
+                payment_id: paymentRow.id,
+                service_request_id: Number(orderRow.service_request_id),
+                initiated_by_admin_id: null,
+                support_ticket_id: null,
+                razorpay_refund_id: refundId,
+                refund_reason: String(refundEntity?.notes?.reason || refundEntity?.acquirer_data?.arn || 'provider_webhook'),
+                amount_inr: Number(refundInr.toFixed(2)),
+                amount_paise: Number(refundEntity?.amount || 0),
+                refund_status: persistedRefundStatus,
+                provider_payload: refundEntity,
+                initiated_at: nowIso,
+                processed_at: persistedRefundStatus === 'processed' ? nowIso : null,
+                updated_at: nowIso,
+              },
+              { onConflict: 'razorpay_refund_id' }
+            );
+      if (refundWriteError) throw refundWriteError;
 
-      if (normalizedRefundStatus === 'processed' && previousRefund?.refund_status !== 'processed') {
+      if (persistedRefundStatus === 'processed' && !wasProcessed) {
         await debitServiceRequestRefund(
           Number(orderRow.service_request_id),
           resolveRefundDebitInr({
             refundInr,
-            paidInr: Number(paymentRow.amount_inr || 0),
+            paidInr,
             orderNotes: orderRow.order_notes,
           })
         );

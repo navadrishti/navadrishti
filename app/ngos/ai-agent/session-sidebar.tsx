@@ -4,7 +4,7 @@ import type React from "react"
 import { Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import type { NGOAIAgentSession } from "./intake"
+import { deriveSessionTitle, type NGOAIAgentSession } from "./intake"
 
 type SessionSidebarProps = {
   sessions: NGOAIAgentSession[]
@@ -33,6 +33,7 @@ export function SessionSidebar({ sessions, activeSessionId, onNewSession, onSele
           ) : (
             sessions.map((session) => {
               const isActive = session.id === activeSessionId
+              const title = deriveSessionTitle(session)
               return (
                 <div
                   key={session.id}
@@ -43,14 +44,14 @@ export function SessionSidebar({ sessions, activeSessionId, onNewSession, onSele
                     onClick={() => onSelectSession(session.id)}
                     className="min-w-0 flex-1 px-3 py-2 text-left"
                   >
-                    <p className="text-sm font-semibold text-slate-900">{session.title}</p>
+                    <p className="text-sm font-semibold text-slate-900 [overflow-wrap:anywhere]">{title}</p>
                     <p className="mt-1 text-[11px] text-slate-500">{new Date(session.updatedAt).toLocaleString()}</p>
                   </button>
                   <button
                     type="button"
                     onClick={(event) => void onDeleteSession(session.id, event)}
                     className="mr-2 mt-2 rounded-md p-1.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
-                    aria-label={`Delete ${session.title}`}
+                    aria-label={`Delete ${title}`}
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>

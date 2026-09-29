@@ -7,13 +7,19 @@ import {
   CSR_WORK_END_DATE_REQUIRED_MESSAGE,
   assertCsr1CoversProject,
   assertCsr1CoversRequiredThrough,
+  getAccountAccessBlockReason,
   ngoIsCsrEligible,
   resolveProjectCsrCoverageEndDate,
   verifyAdminToken,
   verifyToken,
   type UserData,
 } from '@/lib/auth';
-import { verifyPlatformCAToken, PLATFORM_CA_COOKIE, type PlatformCATokenPayload } from '@/lib/platform-ca-auth';
+import {
+  verifyPlatformCAToken,
+  PLATFORM_CA_ACCOUNTS_TABLE,
+  PLATFORM_CA_COOKIE,
+  type PlatformCATokenPayload,
+} from '@/lib/platform-ca-auth';
 import { supabase } from '@/lib/db';
 import { ensureCompanyCaIdAssigned } from '@/lib/company-ca';
 import { parseJsonObject } from '@/lib/utils';
@@ -173,6 +179,33 @@ export function getAuthUserFromRequest(request: NextRequest): UserData {
   return user;
 }
 
+const SESSION_BLOCK_CACHE_MS = 30_000;
+const sessionBlockCache = new Map<number, { reason: string | null; expiresAt: number }>();
+
+/**
+ * Bans and suspensions must end live sessions too, not only the next sign-in.
+ * Cached briefly per instance so every API call does not cost a users lookup.
+ */
+export async function findSessionBlockReason(userId: number): Promise<string | null> {
+  const cached = sessionBlockCache.get(userId);
+  if (cached && cached.expiresAt > Date.now()) return cached.reason;
+
+  const { data, error } = await supabase
+    .from('users')
+    .select('account_status, locked_until, profile_data')
+    .eq('id', userId)
+    .maybeSingle();
+  if (error) throw error;
+
+  const reason = data ? getAccountAccessBlockReason(data) : 'This account no longer exists.';
+  sessionBlockCache.set(userId, { reason, expiresAt: Date.now() + SESSION_BLOCK_CACHE_MS });
+  return reason;
+}
+
+export function forgetSessionBlockReason(userId: number) {
+  sessionBlockCache.delete(userId);
+}
+
 export function assertUserType(user: UserData, allowed: Array<UserData['user_type']>) {
   if (!allowed.includes(user.user_type)) {
     throw new AuthError('Insufficient permissions', 403);
@@ -326,6 +359,53 @@ export function isCARequest(request: NextRequest): boolean {
   return getCAFromRequest(request) !== null;
 }
 
+export const CA_PASSWORD_CHANGE_REQUIRED_MESSAGE = 'Password change required';
+
+export type CAAccessOptions = {
+  allowPasswordChangePending?: boolean;
+};
+
+/**
+ * Like getCAFromRequest, but also requires the platform_ca_accounts row to still be active
+ * and (unless allowed) not awaiting a password change. Returns null when no CA token is present.
+ */
+export async function getActiveCAFromRequest(
+  request: NextRequest,
+  options: CAAccessOptions = {}
+): Promise<PlatformCATokenPayload | null> {
+  const ca = getCAFromRequest(request);
+  if (!ca) return null;
+
+  const { data: account, error } = await supabase
+    .from(PLATFORM_CA_ACCOUNTS_TABLE)
+    .select('id, active, must_change_password')
+    .eq('id', ca.id)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!account || account.active !== true) {
+    throw new AuthError('CA account is inactive');
+  }
+  if (account.must_change_password && !options.allowPasswordChangePending) {
+    throw new AuthError(CA_PASSWORD_CHANGE_REQUIRED_MESSAGE, 403);
+  }
+  return ca;
+}
+
+export function authErrorStatus(error: unknown, fallback: 401 | 403 = 401): 401 | 403 {
+  return error instanceof AuthError ? error.status : fallback;
+}
+
+/** True only for a platform CA whose account is active and not awaiting a password change. */
+export async function hasActiveCASession(request: NextRequest): Promise<boolean> {
+  try {
+    return (await getActiveCAFromRequest(request)) !== null;
+  } catch (error) {
+    if (error instanceof AuthError) return false;
+    throw error;
+  }
+}
+
 function extractCompanyCAToken(request: NextRequest): string | null {
   const cookieToken =
     request.cookies.get('evidence-verification-token')?.value ||
@@ -350,7 +430,21 @@ export interface CompanyCAContext {
   };
 }
 
-export async function getCompanyCAFromRequest(request: NextRequest): Promise<CompanyCAContext> {
+export type CompanyCaPermission = 'can_review_evidence' | 'can_confirm_payments' | 'can_view_audit';
+
+export function hasCompanyCaPermission(
+  identity: Pick<CompanyCAContext['identity'], 'permissions'>,
+  permission: CompanyCaPermission
+): boolean {
+  // The column defaults to granting everything, so a missing key counts as granted.
+  const value = parseJsonObject(identity.permissions)[permission];
+  return value === undefined || value === true;
+}
+
+export async function getCompanyCAFromRequest(
+  request: NextRequest,
+  options: CAAccessOptions = {}
+): Promise<CompanyCAContext> {
   const token = extractCompanyCAToken(request);
 
   if (!token) {
@@ -376,6 +470,10 @@ export async function getCompanyCAFromRequest(request: NextRequest): Promise<Com
     throw new Error('Company CA identity is not active');
   }
 
+  if (identity.must_change_password && !options.allowPasswordChangePending) {
+    throw new AuthError(CA_PASSWORD_CHANGE_REQUIRED_MESSAGE, 403);
+  }
+
   const caId = await ensureCompanyCaIdAssigned(identity.id, identity.company_user_id, identity.ca_id);
 
   return {
@@ -395,19 +493,22 @@ export async function getCompanyCAFromRequest(request: NextRequest): Promise<Com
 export interface EvidenceApproverContext {
   actorType: 'platform_ca' | 'company_ca';
   reviewerUserId: number | null;
+  platformCAId: number | null;
   companyUserId: number | null;
   companyCAIdentityId: string | null;
 }
 
 export async function getEvidenceApproverContext(
   request: NextRequest,
-  expectedCompanyUserId?: number
+  expectedCompanyUserId?: number,
+  options: { requiredPermission?: CompanyCaPermission } = {}
 ): Promise<EvidenceApproverContext> {
-  const platformCA = getCAFromRequest(request);
+  const platformCA = await getActiveCAFromRequest(request);
   if (platformCA) {
     return {
       actorType: 'platform_ca',
       reviewerUserId: null,
+      platformCAId: Number(platformCA.id) || null,
       companyUserId: null,
       companyCAIdentityId: null
     };
@@ -422,9 +523,14 @@ export async function getEvidenceApproverContext(
     throw new Error('Company CA is not authorized for this company project');
   }
 
+  if (options.requiredPermission && !hasCompanyCaPermission(companyCA.identity, options.requiredPermission)) {
+    throw new AuthError('Company CA does not have permission for this action', 403);
+  }
+
   return {
     actorType: 'company_ca',
     reviewerUserId: companyCA.user.id,
+    platformCAId: null,
     companyUserId: companyCA.identity.company_user_id,
     companyCAIdentityId: companyCA.identity.id
   };

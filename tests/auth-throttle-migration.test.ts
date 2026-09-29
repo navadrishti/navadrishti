@@ -3,9 +3,9 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 // Migrations are kept out of the repository, so the SQL checks only run where the local copy exists.
-const migrationsDir = path.resolve(import.meta.dirname, '../reference/supabase/migrations')
-const migrationFile = (fs.existsSync(migrationsDir) ? fs.readdirSync(migrationsDir) : []).find((name) => /^\d{14}_auth_throttle_store\.sql$/.test(name))
-const sql = migrationFile ? fs.readFileSync(path.join(migrationsDir, migrationFile), 'utf8').toLowerCase() : ''
+const migrationPath = path.resolve(import.meta.dirname, '../reference/navadrishti_pending_migrations.sql')
+const migrationFile = fs.existsSync(migrationPath) ? migrationPath : null
+const sql = migrationFile ? fs.readFileSync(migrationFile, 'utf8').toLowerCase() : ''
 const types = fs.readFileSync(path.resolve(import.meta.dirname, '../lib/database.types.ts'), 'utf8')
 
 const TABLES = ['auth_rate_limits', 'auth_one_time_codes']

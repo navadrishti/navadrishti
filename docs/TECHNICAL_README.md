@@ -914,7 +914,7 @@ Health: GET /api/health
 `/api/ca/auth`, `auth/verify`, `auth/logout`, `auth/change-password`, `queue`, `review`, `verification-action`
 
 ### Company CA (evidence review)
-`/api/evidence-verification/auth`, `verify`, `logout`, `change-password`, `mark-password-changed`, `accounts`, `[identityId]`, `payments/create-order`, `payments/verify`, `volunteer-attendance` (legacy `/api/companies/ca/*` redirects here)
+`/api/evidence-verification/auth`, `verify`, `logout`, `change-password`, `accounts`, `[identityId]`, `payments/create-order`, `payments/verify`, `volunteer-attendance` (legacy `/api/companies/ca/*` redirects here)
 
 ### Government Admin (8 route files; portal paused)
 `/api/government-admin/auth`, `verify`, `logout`, `change-password`, `credentials`, `projects`, `state-analytics`, `district-analytics`

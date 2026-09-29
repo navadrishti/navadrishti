@@ -3,23 +3,25 @@ import { buildProjectLeadNgoPatch, getProjectLeadNgoId, requestProjects } from '
 import { serviceClients, serviceOffers } from '@/lib/db/service-offers'
 import {
   applyVolunteerAcceptanceAllocation,
+  releaseVolunteerAllocation,
   serviceRequestContributions,
   serviceRequests,
 } from '@/lib/db/service-requests'
-import { ServiceRequestDeleteBlockedError } from '@/lib/service-requests/errors'
+import { NeedCapacityExceededError, ServiceRequestDeleteBlockedError } from '@/lib/service-requests/errors'
 import type { Tables } from '@/lib/database.types'
 import { callsOf, compact, createSupabaseFake, eqsOf, unknownColumns, type FakeQuery, type FakeResult } from './support/supabase-fake'
 
-const mocks = vi.hoisted(() => ({ from: vi.fn() }))
+const mocks = vi.hoisted(() => ({ from: vi.fn(), rpc: vi.fn() }))
 
 vi.mock('server-only', () => ({}))
-vi.mock('@/lib/db/client', () => ({ supabase: { from: mocks.from } }))
+vi.mock('@/lib/db/client', () => ({ supabase: { from: mocks.from, rpc: mocks.rpc } }))
 
 let fake = createSupabaseFake()
 
 function useDb(responder: Record<string, FakeResult[]> | ((query: FakeQuery) => FakeResult | undefined) = {}) {
   fake = createSupabaseFake(responder)
   mocks.from.mockImplementation(fake.from)
+  mocks.rpc.mockImplementation(fake.rpc)
   return fake
 }
 
@@ -360,18 +362,63 @@ describe('applyVolunteerAcceptanceAllocation', () => {
     remaining_quantity: null,
   } as unknown as Tables<'service_requests'>
 
-  it('writes the new amounts', async () => {
-    useDb({ 'service_requests.update': [{ data: { id: 1 } }] })
+  const missingFunction = { error: { code: 'PGRST202', message: 'missing' } }
+
+  it('adds the amount in one guarded database call', async () => {
+    useDb({ 'adjust_service_request_progress.rpc': [{ data: [{ id: 1, current_amount: 500 }] }] })
+    await expect(applyVolunteerAcceptanceAllocation(request, { amount: 300 })).resolves.toEqual({ id: 1, current_amount: 500 })
+    expect(fake.queries).toHaveLength(1)
+    expect(fake.queries[0].payload).toEqual({
+      p_request_id: 1,
+      p_amount_delta: 300,
+      p_quantity_delta: 0,
+      p_target_amount: 1000,
+      p_target_quantity: 0,
+      p_enforce_capacity: true,
+    })
+  })
+
+  it('reports lost capacity when the guarded call updates nothing', async () => {
+    useDb({ 'adjust_service_request_progress.rpc': [{ data: [] }] })
+    await expect(applyVolunteerAcceptanceAllocation(request, { amount: 300 })).rejects.toBeInstanceOf(NeedCapacityExceededError)
+  })
+
+  it('falls back to a fresh read when the function is not deployed', async () => {
+    useDb({
+      'adjust_service_request_progress.rpc': [missingFunction],
+      'service_requests.select': [{ data: { ...request, current_amount: 400 } }],
+      'service_requests.update': [{ data: { id: 1 } }],
+    })
     await expect(applyVolunteerAcceptanceAllocation(request, { amount: 300 })).resolves.toEqual({ id: 1 })
-    const [update] = fake.queries
-    expect(update.payload).toMatchObject({ current_amount: 500, remaining_amount: 500 })
+    const [update] = fake.find('service_requests', 'update')
+    expect(update.payload).toMatchObject({ current_amount: 700, remaining_amount: 300 })
     expect(update.payload).not.toHaveProperty('current_quantity')
     expect(eqsOf(update)).toEqual({ id: 1 })
   })
 
-  it('throws when the update fails', async () => {
-    useDb({ 'service_requests.update': [{ error: { message: 'nope' } }] })
-    await expect(applyVolunteerAcceptanceAllocation(request, { amount: 1 })).rejects.toThrow('nope')
+  it('refuses the fallback when the latest row has no room left', async () => {
+    useDb({
+      'adjust_service_request_progress.rpc': [missingFunction],
+      'service_requests.select': [{ data: { ...request, current_amount: 900 } }],
+    })
+    await expect(applyVolunteerAcceptanceAllocation(request, { amount: 300 })).rejects.toBeInstanceOf(NeedCapacityExceededError)
+    expect(fake.find('service_requests', 'update')).toHaveLength(0)
+  })
+
+  it('never takes a released allocation below zero', async () => {
+    useDb({
+      'adjust_service_request_progress.rpc': [missingFunction],
+      'service_requests.select': [{ data: { ...request, current_amount: 100 } }],
+      'service_requests.update': [{ data: { id: 1 } }],
+    })
+    await releaseVolunteerAllocation(request, { amount: 300 })
+    const [update] = fake.find('service_requests', 'update')
+    expect(update.payload).toMatchObject({ current_amount: 0, remaining_amount: 1000 })
+  })
+
+  it('surfaces other database errors', async () => {
+    useDb({ 'adjust_service_request_progress.rpc': [{ error: { code: 'XX000', message: 'nope' } }] })
+    await expect(applyVolunteerAcceptanceAllocation(request, { amount: 1 })).rejects.toMatchObject({ message: 'nope' })
   })
 })
 

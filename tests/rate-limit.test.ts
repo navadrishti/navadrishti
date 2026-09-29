@@ -127,7 +127,8 @@ describe('rateLimit', () => {
 
 describe('getClientIp', () => {
   it.each([
-    [{ 'x-forwarded-for': '203.0.113.9, 10.0.0.1', 'x-real-ip': '10.0.0.2' }, '203.0.113.9'],
+    [{ 'x-forwarded-for': '203.0.113.9, 10.0.0.1', 'x-real-ip': '10.0.0.2' }, '10.0.0.2'],
+    [{ 'x-forwarded-for': '1.2.3.4, 203.0.113.9' }, '203.0.113.9'],
     [{ 'x-real-ip': ' 198.51.100.4 ' }, '198.51.100.4'],
     [{}, 'unknown'],
   ])('reads %j as %s', (headers, ip) => {

@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
       .select('*')
       .eq('username', username)
       .eq('active', true)
-      .single();
+      .maybeSingle();
 
     if (error || !account) {
       return NextResponse.json({ error: 'Invalid username or password' }, { status: 401 });

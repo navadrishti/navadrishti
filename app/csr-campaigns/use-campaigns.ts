@@ -1,4 +1,6 @@
 import { useEffect, useEffectEvent, useState } from "react"
+import { toast } from "sonner"
+import { getErrorMessage } from "@/lib/utils"
 import { toCampaign } from "./helpers"
 import type { Campaign, CampaignApiItem } from "./types"
 
@@ -58,6 +60,7 @@ export function useCampaigns(currentUserId: number, userType?: string) {
       await loadCampaigns()
     } catch (error) {
       console.error('Failed to volunteer for campaign:', error)
+      toast.error(getErrorMessage(error) || 'Failed to volunteer')
     } finally {
       setApplyingCampaignId(null)
     }
@@ -81,6 +84,7 @@ export function useCampaigns(currentUserId: number, userType?: string) {
       await loadCampaigns()
     } catch (error) {
       console.error('Failed to delete campaign:', error)
+      toast.error(getErrorMessage(error) || 'Failed to delete campaign')
     } finally {
       setDeletingCampaignId(null)
     }

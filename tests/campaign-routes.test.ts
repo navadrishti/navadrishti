@@ -231,6 +231,34 @@ describe('GET /api/campaigns/[id]', () => {
   it('returns 404 for a missing campaign', async () => {
     expect((await get()).status).toBe(404)
   })
+
+  describe('private campaign details', () => {
+    const rental = { id: 'c1:7', service_offer_id: 7, payment_status: 'paid', razorpay_order_id: 'order_1', razorpay_payment_id: 'pay_1', outbound_delivery: { tracking_id: 'AWB1' } }
+    const invite = { ngo_id: 5, name: 'Green Earth', email: 'green@example.org', status: 'invited' }
+    const withPrivateDetails = () =>
+      draftCampaign({ status: 'active', impact_metrics: { csr_capability_rentals: [rental], lead_ngo_invites: [invite], volunteer_count: 3 } })
+
+    it.each([
+      ['anonymous visitors', undefined],
+      ['an invited NGO', tokenFor(5, 'ngo')],
+      ['another company', tokenFor(11, 'company')],
+    ])('hides payment references and invitee emails from %s', async (_label, token) => {
+      campaign = withPrivateDetails()
+      const { data } = await (await get({ token })).json()
+      expect(data.impact_metrics.csr_capability_rentals).toEqual([
+        { id: 'c1:7', service_offer_id: 7, payment_status: 'paid', outbound_delivery: { tracking_id: 'AWB1' } },
+      ])
+      expect(data.impact_metrics.lead_ngo_invites).toEqual([{ ngo_id: 5, name: 'Green Earth', status: 'invited' }])
+      expect(data.impact_metrics.volunteer_count).toBe(3)
+    })
+
+    it('keeps the full details for the owner company', async () => {
+      campaign = withPrivateDetails()
+      const { data } = await (await get({ token: tokenFor(10, 'company') })).json()
+      expect(data.impact_metrics.csr_capability_rentals[0]).toMatchObject({ razorpay_order_id: 'order_1', razorpay_payment_id: 'pay_1' })
+      expect(data.impact_metrics.lead_ngo_invites[0]).toMatchObject({ email: 'green@example.org' })
+    })
+  })
 })
 
 describe('DELETE /api/campaigns/[id]', () => {

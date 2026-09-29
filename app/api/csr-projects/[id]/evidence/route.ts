@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
-import { findAuthUser, isCARequest, getCompanyCAFromRequest } from '@/lib/server-auth';
+import { findAuthUser, hasActiveCASession, getCompanyCAFromRequest } from '@/lib/server-auth';
 import type { UserData } from '@/lib/auth';
 import type { Tables } from '@/lib/database.types';
 
@@ -18,7 +18,7 @@ type ProjectViewer = {
 };
 
 async function resolveProjectViewer(request: NextRequest): Promise<ProjectViewer | null> {
-  if (isCARequest(request)) {
+  if (await hasActiveCASession(request)) {
     return { isPlatformCA: true, companyCAUserId: null, user: null };
   }
 
@@ -265,7 +265,6 @@ export async function POST(
     const body = await request.json();
     const action = String(body?.action || '').trim();
     const offerId = Number(body?.offer_id || 0);
-    const campaignId = String(body?.campaign_id || projectId).trim();
 
     const { data: project, error: projectError } = await supabase
       .from('csr_projects')
@@ -296,10 +295,36 @@ export async function POST(
         : 'outbound';
     const trackingId = String(body?.tracking_id || body?.trackingId || '').trim();
 
+    const campaignId = String(project.campaign_id || '').trim();
+    if (!campaignId) {
+      return NextResponse.json({ error: 'Project is not linked to a campaign' }, { status: 400 });
+    }
+
     const {
+      assertCsrCapabilityDeliveryAccess,
       linkCsrCapabilityRentalTracking,
+      loadCampaignRentalByOffer,
       syncCsrCapabilityRentalDelhivery,
     } = await import('@/lib/csr-agent/campaign');
+
+    const actingUserId = Number(viewer.user?.id || 0);
+    if (!actingUserId) {
+      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 });
+    }
+
+    let rentalRecord;
+    try {
+      rentalRecord = (await loadCampaignRentalByOffer(campaignId, offerId)).rental;
+    } catch {
+      return NextResponse.json({ error: 'CSR capability rental not found' }, { status: 404 });
+    }
+
+    try {
+      assertCsrCapabilityDeliveryAccess({ userId: actingUserId, rental: rentalRecord, leg });
+    } catch (accessError) {
+      const message = accessError instanceof Error ? accessError.message : 'Insufficient permissions';
+      return NextResponse.json({ error: message }, { status: 403 });
+    }
 
     if (action === 'capability_rental_link_tracking') {
       const rental = await linkCsrCapabilityRentalTracking({

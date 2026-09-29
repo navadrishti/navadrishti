@@ -56,7 +56,7 @@ export function useSessionPersistence({ intake, offers, sync, mounted, userId, t
     const now = new Date().toISOString()
     return {
       id: activeSessionId || `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      title: deriveSessionTitle(messages),
+      title: deriveSessionTitle({ messages, intakePath, projectData, needsData }),
       createdAt: now,
       updatedAt: now,
       messages,

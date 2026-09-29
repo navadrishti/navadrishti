@@ -5,6 +5,7 @@ import { extractVisibleKycFields, isGeminiOcrUnavailable } from '@/lib/gemini-vi
 import type { CAQueueType, CAReviewDocument } from '@/lib/ca-review-types'
 import { parseJsonObject } from '@/lib/utils'
 import { buildCrossDocumentComparisons } from './cross-field-comparisons'
+import { isTrustedDocumentUrl } from './document-urls'
 import { CAReviewError } from './errors'
 import { applyNgoExpiryOverlay, ngoOcrExpiries } from './ngo-compliance'
 import { mapQueueItem } from './queue'
@@ -33,6 +34,45 @@ async function ocrDocument(doc: CAReviewDocument): Promise<CAReviewDocument> {
   }
 }
 
+// OCR can take a long time, so merge into the latest profile_data instead of the copy read before it.
+async function saveOcrResults(
+  userId: number,
+  profileKey: string,
+  cache: Record<string, unknown>,
+  ocrExpiries: Record<string, unknown> | null
+) {
+  const { data: latest, error: readError } = await supabase
+    .from('users')
+    .select('profile_data')
+    .eq('id', userId)
+    .maybeSingle()
+  if (readError || !latest) {
+    console.error('Failed to reload profile before caching OCR results:', readError)
+    return
+  }
+
+  const profileData = parseJsonObject(latest.profile_data)
+  const verificationDocuments = parseJsonObject(profileData.verification_documents)
+  const typeBlock = parseJsonObject(verificationDocuments[profileKey])
+  const { error } = await supabase
+    .from('users')
+    .update({
+      profile_data: {
+        ...profileData,
+        verification_documents: {
+          ...verificationDocuments,
+          [profileKey]: {
+            ...typeBlock,
+            ocr_cache: { ...parseJsonObject(typeBlock.ocr_cache), ...cache },
+            ...(ocrExpiries ? { ocr_expiries: { ...parseJsonObject(typeBlock.ocr_expiries), ...ocrExpiries } } : {}),
+          },
+        },
+      },
+    })
+    .eq('id', userId)
+  if (error) console.error('Failed to cache OCR results:', error)
+}
+
 async function applyOcr(type: CAQueueType, row: VerificationQueueRow, item: CAQueueItem) {
   const user = unwrapUser(row.users)
   const profileData = parseJsonObject(user.profile_data)
@@ -59,7 +99,7 @@ async function applyOcr(type: CAQueueType, row: VerificationQueueRow, item: CAQu
       continue
     }
 
-    if (missingKey || serviceDown) {
+    if (missingKey || serviceDown || !isTrustedDocumentUrl(doc.file_url)) {
       nextDocs.push({ ...doc, ocr_status: 'skipped' })
       continue
     }
@@ -95,18 +135,7 @@ async function applyOcr(type: CAQueueType, row: VerificationQueueRow, item: CAQu
   }
 
   if ((cacheChanged || expiriesChanged) && user.id) {
-    await supabase
-      .from('users')
-      .update({
-        profile_data: {
-          ...profileData,
-          verification_documents: {
-            ...verificationDocuments,
-            [profileKey]: nextTypeBlock,
-          },
-        },
-      })
-      .eq('id', user.id)
+    await saveOcrResults(user.id, profileKey, cache, type === 'ngos' ? ocrExpiries : null)
   }
 
   const ocrError = missingKey

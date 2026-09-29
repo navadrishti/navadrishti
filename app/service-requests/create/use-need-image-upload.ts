@@ -1,5 +1,5 @@
 import { useState, type Dispatch, type SetStateAction } from 'react'
-import { parseImageUrls } from './helpers'
+import { parseImageUrls, withoutIndex } from './helpers'
 import type { NeedDraft, UploadProgressState } from './types'
 
 export function useNeedImageUpload(
@@ -85,5 +85,9 @@ export function useNeedImageUpload(
     }
   }
 
-  return { needUploadProgress, handleNeedImageFiles, removeNeedImageUrl }
+  const forgetNeedUploadProgress = (index: number) => {
+    setNeedUploadProgress((prev) => withoutIndex(prev, index))
+  }
+
+  return { needUploadProgress, handleNeedImageFiles, removeNeedImageUrl, forgetNeedUploadProgress }
 }

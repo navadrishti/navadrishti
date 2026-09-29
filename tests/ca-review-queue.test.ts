@@ -41,8 +41,8 @@ function withDocs(profileKey: string, documents: Record<string, string>, block: 
   return { verification_documents: { [profileKey]: { documents, ...block } } }
 }
 
-const panUrl = 'https://cdn.example.com/pan.pdf'
-const aadhaarUrl = 'https://cdn.example.com/aadhaar.pdf'
+const panUrl = 'https://res.cloudinary.com/demo/raw/upload/pan.pdf'
+const aadhaarUrl = 'https://res.cloudinary.com/demo/raw/upload/aadhaar.pdf'
 const individualProfile = withDocs(
   'individual',
   { individualPanCard: panUrl, individualAadhaar: aadhaarUrl },
@@ -50,6 +50,7 @@ const individualProfile = withDocs(
 )
 
 beforeEach(() => {
+  vi.stubEnv('CLOUDINARY_CLOUD_NAME', 'demo')
   mocks.from.mockReset()
   mocks.extract.mockReset()
   vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -74,7 +75,6 @@ describe('mapQueueItem', () => {
       verification_status: 'pending',
       submitted_at: '2026-01-01T10:00:00Z',
       documents_total: 2,
-      documents_verified: 0,
       ocr_error: '',
     })
     expect(item.field_comparisons).toHaveLength(6)
@@ -283,7 +283,10 @@ describe('getCAReview', () => {
         ? [{ label: 'PAN Number', value: 'ABCDE9999F' }]
         : [{ label: 'Aadhaar Number', value: '1234 5678 9012' }]
     )
-    const fake = useDb({ 'individual_verifications.select': [{ data: row({ pan_number: 'ABCDE1234F' }, {}, individualProfile) }] })
+    const fake = useDb({
+      'individual_verifications.select': [{ data: row({ pan_number: 'ABCDE1234F' }, {}, individualProfile) }],
+      'users.select': [{ data: { profile_data: individualProfile } }],
+    })
     const review = await getCAReview('individuals', 4)
 
     expect(mocks.extract).toHaveBeenCalledWith({ label: 'PAN Card', fileName: 'pan.pdf', fileUrl: panUrl })
@@ -320,13 +323,16 @@ describe('getCAReview', () => {
   })
 
   describe('with more documents than the OCR limit', () => {
-    const urls = Array.from({ length: 14 }, (_, index) => `https://cdn.example.com/doc-${index + 1}.pdf`)
+    const urls = Array.from({ length: 14 }, (_, index) => `https://res.cloudinary.com/demo/raw/upload/doc-${index + 1}.pdf`)
     const documents = Object.fromEntries(urls.map((url, index) => [`companyDoc${index + 1}`, url]))
 
     it('keeps every document but only reads the first twelve', async () => {
       vi.stubEnv('GEMINI_API_KEY', 'key')
       mocks.extract.mockResolvedValue([{ label: 'GSTIN', value: '27AAAPL1234C1Z5' }])
-      const fake = useDb({ 'company_verifications.select': [{ data: row({ company_name: 'Acme' }, {}, withDocs('company', documents)) }] })
+      const fake = useDb({
+        'company_verifications.select': [{ data: row({ company_name: 'Acme' }, {}, withDocs('company', documents)) }],
+        'users.select': [{ data: { profile_data: withDocs('company', documents) } }],
+      })
       const review = await getCAReview('companies', 4)
 
       expect(review.documents.map((doc) => doc.file_url)).toEqual(urls)
@@ -368,18 +374,12 @@ describe('getCAReview', () => {
 
   it('persists NGO certificate expiries read by OCR', async () => {
     vi.stubEnv('GEMINI_API_KEY', 'key')
-    const certUrl = 'https://cdn.example.com/12a.pdf'
+    const certUrl = 'https://res.cloudinary.com/demo/raw/upload/12a.pdf'
     mocks.extract.mockResolvedValue([{ label: 'Valid Until', value: '31/12/2099' }])
+    const profile = withDocs('ngo', { ngoTwelveACertificate: certUrl }, { entered_fields: { twelve_a: 'T12', twelve_a_expiry: '2090-01-01' } })
     const fake = useDb({
-      'ngo_verifications.select': [
-        {
-          data: row(
-            { ngo_name: 'Seva' },
-            {},
-            withDocs('ngo', { ngoTwelveACertificate: certUrl }, { entered_fields: { twelve_a: 'T12', twelve_a_expiry: '2090-01-01' } })
-          ),
-        },
-      ],
+      'ngo_verifications.select': [{ data: row({ ngo_name: 'Seva' }, {}, profile) }],
+      'users.select': [{ data: { profile_data: profile } }],
     })
     const review = await getCAReview('ngos', 4)
     expect(review).toMatchObject({ twelve_a_expiry: '2099-12-31', ocr_expiries: { twelve_a: '2099-12-31' } })

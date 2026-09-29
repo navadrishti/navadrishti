@@ -45,9 +45,15 @@ export async function POST(
       .select('*')
       .eq('service_offer_id', offerId)
       .eq('client_id', payerUserId)
-      .single();
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-    if (applicationError || !application) {
+    if (applicationError) {
+      return NextResponse.json({ error: 'Failed to load application' }, { status: 500 });
+    }
+
+    if (!application) {
       return NextResponse.json({ error: 'Application not found' }, { status: 404 });
     }
 
@@ -55,15 +61,21 @@ export async function POST(
       return NextResponse.json({ error: 'Payment can only be created after the offer is accepted' }, { status: 400 });
     }
 
-    const linkedServiceRequestId = Number(application.service_request_id || parseJsonObject(application.response_meta).service_request_id || 0);
+    const responseMeta = parseJsonObject(application.response_meta);
+    const linkedServiceRequestId = Number(application.service_request_id || responseMeta.service_request_id || 0);
     if (!Number.isFinite(linkedServiceRequestId) || linkedServiceRequestId <= 0) {
       return NextResponse.json({ error: 'This application is not linked to a service request, so payment cannot be created' }, { status: 400 });
     }
 
-    const baseAmountInr = Math.max(
-      0,
-      parseAmountToInr(application.proposed_amount || offer.price_amount || parseJsonObject(application.response_meta).payment_amount_inr || 0)
-    );
+    if (responseMeta.payment_required === false) {
+      return NextResponse.json({ error: 'This application does not require a payment' }, { status: 400 });
+    }
+
+    if (responseMeta.payment_status === 'paid') {
+      return NextResponse.json({ error: 'This application has already been paid' }, { status: 409 });
+    }
+
+    const baseAmountInr = parseAmountToInr(responseMeta.payment_amount_inr) || parseAmountToInr(offer.price_amount);
 
     if (baseAmountInr <= 0) {
       return NextResponse.json({ success: true, data: { paymentRequired: false, amountInr: 0 } });
@@ -96,7 +108,7 @@ export async function POST(
 
     const nowIso = new Date().toISOString();
 
-    await supabase.from('razorpay_payment_orders').upsert({
+    const { error: orderSaveError } = await supabase.from('razorpay_payment_orders').upsert({
       service_request_id: linkedServiceRequestId,
       contribution_id: null,
       payer_user_id: payerUserId,
@@ -116,6 +128,11 @@ export async function POST(
       },
       updated_at: nowIso
     }, { onConflict: 'razorpay_order_id' });
+
+    if (orderSaveError) {
+      console.error('Failed to save service-offer payment order:', orderSaveError);
+      return NextResponse.json({ error: 'Failed to save payment order' }, { status: 500 });
+    }
 
     return NextResponse.json({
       success: true,

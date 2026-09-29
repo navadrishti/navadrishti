@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, supabase } from '@/lib/db';
-import { sendEmail } from '@/lib/email';
+import { escapeHtml, sendEmail } from '@/lib/email';
 import { getAdminUser } from '@/lib/server-auth';
 import { processAdminRefund } from '@/lib/admin-refund';
 import { parseAmountToInr, getErrorMessage } from '@/lib/utils';
@@ -34,9 +34,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       .from('support_tickets')
       .select('*')
       .eq('ticket_id', ticketId)
-      .single();
+      .maybeSingle();
 
     if (existingError) throw existingError;
+    if (!existingTicket) {
+      return NextResponse.json({ error: 'Ticket not found' }, { status: 404 });
+    }
 
     const nextStatus = status || existingTicket?.status || 'open';
 
@@ -89,9 +92,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         html: `
           <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1f2937;">
             <h2 style="margin: 0 0 12px; color: #1d4ed8;">Support Ticket Reply</h2>
-            <p><strong>Ticket ID:</strong> ${ticketId}</p>
-            <p><strong>Title:</strong> ${String(data.title || '')}</p>
-            <div style="white-space: pre-wrap; background: #f9fafb; border: 1px solid #e5e7eb; padding: 12px; border-radius: 8px;">${replyMessage.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+            <p><strong>Ticket ID:</strong> ${escapeHtml(ticketId)}</p>
+            <p><strong>Title:</strong> ${escapeHtml(data.title || '')}</p>
+            <div style="white-space: pre-wrap; background: #f9fafb; border: 1px solid #e5e7eb; padding: 12px; border-radius: 8px;">${escapeHtml(replyMessage)}</div>
           </div>
         `,
         text: `Support Ticket ${ticketId}\n\n${replyMessage}`,

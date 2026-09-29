@@ -83,9 +83,12 @@ export function resetRateLimits() {
   lastCleanupAt = 0;
 }
 
+// x-real-ip is set by the hosting proxy; the first x-forwarded-for entry can be supplied by the client.
 export function getClientIp(request: Request) {
-  const forwarded = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
-  return forwarded || request.headers.get('x-real-ip')?.trim() || 'unknown';
+  const realIp = request.headers.get('x-real-ip')?.trim();
+  if (realIp) return realIp;
+  const forwarded = request.headers.get('x-forwarded-for')?.split(',').map((part) => part.trim()).filter(Boolean);
+  return forwarded?.at(-1) || 'unknown';
 }
 
 export function rateLimitedResponse(retryAfterSeconds: number, error = 'Too many attempts. Please try again later.') {

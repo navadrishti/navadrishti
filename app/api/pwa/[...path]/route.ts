@@ -32,6 +32,20 @@ const STRIPPED_REQUEST_HEADERS = [
   'x-csrf-token',
 ]
 
+/** The field app's own session cookie; platform cookies must never reach the upstream. */
+const FIELD_SESSION_COOKIE = 'navadrishti_session'
+
+function fieldSessionCookieHeader(request: NextRequest): string | null {
+  const value = request.cookies.get(FIELD_SESSION_COOKIE)?.value
+  return value ? `${FIELD_SESSION_COOKIE}=${value}` : null
+}
+
+function fieldSessionSetCookies(upstreamHeaders: Headers): string[] {
+  return upstreamHeaders
+    .getSetCookie()
+    .filter((cookie) => cookie.trim().startsWith(`${FIELD_SESSION_COOKIE}=`))
+}
+
 function corsHeaders(request: NextRequest): HeadersInit {
   const origin = request.headers.get('origin')
   const headers: Record<string, string> = {
@@ -80,6 +94,8 @@ async function proxyToPwa(request: NextRequest, pathSegments: string[]) {
 
   const headers = new Headers(request.headers)
   STRIPPED_REQUEST_HEADERS.forEach((name) => headers.delete(name))
+  const sessionCookie = fieldSessionCookieHeader(request)
+  if (sessionCookie) headers.set('cookie', sessionCookie)
 
   const method = request.method.toUpperCase()
   const body =
@@ -101,6 +117,7 @@ async function proxyToPwa(request: NextRequest, pathSegments: string[]) {
   responseHeaders.delete('access-control-allow-headers')
   responseHeaders.delete('access-control-allow-methods')
   responseHeaders.delete('set-cookie')
+  fieldSessionSetCookies(upstreamResponse.headers).forEach((cookie) => responseHeaders.append('set-cookie', cookie))
 
   const response = new NextResponse(upstreamResponse.body, {
     status: upstreamResponse.status,

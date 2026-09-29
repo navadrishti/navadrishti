@@ -30,6 +30,15 @@ export function useCompanyDashboardData({
   const [loadingPublishedCsrCampaigns, setLoadingPublishedCsrCampaigns] = useState(false);
   const [ngoDirectory, setNgoDirectory] = useState<NgoDirectoryItem[]>([]);
   const [loadingNgoDirectory, setLoadingNgoDirectory] = useState(false);
+  const [failedSections, setFailedSections] = useState<string[]>([]);
+
+  // A failed refresh keeps what is already on screen and is reported instead of showing an empty list.
+  const reportLoad = (section: string, ok: boolean) => {
+    setFailedSections((prev) => {
+      const without = prev.filter((item) => item !== section);
+      return ok ? (without.length === prev.length ? prev : without) : [...without, section];
+    });
+  };
 
   const fetchProjectOpportunities = async () => {
     try {
@@ -53,12 +62,11 @@ export function useCompanyDashboardData({
       const payload = await response.json();
       if (response.ok && payload?.success) {
         setProjectOpportunities(Array.isArray(payload.data) ? payload.data : []);
-      } else {
-        setProjectOpportunities([]);
       }
+      reportLoad('project opportunities', response.ok && Boolean(payload?.success));
     } catch (error) {
       console.error('Failed to fetch project opportunities:', error);
-      setProjectOpportunities([]);
+      reportLoad('project opportunities', false);
     } finally {
       setLoadingProjectOpportunities(false);
     }
@@ -82,12 +90,11 @@ export function useCompanyDashboardData({
       const payload = await response.json();
       if (response.ok && payload?.success) {
         setCsrTrackingAssignments(Array.isArray(payload.data) ? payload.data : []);
-      } else {
-        setCsrTrackingAssignments([]);
       }
+      reportLoad('CSR project tracking', response.ok && Boolean(payload?.success));
     } catch (error) {
       console.error('Failed to fetch CSR tracking assignments:', error);
-      setCsrTrackingAssignments([]);
+      reportLoad('CSR project tracking', false);
     } finally {
       setLoadingCSRTrackingAssignments(false);
     }
@@ -106,12 +113,11 @@ export function useCompanyDashboardData({
       const payload = await response.json();
       if (response.ok && payload?.success) {
         setPublishedCsrCampaigns(Array.isArray(payload.data) ? payload.data : []);
-      } else {
-        setPublishedCsrCampaigns([]);
       }
+      reportLoad('CSR campaigns', response.ok && Boolean(payload?.success));
     } catch (error) {
       console.error('Failed to fetch published CSR campaigns:', error);
-      setPublishedCsrCampaigns([]);
+      reportLoad('CSR campaigns', false);
     } finally {
       setLoadingPublishedCsrCampaigns(false);
     }
@@ -125,11 +131,10 @@ export function useCompanyDashboardData({
       if (response.ok && payload?.success) {
         const rows = Array.isArray(payload.data) ? payload.data : Array.isArray(payload.ngos) ? payload.ngos : [];
         setNgoDirectory(rows);
-      } else {
-        setNgoDirectory([]);
       }
+      reportLoad('NGO directory', response.ok && Boolean(payload?.success));
     } catch {
-      setNgoDirectory([]);
+      reportLoad('NGO directory', false);
     } finally {
       setLoadingNgoDirectory(false);
     }
@@ -151,9 +156,10 @@ export function useCompanyDashboardData({
       });
 
       const payload = await response.json();
-      setServiceOffers(payload.success ? (payload.data || []) : []);
+      if (response.ok && payload?.success) setServiceOffers(payload.data || []);
+      reportLoad('capability offers', response.ok && Boolean(payload?.success));
     } catch {
-      setServiceOffers([]);
+      reportLoad('capability offers', false);
     } finally {
       setLoadingServiceOffers(false);
     }
@@ -175,9 +181,10 @@ export function useCompanyDashboardData({
       });
 
       const payload = await response.json();
-      setOfferRequests(payload.success ? (payload.data || []) : []);
+      if (response.ok && payload?.success) setOfferRequests(payload.data || []);
+      reportLoad('offer requests', response.ok && Boolean(payload?.success));
     } catch {
-      setOfferRequests([]);
+      reportLoad('offer requests', false);
     } finally {
       setLoadingOfferRequests(false);
     }
@@ -195,7 +202,7 @@ export function useCompanyDashboardData({
     else if (table === 'campaigns') fetchPublishedCsrCampaigns();
   });
 
-  const loadDashboard = useEffectEvent(() =>
+  const reloadDashboard = () =>
     Promise.all([
       fetchServiceOffers(),
       fetchOfferRequests(),
@@ -204,8 +211,9 @@ export function useCompanyDashboardData({
       fetchPublishedCsrCampaigns(),
       fetchNgoDirectory(),
       refreshCompanyCaAccounts()
-    ])
-  );
+    ]);
+
+  const loadDashboard = useEffectEvent(reloadDashboard);
 
   useEffect(() => {
     if (!userId) return;
@@ -252,6 +260,8 @@ export function useCompanyDashboardData({
     ngoDirectory,
     loadingNgoDirectory,
     refreshCsrProjects,
+    failedSections,
+    reloadDashboard,
   };
 }
 

@@ -69,14 +69,16 @@ describe('applyCAVerificationAction lookups', () => {
     )
   })
 
+  const baseColumns =
+    'id, user_id, verification_status, verification_date, updated_at, reviewed_by_platform_ca_id, reviewed_at, rejection_reason'
   it.each([
     [
       'individuals',
       'individual_verifications',
-      'id, user_id, verification_status, verification_date, updated_at, aadhaar_verified, pan_verified, aadhaar_verified_at, pan_verified_at',
+      `${baseColumns}, aadhaar_verified, pan_verified, aadhaar_verified_at, pan_verified_at`,
     ],
-    ['companies', 'company_verifications', 'id, user_id, verification_status, verification_date, updated_at, company_name'],
-    ['ngos', 'ngo_verifications', 'id, user_id, verification_status, verification_date, updated_at, ngo_name'],
+    ['companies', 'company_verifications', `${baseColumns}, company_name`],
+    ['ngos', 'ngo_verifications', `${baseColumns}, ngo_name`],
   ] as const)('selects the %s row by id', async (type, table, columns) => {
     const fake = setup({ table })
     await applyCAVerificationAction({ type, id: 4, action: 'reject', reason: 'x', ca })
@@ -236,10 +238,14 @@ describe('applyCAVerificationAction approve', () => {
       message: 'denied',
     })
     const revert = fake.writes('individual_verifications')[1]
+    expect(payloadOf(fake, 'individual_verifications')).toMatchObject({ reviewed_by_platform_ca_id: 3, rejection_reason: null })
     expect(revert.payload).toEqual({
       verification_status: 'pending',
       verification_date: null,
       updated_at: '2026-01-01T00:00:00Z',
+      reviewed_by_platform_ca_id: null,
+      reviewed_at: null,
+      rejection_reason: null,
       aadhaar_verified: true,
       pan_verified: false,
       aadhaar_verified_at: '2025-12-01T00:00:00Z',
@@ -296,7 +302,13 @@ describe('applyCAVerificationAction concurrent decisions', () => {
   it('reverts the claim when the account changed during review', async () => {
     const fake = setup({
       table: 'company_verifications',
-      row: { verification_date: null, updated_at: '2026-01-01T00:00:00Z' },
+      row: {
+        verification_date: null,
+        updated_at: '2026-01-01T00:00:00Z',
+        reviewed_by_platform_ca_id: 8,
+        reviewed_at: '2025-12-01T00:00:00Z',
+        rejection_reason: 'Earlier reason',
+      },
       extra: { 'users.update': [{ data: [] }] },
     })
     await expect(
@@ -307,6 +319,9 @@ describe('applyCAVerificationAction concurrent decisions', () => {
       verification_status: 'pending',
       verification_date: null,
       updated_at: '2026-01-01T00:00:00Z',
+      reviewed_by_platform_ca_id: 8,
+      reviewed_at: '2025-12-01T00:00:00Z',
+      rejection_reason: 'Earlier reason',
     })
     expect(revert.filters).toContainEqual(['eq', 'verification_status', 'rejected'])
     expect(fake.writes('user_notifications', 'insert')).toHaveLength(0)
@@ -383,7 +398,13 @@ describe('applyCAVerificationAction reject', () => {
     })
 
     const verification = payloadOf(fake, 'company_verifications')
-    expect(verification).toEqual({ verification_status: 'rejected', updated_at: expect.any(String) })
+    expect(verification).toEqual({
+      verification_status: 'rejected',
+      updated_at: expect.any(String),
+      reviewed_by_platform_ca_id: 3,
+      reviewed_at: verification.updated_at,
+      rejection_reason: 'GST certificate is unreadable.',
+    })
 
     const user = payloadOf(fake, 'users')
     expect(user.verification_status).toBe('unverified')

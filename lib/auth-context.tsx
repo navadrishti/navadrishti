@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { getDocumentExpiryAlertCopy } from './auth';
 import { isPlatformLoginRequiredPath, PRODUCT_NAME } from './access-control';
 import { getErrorMessage } from '@/lib/utils';
+import { createClient } from '@/lib/supabase';
 
 const DOCUMENT_EXPIRY_ALERT_DURATION_MS = 18000;
 const documentExpiryAlertKey = (userId: number) => `navadrishti:document-expiry-alert:${userId}`;
@@ -385,13 +386,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setError(null);
     
     try {
+      // The email OTP step leaves a Supabase session for that address; the server checks it to mark the email verified.
+      const supabaseAuth = createClient().auth;
+      const { data: otpSession } = await supabaseAuth.getSession();
       const response = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(userData)
+        body: JSON.stringify({ ...userData, email_verification_token: otpSession.session?.access_token })
       });
+      if (otpSession.session) void supabaseAuth.signOut();
       
       const data = await response.json();
       

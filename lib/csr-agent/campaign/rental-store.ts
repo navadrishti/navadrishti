@@ -59,30 +59,38 @@ export async function getCsrCapabilityRentals(campaignId: string, companyId: num
   return parseCsrCapabilityRentals(campaign.impact_metrics);
 }
 
+const MAX_RENTAL_WRITE_ATTEMPTS = 3;
+
 export async function updateCsrCapabilityRentalStatus(input: {
   campaignId: string;
   offerId: number;
   companyId?: number;
   patch: Partial<CsrCapabilityRentalRecord>;
 }) {
-  let query = supabase.from("campaigns").select("*").eq("id", input.campaignId);
-  if (input.companyId) query = query.eq("company_id", input.companyId);
-  const { data: campaign, error } = await query.single();
-  if (error || !campaign) throw new Error("Campaign not found");
-
-  const rentals = parseCsrCapabilityRentals(campaign.impact_metrics);
   const id = rentalRecordKey(input.campaignId, input.offerId);
-  const current = rentals.find((row) => row.id === id);
-  if (!current) throw new Error("CSR capability rental not found");
 
-  const next = upsertCsrCapabilityRental(rentals, { ...current, ...input.patch, id });
-  const impact = parseJsonObject(campaign.impact_metrics);
-  await supabase
-    .from("campaigns")
-    .update({ impact_metrics: { ...impact, csr_capability_rentals: next } })
-    .eq("id", input.campaignId);
+  for (let attempt = 0; attempt < MAX_RENTAL_WRITE_ATTEMPTS; attempt++) {
+    let query = supabase.from("campaigns").select("*").eq("id", input.campaignId);
+    if (input.companyId) query = query.eq("company_id", input.companyId);
+    const { data: campaign, error } = await query.single();
+    if (error || !campaign) throw new Error("Campaign not found");
 
-  return next.find((row) => row.id === id)!;
+    const rentals = parseCsrCapabilityRentals(campaign.impact_metrics);
+    const current = rentals.find((row) => row.id === id);
+    if (!current) throw new Error("CSR capability rental not found");
+
+    const next = upsertCsrCapabilityRental(rentals, { ...current, ...input.patch, id });
+    const impact = parseJsonObject(campaign.impact_metrics);
+    const savedAt = await saveCampaignImpactIfUnchanged({
+      campaignId: input.campaignId,
+      companyId: Number(campaign.company_id),
+      previousUpdatedAt: campaign.updated_at ?? null,
+      impactMetrics: { ...impact, csr_capability_rentals: next },
+    });
+    if (savedAt) return next.find((row) => row.id === id)!;
+  }
+
+  throw new Error("CSR capability rental was updated concurrently. Refresh and try again.");
 }
 
 export async function loadCampaignRentalByOffer(campaignId: string, offerId: number) {

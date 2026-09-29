@@ -41,10 +41,33 @@ describe('GET /api/campaigns', () => {
     expect(callsOf(query, 'neq')).toEqual([])
   })
 
-  it('strips quotes from the search term so it cannot close the filter string', async () => {
+  it("hides payment references and invitee emails outside the owner's own list", async () => {
+    const row = {
+      id: 'c1',
+      company_id: 6,
+      status: 'active',
+      impact_metrics: {
+        csr_capability_rentals: [{ service_offer_id: 7, payment_status: 'paid', razorpay_order_id: 'order_1', razorpay_payment_id: 'pay_1' }],
+        lead_ngo_invites: [{ ngo_id: 5, email: 'green@example.org', status: 'accepted' }],
+      },
+    }
+    supabaseFake.reset({ 'campaigns.select': [{ data: [row] }, { data: [row] }] })
+
+    const publicList = await (await GET(jsonRequest('http://localhost/api/campaigns'))).json()
+    expect(publicList.data[0].impact_metrics).toEqual({
+      csr_capability_rentals: [{ service_offer_id: 7, payment_status: 'paid' }],
+      lead_ngo_invites: [{ ngo_id: 5, status: 'accepted' }],
+    })
+
+    const ownList = await (await GET(jsonRequest('http://localhost/api/campaigns?company_id=6', { token: tokenFor(6, 'company') }))).json()
+    expect(ownList.data[0].impact_metrics).toEqual(row.impact_metrics)
+  })
+
+  it('strips filter syntax from the search term so it cannot add its own conditions', async () => {
     const query = await listCampaigns(`?search=${encodeURIComponent('water",status.eq.draft')}`)
     const [filter] = callsOf(query, 'or')[0] as [string]
-    expect(filter).toContain('title.ilike."%water ,status.eq.draft%"')
-    expect(filter.match(/"/g)).toHaveLength(10)
+    expect(filter).toContain('title.ilike.%water status eq draft%')
+    expect(filter.split(',')).toHaveLength(5)
+    expect(filter).not.toContain('"')
   })
 })

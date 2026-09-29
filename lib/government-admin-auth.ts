@@ -31,6 +31,12 @@ export type GovernmentBody = {
   updated_at?: string;
 };
 
+const ACCOUNT_COLUMNS =
+  'id, government_body_id, username, email, display_name, role, active, must_change_password, last_login_at, created_at, updated_at, state_name, district_name';
+
+/** Roles allowed to create officer accounts and government projects. */
+export const GOVERNMENT_MANAGER_ROLES: GovernmentAdminRole[] = ['super_admin', 'government_admin'];
+
 type GovernmentAdminTokenPayload = {
   id: number;
   username: string;
@@ -71,7 +77,7 @@ export function getGovernmentAdminTokenFromRequest(request: NextRequest): string
   return null;
 }
 
-export async function getGovernmentAdminFromRequest(request: NextRequest): Promise<(GovernmentAdminAccount & { password_hash?: string }) | null> {
+export async function getGovernmentAdminFromRequest(request: NextRequest): Promise<GovernmentAdminAccount | null> {
   const token = getGovernmentAdminTokenFromRequest(request);
   if (!token) return null;
 
@@ -80,12 +86,12 @@ export async function getGovernmentAdminFromRequest(request: NextRequest): Promi
 
   const { data, error } = await supabase
     .from('government_admin_accounts')
-    .select('*')
+    .select(ACCOUNT_COLUMNS)
     .eq('id', decoded.id)
     .single();
 
   if (error || !data || data.active === false) return null;
-  return data as GovernmentAdminAccount & { password_hash?: string };
+  return data as GovernmentAdminAccount;
 }
 
 export async function listGovernmentBodies() {
@@ -101,14 +107,14 @@ export async function listGovernmentBodies() {
 export async function findGovernmentAdminAccountByRole(role: GovernmentAdminRole) {
   const { data, error } = await supabase
     .from('government_admin_accounts')
-    .select('*')
+    .select(ACCOUNT_COLUMNS)
     .eq('role', role)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
 
   if (error) throw error;
-  return (data || null) as (GovernmentAdminAccount & { password_hash?: string }) | null;
+  return (data || null) as GovernmentAdminAccount | null;
 }
 
 export async function updateGovernmentBody(bodyId: number, input: {
@@ -164,7 +170,7 @@ export async function updateGovernmentAdminAccount(accountId: number, input: {
       updated_at: new Date().toISOString(),
     })
     .eq('id', accountId)
-    .select('*')
+    .select(ACCOUNT_COLUMNS)
     .single();
 
   if (error) throw error;
@@ -191,10 +197,13 @@ export async function createGovernmentBody(input: {
   return data as GovernmentBody;
 }
 
-export async function assertGovernmentAdmin(request: NextRequest) {
+export async function assertGovernmentAdmin(request: NextRequest, allowedRoles?: GovernmentAdminRole[]) {
   const admin = await getGovernmentAdminFromRequest(request);
   if (!admin) {
     throw new AuthError('Government admin authentication required');
+  }
+  if (allowedRoles && !allowedRoles.includes(admin.role)) {
+    throw new AuthError('Your role cannot perform this action', 403);
   }
   return admin;
 }
@@ -227,7 +236,7 @@ export async function createGovernmentAdminAccount(input: {
       active: true,
       created_by_admin_id: input.createdByAdminId ?? null,
     })
-    .select('*')
+    .select(ACCOUNT_COLUMNS)
     .single();
 
   if (error) throw error;
@@ -244,7 +253,7 @@ export async function updateGovernmentAdminPassword(accountId: number, password:
       updated_at: new Date().toISOString(),
     })
     .eq('id', accountId)
-    .select('*')
+    .select(ACCOUNT_COLUMNS)
     .single();
 
   if (error) throw error;

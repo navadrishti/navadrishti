@@ -6,7 +6,7 @@ const allowedTypes: CAQueueType[] = ['individuals', 'companies', 'ngos'];
 
 export async function POST(request: NextRequest) {
   try {
-    const ca = requireCA(request);
+    const ca = await requireCA(request);
     const body = await request.json().catch(() => null);
     if (!body || typeof body !== 'object') {
       return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });

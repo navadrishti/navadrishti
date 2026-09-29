@@ -4,9 +4,11 @@ import {
   assertNgoLiveCsr1,
   CSR_PAYMENT_REQUIRES_LIVE_CSR1_MESSAGE,
   getEvidenceApproverContext,
+  authErrorStatus,
   type EvidenceApproverContext,
 } from '@/lib/server-auth';
-import { getErrorMessage } from '@/lib/utils';
+import { finalizeMilestonePayment, isUniqueViolation } from '@/lib/milestone-payments';
+import { getErrorMessage, parseAmountToInr } from '@/lib/utils';
 
 export async function POST(
   request: NextRequest,
@@ -17,22 +19,22 @@ export async function POST(
 
     let approver: EvidenceApproverContext;
     try {
-      approver = await getEvidenceApproverContext(request);
+      approver = await getEvidenceApproverContext(request, undefined, { requiredPermission: 'can_confirm_payments' });
     } catch (error) {
-      return NextResponse.json({ error: getErrorMessage(error) || 'CA authentication required' }, { status: 401 });
+      return NextResponse.json({ error: getErrorMessage(error) || 'CA authentication required' }, { status: authErrorStatus(error) });
     }
 
     const body = await request.json();
-    const paymentReference = body.payment_reference as string;
-    const amount = body.amount;
-    const receiptUrl = body.receipt_url as string | undefined;
-    const paymentStatus = body.payment_status as string | undefined;
+    const paymentReference = String(body?.payment_reference || '').trim();
+    const receiptUrl = body?.receipt_url ? String(body.receipt_url) : null;
+    const statusToPersist = body?.payment_status === undefined ? 'pending' : String(body.payment_status);
 
-    if (!paymentReference || amount === undefined || amount === null) {
-      return NextResponse.json(
-        { error: 'payment_reference and amount are required' },
-        { status: 400 }
-      );
+    if (!paymentReference) {
+      return NextResponse.json({ error: 'payment_reference is required' }, { status: 400 });
+    }
+
+    if (!['pending', 'confirmed'].includes(statusToPersist)) {
+      return NextResponse.json({ error: 'payment_status must be pending or confirmed' }, { status: 400 });
     }
 
     const { data: milestone, error: milestoneError } = await supabase
@@ -67,16 +69,42 @@ export async function POST(
       }
     }
 
-    const createdBy = approver.reviewerUserId ?? null;
+    if (String(milestone.status || '').toLowerCase() !== 'approved') {
+      return NextResponse.json(
+        { error: 'Milestone payment is available only after evidence approval' },
+        { status: 409 }
+      );
+    }
 
-    const statusToPersist = paymentStatus ?? 'pending';
+    const amount = parseAmountToInr(milestone.amount);
+    if (amount <= 0) {
+      return NextResponse.json({ error: 'Milestone amount is not configured' }, { status: 400 });
+    }
+
+    const { data: existingConfirmed, error: existingError } = await supabase
+      .from('csr_payment_confirmations')
+      .select('id')
+      .eq('milestone_id', milestoneId)
+      .eq('payment_status', 'confirmed')
+      .limit(1);
+
+    if (existingError) {
+      console.error('Failed to check existing payment confirmations:', existingError);
+      return NextResponse.json({ error: 'Failed to create payment confirmation' }, { status: 500 });
+    }
+
+    if ((existingConfirmed || []).length > 0) {
+      return NextResponse.json({ error: 'This milestone has already been paid' }, { status: 409 });
+    }
+
+    const createdBy = approver.reviewerUserId ?? null;
 
     const payload = {
       milestone_id: milestoneId,
       project_id: project.id,
       payment_reference: paymentReference,
       amount,
-      receipt_url: receiptUrl ?? null,
+      receipt_url: receiptUrl,
       payment_status: statusToPersist,
       confirmed_at: statusToPersist === 'confirmed' ? new Date().toISOString() : null
     };
@@ -87,12 +115,16 @@ export async function POST(
       .select('*')
       .single();
 
-    if (error) {
+    if (isUniqueViolation(error)) {
+      return NextResponse.json({ error: 'This milestone has already been paid' }, { status: 409 });
+    }
+
+    if (error || !data) {
       console.error('Failed to create payment confirmation:', error);
       return NextResponse.json({ error: 'Failed to create payment confirmation' }, { status: 500 });
     }
 
-    await supabase.from('csr_audit_log').insert({
+    const { error: auditError } = await supabase.from('csr_audit_log').insert({
       entity_type: 'payment_confirmation',
       entity_id: data.id,
       event_type: 'payment_confirmation_created',
@@ -108,9 +140,10 @@ export async function POST(
       },
       created_by: createdBy
     });
+    if (auditError) console.error('Failed to write payment confirmation audit log:', auditError);
 
     if (approver.actorType === 'company_ca' && approver.companyCAIdentityId) {
-      await supabase.from('company_ca_action_log').insert({
+      const { error: actionLogError } = await supabase.from('company_ca_action_log').insert({
         company_ca_identity_id: approver.companyCAIdentityId,
         project_id: project.id,
         milestone_id: milestoneId,
@@ -122,42 +155,11 @@ export async function POST(
           amount
         }
       });
+      if (actionLogError) console.error('Failed to write Company CA action log:', actionLogError);
     }
 
     if (statusToPersist === 'confirmed') {
-      await supabase
-        .from('csr_project_milestones')
-        .update({ status: 'completed', updated_at: new Date().toISOString() })
-        .eq('id', milestoneId);
-
-      const { data: allMilestones } = await supabase
-        .from('csr_project_milestones')
-        .select('id, status')
-        .eq('project_id', project.id);
-
-      const totalMilestones = allMilestones?.length ?? 0;
-      const completedMilestones = (allMilestones ?? []).filter((m) => m.status === 'completed').length;
-      const progressPercentage = totalMilestones > 0
-        ? Math.round((completedMilestones / totalMilestones) * 100)
-        : 0;
-
-      const { data: allPayments } = await supabase
-        .from('csr_payment_confirmations')
-        .select('amount, payment_status')
-        .eq('project_id', project.id);
-
-      const fundsUtilized = (allPayments ?? [])
-        .filter((payment) => payment.payment_status === 'confirmed')
-        .reduce((sum: number, payment) => sum + Number(payment.amount || 0), 0);
-
-      await supabase
-        .from('csr_projects')
-        .update({
-          funds_utilized: fundsUtilized,
-          progress_percentage: progressPercentage,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', project.id);
+      await finalizeMilestonePayment(milestoneId, project.id);
     }
 
     return NextResponse.json({ success: true, data }, { status: 201 });

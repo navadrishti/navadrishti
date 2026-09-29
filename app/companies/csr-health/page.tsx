@@ -25,10 +25,11 @@ function clamp(value: number, min: number, max: number) {
 }
 
 export default function CompanyCSRHealthPage() {
-  const { user } = useAuth()
+  const { user, loading: authLoading } = useAuth()
   const isHydrated = useIsClient()
   const [projects, setProjects] = useState<CSRProject[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
 
   const effectiveUserType = isHydrated ? user?.user_type : undefined
 
@@ -36,6 +37,7 @@ export default function CompanyCSRHealthPage() {
     const fetchProjects = async () => {
       try {
         setLoading(true)
+        setLoadError('')
         const token = localStorage.getItem("token")
 
         if (!token) {
@@ -53,10 +55,10 @@ export default function CompanyCSRHealthPage() {
         if (response.ok && payload?.success) {
           setProjects(Array.isArray(payload.data) ? payload.data : [])
         } else {
-          setProjects([])
+          setLoadError(payload?.error || 'Could not load your CSR projects.')
         }
       } catch {
-        setProjects([])
+        setLoadError('Could not load your CSR projects. Check your connection and try again.')
       } finally {
         setLoading(false)
       }
@@ -108,6 +110,17 @@ export default function CompanyCSRHealthPage() {
     }
   }, [projects])
 
+  if (!isHydrated || authLoading) {
+    return (
+      <>
+        <Header />
+        <main className="flex min-h-[50vh] items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-slate-500" />
+        </main>
+      </>
+    )
+  }
+
   if (effectiveUserType !== "company") {
     return (
       <>
@@ -140,6 +153,18 @@ export default function CompanyCSRHealthPage() {
             <div className="flex items-center justify-center rounded-xl border bg-white p-16">
               <Loader2 className="h-6 w-6 animate-spin text-slate-500" />
             </div>
+          ) : loadError ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Health snapshot unavailable</CardTitle>
+                <CardDescription>{loadError}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button variant="outline" onClick={() => window.location.reload()}>
+                  Try again
+                </Button>
+              </CardContent>
+            </Card>
           ) : (
             <>
               <Card className="border-2 border-slate-200 bg-white">
@@ -161,7 +186,7 @@ export default function CompanyCSRHealthPage() {
                 </CardContent>
               </Card>
 
-              <div className="grid gap-4 md:grid-cols-3">
+              <div className="grid gap-4 md:grid-cols-2">
                 <Card>
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm text-slate-600">Milestone Completion</CardTitle>

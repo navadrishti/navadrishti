@@ -109,4 +109,20 @@ describe('csr project routes authenticate before reading the project', () => {
     const res = await call(getEvidence, 'GET', tokenFor(30, 'company'))
     expect(res.status).toBe(200)
   })
+
+  it.each<[string, boolean, number]>([
+    ['an active', true, 200],
+    ['a deactivated', false, 401],
+  ])('gives %s platform CA the matching access to the audit log', async (_label, active, status) => {
+    const platformCa = jwt.sign({ id: 'pca_1', email: 'ca@platform.in', kind: 'platform_ca' }, 'test-secret')
+    const fake = useSupabase((query) => {
+      if (query.table === 'platform_ca_accounts') return { data: { id: 'pca_1', active, must_change_password: false } }
+      if (query.table === 'csr_projects') return { data: project }
+      if (query.table === 'csr_audit_log') return { data: [] }
+      return undefined
+    })
+    const res = await call(getAudit, 'GET', platformCa)
+    expect(res.status).toBe(status)
+    if (!active) expect(fake.queries.map((query) => query.table)).not.toContain('csr_audit_log')
+  })
 })

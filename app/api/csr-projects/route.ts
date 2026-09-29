@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { parseJsonObject } from '@/lib/utils';
-import { getAuthUserFromRequest, assertUserType, isCARequest, getCompanyCAFromRequest } from '@/lib/server-auth';
+import { getAuthUserFromRequest, assertUserType, hasActiveCASession, getCompanyCAFromRequest } from '@/lib/server-auth';
 import type { Tables } from '@/lib/database.types';
 
 type MilestoneWithDueDate = Tables<'csr_project_milestones'> & { due_date: string };
 
 export async function GET(request: NextRequest) {
   try {
-    const caMode = isCARequest(request);
+    const caMode = await hasActiveCASession(request);
     const hasCompanyCAToken = Boolean(request.cookies.get('evidence-verification-token')?.value);
     const companyCAContext = (!caMode && hasCompanyCAToken)
       ? await getCompanyCAFromRequest(request)

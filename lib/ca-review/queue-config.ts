@@ -23,7 +23,6 @@ export type CAQueueItem = {
   verification_status: string
   documents: CAReviewDocument[]
   documents_total: number
-  documents_verified: number
   ocr_error: string
   reverification_pending?: boolean
   field_comparisons?: CAFieldComparison[]

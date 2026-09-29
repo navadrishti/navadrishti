@@ -318,7 +318,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           pincode: String(headquarters.pincode || userResult.pincode || ''),
           country: String(headquarters.country || userResult.country || 'India'),
         }) || null,
-        past_projects: mergeNgoPastProjects(profileData.past_projects, platformProjects || []),
+        past_projects: mergeNgoPastProjects(
+          profileData.past_projects,
+          (platformProjects || []).map(({ exact_address, ...project }) => (canViewPrivate ? { ...project, exact_address } : project))
+        ),
         work_areas: normalizeGeographicCoverage(profileData.geographic_coverage),
         execution_capacity: normalizeExecutionCapacity(profileData.execution_capacity),
         compliance_documents: complianceDocuments,

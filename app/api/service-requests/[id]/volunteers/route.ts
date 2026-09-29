@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { canIndividualApplyToNeed } from '@/lib/infrastructure-assignment-lock';
-import { getNgoNeedFulfillmentMode } from '@/lib/service-request-allocation';
+import { getNgoNeedFulfillmentMode, isNeedOpenForListing } from '@/lib/service-request-allocation';
 import { getTokenClaims } from '@/lib/auth';
 import { resolveEffectiveVerificationStatus } from '@/lib/server-auth';
+import { isProjectLocked } from '@/lib/service-requests/list-shape';
+import { isUniqueViolation } from '@/lib/service-requests/errors';
 
 // GET - Fetch volunteers for a service request
 export async function GET(
@@ -17,17 +19,19 @@ export async function GET(
     const url = new URL(request.url);
     const userId = url.searchParams.get('userId');
     
-    if (userId) {
-      // Public request to check if user has applied - get full application details
-      const userApplication = await db.serviceRequestApplications.getUserApplication(requestId, parseInt(userId));
-      return NextResponse.json(userApplication ? [userApplication] : []);
-    }
-    
     const decoded = getTokenClaims(request);
     if (!decoded) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
     const { id: ngoUserId, user_type: userType } = decoded;
+
+    if (userId) {
+      if (Number(userId) !== Number(decoded.id)) {
+        return NextResponse.json({ error: 'You can only view your own application' }, { status: 403 });
+      }
+      const userApplication = await db.serviceRequestApplications.getUserApplication(requestId, Number(decoded.id));
+      return NextResponse.json(userApplication ? [userApplication] : []);
+    }
 
     // Only NGOs can view volunteers for their requests
     if (userType !== 'ngo') {
@@ -118,6 +122,10 @@ export async function POST(
       return NextResponse.json({ error: 'Service request not found' }, { status: 404 });
     }
 
+    if (!isNeedOpenForListing(requestData) || isProjectLocked(requestData)) {
+      return NextResponse.json({ error: 'This need is no longer accepting applications' }, { status: 409 });
+    }
+
     const applyCheck = await canIndividualApplyToNeed(applicantId, requestData);
     if (!applyCheck.allowed) {
       return NextResponse.json({ error: applyCheck.reason }, { status: 409 });
@@ -169,6 +177,12 @@ export async function POST(
     });
 
   } catch (error) {
+    if (isUniqueViolation(error)) {
+      return NextResponse.json(
+        { error: 'You have already applied for this service request' },
+        { status: 409 }
+      );
+    }
     console.error('Error creating volunteer application:', error);
     return NextResponse.json(
       { error: 'Internal server error' },

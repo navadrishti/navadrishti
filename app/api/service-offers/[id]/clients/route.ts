@@ -43,14 +43,20 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const decoded = getTokenClaims(request);
+    if (!decoded) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
+    const { id: ownerUserId } = decoded;
+
     const { id } = await params;
     const offerId = parseInt(id);
-    
-    const url = new URL(request.url);
-    const userId = url.searchParams.get('userId');
-    
+
+    const userId = new URL(request.url).searchParams.get('userId');
     if (userId) {
-      // Public request to check if user has applied
+      if (Number(userId) !== ownerUserId) {
+        return NextResponse.json({ error: 'You can only view your own application' }, { status: 403 });
+      }
       const { data: userApplication } = await supabase
         .from('service_clients')
         .select(`
@@ -58,17 +64,11 @@ export async function GET(
           client:users!client_id(name, email)
         `)
         .eq('service_offer_id', offerId)
-        .eq('client_id', parseInt(userId))
-        .single();
+        .eq('client_id', ownerUserId)
+        .maybeSingle();
 
       return NextResponse.json(userApplication || null);
     }
-    
-    const decoded = getTokenClaims(request);
-    if (!decoded) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-    }
-    const { id: ownerUserId } = decoded;
 
     const offer = await db.serviceOffers.getById(offerId);
 
@@ -112,32 +112,33 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params;
-    const body = await request.json();
-    const { client_id, client_type, message, start_date, end_date, proposed_amount, service_request_id, selected_need_ids, service_request_ids } = body;
-
-    if (!client_id) {
-      return NextResponse.json(
-        { error: 'Client ID is required' },
-        { status: 400 }
-      );
+    const claims = getTokenClaims(request);
+    if (!claims) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
-
-    const offerId = parseInt(id);
-
-    const user = await db.users.findById(client_id);
-    if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    }
-
-    if (user.user_type !== 'ngo') {
-      return NextResponse.json({ 
-        error: 'Invalid user type', 
-        message: 'Only verified NGOs can respond to capability offers from the offer details page.',
+    if (claims.user_type !== 'ngo') {
+      return NextResponse.json({
+        error: 'Invalid user type',
+        message: 'Only verified NGOs can respond to capability offers.',
       }, { status: 403 });
     }
 
-    const effectiveVerificationStatus = await resolveEffectiveVerificationStatus(Number(client_id), user.user_type);
+    const { id } = await params;
+    const body = await request.json().catch(() => ({}));
+    const { client_id, client_type, message, start_date, end_date, proposed_amount, service_request_id, selected_need_ids, service_request_ids } = body;
+
+    if (client_id != null && Number(client_id) !== claims.id) {
+      return NextResponse.json({ error: 'You can only apply on behalf of your own account' }, { status: 403 });
+    }
+    const clientId = claims.id;
+    const offerId = parseInt(id);
+
+    const user = await db.users.findById(clientId);
+    if (!user || user.user_type !== 'ngo') {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    const effectiveVerificationStatus = await resolveEffectiveVerificationStatus(clientId, user.user_type);
     if (effectiveVerificationStatus !== 'verified') {
       return NextResponse.json({ 
         error: 'Account verification required', 
@@ -147,16 +148,31 @@ export async function POST(
     }
 
     // Prevent self-response to own capability offer
-    const offer = await db.serviceOffers.getById(offerId);
-    if (offer && (offer.creator_id ?? offer.ngo_id) === client_id) {
+    const offer = Number.isFinite(offerId) ? await db.serviceOffers.getById(offerId) : null;
+    if (!offer) {
+      return NextResponse.json({ error: 'Service offer not found' }, { status: 404 });
+    }
+    if ((offer.creator_id ?? offer.ngo_id) === clientId) {
       return NextResponse.json(
         { error: 'You cannot respond to your own capability offer' },
         { status: 400 }
       );
     }
 
-    if (offer && isOfferExpired(offer)) {
+    if (offer.status !== 'active' || offer.admin_status !== 'approved' || !offer.is_listed) {
+      return NextResponse.json({ error: 'This capability offer is not open for applications.' }, { status: 409 });
+    }
+
+    if (isOfferExpired(offer)) {
       return NextResponse.json({ error: 'This capability offer has expired.' }, { status: 409 });
+    }
+
+    let proposedAmount: number | null = null;
+    if (proposed_amount !== undefined && proposed_amount !== null && proposed_amount !== '') {
+      proposedAmount = Number(proposed_amount);
+      if (!Number.isFinite(proposedAmount) || proposedAmount < 0) {
+        return NextResponse.json({ error: 'Proposed amount must be a non-negative number.' }, { status: 400 });
+      }
     }
 
     const needIds = parseNeedIds(selected_need_ids || service_request_ids || (service_request_id != null ? [service_request_id] : [])).slice(0, 1);
@@ -168,7 +184,7 @@ export async function POST(
       .from('service_requests')
       .select('id, title, status, request_type, estimated_budget, target_amount, target_quantity, beneficiary_count, ngo_id, project_id')
       .in('id', needIds)
-      .eq('ngo_id', client_id)
+      .eq('ngo_id', clientId)
       .not('status', 'in', '(completed,cancelled)');
 
     if (linkedNeedsError) {
@@ -179,7 +195,7 @@ export async function POST(
       return NextResponse.json({ error: 'The selected need is invalid or inactive.' }, { status: 400 });
     }
 
-    const allowedRequestTypes = getCapabilityNeedRequestTypes(offer?.offer_type || '')
+    const allowedRequestTypes = getCapabilityNeedRequestTypes(offer.offer_type || '')
     if (allowedRequestTypes.length > 0) {
       const invalidType = linkedNeeds.some((need) => !allowedRequestTypes.includes(String(need.request_type || '')))
       if (invalidType) {
@@ -195,8 +211,8 @@ export async function POST(
       return sum + (Number.isFinite(amount) ? amount : 0);
     }, 0);
 
-    const isRentalOffer = isCapabilityRentalTransaction(offer?.transaction_type)
-    const offerAmount = Number(offer?.price_amount || 0);
+    const isRentalOffer = isCapabilityRentalTransaction(offer.transaction_type)
+    const offerAmount = Number(offer.price_amount || 0);
     if (!isRentalOffer && offerAmount > 0 && totalSelectedAmount > offerAmount) {
       return NextResponse.json({ error: 'Selected need exceeds the offer value. Please choose a need within the offer amount.' }, { status: 400 });
     }
@@ -204,12 +220,17 @@ export async function POST(
     const applicationMessage = String(message || '').trim() || `Applied for ${selectedNeeds.map((need) => need.title).join(', ')}`;
     const primaryServiceRequestId = needIds[0] || null;
 
-    const { data: existingApplication } = await supabase
+    const { data: existingApplication, error: existingApplicationError } = await supabase
       .from('service_clients')
       .select('id')
       .eq('service_offer_id', offerId)
-      .eq('client_id', client_id)
-      .single();
+      .eq('client_id', clientId)
+      .limit(1)
+      .maybeSingle();
+
+    if (existingApplicationError) {
+      return NextResponse.json({ error: 'Failed to check existing applications' }, { status: 500 });
+    }
 
     if (existingApplication) {
       return NextResponse.json(
@@ -222,12 +243,12 @@ export async function POST(
       .from('service_clients')
       .insert({
         service_offer_id: offerId,
-        client_id: client_id,
+        client_id: clientId,
         service_request_id: primaryServiceRequestId,
         message: applicationMessage,
         start_date: start_date || null,
         end_date: end_date || null,
-        proposed_amount: proposed_amount || null,
+        proposed_amount: proposedAmount,
         status: 'pending',
         response_meta: {
           client_type: 'ngo',
@@ -246,6 +267,12 @@ export async function POST(
       .single();
 
     if (insertError) {
+      if (insertError.code === '23505') {
+        return NextResponse.json(
+          { error: 'You have already applied for this service offer' },
+          { status: 409 }
+        );
+      }
       throw insertError;
     }
 

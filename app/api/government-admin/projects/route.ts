@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { assertGovernmentAdmin } from '@/lib/government-admin-auth';
+import { assertGovernmentAdmin, GOVERNMENT_MANAGER_ROLES } from '@/lib/government-admin-auth';
 import { authErrorResponse } from '@/lib/server-auth';
 import { supabase } from '@/lib/db';
 import { getErrorMessage } from '@/lib/utils';
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const actor = await assertGovernmentAdmin(request);
+    const actor = await assertGovernmentAdmin(request, GOVERNMENT_MANAGER_ROLES);
 
     const { title, description, timeline, location, milestone_count, milestone_requirements } = await request.json();
     const projectTitle = normalizeText(title);
