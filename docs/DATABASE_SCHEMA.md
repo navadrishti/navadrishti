@@ -2,7 +2,7 @@
 
 ## Overview
 
-GRAM (Navadrishti) uses Supabase PostgreSQL. The canonical DDL is [`reference/completeschema.txt`](../reference/completeschema.txt). Apply packs in order: [`pass1`](../reference/migrations/2026_schema_streamline.sql) → [`pass2`](../reference/migrations/2026_schema_streamline_pass2.sql) → [`pass3`](../reference/migrations/2026_schema_streamline_pass3.sql) (drop service_requests mirrors + backfill `users.verified_at`).
+GRAM (Navadrishti) uses Supabase PostgreSQL. The canonical DDL is the local, gitignored dump `reference/completeschema.txt`; all schema changes have been applied and no migration scripts are kept.
 
 ## Conventions
 
