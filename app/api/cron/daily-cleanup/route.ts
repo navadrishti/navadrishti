@@ -200,7 +200,7 @@ export async function GET(request: NextRequest) {
       const todayIso = new Date().toISOString();
       const { data: endedCampaigns } = await supabase
         .from('campaigns')
-        .select('id, end_date, status')
+        .select('id, end_date, status, impact_metrics')
         .eq('status', 'active')
         .not('end_date', 'is', null)
         .lt('end_date', todayIso)
@@ -210,7 +210,11 @@ export async function GET(request: NextRequest) {
         await markCsrProjectCompleted({ campaignId: String(campaign.id) });
         await supabase
           .from('campaigns')
-          .update({ status: 'completed', updated_at: todayIso })
+          .update({
+            status: 'completed',
+            impact_metrics: { ...parseJsonObject(campaign.impact_metrics), completed_at: todayIso },
+            updated_at: todayIso,
+          })
           .eq('id', campaign.id);
 
         try {

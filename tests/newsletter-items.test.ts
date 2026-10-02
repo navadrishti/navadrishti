@@ -135,7 +135,7 @@ const emptySources = {
   assignedProjects: [],
 }
 
-const emptyLookups: NewsletterLookups = { verificationDateByUserId: {}, usersById: {}, fulfillersByNeedId: {} }
+const emptyLookups: NewsletterLookups = { verificationDateByUserId: {}, usersById: {}, fulfillersByNeedId: {}, assignedAtByProjectId: {} }
 
 function build(sources: Partial<Record<keyof typeof emptySources, unknown[]>>, lookups: Partial<NewsletterLookups> = {}) {
   return buildNewsletterItems(
@@ -237,7 +237,7 @@ describe('buildNewsletterItems', () => {
     const items = build(
       {
         leadCampaigns: [
-          { id: 'c1', company_id: 5, lead_ngo_user_id: 1, updated_at: '2026-02-06T00:00:00Z' },
+          { id: 'c1', company_id: 5, lead_ngo_user_id: 1, impact_metrics: { lead_ngo_accepted_at: '2026-02-06T00:00:00Z' }, created_at: '2026-01-01T00:00:00Z' },
           { id: 'c2', company_id: 5, lead_ngo_user_id: null, created_at: '2026-02-01T00:00:00Z' },
         ],
       },
@@ -249,19 +249,44 @@ describe('buildNewsletterItems', () => {
     ])
   })
 
+  it('keeps campaign events at their real time when the row is edited later', () => {
+    const items = build(
+      {
+        finishedCampaigns: [
+          { id: 'f1', company_id: 5, impact_metrics: { completed_at: '2026-03-02T00:00:00Z' }, end_date: '2026-03-01', updated_at: '2026-10-02T13:23:00Z', created_at: '2026-01-01T00:00:00Z' },
+          { id: 'f2', company_id: 5, end_date: '2026-02-20', updated_at: '2026-10-02T13:23:00Z', created_at: '2026-01-01T00:00:00Z' },
+        ],
+        leadCampaigns: [
+          { id: 'l1', company_id: 5, lead_ngo_user_id: 1, impact_metrics: { lead_ngo_accepted_at: '2026-02-10T00:00:00Z' }, updated_at: '2026-10-02T13:23:00Z', created_at: '2026-01-01T00:00:00Z' },
+          { id: 'l2', company_id: 5, lead_ngo_user_id: 1, impact_metrics: '{"published_at":"2026-02-05T00:00:00Z"}', updated_at: '2026-10-02T13:23:00Z', created_at: '2026-01-01T00:00:00Z' },
+        ],
+      },
+      { usersById: { 1: ngo, 5: company } }
+    )
+    expect(items.map((item) => [item.id, item.createdAt])).toEqual([
+      ['campaign-finished-f1', '2026-03-02T00:00:00Z'],
+      ['campaign-finished-f2', '2026-02-20'],
+      ['lead-ngo-l1-1', '2026-02-10T00:00:00Z'],
+      ['lead-ngo-l2-1', '2026-02-05T00:00:00Z'],
+    ])
+  })
+
   it('names the lead NGO over the owner on assigned projects', () => {
     const items = build(
       {
         assignedProjects: [
-          { id: 'p1', assigned_company_user_id: 5, ngo_id: 2, lead_ngo_user_id: 1, title: 'Library', updated_at: '2026-02-07T00:00:00Z' },
-          { id: 'p2', assigned_company_user_id: 5, ngo_id: 2, lead_ngo_user_id: null, title: 'Well', updated_at: '2026-02-01T00:00:00Z' },
+          { id: 'p1', assigned_company_user_id: 5, ngo_id: 2, lead_ngo_user_id: 1, title: 'Library', updated_at: '2026-10-02T13:23:00Z', created_at: '2026-01-01T00:00:00Z' },
+          { id: 'p2', assigned_company_user_id: 5, ngo_id: 2, lead_ngo_user_id: null, title: 'Well', updated_at: '2026-10-02T13:23:00Z', created_at: '2026-02-01T00:00:00Z' },
         ],
       },
-      { usersById: { 1: ngo, 2: { id: 2, name: 'Owner NGO', user_type: 'ngo' }, 5: company } }
+      {
+        usersById: { 1: ngo, 2: { id: 2, name: 'Owner NGO', user_type: 'ngo' }, 5: company },
+        assignedAtByProjectId: { p1: '2026-02-07T00:00:00Z' },
+      }
     )
-    expect(items.map((item) => [item.id, item.title, item.href])).toEqual([
-      ['csr-assigned-p1', "Acme undertook Seva's project as CSR", '/service-requests/projects/p1'],
-      ['csr-assigned-p2', "Acme undertook Owner NGO's project as CSR", '/service-requests/projects/p2'],
+    expect(items.map((item) => [item.id, item.title, item.href, item.createdAt])).toEqual([
+      ['csr-assigned-p1', "Acme undertook Seva's project as CSR", '/service-requests/projects/p1', '2026-02-07T00:00:00Z'],
+      ['csr-assigned-p2', "Acme undertook Owner NGO's project as CSR", '/service-requests/projects/p2', '2026-02-01T00:00:00Z'],
     ])
   })
 
@@ -295,6 +320,7 @@ describe('newsletter queries', () => {
       verifiedUsers: [{ id: 1 }],
       fulfilledNeeds: [{ id: 11 }],
       campaigns: [{ company_id: 5 }],
+      assignedProjects: [{ id: 'p1', assigned_company_user_id: 5 }],
     } as unknown as NewsletterSources)
     expect(fake.queries.length).toBeGreaterThan(12)
     expect(unknownColumns(fake.queries)).toEqual([])
@@ -335,5 +361,45 @@ describe('newsletter queries', () => {
     expect(lookups.verificationDateByUserId).toEqual({ 1: '2026-01-10T00:00:00Z', 2: '2026-01-21T00:00:00Z' })
     expect(lookups.fulfillersByNeedId).toEqual({ 11: ['Acme', 'Asha'] })
     expect(fake.find('users')).toHaveLength(0)
+  })
+
+  it('dates CSR assignments from the assignment record, not project edits', async () => {
+    const fake = useDb((query) => {
+      if (query.table === 'service_requests') {
+        return {
+          data: [
+            { id: 21, project_id: 'p1', project_context: { csr_assignment: { assigned_at: '2026-02-07T00:00:00Z' } } },
+            { id: 22, project_id: 'p2', project_context: '{}' },
+            { id: 23, project_id: 'p3', project_context: null },
+          ],
+        }
+      }
+      if (query.table === 'service_request_contributions') {
+        return {
+          data: [
+            { service_request_id: 22, contributor_id: 9, meta: { ngo_reviewed_at: '2026-01-01T00:00:00Z' }, created_at: '2026-01-01T00:00:00Z' },
+            { service_request_id: 22, contributor_id: 5, meta: { ngo_reviewed_at: '2026-02-03T00:00:00Z' }, created_at: '2026-02-01T00:00:00Z' },
+            { service_request_id: 23, contributor_id: 6, meta: null, created_at: '2026-02-04T00:00:00Z' },
+          ],
+        }
+      }
+      return { data: [] }
+    })
+
+    const lookups = await fetchNewsletterLookups({
+      ...emptySources,
+      assignedProjects: [
+        { id: 'p1', assigned_company_user_id: 5 },
+        { id: 'p2', assigned_company_user_id: 5 },
+        { id: 'p3', assigned_company_user_id: 6 },
+      ],
+    } as unknown as NewsletterSources)
+
+    expect(callsOf(fake.find('service_request_contributions')[0], 'in')[0]).toEqual(['service_request_id', [22, 23]])
+    expect(lookups.assignedAtByProjectId).toEqual({
+      p1: '2026-02-07T00:00:00Z',
+      p2: '2026-02-03T00:00:00Z',
+      p3: '2026-02-04T00:00:00Z',
+    })
   })
 })
