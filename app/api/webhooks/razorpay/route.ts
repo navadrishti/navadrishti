@@ -3,8 +3,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
 import { normalizeRefundStatus } from '@/lib/admin-refund';
 import { isCompanyCaPaymentOrder, settleCompanyCaPayment } from '@/lib/company-ca-payments';
+import { attachCsrCapabilityAfterPayment, isCsrCapabilityRentalOrder } from '@/lib/csr-agent/campaign/rental-payments';
 import { supabase } from '@/lib/db';
+import { isEngagementSettlementOrder, settleEngagementFromCapturedPayment } from '@/lib/engagement-settlement';
 import { confirmMilestonePayment, isCsrMilestonePaymentOrder, isUniqueViolation } from '@/lib/milestone-payments';
+import {
+  isServiceOfferPaymentOrder,
+  serviceOfferPaymentWasCredited,
+  settleServiceOfferPayment,
+} from '@/lib/service-offers/payment-settlement';
 import {
   creditServiceRequestContribution,
   debitServiceRequestRefund,
@@ -187,50 +194,80 @@ export async function POST(request: NextRequest) {
           { onConflict: 'razorpay_payment_id', ignoreDuplicates: true }
         );
 
-      if (orderRow.service_request_id && isServiceRequestContributionOrder(orderRow.order_notes)) {
+      const razorpay = new Razorpay({
+        key_id: String(process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || ''),
+        key_secret: String(process.env.RAZORPAY_KEY_SECRET || ''),
+      });
+      const razorpayOrderId = String(paymentEntity.order_id);
+      const razorpayPaymentId = String(paymentEntity.id);
+      const paidInr = paiseToInr(paymentEntity.amount);
+      const paymentMethod = paymentEntity.method || null;
+      const paidAt = paymentEntity.created_at
+        ? new Date(Number(paymentEntity.created_at) * 1000).toISOString()
+        : new Date().toISOString();
+      const orderNotes = parseJsonObject(orderRow.order_notes);
+
+      let settlement: { ok: true } | { ok: false; error: string } = { ok: true };
+      if (orderRow.service_request_id && isServiceRequestContributionOrder(orderNotes)) {
         await creditServiceRequestContribution({
-          razorpay: new Razorpay({
-            key_id: String(process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || ''),
-            key_secret: String(process.env.RAZORPAY_KEY_SECRET || ''),
-          }),
+          razorpay,
           serviceRequestId: Number(orderRow.service_request_id),
-          razorpayOrderId: String(paymentEntity.order_id),
-          razorpayPaymentId: String(paymentEntity.id),
+          razorpayOrderId,
+          razorpayPaymentId,
         });
-      } else if (isCompanyCaPaymentOrder(orderRow.order_notes)) {
-        const result = await settleCompanyCaPayment({
-          razorpayOrderId: String(paymentEntity.order_id),
-          razorpayPaymentId: String(paymentEntity.id),
+      } else if (isCompanyCaPaymentOrder(orderNotes)) {
+        settlement = await settleCompanyCaPayment({
+          razorpay,
+          razorpayOrderId,
+          razorpayPaymentId,
           razorpaySignature: null,
-          paidInr: paiseToInr(paymentEntity.amount),
-          paymentMethod: paymentEntity.method || null,
-          paidAt: paymentEntity.created_at
-            ? new Date(Number(paymentEntity.created_at) * 1000).toISOString()
-            : new Date().toISOString(),
+          paidInr,
+          paymentMethod,
+          paidAt,
         });
-        if (!result.ok) {
-          await markWebhookStatus(eventRowId, 'failed', result.error);
-          return NextResponse.json({ success: true, settled: false });
-        }
-      } else if (isCsrMilestonePaymentOrder(orderRow.order_notes)) {
-        const result = await confirmMilestonePayment({
-          milestoneId: String(parseJsonObject(orderRow.order_notes).milestone_id || ''),
-          razorpayOrderId: String(paymentEntity.order_id),
-          razorpayPaymentId: String(paymentEntity.id),
+      } else if (isCsrMilestonePaymentOrder(orderNotes)) {
+        settlement = await confirmMilestonePayment({
+          razorpay,
+          milestoneId: String(orderNotes.milestone_id || ''),
+          razorpayOrderId,
+          razorpayPaymentId,
           razorpaySignature: null,
-          paidInr: paiseToInr(paymentEntity.amount),
-          paymentMethod: paymentEntity.method || null,
-          paidAt: paymentEntity.created_at
-            ? new Date(Number(paymentEntity.created_at) * 1000).toISOString()
-            : new Date().toISOString(),
+          paidInr,
+          paymentMethod,
+          paidAt,
           orderNotes: orderRow.order_notes,
           orderAmountPaise: orderRow.amount_paise,
           receipt: orderRow.receipt,
           actor: { actorType: 'razorpay_webhook', companyCAIdentityId: null, reviewerUserId: null },
         });
-        if (!result.ok) {
-          await markWebhookStatus(eventRowId, 'failed', result.error);
-          return NextResponse.json({ success: true, settled: false });
+      } else if (isServiceOfferPaymentOrder(orderNotes)) {
+        settlement = await settleServiceOfferPayment({
+          razorpay,
+          razorpayOrderId,
+          razorpayPaymentId,
+          razorpaySignature: null,
+          paidInr,
+          paymentMethod,
+          paidAt,
+        });
+      } else if (isEngagementSettlementOrder(orderNotes)) {
+        settlement = await settleEngagementFromCapturedPayment({
+          razorpay,
+          razorpayOrderId,
+          razorpayPaymentId,
+          paidInr,
+        });
+      } else if (isCsrCapabilityRentalOrder(orderNotes)) {
+        try {
+          await attachCsrCapabilityAfterPayment({
+            campaignId: String(orderNotes.campaign_id || ''),
+            companyId: Number(orderNotes.payer_user_id || 0),
+            offerId: Number(orderNotes.service_offer_id || 0),
+            razorpayOrderId,
+            razorpayPaymentId,
+          });
+        } catch (attachError) {
+          settlement = { ok: false, error: getErrorMessage(attachError) || 'Could not attach the rented capability' };
         }
       } else {
         await supabase
@@ -238,6 +275,27 @@ export async function POST(request: NextRequest) {
           .update({ order_status: 'paid', updated_at: new Date().toISOString() })
           .eq('id', orderRow.id);
       }
+
+      if (!settlement.ok) {
+        await markWebhookStatus(eventRowId, 'failed', settlement.error);
+        return NextResponse.json({ success: true, settled: false });
+      }
+
+      await markWebhookStatus(eventRowId, 'processed', null);
+      return NextResponse.json({ success: true, event: eventType });
+    }
+
+    if (eventType === 'payment.failed') {
+      if (!paymentEntity?.order_id) {
+        await markWebhookStatus(eventRowId, 'ignored', 'Missing payment entity in webhook payload');
+        return NextResponse.json({ success: true, ignored: true });
+      }
+
+      await supabase
+        .from('razorpay_payment_orders')
+        .update({ order_status: 'failed', updated_at: new Date().toISOString() })
+        .eq('razorpay_order_id', String(paymentEntity.order_id))
+        .in('order_status', ['created', 'attempted']);
 
       await markWebhookStatus(eventRowId, 'processed', null);
       return NextResponse.json({ success: true, event: eventType });
@@ -332,7 +390,10 @@ export async function POST(request: NextRequest) {
             );
       if (refundWriteError) throw refundWriteError;
 
-      if (persistedRefundStatus === 'processed' && !wasProcessed) {
+      const refundedPaymentWasCredited =
+        isServiceRequestContributionOrder(orderRow.order_notes) ||
+        serviceOfferPaymentWasCredited(orderRow.order_notes, razorpayPaymentId);
+      if (persistedRefundStatus === 'processed' && !wasProcessed && refundedPaymentWasCredited) {
         await debitServiceRequestRefund(
           Number(orderRow.service_request_id),
           resolveRefundDebitInr({

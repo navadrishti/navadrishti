@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/db';
 import { assertAdminUser } from '@/lib/server-auth';
-import {
-  activateNgoPayoutListingForNetwork,
-  activateVerifiedNgoPayoutListingsForNetwork,
-  removeLegacyGeneralSupportRequests,
-} from '@/lib/razorpay-route';
+import { removeLegacyGeneralSupportRequests } from '@/lib/razorpay-route';
 import { getErrorMessage, toSearchPattern } from '@/lib/utils';
 
 export async function GET(request: NextRequest) {
@@ -56,36 +52,6 @@ export async function POST(request: NextRequest) {
     assertAdminUser(request);
     const body = await request.json();
     const action = String(body?.action || '').trim();
-
-    if (action === 'activate_verified_ngo_payout_listings') {
-      const results = await activateVerifiedNgoPayoutListingsForNetwork();
-      const activated = results.filter((row) => row.updated).length;
-      const alreadyReady = results.filter((row) => row.routeReady && !row.updated).length;
-
-      return NextResponse.json({
-        success: true,
-        message: `NGO Network payout listing activated for ${activated} NGO(s). ${alreadyReady} already connected.`,
-        activated,
-        alreadyReady,
-        results,
-      });
-    }
-
-    if (action === 'activate_ngo_payout_listing') {
-      const userId = Number(body?.userId);
-      if (!Number.isFinite(userId) || userId <= 0) {
-        return NextResponse.json({ error: 'Valid userId is required' }, { status: 400 });
-      }
-
-      const result = await activateNgoPayoutListingForNetwork(userId);
-      return NextResponse.json({
-        success: true,
-        message: result.updated
-          ? 'NGO payout listing activated for NGO Network.'
-          : 'NGO already has an active payout listing connection.',
-        result,
-      });
-    }
 
     if (action === 'remove_legacy_general_support_requests') {
       const result = await removeLegacyGeneralSupportRequests();

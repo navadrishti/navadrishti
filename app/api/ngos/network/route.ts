@@ -15,6 +15,7 @@ import {
   canContributeViaPlatform,
   isVerifiedNgoUser,
   ngoIsEligibleForNetworkListing,
+  PayeeNotConnectedError,
 } from '@/lib/razorpay-route';
 import Razorpay from 'razorpay';
 import { filterNetworkNgos, loadNetworkNgos, loadRecommendationViewer } from '@/lib/ngo-network/listing';
@@ -154,6 +155,9 @@ export async function POST(request: NextRequest) {
 
     return await createNetworkDonationOrder(context, body?.amount);
   } catch (error) {
+    if (error instanceof PayeeNotConnectedError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     console.error('NGO network payment error:', error);
     return NextResponse.json({ error: 'Failed to process NGO network payment' }, { status: 500 });
   }

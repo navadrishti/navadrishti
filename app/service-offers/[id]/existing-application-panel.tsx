@@ -1,9 +1,11 @@
 import { Loader2 } from 'lucide-react'
 import { formatPrice } from '@/lib/utils'
 import { formatStatusLabel } from '@/lib/format-date'
+import { isDailyRentalEngagementMeta } from '@/lib/service-request-allocation'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { InlineSkillServiceFulfillment } from '@/components/engagement-fulfillment'
 import { formatDate, getStatusColor } from './helpers'
 import type { ClientApplication } from './types'
 
@@ -12,10 +14,14 @@ interface ExistingApplicationPanelProps {
   offerPriceAmount: number
   paying: boolean
   onPay: () => void
+  onUpdated: () => void | Promise<void>
 }
 
-export function ExistingApplicationPanel({ application, offerPriceAmount, paying, onPay }: ExistingApplicationPanelProps) {
+export function ExistingApplicationPanel({ application, offerPriceAmount, paying, onPay, onUpdated }: ExistingApplicationPanelProps) {
   const meta = application.response_meta
+  const isAccepted = ['accepted', 'active'].includes(application.status)
+  const isDailyRental = isDailyRentalEngagementMeta(meta)
+  const linkedRequestId = application.service_request_id || meta?.service_request_id
 
   return (
     <div className="space-y-4">
@@ -44,13 +50,23 @@ export function ExistingApplicationPanel({ application, offerPriceAmount, paying
           Applied on {formatDate(application.applied_at)}
         </p>
 
-        {['accepted', 'active'].includes(application.status) && application.service_request_id ? (
+        {isAccepted && isDailyRental ? (
+          <InlineSkillServiceFulfillment
+            application={{ id: application.id, response_meta: meta ?? null }}
+            role="payer"
+            title="Capability rental"
+            onUpdated={onUpdated}
+          />
+        ) : null}
+
+        {isAccepted && !isDailyRental ? (
           <div className="rounded-lg border border-gram-border bg-gram-sage p-4 space-y-3">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-sm font-medium text-gram-ink">Payment linked to service request</p>
+                <p className="text-sm font-medium text-gram-ink">Payment</p>
                 <p className="text-xs text-udaan-blue">
-                  Request #{application.service_request_id}{meta?.payment_amount_inr ? ` • ${formatPrice(Number(meta.payment_amount_inr))}` : ''}
+                  {linkedRequestId ? `Request #${linkedRequestId}` : 'Capability offer'}
+                  {meta?.payment_amount_inr ? ` • ${formatPrice(Number(meta.payment_amount_inr))}` : ''}
                 </p>
               </div>
               <Badge className="border-[#D9E0E4] bg-[#F0F3F4] text-udaan-blue">

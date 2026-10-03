@@ -3,7 +3,7 @@
 import { useIsClient } from '@/hooks/use-is-client'
 import { getRequestUrgencyLevel } from '@/lib/utils'
 import { ListingCard } from './service-card/listing-card'
-import {
+import { 
   formatPostedDate,
   getOfferPriceLabel,
   getOfferStatusBadgeClass,
@@ -17,7 +17,7 @@ export { YourCapabilityOfferCard } from './service-card/your-capability-offer-ca
 export { YourCapabilitiesPanel } from './service-card/your-capabilities-panel'
 export { InlineCsrCapabilityDelhivery } from './service-card/inline-csr-capability-delhivery'
 
-export function ServiceCard({
+export function ServiceCard({ 
   id,
   title,
   description,
@@ -80,10 +80,10 @@ export function ServiceCard({
       : Number(requirementsData?.beneficiary_count || 0)
     const requestDeadline = projectContext?.valid_until || deadline || timeline || requirementsData?.timeline
     const liveUrgency = isHydrated
-      ? getRequestUrgencyLevel({
-          createdAt: created_at,
-          deadline: requestDeadline,
-          referenceTimeMs: currentTime,
+    ? getRequestUrgencyLevel({
+        createdAt: created_at,
+        deadline: requestDeadline,
+        referenceTimeMs: currentTime,
           fallback: urgency_level || 'medium'
         })
       : null
@@ -124,7 +124,7 @@ export function ServiceCard({
     .filter(Boolean)
     .join(' · ')
 
-  return (
+    return (
     <ListingCard
       {...sharedProps}
       basePath="/service-offers"

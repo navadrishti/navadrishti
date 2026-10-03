@@ -1,6 +1,8 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
+import Razorpay from 'razorpay';
 import { supabase } from '@/lib/db';
+import { releaseHeldTransfersForClosedRequests } from '@/lib/service-request-payments';
 import { autoRejectExpiredServiceOffers } from '@/lib/admin-offer-automation';
 import { processCsrCapabilityDailyCompliance, markCsrProjectCompleted, syncAllCsrCapabilityRentalsDelhivery } from '@/lib/csr-agent/campaign';
 import { getDocumentExpiries, dropExpiredCaComplianceTags } from '@/lib/auth';
@@ -97,7 +99,8 @@ async function processNgoDocumentExpiryJobs(now = new Date()) {
  * 3. CSR capability daily compliance / Delhivery sync
  * 4. Drop expired optional CA compliance tags (12A / 80G / CSR-1 / FCRA). Never unverify.
  * 5. Embed active service offers that have no embedding yet
- * 6. Purge stale auth rate-limit hits and one-time codes
+ * 6. Release held financial-need contributions once the need stops collecting
+ * 7. Purge stale auth rate-limit hits and one-time codes
  */
 export async function GET(request: NextRequest) {
   try {
@@ -246,6 +249,20 @@ export async function GET(request: NextRequest) {
       console.error('Error in offer embedding backfill:', offerEmbeddingErr);
     }
 
+    // Release held contributions for needs that stopped collecting.
+    let heldTransfersReleased = 0;
+    try {
+      const keyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      if (keyId && keySecret) {
+        heldTransfersReleased = await releaseHeldTransfersForClosedRequests(
+          new Razorpay({ key_id: keyId, key_secret: keySecret })
+        );
+      }
+    } catch (heldTransferErr) {
+      console.error('Error releasing held contribution transfers:', heldTransferErr);
+    }
+
     // Purge old rate-limit hits and used or expired one-time codes.
     let authThrottleRowsDeleted = 0;
     try {
@@ -266,6 +283,7 @@ export async function GET(request: NextRequest) {
         csrDelhiverySync: csrDelhiverySyncStats,
         csrCapabilityCompliance: csrComplianceStats,
         offerEmbeddings: offerEmbeddingStats,
+        heldTransfersReleased,
         authThrottleCleanup: { deleted: authThrottleRowsDeleted },
       }
     });

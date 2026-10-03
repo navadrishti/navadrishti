@@ -26,7 +26,7 @@ export function InlineSkillServiceFulfillment({
     proposed_amount?: number | null;
     response_meta?: Record<string, unknown> | null;
   };
-  role: 'ngo' | 'individual';
+  role: 'payer' | 'payee';
   title?: string;
   onUpdated?: () => void | Promise<void>;
 }) {
@@ -146,7 +146,7 @@ export function InlineSkillServiceFulfillment({
       <div>
         <p className="text-sm font-medium text-emerald-950">{title}</p>
         <p className="text-xs text-emerald-900/80">
-          {role === 'ngo'
+          {role === 'payer'
             ? 'Settle the cumulative total when this skill/service engagement ends.'
             : 'Payment is calculated from present days times your quoted daily rate.'}
         </p>
@@ -176,7 +176,7 @@ export function InlineSkillServiceFulfillment({
           {meta.settled_amount != null ? ` · INR ${Number(meta.settled_amount).toLocaleString('en-IN')}` : ''}
           {meta.settlement_mode ? ` (${meta.settlement_mode})` : ''}
         </p>
-      ) : role === 'ngo' ? (
+      ) : role === 'payer' ? (
         <div className="flex flex-wrap gap-2">
           <Button
             size="sm"

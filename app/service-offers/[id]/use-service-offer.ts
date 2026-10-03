@@ -255,16 +255,6 @@ export function useServiceOffer(offerId: string) {
   const handlePayForApplication = async () => {
     if (!offer || !user || !token || !userApplication) return
 
-    const linkedRequestId = Number(userApplication.service_request_id || userApplication.response_meta?.service_request_id || 0)
-    if (!Number.isFinite(linkedRequestId) || linkedRequestId <= 0) {
-      toast({
-        title: 'Payment unavailable',
-        description: 'This application is not linked to a service request yet.',
-        variant: 'destructive'
-      })
-      return
-    }
-
     setPaying(true)
     try {
       const orderResponse = await fetch(`/api/service-offers/${offerId}/clients/${user.id}/payments/create-order`, {
@@ -361,6 +351,7 @@ export function useServiceOffer(offerId: string) {
     selectedNeedTotal,
     isOfferExpired,
     handleApply,
-    handlePayForApplication
+    handlePayForApplication,
+    refreshApplication: checkExistingApplication
   }
 }

@@ -2,12 +2,13 @@ import crypto from 'crypto'
 import Razorpay from 'razorpay'
 import { db, supabase } from '@/lib/db'
 import { formatAttendanceSummary } from '@/lib/service-request-allocation'
-import { parseJsonObject } from '@/lib/utils'
+import { getErrorMessage, parseJsonObject, validateCapturedPaymentAmounts } from '@/lib/utils'
 import type { Json, Tables } from '@/lib/database.types'
 import {
   buildPricingResponse,
   createPlatformPricedOrder,
   isRazorpayRouteEnabled,
+  refundDuplicatePayment,
 } from '@/lib/razorpay-route'
 
 type EngagementAssignment = Pick<
@@ -19,12 +20,42 @@ type EngagementAssignment = Pick<
   | 'application_table'
   | 'application_id'
   | 'owner_user_id'
+  | 'assignee_user_id'
   | 'target_type'
   | 'target_id'
 >
 
 function readMetaField(meta: Json, key: string): Json | undefined {
   return meta && typeof meta === 'object' && !Array.isArray(meta) ? meta[key] : undefined
+}
+
+export type EngagementSettlementParties =
+  | { settleable: true; payerUserId: number; payeeUserId: number }
+  | { settleable: false; reason: string }
+
+/**
+ * Works out who pays whom when a daily engagement is settled. On an NGO need the NGO owns the
+ * assignment and pays the volunteer it assigned; on a capability offer the provider owns it and
+ * the client who hired the capability pays. CSR capability rentals are paid upfront by the company.
+ */
+export function resolveEngagementSettlementParties(
+  assignment: Pick<EngagementAssignment, 'meta' | 'application_table' | 'target_type' | 'owner_user_id' | 'assignee_user_id'>
+): EngagementSettlementParties {
+  if (String(readMetaField(assignment.meta, 'flow') || '') === 'csr_capability_rental') {
+    return { settleable: false, reason: 'This CSR rental was paid upfront when the capability was booked' }
+  }
+
+  const ownerUserId = Number(assignment.owner_user_id || 0)
+  const assigneeUserId = Number(assignment.assignee_user_id || 0)
+  const providerOwnsAssignment =
+    assignment.application_table === 'service_clients' || assignment.target_type === 'service_offer'
+  const payerUserId = providerOwnsAssignment ? assigneeUserId : ownerUserId
+  const payeeUserId = providerOwnsAssignment ? ownerUserId : assigneeUserId
+
+  if (payerUserId <= 0 || payeeUserId <= 0 || payerUserId === payeeUserId) {
+    return { settleable: false, reason: 'This engagement has no separate payer and payee on file' }
+  }
+  return { settleable: true, payerUserId, payeeUserId }
 }
 
 export function getAssignmentOutstandingAmount(assignment: Pick<EngagementAssignment, 'meta'>) {
@@ -149,7 +180,11 @@ export async function finalizeEngagementSettlement(assignment: EngagementAssignm
   return nextMeta
 }
 
-export async function createEngagementSettlementOrder(assignment: EngagementAssignment, payerUserId: number) {
+export async function createEngagementSettlementOrder(
+  assignment: EngagementAssignment,
+  parties: { payerUserId: number; payeeUserId: number }
+) {
+  const { payerUserId, payeeUserId } = parties
   const { outstanding } = getAssignmentOutstandingAmount(assignment)
   if (outstanding <= 0) {
     const meta = await finalizeEngagementSettlement(assignment, {
@@ -166,13 +201,13 @@ export async function createEngagementSettlementOrder(assignment: EngagementAssi
   }
 
   const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret })
-  const beneficiaryUserId = Number(assignment.owner_user_id || 0)
   const { order, pricing, orderNotes } = await createPlatformPricedOrder({
     razorpay,
     baseAmountInr: outstanding,
     receipt: `assign_${assignment.id}_${Date.now()}`,
     paymentKind: 'engagement_settlement',
-    beneficiaryUserId: beneficiaryUserId > 0 ? beneficiaryUserId : undefined,
+    beneficiaryUserId: payeeUserId,
+    beneficiaryName: 'The service provider',
     notes: {
       assignment_id: String(assignment.id),
       target_type: String(assignment.target_type || ''),
@@ -193,7 +228,7 @@ export async function createEngagementSettlementOrder(assignment: EngagementAssi
       : null,
     contribution_id: null,
     payer_user_id: payerUserId,
-    ngo_user_id: beneficiaryUserId > 0 ? beneficiaryUserId : payerUserId,
+    ngo_user_id: payeeUserId,
     razorpay_order_id: String(order.id),
     receipt: String(order.receipt || `assign_${assignment.id}`),
     amount_inr: Number(pricing.totalChargeInr.toFixed(2)),
@@ -218,6 +253,149 @@ export async function createEngagementSettlementOrder(assignment: EngagementAssi
     keyId,
     routeEnabled: isRazorpayRouteEnabled(),
   }
+}
+
+export function isEngagementSettlementOrder(orderNotes: unknown): boolean {
+  const notes = parseJsonObject(orderNotes)
+  return Boolean(notes.assignment_id) &&
+    (notes.payment_kind === 'engagement_settlement' || notes.settlement_scope === 'daily_rental')
+}
+
+export type EngagementPaymentResult =
+  | { ok: true; alreadyProcessed: boolean; settledAmount: number; paidInr: number; meta: Record<string, unknown> | null }
+  | { ok: false; status: number; error: string }
+
+/**
+ * Applies a captured settlement payment to its engagement. Both the checkout verify call and the
+ * Razorpay webhook land here; whichever arrives first settles the engagement and the other sees it
+ * as already processed. A payment for an engagement another payment already settled is refunded.
+ */
+export async function settleEngagementFromCapturedPayment(input: {
+  razorpay: Razorpay
+  razorpayOrderId: string
+  razorpayPaymentId: string
+  paidInr: number
+  orderNotes?: unknown
+  orderAmountPaise?: unknown
+  expected?: { assignmentId: string; payerUserId: number }
+}): Promise<EngagementPaymentResult> {
+  const { data: orderRow, error: orderError } = await supabase
+    .from('razorpay_payment_orders')
+    .select('order_notes, payer_user_id, order_status, amount_paise')
+    .eq('razorpay_order_id', input.razorpayOrderId)
+    .maybeSingle()
+  if (orderError) throw orderError
+  if (!orderRow) return { ok: false, status: 404, error: 'Settlement order not found' }
+
+  const storedNotes = parseJsonObject(orderRow.order_notes)
+  const assignmentId = String(storedNotes.assignment_id ?? '')
+  if (!assignmentId) return { ok: false, status: 400, error: 'This order is not an engagement settlement' }
+  if (input.expected) {
+    if (input.expected.assignmentId !== assignmentId) {
+      return { ok: false, status: 403, error: 'Payment is linked to a different engagement' }
+    }
+    if (Number(orderRow.payer_user_id) !== input.expected.payerUserId) {
+      return { ok: false, status: 403, error: 'Payment belongs to a different payer' }
+    }
+  }
+
+  const amountCheck = validateCapturedPaymentAmounts({
+    orderNotes: parseJsonObject(input.orderNotes ?? storedNotes),
+    orderAmountPaise: input.orderAmountPaise ?? orderRow.amount_paise,
+    paidInr: input.paidInr,
+  })
+  if (!amountCheck.ok) return { ok: false, status: 400, error: amountCheck.error }
+
+  const loadAssignment = async () => {
+    const { data, error } = await supabase
+      .from('service_engagement_assignments')
+      .select('*')
+      .eq('id', assignmentId)
+      .maybeSingle()
+    if (error) throw error
+    return data
+  }
+
+  const refundDuplicate = async (): Promise<EngagementPaymentResult> => {
+    try {
+      return await refundDuplicatePayment({
+        razorpay: input.razorpay,
+        razorpayPaymentId: input.razorpayPaymentId,
+        razorpayOrderId: input.razorpayOrderId,
+        reason: 'engagement_duplicate_settlement',
+        itemLabel: 'engagement',
+      })
+    } catch (error) {
+      return { ok: false, status: 409, error: getErrorMessage(error) || 'This engagement was already settled' }
+    }
+  }
+
+  const resolveSettled = (meta: Record<string, unknown>): EngagementPaymentResult => {
+    const settledBy = String(meta.settlement_payment_id || meta.razorpay_payment_id || '')
+    if (settledBy === input.razorpayPaymentId) {
+      return {
+        ok: true,
+        alreadyProcessed: true,
+        settledAmount: Number(meta.settled_amount || amountCheck.baseAmountInr),
+        paidInr: amountCheck.paidInr,
+        meta,
+      }
+    }
+    return { ok: false, status: 409, error: 'This engagement is already being settled by another payment' }
+  }
+
+  const assignment = await loadAssignment()
+  if (!assignment) return { ok: false, status: 404, error: 'Assignment not found' }
+  const currentMeta = parseJsonObject(assignment.meta)
+  const claimedBy = String(currentMeta.settlement_payment_id || '')
+  if (claimedBy === input.razorpayPaymentId) return resolveSettled(currentMeta)
+  if (claimedBy || String(currentMeta.settlement_status || '').toLowerCase() === 'settled') return refundDuplicate()
+
+  const { data: claimed, error: claimError } = await supabase
+    .from('service_engagement_assignments')
+    .update({
+      meta: { ...currentMeta, settlement_payment_id: input.razorpayPaymentId },
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', assignmentId)
+    .is('meta->>settlement_payment_id', null)
+    .select('*')
+    .maybeSingle()
+  if (claimError) throw claimError
+  if (!claimed) {
+    const latest = await loadAssignment()
+    const latestMeta = parseJsonObject(latest?.meta)
+    if (String(latestMeta.settlement_payment_id || '') === input.razorpayPaymentId) return resolveSettled(latestMeta)
+    return refundDuplicate()
+  }
+
+  let meta: Record<string, unknown>
+  try {
+    meta = await finalizeEngagementSettlement(claimed, {
+      settledAmount: amountCheck.baseAmountInr,
+      settlementMode: 'razorpay',
+      razorpayOrderId: input.razorpayOrderId,
+      razorpayPaymentId: input.razorpayPaymentId,
+    })
+  } catch (finalizeError) {
+    await supabase
+      .from('service_engagement_assignments')
+      .update({
+        status: assignment.status,
+        completed_at: assignment.completed_at,
+        meta: currentMeta,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', assignmentId)
+    throw finalizeError
+  }
+
+  await supabase
+    .from('razorpay_payment_orders')
+    .update({ order_status: 'paid', updated_at: new Date().toISOString() })
+    .eq('razorpay_order_id', input.razorpayOrderId)
+
+  return { ok: true, alreadyProcessed: false, settledAmount: amountCheck.baseAmountInr, paidInr: amountCheck.paidInr, meta }
 }
 
 export function verifyRazorpaySignature(orderId: string, paymentId: string, signature: string) {

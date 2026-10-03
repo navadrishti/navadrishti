@@ -13,10 +13,11 @@ import {
   createEngagementSettlementOrder,
   getAssignmentOutstandingAmount,
   isDailyRentalAssignment,
+  resolveEngagementSettlementParties,
   verifyRazorpaySignature,
 } from '@/lib/engagement-settlement'
 import { razorpaySignature } from './support/requests'
-import { argOf, createSupabaseFake, fakeAdjustProgress, hasCall, type FakeQuery, type FakeResult } from './support/supabase-fake'
+import { argOf, createSupabaseFake, eqValue, fakeAdjustProgress, hasCall, type FakeQuery, type FakeResult } from './support/supabase-fake'
 
 const mocks = vi.hoisted(() => ({
   supabase: { from: vi.fn() },
@@ -27,8 +28,8 @@ const mocks = vi.hoisted(() => ({
     supportTicketMessages: { create: vi.fn() },
   },
   razorpay: {
-    orders: { create: vi.fn() },
-    payments: { fetch: vi.fn(), refund: vi.fn() },
+    orders: { create: vi.fn(), fetchPayments: vi.fn() },
+    payments: { fetch: vi.fn(), refund: vi.fn(), fetchTransfer: vi.fn() },
     transfers: { edit: vi.fn() },
   },
 }))
@@ -78,6 +79,7 @@ describe('settleCompanyCaPayment', () => {
     contributionIds: ['c1'],
   }
   const input = {
+    razorpay,
     razorpayOrderId: 'order_ca',
     razorpayPaymentId: 'pay_ca',
     razorpaySignature: 'sig',
@@ -132,9 +134,10 @@ describe('settleCompanyCaPayment', () => {
     expect(payment).toMatchObject({ amount_inr: 1059, amount_paise: 105900, razorpay_signature: 'sig', payment_status: 'captured' })
     expect(payment.provider_payload).toMatchObject({ attendance_entry_ids: ['5', '6'], contribution_ids: ['c1'] })
 
-    const entries = fake.find('service_attendance_entries')[0]
+    const entries = fake.find('service_attendance_entries', 'update')[0]
     expect(argOf(entries, 'in', 1)).toEqual(['5', '6'])
-    expect(entries.calls).toContainEqual(['neq', 'payment_status', 'paid'])
+    expect(entries.calls).toContainEqual(['not', 'payment_status', 'in', '(paid,waived)'])
+    expect(mocks.razorpay.payments.refund).not.toHaveBeenCalled()
 
     const aggregate = argOf(fake.find('service_request_contributions', 'insert')[0], 'insert') as Record<string, unknown>
     expect(aggregate).toMatchObject({ service_request_id: 12, contributor_id: 3, amount: 800, contribution_type: 'attendance_payment' })
@@ -156,13 +159,45 @@ describe('settleCompanyCaPayment', () => {
     await settleCompanyCaPayment({ ...input, razorpaySignature: null })
     expect(argOf(fake.find('razorpay_payments', 'upsert')[0], 'upsert')).not.toHaveProperty('razorpay_signature')
   })
+
+  it('reports an order the other confirmation already settled without crediting again', async () => {
+    const fake = useSupabase((query) => {
+      if (query.table !== 'razorpay_payment_orders') return undefined
+      return { data: hasCall(query, 'update') ? null : order }
+    })
+    await expect(settleCompanyCaPayment(input)).resolves.toMatchObject({ ok: true, alreadyProcessed: true, creditedInr: 0 })
+    expect(fake.find('service_attendance_entries', 'update')).toHaveLength(0)
+    expect(mocks.razorpay.payments.refund).not.toHaveBeenCalled()
+  })
+
+  it('refunds a payment whose items an earlier order already paid', async () => {
+    mocks.razorpay.payments.fetch.mockResolvedValue({ id: 'pay_ca', status: 'captured', amount: 105900 })
+    const fake = useSupabase((query) => {
+      if (query.table === 'razorpay_payment_orders' && hasCall(query, 'select')) return { data: order }
+      return undefined
+    })
+    const result = await settleCompanyCaPayment(input)
+    expect(result).toMatchObject({ ok: false, status: 409, error: expect.stringContaining('duplicate payment has been refunded') })
+    expect(mocks.razorpay.payments.refund).toHaveBeenCalledWith('pay_ca', expect.objectContaining({ amount: 105900 }))
+    expect(fake.writes('razorpay_payment_orders').map((query) => argOf(query, 'update'))).toContainEqual(
+      expect.objectContaining({ order_status: 'cancelled' })
+    )
+    expect(fake.find('service_request_contributions', 'insert')).toHaveLength(0)
+  })
 })
 
 describe('creditServiceRequestContribution', () => {
   const claimed = { payer_user_id: 3, amount_inr: 1059, order_notes: { base_amount_inr: 1000 } }
 
   function setup(options: { claim?: unknown; request?: Record<string, unknown>; applications?: unknown[] } = {}) {
-    useSupabase((query) => (query.table === 'razorpay_payment_orders' ? { data: options.claim === undefined ? claimed : options.claim } : undefined))
+    useSupabase((query) => {
+      if (query.table !== 'razorpay_payment_orders') return undefined
+      if (query.op === 'select') {
+        return { data: [{ id: 'row_1', razorpay_order_id: 'order_1', order_notes: { payment_kind: 'financial_need' } }] }
+      }
+      if (hasCall(query, 'maybeSingle')) return { data: options.claim === undefined ? claimed : options.claim }
+      return undefined
+    })
     mocks.db.serviceRequests.getById.mockResolvedValue({
       status: 'active',
       current_amount: 500,
@@ -202,9 +237,35 @@ describe('creditServiceRequestContribution', () => {
   it('completes the request and releases held transfers at target', async () => {
     vi.stubEnv('RAZORPAY_ROUTE_ENABLED', 'true')
     setup({ request: { current_amount: 4000 } })
-    mocks.razorpay.payments.fetch.mockResolvedValue({ id: 'pay_1', transfer_id: 'trf_1' })
+    mocks.razorpay.orders.fetchPayments.mockResolvedValue({ items: [{ id: 'pay_1', status: 'captured' }] })
+    mocks.razorpay.payments.fetchTransfer.mockResolvedValue({ items: [{ id: 'trf_1', on_hold: true }] })
     await expect(credit()).resolves.toMatchObject({ raisedInr: 5000, status: 'completed' })
+    expect(mocks.razorpay.orders.fetchPayments).toHaveBeenCalledWith('order_1')
     expect(mocks.razorpay.transfers.edit).toHaveBeenCalledWith('trf_1', { on_hold: false })
+  })
+
+  it('stamps released orders so they are not released twice', async () => {
+    vi.stubEnv('RAZORPAY_ROUTE_ENABLED', 'true')
+    const fake = useSupabase((query) => {
+      if (query.table !== 'razorpay_payment_orders') return undefined
+      if (query.op === 'select') {
+        return {
+          data: [
+            { id: 'row_1', razorpay_order_id: 'order_1', order_notes: { payment_kind: 'financial_need' } },
+            { id: 'row_2', razorpay_order_id: 'order_2', order_notes: { payment_kind: 'financial_need', transfers_released_at: 'x' } },
+            { id: 'row_3', razorpay_order_id: 'order_3', order_notes: { payment_kind: 'engagement_settlement' } },
+          ],
+        }
+      }
+      return hasCall(query, 'maybeSingle') ? { data: claimed } : undefined
+    })
+    mocks.db.serviceRequests.getById.mockResolvedValue({ status: 'active', current_amount: 4000, target_amount: 5000, requirements: {} })
+    mocks.db.serviceRequestApplications.getByRequestId.mockResolvedValue([])
+    mocks.razorpay.orders.fetchPayments.mockResolvedValue({ items: [] })
+    await credit()
+    expect(mocks.razorpay.orders.fetchPayments).toHaveBeenCalledTimes(1)
+    const stamp = fake.writes('razorpay_payment_orders').find((query) => eqValue(query, 'id') === 'row_1')
+    expect((argOf(stamp, 'update') as { order_notes: Record<string, unknown> }).order_notes.transfers_released_at).toEqual(expect.any(String))
   })
 
   it('never completes general NGO network needs', async () => {
@@ -289,17 +350,22 @@ describe('admin refunds', () => {
     id: 9,
     amount_inr: 1059,
     payment_status: 'captured',
-    order: { service_request_id: 12, order_notes: { base_amount_inr: 1000, total_charge_inr: 1059 } },
+    order: {
+      service_request_id: 12,
+      order_notes: { payment_kind: 'financial_need', service_request_id: '12', base_amount_inr: 1000, total_charge_inr: 1059 },
+    },
   }
 
-  function setup(options: { payment?: unknown; existingRefund?: unknown; request?: unknown } = {}) {
+  function setup(options: { payment?: unknown; existingRefunds?: unknown[]; request?: unknown } = {}) {
     vi.stubEnv('RAZORPAY_KEY_SECRET', 'secret')
     vi.stubEnv('NEXT_PUBLIC_RAZORPAY_KEY_ID', 'key')
     mocks.db.serviceRequests.getById.mockResolvedValue(options.request === undefined ? financialRequest : options.request)
     mocks.razorpay.payments.refund.mockResolvedValue({ id: 'rfnd_1', status: 'processed' })
     return useSupabase((query) => {
       if (query.table === 'razorpay_payments' && hasCall(query, 'select')) return { data: options.payment === undefined ? paymentRow : options.payment }
-      if (query.table === 'razorpay_refunds' && hasCall(query, 'select')) return { data: options.existingRefund ?? null }
+      if (query.table === 'razorpay_refunds' && query.op === 'select' && !hasCall(query, 'maybeSingle')) {
+        return { data: options.existingRefunds ?? [] }
+      }
       return undefined
     })
   }
@@ -356,10 +422,49 @@ describe('admin refunds', () => {
     expect(mocks.razorpay.payments.refund).not.toHaveBeenCalled()
   })
 
-  it('is idempotent for an open refund of the same amount', async () => {
-    setup({ existingRefund: { id: 3, refund_status: 'pending', amount_paise: 105900 } })
+  it('does not refund again once open refunds cover the payment', async () => {
+    setup({ existingRefunds: [{ refund_status: 'pending', amount_paise: 105900 }] })
     await expect(refund()).resolves.toMatchObject({ message: 'Refund already initiated', refund_status: 'pending' })
     expect(mocks.razorpay.payments.refund).not.toHaveBeenCalled()
+  })
+
+  it('allows a second partial refund of the same amount and caps it at what is left', async () => {
+    setup({ existingRefunds: [{ refund_status: 'processed', amount_paise: 50000 }] })
+    await refund({ requestedRefundInr: 500 })
+    expect(mocks.razorpay.payments.refund).toHaveBeenLastCalledWith('pay_1', expect.objectContaining({ amount: 50000 }))
+
+    await refund({ requestedRefundInr: 5000 })
+    expect(mocks.razorpay.payments.refund).toHaveBeenLastCalledWith('pay_1', expect.objectContaining({ amount: 55900 }))
+  })
+
+  it('marks the payment fully refunded when the last partial refund clears it', async () => {
+    const fake = setup({ existingRefunds: [{ refund_status: 'processed', amount_paise: 50000 }] })
+    await refund()
+    expect(mocks.razorpay.payments.refund).toHaveBeenCalledWith('pay_1', expect.objectContaining({ amount: 55900 }))
+    expect(argOf(fake.find('razorpay_payments', 'update')[0], 'update')).toMatchObject({ payment_status: 'refunded' })
+  })
+
+  it('reverses the payee transfer when the payment was routed', async () => {
+    setup({
+      payment: { ...paymentRow, order: { ...paymentRow.order, order_notes: { ...paymentRow.order.order_notes, route_transfer: true } } },
+    })
+    await refund()
+    expect(mocks.razorpay.payments.refund).toHaveBeenCalledWith('pay_1', expect.objectContaining({ reverse_all: 1 }))
+  })
+
+  it('does not reverse transfers for a payment that was never routed', async () => {
+    setup()
+    await refund()
+    expect(mocks.razorpay.payments.refund.mock.calls[0][1]).not.toHaveProperty('reverse_all')
+  })
+
+  it('does not debit the request when refunding a payment that was never credited to it', async () => {
+    setup({
+      request: { ...financialRequest, current_amount: 5000 },
+      payment: { ...paymentRow, order: { service_request_id: 12, order_notes: { payment_kind: 'engagement_settlement', assignment_id: 'a1' } } },
+    })
+    await expect(refund()).resolves.toMatchObject({ fundsRaisedInr: 5000 })
+    expect(mocks.adjustProgress).not.toHaveBeenCalled()
   })
 
   it('caps a partial refund at the paid amount', async () => {
@@ -402,7 +507,10 @@ describe('admin refunds', () => {
   })
 
   it('debits the refunded amount for payments without pricing notes', async () => {
-    setup({ request: { ...financialRequest, current_amount: 5000 }, payment: { ...paymentRow, order: { service_request_id: 12, order_notes: {} } } })
+    setup({
+      request: { ...financialRequest, current_amount: 5000 },
+      payment: { ...paymentRow, order: { service_request_id: 12, order_notes: { payment_kind: 'financial_need', service_request_id: '12' } } },
+    })
     await refund()
     expect(mocks.adjustProgress).toHaveBeenCalledWith(expect.anything(), { amount: -1059 }, { targetAmount: 5000 })
   })
@@ -468,9 +576,55 @@ describe('engagement settlement', () => {
     application_table: 'service_clients',
     application_id: '15',
     owner_user_id: 8,
+    assignee_user_id: 3,
     target_type: 'service_request',
     target_id: '12',
   }
+  const parties = { payerUserId: 3, payeeUserId: 8 }
+  const connectedPayee = { profile_data: { razorpay_linked_account_id: 'acc_8', razorpay_link_status: 'active' } }
+
+  describe('resolveEngagementSettlementParties', () => {
+    const base = { meta: {}, owner_user_id: 10, assignee_user_id: 20 }
+
+    it('has the NGO pay the volunteer it assigned on a need', () => {
+      expect(resolveEngagementSettlementParties({
+        ...base,
+        application_table: 'service_request_applications',
+        target_type: 'service_request',
+      })).toEqual({ settleable: true, payerUserId: 10, payeeUserId: 20 })
+    })
+
+    it('has the company pay a volunteer on its campaign', () => {
+      expect(resolveEngagementSettlementParties({ ...base, application_table: null, target_type: 'csr_project' }))
+        .toEqual({ settleable: true, payerUserId: 10, payeeUserId: 20 })
+    })
+
+    it.each([
+      ['service_clients', 'service_offer'],
+      ['service_clients', 'service_request'],
+      [null, 'service_offer'],
+    ])('has the client pay the provider on an offer (%s, %s)', (applicationTable, targetType) => {
+      expect(resolveEngagementSettlementParties({ ...base, application_table: applicationTable, target_type: targetType }))
+        .toEqual({ settleable: true, payerUserId: 20, payeeUserId: 10 })
+    })
+
+    it('refuses CSR capability rentals, which were paid upfront', () => {
+      expect(resolveEngagementSettlementParties({
+        ...base,
+        meta: { flow: 'csr_capability_rental' },
+        application_table: 'service_clients',
+        target_type: 'csr_project',
+      })).toMatchObject({ settleable: false, reason: expect.stringContaining('paid upfront') })
+    })
+
+    it.each([
+      [{ owner_user_id: 0, assignee_user_id: 20 }],
+      [{ owner_user_id: 10, assignee_user_id: 10 }],
+    ])('refuses an assignment without two distinct parties (%o)', (ids) => {
+      expect(resolveEngagementSettlementParties({ meta: {}, application_table: null, target_type: 'csr_project', ...ids }))
+        .toMatchObject({ settleable: false })
+    })
+  })
 
   it('waives and completes an assignment with nothing outstanding', async () => {
     const fake = useSupabase((query) =>
@@ -478,7 +632,7 @@ describe('engagement settlement', () => {
         ? { data: [{ id: 1, payment_status: 'paid' }, { id: 2, payment_status: 'pending' }] }
         : undefined
     )
-    const result = await createEngagementSettlementOrder({ ...assignment, meta: meta(500, 500) }, 3)
+    const result = await createEngagementSettlementOrder({ ...assignment, meta: meta(500, 500) }, parties)
     expect(result).toMatchObject({ paymentRequired: false, outstanding: 0 })
     const entryUpdates = fake.find('service_attendance_entries', 'update')
     expect(entryUpdates).toHaveLength(1)
@@ -489,14 +643,24 @@ describe('engagement settlement', () => {
 
   it('requires Razorpay keys for an outstanding balance', async () => {
     useSupabase()
-    await expect(createEngagementSettlementOrder(assignment, 3)).rejects.toThrow('Razorpay is not configured on this environment')
+    await expect(createEngagementSettlementOrder(assignment, parties)).rejects.toThrow('Razorpay is not configured on this environment')
+  })
+
+  it('refuses to collect when the payee has not connected Razorpay', async () => {
+    vi.stubEnv('NEXT_PUBLIC_RAZORPAY_KEY_ID', 'key')
+    vi.stubEnv('RAZORPAY_KEY_SECRET', 'secret')
+    useSupabase((query) => (query.table === 'users' ? { data: { profile_data: {} } } : undefined))
+    await expect(createEngagementSettlementOrder(assignment, parties)).rejects.toThrow(
+      'The service provider has not connected a Razorpay payout account'
+    )
+    expect(mocks.razorpay.orders.create).not.toHaveBeenCalled()
   })
 
   it('creates an order for the outstanding balance plus fee', async () => {
     vi.stubEnv('NEXT_PUBLIC_RAZORPAY_KEY_ID', 'key')
     vi.stubEnv('RAZORPAY_KEY_SECRET', 'secret')
-    const fake = useSupabase()
-    const result = await createEngagementSettlementOrder(assignment, 3)
+    const fake = useSupabase((query) => (query.table === 'users' ? { data: connectedPayee } : undefined))
+    const result = await createEngagementSettlementOrder(assignment, parties)
     expect(result).toMatchObject({ paymentRequired: true, outstanding: 600, orderId: 'order_new', baseAmount: 600, totalCharge: 630, gstApplies: false })
     const body = mocks.razorpay.orders.create.mock.calls[0][0]
     expect(body.amount).toBe(63000)

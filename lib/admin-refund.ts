@@ -1,6 +1,11 @@
 import Razorpay from 'razorpay';
 import { db, supabase } from '@/lib/db';
-import { debitServiceRequestRefund, resolveRefundDebitInr } from '@/lib/service-request-payments';
+import { serviceOfferPaymentWasCredited } from '@/lib/service-offers/payment-settlement';
+import {
+  debitServiceRequestRefund,
+  isServiceRequestContributionOrder,
+  resolveRefundDebitInr,
+} from '@/lib/service-request-payments';
 import { parseAmountToInr, parseJsonObject } from '@/lib/utils';
 
 export const isFinancialRequest = (
@@ -94,32 +99,39 @@ export async function processAdminRefund(input: ProcessAdminRefundInput) {
   }
 
   const paidInr = parseAmountToInr(paymentRow.amount_inr);
-  const refundInr = requestedRefundInr > 0 ? Math.min(requestedRefundInr, paidInr) : paidInr;
 
-  const { data: existingRefund } = await supabase
+  const { data: existingRefunds } = await supabase
     .from('razorpay_refunds')
-    .select('id, refund_status, amount_paise')
+    .select('refund_status, amount_paise')
     .eq('payment_id', paymentRow.id)
-    .in('refund_status', ['pending', 'processed'])
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .in('refund_status', ['pending', 'processed']);
 
-  if (existingRefund?.id && Number(existingRefund.amount_paise || 0) === Math.round(refundInr * 100)) {
+  const alreadyRefundedPaise = (existingRefunds || []).reduce(
+    (sum, row) => sum + Number(row.amount_paise || 0),
+    0
+  );
+  const remainingInr = Math.max(0, Math.round(paidInr * 100) - alreadyRefundedPaise) / 100;
+  if (remainingInr <= 0) {
+    const anyPending = (existingRefunds || []).some((row) => row.refund_status === 'pending');
     return {
-      message: existingRefund.refund_status === 'processed' ? 'Refund already processed' : 'Refund already initiated',
+      message: anyPending ? 'Refund already initiated' : 'Refund already processed',
       payment_id: refundPaymentId,
       refund_id: null,
-      refunded_amount_inr: refundInr,
-      refund_status: existingRefund.refund_status as 'processed' | 'pending' | 'failed',
+      refunded_amount_inr: 0,
+      refund_status: (anyPending ? 'pending' : 'processed') as 'processed' | 'pending' | 'failed',
       fundsRaisedInr: currentRaisedInr,
       targetInr,
     };
   }
 
+  const refundInr = requestedRefundInr > 0 ? Math.min(requestedRefundInr, remainingInr) : remainingInr;
+  const orderNotes = parseJsonObject(order?.order_notes);
+
   const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret });
   const refund = await razorpay.payments.refund(refundPaymentId, {
     amount: Math.round(refundInr * 100),
+    // Routed payments already moved the payee's share to their linked account; pull it back too.
+    ...(orderNotes.route_transfer ? { reverse_all: 1 } : {}),
     notes: {
       service_request_id: String(serviceRequestId),
       ...(supportTicketId ? { admin_ticket_id: String(supportTicketId) } : {}),
@@ -129,8 +141,9 @@ export async function processAdminRefund(input: ProcessAdminRefundInput) {
   const razorpayRefundId = refund?.id ? String(refund.id) : null;
   const nowIso = new Date().toISOString();
 
+  const fullyRefunded = alreadyRefundedPaise + Math.round(refundInr * 100) >= Math.round(paidInr * 100);
   const { error: paymentUpdateError } = await supabase.from('razorpay_payments').update({
-    payment_status: refundInr < paidInr ? 'partially_refunded' : 'refunded',
+    payment_status: fullyRefunded ? 'refunded' : 'partially_refunded',
     updated_at: nowIso,
   }).eq('id', paymentRow.id);
   if (paymentUpdateError) console.error('Failed to mark Razorpay payment refunded:', paymentUpdateError);
@@ -175,7 +188,9 @@ export async function processAdminRefund(input: ProcessAdminRefundInput) {
   if (refundRecordError) console.error('Failed to record Razorpay refund:', refundRecordError);
 
   // Without a recorded row the refund webhook records and debits the refund instead.
-  const shouldDebit = refundProcessed && !wasProcessed && !refundRecordError;
+  const paymentWasCredited =
+    isServiceRequestContributionOrder(orderNotes) || serviceOfferPaymentWasCredited(orderNotes, refundPaymentId);
+  const shouldDebit = refundProcessed && !wasProcessed && !refundRecordError && paymentWasCredited;
   const nextRaisedInr = shouldDebit
     ? (await debitServiceRequestRefund(
         serviceRequestId,

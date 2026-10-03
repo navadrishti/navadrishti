@@ -284,7 +284,7 @@ export function NgoNeedDashboardInline({
                 {shouldUseNgoMarkedDailyAttendance(need) && inFulfillment ? (
                   <InlineSkillServiceFulfillment
                     application={assignment}
-                    role="ngo"
+                    role="payer"
                     onUpdated={onUpdated}
                   />
                 ) : null}

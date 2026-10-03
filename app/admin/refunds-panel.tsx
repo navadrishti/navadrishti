@@ -118,8 +118,8 @@ export function AdminRefundsPanel() {
   };
 
   const initiateRefund = async () => {
-    if (!refundRequestId.trim() || !refundPaymentId.trim()) {
-      sonnerToast.error('Service request ID and payment ID are required');
+    if (!refundPaymentId.trim()) {
+      sonnerToast.error('Payment ID is required');
       return;
     }
     try {
@@ -129,7 +129,7 @@ export function AdminRefundsPanel() {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          service_request_id: refundRequestId,
+          service_request_id: refundRequestId.trim() || null,
           razorpay_payment_id: refundPaymentId,
           amount: refundAmount,
           reason: refundReason,
@@ -138,6 +138,7 @@ export function AdminRefundsPanel() {
       const data = await response.json();
       if (!response.ok || !data?.success) throw new Error(data?.error || 'Failed to initiate refund');
       sonnerToast.success(data?.data?.message || 'Refund initiated');
+      for (const warning of data?.data?.warnings || []) sonnerToast.warning(warning);
       await loadPayments();
     } catch (error) {
       sonnerToast.error(getErrorMessage(error) || 'Refund failed');
@@ -199,7 +200,9 @@ export function AdminRefundsPanel() {
                       <div className="min-w-0">
                         <p className="truncate font-semibold text-slate-900">{payment.razorpay_payment_id}</p>
                         <p className="text-xs text-slate-500">
-                          Request #{payment.service_request_id || '—'} • {payment.service_request?.title || 'Unknown request'}
+                          {payment.service_request_id
+                            ? `Request #${payment.service_request_id} • ${payment.service_request?.title || 'Unknown request'}`
+                            : payment.razorpay_order_id || 'Platform payment'}
                         </p>
                       </div>
                       <Badge className={cn('shrink-0', statusTone(payment.latest_refund_status || payment.payment_status))}>
@@ -254,12 +257,12 @@ export function AdminRefundsPanel() {
 
               <AdminDetailSection title="Initiate Razorpay refund">
                 <p className="text-xs text-amber-800">
-                  Refunds apply to financial service requests only. Users cannot initiate refunds from the platform.
+                  Any captured payment can be refunded in full or in part. Money already sent to the payee is pulled back automatically. Users cannot start refunds themselves.
                 </p>
                 <div className="grid gap-3 md:grid-cols-2">
                   <div className="space-y-2 md:col-span-2">
-                    <label className="text-sm font-medium text-slate-700">Service Request ID</label>
-                    <Input value={refundRequestId} onChange={(e) => setRefundRequestId(e.target.value)} placeholder="Request ID linked to payment" />
+                    <label className="text-sm font-medium text-slate-700">Service Request ID (optional)</label>
+                    <Input value={refundRequestId} onChange={(e) => setRefundRequestId(e.target.value)} placeholder="Only checked when filled in" />
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-slate-700">Razorpay Payment ID</label>

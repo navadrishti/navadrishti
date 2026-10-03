@@ -384,7 +384,7 @@ Start → /companies/csr-agent wizard
   ↓ csr_projects + milestones created
   ↓ NGO POST /api/milestones/[id]/evidence
   ↓ Company CA POST /api/milestones/[id]/review
-  ↓ POST /api/milestones/[id]/payment
+  ↓ POST /api/milestones/[id]/payments/create-order → Razorpay checkout → payments/verify
   ↓ Outcome: Milestone completed
 ```
 

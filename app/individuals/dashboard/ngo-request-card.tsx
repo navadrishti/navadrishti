@@ -111,7 +111,7 @@ export function NgoRequestCard({ application, onUpdated }: NgoRequestCardProps) 
         ) : null}
 
         {shouldUseNgoMarkedDailyAttendance(request) && inFulfillment ? (
-          <InlineSkillServiceFulfillment application={application} role="individual" onUpdated={onUpdated} />
+          <InlineSkillServiceFulfillment application={application} role="payee" onUpdated={onUpdated} />
         ) : null}
 
         {mode === 'infrastructure' && inFulfillment && requestId ? (

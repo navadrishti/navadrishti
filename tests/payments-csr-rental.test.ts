@@ -60,6 +60,7 @@ function useCampaignDb(initial: Row, offer: Row = { id: 7, creator_id: 40, offer
     if (query.table === 'service_offers') return { data: offer }
     if (query.table === 'service_clients') return { data: { id: 81 } }
     if (query.table === 'service_engagement_assignments') return { data: { id: 'asg_1' } }
+    if (query.table === 'users') return { data: { profile_data: { razorpay_linked_account_id: 'acc_provider', razorpay_link_status: 'active' } } }
     return undefined
   })
   mocks.supabase.from.mockImplementation(fake.from)
@@ -416,7 +417,7 @@ describe('update-campaign route', () => {
         expect(body.error).toBe(DUPLICATE_REFUNDED)
         expect(mocks.razorpay.payments.refund).toHaveBeenCalledWith('pay_2', {
           amount: 210000,
-          notes: { reason: 'csr_capability_duplicate_payment', campaign_id: CAMPAIGN_ID },
+          notes: expect.objectContaining({ reason: 'csr_capability_duplicate_payment' }),
         })
         expect(fake.find('campaigns', 'update')).toHaveLength(0)
       })

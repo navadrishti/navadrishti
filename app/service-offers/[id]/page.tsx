@@ -35,7 +35,8 @@ export default function ServiceOfferDetailPage() {
     selectedNeedTotal,
     isOfferExpired,
     handleApply,
-    handlePayForApplication
+    handlePayForApplication,
+    refreshApplication
   } = useServiceOffer(offerId)
 
   const canApplyToOffer = !!user && user.id !== offer?.creator_id && user.user_type === 'ngo'
@@ -105,6 +106,7 @@ export default function ServiceOfferDetailPage() {
                               offerPriceAmount={offer.price_amount}
                               paying={paying}
                               onPay={handlePayForApplication}
+                              onUpdated={refreshApplication}
                             />
                           ) : null
                         }

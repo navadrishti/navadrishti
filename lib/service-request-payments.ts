@@ -1,6 +1,6 @@
 import type Razorpay from 'razorpay'
 import { adjustServiceRequestProgress, db, getApplicationApplicantUserId, supabase } from '@/lib/db'
-import { isGeneralNgoNetworkNeed, releaseHeldTransfersForPayment } from '@/lib/razorpay-route'
+import { isGeneralNgoNetworkNeed, isRazorpayRouteEnabled, releaseHeldTransfersForOrder } from '@/lib/razorpay-route'
 import { resolveFundingTargetInr } from '@/lib/service-request-allocation'
 import { parseAmountToInr, parseJsonObject } from '@/lib/utils'
 
@@ -109,13 +109,73 @@ export async function creditServiceRequestContribution(input: {
   }
 
   if (reachedTarget) {
-    await releaseHeldTransfersForPayment({
-      razorpay: input.razorpay,
-      razorpayPaymentId: input.razorpayPaymentId,
-    })
+    await releaseHeldServiceRequestTransfers(input.razorpay, input.serviceRequestId)
   }
 
   return { credited: true, raisedInr, targetInr, status }
+}
+
+const RELEASE_ON_STATUSES = new Set(['completed', 'fulfilled', 'expired', 'closed'])
+
+/**
+ * Financial-need contributions are held at Razorpay until the need stops collecting.
+ * Releases every paid contribution for the request that has not been released yet.
+ */
+export async function releaseHeldServiceRequestTransfers(razorpay: Razorpay, serviceRequestId: number): Promise<number> {
+  if (!isRazorpayRouteEnabled()) return 0
+
+  const { data: orders, error } = await supabase
+    .from('razorpay_payment_orders')
+    .select('id, razorpay_order_id, order_notes')
+    .eq('service_request_id', serviceRequestId)
+    .eq('order_status', 'paid')
+  if (error) throw error
+
+  let released = 0
+  for (const order of orders || []) {
+    const notes = parseJsonObject(order.order_notes)
+    if (notes.payment_kind !== 'financial_need' || notes.transfers_released_at) continue
+    const ok = await releaseHeldTransfersForOrder({ razorpay, razorpayOrderId: order.razorpay_order_id })
+    if (!ok) continue
+    const nowIso = new Date().toISOString()
+    await supabase
+      .from('razorpay_payment_orders')
+      .update({ order_notes: { ...notes, transfers_released_at: nowIso }, updated_at: nowIso })
+      .eq('id', order.id)
+    released += 1
+  }
+  return released
+}
+
+/** Daily sweep: releases held contributions for needs that finished, expired or closed without hitting the target. */
+export async function releaseHeldTransfersForClosedRequests(razorpay: Razorpay): Promise<number> {
+  if (!isRazorpayRouteEnabled()) return 0
+
+  const { data: orders, error } = await supabase
+    .from('razorpay_payment_orders')
+    .select('service_request_id, order_notes')
+    .eq('order_status', 'paid')
+    .not('service_request_id', 'is', null)
+    .eq('order_notes->>payment_kind', 'financial_need')
+    .is('order_notes->>transfers_released_at', null)
+    .limit(500)
+  if (error) throw error
+
+  const requestIds = [...new Set((orders || []).map((order) => Number(order.service_request_id)).filter((id) => id > 0))]
+  if (requestIds.length === 0) return 0
+
+  const { data: requests, error: requestsError } = await supabase
+    .from('service_requests')
+    .select('id, status')
+    .in('id', requestIds)
+  if (requestsError) throw requestsError
+
+  let released = 0
+  for (const request of requests || []) {
+    if (!RELEASE_ON_STATUSES.has(String(request.status || '').toLowerCase())) continue
+    released += await releaseHeldServiceRequestTransfers(razorpay, Number(request.id))
+  }
+  return released
 }
 
 /**

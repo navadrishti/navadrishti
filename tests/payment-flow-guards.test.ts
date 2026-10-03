@@ -3,7 +3,6 @@ import { NextRequest } from 'next/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { POST as webhookPost } from '@/app/api/webhooks/razorpay/route'
 import { POST as verifyPayment } from '@/app/api/milestones/[id]/payments/verify/route'
-import { POST as recordPayment } from '@/app/api/milestones/[id]/payment/route'
 import { POST as reviewMilestone } from '@/app/api/milestones/[id]/review/route'
 import { POST as submitEvidence } from '@/app/api/milestones/[id]/evidence/route'
 import { processAdminRefund } from '@/lib/admin-refund'
@@ -291,52 +290,6 @@ describe('milestone payment verify', () => {
   })
 })
 
-describe('manual milestone payment', () => {
-  function setup(overrides: { milestoneStatus?: string; confirmed?: unknown[] } = {}) {
-    respond((query) => {
-      if (query.table === 'csr_project_milestones' && query.op === 'select' && eqValue(query, 'id')) {
-        return { data: { id: 'm1', project_id: 'p1', status: overrides.milestoneStatus ?? 'approved', amount: 1000 } }
-      }
-      if (query.table === 'csr_project_milestones' && query.op === 'select') return { data: [{ id: 'm1', status: 'completed' }] }
-      if (query.table === 'csr_projects') return { data: project }
-      if (query.table === 'csr_payment_confirmations' && query.op === 'select' && eqValue(query, 'milestone_id')) {
-        return { data: overrides.confirmed ?? [] }
-      }
-      if (query.table === 'csr_payment_confirmations' && query.op === 'select') return { data: [{ amount: 1000, payment_status: 'confirmed' }] }
-      if (query.table === 'csr_payment_confirmations' && query.op === 'insert') return { data: { id: 'pc_1' } }
-      return undefined
-    })
-  }
-
-  const record = (body: Record<string, unknown>) =>
-    recordPayment(jsonRequest('http://localhost/api/milestones/m1/payment', { body }), context)
-
-  it('requires an approved milestone', async () => {
-    setup({ milestoneStatus: 'submitted' })
-    expect((await record({ payment_reference: 'utr_1', payment_status: 'confirmed' })).status).toBe(409)
-    expect(writes('csr_payment_confirmations', 'insert')).toHaveLength(0)
-  })
-
-  it('rejects a milestone that already has a confirmed payment', async () => {
-    setup({ confirmed: [{ id: 'pc_0' }] })
-    expect((await record({ payment_reference: 'utr_1', payment_status: 'confirmed' })).status).toBe(409)
-    expect(writes('csr_payment_confirmations', 'insert')).toHaveLength(0)
-  })
-
-  it('uses the milestone amount instead of the client amount', async () => {
-    setup()
-    const response = await record({ payment_reference: 'utr_1', payment_status: 'confirmed', amount: 999999 })
-    expect(response.status).toBe(201)
-    expect(argOf(writes('csr_payment_confirmations', 'insert')[0], 'insert')).toMatchObject({ amount: 1000, payment_status: 'confirmed' })
-    expect(argOf(writes('csr_projects', 'update')[0], 'update')).toMatchObject({ funds_utilized: 1000 })
-  })
-
-  it('rejects unknown payment statuses', async () => {
-    setup()
-    expect((await record({ payment_reference: 'utr_1', payment_status: 'refunded' })).status).toBe(400)
-  })
-})
-
 describe('milestone review', () => {
   function setup(overrides: { milestoneStatus?: string; evidence?: unknown; claimed?: unknown[]; reviewInserts?: FakeResult[] } = {}) {
     const reviewInserts = [...(overrides.reviewInserts ?? [])]
@@ -442,7 +395,7 @@ describe('admin refund recording', () => {
     id: 9,
     amount_inr: 1059,
     payment_status: 'captured',
-    order: { service_request_id: 12, order_notes: {} },
+    order: { service_request_id: 12, order_notes: { service_request_id: '12', payment_kind: 'financial_need' } },
   }
 
   function setup(previousRefund: unknown) {
